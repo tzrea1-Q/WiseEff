@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "issue": 900,
+  "baseShardRevision": "47a67562df2920d804ea6ca0f27b84e024ff2ac4",
+  "baseShardBlobOid": "96a73eddfca8637250213f557b5f1d95490c7232",
+  "fixtureTrustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "destinationRevision": "411d9f4c828ecffa0c074b1aa93314eae88abfca",
+  "destinationTree": "751f5ad3e8ef1668d632cf12a5ca0fbe9026b338",
+  "ownerFile": "server/modules/parameter-bindings/dashboardRead.ts",
+  "ownerDestinationBlobOid": "4995287e3769ec448967e500dee51e6d06afb69a",
+  "retiredAllowlistEntries": [
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:11d2249984064946",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:24f362f0f6789ba5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:4191961ca82a308b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:1672137d914581a2",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:60fd11904b6411f3",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:76d7ca2a986549f6",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:5cdab7ab69a983fc",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:6a83c33633ffb34a",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:7c970e0e46f009e5",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:91fd71c28e340b15",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9a95911be58d9752",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9d7d1c15d5cd9b9b",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:ea846d21dd7ac3d3",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    }
+  ],
+  "files": [
+    {
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "sourceBlobOid": "1d49251a30ff7642b12c84c514554f9e27474117",
+      "destinationBlobOid": "2881547329cd32c372d3b124c8e8a76ba4a8e4e2",
+      "occurrences": [
+        {
+          "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:11d2249984064946",
+          "sourceSliceSha256": "61a52ca0f52e7d8d5077e9742a0198f73a8b8239cf8d92ec1109b179e2b971d4"
+        },
+        {
+          "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:24f362f0f6789ba5",
+          "sourceSliceSha256": "08482d0c80cf6d44a3fbbff9c367597fe169cba59fa9981295cfb338f7a560a9"
+        },
+        {
+          "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:4191961ca82a308b",
+          "sourceSliceSha256": "8b45a1ef09c2b3a77b2ceee10a4a257abe127b3fa86d9e9eb74e37c1a010ad8d"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:1672137d914581a2",
+          "sourceSliceSha256": "8b45a1ef09c2b3a77b2ceee10a4a257abe127b3fa86d9e9eb74e37c1a010ad8d"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:60fd11904b6411f3",
+          "sourceSliceSha256": "61a52ca0f52e7d8d5077e9742a0198f73a8b8239cf8d92ec1109b179e2b971d4"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:76d7ca2a986549f6",
+          "sourceSliceSha256": "08482d0c80cf6d44a3fbbff9c367597fe169cba59fa9981295cfb338f7a560a9"
+        }
+      ]
+    },
+    {
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "sourceBlobOid": "82b8d31cffdabdaa8f5a0d08705fe99ee473cf9e",
+      "destinationBlobOid": "1dbe95cf835b1274c754984a84e775af858ad9d9",
+      "occurrences": [
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:5cdab7ab69a983fc",
+          "sourceSliceSha256": "4e98ca6b72b8b55611bf91d9a8b05ff073faaa75c0724f8e031ae6ae4121a19e"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:6a83c33633ffb34a",
+          "sourceSliceSha256": "1e671209e8d1e7581eceac82f29866f490f11cffcbdbaa87cb9a7a5f5b008ba2"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:7c970e0e46f009e5",
+          "sourceSliceSha256": "52c92e97350bfca28c9e495cfb82ba4c1b8794e4bb8034fd007dda01cc66db48"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:91fd71c28e340b15",
+          "sourceSliceSha256": "33b83fbbd7189a5d0f6df79e3ef8eb4543bc924f5ee5b3eadb7c4123bc8b777e"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9a95911be58d9752",
+          "sourceSliceSha256": "694e1269cdfffca75bb80b3d888ba37d290db5489c5216c574f2a4ca258c044d"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9d7d1c15d5cd9b9b",
+          "sourceSliceSha256": "ad5c8829b6e94996a10251f61dd555bf105f75f554d687165ac7b4b6f5450986"
+        },
+        {
+          "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:ea846d21dd7ac3d3",
+          "sourceSliceSha256": "90c397b7b166d47aad5a7597045c99ba324cbc3ced6af538ac4dd6811d0c5b94"
+        }
+      ]
+    }
+  ]
+}

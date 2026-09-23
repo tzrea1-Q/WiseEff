@@ -17790,6 +17790,277 @@
       },
       "ParameterDashboardSummaryResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "window": {
+                "type": "string",
+                "enum": [
+                  "7d",
+                  "30d",
+                  "180d"
+                ]
+              },
+              "windowLabel": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kpis": {
+                "type": "object",
+                "properties": {
+                  "totalParameters": {
+                    "type": "number"
+                  },
+                  "totalBindings": {
+                    "type": "number"
+                  },
+                  "totalDefinitions": {
+                    "type": "number"
+                  },
+                  "managedProjects": {
+                    "type": "number"
+                  },
+                  "changeFrequency": {
+                    "type": "number"
+                  },
+                  "activeContributors": {
+                    "type": "number"
+                  },
+                  "highRiskParameters": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "riskAvailability": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "unavailable"
+                    ]
+                  }
+                },
+                "required": [
+                  "totalParameters",
+                  "totalBindings",
+                  "totalDefinitions",
+                  "managedProjects",
+                  "changeFrequency",
+                  "activeContributors",
+                  "highRiskParameters",
+                  "riskAvailability"
+                ],
+                "additionalProperties": false
+              },
+              "trend": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bucketStart": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "changeCount": {
+                      "type": "number"
+                    },
+                    "workflowEventCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bucketStart",
+                    "label",
+                    "changeCount",
+                    "workflowEventCount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "personalKpis": {
+                "type": "object",
+                "properties": {
+                  "contributionCount": {
+                    "type": "number"
+                  },
+                  "workflowCount": {
+                    "type": "number"
+                  },
+                  "openItemCount": {
+                    "type": "number"
+                  },
+                  "pendingTodoCount": {
+                    "type": "number"
+                  },
+                  "highRiskTouchCount": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "riskAvailability": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "unavailable"
+                    ]
+                  }
+                },
+                "required": [
+                  "contributionCount",
+                  "workflowCount",
+                  "openItemCount",
+                  "pendingTodoCount",
+                  "highRiskTouchCount",
+                  "riskAvailability"
+                ],
+                "additionalProperties": false
+              },
+              "personalTrend": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bucketStart": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "changeCount": {
+                      "type": "number"
+                    },
+                    "workflowEventCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bucketStart",
+                    "label",
+                    "changeCount",
+                    "workflowEventCount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "riskBuckets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectCode": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "high": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "medium": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "low": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "total": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "riskAvailability": {
+                      "type": "string",
+                      "enum": [
+                        "available",
+                        "unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "projectCode",
+                    "projectName",
+                    "high",
+                    "medium",
+                    "low",
+                    "total",
+                    "riskAvailability"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "workbenchSignals": {
+                "type": "object",
+                "properties": {
+                  "reviewQueue": {
+                    "type": "number"
+                  },
+                  "myDrafts": {
+                    "type": "number"
+                  },
+                  "returnedChanges": {
+                    "type": "number"
+                  },
+                  "waitingMerge": {
+                    "type": "number"
+                  },
+                  "unappliedImportBatches": {
+                    "type": "number"
+                  },
+                  "inactiveAccounts": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "reviewQueue",
+                  "myDrafts",
+                  "returnedChanges",
+                  "waitingMerge",
+                  "unappliedImportBatches",
+                  "inactiveAccounts"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "window",
+              "windowLabel",
+              "projectId",
+              "kpis",
+              "trend",
+              "personalKpis",
+              "personalTrend",
+              "riskBuckets",
+              "workbenchSignals"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterDashboardSummaryResponse"
       },
       "ParameterDashboardHotspotsResponse": {
@@ -18073,10 +18344,31 @@
                 "id": {
                   "type": "string"
                 },
+                "changedAt": {
+                  "type": "string"
+                },
+                "fromRawValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "toRawValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "recordedAt": {
+                  "type": "string"
+                },
                 "bindingId": {
                   "type": "string"
                 },
                 "definitionId": {
+                  "type": "string"
+                },
+                "definitionRevisionId": {
                   "type": "string"
                 },
                 "effectiveRevisionId": {
@@ -18085,55 +18377,116 @@
                 "currentValueId": {
                   "type": "string"
                 },
-                "recordedAt": {
+                "sourceOccurrenceId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceIdentity": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "configSetId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileVersionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLocator": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": {}
+                },
+                "sourceAvailable": {
+                  "type": "boolean"
+                },
+                "valueState": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "present",
+                    "deleted"
+                  ]
+                },
+                "oldDefinitionRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "newDefinitionRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "oldCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "newCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "successAuditRef": {
+                  "type": "string"
+                },
+                "catalogReleaseId": {
                   "type": "string"
                 }
               },
               "required": [
                 "id",
+                "changedAt",
+                "recordedAt",
                 "bindingId",
                 "definitionId",
-                "effectiveRevisionId",
-                "currentValueId",
-                "recordedAt"
+                "effectiveRevisionId"
               ],
               "additionalProperties": false
             }
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "catalogReleaseId": {
-            "type": "string"
-          },
-          "totalCount": {
-            "type": "number"
-          },
-          "hasMore": {
-            "type": "boolean"
-          },
-          "placementModuleName": {
-            "type": "string"
-          },
-          "emptyReason": {
-            "type": "string",
-            "enum": [
-              "no-registrations",
-              "no-definitions",
-              "no-review-work",
-              "no-filter-match"
-            ]
           }
         },
         "required": [
-          "items",
-          "nextCursor",
-          "catalogReleaseId",
-          "totalCount",
-          "hasMore"
+          "items"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingHistoryListResponse"
@@ -18149,10 +18502,31 @@
                 "projectId": {
                   "type": "string"
                 },
+                "projectName": {
+                  "type": "string"
+                },
+                "rawValue": {
+                  "type": "string"
+                },
+                "moduleName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "driverModule": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "bindingId": {
                   "type": "string"
                 },
                 "definitionId": {
+                  "type": "string"
+                },
+                "definitionRevisionId": {
                   "type": "string"
                 },
                 "effectiveRevisionId": {
@@ -18160,52 +18534,74 @@
                 },
                 "currentValueId": {
                   "type": "string"
+                },
+                "sourceOccurrenceId": {
+                  "type": "string"
+                },
+                "sourceIdentity": {
+                  "type": "string"
+                },
+                "sourceRef": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileVersionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLocator": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": {}
+                },
+                "sourceAvailable": {
+                  "type": "boolean"
+                },
+                "valueState": {
+                  "type": "string",
+                  "enum": [
+                    "present",
+                    "deleted"
+                  ]
                 }
               },
               "required": [
                 "projectId",
+                "projectName",
+                "rawValue",
                 "bindingId",
                 "definitionId",
+                "definitionRevisionId",
                 "effectiveRevisionId",
                 "currentValueId"
               ],
               "additionalProperties": false
             }
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "catalogReleaseId": {
-            "type": "string"
-          },
-          "totalCount": {
-            "type": "number"
-          },
-          "hasMore": {
-            "type": "boolean"
-          },
-          "placementModuleName": {
-            "type": "string"
-          },
-          "emptyReason": {
-            "type": "string",
-            "enum": [
-              "no-registrations",
-              "no-definitions",
-              "no-review-work",
-              "no-filter-match"
-            ]
           }
         },
         "required": [
-          "items",
-          "nextCursor",
-          "catalogReleaseId",
-          "totalCount",
-          "hasMore"
+          "items"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingCompareListResponse"
@@ -26415,6 +26811,22 @@
                   ],
                   "additionalProperties": false
                 },
+                "impact": {
+                  "type": "object",
+                  "properties": {
+                    "bindingCount": {
+                      "type": "number"
+                    },
+                    "projectCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bindingCount",
+                    "projectCount"
+                  ],
+                  "additionalProperties": false
+                },
                 "catalogReleaseId": {
                   "type": "string"
                 }
@@ -26517,6 +26929,9 @@
               }
             ]
           },
+          "destinationModuleId": {
+            "type": "string"
+          },
           "reason": {
             "type": "string"
           }
@@ -26581,6 +26996,22 @@
                   "id",
                   "displayName",
                   "parentPlacementId"
+                ],
+                "additionalProperties": false
+              },
+              "impact": {
+                "type": "object",
+                "properties": {
+                  "bindingCount": {
+                    "type": "number"
+                  },
+                  "projectCount": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "bindingCount",
+                  "projectCount"
                 ],
                 "additionalProperties": false
               },
@@ -26712,6 +27143,9 @@
                 "additionalProperties": false
               }
             ]
+          },
+          "destinationModuleId": {
+            "type": "string"
           }
         },
         "required": [

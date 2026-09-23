@@ -56,6 +56,15 @@ describe("parameter catalog client contract", () => {
     );
   });
 
+  it("keeps ETag metadata scoped to governance reads that opt in", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(catalogDocument, 200, { ETag: "catalog-release-etag" })
+    );
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getCatalog()).resolves.toEqual(catalogDocument);
+  });
+
   it("pins historical catalog reads with catalogReleaseId instead of borrowing current", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(catalogDocument));
     const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
@@ -96,6 +105,40 @@ describe("parameter catalog client contract", () => {
     for (const spoof of catalogForbiddenSpoofHeaders) {
       expect(headers[spoof]).toBeUndefined();
     }
+  });
+
+  it("preserves the governance placement ETag after envelope validation", async () => {
+    const placementItem = {
+      id: "placement_01K",
+      displayName: "Driver A",
+      parentPlacementId: null,
+      moduleId: "module_driver_a"
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ item: placementItem, etag: "etag-envelope" })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ item: placementItem }, 200, { ETag: "etag-header" })
+      );
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getPlacement("org_01K", "registration_01K")).resolves.toEqual({
+      item: placementItem,
+      etag: "etag-envelope"
+    });
+    await expect(
+      client.updatePlacement(
+        "org_01K",
+        "registration_01K",
+        { placement: { mode: "use-default" }, destinationModuleId: "module_driver_b" },
+        { catalogReleaseId: "crel_01K42", idempotencyKey: "key-1", ifMatch: "etag-before" }
+      )
+    ).resolves.toEqual({ item: placementItem, etag: "etag-header" });
+
+    const init = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)["If-Match"]).toBe("etag-before");
   });
 
   it("posts a typed ChangeSet to publication-candidates with the catalog release header", async () => {
@@ -345,6 +388,8 @@ describe("parameter catalog client contract", () => {
     const client = createParameterCatalogClient({ baseUrl: "",fetchImpl: fetchMock });
     await client.listProjectValueChangeRequests("project_1",{ status: "pending" });
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=pending",expect.objectContaining({ method: "GET" }));
+    await client.listProjectValueChangeRequests("project_1", { status: "rejected", mine: true });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=rejected&mine=true", expect.objectContaining({ method: "GET" }));
   });
 
   it("rejects binding drafts that still carry a legacy spec identity", async () => {

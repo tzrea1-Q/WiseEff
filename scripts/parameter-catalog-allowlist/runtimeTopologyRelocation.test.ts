@@ -17,6 +17,8 @@ import {
   validateRuntimeTopologyRelocation,
 } from "./runtimeTopologyRelocation";
 import type { BoundaryViolation } from "./schema";
+import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
+import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
 
 const repoRoot = process.cwd();
 const record: RuntimeTopologyRelocationRecord = JSON.parse(
@@ -47,6 +49,23 @@ const postCutoverDestinationByFile = new Map(
   await Promise.all(postCutoverRecord.files.map(async (section) => [section.file, await readFile(`${repoRoot}/${section.file}`)] as const)),
 );
 let discovered: BoundaryViolation[];
+const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T14RetiredSourceIds];
+const issue900RetiredIds = new Set((JSON.parse(await readFile(
+  `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-900-dashboard-retirement.json`, "utf8",
+)) as { retiredAllowlistEntries: Array<{ id: string }> }).retiredAllowlistEntries.map((entry) => entry.id));
+
+function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds]);
+  expect(issue900RetiredIds.size).toBe(13);
+  expect(issue913StaleRetiredSourceIds).toHaveLength(17);
+  expect(issue913T14RetiredSourceIds).toHaveLength(4);
+  expect(retired.size).toBe(34);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(34);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4);
+  expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
+    .toEqual([...retired].sort());
+  expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
+}
 
 beforeAll(async () => {
   discovered = await scanParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha);
@@ -85,7 +104,8 @@ describe("historical exact reviewed runtime topology occurrence relocation", () 
     expect(new Set(result.map((pair) => pair.old.id)).size).toBe(16);
     expect(new Set(result.map((pair) => pair.new.id)).size).toBe(16);
     expect(fixture.violations).toHaveLength(3519);
-    expect(allowlist.entries).toHaveLength(3491);
+    expect(fixture.violations.length - 28).toBe(3491);
+    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4);
   });
 
   it.each([
@@ -143,13 +163,13 @@ describe("historical exact reviewed runtime topology occurrence relocation", () 
     })).toThrow("cross-record");
   });
 
-  it("does not absorb unrelated debt or restore the six removed allowances", () => {
+  it("does not absorb unrelated debt or restore historical and issue-specific retirements", () => {
     const altered = input();
     const result = validateRuntimeTopologyRelocation(record, altered);
     const unrelated = { ...record.files[0].pairs[0].new, id: `${record.files[0].pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
     const removed = fixture.violations.filter((entry) => !allowlist.entries.some((allowance) => allowance.id === entry.id));
 
-    expect(removed).toHaveLength(28);
+    expectCurrentRemovedPartition(removed);
     expect(compareBoundaryInventory([...result.map((pair) => pair.old), unrelated], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(unrelated);
     for (const entry of removed) {
       expect(compareBoundaryInventory([entry], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(entry);

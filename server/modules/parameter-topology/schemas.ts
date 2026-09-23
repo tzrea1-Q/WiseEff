@@ -159,7 +159,30 @@ export const bindingHistoryEntryDtoSchema = z.object({
   id: z.string(),
   changedAt: z.string(),
   fromRawValue: z.string().nullable().optional(),
-  toRawValue: z.string().nullable().optional()
+  toRawValue: z.string().nullable().optional(),
+  recordedAt: z.string().optional(),
+  bindingId: z.string().optional(),
+  definitionId: z.string().optional(),
+  definitionRevisionId: z.string().optional(),
+  effectiveRevisionId: z.string().optional(),
+  currentValueId: z.string().optional(),
+  sourceOccurrenceId: z.string().nullable().optional(),
+  sourceIdentity: z.string().nullable().optional(),
+  sourceRef: z.string().nullable().optional(),
+  configSetId: z.string().nullable().optional(),
+  fileId: z.string().nullable().optional(),
+  fileVersionId: z.string().nullable().optional(),
+  fileName: z.string().nullable().optional(),
+  sourceLocator: z.record(z.string(), z.unknown()).nullable().optional(),
+  sourceAvailable: z.boolean().optional(),
+  valueState: z.enum(["present", "deleted"]).nullable().optional(),
+  oldDefinitionRevisionId: z.string().nullable().optional(),
+  newDefinitionRevisionId: z.string().nullable().optional(),
+  oldCurrentValueId: z.string().nullable().optional(),
+  newCurrentValueId: z.string().nullable().optional(),
+  reason: z.string().optional(),
+  successAuditRef: z.string().optional(),
+  catalogReleaseId: z.string().optional()
 });
 
 export const bindingCompareParamsSchema = z.object({
@@ -172,7 +195,22 @@ export const bindingCompareEntryDtoSchema = z.object({
   projectName: z.string(),
   rawValue: z.string(),
   moduleName: z.string().nullable().optional(),
-  driverModule: z.string().nullable().optional()
+  driverModule: z.string().nullable().optional(),
+  bindingId: z.string().optional(),
+  definitionId: z.string().optional(),
+  definitionRevisionId: z.string().optional(),
+  effectiveRevisionId: z.string().optional(),
+  currentValueId: z.string().optional(),
+  sourceOccurrenceId: z.string().optional(),
+  sourceIdentity: z.string().optional(),
+  sourceRef: z.string().optional(),
+  configSetId: z.string().nullable().optional(),
+  fileId: z.string().nullable().optional(),
+  fileVersionId: z.string().nullable().optional(),
+  fileName: z.string().nullable().optional(),
+  sourceLocator: z.record(z.string(), z.unknown()).nullable().optional(),
+  sourceAvailable: z.boolean().optional(),
+  valueState: z.enum(["present", "deleted"]).optional()
 });
 
 export const createBindingDraftBodySchema = z

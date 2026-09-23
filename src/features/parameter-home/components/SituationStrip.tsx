@@ -37,8 +37,13 @@ export function SituationStrip({
   const presentation = deriveOverviewPresentation(roleView, scope, kpis, personalKpis);
   const isPersonalEmpty =
     scope === "personal" &&
-    presentation.kpiItems.length > 0 &&
-    presentation.kpiItems.every((item) => item.value === 0);
+    personalKpis !== null &&
+    [
+      personalKpis.contributionCount,
+      personalKpis.workflowCount,
+      personalKpis.openItemCount,
+      personalKpis.pendingTodoCount
+    ].every((value) => value === 0);
   const emptyMessage =
     scope === "personal"
       ? `当前时间窗口暂无个人活动${roleView === "guest" ? "（访客只读视角）" : ""}`
@@ -55,7 +60,7 @@ export function SituationStrip({
       {status === "error" ? (
         <SectionError message={error ?? "态势指标加载失败"} onRetry={onRetry ?? (() => undefined)} />
       ) : null}
-      {status === "ready" && (kpis || personalKpis) && !isPersonalEmpty ? (
+      {status === "ready" && (kpis || personalKpis) ? (
         <dl className={isSidebar ? "parameter-home__situation-stats parameter-home__situation-stats--sidebar" : "parameter-home__situation-stats"}>
           {presentation.kpiItems.map((item) => (
             <div key={item.key} className="parameter-home__situation-stat" data-kpi={item.key}>

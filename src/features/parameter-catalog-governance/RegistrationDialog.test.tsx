@@ -34,6 +34,8 @@ function renderDialog(options: {
   repository?: ParameterCatalogGovernanceRepository;
   catalogReleaseId?: string;
   ifMatch?: string;
+  moduleOptions?: { id: string; displayName: string; kind?: string }[];
+  initialDestinationModuleId?: string;
   createIdempotencyKey?: () => string;
   onRefreshEvidence?: () => void;
   onCompleted?: () => void;
@@ -56,6 +58,8 @@ function renderDialog(options: {
       registrationId={CATALOG_REGISTRATION_ID}
       ifMatch={options.ifMatch}
       placementOptions={[{ id: CATALOG_PLACEMENT_ID, displayName: "根放置" }]}
+      moduleOptions={options.moduleOptions}
+      initialDestinationModuleId={options.initialDestinationModuleId}
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "key-reg")}
       onOpenChange={vi.fn()}
       onCompleted={options.onCompleted}
@@ -112,6 +116,30 @@ describe("RegistrationDialog", () => {
     );
     expect(createRegistration.mock.calls[0]?.[2]).not.toHaveProperty("ifMatch");
     await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
+  });
+
+  it("requires and forwards the explicitly selected canonical destination module", async () => {
+    const { createRegistration } = renderDialog({
+      moduleOptions: [{ id: "issue897-driver-a", displayName: "Driver A", kind: "driver-group" }]
+    });
+    const user = userEvent.setup();
+
+    expect(screen.queryByText("放置方式")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "使用默认根放置" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("目标模块"), "issue897-driver-a");
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    const confirm = await screen.findByRole("dialog", { name: "确认登记主体" });
+    expect(confirm).toHaveTextContent("目标模块：Driver A");
+    await user.click(within(confirm).getByRole("checkbox"));
+    await user.click(within(confirm).getByRole("button", { name: "确认登记" }));
+
+    await waitFor(() => expect(createRegistration).toHaveBeenCalledTimes(1));
+    expect(createRegistration.mock.calls[0]?.[1]).toMatchObject({
+      subjectId: CATALOG_SUBJECT_ID,
+      placement: { mode: "use-default" },
+      destinationModuleId: "issue897-driver-a"
+    });
   });
 
   it("requires an explicit parent Placement choice before registration", async () => {

@@ -965,7 +965,11 @@ export function ParametersPage({
         </button>
       ) : null}
       {effectiveCanEdit ? (
-        <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+        <button
+          className="button subtle"
+          type="button"
+          onClick={() => onNavigate(resolvedProjectId ? `/parameter-submissions?project=${encodeURIComponent(resolvedProjectId)}` : "/parameter-submissions")}
+        >
           历史提交
         </button>
       ) : null}
@@ -1132,7 +1136,7 @@ export function ParametersPage({
             onUpdateDraft={updateDraft}
             onSaveDraft={saveDraft}
             onSubmit={submitParameterToModifiedTable}
-            onViewSubmissions={() => onNavigate("/parameter-submissions")}
+            onViewSubmissions={() => onNavigate(resolvedProjectId ? `/parameter-submissions?project=${encodeURIComponent(resolvedProjectId)}` : "/parameter-submissions")}
           />
           ) : null}
           </>

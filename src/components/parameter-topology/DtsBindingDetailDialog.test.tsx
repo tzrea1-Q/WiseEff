@@ -201,14 +201,44 @@ describe("DtsBindingDetailDialog", () => {
     const history = screen.getByRole("list", { name: "参数历史" });
     const entries = within(history).getAllByRole("listitem");
     expect(entries).toHaveLength(2);
-    expect(within(entries[0]!).getByText("R2")).toBeInTheDocument();
+    expect(within(entries[0]!).getByText("历史事件 1")).toBeInTheDocument();
     expect(within(entries[0]!).getByText("<2>")).toBeInTheDocument();
     expect(entries[0]).toHaveTextContent(formatAuditAbsoluteTime("2026-01-03T00:00:00.000Z"));
     expect(entries[0]).toHaveTextContent("xu.yun");
     expect(entries[0]).not.toHaveTextContent("2026-01-03T00:00:00.000Z");
-    expect(within(entries[1]!).getByText("R1")).toBeInTheDocument();
+    expect(within(entries[1]!).getByText("历史事件 2")).toBeInTheDocument();
     expect(within(entries[1]!).getByText("<0>")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看历史差异" })).toBeInTheDocument();
+  });
+
+  it("labels fixed and effective revisions separately only when their identities differ", () => {
+    renderDialog({
+      historyEntries: [
+        {
+          id: "revision-only-update",
+          changedAt: "2026-01-03T00:00:00.000Z",
+          fromRawValue: "<1>",
+          toRawValue: "<2>",
+          definitionRevisionId: "definition-revision-12",
+          effectiveRevisionId: "effective-revision-13"
+        },
+        {
+          id: "revision-same",
+          changedAt: "2026-01-02T00:00:00.000Z",
+          fromRawValue: "<2>",
+          toRawValue: "<3>",
+          definitionRevisionId: "revision-14",
+          effectiveRevisionId: "revision-14"
+        }
+      ]
+    });
+
+    const entries = within(screen.getByRole("list", { name: "参数历史" })).getAllByRole("listitem");
+    expect(entries[0]).toHaveTextContent("值的固定修订 definition-revision-12");
+    expect(entries[0]).toHaveTextContent("事件有效修订 effective-revision-13");
+    expect(entries[1]).toHaveTextContent("修订 revision-14");
+    expect(entries[1]).not.toHaveTextContent("值的固定修订");
+    expect(entries[1]).not.toHaveTextContent("事件有效修订");
   });
 
   it("opens history diff dialog with from→to DiffCodeBlock cards", () => {
@@ -221,7 +251,7 @@ describe("DtsBindingDetailDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看历史差异" }));
     const diffDialog = screen.getByRole("dialog", { name: "gpio_int 历史差异" });
-    expect(within(diffDialog).getByLabelText("R2 历史差异")).toBeInTheDocument();
+    expect(within(diffDialog).getByLabelText("历史事件 1 历史差异")).toBeInTheDocument();
     expect(within(diffDialog).getByText("<1> → <2>")).toBeInTheDocument();
     expect(within(diffDialog).getByText("∅ → <0>")).toBeInTheDocument();
   });
@@ -261,7 +291,7 @@ describe("DtsBindingDetailDialog", () => {
     expect(within(dialog).queryByRole("button", { name: "加入草稿" })).not.toBeInTheDocument();
   });
 
-  it("opens mature cross-project compare in a secondary dialog with dedupe and draft-from-target", () => {
+  it("opens mature cross-project compare in a secondary dialog with binding instances and draft-from-target", () => {
     const onUseCompareAsDraft = vi.fn();
     renderDialog({
       row: gpioRow({ rawValue: "<3590>" }),
@@ -270,6 +300,7 @@ describe("DtsBindingDetailDialog", () => {
       onUseCompareAsDraft,
       compareEntries: [
         {
+          bindingId: "binding-aurora-1",
           projectId: "proj-aurora",
           projectName: "Aurora 量产平台",
           rawValue: "<3590>",
@@ -277,6 +308,7 @@ describe("DtsBindingDetailDialog", () => {
           driverModule: "batt"
         },
         {
+          bindingId: "binding-aurora-2",
           projectId: "proj-aurora",
           projectName: "Aurora 量产平台",
           rawValue: "<3600>",
@@ -284,6 +316,7 @@ describe("DtsBindingDetailDialog", () => {
           driverModule: "batt"
         },
         {
+          bindingId: "binding-nebula-1",
           projectId: "proj-nebula",
           projectName: "Nebula 高频调试项目",
           rawValue: "<3500>",
@@ -296,20 +329,21 @@ describe("DtsBindingDetailDialog", () => {
     const entry = within(detail)
       .getByRole("heading", { name: "跨项目对比" })
       .closest("section") as HTMLElement;
-    expect(within(entry).getByText(/3\/3 个项目已配置/)).toBeInTheDocument();
-    expect(within(entry).queryByLabelText("对比目标项目")).not.toBeInTheDocument();
+    expect(within(entry).getByText(/4\/4 个配置实例已配置/)).toBeInTheDocument();
+    expect(within(entry).queryByLabelText("对比目标配置实例")).not.toBeInTheDocument();
 
     fireEvent.click(within(entry).getByRole("button", { name: "打开跨项目对比" }));
 
     const compare = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
-    expect(within(compare).getByLabelText("对比目标项目")).toBeInTheDocument();
+    expect(within(compare).getByLabelText("对比目标配置实例")).toBeInTheDocument();
     expect(within(compare).queryByText("重点差异")).not.toBeInTheDocument();
     expect(within(compare).queryByText("差异视图")).not.toBeInTheDocument();
     expect(within(compare).queryByText("当前值对比")).not.toBeInTheDocument();
-    expect(within(compare).getByLabelText("基准与目标项目")).toBeInTheDocument();
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("");
+    expect(within(compare).getByRole("status")).toHaveTextContent("请选择要比较的配置实例");
 
     const overview = within(compare).getByRole("list", { name: "跨项目对比" });
-    expect(within(compare).getByText("1 相同 · 1 不同")).toBeInTheDocument();
+    expect(within(compare).getByText("1 相同 · 2 不同")).toBeInTheDocument();
     const entries = within(overview).getAllByRole("listitem").filter((item) => item.hasAttribute("data-kind"));
     expect(entries).toHaveLength(2);
     expect(entries[0]).toHaveAttribute("data-kind", "same");
@@ -320,10 +354,10 @@ describe("DtsBindingDetailDialog", () => {
     expect(within(overview).queryByText(/<3590>/)).not.toBeInTheDocument();
 
     fireEvent.click(within(entries[1]!).getByRole("button", { name: /Nebula 高频调试项目/ }));
-    expect(within(compare).getByLabelText("对比目标项目")).toHaveValue("proj-nebula");
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("binding-nebula-1");
 
-    fireEvent.change(within(compare).getByLabelText("对比目标项目"), {
-      target: { value: "proj-nebula" }
+    fireEvent.change(within(compare).getByLabelText("对比目标配置实例"), {
+      target: { value: "binding-nebula-1" }
     });
     expect(within(compare).getByLabelText("基准与目标项目")).toBeInTheDocument();
 

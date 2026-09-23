@@ -86,12 +86,12 @@ describe("listDriverRegistry", () => {
           rowCount: 4,
         };
       }
-      if (text.includes("parameter_spec_id") && text.includes("project_parameter_bindings")) {
+      if (text.includes("current_project_parameter_bindings")) {
         return {
           rows: [
-            { module_id: "group-sc", parameter_spec_id: "spec-a" },
-            { module_id: "group-sc", parameter_spec_id: "spec-b" },
-            { module_id: "group-sc", parameter_spec_id: "spec-c" }
+            { module_id: "group-sc", subject_id: "subject-sc", binding_id: "binding-a" },
+            { module_id: "group-sc", subject_id: "subject-sc", binding_id: "binding-b" },
+            { module_id: "group-sc", subject_id: "subject-sc", binding_id: "binding-c" }
           ],
           rowCount: 3
         };

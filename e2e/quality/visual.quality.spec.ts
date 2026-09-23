@@ -23,6 +23,7 @@ import {
   VISUAL_INTERACTION_FAILURE_ROUTE,
   VISUAL_XIAOZE_FAILURE_ROUTE
 } from "../shared/failureRouteMetadata";
+import { signInBrowserAsRole } from "../acceptance/helpers/bearerAuth";
 
 const allowVisualReviewFixture = visualReviewFixtureAllowed();
 
@@ -45,17 +46,12 @@ const stableRoutes = [
 ] as const;
 
 async function expectLocalizedVisualReviewFixture(page: Page) {
-  const detail = page.getByRole("complementary", { name: "审阅详情" });
-  await expect(detail).toContainText("cccv_0");
-  await expect(detail).toContainText("恒流恒压（CCCV）相关参数「cccv_0」。");
-
-  const impact = detail.getByLabel("影响面");
-  await expect(impact).toContainText("参数");
-  await expect(impact).toContainText("低风险");
-  await expect(impact).toContainText("将 battery0 模块的参数值从 <4500 0> 调整为 <4600 0>。");
-  await expect(impact).toContainText("建议对低风险模块变更进行审阅。");
-
-  await expect(detail).not.toContainText(/Provisional surface spec|Changes .* parameter|Low risk/);
+  const review = page.getByRole("region", { name: "软件配置审核" });
+  const request = review.getByRole("row").filter({ hasText: "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600" });
+  await expect(request).toHaveCount(1);
+  await expect(review.getByLabel("固定源目标内容")).toContainText("<4600 0>");
+  await expect(review.getByLabel("固定源变更前")).toContainText("<4500 0>");
+  await expect(review.getByLabel("固定源变更后")).toContainText("<4600 0>");
 }
 
 test.describe("M5.11 visual quality gate", () => {
@@ -81,7 +77,11 @@ test.describe("M5.11 visual quality gate", () => {
       if (route.path === "/organization") {
         await stabilizeOrganizationVisualClock(page);
       }
-      await page.goto(route.path);
+      if (route.path === "/parameter-review" && allowVisualReviewFixture) {
+        await signInBrowserAsRole(page, "software-committer", route.path);
+      } else {
+        await page.goto(route.path);
+      }
       await expectUsablePage(page);
       await settleQualityRoute(page, route.path);
       await closeXiaozePopupIfOpen(page);
@@ -102,8 +102,15 @@ test.describe("M5.11 visual quality gate", () => {
         await expectLocalizedVisualReviewFixture(page);
       }
 
+      const masks = stableMasks(page, route.path);
+      if (route.path === "/parameter-review") {
+        expect(masks.slice(-6)).toHaveLength(6);
+        for (const mask of masks.slice(-6)) {
+          await expect(mask).toHaveCount(1);
+        }
+      }
       await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`, {
-        mask: stableMasks(page, route.path)
+        mask: masks
       });
     });
   }

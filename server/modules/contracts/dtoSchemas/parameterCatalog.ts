@@ -13,6 +13,7 @@ import {
   subjectLifecycles
 } from "../../parameter-catalog-contract/index";
 import { itemEnvelopeSchema } from "./envelopes";
+import { bindingCompareEntryDtoSchema, bindingHistoryEntryDtoSchema } from "../../parameter-topology/schemas";
 
 export const pcatApiGates = [
   "PCAT-API-01",
@@ -390,12 +391,17 @@ export const catalogRegistrationDtoSchema = catalogObject({
   status: catalogRegistrationStatusSchema,
   method: catalogRegistrationMethodSchema,
   placement: catalogPlacementDtoSchema,
+  impact: catalogObject({
+    bindingCount: z.number().int().nonnegative(),
+    projectCount: z.number().int().nonnegative()
+  }).optional(),
   catalogReleaseId: z.string()
 });
 
 export const catalogRegisterSubjectRequestSchema = catalogObject({
   subjectId: z.string(),
   placement: catalogPlacementIntentSchema,
+  destinationModuleId: z.string().min(1).optional(),
   reason: z.string().optional()
 });
 
@@ -408,7 +414,8 @@ export const catalogRestoreRegistrationRequestSchema = catalogObject({
 });
 
 export const catalogUpdatePlacementRequestSchema = catalogObject({
-  placement: catalogPlacementIntentSchema
+  placement: catalogPlacementIntentSchema,
+  destinationModuleId: z.string().min(1).optional()
 });
 
 export const catalogObservationDtoSchema = catalogObject({
@@ -836,18 +843,18 @@ export const catalogProjectBindingDtoSchema = catalogObject({
 });
 
 export const catalogBindingHistoryEntryDtoSchema = catalogObject({
-  id: z.string(),
+  ...bindingHistoryEntryDtoSchema.shape,
   bindingId: z.string(),
   definitionId: z.string(),
   effectiveRevisionId: z.string(),
-  currentValueId: z.string(),
   recordedAt: z.string()
 });
 
 export const catalogBindingCompareEntryDtoSchema = catalogObject({
-  projectId: z.string(),
+  ...bindingCompareEntryDtoSchema.shape,
   bindingId: z.string(),
   definitionId: z.string(),
+  definitionRevisionId: z.string(),
   effectiveRevisionId: z.string(),
   currentValueId: z.string()
 });
@@ -1142,12 +1149,12 @@ export const catalogLegacyIdentifierResponseSchema = itemEnvelopeSchema(
 export const projectParameterBindingListResponseSchema = catalogItemsEnvelopeSchema(
   catalogProjectBindingDtoSchema
 );
-export const bindingHistoryListResponseSchema = catalogItemsEnvelopeSchema(
-  catalogBindingHistoryEntryDtoSchema
-);
-export const bindingCompareListResponseSchema = catalogItemsEnvelopeSchema(
-  catalogBindingCompareEntryDtoSchema
-);
+export const bindingHistoryListResponseSchema = catalogObject({
+  items: z.array(catalogBindingHistoryEntryDtoSchema)
+});
+export const bindingCompareListResponseSchema = catalogObject({
+  items: z.array(catalogBindingCompareEntryDtoSchema)
+});
 export const bindingDraftResponseSchema = itemEnvelopeSchema(catalogBindingDraftDtoSchema).superRefine(
   rejectLegacySpecKeys
 );

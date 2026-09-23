@@ -2,7 +2,12 @@ import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentity
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import { assertNoCycle, buildPath, depthOf } from "../shared/moduleTree";
+import {
+  countCurrentBindingsForModule,
+  countSubjectPlacementsForModules,
+} from "../parameter-catalog-api/governance/index";
 import type { ParameterModuleDto } from "./types";
 
 type ParameterModuleRow = {
@@ -210,28 +215,24 @@ export async function countParametersForModule(
   db: Queryable,
   query: { organizationId: string; moduleId: string }
 ) {
-  const result =
-    parameterIdentityMode() === "semantic"
-      ? await db.query<{ count: string }>(
-          `
-          select count(*)::text as count
-          from project_parameter_bindings
-          where organization_id = $1
-            and module_id = $2
-          `,
-          [query.organizationId, query.moduleId]
-        )
-      : await db.query<{ count: string }>(
-          `
-          select count(*)::text as count
-          from ${LEGACY_IDENTITY_SQL.definitionsTable}
-          where organization_id = $1
-            and parameter_module_id = $2
-          `,
-          [query.organizationId, query.moduleId]
-        );
+  return countCurrentBindingsForModule(db, query);
+}
 
-  return Number(result.rows[0]?.count ?? 0);
+export async function countCanonicalPlacementsForModule(
+  db: Queryable,
+  query: { organizationId: string; moduleId: string }
+) {
+  return countSubjectPlacementsForModules(db, {
+    organizationId: query.organizationId,
+    moduleIds: [query.moduleId],
+  });
+}
+
+export async function countCanonicalPlacementsForModules(
+  db: Queryable,
+  query: { organizationId: string; moduleIds: string[] },
+) {
+  return countSubjectPlacementsForModules(db, query);
 }
 
 export async function createParameterModule(
@@ -563,6 +564,15 @@ export async function deleteParameterModule(
   const parameterCount = await countParametersForModule(db, input);
   if (parameterCount > 0) {
     throw new Error("Cannot delete parameter module referenced by parameters");
+  }
+
+  const placementCount = await countCanonicalPlacementsForModule(db, input);
+  if (placementCount > 0) {
+    throw new ApiError(
+      "CONFLICT",
+      "Cannot delete parameter module referenced by Catalog placements",
+      { moduleId: input.moduleId, placementCount },
+    );
   }
 
   const result = await db.query(

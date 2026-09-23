@@ -6,6 +6,7 @@ import { DiffCodeBlock } from "@/components/parameter-compare/ParameterDiffViews
 import {
   buildBindingCompareOverview,
   buildBindingProjectComparison,
+  bindingComparePeerDisplayLabel,
   defaultBindingCompareTargetId,
   type BindingComparePeer
 } from "@/domain/parameter-topology/bindingProjectComparison";
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 
 export type DtsBindingCompareDialogProps = {
   propertyKey: string;
+  baseBindingId?: string;
   baseProjectId: string;
   baseProjectName: string;
   baseRawValue: string;
@@ -25,6 +27,7 @@ export type DtsBindingCompareDialogProps = {
 
 export function DtsBindingCompareDialog({
   propertyKey,
+  baseBindingId,
   baseProjectId,
   baseProjectName,
   baseRawValue,
@@ -33,11 +36,11 @@ export function DtsBindingCompareDialog({
   onClose,
   onUseCompareAsDraft
 }: DtsBindingCompareDialogProps) {
-  const [targetProjectId, setTargetProjectId] = useState<string | null>(null);
+  const [targetBindingId, setTargetBindingId] = useState<string | null>(null);
   const targetSelectRef = useRef<HTMLSelectElement | null>(null);
 
   useEffect(() => {
-    setTargetProjectId(defaultBindingCompareTargetId(peers));
+    setTargetBindingId(defaultBindingCompareTargetId(peers));
   }, [peers]);
 
   const comparison = useMemo(
@@ -47,9 +50,10 @@ export function DtsBindingCompareDialog({
         baseProjectName,
         baseRawValue,
         peers,
-        targetProjectId
+        baseBindingId,
+        targetBindingId
       }),
-    [baseProjectId, baseProjectName, baseRawValue, peers, targetProjectId]
+    [baseBindingId, baseProjectId, baseProjectName, baseRawValue, peers, targetBindingId]
   );
 
   const overview = useMemo(
@@ -58,6 +62,11 @@ export function DtsBindingCompareDialog({
   );
 
   const targetRow = comparison.targetRow;
+  const hasRevisionMismatch = Boolean(
+    targetRow?.definitionRevisionId &&
+    targetRow.effectiveRevisionId &&
+    targetRow.definitionRevisionId !== targetRow.effectiveRevisionId
+  );
   const draftFromTargetDisabled =
     !canEdit || !onUseCompareAsDraft || !targetRow || targetRow.rawValue.trim() === "";
 
@@ -76,7 +85,7 @@ export function DtsBindingCompareDialog({
             <div>
               <h2 id={titleId}>{propertyKey} 跨项目对比</h2>
               <p id={descriptionId} className="sr-only">
-                选择目标项目，查看与当前项目的参数差异，并可将其配置加入草稿。
+                选择要比较的配置实例，查看与当前项目的参数差异，并可将其配置加入草稿。
               </p>
             </div>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭跨项目对比" onClick={onClose}>
@@ -88,16 +97,19 @@ export function DtsBindingCompareDialog({
             <div className="dts-binding-compare dts-binding-compare--dialog">
               <div className="dts-binding-compare__head">
                 <label className="dts-binding-compare__target">
-                  <span>目标项目</span>
+                  <span>目标配置实例</span>
                   <select
                     ref={targetSelectRef}
-                    aria-label="对比目标项目"
-                    value={targetProjectId ?? ""}
-                    onChange={(event) => setTargetProjectId(event.target.value || null)}
+                    aria-label="对比目标配置实例"
+                    value={targetBindingId ?? ""}
+                    onChange={(event) => setTargetBindingId(event.target.value || null)}
                   >
+                    {targetBindingId === null ? <option value="">请选择配置实例</option> : null}
                     {comparison.peers.map((peer) => (
-                      <option key={peer.projectId} value={peer.projectId}>
-                        {peer.projectName}
+                      <option key={peer.comparisonKey} value={peer.comparisonKey}>
+                        {bindingComparePeerDisplayLabel(peer)
+                          ? `${peer.projectName} · ${bindingComparePeerDisplayLabel(peer)}`
+                          : peer.projectName}
                       </option>
                     ))}
                   </select>
@@ -108,7 +120,9 @@ export function DtsBindingCompareDialog({
                 <span>
                   {targetRow
                     ? `可将 ${targetRow.projectName} 的当前配置作为草稿目标值`
-                    : "目标项目尚未配置该参数"}
+                    : comparison.peers.length > 0
+                      ? "请选择要比较的配置实例"
+                      : "暂无可比较实例"}
                 </span>
                 <Button
                   type="button"
@@ -126,6 +140,22 @@ export function DtsBindingCompareDialog({
                   使用该项目配置加入草稿
                 </Button>
               </div>
+
+              {targetRow && hasRevisionMismatch ? (
+                <section aria-label="目标修订身份">
+                  <p role="status">值的固定修订与当前有效修订不同</p>
+                  <dl>
+                    <div>
+                      <dt>值的固定修订</dt>
+                      <dd><code>{targetRow.definitionRevisionId}</code></dd>
+                    </div>
+                    <div>
+                      <dt>当前有效修订</dt>
+                      <dd><code>{targetRow.effectiveRevisionId}</code></dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : null}
 
               {targetRow ? (
                 <article
@@ -152,7 +182,7 @@ export function DtsBindingCompareDialog({
                 </article>
               ) : (
                 <div className="parameter-diff-empty" role="status">
-                  请选择至少一个目标项目进行对比
+                  {comparison.peers.length > 0 ? "请选择要比较的配置实例" : "暂无可比较实例"}
                 </div>
               )}
 
@@ -167,14 +197,14 @@ export function DtsBindingCompareDialog({
                       <span className="dts-binding-compare__overview-label">{group.label}</span>
                       <ul className="dts-binding-compare__overview-projects">
                         {group.projects.map((project) => (
-                          <li key={project.projectId}>
+                          <li key={project.comparisonKey}>
                             <button
                               type="button"
                               className="dts-binding-compare__overview-project-btn"
                               data-active={project.isTarget ? "true" : undefined}
-                              onClick={() => setTargetProjectId(project.projectId)}
+                              onClick={() => setTargetBindingId(project.comparisonKey ?? project.bindingId ?? project.projectId)}
                             >
-                              {project.projectName}
+                              {project.displayLabel ?? project.projectName}
                               {project.isTarget ? <em>目标</em> : null}
                             </button>
                           </li>

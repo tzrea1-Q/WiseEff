@@ -73,4 +73,28 @@ describe("DtsBindingHistoryDiffDialog", () => {
     expect(screen.queryByRole("dialog", { name: "gpio_int 历史差异" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
   });
+
+  it("shows both exact revision identities for a revision-only update", () => {
+    render(
+      <DtsBindingHistoryDiffDialog
+        propertyKey="gpio_int"
+        historyEntries={[{
+          id: "revision-only-update",
+          changedAt: "2026-01-03T00:00:00.000Z",
+          fromRawValue: "<1>",
+          toRawValue: "<2>",
+          definitionRevisionId: "definition-revision-12",
+          effectiveRevisionId: "effective-revision-13"
+        }]}
+        onClose={() => undefined}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "gpio_int 历史差异" });
+    const card = within(dialog).getByRole("article", {
+      name: "值的固定修订 definition-revision-12 / 事件有效修订 effective-revision-13 历史差异"
+    });
+    expect(card).toHaveTextContent("值的固定修订 definition-revision-12");
+    expect(card).toHaveTextContent("事件有效修订 effective-revision-13");
+  });
 });

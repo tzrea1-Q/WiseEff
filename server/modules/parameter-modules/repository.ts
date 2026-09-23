@@ -1,5 +1,14 @@
 import type { Queryable } from "../../shared/database/client";
 import {
+  CatalogPageLimit,
+  CatalogSubjectId,
+  type CatalogSnapshot,
+} from "../catalog-kernel/interface";
+import {
+  listModuleRegistryFacts,
+  type ModuleRegistryFact,
+} from "../parameter-catalog-api/governance";
+import {
   driverGroupDisplayNameFromCompatible,
   isScaffoldingDriverLabel,
   normalizeMatchToken,
@@ -61,10 +70,55 @@ function resolveEffectiveImportance(
   return byId.get(moduleId)?.importance ?? "medium";
 }
 
-type BindingCountRow = {
-  module_id: string;
-  parameter_spec_id: string;
-};
+/**
+ * The registry only needs this read facet of the captured Kernel snapshot.
+ * Registration and Binding ownership remain SQL-owned facts; Definition
+ * lifecycle/current-revision semantics stay inside CatalogRuntime.
+ */
+export type RegistryCatalogSnapshot = Pick<CatalogSnapshot, "listDefinitions">;
+
+function definitionFactsFromCatalog(
+  catalog: RegistryCatalogSnapshot | null,
+  registrations: readonly ModuleRegistryFact[],
+): Array<{ moduleId: string; definitionId: string; bindingId: null }> {
+  if (!catalog) return [];
+
+  const moduleIdsBySubject = new Map<string, Set<string>>();
+  for (const registration of registrations) {
+    const modules = moduleIdsBySubject.get(registration.subject_id) ?? new Set<string>();
+    modules.add(registration.module_id);
+    moduleIdsBySubject.set(registration.subject_id, modules);
+  }
+  if (moduleIdsBySubject.size === 0) return [];
+
+  const result = catalog.listDefinitions({
+    selection: { kind: "all" },
+    scope: {
+      kind: "subjects",
+      subjectIds: [...moduleIdsBySubject.keys()].map((id) => CatalogSubjectId(id)),
+    },
+    lifecycles: ["active"],
+    propertyKey: { kind: "absent" },
+    search: { kind: "absent" },
+    page: {
+      // The snapshot is already captured; one exact multi-subject page avoids
+      // loading a Kernel or issuing a query once per registered Subject.
+      limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER),
+      after: { kind: "absent" },
+    },
+  });
+  if (result.status !== "found") {
+    throw new Error(`Captured Catalog definition read failed: ${result.status}`);
+  }
+
+  const facts: Array<{ moduleId: string; definitionId: string; bindingId: null }> = [];
+  for (const definition of result.page.items) {
+    for (const moduleId of moduleIdsBySubject.get(definition.subjectId) ?? []) {
+      facts.push({ moduleId, definitionId: definition.id, bindingId: null });
+    }
+  }
+  return facts;
+}
 
 /**
  * Registry read: modules from the v1 parameter_modules tree + DTS mappings.
@@ -72,7 +126,8 @@ type BindingCountRow = {
  */
 export async function readRegistry(
   db: Queryable,
-  organizationId: string
+  organizationId: string,
+  catalog: RegistryCatalogSnapshot | null,
 ): Promise<ParameterModuleRegistryDto> {
   const modules = await db.query<ParameterModuleRow>(
     `select
@@ -93,19 +148,19 @@ export async function readRegistry(
       order by pm.sort_order asc, pm.path asc, pm.name asc`,
     [organizationId]
   );
-  const bindingFacts = await db.query<BindingCountRow>(
-    `select b.module_id, b.parameter_spec_id
-       from project_parameter_bindings b
-      where b.organization_id = $1`,
-    [organizationId]
-  );
+  const canonicalRegistrations = await listModuleRegistryFacts(db, organizationId);
+  const canonicalFacts = [
+    ...canonicalRegistrations.map((row) => ({
+      moduleId: row.module_id,
+      definitionId: null,
+      bindingId: row.binding_id,
+    })),
+    ...definitionFactsFromCatalog(catalog, canonicalRegistrations),
+  ];
   const byId = new Map(modules.rows.map((row) => [row.id, row]));
   const subtreeCounts = rollupSubtreeAttributionCounts(
     modules.rows.map((row) => ({ id: row.id, parentId: row.parent_id ?? null })),
-    bindingFacts.rows.map((row) => ({
-      moduleId: row.module_id,
-      parameterSpecId: row.parameter_spec_id
-    }))
+    canonicalFacts,
   );
   const mappings = await db.query<ParameterModuleMappingRow>(
     `select id, parameter_module_id, match_kind, match_value, priority

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WiseEffApiError, createApiClient } from "./apiClient";
 import {
   bindingFromDto,
+  bindingCompareEntryFromDto,
   createHttpParameterTopologyRepository,
   isParameterTopologyStaleRevisionError,
   isParameterTopologyValidationError,
@@ -24,6 +25,11 @@ const bindingDto: ProjectBindingDto = {
   id: "binding-1",
   parameterSpecId: "spec-1",
   parameterSpecVersionId: "spec-ver-1",
+  definitionId: "definition-1",
+  definitionRevisionId: "definition-revision-1",
+  effectiveRevisionId: "definition-revision-1",
+  currentValueId: "current-value-1",
+  projectId: "project-1",
   propertyKey: "gpio_int",
   driverModule: "sc8562",
   logicalNodeId: "logical-1",
@@ -76,7 +82,12 @@ describe("parameterTopologyClient DTO mapping", () => {
       moduleId: "mod-charging",
       displayName: "GPIO 中断",
       description: "SC8562 中断 GPIO 展示描述。",
-      documentation: "电荷泵中断引脚的完整参数说明。"
+      documentation: "电荷泵中断引脚的完整参数说明。",
+      definitionId: "definition-1",
+      definitionRevisionId: "definition-revision-1",
+      effectiveRevisionId: "definition-revision-1",
+      currentValueId: "current-value-1",
+      projectId: "project-1"
     });
     expect(bindingFromDto(bindingDto)).not.toHaveProperty("recommendedValue");
     expect(bindingFromDto(bindingDto).effectiveValue).toEqual(bindingDto.effectiveValue);
@@ -90,6 +101,35 @@ describe("parameterTopologyClient DTO mapping", () => {
     };
 
     expect(bindingFromDto(jsonDto).effectiveValue).toEqual(jsonDto.effectiveValue);
+  });
+
+  it("keeps canonical compare identity and derives a safe locator label from structured wire data", () => {
+    const mapped = bindingCompareEntryFromDto({
+      bindingId: "binding-aurora-2",
+      definitionId: "definition-1",
+      definitionRevisionId: "revision-3",
+      projectId: "project-aurora",
+      projectName: "Aurora",
+      rawValue: "<2>",
+      currentValueId: "value-2",
+      effectiveRevisionId: "revision-3",
+      sourceOccurrenceId: "occurrence-2",
+      sourceIdentity: "occurrence-2",
+      sourceRef: "file-version:file-2",
+      sourceLocator: { path: "/charger@6e/gpio_int" },
+      valueState: "present"
+    });
+
+    expect(mapped).toMatchObject({
+      bindingId: "binding-aurora-2",
+      definitionId: "definition-1",
+      definitionRevisionId: "revision-3",
+      currentValueId: "value-2",
+      effectiveRevisionId: "revision-3",
+      sourceOccurrenceId: "occurrence-2",
+      sourceLocator: { path: "/charger@6e/gpio_int" },
+      displayLocator: "/charger@6e/gpio_int"
+    });
   });
 
   it("keeps exampleValue, schemaDefault, and policyTarget separate on specs", () => {

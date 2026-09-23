@@ -132,4 +132,17 @@ describe("parameter dashboard routes", () => {
     });
     expect(service.getDashboardSummary).not.toHaveBeenCalled();
   });
+
+  it("returns a sanitized internal error when the canonical query fails", async () => {
+    vi.mocked(service.getDashboardHotspots).mockRejectedValue(new Error("database details must stay server-side"));
+
+    const response = await requestJson<{ error: { code: string; message: string; details?: unknown } }>(
+      makeServer({ db: makeDb() }),
+      "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=parameter"
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toMatchObject({ code: "INTERNAL_ERROR", message: "Internal server error." });
+    expect(JSON.stringify(response.body)).not.toContain("database details");
+  });
 });

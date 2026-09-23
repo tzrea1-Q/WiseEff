@@ -23,6 +23,23 @@ export type PlacementOption = {
   displayName: string;
 };
 
+/**
+ * A real organization module target.  The catalog placement intent still
+ * describes the parent/display-name choice; the destination module is the
+ * canonical owner selected by the caller and is sent as an optional wire
+ * extension when the server supports it.
+ */
+export type RegistrationModuleOption = PlacementOption & {
+  kind?: string;
+  impactSummary?: string;
+};
+
+export type RegistrationSubjectImpact = {
+  activeDefinitionCount: number;
+  bindingCount: number;
+  projectCount: number;
+};
+
 export type RegistrationDialogProps = {
   open: boolean;
   intent: "register-subject" | "update-placement";
@@ -35,6 +52,10 @@ export type RegistrationDialogProps = {
   registrationId?: string;
   ifMatch?: string;
   placementOptions?: PlacementOption[];
+  moduleOptions?: RegistrationModuleOption[];
+  initialDestinationModuleId?: string;
+  subjectImpact?: RegistrationSubjectImpact;
+  currentModuleName?: string;
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
@@ -53,6 +74,10 @@ export function RegistrationDialog({
   registrationId,
   ifMatch,
   placementOptions = [],
+  moduleOptions = [],
+  initialDestinationModuleId = "",
+  subjectImpact,
+  currentModuleName,
   createIdempotencyKey,
   onOpenChange,
   onCompleted,
@@ -64,6 +89,7 @@ export function RegistrationDialog({
   const [placementMode, setPlacementMode] = useState<"use-default" | "choose-parent">("use-default");
   const [parentPlacementId, setParentPlacementId] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [destinationModuleId, setDestinationModuleId] = useState(initialDestinationModuleId);
   const [reason, setReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -79,11 +105,14 @@ export function RegistrationDialog({
     setPlacementMode("use-default");
     setParentPlacementId(placementOptions[0]?.id ?? "");
     setDisplayName(placementOptions[0]?.displayName ?? "");
+    // A missing target is an explicit choice the caller must resolve.  Never
+    // silently pick the first module: module identity is canonical data.
+    setDestinationModuleId(initialDestinationModuleId);
     setReason("");
     setConfirmOpen(false);
     setPending(false);
     setWriteFailure(undefined);
-  }, [open, intent, subjectId, placementOptions]);
+  }, [open, intent, subjectId, placementOptions, initialDestinationModuleId, moduleOptions]);
 
   const choice: PlacementChoice =
     placementMode === "use-default"
@@ -92,6 +121,10 @@ export function RegistrationDialog({
   const placementReady =
     choice.mode === "use-default" ||
     (choice.parentPlacementId.trim().length > 0 && choice.displayName.trim().length > 0);
+  const destinationReady = moduleOptions.length === 0 || destinationModuleId.trim().length > 0;
+  const selectedDestinationName =
+    moduleOptions.find((option) => option.id === destinationModuleId)?.displayName ??
+    (destinationModuleId || "未选择目标模块");
   const title = intent === "register-subject" ? governanceCopy.registerTitle : governanceCopy.placementTitle;
   const confirmTitle =
     intent === "register-subject" ? governanceCopy.confirmRegisterTitle : governanceCopy.confirmPlacementTitle;
@@ -99,7 +132,7 @@ export function RegistrationDialog({
     intent === "register-subject" ? governanceCopy.confirmRegister : governanceCopy.confirmPlacement;
 
   const submit = async () => {
-    if (!allowed || !placementReady || pending) {
+    if (!allowed || !placementReady || !destinationReady || pending) {
       return;
     }
     const prepared = gateRef.current.begin({
@@ -108,7 +141,7 @@ export function RegistrationDialog({
       state: domainState,
       catalogReleaseId,
       ifMatch,
-      draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason }),
+      draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason, destinationModuleId }),
       createIdempotencyKey
     });
     if (prepared.status !== "ready") {
@@ -117,17 +150,21 @@ export function RegistrationDialog({
     setPending(true);
     try {
       const placement = placementIntentFromChoice(choice);
+      const destination = destinationModuleId.trim()
+        ? { destinationModuleId: destinationModuleId.trim() }
+        : {};
       if (intent === "register-subject") {
         await repository.createRegistration(
           organizationId,
-          withOptionalReason({ subjectId, placement }, reason),
+          // Pass the exact selected canonical module identity to the owner.
+          withOptionalReason({ subjectId, placement, ...destination }, reason),
           prepared.context
         );
       } else if (registrationId) {
         await repository.updatePlacement(
           organizationId,
           registrationId,
-          { placement },
+          { placement, ...destination },
           {
             catalogReleaseId: prepared.context.catalogReleaseId,
             idempotencyKey: prepared.context.idempotencyKey,
@@ -168,27 +205,31 @@ export function RegistrationDialog({
               <div id={descriptionId} className="governance-confirm-dialog__body">
                 {allowed ? (
                   <>
-                    <fieldset>
-                      <legend>{governanceCopy.placementMode}</legend>
-                      <label>
-                        <input
-                          type="radio"
-                          name="catalog-placement-mode"
-                          checked={placementMode === "use-default"}
-                          onChange={() => setPlacementMode("use-default")}
-                        />
-                        {governanceCopy.useDefaultPlacement}
-                      </label>
-                      <label>
-                        <input
-                          type="radio"
-                          name="catalog-placement-mode"
-                          checked={placementMode === "choose-parent"}
-                          onChange={() => setPlacementMode("choose-parent")}
-                        />
-                        {governanceCopy.chooseParentPlacement}
-                      </label>
-                    </fieldset>
+                    {moduleOptions.length === 0 ? (
+                      <fieldset>
+                        <legend>{governanceCopy.placementMode}</legend>
+                        <label>
+                          <input
+                            type="radio"
+                            name="catalog-placement-mode"
+                            checked={placementMode === "use-default"}
+                            onChange={() => setPlacementMode("use-default")}
+                          />
+                          {governanceCopy.useDefaultPlacement}
+                        </label>
+                        {placementOptions.length > 0 ? (
+                          <label>
+                            <input
+                              type="radio"
+                              name="catalog-placement-mode"
+                              checked={placementMode === "choose-parent"}
+                              onChange={() => setPlacementMode("choose-parent")}
+                            />
+                            {governanceCopy.chooseParentPlacement}
+                          </label>
+                        ) : null}
+                      </fieldset>
+                    ) : null}
                     {placementMode === "choose-parent" ? (
                       <>
                         <label>
@@ -221,6 +262,34 @@ export function RegistrationDialog({
                           />
                         </label>
                       </>
+                    ) : null}
+                    {moduleOptions.length > 0 ? (
+                      <label>
+                        目标模块
+                        <select
+                          aria-label="目标模块"
+                          value={destinationModuleId}
+                          onChange={(event) => setDestinationModuleId(event.target.value)}
+                        >
+                          <option value="">请选择目标模块</option>
+                          {moduleOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.impactSummary
+                                ? `${option.displayName} · ${option.impactSummary}`
+                                : option.displayName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    {subjectImpact ? (
+                      <p className="governance-confirm-dialog__impact" role="status">
+                        本主体 {subjectImpact.activeDefinitionCount} 个有效定义、{subjectImpact.bindingCount} 个当前
+                        Binding、{subjectImpact.projectCount} 个项目，
+                        {intent === "update-placement"
+                          ? `从 ${currentModuleName ?? "当前归属"} → ${selectedDestinationName}`
+                          : `登记至 ${selectedDestinationName}`}。仅调整归属，不改参数值。
+                      </p>
                     ) : null}
                     {intent === "register-subject" ? (
                       <label>
@@ -261,7 +330,7 @@ export function RegistrationDialog({
                 <button
                   className="button primary"
                   type="button"
-                  disabled={pending || !placementReady}
+                  disabled={pending || !placementReady || !destinationReady}
                   onClick={() => setConfirmOpen(true)}
                 >
                   {governanceCopy.continueConfirm}
@@ -286,9 +355,11 @@ export function RegistrationDialog({
         title={confirmTitle}
         description={
           <p>
-            {choice.mode === "use-default"
-              ? governanceCopy.useDefaultPlacement
-              : `${governanceCopy.chooseParentPlacement}：${choice.displayName}`}
+            {destinationModuleId.trim()
+              ? `目标模块：${selectedDestinationName}`
+              : choice.mode === "use-default"
+                ? governanceCopy.useDefaultPlacement
+                : `${governanceCopy.chooseParentPlacement}：${choice.displayName}`}
           </p>
         }
         confirmLabel={confirmLabel}

@@ -3,10 +3,15 @@ export type HotspotDimension = "project" | "module" | "parameter";
 
 export type DashboardKpis = {
   totalParameters: number;
+  /** Active source-backed Binding rows. Kept separate from distinct Definitions. */
+  totalBindings?: number;
+  /** Distinct Definitions represented by active source-backed Bindings. */
+  totalDefinitions?: number;
   managedProjects: number;
   changeFrequency: number; // change + workflow events within window
   activeContributors: number; // distinct changed_by users within window
-  highRiskParameters: number;
+  highRiskParameters: number | null;
+  riskAvailability?: "available" | "unavailable";
 };
 
 export type OverviewScope = "personal" | "overall";
@@ -16,7 +21,8 @@ export type PersonalDashboardKpis = {
   workflowCount: number;
   openItemCount: number;
   pendingTodoCount: number;
-  highRiskTouchCount: number;
+  highRiskTouchCount: number | null;
+  riskAvailability?: "available" | "unavailable";
 };
 
 export type TrendPoint = {
@@ -36,6 +42,15 @@ export type ProjectRiskBucket = {
   total: number;
 };
 
+/** Canonical dashboard risk payload. Risk counts are nullable when the catalog has no tier source. */
+export type DashboardRiskBucket = Omit<ProjectRiskBucket, "high" | "medium" | "low" | "total"> & {
+  high: number | null;
+  medium: number | null;
+  low: number | null;
+  total: number | null;
+  riskAvailability?: "available" | "unavailable";
+};
+
 export type WorkbenchSignals = {
   reviewQueue: number; // open change requests reviewable by role
   myDrafts: number; // caller's drafts
@@ -53,7 +68,7 @@ export type DashboardSummary = {
   trend: TrendPoint[];
   personalKpis: PersonalDashboardKpis;
   personalTrend: TrendPoint[];
-  riskBuckets: ProjectRiskBucket[];
+  riskBuckets: DashboardRiskBucket[];
   workbenchSignals: WorkbenchSignals;
 };
 

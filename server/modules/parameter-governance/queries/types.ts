@@ -53,6 +53,8 @@ export type ObservationRecognition = "unknown" | "ambiguous" | "matched" | "reti
 
 export type GovernancePlacementRecord = {
   readonly id: string;
+  /** Conditional-write token, returned only by getPlacement, not the public DTO. */
+  readonly version?: string;
   readonly displayName: string;
   readonly parentPlacementId: string | null;
   /**
@@ -64,6 +66,7 @@ export type GovernancePlacementRecord = {
 };
 
 export type GovernanceRegistrationRecord = {
+  readonly impact?: { readonly bindingCount: number; readonly projectCount: number };
   readonly id: string;
   readonly organizationId: string;
   readonly subjectId: CatalogSubjectId;
