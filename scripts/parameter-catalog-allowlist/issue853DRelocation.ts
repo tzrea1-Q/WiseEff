@@ -12,6 +12,7 @@ import {
 
 const inventoryPath = "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json";
 const inventorySha256 = "cdc7312ae736676de8b45f233d9c1605a86d20d06d02c087fbe11e85b782aa78";
+const canonicalTrustedBaseSha = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
 
 const exactConfig: RelocationConfig = {
   recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-exact-successor.json",
@@ -83,6 +84,7 @@ export async function verifyIssue853DInventory(
   allowances: readonly AllowlistEntry[],
   discovered: readonly BoundaryViolation[],
 ) {
+  if (fixture.trustedBaseSha !== canonicalTrustedBaseSha) return;
   const bytes = await readFile(resolve(repoRoot, inventoryPath));
   requireD(sha256(bytes) === inventorySha256, "inventory integrity");
   const inventory = JSON.parse(bytes.toString("utf8")) as Inventory;
@@ -129,6 +131,9 @@ export async function applyReviewedIssue853DRelocation(
   discovered: readonly BoundaryViolation[],
   prior: readonly RuntimeTopologyRelocation[],
 ) {
+  if (fixture.trustedBaseSha !== canonicalTrustedBaseSha) {
+    return { violations: [...discovered], relocations: [] as RuntimeTopologyRelocation[] };
+  }
   await verifyIssue853DInventory(repoRoot, fixture, allowances, discovered);
   const exact = await runReviewedRelocationRecord(
     repoRoot, fixture, allowances, discovered, prior, exactConfig,
