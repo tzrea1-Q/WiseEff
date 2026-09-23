@@ -30,6 +30,18 @@ import { editServiceVersionIndexRelocationRecordPath } from "./parameter-catalog
 import { sourceWorkflowConsumerRelocationRecordPath } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
 import { t14FamilySuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
+import {
+  issue913T14RetiredSourceIds,
+  issue913T14SuccessorPairCount,
+  issue913T14SuccessorRelocationRecordPath,
+  issue913T14RewrittenRepositorySuccessorRelocationRecordPath,
+  issue913T14ServiceSuccessorRelocationRecordPath,
+} from "./parameter-catalog-allowlist/issue913T14Relocation";
+import {
+  issue913StaleRetiredSourceIds,
+  issue913StaleSuccessorPairCount,
+  issue913StaleSuccessorRelocationRecordPath,
+} from "./parameter-catalog-allowlist/issue913StaleSuccessorRelocation";
 import { seedDriverPositionRecordPath, seedDriverQueryRecordPath } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 
 const seedDriverRecords = await Promise.all([seedDriverPositionRecordPath, seedDriverQueryRecordPath].map(async (path) =>
@@ -44,6 +56,16 @@ const familySuccessorRelocationRecord = JSON.parse(
 ) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
 const rewrittenSliceRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${t14RewrittenSliceSuccessorRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+const issue913T14SuccessorRecords = await Promise.all([
+  issue913T14SuccessorRelocationRecordPath,
+  issue913T14RewrittenRepositorySuccessorRelocationRecordPath,
+  issue913T14ServiceSuccessorRelocationRecordPath,
+].map(async (path) => JSON.parse(await readFile(`${process.cwd()}/${path}`, "utf8")) as {
+  files: Array<{ pairs: Array<{ old: { id: string } }> }>;
+}));
+const issue913StaleSuccessorRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${issue913StaleSuccessorRelocationRecordPath}`, "utf8"),
 ) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
 
 const originalRelocationRecord = JSON.parse(
@@ -891,8 +913,22 @@ describe("parameter catalog boundary checker", () => {
       expect(seedDriverRecords.map((record) => record.files[0]!.pairs.length)).toEqual([50, 11]);
       expect(report.relocations.filter((entry) => seedDriverIds.has(entry.id))).toHaveLength(61);
       expect(report.relocations.filter((entry) => consumerIds.has(entry.id))).toHaveLength(237);
-      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(265);
-      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(57);
+      const t14SuccessorIds = new Set(issue913T14SuccessorRecords.flatMap((record) =>
+        record.files.flatMap((file) => file.pairs.map((pair) => pair.old.id))));
+      expect(t14SuccessorIds.size).toBe(issue913T14SuccessorPairCount);
+      expect(report.relocations.filter((entry) => t14SuccessorIds.has(entry.id))).toHaveLength(issue913T14SuccessorPairCount);
+      expect(issue913T14RetiredSourceIds.every((id) => !report.relocations.some((entry) => entry.id === id))).toBe(true);
+      const staleSuccessorIds = new Set(issue913StaleSuccessorRecord.files.flatMap((file) =>
+        file.pairs.map((pair) => pair.old.id)));
+      expect(staleSuccessorIds.size).toBe(issue913StaleSuccessorPairCount);
+      expect(report.relocations.filter((entry) => staleSuccessorIds.has(entry.id))).toHaveLength(issue913StaleSuccessorPairCount);
+      expect(issue913StaleRetiredSourceIds).toHaveLength(17);
+      expect(issue913StaleRetiredSourceIds.every((id) =>
+        !report.relocations.some((entry) => entry.id === id)
+        && !report.violations.some((entry) => entry.id === id),
+      )).toBe(true);
+      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(262);
+      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(56);
       expect(
         report.relocations.filter(
           (entry) =>
@@ -900,20 +936,20 @@ describe("parameter catalog boundary checker", () => {
             && !consumerIds.has(entry.id)
             && !familyIds.has(entry.id)
             && !rewrittenIds.has(entry.id)
-            && !seedDriverIds.has(entry.id),
+            && !seedDriverIds.has(entry.id)
+            && !staleSuccessorIds.has(entry.id),
         ),
       ).toHaveLength(7);
-      // This is the exact diagnostic inventory, not a passing debt baseline:
-      // status remains failed; the seven new JSON DB-owner test observations
-      // remain unallowlisted alongside the prior 70, without granting allowances.
-      // PR #894 adds only the 61 existing owner-query/position identities above.
-      expect(report.relocations).toHaveLength(758);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(758);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(758);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_516);
+      // This remains a failed diagnostic inventory: the 77 existing unallowlisted
+      // observations are unchanged. The 63 moved allowances are proven by an
+      // exact successor record; 17 removed source observations are retired.
+      expect(report.relocations).toHaveLength(817);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(817);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(817);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_634);
       expect(report.summary).toEqual({
-        violations: 3_568,
-        allowlisted: 3_491,
+        violations: 3_547,
+        allowlisted: 3_470,
         unallowlisted: 77,
         staleAllowances: 0,
         metadataMismatches: 0,

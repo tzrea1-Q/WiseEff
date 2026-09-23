@@ -5,7 +5,7 @@
  * subtree filter against a real database. Asserts returned DTOs and
  * subsequent reads — never SQL text.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createInMemoryTestDatabase,
@@ -18,11 +18,55 @@ import { listParameters } from "./repository";
 import {
   countParametersForModule,
   createParameterModule,
+  deleteParameterModule,
   getParameterModuleById,
   listParameterModules,
   moveParameterModule,
   reparentAutoParameterModule
 } from "./parameterModuleRepository";
+
+describe("deleteParameterModule canonical placement guard", () => {
+  it("returns a typed conflict before issuing the delete", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          id: "module-1",
+          organization_id: "org-1",
+          parent_id: null,
+          name: "Driver",
+          path: "module-1",
+          depth: 1,
+          sort_order: 0,
+          description: "",
+          scope: "",
+          importance: "medium",
+          kind: "driver-group",
+          origin: "curated",
+          source_key: null,
+          attribution_subject_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ count: "0" }] })
+      .mockResolvedValueOnce({ rows: [{ count: "0" }] })
+      .mockResolvedValueOnce({ rows: [{ count: "1" }] });
+
+    await expect(
+      deleteParameterModule({ query } as never, {
+        organizationId: "org-1",
+        moduleId: "module-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { moduleId: "module-1", placementCount: 1 },
+    });
+    expect(query).toHaveBeenCalledTimes(4);
+    expect(query.mock.calls.every(([text]) =>
+      /^\s*(select|with)\b/i.test(String(text)) &&
+      !/\b(insert|update|delete|merge)\b/i.test(String(text)),
+    )).toBe(true);
+  });
+});
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -349,12 +393,12 @@ describe.skipIf(!databaseAvailable)("listParameters semantic module tree filter"
     expect(parentOnly.map((row) => row.id)).toEqual(["binding-root"]);
   });
 
-  it("counts bindings on a module so non-empty deletes stay blocked", async () => {
+  it("does not fall back to legacy definitions for canonical binding counts", async () => {
     await expect(
       countParametersForModule(db, { organizationId: "org-1", moduleId: "pm-b" })
-    ).resolves.toBe(1);
+    ).resolves.toBe(0);
     await expect(
       countParametersForModule(db, { organizationId: "org-1", moduleId: "pm-a" })
-    ).resolves.toBe(1);
+    ).resolves.toBe(0);
   });
 });

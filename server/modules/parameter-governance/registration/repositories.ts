@@ -30,6 +30,7 @@ export type PlacementRow = {
   organization_id: string;
   module_id: string;
   origin: "auto" | "curated";
+  version: string;
 };
 
 export type DestinationModuleRow = {
@@ -133,7 +134,8 @@ export const loadPlacementById = async (
   placementId: string,
 ): Promise<PlacementRow | null> => {
   const result = await client.query<PlacementRow>(
-    `select id, registration_id, organization_id, module_id, origin
+    `select id, registration_id, organization_id, module_id, origin,
+            (extract(epoch from updated_at) * 1000000)::bigint::text as version
      from parameter_catalog.subject_placements
      where organization_id = $1 and id = $2
      for update`,
@@ -184,7 +186,8 @@ export const insertPlacement = async (
     `insert into parameter_catalog.subject_placements (
        id, registration_id, organization_id, module_id, origin
      ) values ($1,$2,$3,$4,$5)
-     returning id, registration_id, organization_id, module_id, origin`,
+     returning id, registration_id, organization_id, module_id, origin,
+       (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [input.id, input.registrationId, input.organizationId, input.moduleId, input.origin],
   );
   return result.rows[0]!;
@@ -212,7 +215,8 @@ export const updatePlacementModule = async (
     `update parameter_catalog.subject_placements
      set module_id = $2, origin = 'curated', updated_at = now()
      where id = $1
-     returning id, registration_id, organization_id, module_id, origin`,
+     returning id, registration_id, organization_id, module_id, origin,
+       (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [placementId, moduleId],
   );
   return result.rows[0]!;

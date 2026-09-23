@@ -198,6 +198,7 @@ function setCorsHeaders(request: IncomingMessage, response: ServerResponse) {
   const requestedHeaders = request.headers["access-control-request-headers"];
   response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Access-Control-Allow-Methods", corsMethods);
+  response.setHeader("Access-Control-Expose-Headers", "ETag");
   response.setHeader(
     "Access-Control-Allow-Headers",
     typeof requestedHeaders === "string" && requestedHeaders.trim() ? requestedHeaders : defaultCorsHeaders
