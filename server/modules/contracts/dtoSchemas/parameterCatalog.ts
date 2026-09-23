@@ -1043,16 +1043,53 @@ export const catalogValueChangeRequestResponseSchema = itemEnvelopeSchema(
 export const catalogValueChangeRequestListResponseSchema = catalogObject({
   items: z.array(catalogValueChangeRequestDtoSchema)
 });
-export const catalogValueChangeSourceDiffResponseSchema = itemEnvelopeSchema(catalogObject({
+export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
+  id: z.string(), projectId: z.string(), candidateId: z.string(),
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), cohortCount: z.number().int().positive(),
+  status: closedEnum(["pending", "approved", "rejected", "withdrawn"]), reason: z.string(),
+  submitterUserId: z.string().nullable(), assignedToUserId: z.string().nullable(),
+  reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
+  sourceProofToken: z.string(), cohortProofToken: z.string(),
+  fileId: z.string(), baseVersionId: z.string(), configSetId: z.string(),
+  appliedAt: z.string().nullable(), appliedAuditRef: z.string().nullable(),
+  targets: z.array(catalogObject({
+    ordinal: z.number().int().nonnegative(), draftId: z.string().nullable(),
+    bindingId: z.string(), definitionId: z.string(), definitionRevisionId: z.string(),
+    catalogReleaseId: z.string(), baseCurrentValueId: z.string(),
+    configRevisionId: z.string(), sourceRef: z.string(), sourcePinId: z.string(),
+    action: closedEnum(["set", "delete"]), targetText: z.string().nullable(),
+    appliedValueId: z.string().nullable(), appliedHistoryEventId: z.string().nullable(),
+    appliedSourcePinId: z.string().nullable(), appliedFileVersionId: z.string().nullable()
+  })).min(2)
+});
+export const catalogBatchValueChangeRequestResponseSchema = itemEnvelopeSchema(catalogBatchValueChangeRequestDtoSchema);
+export const catalogValueChangeReviewResponseSchema = itemEnvelopeSchema(z.union([
+  catalogValueChangeRequestDtoSchema, catalogBatchValueChangeRequestDtoSchema
+]));
+const catalogValueChangeSourceBindingSchema = catalogObject({
+  bindingId: z.string(),oldValueId: z.string(),sourcePinId: z.string(),sourceOccurrenceId: z.string(),
+  definitionId: z.string(),effectiveRevisionId: z.string(),catalogReleaseId: z.string(),
+  locator: z.record(z.string(),z.unknown()),valueKind: z.string(),valueDigest: z.string(),configSetId: z.string()
+});
+const catalogSingleValueChangeSourceDiffSchema = catalogObject({
   requestId: z.string(),bindingId: z.string(),format: closedEnum(["dts", "json"]),sourceName: z.string(),
   sourcePinId: z.string(),candidateId: z.string(),baseDigest: z.string(),proposedDigest: z.string(),diffDigest: z.string(),
   before: z.string(),after: z.string(),
-  bindings: z.array(catalogObject({
-    bindingId: z.string(),oldValueId: z.string(),sourcePinId: z.string(),sourceOccurrenceId: z.string(),
-    definitionId: z.string(),effectiveRevisionId: z.string(),catalogReleaseId: z.string(),
-    locator: z.record(z.string(),z.unknown()),valueKind: z.string(),valueDigest: z.string(),configSetId: z.string()
-  }))
-}));
+  bindings: z.array(catalogValueChangeSourceBindingSchema)
+});
+const catalogBatchValueChangeSourceDiffSchema = catalogObject({
+  kind: z.literal("batch"), requestId: z.string(), candidateId: z.string(),
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), format: z.literal("json"),
+  sourceName: z.string(), baseDigest: z.string(), proposedDigest: z.string(), diffDigest: z.string(),
+  before: z.string(), after: z.string(), bindings: z.array(catalogValueChangeSourceBindingSchema),
+  targets: z.array(catalogObject({
+    ordinal: z.number().int().nonnegative(), bindingId: z.string(), sourcePinId: z.string(),
+    action: closedEnum(["set", "delete"]), beforeText: z.string(), afterText: z.string().optional()
+  })).min(2)
+});
+export const catalogValueChangeSourceDiffResponseSchema = itemEnvelopeSchema(z.union([
+  catalogSingleValueChangeSourceDiffSchema, catalogBatchValueChangeSourceDiffSchema
+]));
 export const catalogRegisterConfigurationInstancesRequestSchema = catalogObject({
   configSetId: z.string().min(1),
   fileVersionId: z.string().min(1),
@@ -1068,7 +1105,8 @@ export const catalogSubmitValueChangeRequestSchema = catalogObject({
 });
 export const catalogReviewValueChangeRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
-  note: z.string().nullable().optional()
+  note: z.string().nullable().optional(),
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
 });
 
 export const catalogCreateNodeEnablementDraftRequestSchema = catalogObject({
@@ -1355,6 +1393,8 @@ export const parameterCatalogDtoSchemaCatalog = {
   RegisterConfigurationInstancesRequest: catalogRegisterConfigurationInstancesRequestSchema,
   ProjectValueDraftRemovedResponse: projectValueDraftRemovedResponseSchema,
   ProjectValueChangeRequestResponse: catalogValueChangeRequestResponseSchema,
+  ProjectValueBatchChangeRequestResponse: catalogBatchValueChangeRequestResponseSchema,
+  ProjectValueChangeReviewResponse: catalogValueChangeReviewResponseSchema,
   ProjectValueChangeRequestListResponse: catalogValueChangeRequestListResponseSchema,
   SubmitProjectValueChangeRequest: catalogSubmitValueChangeRequestSchema,
   ReviewProjectValueChangeRequest: catalogReviewValueChangeRequestSchema,

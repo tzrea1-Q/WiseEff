@@ -73,6 +73,7 @@ export type DtsParameterWorkbenchProps = {
   canEdit: boolean;
   onSelectBinding: (bindingId: string) => void;
   onEditBinding?: (bindingId: string) => void;
+  onStartDtsReload?: (bindingId: string) => void;
   onCreateDraft?: (input: {
     bindingId: string;
     rawValue: string;
@@ -180,6 +181,7 @@ export function DtsParameterWorkbench({
   canEdit,
   onSelectBinding,
   onEditBinding,
+  onStartDtsReload,
   onCreateDraft,
   onEditNodeEnablement,
   loadBindingHistory,
@@ -791,6 +793,7 @@ export function DtsParameterWorkbench({
                     canEdit={canEdit}
                     onSelectBinding={selectBinding}
                     onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
+                    onStartDtsReload={onStartDtsReload}
                     onSelectedBindingIdsChange={setSelectedBindingIds}
                   />
                   {visibleRows.length === 0 ? (

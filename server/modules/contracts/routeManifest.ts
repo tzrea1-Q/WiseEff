@@ -226,6 +226,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterFiles.previewCanonicalCandidate",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-preview",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
     id: "parameters.getParameterFileCandidateContent",
     method: "GET",
     path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content",
@@ -634,6 +641,13 @@ export const routeManifest = [
     id: "parameterTopology.listProjectValueChangeRequests",
     method: "GET",
     path: "/api/v2/projects/:projectId/parameter-value-change-requests",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.getProjectValueBatchChangeRequest",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/batch",
     module: "parameters",
     stability: "mvp"
   },
@@ -1137,6 +1151,27 @@ export const routeManifest = [
     id: "parameterFiles.activateCandidate",
     method: "POST",
     path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.getCanonicalSourceWorkflow",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-workflow",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.submitCanonicalCandidate",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-submit",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.rollbackCanonicalSource",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-rollback",
     module: "parameter-files",
     stability: "mvp"
   },

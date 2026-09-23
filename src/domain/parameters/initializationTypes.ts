@@ -19,6 +19,8 @@ export type SemanticInitializationSnapshotItem = {
   id: string;
   sourceProjectId: string;
   sourceProjectParameterBindingId: string;
+  /** Immutable canonical value selected for inheritance; binding id alone is not a source pin. */
+  sourceProjectValueId: string;
   sourceRole: "primary" | "supplement";
   parameterSpecId: string;
   parameterSpecVersionId: string;
@@ -30,6 +32,13 @@ export type SemanticInitializationSnapshotItem = {
   rawValue: string;
   currentValueState: "pending_project_confirmation";
   alternativeSourceBindingIds: string[];
+  alternativeSourceValueIds?: string[];
+  sourceConfigSetId?: string;
+  sourceConfigRevisionId?: string;
+  sourceOccurrenceId?: string;
+  sourceName?: string;
+  sourceLocatorLabel?: string;
+  sourceFormat?: "dts" | "json";
   needsEffectiveValueConfirmation: boolean;
   notes?: string;
 };

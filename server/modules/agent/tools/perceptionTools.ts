@@ -1,9 +1,10 @@
 import type { AgentToolDefinition, AgentToolExecutionContext } from "../toolRegistry";
 import { requireAgentToolMetadata } from "../toolMetadata";
 import { ApiError } from "../../../shared/http/errors";
-import { getRootPostgresPool, isRootDatabase } from "../../../shared/database/client";
+import { getRootPostgresPool, isRootDatabase, type Database } from "../../../shared/database/client";
 import { assertTrustedInvocationContext } from "../../auth/trustedInvocation";
 import { readProjectProtectedParameters } from "../../parameter-bindings/adapters";
+import { listCanonicalValueChangesForAuth } from "../../parameter-bindings/drafts";
 import type { OptionalValue } from "../../parameter-catalog-contract";
 
 type ToolOptions = {
@@ -57,14 +58,13 @@ export function createPerceptionTools(options: ToolOptions): AgentToolDefinition
       run: async (context, payload) => {
         const projectId = readProjectId(context.projectId, payload);
         const parameters = await readConfiguredParameters(options, context, projectId);
-        const counted = await options.db.query<{ count: number }>(
-          `select count(*)::int as count from parameter_change_requests
-            where organization_id = $1 and project_id = $2
-              and status not in ('merged', 'rejected', 'withdrawn')`,
-          [context.auth.organization.id, projectId]
-        );
-        const openRequests = counted.rows[0]?.count;
-        if (openRequests === undefined) throw new ApiError("INTERNAL_ERROR", "Project overview count is unavailable.");
+        if (!projectId) throw new ApiError("FORBIDDEN", "Agent project access is required.", { projectId });
+        const openRequests = (
+          await listCanonicalValueChangesForAuth(options.db as Database, context.auth, {
+            projectId,
+            status: "pending"
+          })
+        ).length;
         return {
           summary: `Project ${projectId}: ${parameters.length} parameters, ${openRequests} open change requests.`,
           data: {

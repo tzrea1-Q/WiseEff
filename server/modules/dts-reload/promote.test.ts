@@ -1,550 +1,181 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createManagedInstanceTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
+import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { AuthContext } from "../auth/types";
-import {
-  createAgentInvocation,
-  createUserInvocation,
-  type TrustedInvocationContext
-} from "../auth/trustedInvocation";
-import { ApiError } from "../../shared/http/errors";
-import {
-  createInMemoryTestDatabase,
-  isTestDatabaseAvailable,
-  type InMemoryTestDatabase
-} from "../../testing/testDatabase";
-import { seedCoreGraph } from "../../testing/fixtures";
-import { insertReloadRun, insertReloadRunTarget, readLibraryFingerprint } from "./repository";
-import {
-  promoteReloadRunToDrafts as promoteReloadRunToDraftsService,
-  type PromoteBindingDraftFn,
-  type PromoteReloadRunToDraftsContext,
-  type PromoteReloadRunToDraftsInput
-} from "./promote";
+import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
+import { submitCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
+import { parseDtsValue } from "../dts";
+import { seedCanonicalParameterFixture } from "./testing/canonicalReloadFixture";
+import { getReloadCandidateRow, insertReloadRun, insertReloadRunTarget, readLibraryFingerprint } from "./repository";
+import { promoteReloadRunToDrafts, type PromoteReloadRunToDraftsContext } from "./promote";
 import type { ReloadRunPurpose, ReloadRunStatus } from "./types";
-import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 
-vi.mock("../audit/repository", () => ({
-  createAuditEvent: vi.fn(async () => undefined)
-}));
-
-import { createAuditEvent } from "../audit/repository";
-
-const databaseAvailable = await isTestDatabaseAvailable();
-
-function auth(overrides: Partial<AuthContext> = {}): AuthContext {
-  return {
-    user: {
-      id: "user-1",
-      organizationId: "org-1",
-      name: "Riley Chen",
-      email: "riley@example.com",
-      title: "Hardware Committer",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
-    permissions: ["debugging:dts-reload", "debugging:view", "parameter:edit"],
-    ...overrides
-  };
-}
-
-type TestPromotionContext = Pick<PromoteReloadRunToDraftsContext, "createBindingDraft" | "objectStore"> & {
-  invocation?: TrustedInvocationContext;
-  requestId?: string;
-  refusalSink?: typeof testRefusalAuditSink;
-};
-
-function promoteReloadRunToDrafts(
-  db: Parameters<typeof promoteReloadRunToDraftsService>[0],
-  principal: Parameters<typeof promoteReloadRunToDraftsService>[1],
-  input: PromoteReloadRunToDraftsInput,
-  context: TestPromotionContext = {}
-) {
-  const trustedContext: PromoteReloadRunToDraftsContext = {
-    ...context,
-    invocation: context.invocation ?? createUserInvocation(principal),
-    requestId: context.requestId ?? "req-promote-user",
-    refusalSink: context.refusalSink ?? testRefusalAuditSink
-  };
-  return promoteReloadRunToDraftsService(db, principal, input, trustedContext);
-}
-
-function agentContext(requestId: string): TestPromotionContext {
-  return {
-    invocation: createAgentInvocation(auth(), {
-      sessionId: "session-dts-reload",
-      toolCallId: "tool-dts-reload",
-      approval: { required: true, approvalId: "approval-dts-reload" }
-    }),
-    requestId,
-    refusalSink: testRefusalAuditSink
-  };
-}
-
-describe.skipIf(!databaseAvailable)("promoteReloadRunToDrafts", () => {
-  let db: InMemoryTestDatabase;
+// Promotion tests now use canonical-only data and the real canonical writer.
+// These stored terminal runs are fixtures, not evidence of device deployment.
+describe("canonical reload promotion", () => {
+  let database: EphemeralTestDatabase;
+  let db: RootDatabase;
+  let directory: string;
+  let fixture: Awaited<ReturnType<typeof seedCanonicalParameterFixture>>;
+  let context: PromoteReloadRunToDraftsContext;
 
   beforeEach(async () => {
-    vi.mocked(createAuditEvent).mockClear();
-    db = await createInMemoryTestDatabase();
-    await seedCoreGraph(db, {
-      organization: { id: "org-1", name: "ChargeLab" },
-      users: [
-        { id: "user-1", name: "Riley Chen", email: "riley@example.com" },
-        { id: "user-2", name: "Other", email: "other@example.com" }
-      ],
-      projects: [{ id: "project-1" }]
-    });
-  });
-
+    database = await createManagedInstanceTestDatabase("898promote");
+    db = createPostgresDatabase(database.url);
+    directory = await mkdtemp(join(tmpdir(), "wiseeff-898-promote-"));
+    const objectStore = createLocalObjectStore(directory);
+    fixture = await seedCanonicalParameterFixture(db, objectStore);
+    context = { objectStore, invocation: createUserInvocation(fixture.editorAuth),
+      requestId: `898-promote-${randomUUID()}`, refusalSink: createTrustedRefusalAuditSink(db) };
+  }, 120_000);
   afterEach(async () => {
-    await db?.rollback();
+    await db?.close();
+    await database?.drop();
+    if (directory) await rm(directory, { recursive: true, force: true });
   });
 
-  async function seedCandidate(input: {
-    bindingId: string;
-    nodePath?: string | null;
-    configRevisionId?: string;
-    baselineValue?: string | null;
-  }) {
-    const nodePath = input.nodePath === undefined ? "/amba/i2c@FDF5E000/sc8562@6E" : input.nodePath;
-    const configRevisionId = input.configRevisionId ?? "rev-1";
-    const propertyKey = "watchdog_time";
-
-    await db.query(
-      `insert into parameter_modules (id, organization_id, name, path)
-       values ('mod-charger', 'org-1', 'charger', '/charger')
-       on conflict (id) do nothing`
-    );
-    await db.query(
-      `insert into dts_config_set (id, organization_id, project_id, name)
-       values ('cs-1', 'org-1', 'project-1', 'primary') on conflict (id) do nothing`
-    );
-    await db.query(
-      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
-       select $1, 'org-1', 'project-1', 'cs-1',
-              coalesce((select max(revision_number) from dts_config_revisions where config_set_id = 'cs-1'), 0) + 1,
-              'compiled'
-       where not exists (select 1 from dts_config_revisions where id = $1)`,
-      [configRevisionId]
-    );
-    await db.query(
-      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-       values ($1, 'org-1', 'dts', $2)`,
-      [`spec-${input.bindingId}`, `reload/${input.bindingId}/${propertyKey}`]
-    );
-    await db.query(
-      `insert into parameter_spec_versions (
-         id, parameter_spec_id, version, display_name, description, documentation, value_shape, units, lifecycle
-       ) values ($1, $2, 1, $3, '', $4, $5::jsonb, $6, 'active')`,
-      [
-        `psv-${input.bindingId}`,
-        `spec-${input.bindingId}`,
-        "Watchdog",
-        "Watchdog timeout for charger safety.",
-        JSON.stringify({ kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }),
-        "ms"
-      ]
-    );
-    await db.query(
-      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
-       values ($1, $2, $3, 'reload-test', $4::jsonb)`,
-      [`dps-${input.bindingId}`, `spec-${input.bindingId}`, propertyKey, JSON.stringify({ min: 0, max: 20000, cells: 1 })]
-    );
-    if (nodePath !== null) {
-      await db.query(
-        `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
-         values ($1, 'org-1', 'project-1', 'cs-1')`,
-        [`node-${input.bindingId}`]
-      );
-      await db.query(
-        `insert into dts_logical_node_revisions (id, logical_node_id, config_revision_id, node_locator, name, compatible)
-         values ($1, $2, $3, $4, $5, $6)`,
-        [
-          `lnr-${input.bindingId}`,
-          `node-${input.bindingId}`,
-          configRevisionId,
-          nodePath,
-          "sc8562@6E",
-          "sc8562"
-        ]
-      );
-    }
-    await db.query(
-      `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
-       values ($1, 'org-1', 'project-1', $2, $3, 'mod-charger')`,
-      [input.bindingId, nodePath === null ? null : `node-${input.bindingId}`, `spec-${input.bindingId}`]
-    );
-    await db.query(
-      `insert into project_parameter_binding_revisions (
-         id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value
-       ) values ($1, $2, $3, $4, '{}'::jsonb, $5)`,
-      [
-        `bpr-${input.bindingId}`,
-        input.bindingId,
-        configRevisionId,
-        `psv-${input.bindingId}`,
-        input.baselineValue === undefined ? "<6000>" : input.baselineValue
-      ]
-    );
+  async function seedRun(options: { status?: ReloadRunStatus; purpose?: ReloadRunPurpose; nodePath?: string; pinless?: boolean } = {}) {
+    const id = `reload-${randomUUID()}`;
+    const candidate = await getReloadCandidateRow(db, { organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId });
+    if (!candidate) throw new Error("Canonical candidate is unavailable");
+    await insertReloadRun(db, { id, organizationId: fixture.organizationId, projectId: fixture.projectId,
+      configRevisionId: fixture.configRevisionId, status: options.status ?? "verified", purpose: options.purpose ?? "ordinary",
+      failureCode: null, steps: [], diagnostics: [], toolVersions: { dtc: null, fdtoverlay: null },
+      overlaySourceStorageKey: null, overlaySourceSha256: null, overlayArtifactStorageKey: null,
+      overlayArtifactSha256: null, overlayArtifactBytes: null, createdByUserId: fixture.editorAuth.user.id,
+      completedAt: new Date().toISOString() });
+    await insertReloadRunTarget(db, { id: randomUUID(), reloadRunId: id, bindingId: null,
+      nodePath: options.nodePath ?? candidate.node_path!, propertyKey: candidate.property_key,
+      baselineValue: "<5>", debugValue: "<6>", sortOrder: 0,
+      ...(!options.pinless ? { canonicalBindingId: fixture.bindingId, canonicalDefinitionId: fixture.definitionId,
+        canonicalDefinitionRevisionId: fixture.definitionRevisionId, canonicalCurrentValueId: fixture.currentValueId,
+        canonicalCatalogReleaseId: fixture.catalogReleaseId, canonicalSourcePinId: candidate.source_pin_id,
+        canonicalSourceOccurrenceId: candidate.source_occurrence_id, canonicalConfigRevisionId: fixture.configRevisionId,
+        canonicalSourceRef: candidate.source_ref, canonicalSourceFormat: "dts" as const,
+        canonicalSourceLocator: candidate.source_locator } : {}) });
+    return id;
+  }
+  async function promote(runId: string, options: { auth?: AuthContext; acknowledged?: boolean; ids?: string[]; context?: PromoteReloadRunToDraftsContext } = {}) {
+    const principal = options.auth ?? fixture.editorAuth;
+    return promoteReloadRunToDrafts(db, principal, { runId, bindingIds: options.ids ?? [fixture.bindingId],
+      unverifiableAcknowledged: options.acknowledged }, options.context ?? { ...context, invocation: createUserInvocation(principal) });
+  }
+  async function pendingCounts() {
+    return (await db.query<{ drafts: number; requests: number }>(`select
+      (select count(*)::int from project_parameter_value_drafts) drafts,
+      (select count(*)::int from project_parameter_value_change_requests) requests`)).rows[0]!;
   }
 
-  async function seedRun(input: {
-    id: string;
-    status?: ReloadRunStatus;
-    purpose?: ReloadRunPurpose;
-    targets?: Array<{ bindingId: string; nodePath?: string; debugValue?: string; baselineValue?: string | null }>;
-  }) {
-    await insertReloadRun(db, {
-      id: input.id,
-      organizationId: "org-1",
-      projectId: "project-1",
-      configRevisionId: "rev-1",
-      status: input.status ?? "verified",
-      purpose: input.purpose ?? "ordinary",
-      deviceId: null,
-      restoresSourceRunId: null,
-      failureCode: null,
-      steps: [],
-      diagnostics: [],
-      toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
-      overlaySourceStorageKey: "overlay.dts",
-      overlaySourceSha256: "src-sha",
-      overlayArtifactStorageKey: "overlay.dtbo",
-      overlayArtifactSha256: "art-sha",
-      overlayArtifactBytes: 32,
-      createdByUserId: "user-1",
-      completedAt: new Date().toISOString()
-    });
-    for (const [index, target] of (input.targets ?? []).entries()) {
-      await insertReloadRunTarget(db, {
-        id: `target-${input.id}-${index}`,
-        reloadRunId: input.id,
-        bindingId: target.bindingId,
-        nodePath: target.nodePath ?? "/amba/i2c@FDF5E000/sc8562@6E",
-        propertyKey: "watchdog_time",
-        baselineValue: target.baselineValue === undefined ? "<6000>" : target.baselineValue,
-        debugValue: target.debugValue ?? "<7000>",
-        sortOrder: index
-      });
-    }
-  }
-
-  async function insertOpenDraft(input: {
-    id: string;
-    bindingId: string;
-    targetValue: string;
-    reason: string;
-    userId?: string;
-  }) {
-    await db.query(
-      `insert into parameter_drafts (
-         id, organization_id, project_id, user_id,
-         target_value, reason, origin, action, project_parameter_binding_id
-       ) values ($1, 'org-1', 'project-1', $2, $3, $4, 'manual', 'set', $5)`,
-      [input.id, input.userId ?? "user-1", input.targetValue, input.reason, input.bindingId]
-    );
-  }
-
-  function recordingCreateDraft(): {
-    calls: Array<{ bindingId: string; baseRevisionId: string; reason: string; action: string }>;
-    createBindingDraft: PromoteBindingDraftFn;
-  } {
-    const calls: Array<{ bindingId: string; baseRevisionId: string; reason: string; action: string }> = [];
-    return {
-      calls,
-      createBindingDraft: vi.fn(async (_db, _auth, input) => {
-        calls.push({
-          bindingId: input.bindingId,
-          baseRevisionId: input.baseRevisionId,
-          reason: input.reason,
-          action: input.action ?? "set"
-        });
-        const draftId = `draft-${input.bindingId}`;
-        await db.query(
-          `insert into parameter_drafts (
-             id, organization_id, project_id, user_id,
-             target_value, reason, origin, action, project_parameter_binding_id
-           ) values ($1, 'org-1', $2, $3, $4, $5, 'manual', 'set', $6)`,
-          [draftId, input.projectId, "user-1", "<7000>", input.reason, input.bindingId]
-        );
-        return {
-          draftId,
-          parameterId: input.bindingId,
-          candidateRevisionId: "cand-1",
-          workingCandidateRevisionId: "cand-1",
-          rebasedDraftIds: [],
-          rawText: "<7000>",
-          action: "set",
-          parameterSpecId: `spec-${input.bindingId}`,
-          projectParameterBindingId: input.bindingId,
-          writeTarget: { role: "overlay", propertyKey: "watchdog_time", fileId: "file-1", fileName: "overlay.dts" },
-          overlayFileId: "file-1",
-          overlayFileName: "overlay.dts"
-        };
-      })
-    };
-  }
-
-  async function countChangeRequests() {
-    const result = await db.query<{ count: string }>(
-      `select count(*)::text as count from parameter_change_requests where organization_id = 'org-1'`
-    );
-    return Number(result.rows[0]?.count ?? 0);
-  }
-
-  it("creates parameter drafts from a verified ordinary run and leaves the library working fingerprint and change-request table untouched", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    await seedRun({
-      id: "run-verified",
-      status: "verified",
-      targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
-    });
-    const recorder = recordingCreateDraft();
-    const before = await readLibraryFingerprint(db, { organizationId: "org-1", projectId: "project-1" });
-
-    const result = await promoteReloadRunToDrafts(
-      db,
-      auth(),
-      { runId: "run-verified", bindingIds: ["binding-1"] },
-      { createBindingDraft: recorder.createBindingDraft }
-    );
-
-    expect(result.drafts).toEqual([
-      { bindingId: "binding-1", draftId: "draft-binding-1", outcome: "created" }
-    ]);
-    expect(result.workbenchHref).toBe("/parameters?project=project-1");
-    expect(recorder.calls).toHaveLength(1);
-    expect(recorder.calls[0]).toMatchObject({
-      bindingId: "binding-1",
-      baseRevisionId: "rev-1",
-      action: "set"
-    });
-    expect(recorder.calls[0]!.reason).toContain("sourceReloadRunId=run-verified");
-    expect(recorder.calls[0]!.reason).toContain("debug=<7000>");
-
-    const after = await readLibraryFingerprint(db, { organizationId: "org-1", projectId: "project-1" });
-    expect(after.bindingRevisionCount).toBe(before.bindingRevisionCount);
-    expect(after.bindingRevisionChecksum).toBe(before.bindingRevisionChecksum);
-    expect(after.baselineCount).toBe(before.baselineCount);
-    expect(after.workingFileVersionTip).toBe(before.workingFileVersionTip);
-    expect(after.draftCount).toBe(before.draftCount + 1);
-    expect(await countChangeRequests()).toBe(0);
-
-    const auditKinds = vi.mocked(createAuditEvent).mock.calls.map((call) => call[1].kind);
-    expect(auditKinds).toContain("reload-value-promoted-to-draft");
-    expect(auditKinds.some((kind) => String(kind).includes("parameter-submit"))).toBe(false);
+  it("creates a real canonical draft without modifying formal values, source tips or submitting a request", async () => {
+    const runId = await seedRun();
+    const before = await readLibraryFingerprint(db, { organizationId: fixture.organizationId, projectId: fixture.projectId });
+    const result = await promote(runId);
+    expect(result.drafts).toEqual([{ bindingId: fixture.bindingId, draftId: expect.any(String), outcome: "created" }]);
+    expect(result.workbenchHref).toBe(`/parameters?project=${fixture.projectId}`);
+    const after = await readLibraryFingerprint(db, { organizationId: fixture.organizationId, projectId: fixture.projectId });
+    expect(after).toEqual({ ...before, draftCount: before.draftCount + 1 });
+    expect(await pendingCounts()).toEqual({ drafts: 1, requests: 0 });
+    expect((await db.query("select id from public.parameter_drafts")).rows).toEqual([]);
+    const audit = await db.query("select id from audit_events where kind='reload-value-promoted-to-draft' and target_id=$1", [runId]);
+    expect(audit.rows).toHaveLength(1);
   });
 
-  it("refuses an empty selection with 400", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    await seedRun({ id: "run-verified", targets: [{ bindingId: "binding-1" }] });
-
-    await expect(
-      promoteReloadRunToDrafts(db, auth(), { runId: "run-verified", bindingIds: [] })
-    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
-  });
-
-  it("preserves server rejection copy and details for every promotion eligibility rejection", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    const recorder = recordingCreateDraft();
-
-    for (const [id, status, purpose, ack, message, details] of [
-      [
-        "run-contradicted",
-        "contradicted",
-        "ordinary",
-        undefined,
-        "Reload run status contradicted cannot be promoted to parameter drafts.",
-        { code: "reload-promote-ineligible", purpose: "ordinary", status: "contradicted" }
-      ],
-      [
-        "run-failed",
-        "failed",
-        "ordinary",
-        undefined,
-        "Reload run status failed cannot be promoted to parameter drafts.",
-        { code: "reload-promote-ineligible", purpose: "ordinary", status: "failed" }
-      ],
-      [
-        "run-restore",
-        "verified",
-        "restore-baseline",
-        undefined,
-        "restore-baseline runs cannot be promoted; those values are already the library baseline.",
-        { code: "reload-promote-ineligible", purpose: "restore-baseline", status: "verified" }
-      ],
-      [
-        "run-unv",
-        "unverifiable",
-        "ordinary",
-        undefined,
-        "Unverifiable reload runs require unverifiableAcknowledged: true before promotion.",
-        { code: "reload-promote-unverifiable-ack-required", status: "unverifiable" }
-      ]
+  it("preserves empty-selection and all eligibility refusal messages without writing drafts", async () => {
+    const runId = await seedRun();
+    await expect(promote(runId, { ids: [] })).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { code: "reload-promote-empty-selection" } });
+    for (const [status, purpose, message] of [
+      ["contradicted", "ordinary", "Reload run status contradicted cannot be promoted to parameter drafts."],
+      ["failed", "ordinary", "Reload run status failed cannot be promoted to parameter drafts."],
+      ["verified", "restore-baseline", "restore-baseline runs cannot be promoted; those values are already the library baseline."],
+      ["unverifiable", "ordinary", "Unverifiable reload runs require unverifiableAcknowledged: true before promotion."]
     ] as const) {
-      await seedRun({
-        id,
-        status,
-        purpose,
-        targets: [{ bindingId: "binding-1" }]
-      });
-      await expect(
-        promoteReloadRunToDrafts(
-          db,
-          auth(),
-          { runId: id, bindingIds: ["binding-1"], unverifiableAcknowledged: ack },
-          { createBindingDraft: recorder.createBindingDraft }
-        )
-      ).rejects.toMatchObject({ code: "CONFLICT", status: 409, message, details });
+      await expect(promote(await seedRun({ status, purpose }))).rejects.toMatchObject({ code: "CONFLICT", message });
     }
-    expect(recorder.calls).toHaveLength(0);
+    expect(await pendingCounts()).toEqual({ drafts: 0, requests: 0 });
   });
 
-  it("promotes an unverifiable ordinary run only when unverifiableAcknowledged is true", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    await seedRun({
-      id: "run-unv",
-      status: "unverifiable",
-      targets: [{ bindingId: "binding-1" }]
-    });
-    const recorder = recordingCreateDraft();
-
-    const result = await promoteReloadRunToDrafts(
-      db,
-      auth(),
-      { runId: "run-unv", bindingIds: ["binding-1"], unverifiableAcknowledged: true },
-      { createBindingDraft: recorder.createBindingDraft }
-    );
-    expect(result.drafts[0]?.outcome).toBe("created");
-    expect(recorder.calls).toHaveLength(1);
+  it("requires explicit acknowledgement for an unverifiable run", async () => {
+    const runId = await seedRun({ status: "unverifiable" });
+    await expect(promote(runId)).rejects.toMatchObject({ details: { code: "reload-promote-unverifiable-ack-required" } });
+    expect((await promote(runId, { acknowledged: true })).drafts[0]!.outcome).toBe("created");
   });
 
-  it("refuses callers that lack parameter:edit or reload write/admin, and refuses Agent actors", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    await seedRun({ id: "run-verified", targets: [{ bindingId: "binding-1" }] });
-    const recorder = recordingCreateDraft();
-
-    await expect(
-      promoteReloadRunToDrafts(
-        db,
-        auth({ permissions: ["debugging:view", "parameter:edit"] }),
-        { runId: "run-verified", bindingIds: ["binding-1"] },
-        { createBindingDraft: recorder.createBindingDraft }
-      )
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
-
-    await expect(
-      promoteReloadRunToDrafts(
-        db,
-        auth({ permissions: ["debugging:dts-reload", "debugging:view"] }),
-        { runId: "run-verified", bindingIds: ["binding-1"] },
-        { createBindingDraft: recorder.createBindingDraft }
-      )
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
-
-    await expect(
-      promoteReloadRunToDrafts(
-        db,
-        auth(),
-        { runId: "run-verified", bindingIds: ["binding-1"] },
-        { createBindingDraft: recorder.createBindingDraft, ...agentContext("req-promote-agent") }
-      )
-    ).rejects.toMatchObject({
-      details: { code: "dts-reload-agent-refused", requireHuman: true }
-    });
-    expect(recorder.calls).toHaveLength(0);
+  it("keeps role, tenant, project and Agent refusal boundaries before canonical writes", async () => {
+    const runId = await seedRun();
+    for (const principal of [
+      { ...fixture.editorAuth, permissions: fixture.editorAuth.permissions.filter((permission) => permission !== "parameter:edit") },
+      { ...fixture.editorAuth, permissions: fixture.editorAuth.permissions.filter((permission) => permission !== "debugging:dts-reload") },
+      { ...fixture.editorAuth, roles: [{ projectId: fixture.otherProjectId, roleId: "hardware-committer" as const }] },
+      fixture.otherAuth
+    ]) await expect(promote(runId, { auth: principal })).rejects.toMatchObject({ code: expect.stringMatching(/FORBIDDEN|NOT_FOUND/) });
+    await expect(promote(runId, { context: { ...context, invocation: createAgentInvocation(fixture.editorAuth, {
+      sessionId: "898-agent-session", toolCallId: "898-agent-tool", approval: { required: true, approvalId: "898-agent-approval" }
+    }) } })).rejects.toMatchObject({ details: { code: "dts-reload-agent-refused", requireHuman: true } });
+    expect(await pendingCounts()).toEqual({ drafts: 0, requests: 0 });
   });
 
-  it("lets an Admin without debugging:dts-reload promote when they hold parameter:edit and the read gate", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    await seedRun({ id: "run-verified", targets: [{ bindingId: "binding-1" }] });
-    const recorder = recordingCreateDraft();
-
-    const result = await promoteReloadRunToDrafts(
-      db,
-      auth({
-        roles: [{ projectId: "project-1", roleId: "admin" }],
-        permissions: ["admin:access", "debugging:view", "parameter:edit"]
-      }),
-      { runId: "run-verified", bindingIds: ["binding-1"] },
-      { createBindingDraft: recorder.createBindingDraft }
-    );
-    expect(result.drafts[0]?.draftId).toBe("draft-binding-1");
+  it("retains Admin promotion permission without granting an Agent exception", async () => {
+    const admin = { ...fixture.editorAuth, roles: [{ projectId: null, roleId: "admin" as const }],
+      permissions: [...fixture.editorAuth.permissions.filter((permission) => permission !== "debugging:dts-reload"), "admin:access" as const] };
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('898-admin-promotion',$1,$2,null,'admin')", [admin.user.id, admin.organization.id]);
+    expect((await promote(await seedRun(), { auth: admin })).drafts[0]!.outcome).toBe("created");
   });
 
-  it("refuses a target whose node path has drifted from the current binding", async () => {
-    await seedCandidate({ bindingId: "binding-1", nodePath: "/amba/i2c@FDF5E000/sc8562@6E" });
-    await seedRun({
-      id: "run-verified",
-      targets: [{ bindingId: "binding-1", nodePath: "/amba/i2c@FDF5E000/sc8562@OLD" }]
-    });
-    const recorder = recordingCreateDraft();
-
-    await expect(
-      promoteReloadRunToDrafts(
-        db,
-        auth(),
-        { runId: "run-verified", bindingIds: ["binding-1"] },
-        { createBindingDraft: recorder.createBindingDraft }
-      )
-    ).rejects.toMatchObject({
-      details: { code: "reload-promote-node-drift", bindingId: "binding-1" }
-    });
-    expect(recorder.calls).toHaveLength(0);
+  it("refuses node/source drift and historical targets without canonical pins", async () => {
+    await expect(promote(await seedRun({ nodePath: "/different-device-node" }))).rejects.toMatchObject({ details: { code: "reload-promote-node-drift" } });
+    const runId = await seedRun();
+    await db.query("update dts_reload_run_targets set canonical_source_ref='different-source' where reload_run_id=$1", [runId]);
+    await expect(promote(runId)).rejects.toMatchObject({ details: { code: "reload-promote-pin-drift" } });
+    await expect(promote(await seedRun({ pinless: true }))).rejects.toMatchObject({ details: { code: "reload-promote-unknown-target" } });
+    expect(await pendingCounts()).toEqual({ drafts: 0, requests: 0 });
   });
 
-  it("returns the existing draft when it already holds the same raw value from this run", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    await seedRun({ id: "run-verified", targets: [{ bindingId: "binding-1", debugValue: "<7000>" }] });
-    await insertOpenDraft({
-      id: "draft-existing",
-      bindingId: "binding-1",
-      targetValue: "<7000>",
-      reason: "reload-promote sourceReloadRunId=run-verified baseline=<6000> debug=<7000> verification=unbound"
-    });
-    const recorder = recordingCreateDraft();
-    const before = await readLibraryFingerprint(db, { organizationId: "org-1", projectId: "project-1" });
-
-    const result = await promoteReloadRunToDrafts(
-      db,
-      auth(),
-      { runId: "run-verified", bindingIds: ["binding-1"] },
-      { createBindingDraft: recorder.createBindingDraft }
-    );
-
-    expect(result.drafts).toEqual([
-      { bindingId: "binding-1", draftId: "draft-existing", outcome: "unchanged" }
-    ]);
-    expect(recorder.calls).toHaveLength(0);
-    const after = await readLibraryFingerprint(db, { organizationId: "org-1", projectId: "project-1" });
-    expect(after.draftCount).toBe(before.draftCount);
-    expect(await countChangeRequests()).toBe(0);
+  it("serializes repeat promotion and matches exact owner, target and reason", async () => {
+    const runId = await seedRun();
+    const results = await Promise.all([promote(runId), promote(runId)]);
+    expect(results.map((result) => result.drafts[0]!.outcome).sort()).toEqual(["created", "unchanged"]);
+    expect(results[0]!.drafts[0]!.draftId).toBe(results[1]!.drafts[0]!.draftId);
+    expect(await pendingCounts()).toEqual({ drafts: 1, requests: 0 });
+    await db.query("update project_parameter_value_drafts set reason=reason||' extra' where id=$1", [results[0]!.drafts[0]!.draftId]);
+    await expect(promote(runId)).rejects.toMatchObject({ details: { code: "reload-promote-open-draft" } });
   });
 
-  it("refuses to stack a different open draft or an in-flight change request on the same binding", async () => {
-    await seedCandidate({ bindingId: "binding-1" });
-    await seedRun({ id: "run-verified", targets: [{ bindingId: "binding-1" }] });
-    await insertOpenDraft({
-      id: "draft-other",
-      bindingId: "binding-1",
-      targetValue: "<8000>",
-      reason: "manual edit"
-    });
-    const recorder = recordingCreateDraft();
+  it("preserves another draft and pending requests instead of overwriting either", async () => {
+    const otherContext = { ...context, invocation: createUserInvocation(fixture.reviewerAuth) };
+    const draft = await createCanonicalValueDraft(db, fixture.reviewerAuth, { projectId: fixture.projectId, bindingId: fixture.bindingId,
+      baseRevisionId: fixture.configRevisionId, baseCurrentValueId: fixture.currentValueId, targetValue: parseDtsValue("iin_max", "<7>").value, reason: "Existing work" }, otherContext);
+    const runId = await seedRun();
+    await expect(promote(runId)).rejects.toMatchObject({ details: { code: "reload-promote-open-draft" } });
+    await submitCanonicalValueChange(db, fixture.reviewerAuth, { projectId: fixture.projectId, draftId: draft.id, ...otherContext });
+    await expect(promote(runId)).rejects.toMatchObject({ details: { code: "reload-promote-in-flight-cr" } });
+    expect(await pendingCounts()).toEqual({ drafts: 1, requests: 1 });
+  });
 
-    await expect(
-      promoteReloadRunToDrafts(
-        db,
-        auth(),
-        { runId: "run-verified", bindingIds: ["binding-1"] },
-        { createBindingDraft: recorder.createBindingDraft }
-      )
-    ).rejects.toMatchObject({
-      details: { code: "reload-promote-open-draft", bindingId: "binding-1" }
-    });
-    expect(recorder.calls).toHaveLength(0);
+  it("validates the entire selection before creating any draft", async () => {
+    await expect(promote(await seedRun(), { ids: [fixture.bindingId, "not-a-run-target"] })).rejects.toMatchObject({ details: { code: "reload-promote-unknown-target" } });
+    expect(await pendingCounts()).toEqual({ drafts: 0, requests: 0 });
+  });
+
+  it("rolls back the real prepared source and draft when the final audit fails", async () => {
+    const runId = await seedRun();
+    const candidatesBefore = (await db.query("select id from project_parameter_file_candidates")).rows;
+    await db.query(`create function public.issue898_reject_promotion_audit() returns trigger language plpgsql as $$
+      begin
+        if NEW.kind = 'reload-value-promoted-to-draft' then raise exception 'issue898 controlled audit failure'; end if;
+        return NEW;
+      end $$`);
+    await db.query(`create trigger issue898_reject_promotion_audit before insert on public.audit_events
+      for each row execute function public.issue898_reject_promotion_audit()`);
+    await expect(promote(runId)).rejects.toThrow("issue898 controlled audit failure");
+    expect(await pendingCounts()).toEqual({ drafts: 0, requests: 0 });
+    expect((await db.query("select id from project_parameter_file_candidates")).rows).toEqual(candidatesBefore);
+    expect((await db.query<{ current_value_id: string }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [fixture.bindingId])).rows[0]!.current_value_id).toBe(fixture.currentValueId);
   });
 });
-
-afterAll(async () => closeTestRefusalAuditSink());

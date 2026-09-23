@@ -25,6 +25,14 @@ const record: RuntimeTopologyRelocationRecord = JSON.parse(
 const fixture = await loadBoundaryViolationFixture(repoRoot);
 const allowances = (await loadAllowlistIndex(repoRoot)).entries;
 const temporaryRoots: string[] = [];
+const changedFiles = new Set([
+  "server/modules/parameter-modules/repository.ts",
+  "server/modules/parameter-modules/service.test.ts",
+  "server/modules/debugging/repository.ts",
+  "server/modules/dts-reload/behaviouralVerify.ts",
+  "server/modules/dts-reload/repository.ts",
+  "server/modules/parameter-topology/writeLock.ts",
+]);
 let discovered: BoundaryViolation[];
 
 beforeAll(async () => {
@@ -60,15 +68,12 @@ function rewrittenSliceConfig(path: string, sha256: string): RelocationConfig {
     recordSha256: sha256,
     activeFiles: record.files
       .map((section) => section.file)
-      .filter((file) =>
-        file !== "server/modules/parameter-modules/repository.ts"
-        && file !== "server/modules/parameter-modules/service.test.ts",
-      ),
+      .filter((file) => !changedFiles.has(file)),
   };
 }
 
 describe("T1.4 rewritten-slice current successor", () => {
-  it("keeps 45 unchanged-file destinations active while reserving two moved files for Issue #913", async () => {
+  it("keeps 23 unchanged-file destinations active while reserving changed files", async () => {
     const result = await runReviewedRelocationRecord(
       repoRoot,
       fixture,
@@ -80,9 +85,9 @@ describe("T1.4 rewritten-slice current successor", () => {
         "56216b0d2463f74a764159e86caf5fa3ab50d3f0e957b66362a840d2294b86a7",
       ),
     );
-    expect(result.relocations).toHaveLength(45);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(45);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(45);
+    expect(result.relocations).toHaveLength(23);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(23);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(23);
     const pairs = record.files.flatMap((section) => section.pairs);
     expect(pairs.every((pair) => pair.sourceSliceSha256 && pair.sliceSha256)).toBe(true);
     expect(

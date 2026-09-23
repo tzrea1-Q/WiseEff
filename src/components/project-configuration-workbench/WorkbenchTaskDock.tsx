@@ -6,6 +6,7 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   ParameterFileRepository,
+  ParameterFileSourceWorkflow,
   ParameterFileSyncConflict
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionDraftRow } from "@/application/project-configuration/sessionDrafts";
@@ -39,6 +40,8 @@ export type WorkbenchTaskDockProps = {
   submitError: string;
   projectId: string;
   fileRepository: ParameterFileRepository;
+  sourceWorkflowByFileId: Readonly<Record<string, ParameterFileSourceWorkflow | null>>;
+  sourceWorkflowLoading: boolean;
   onConflictsChange: (next: ParameterFileSyncConflict[]) => void;
   onLocateConflict: (conflict: ParameterFileSyncConflict) => void;
   canAdmin: boolean;
@@ -74,6 +77,8 @@ export function WorkbenchTaskDock({
   submitError,
   projectId,
   fileRepository,
+  sourceWorkflowByFileId,
+  sourceWorkflowLoading,
   onConflictsChange,
   onLocateConflict,
   canAdmin,
@@ -209,6 +214,8 @@ export function WorkbenchTaskDock({
               projectId={projectId}
               repository={fileRepository}
               conflicts={syncConflicts}
+              sourceWorkflowByFileId={sourceWorkflowByFileId}
+              sourceWorkflowLoading={sourceWorkflowLoading}
               onConflictsChange={onConflictsChange}
               onQueueEmpty={() => onTasksOpenChange(false)}
               onLocateConflict={onLocateConflict}

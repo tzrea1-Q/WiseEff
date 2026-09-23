@@ -1350,7 +1350,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0161 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0166 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1413,6 +1413,21 @@ describe("0138 Catalog role migration paths", () => {
         });
         await applyMigrations(db, migrationsDir, {
           through: "0161_canonical_property_delete_tombstone.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0162_canonical_dts_reload_pins.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0163_canonical_debug_binding_pins.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0164_canonical_debug_project_integrity.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0165_canonical_batch_value_requests.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0166_canonical_batch_applied_revision.sql",
         });
         upgrade = await aclFingerprint(db);
       },

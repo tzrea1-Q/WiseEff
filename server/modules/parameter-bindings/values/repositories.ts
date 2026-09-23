@@ -120,24 +120,31 @@ export async function requiresCanonicalSourceImport(tx: Queryable, input: { orga
   return result.rows.length !== 0;
 }
 
-/** Caller holds the source-prefix locks; this operation locks and reads its complete value cohort. */
-export async function loadSourceBindingCohort(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+async function querySourceBindingCohort(
+  tx: Queryable,
+  input: { organizationId: string; projectId: string; configSetId: string },
+  lock: boolean,
+) {
   const scope = [input.organizationId,input.projectId,input.configSetId];
   const occurrencesSql = `select id from parameter_catalog.project_parameter_source_occurrences
     where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id`;
   const occurrences = await tx.query(occurrencesSql,scope);
-  await tx.query(`${occurrencesSql} for update nowait`,scope);
-  if (JSON.stringify(occurrences.rows) !== JSON.stringify((await tx.query(occurrencesSql,scope)).rows)) {
-    throw new ApiError("CONFLICT", "Source occurrences changed during lock acquisition.", { reason: "source-proof-busy" });
+  if (lock) {
+    await tx.query(`${occurrencesSql} for update nowait`,scope);
+    if (JSON.stringify(occurrences.rows) !== JSON.stringify((await tx.query(occurrencesSql,scope)).rows)) {
+      throw new ApiError("CONFLICT", "Source occurrences changed during lock acquisition.", { reason: "source-proof-busy" });
+    }
   }
   const bindingsSql = `select binding.id from parameter_catalog.project_parameter_bindings binding
     join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
     order by binding.id`;
   const bindings = await tx.query(bindingsSql,scope);
-  await tx.query(`${bindingsSql} for update of binding nowait`,scope);
-  if (JSON.stringify(bindings.rows) !== JSON.stringify((await tx.query(bindingsSql,scope)).rows)) {
-    throw new ApiError("CONFLICT", "Source Bindings changed during lock acquisition.", { reason: "source-proof-busy" });
+  if (lock) {
+    await tx.query(`${bindingsSql} for update of binding nowait`,scope);
+    if (JSON.stringify(bindings.rows) !== JSON.stringify((await tx.query(bindingsSql,scope)).rows)) {
+      throw new ApiError("CONFLICT", "Source Bindings changed during lock acquisition.", { reason: "source-proof-busy" });
+    }
   }
   return (await tx.query<CanonicalSourceBindingPin>(`select binding.id as "bindingId",binding.current_value_id as "oldValueId",
     pin.id as "sourcePinId",binding.source_occurrence_id as "sourceOccurrenceId",binding.definition_id as "definitionId",
@@ -151,6 +158,16 @@ export async function loadSourceBindingCohort(tx: Queryable, input: { organizati
       and pin.source_occurrence_id=binding.source_occurrence_id
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3 order by binding.id`,
   [input.organizationId,input.projectId,input.configSetId])).rows;
+}
+
+/** Caller holds the source-prefix locks; this operation locks and reads its complete value cohort. */
+export async function loadSourceBindingCohort(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  return querySourceBindingCohort(tx, input, true);
+}
+
+/** Read-only cohort projection for previews and workflow discovery. It never takes row locks. */
+export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  return querySourceBindingCohort(tx, input, false);
 }
 
 /** Historical pin reads use exact owner/value identity, never the current file tip. */
@@ -432,6 +449,21 @@ export const casCurrentTip = async (
               and (request.binding_id<>binding.id or request.base_current_value_id=$2)
               and next_value.value_state=case when request.binding_id=binding.id and request.action='delete' then 'deleted' else 'present' end
               and request.candidate_binding_manifest @> jsonb_build_array(jsonb_build_object('bindingId',binding.id,'oldValueId',$2::text)))
+          or exists (select 1 from public.project_parameter_value_change_requests request
+            join parameter_catalog.project_value_source_pins base_pin
+              on base_pin.binding_id=binding.id and base_pin.project_value_id=$2
+             and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id
+             and base_pin.value_state='present'
+            join parameter_catalog.${projectParameterValues} next_value
+              on next_value.id=$3 and next_value.binding_id=binding.id
+            left join public.project_parameter_value_change_targets target
+              on target.request_id=request.id and target.binding_id=binding.id
+            where request.id=$4 and request.organization_id=binding.organization_id
+              and request.project_id=binding.project_id and request.status='pending'
+              and request.request_kind='batch'
+              and request.candidate_binding_manifest @> jsonb_build_array(jsonb_build_object('bindingId',binding.id,'oldValueId',$2::text))
+              and (target.id is null or (target.base_current_value_id=$2 and target.source_pin_id=base_pin.id))
+              and next_value.value_state=case when target.action='delete' then 'deleted' else 'present' end)
         )`,
     [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null],
   );

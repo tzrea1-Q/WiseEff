@@ -1,4 +1,12 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createPostgresDatabase } from "../../shared/database/client";
+import { createManagedInstanceTestDatabase } from "../../testing/testDatabase";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { seedCanonicalParameterFixture } from "./testing/canonicalReloadFixture";
+import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -76,8 +84,8 @@ describe.skipIf(!databaseAvailable)("dts-reload history", () => {
   });
 
   /**
-   * Seed the parameter-library graph behind one reload candidate binding
-   * (module → spec → spec version → dts property spec → logical node → binding → revision).
+   * Historical legacy graph: old reload history must remain readable after
+   * canonical cutover. Current candidate coverage below uses only canonical data.
    */
   async function seedCandidate(input: {
     bindingId: string;
@@ -314,7 +322,8 @@ describe.skipIf(!databaseAvailable)("dts-reload history", () => {
       });
       await seedRun({ id: "run-elsewhere", status: "verified", deviceId: null });
 
-      const result = await listReloadRuns(db, auth(), { deviceId: "bridge:lab-1" });
+      await expect(listReloadRuns(db, auth(), { deviceId: "bridge:lab-1" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      const result = await listReloadRuns(db, auth(), { projectId: "project-1", deviceId: "bridge:lab-1" });
       expect(result.items).toHaveLength(1);
       expect(result.items[0]?.id).toBe("run-restore");
       expect(result.items[0]?.purpose).toBe("restore-baseline");
@@ -520,22 +529,35 @@ describe.skipIf(!databaseAvailable)("dts-reload history", () => {
 
   describe("last reload projection on candidates", () => {
     it("enriches candidates with each parameter's last reload value, when, and outcome", async () => {
-      await seedCandidate({ bindingId: "binding-1", description: null });
-      await seedRun({
-        id: "run-9",
-        status: "contradicted",
-        completedAt: "2026-08-09T10:00:00.000Z",
-        targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
-      });
-
-      const result = await listReloadCandidates(db, auth(), "project-1");
-      expect(result.items[0]?.lastReload).toEqual({
-        runId: "run-9",
-        debugValue: "<7000>",
-        attemptedAt: "2026-08-09T10:00:00.000Z",
-        outcome: "contradicted",
-        purpose: "ordinary"
-      });
+      const database = await createManagedInstanceTestDatabase("898hist");
+      const root = createPostgresDatabase(database.url);
+      const storageRoot = await mkdtemp(join(tmpdir(), "wiseeff-898-history-"));
+      try {
+        const fixture = await seedCanonicalParameterFixture(root, createLocalObjectStore(storageRoot));
+        const pin = (await loadOwnedProjectValueSourcePin(root, { organizationId: fixture.organizationId,
+          projectId: fixture.projectId, bindingId: fixture.bindingId, projectValueId: fixture.currentValueId }))!;
+        const candidate = (await listReloadCandidates(root, fixture.editorAuth, fixture.projectId)).items[0]!;
+        await insertReloadRun(root, { id: "run-9", organizationId: fixture.organizationId, projectId: fixture.projectId,
+          configRevisionId: fixture.configRevisionId, status: "contradicted", purpose: "ordinary", failureCode: null,
+          steps: [], diagnostics: [], toolVersions: { dtc: null, fdtoverlay: null },
+          overlaySourceStorageKey: null, overlaySourceSha256: null, overlayArtifactStorageKey: null,
+          overlayArtifactSha256: null, overlayArtifactBytes: null, createdByUserId: fixture.editorAuth.user.id,
+          completedAt: "2026-08-09T10:00:00.000Z" });
+        await insertReloadRunTarget(root, { id: "target-run-9", reloadRunId: "run-9", bindingId: null,
+          canonicalBindingId: fixture.bindingId, canonicalDefinitionId: fixture.definitionId,
+          canonicalDefinitionRevisionId: fixture.definitionRevisionId, canonicalCurrentValueId: fixture.currentValueId,
+          canonicalCatalogReleaseId: fixture.catalogReleaseId, canonicalSourcePinId: pin.sourcePinId,
+          canonicalSourceOccurrenceId: pin.sourceOccurrenceId, canonicalConfigRevisionId: fixture.configRevisionId,
+          canonicalSourceRef: candidate.writebackSourcePin!.sourceRef, canonicalSourceFormat: "dts", canonicalSourceLocator: pin.locator,
+          nodePath: "/logical-898-canonical", propertyKey: "iin_max", baselineValue: "<5>", debugValue: "<6>", sortOrder: 0 });
+        const result = await listReloadCandidates(root, fixture.editorAuth, fixture.projectId);
+        expect(result.items[0]?.lastReload).toEqual({ runId: "run-9", debugValue: "<6>",
+          attemptedAt: "2026-08-09T10:00:00.000Z", outcome: "contradicted", purpose: "ordinary" });
+      } finally {
+        await root.close();
+        await database.drop();
+        await rm(storageRoot, { recursive: true, force: true });
+      }
     });
   });
 });

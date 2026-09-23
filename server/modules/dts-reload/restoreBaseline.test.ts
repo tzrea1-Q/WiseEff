@@ -91,6 +91,19 @@ function candidateRow() {
   return {
     binding_id: "binding-1",
     project_id: "project-1",
+    definition_id: "definition-1",
+    definition_revision_id: "definition-revision-1",
+    current_value_id: "value-1",
+    catalog_release_id: "release-1",
+    source_pin_id: "pin-1",
+    source_occurrence_id: "occurrence-1",
+    source_ref: "config-set:config-set-1",
+    source_format: "dts",
+    source_locator: { nodePath: "/amba/i2c@1/dev@6E", propertyKey: "watchdog_time" },
+    value_kind: "number",
+    value_payload: 6000,
+    definition_content: { unit: "ms" },
+    value_schema: { type: "number" },
     property_key: "watchdog_time",
     display_name: "Watchdog",
     module_id: "mod-charger",
@@ -136,10 +149,12 @@ function createRestoreDb(options: { residue: Record<string, unknown> | null }) {
       return { rows: [{ id: "config-set-1" }] as Row[], rowCount: 1 };
     }
 
-    if (normalized.includes("from project_parameter_files ppf")) {
+    if (normalized.includes("from dts_config_revision_members member")) {
       return {
         rows: [
           {
+            file_id: "file-1",
+            file_version_id: "file-version-1",
             file_name: "board.dts",
             role: "board",
             sort_order: 0,
@@ -190,7 +205,18 @@ function createRestoreDb(options: { residue: Record<string, unknown> | null }) {
       return {
         rows: [
           {
-            binding_id: "binding-1",
+            binding_id: null,
+            canonical_binding_id: "binding-1",
+            canonical_definition_id: "definition-1",
+            canonical_definition_revision_id: "definition-revision-1",
+            canonical_current_value_id: "value-1",
+            canonical_catalog_release_id: "release-1",
+            canonical_source_pin_id: "pin-1",
+            canonical_source_occurrence_id: "occurrence-1",
+            canonical_config_revision_id: "rev-1",
+            canonical_source_ref: "config-set:config-set-1",
+            canonical_source_format: "dts",
+            canonical_source_locator: { nodePath: "/amba/i2c@1/dev@6E", propertyKey: "watchdog_time" },
             node_path: "/amba/i2c@1/dev@6E",
             property_key: "watchdog_time",
             baseline_value: "<6000>",

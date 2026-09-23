@@ -4,6 +4,7 @@ import type {
   ParameterFileConflictBulkPreview,
   ParameterFileConflictResolution,
   ParameterFileRepository,
+  ParameterFileSourceWorkflow,
   ParameterFileSyncConflict
 } from "@/application/ports/ParameterFileRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -15,6 +16,9 @@ export type WorkbenchConflictArbitrationDockProps = {
   onConflictsChange?: (conflicts: ParameterFileSyncConflict[]) => void;
   onLocateConflict?: (conflict: ParameterFileSyncConflict) => void;
   onQueueEmpty?: () => void;
+  /** Project-file source workflow proofs. Unknown files are blocked by this gate. */
+  sourceWorkflowByFileId: Readonly<Record<string, ParameterFileSourceWorkflow | null>>;
+  sourceWorkflowLoading: boolean;
   /** Auto-call onLocateConflict when the active conflict changes. Default true. */
   autoLocate?: boolean;
   /** Optional controlled active conflict id. */
@@ -73,6 +77,8 @@ export function WorkbenchConflictArbitrationDock({
   onConflictsChange,
   onLocateConflict,
   onQueueEmpty,
+  sourceWorkflowByFileId,
+  sourceWorkflowLoading,
   autoLocate = true,
   activeConflictId,
   onActiveConflictIdChange
@@ -101,6 +107,27 @@ export function WorkbenchConflictArbitrationDock({
   }, [activeConflictId, controlled, internalIndex, openConflicts]);
 
   const activeConflict = openConflicts[activeIndex] ?? null;
+
+  const sourceGuardFor = (conflict: ParameterFileSyncConflict | null) => {
+    if (sourceWorkflowLoading) {
+      return { blocked: true, reason: "来源一致性仍在校验，暂不能裁决冲突。" };
+    }
+    const fileId = conflict?.fileId;
+    if (!fileId || !(fileId in sourceWorkflowByFileId)) {
+      return { blocked: true, reason: "冲突关联文件的来源一致性未知，暂不能裁决。" };
+    }
+    const workflow = sourceWorkflowByFileId[fileId];
+    if (!workflow) {
+      return { blocked: true, reason: "冲突关联文件的来源工作流加载失败，暂不能裁决。" };
+    }
+    if (workflow.canonical) {
+      return { blocked: true, reason: "canonical 来源冲突必须通过来源审核流程，不能直接裁决。" };
+    }
+    return { blocked: false, reason: "" };
+  };
+
+  const activeSourceGuard = sourceGuardFor(activeConflict);
+  const guardedOpenConflict = openConflicts.find((conflict) => sourceGuardFor(conflict).blocked);
 
   const onLocateRef = useRef(onLocateConflict);
   onLocateRef.current = onLocateConflict;
@@ -145,6 +172,10 @@ export function WorkbenchConflictArbitrationDock({
 
   const confirmResolve = async () => {
     if (!arbitration) return;
+    if (activeSourceGuard.blocked) {
+      setError(activeSourceGuard.reason);
+      return;
+    }
     setPending(true);
     setError("");
     try {
@@ -175,6 +206,10 @@ export function WorkbenchConflictArbitrationDock({
   };
 
   const startBulkPreview = async (resolution: ParameterFileConflictResolution) => {
+    if (guardedOpenConflict) {
+      setError(sourceGuardFor(guardedOpenConflict).reason);
+      return;
+    }
     setPending(true);
     setError("");
     setBulkChoosing(false);
@@ -195,6 +230,10 @@ export function WorkbenchConflictArbitrationDock({
 
   const confirmBulkResolve = async () => {
     if (!bulkPreview) return;
+    if (guardedOpenConflict) {
+      setError(sourceGuardFor(guardedOpenConflict).reason);
+      return;
+    }
     setPending(true);
     setError("");
     try {
@@ -253,7 +292,8 @@ export function WorkbenchConflictArbitrationDock({
             <button
               type="button"
               className="button subtle"
-              disabled={pending}
+              disabled={pending || Boolean(guardedOpenConflict)}
+              title={guardedOpenConflict ? sourceGuardFor(guardedOpenConflict).reason : undefined}
               onClick={() => {
                 setBulkChoosing(true);
                 setError("");
@@ -341,7 +381,8 @@ export function WorkbenchConflictArbitrationDock({
         <button
           type="button"
           className="button"
-          disabled={pending}
+          disabled={pending || activeSourceGuard.blocked}
+          title={activeSourceGuard.blocked ? activeSourceGuard.reason : undefined}
           onClick={() => {
             setReason("");
             setArbitration({ conflict: activeConflict, resolution: "file" });
@@ -352,7 +393,8 @@ export function WorkbenchConflictArbitrationDock({
         <button
           type="button"
           className="button"
-          disabled={pending}
+          disabled={pending || activeSourceGuard.blocked}
+          title={activeSourceGuard.blocked ? activeSourceGuard.reason : undefined}
           onClick={() => {
             setReason("");
             setArbitration({ conflict: activeConflict, resolution: "ui" });
@@ -361,6 +403,12 @@ export function WorkbenchConflictArbitrationDock({
           保留界面值
         </button>
       </div>
+
+      {activeSourceGuard.blocked ? (
+        <p className="parameter-file-conflict-panel__error" role="status">
+          {activeSourceGuard.reason}
+        </p>
+      ) : null}
 
       {error ? (
         <p className="parameter-file-conflict-panel__error" role="alert">
@@ -428,7 +476,8 @@ export function WorkbenchConflictArbitrationDock({
             <button
               type="button"
               className="button"
-              disabled={pending}
+              disabled={pending || Boolean(guardedOpenConflict)}
+              title={guardedOpenConflict ? sourceGuardFor(guardedOpenConflict).reason : undefined}
               onClick={() => void startBulkPreview("file")}
             >
               批量使用文件值
@@ -436,7 +485,8 @@ export function WorkbenchConflictArbitrationDock({
             <button
               type="button"
               className="button"
-              disabled={pending}
+              disabled={pending || Boolean(guardedOpenConflict)}
+              title={guardedOpenConflict ? sourceGuardFor(guardedOpenConflict).reason : undefined}
               onClick={() => void startBulkPreview("ui")}
             >
               批量保留界面值

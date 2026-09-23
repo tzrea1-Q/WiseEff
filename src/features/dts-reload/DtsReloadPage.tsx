@@ -177,7 +177,10 @@ export function DtsReloadPage({
     canRetryDeploy,
     handoffBindingIds
   } = useDtsReloadRunSession({
-    initialProjectId: initialProjectId ?? projects[0]?.id ?? "",
+    // A run deep link is authoritative about its project. Start without a
+    // guessed/default project so the mount effects cannot query another
+    // project's candidates or history before `openHistoryRun` resolves it.
+    initialProjectId: initialRunId ? "" : initialProjectId ?? projects[0]?.id ?? "",
     initialBridges: bridgesProp ?? [],
     initialTargetRef: initialTargetRef ?? "",
     initialBindingIds: initialBindingIds?.length ? initialBindingIds : undefined

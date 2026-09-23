@@ -117,6 +117,18 @@ export type CandidateImpact = {
   coverage?: CandidateCoverageEffect;
   conflicts?: CandidateConflictEvidence[];
   blockers?: CandidateBlocker[];
+  canonicalSourceWorkflow?: CanonicalSourceWorkflowLink;
+};
+
+export type CanonicalSourceWorkflowLink = {
+  kind: "canonical-source";
+  fingerprint: string;
+  bindingId: string;
+  sourcePinId: string;
+  preparedCandidateId: string;
+  draftId: string;
+  requestId: string;
+  status: "pending" | "approved" | "rejected" | "withdrawn";
 };
 
 export type ProjectParameterFileCandidateDto = {

@@ -3,21 +3,16 @@ import { randomUUID } from "node:crypto";
 import type { AuditCorrelationContext } from "../audit/types";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
-import { getConfigSetByProjectAndName } from "../parameter-files/configSetRepository";
-import { upsertBindingRevisionValues } from "../parameter-topology/bindingService";
-import {
-  getLatestConfigRevision,
-  insertConfigRevision,
-  nextConfigRevisionNumber
-} from "../parameter-topology/repository";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
-  getBindingLogicalNodeId,
+  assertSourceProjectsOwned,
   getDraftByProject,
   getProjectInitializationStatus as loadProjectInitializationStatus,
   getReviewById,
+  getReviewByIdForUpdate,
   insertReview,
+  lockProjectInitialization,
   listPendingReviews as listPendingReviewsFromRepo,
   listSourceBindingCandidates,
   markReviewApproved,
@@ -35,9 +30,21 @@ import type {
 } from "./initializationTypes";
 import { mergeInitializationBindingCandidates } from "./mergeInitializationBindings";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
-import { createRecognizedBinding } from "../parameter-specs/effectiveDefinitionService";
+import type { TrustedInvocationContext } from "../auth/trustedInvocation";
+import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import type { ObjectStore } from "../logs/objectStore";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
+import {
+  cleanupCanonicalInitializationObjects,
+  cloneCanonicalInitializationSource,
+} from "../parameter-files/canonicalInitializationSource";
 
-export type InitializationServiceContext = AuditCorrelationContext;
+export type InitializationServiceContext = AuditCorrelationContext & {
+  invocation?: TrustedInvocationContext;
+  refusalSink?: TrustedRefusalAuditSink;
+  objectStore?: ObjectStore;
+  catalogSnapshot?: CatalogSnapshot;
+};
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
@@ -114,6 +121,7 @@ function toSnapshotItems(
     id: randomUUID(),
     sourceProjectId: item.sourceProjectId,
     sourceProjectParameterBindingId: item.sourceBindingId,
+    sourceProjectValueId: item.sourceProjectValueId,
     sourceRole: item.sourceRole,
     parameterSpecId: item.parameterSpecId,
     parameterSpecVersionId: item.parameterSpecVersionId,
@@ -124,112 +132,49 @@ function toSnapshotItems(
     rawValue: item.rawValue,
     currentValueState: item.currentValueState,
     alternativeSourceBindingIds: item.alternativeSourceBindingIds,
+    alternativeSourceValueIds: item.alternativeSourceValueIds,
+    sourceConfigSetId: item.sourceConfigSetId,
+    sourceConfigRevisionId: item.sourceConfigRevisionId,
+    sourceOccurrenceId: item.sourceOccurrenceId,
+    sourceFormat: item.sourceFormat,
+    sourceName: item.sourceName,
+    sourceLocatorLabel: item.sourceLocatorLabel,
     needsEffectiveValueConfirmation: item.needsEffectiveValueConfirmation
   }));
 }
 
-async function ensureTargetConfigRevision(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    projectId: string;
-    createdByUserId: string;
+function requireCanonicalApprovalContext(context: InitializationServiceContext) {
+  if (!context.requestId?.trim() || !context.invocation || !context.refusalSink || !context.objectStore || !context.catalogSnapshot) {
+    throw new ApiError("CONFLICT", "Canonical initialization approval requires trusted invocation, refusal, storage, and Catalog context.");
   }
-) {
-  const configSet = await getConfigSetByProjectAndName(db, {
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    name: "default"
-  });
-  if (!configSet) {
-    throw new ApiError(
-      "CONFLICT",
-      "Default config set is required before materializing initialization bindings.",
-      { projectId: input.projectId }
-    );
-  }
-
-  const latest = await getLatestConfigRevision(db, {
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    configSetId: configSet.id
-  });
-  if (latest) {
-    return latest;
-  }
-
-  const revisionNumber = await nextConfigRevisionNumber(db, configSet.id);
-  return insertConfigRevision(db, {
-    id: randomUUID(),
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    configSetId: configSet.id,
-    revisionNumber,
-    status: "draft",
-    createdByUserId: input.createdByUserId
-  });
+  return {
+    requestId: context.requestId,
+    invocation: context.invocation,
+    refusalSink: context.refusalSink,
+    objectStore: context.objectStore,
+    catalogSnapshot: context.catalogSnapshot
+  };
 }
 
-async function materializeSnapshots(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    projectId: string;
-    createdByUserId: string;
-    snapshots: InitializationSnapshotItemDto[];
-  }
+function snapshotIdentity(item: InitializationSnapshotItemDto) {
+  return [
+    item.sourceProjectParameterBindingId,
+    item.sourceProjectValueId,
+    item.parameterSpecId,
+    item.parameterSpecVersionId,
+    item.sourceOccurrenceId ?? ""
+  ].join("\u0000");
+}
+
+function requirePreviewSnapshotMatch(
+  requested: InitializationSnapshotItemDto[],
+  canonical: InitializationSnapshotItemDto[]
 ) {
-  if (input.snapshots.length === 0) return;
-
-  const revision = await ensureTargetConfigRevision(db, {
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    createdByUserId: input.createdByUserId
-  });
-
-  for (const snapshot of input.snapshots) {
-    if (!snapshot.parameterSpecId || !snapshot.moduleId || !snapshot.parameterSpecVersionId) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Initialization snapshot is missing required binding identity fields.",
-        { snapshotId: snapshot.id }
-      );
-    }
-
-    const logicalNodeId = await getBindingLogicalNodeId(db, {
-      organizationId: input.organizationId,
-      bindingId: snapshot.sourceProjectParameterBindingId
-    });
-
-    const { binding } = await createRecognizedBinding(db, {
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      logicalNodeId,
-      parameterSpecId: snapshot.parameterSpecId,
-      parameterSpecVersionId: snapshot.parameterSpecVersionId,
-      moduleId: snapshot.moduleId,
-    });
-
-    const typedValue =
-      snapshot.effectiveValue ??
-      ({ kind: "raw", rawText: snapshot.rawValue } satisfies { kind: "raw"; rawText: string });
-
-    await upsertBindingRevisionValues(db, {
-      bindingId: binding.id,
-      configRevisionId: revision.id,
-      parameterSpecVersionId: snapshot.parameterSpecVersionId,
-      values: {
-        typedValue,
-        canonicalValue: snapshot.effectiveValue ?? undefined,
-        rawValue: snapshot.rawValue,
-        schemaState: "initialized"
-      },
-      tenant: {
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        configRevisionId: revision.id
-      }
-    });
+  const expected = new Set(canonical.map(snapshotIdentity));
+  const received = new Set(requested.map(snapshotIdentity));
+  if (expected.size !== canonical.length || received.size !== requested.length
+    || requested.length !== canonical.length || requested.some((item) => !expected.has(snapshotIdentity(item)))) {
+    throw new ApiError("CONFLICT", "Initialization preview is stale; refresh canonical source choices before saving.");
   }
 }
 
@@ -259,7 +204,7 @@ export async function upsertDraft(
   validateDraftShape(input);
 
   return db.transaction(async (tx) => {
-    const existingStatus = await loadProjectInitializationStatus(tx, {
+    const existingStatus = await lockProjectInitialization(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId
     });
@@ -274,6 +219,24 @@ export async function upsertDraft(
       );
     }
 
+    let persistedInput = input;
+    if (!input.emptyLibrary) {
+      await assertSourceProjectsOwned(tx, {
+        organizationId: auth.organization.id,
+        projectIds: input.sourceProjectIds,
+      });
+      const canonical = await previewSnapshot(tx, auth, {
+        projectId: input.projectId,
+        primarySourceProjectId: input.primarySourceProjectId,
+        supplementSourceProjectIds: input.supplementSourceProjectIds,
+        selectedSourceBindingIds: input.selectedSourceBindingIds,
+        selectedModuleIds: input.selectedModuleIds,
+        selectedRisks: input.selectedRisks,
+      });
+      requirePreviewSnapshotMatch(input.bindingSnapshots, canonical);
+      persistedInput = { ...input, bindingSnapshots: canonical };
+    }
+
     const existing = await getDraftByProject(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId
@@ -282,7 +245,7 @@ export async function upsertDraft(
       organizationId: auth.organization.id,
       id: existing?.id ?? randomUUID(),
       createdByUserId: auth.user.id,
-      draft: input
+      draft: persistedInput
     });
 
     await setProjectInitializationStatus(tx, {
@@ -307,6 +270,11 @@ export async function previewSnapshot(
     return [];
   }
 
+  await assertSourceProjectsOwned(db, {
+    organizationId: auth.organization.id,
+    projectIds: [input.primarySourceProjectId, ...input.supplementSourceProjectIds],
+  });
+
   const supplementIds = input.supplementSourceProjectIds.filter((id) => id !== input.primarySourceProjectId);
   const primary = await listSourceBindingCandidates(db, {
     organizationId: auth.organization.id,
@@ -329,12 +297,20 @@ export async function previewSnapshot(
     );
   }
 
-  return toSnapshotItems(
+  const snapshots = toSnapshotItems(
     mergeInitializationBindingCandidates({
       primary,
       supplements
     })
   );
+  if (input.selectedSourceBindingIds?.length) {
+    const selected = new Set(input.selectedSourceBindingIds);
+    const returned = new Set(snapshots.map((item) => item.sourceProjectParameterBindingId));
+    if ([...selected].some((bindingId) => !returned.has(bindingId))) {
+      throw new ApiError("CONFLICT", "A selected source Binding has no current canonical value and exact source pin.");
+    }
+  }
+  return snapshots;
 }
 
 export async function submitDraft(
@@ -346,7 +322,7 @@ export async function submitDraft(
   requireCanEdit(auth, input.projectId);
 
   return db.transaction(async (tx) => {
-    const status = await loadProjectInitializationStatus(tx, {
+    const status = await lockProjectInitialization(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId
     });
@@ -426,7 +402,29 @@ export async function approveReview(
   requireCanAdmin(auth);
 
   return db.transaction(async (tx) => {
-    const review = await getReviewById(tx, {
+    // Every lifecycle mutation takes the project lock before the review lock.
+    // This keeps approval/rejection ordered with draft upsert/submit and
+    // prevents a submitted review from being paired with a later draft edit.
+    const createdStorageKeys: string[] = [];
+    let cleanupStore: ObjectStore | undefined;
+    try {
+    const reviewHint = await getReviewById(tx, {
+      organizationId: auth.organization.id,
+      reviewId: input.reviewId
+    });
+    if (!reviewHint) {
+      throw new ApiError("NOT_FOUND", "Initialization review was not found.", {
+        reviewId: input.reviewId
+      });
+    }
+    const projectStatus = await lockProjectInitialization(tx, {
+      organizationId: auth.organization.id,
+      projectId: reviewHint.projectId
+    });
+    if (!projectStatus) {
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: reviewHint.projectId });
+    }
+    const review = await getReviewByIdForUpdate(tx, {
       organizationId: auth.organization.id,
       reviewId: input.reviewId
     });
@@ -434,6 +432,9 @@ export async function approveReview(
       throw new ApiError("NOT_FOUND", "Initialization review was not found.", {
         reviewId: input.reviewId
       });
+    }
+    if (review.status === "approved") {
+      return review;
     }
     if (review.status !== "pending") {
       throw new ApiError("CONFLICT", "Initialization review is not pending approval.", {
@@ -454,12 +455,12 @@ export async function approveReview(
     }
 
     if (!draft.emptyLibrary) {
-      await materializeSnapshots(tx, {
-        organizationId: auth.organization.id,
-        projectId: review.projectId,
-        createdByUserId: auth.user.id,
-        snapshots: draft.bindingSnapshots
-      });
+      const canonical = requireCanonicalApprovalContext(context);
+      cleanupStore = canonical.objectStore;
+      await cloneCanonicalInitializationSource(tx, canonical.objectStore, auth, {
+        targetProjectId: review.projectId,
+        snapshots: draft.bindingSnapshots,
+      }, { ...canonical, createdStorageKeys });
     }
 
     const approved = await markReviewApproved(tx, {
@@ -497,6 +498,12 @@ export async function approveReview(
     });
 
     return approved;
+    } catch (error) {
+      if (cleanupStore) {
+        await cleanupCanonicalInitializationObjects(cleanupStore, createdStorageKeys, error);
+      }
+      throw error;
+    }
   });
 }
 
@@ -514,7 +521,25 @@ export async function rejectReview(
   }
 
   return db.transaction(async (tx) => {
-    const review = await getReviewById(tx, {
+    // Match approval's project -> review lock order so reject cannot race a
+    // draft upsert or deadlock with an in-flight approval.
+    const reviewHint = await getReviewById(tx, {
+      organizationId: auth.organization.id,
+      reviewId: input.reviewId
+    });
+    if (!reviewHint) {
+      throw new ApiError("NOT_FOUND", "Initialization review was not found.", {
+        reviewId: input.reviewId
+      });
+    }
+    const projectStatus = await lockProjectInitialization(tx, {
+      organizationId: auth.organization.id,
+      projectId: reviewHint.projectId
+    });
+    if (!projectStatus) {
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: reviewHint.projectId });
+    }
+    const review = await getReviewByIdForUpdate(tx, {
       organizationId: auth.organization.id,
       reviewId: input.reviewId
     });

@@ -19,6 +19,7 @@ import { verifyHistoricalEditServiceVersionIndexRelocation, editServiceVersionIn
 import type { BoundaryViolation } from "./schema";
 import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
 import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
+import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
 import * as historicalExports from "./runtimeTopologyRelocation";
 
 const repoRoot = process.cwd();
@@ -34,15 +35,23 @@ const temporaryRoots: string[] = [];
 let discovered: BoundaryViolation[];
 const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T14RetiredSourceIds];
 const issue900RetiredIds = new Set(issue900Retirement.retiredAllowlistEntries.map((entry) => entry.id));
+const issue853CRemainderRetiredIds = await loadIssue853CRemainderRetiredSourceIds(repoRoot);
+const issue853DRetiredIds = (JSON.parse(await readFile(join(
+  repoRoot, "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json",
+), "utf8")) as { retiredIds: string[] }).retiredIds;
 
 function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
-  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds]);
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
+    ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds]);
   expect(issue900RetiredIds.size).toBe(13);
   expect(issue913StaleRetiredSourceIds).toHaveLength(17);
   expect(issue913T14RetiredSourceIds).toHaveLength(4);
-  expect(retired.size).toBe(34);
-  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(34);
-  expect(removed).toHaveLength(28 + 13 + 17 + 4);
+  expect(issue853CActionRetiredSourceIds).toHaveLength(2);
+  expect(issue853CRemainderRetiredIds).toHaveLength(42);
+  expect(issue853DRetiredIds).toHaveLength(22);
+  expect(retired.size).toBe(100);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(100);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2 + 42 + 22);
   expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
     .toEqual([...retired].sort());
   expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
@@ -106,12 +115,16 @@ describe("source workflow exact identity successor", () => {
     const historicalRetired = new Set<string>(historicalRetiredIds);
     const issue913ShardRetired = new Set<string>(issue913ShardRetiredIds);
     const issue900ShardRetired = name === "s12-prj.json" ? issue900RetiredIds : new Set<string>();
-    const retired = new Set<string>([...historicalRetired, ...issue913ShardRetired, ...issue900ShardRetired]);
+    const issue853DShardRetired = name === "s12-prj.json" ? new Set(issue853DRetiredIds) : new Set<string>();
+    const retired = new Set<string>([...historicalRetired, ...issue913ShardRetired,
+      ...issue900ShardRetired, ...issue853DShardRetired]);
     expect(previous.entries.filter((entry) => historicalRetired.has(entry.id))).toHaveLength(historicalRetired.size);
     expect(previous.entries.filter((entry) => issue913ShardRetired.has(entry.id)).map((entry) => entry.id).sort())
       .toEqual([...issue913ShardRetired].sort());
     expect(previous.entries.filter((entry) => issue900ShardRetired.has(entry.id)).map((entry) => entry.id).sort())
       .toEqual([...issue900ShardRetired].sort());
+    expect(previous.entries.filter((entry) => issue853DShardRetired.has(entry.id)).map((entry) => entry.id).sort())
+      .toEqual([...issue853DShardRetired].sort());
     if (name === "s12-prj.json") {
       expect(issue913StaleRetiredSourceIds.filter((id) => id.startsWith("S12-PRJ:")).sort())
         .toEqual([...issue913ShardRetired].sort());

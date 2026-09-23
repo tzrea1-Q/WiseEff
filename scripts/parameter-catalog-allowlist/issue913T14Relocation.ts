@@ -8,12 +8,14 @@ import {
 } from "./runtimeTopologyRelocation";
 import { t14FamilySuccessorRelocationConfig } from "./t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationConfig } from "./t14RewrittenSliceSuccessorRelocation";
+import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
+import { loadIssue853DRetiredSourceIds } from "./issue853DRelocation";
 
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
 const serviceTestFile = "server/modules/parameter-modules/service.test.ts";
 
 export const issue913T14SuccessorPairCount = 45;
-export const issue913T14ExpectedActiveRelocationCount = 318;
+export const issue913T14ExpectedActiveRelocationCount = 267;
 export const issue913T14RetiredSourceIds = [
   "S12-MOD:legacy-catalog-table-name:860a2404dfe5c6b4:8cd263657607ec3e",
   "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:7d4a0c6f2bb42f1c",
@@ -30,6 +32,16 @@ export const issue913T14ServiceSuccessorRelocationRecordPath =
 
 const changedFiles = [repositoryFile, serviceTestFile] as const;
 const changedFileSet = new Set<string>(changedFiles);
+const issue853ChangedFiles = new Set([
+  "server/modules/agent/tools/actionTools.ts",
+  "server/modules/debugging/repository.ts",
+  "server/modules/dts-reload/behaviouralVerify.ts",
+  "server/modules/dts-reload/repository.ts",
+  "server/modules/dts-reload/service.test.ts",
+  "server/modules/parameter-topology/writeLock.ts",
+  "server/modules/parameter-files/conflictService.test.ts",
+  "server/modules/parameter-files/syncService.test.ts",
+]);
 const retiredSourceIdSet = new Set<string>(issue913T14RetiredSourceIds);
 const history = {
   commit: "097ad35625cc8ca2401f2cd028404f16a18a75ba",
@@ -85,16 +97,22 @@ export async function applyReviewedIssue913T14Relocation(
     return { violations: [...discovered], relocations: [] };
   }
 
+  const remainderRetiredIds = await loadIssue853CRemainderRetiredSourceIds(repoRoot);
+  const dRetiredIds = await loadIssue853DRetiredSourceIds(repoRoot);
   requireT14(
-    issue913T14RetiredSourceIds.every((id) => !allowances.some((entry) => entry.id === id)),
+    [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds, ...remainderRetiredIds, ...dRetiredIds]
+      .every((id) => !allowances.some((entry) => entry.id === id)),
     "retired sources remain allowlisted",
   );
   requireT14(
-    issue913T14RetiredSourceIds.every((id) => !discovered.some((entry) => entry.id === id)),
+    [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds, ...remainderRetiredIds, ...dRetiredIds]
+      .every((id) => !discovered.some((entry) => entry.id === id)),
     "retired source reappeared in the current scan",
   );
 
-  const historicalAllowances = withRetiredHistoricalAllowances(fixture, allowances);
+  const historicalAllowances = withRetiredHistoricalAllowances(
+    fixture, allowances, [...remainderRetiredIds, ...dRetiredIds],
+  );
   const [familyProof, rewrittenProof] = await Promise.all([
     verifyHistoricalRelocationProof(
       repoRoot,
@@ -123,7 +141,7 @@ export async function applyReviewedIssue913T14Relocation(
       activeFiles: activeUnchangedFiles(t14FamilySuccessorRelocationConfig),
     },
   );
-  requireT14(family.relocations.length === 228, "active family historical subset");
+  requireT14(family.relocations.length === 199, "active family historical subset");
 
   const familyAndPrior = [...existingRelocations, ...family.relocations];
   const rewritten = await runReviewedRelocationRecord(
@@ -137,7 +155,7 @@ export async function applyReviewedIssue913T14Relocation(
       activeFiles: activeUnchangedFiles(t14RewrittenSliceSuccessorRelocationConfig),
     },
   );
-  requireT14(rewritten.relocations.length === 45, "active rewritten historical subset");
+  requireT14(rewritten.relocations.length === 23, "active rewritten historical subset");
 
   const familyChangedPairs = familyProof.pairs.filter((pair) => changedFileSet.has(pair.old.file));
   const rewrittenChangedPairs = rewrittenProof.pairs.filter((pair) => changedFileSet.has(pair.old.file));
@@ -269,15 +287,17 @@ function requireExactSourceIds(
 }
 
 function activeUnchangedFiles(config: RelocationConfig) {
-  return config.files.map(({ file }) => file).filter((file) => !changedFileSet.has(file));
+  return config.files.map(({ file }) => file)
+    .filter((file) => !changedFileSet.has(file) && !issue853ChangedFiles.has(file));
 }
 
 function withRetiredHistoricalAllowances(
   fixture: BoundaryViolationFixture,
   allowances: readonly AllowlistEntry[],
+  remainderRetiredIds: readonly string[],
 ) {
   const historical = [...allowances];
-  for (const id of issue913T14RetiredSourceIds) {
+  for (const id of [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds, ...remainderRetiredIds]) {
     const baseline = fixture.violations.find((entry) => entry.id === id);
     requireT14(baseline !== undefined, "retired source missing from historical fixture");
     historical.push({ id, rule: baseline.rule, file: baseline.file, reason: baseline.reason });

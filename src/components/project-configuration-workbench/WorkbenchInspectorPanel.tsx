@@ -14,10 +14,14 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   ParameterFileCandidate,
+  ParameterFileSourcePreview,
+  ParameterFileSourceReviewResult,
+  ParameterFileSourceWorkflow,
   ProjectParameterFile,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionPropertyDraft } from "@/application/project-configuration/sessionDrafts";
+import { sourceReviewReason } from "@/application/project-configuration/sourceReviewReason";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import {
@@ -81,6 +85,15 @@ export type WorkbenchInspectorPanelProps = {
   onExitBaselineCompare: () => void;
   onSelectBaselineCompareMember: (member: DtsBaselineMemberComparison) => void;
   activeCandidate: ParameterFileCandidate | null;
+  sourcePreview: ParameterFileSourcePreview | null;
+  sourcePreviewLoading: boolean;
+  sourcePreviewError: string;
+  canSubmitSourceReview: boolean;
+  submittingSourceReview: boolean;
+  sourceReviewError: string;
+  sourceReviewResult: ParameterFileSourceReviewResult | null;
+  onSubmitSourceReview: () => void;
+  onOpenReview: () => void;
   canRecompute: boolean;
   canActivate: boolean;
   canAbandon: boolean;
@@ -105,6 +118,14 @@ export type WorkbenchInspectorPanelProps = {
   onAddMember: () => void;
   onRequestRemoveMember: (member: DtsConfigSetMemberFile) => void;
   onSyncFile: () => void;
+  sourceWorkflow: ParameterFileSourceWorkflow | null;
+  sourceWorkflowLoading: boolean;
+  sourceWorkflowError: string;
+  sourceWorkflowSetLoading: boolean;
+  sourceWorkflowSetReady: boolean;
+  sourceWorkflowSetCanonical: boolean;
+  sourceWorkflowSetError: string;
+  onRetrySourceWorkflow: () => void;
   fileVersions: ProjectParameterFileVersion[];
   versionsLoading: boolean;
   versionsError: string;
@@ -154,6 +175,14 @@ export function WorkbenchInspectorPanel({
   onExitBaselineCompare,
   onSelectBaselineCompareMember,
   activeCandidate,
+  sourcePreview,
+  sourcePreviewLoading,
+  sourcePreviewError,
+  canSubmitSourceReview,
+  submittingSourceReview,
+  sourceReviewResult,
+  onSubmitSourceReview,
+  onOpenReview,
   canRecompute,
   canActivate,
   canAbandon,
@@ -178,6 +207,14 @@ export function WorkbenchInspectorPanel({
   onAddMember,
   onRequestRemoveMember,
   onSyncFile,
+  sourceWorkflow,
+  sourceWorkflowLoading,
+  sourceWorkflowError,
+  sourceWorkflowSetLoading,
+  sourceWorkflowSetReady,
+  sourceWorkflowSetCanonical,
+  sourceWorkflowSetError,
+  onRetrySourceWorkflow,
   fileVersions,
   versionsLoading,
   versionsError,
@@ -196,6 +233,25 @@ export function WorkbenchInspectorPanel({
   canEdit,
   revisionGate
 }: WorkbenchInspectorPanelProps) {
+  const sourceWorkflowUnknown = Boolean(selectedMember) && !sourceWorkflow && !sourceWorkflowError;
+  const sourceMutationBlocked = sourceWorkflowLoading || Boolean(sourceWorkflowError) || sourceWorkflowUnknown;
+  const selectedSourceCanonical = sourceWorkflow?.canonical === true;
+  const sourceSetMutationBlocked =
+    sourceWorkflowSetLoading ||
+    !sourceWorkflowSetReady ||
+    Boolean(sourceWorkflowSetError) ||
+    sourceWorkflowSetCanonical;
+  const sourceMutationReason = sourceWorkflowError
+    ? sourceWorkflowError
+    : sourceWorkflow?.reason ?? "canonical 来源成员必须通过来源审核流程。";
+  const sourceSetMutationReason = sourceWorkflowSetError
+    ? sourceWorkflowSetError
+    : sourceWorkflowSetCanonical
+      ? "当前配置集包含 canonical 来源成员，成员变更必须通过来源审核流程。"
+      : selectedMembers.length === 0
+        ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
+      : "配置集来源一致性尚未完成校验，成员变更已禁用。";
+
   return (
     <aside
       className={
@@ -304,6 +360,95 @@ export function WorkbenchInspectorPanel({
                 <dt>对照活跃版本</dt>
                 <dd className="mono">{activeCandidate.baseVersionId ?? "新文件候选"}</dd>
               </div>
+              {sourcePreviewLoading ? (
+                <div>
+                  <dt>来源预览</dt>
+                  <dd role="status">正在加载服务端来源快照…</dd>
+                </div>
+              ) : null}
+              {sourcePreviewError ? (
+                <div>
+                  <dt>来源预览</dt>
+                  <dd>
+                    <p role="alert">{sourcePreviewError}</p>
+                    <p>来源状态未知，激活与来源审核均已禁用。</p>
+                  </dd>
+                </div>
+              ) : null}
+              {sourcePreview ? (
+                <>
+                  <div>
+                    <dt>来源工作流</dt>
+                    <dd>
+                      {sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
+                      {sourcePreview.reason ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
+                    </dd>
+                  </div>
+                  {sourcePreview.kind === "canonical" ? (
+                    <>
+                      <div>
+                        <dt>来源精确身份</dt>
+                        <dd className="mono">
+                          {[
+                            sourcePreview.bindingId && `binding ${sourcePreview.bindingId}`,
+                            sourcePreview.definitionId && `definition ${sourcePreview.definitionId}`,
+                            sourcePreview.configRevisionId && `revision ${sourcePreview.configRevisionId}`,
+                            sourcePreview.baseCurrentValueId && `value ${sourcePreview.baseCurrentValueId}`,
+                            sourcePreview.sourcePinId && `pin ${sourcePreview.sourcePinId}`,
+                            sourcePreview.locator && `locator ${sourcePreview.locator}`
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || (sourcePreview.bindings?.length
+                              ? `${sourcePreview.bindings.length} 个绑定的身份见下方目标列表`
+                              : "缺少服务端来源身份")}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>字节证明</dt>
+                        <dd>
+                          <div>{sourcePreview.bindings && sourcePreview.bindings.length > 1
+                            ? `${sourcePreview.bindings.length} 个参数绑定的只读差异证明`
+                            : "单参数变更校验"}</div>
+                          <div className="mono">格式：{sourcePreview.format.toLowerCase() === "json" ? "JSON" : sourcePreview.format.toUpperCase()}</div>
+                          {sourcePreview.bindings && sourcePreview.bindings.length > 1 ? (
+                            <ol aria-label="来源变更目标">
+                              {sourcePreview.bindings.map((binding) => (
+                                <li key={binding.bindingId}>
+                                  <div className="mono">{binding.locator}</div>
+                                  <div>{binding.action === "delete" ? "删除属性" : "设置值"}：{binding.beforeText} → {binding.afterText ?? "已删除"}</div>
+                                </li>
+                              ))}
+                            </ol>
+                          ) : null}
+                          <details>
+                            <summary>完整字节摘要与来源身份</summary>
+                            <div className="mono">基准摘要：{sourcePreview.baseDigest ?? "缺失"}</div>
+                            <div className="mono">提议摘要：{sourcePreview.proposedDigest ?? "缺失"}</div>
+                            {sourcePreview.bindings && sourcePreview.bindings.length > 1 ? sourcePreview.bindings.map((binding) => (
+                              <div className="mono" key={binding.bindingId}>binding {binding.bindingId} · pin {binding.sourcePinId}</div>
+                            )) : null}
+                          </details>
+                          {sourcePreview.before != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.before}</pre> : null}
+                          {sourcePreview.after != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.after}</pre> : null}
+                        </dd>
+                      </div>
+                      {sourcePreview.request || sourceReviewResult ? (
+                        <div>
+                          <dt>来源审核</dt>
+                          <dd>
+                            <span>
+                              请求 {sourcePreview.request?.id ?? sourceReviewResult?.requestId} · 状态 {sourcePreview.request?.status ?? sourceReviewResult?.status}
+                            </span>
+                            <button className="button subtle" type="button" onClick={onOpenReview}>
+                              查看审核
+                            </button>
+                          </dd>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
               <div>
                 <dt>诊断</dt>
                 <dd>
@@ -383,10 +528,28 @@ export function WorkbenchInspectorPanel({
                     激活候选
                   </button>
                 ) : null}
+                {sourcePreview?.kind === "canonical" ? (
+                  <button
+                    className="button primary"
+                    type="button"
+                    disabled={!canSubmitSourceReview || submittingSourceReview}
+                    title={!canSubmitSourceReview ? sourceReviewReason(sourcePreview.reason) : undefined}
+                    onClick={onSubmitSourceReview}
+                  >
+                    {submittingSourceReview ? "提交中…" : "提交来源变更审核"}
+                  </button>
+                ) : null}
                 {canAbandon ? (
                   <button className="button subtle" type="button" onClick={onAbandonCandidate}>
                     放弃候选
                   </button>
+                ) : null}
+                {sourcePreview?.request?.status === "pending" || sourcePreview?.request?.status === "approved" ? (
+                  <p className="configuration-workbench__locked" role="note">
+                    {sourcePreview.request.status === "pending"
+                      ? "已有待处理的来源审核，请等待审核完成后再放弃或重算候选。"
+                      : "来源审核已通过，候选仍保留审核关联，不能放弃或重算。"}
+                  </p>
                 ) : null}
               </div>
             </>
@@ -475,6 +638,21 @@ export function WorkbenchInspectorPanel({
               </div>
               <section className="configuration-workbench__member-ops" aria-label="成员管理">
                 <strong>成员管理</strong>
+                {sourceWorkflowSetLoading ? <p role="status">正在校验配置集来源成员…</p> : null}
+                {sourceWorkflowSetError ? (
+                  <div role="alert">
+                    <p>{sourceSetMutationReason} 成员变更已禁用。</p>
+                    <button className="button subtle" type="button" onClick={onRetrySourceWorkflow}>
+                      重试来源校验
+                    </button>
+                  </div>
+                ) : null}
+                {sourceWorkflowSetCanonical ? (
+                  <p role="note">{sourceSetMutationReason} 当前配置集成员不能直接增删。</p>
+                ) : null}
+                {!sourceWorkflowSetReady && !sourceWorkflowSetLoading && !sourceWorkflowSetError ? (
+                  <p role="note">{sourceSetMutationReason}</p>
+                ) : null}
                 {selectedMembers.length === 0 ? (
                   <p>尚无成员。从下方未编组文件编入，或使用表单添加。</p>
                 ) : (
@@ -489,7 +667,10 @@ export function WorkbenchInspectorPanel({
                             className="button subtle"
                             type="button"
                             aria-label={`移除 ${member.fileName}`}
-                            disabled={pendingAction !== null}
+                            disabled={
+                              pendingAction !== null ||
+                              sourceSetMutationBlocked
+                            }
                             onClick={() => onRequestRemoveMember(member)}
                           >
                             移除
@@ -545,7 +726,8 @@ export function WorkbenchInspectorPanel({
                     <button
                       className="button subtle"
                       type="button"
-                      disabled={!memberFileId || pendingAction !== null}
+                      disabled={!memberFileId || pendingAction !== null || sourceSetMutationBlocked}
+                      title={sourceSetMutationBlocked ? sourceSetMutationReason : undefined}
                       onClick={onAddMember}
                     >
                       添加成员
@@ -560,6 +742,23 @@ export function WorkbenchInspectorPanel({
               <div>
                 <dt>文件格式</dt>
                 <dd>{selectedMember.format}</dd>
+              </div>
+              <div>
+                <dt>来源一致性</dt>
+                <dd>
+                  {sourceWorkflowLoading
+                    ? "正在加载来源工作流…"
+                    : sourceWorkflowError
+                      ? `${sourceWorkflowError} 受保护操作已禁用。`
+                      : sourceWorkflow?.canonical
+                        ? `canonical 来源审核 · ${sourceWorkflow.bindingCount} 个绑定${sourceWorkflow.reason ? ` · ${sourceReviewReason(sourceWorkflow.reason)}` : ""}`
+                        : "legacy 文件工作流"}
+                  {sourceWorkflowError ? (
+                    <button className="button subtle" type="button" onClick={onRetrySourceWorkflow}>
+                      重试来源校验
+                    </button>
+                  ) : null}
+                </dd>
               </div>
               <div>
                 <dt>成员角色</dt>
@@ -581,15 +780,21 @@ export function WorkbenchInspectorPanel({
                   <button
                     className="button subtle"
                     type="button"
-                    disabled={pendingAction !== null}
+                    disabled={pendingAction !== null || sourceMutationBlocked}
+                    title={sourceMutationBlocked ? sourceMutationReason : undefined}
                     onClick={onSyncFile}
                   >
-                    {pendingAction === "sync-file" ? "同步中…" : "手动同步"}
+                    {pendingAction === "sync-file"
+                      ? "同步中…"
+                      : sourceWorkflow?.canonical
+                        ? "来源一致性校验"
+                        : "手动同步"}
                   </button>
                   <button
                     className="button subtle"
                     type="button"
-                    disabled={pendingAction !== null}
+                    disabled={pendingAction !== null || sourceSetMutationBlocked || selectedSourceCanonical}
+                    title={sourceSetMutationBlocked ? sourceSetMutationReason : selectedSourceCanonical ? sourceMutationReason : undefined}
                     onClick={() => onRequestRemoveMember(selectedMember)}
                   >
                     从配置集移除
@@ -812,7 +1017,9 @@ export function WorkbenchInspectorPanel({
         ) : null}
         <p className="configuration-workbench__read-only-note">
           {canEdit
-            ? "源码画布保持只读；整文件替换请走候选文件版本。属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围；配置集创建/成员管理、手动同步与导出同样可用。"
+            ? sourceWorkflow?.canonical
+              ? "源码画布保持只读；canonical 来源变更与回滚必须提交来源审核，审核通过前不会激活。当前文件属性仍可在类型化检查器中编辑，并进入会话变更坞提交。"
+              : `源码画布保持只读；整文件替换请走候选文件版本。${selectedMember?.format === "json" ? "JSON" : "DTS"} 属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围；配置集创建/成员管理、手动同步与导出同样可用。`
             : "当前检查器为只读上下文。画布模式：" +
               canvasMode +
               "。缺少参数修改权限时仍可浏览结构与源码。"}

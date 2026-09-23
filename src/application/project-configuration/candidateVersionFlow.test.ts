@@ -54,7 +54,7 @@ describe("createCandidateVersionFlow", () => {
     );
     expect(createCandidate.mock.calls[0][1].contentBase64.length).toBeGreaterThan(0);
     expect(flow.candidate?.id).toBe("cand-1");
-    expect(flow.canActivate).toBe(true);
+    expect(flow.canActivate).toBe(false);
     expect(flow.uploading).toBe(false);
   });
 
@@ -81,6 +81,176 @@ describe("createCandidateVersionFlow", () => {
     flow.clear();
     expect(flow.candidate).toBeNull();
     expect(flow.sourceText).toBe("");
+  });
+
+  it("uses canonical source preview to disable activation and submits the exact pinned base", async () => {
+    const item = candidate({ format: "json", baseVersionId: "version-json-3" });
+    const preview = {
+      kind: "canonical" as const,
+      canSubmit: true,
+      candidateId: item.id,
+      fileId: item.fileId,
+      format: "json",
+      baseVersionId: item.baseVersionId,
+      bindingId: "binding-1",
+      definitionId: "definition-1",
+      configRevisionId: "revision-1",
+      sourcePinId: "pin-1",
+      proofToken: "proof-1",
+      before: '{"mode":"old"}',
+      after: '{"mode":"new"}'
+    };
+    const getCandidateSourcePreview = vi.fn(async () => preview);
+    const submitCandidateSourceReview = vi.fn(async () => ({
+      requestId: "request-1",
+      status: "pending" as const,
+      replayed: false
+    }));
+    const flow = createCandidateVersionFlow();
+
+    await flow.load(
+      "proj-1",
+      item.id,
+      {
+        getCandidate: vi.fn(async () => item),
+        downloadCandidate: vi.fn(async () => ({
+          contentType: "application/json",
+          bytes: new TextEncoder().encode(preview.after)
+        })),
+        getCandidateSourcePreview
+      }
+    );
+
+    expect(flow.sourcePreview?.sourcePinId).toBe("pin-1");
+    expect(flow.canActivate).toBe(false);
+    expect(flow.canSubmitSourceReview).toBe(true);
+
+    await flow.submitSourceReview("proj-1", "  canonical review  ", { submitCandidateSourceReview });
+
+    expect(submitCandidateSourceReview).toHaveBeenCalledWith("proj-1", item.id, {
+      expectedCurrentVersionId: "version-json-3",
+      expectedProofToken: "proof-1",
+      reason: "canonical review"
+    });
+    expect(flow.sourcePreview?.request).toEqual({ id: "request-1", status: "pending" });
+    expect(flow.canActivate).toBe(false);
+    expect(flow.canSubmitSourceReview).toBe(false);
+    expect(flow.canAbandon).toBe(false);
+    expect(flow.canRecompute).toBe(false);
+  });
+
+  it("fails closed when the canonical source preview cannot be loaded", async () => {
+    const item = candidate();
+    const flow = createCandidateVersionFlow();
+    await flow.load(
+      "proj-1",
+      item.id,
+      {
+        getCandidate: vi.fn(async () => item),
+        downloadCandidate: vi.fn(async () => ({
+          contentType: "text/plain",
+          bytes: new TextEncoder().encode("x")
+        })),
+        getCandidateSourcePreview: vi.fn(async () => {
+          throw new Error("source snapshot unavailable");
+        })
+      }
+    );
+
+    expect(flow.sourcePreview).toBeNull();
+    expect(flow.sourcePreviewError).toContain("source snapshot unavailable");
+    expect(flow.canActivate).toBe(false);
+  });
+
+  it("explains a multi-binding candidate without submitting it", async () => {
+    const item = candidate();
+    const flow = createCandidateVersionFlow();
+    await flow.load("proj-1", item.id, {
+      getCandidate: vi.fn(async () => item),
+      downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", bytes: new TextEncoder().encode("source") })),
+      getCandidateSourcePreview: vi.fn(async () => ({
+        kind: "canonical" as const,
+        canSubmit: false,
+        candidateId: item.id,
+        format: "dts" as const,
+        reason: "candidate-changes-multiple-bindings"
+      }))
+    });
+    const submitCandidateSourceReview = vi.fn();
+    await expect(flow.submitSourceReview("proj-1", "review", { submitCandidateSourceReview })).rejects.toThrow(
+      "候选同时修改多个参数绑定；当前批量审核提交尚未开放。"
+    );
+    expect(submitCandidateSourceReview).not.toHaveBeenCalled();
+  });
+
+  it("reloads source proof and diff after recompute", async () => {
+    const item = candidate({ status: "stale" });
+    const firstPreview = {
+      kind: "canonical" as const,
+      canSubmit: true,
+      candidateId: item.id,
+      format: "dts",
+      baseVersionId: "version-1",
+      proofToken: "proof-old",
+      before: "old",
+      after: "old-change"
+    };
+    const updated = candidate({ status: "ready", baseVersionId: "version-2" });
+    const nextPreview = {
+      ...firstPreview,
+      baseVersionId: "version-2",
+      proofToken: "proof-new",
+      before: "new-base",
+      after: "new-change"
+    };
+    const getCandidateSourcePreview = vi
+      .fn()
+      .mockResolvedValueOnce(firstPreview)
+      .mockResolvedValueOnce(nextPreview);
+    const flow = createCandidateVersionFlow();
+
+    await flow.load("proj-1", item.id, {
+      getCandidate: vi.fn(async () => item),
+      downloadCandidate: vi.fn(async () => ({
+        contentType: "text/plain",
+        bytes: new TextEncoder().encode("old")
+      })),
+      getCandidateSourcePreview
+    });
+    expect(flow.sourcePreview?.proofToken).toBe("proof-old");
+
+    await flow.recompute("proj-1", {
+      recomputeCandidate: vi.fn(async () => updated),
+      getCandidateSourcePreview
+    });
+
+    expect(getCandidateSourcePreview).toHaveBeenCalledTimes(2);
+    expect(flow.sourcePreview?.proofToken).toBe("proof-new");
+    expect(flow.sourcePreview?.before).toBe("new-base");
+    expect(flow.canActivate).toBe(false);
+  });
+
+  it("keeps an approved source review linked to the candidate", async () => {
+    const item = candidate({ status: "stale" });
+    const flow = createCandidateVersionFlow();
+    await flow.load("proj-1", item.id, {
+      getCandidate: vi.fn(async () => item),
+      downloadCandidate: vi.fn(async () => ({
+        contentType: "text/plain",
+        bytes: new TextEncoder().encode("source")
+      })),
+      getCandidateSourcePreview: vi.fn(async () => ({
+        kind: "canonical" as const,
+        canSubmit: false,
+        candidateId: item.id,
+        format: "dts",
+        proofToken: "proof-approved",
+        request: { id: "request-approved", status: "approved" as const }
+      }))
+    });
+
+    expect(flow.canRecompute).toBe(false);
+    expect(flow.canAbandon).toBe(false);
   });
 
   it("activate uses expectedCurrentVersionId and omits configSet for existing fileId", async () => {
@@ -170,7 +340,7 @@ describe("createCandidateVersionFlow", () => {
 
     expect(getCandidate).toHaveBeenCalledWith("proj-1", "cand-1");
     expect(flow.candidate?.status).toBe("stale");
-    expect(flow.canRecompute).toBe(true);
+    expect(flow.canRecompute).toBe(false);
   });
 
   it("recompute and abandon update candidate and gates", async () => {
@@ -179,13 +349,13 @@ describe("createCandidateVersionFlow", () => {
     await flow.create("proj-1", { file: encodeFile("board.dts", "x") }, {
       createCandidate: vi.fn(async () => ready)
     });
-    expect(flow.canRecompute).toBe(true);
+    expect(flow.canRecompute).toBe(false);
 
     const recomputed = candidate({ status: "ready" });
     await flow.recompute("proj-1", {
       recomputeCandidate: vi.fn(async () => recomputed)
     });
-    expect(flow.canActivate).toBe(true);
+    expect(flow.canActivate).toBe(false);
 
     const abandoned = candidate({ status: "abandoned" });
     await flow.abandon("proj-1", {

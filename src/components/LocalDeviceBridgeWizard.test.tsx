@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cloneElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -274,9 +275,9 @@ describe("LocalDeviceBridgeWizard", () => {
   });
 
   it("shows an upgrade notice with a download action when the running Bridge is behind", () => {
-    render(
+    const wizard = (
       <LocalDeviceBridgeWizard
-        panelStatus="online_no_device"
+        panelStatus="not_running"
         protocol="hdc"
         health={{
           ok: true,
@@ -311,10 +312,12 @@ describe("LocalDeviceBridgeWizard", () => {
         onDetect={() => undefined}
       />
     );
+    const { rerender } = render(wizard);
 
     expect(screen.getByText("请升级本机 Bridge")).toBeInTheDocument();
     expect(screen.getByText(/当前本机版本 0\.1\.0/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
+    rerender(cloneElement(wizard, { panelStatus: "online_no_device" }));
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
       "href",

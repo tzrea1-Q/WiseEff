@@ -14,7 +14,14 @@
 import { ApiError } from "../../../shared/http/errors";
 import type { Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
-import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
+import { asAuditTx } from "../../audit/auditedWrite";
+import { assertTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import {
+  assertTrustedInvocationMatchesAuth,
+  assertTrustedMutationInvocation,
+  TrustedInvocationContextError,
+  type TrustedInvocationContext
+} from "../../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { CatalogSnapshot } from "../../catalog-kernel/interface";
@@ -24,11 +31,16 @@ import {
   canReviewParameterStage,
   canViewParameters
 } from "../../parameter-kernel/policy";
+import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
 import { getProjectById } from "../../projects/repository";
 import { lockUserById } from "../../users/repository";
 import { renderDtsValue } from "../../dts/valueAst";
 import type { DtsValue } from "../../dts/types";
 import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract";
+import {
+  requireApprovedParameterInvocation,
+  type ApprovedParameterTarget
+} from "../../agent/approvedParameterInvocation";
 import { commitCanonicalSourceRevision } from "../../parameter-files/canonicalSourceCommit";
 import { loadCanonicalSourceCohort, recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
 import {
@@ -160,9 +172,77 @@ async function requireOwnedProject(db: Database, auth: AuthContext, projectId: s
   }
 }
 
+async function assertSingleRequestReview(db: Database, auth: AuthContext, projectId: string, requestId: string) {
+  const kind = (await db.query<{ request_kind: string }>(
+    `select request_kind from public.project_parameter_value_change_requests
+      where id=$1 and organization_id=$2 and project_id=$3`,
+    [requestId, auth.organization.id, projectId]
+  )).rows[0]?.request_kind;
+  if (kind === "batch") {
+    throw new ApiError("CONFLICT", "The batch source commit proof is not available for review.", {
+      reason: "canonical-batch-source-commit-unavailable"
+    });
+  }
+}
+
 function requireProjectEditor(auth: AuthContext, projectId: string) {
   if (!canEditParameters(auth) || !canEditParameters(auth, projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter edit role is required for this project.");
+  }
+}
+
+function draftTarget(draft: {
+  action: "set" | "delete";
+  source_format: "dts" | "json";
+  target_value: unknown;
+}): ApprovedParameterTarget {
+  if (draft.action === "delete") {
+    return { format: draft.source_format, sourceText: "" };
+  }
+  if (
+    draft.source_format === "json" &&
+    typeof draft.target_value === "object" &&
+    draft.target_value !== null &&
+    (draft.target_value as { kind?: unknown }).kind === "json-source"
+  ) {
+    return {
+      format: "json",
+      sourceText: serializeContract((draft.target_value as { value: ContractJsonValue }).value)
+    };
+  }
+  return { format: "dts", sourceText: renderDtsValue(draft.target_value as DtsValue) };
+}
+
+function requireApprovedPinsMatchDraft(
+  pins: Awaited<ReturnType<typeof requireApprovedParameterInvocation>>["pins"],
+  draft: {
+    project_id: string;
+    binding_id: string;
+    definition_id: string;
+    definition_revision_id: string;
+    catalog_release_id: string;
+    base_current_value_id: string;
+    config_revision_id: string;
+    source_ref: string;
+    source_pin_id: string | null;
+    source_format: "dts" | "json";
+  }
+) {
+  const pairs: Array<[string, string | null]> = [
+    ["project", pins.projectId === draft.project_id ? null : "mismatch"],
+    ["binding", pins.bindingId === draft.binding_id ? null : "mismatch"],
+    ["definition", pins.definitionId === draft.definition_id ? null : "mismatch"],
+    ["definition revision", pins.definitionRevisionId === draft.definition_revision_id ? null : "mismatch"],
+    ["catalog release", pins.catalogReleaseId === draft.catalog_release_id ? null : "mismatch"],
+    ["current value", pins.expectedValueId === draft.base_current_value_id ? null : "mismatch"],
+    ["config revision", pins.configRevisionId === draft.config_revision_id ? null : "mismatch"],
+    ["source ref", pins.sourceRef === draft.source_ref ? null : "mismatch"],
+    ["source pin", pins.sourcePinId === draft.source_pin_id ? null : "mismatch"],
+    ["source format", pins.sourceFormat === draft.source_format ? null : "mismatch"]
+  ];
+  const mismatch = pairs.find(([, result]) => result !== null)?.[0];
+  if (mismatch) {
+    throw new TrustedInvocationContextError(`approved parameter ${mismatch} pin does not match the draft`);
   }
 }
 
@@ -180,9 +260,21 @@ export async function submitCanonicalValueChange(
     requestId: input.requestId,
     refusalSink: input.refusalSink
   };
-  await requireCanonicalUserInvocation(auth, security, {
-    projectId: input.projectId, operation: "canonical value submit", targetType: "project-parameter-value-draft", targetId: input.draftId
-  });
+  const trustedInvocation = assertTrustedInvocationMatchesAuth(auth, input.invocation, "canonical value submit");
+  if (trustedInvocation.initiator === "agent") {
+    if (!input.requestId.trim()) {
+      throw new TrustedInvocationContextError("canonical value submit requires a non-empty requestId");
+    }
+    assertTrustedRefusalAuditSink(input.refusalSink);
+    assertTrustedMutationInvocation(trustedInvocation, "canonical value submit");
+  } else {
+    await requireCanonicalUserInvocation(auth, security, {
+      projectId: input.projectId,
+      operation: "canonical value submit",
+      targetType: "project-parameter-value-draft",
+      targetId: input.draftId
+    });
+  }
   await requireOwnedProject(db, auth, input.projectId);
   try {
     requireProjectEditor(auth, input.projectId);
@@ -266,6 +358,22 @@ export async function submitCanonicalValueChange(
         draftId: input.draftId
       });
     }
+    if (trustedInvocation.initiator === "agent") {
+      if (draft.action !== "set") {
+        throw new ApiError("CONFLICT", "Agent parameter approvals only support canonical set drafts.", {
+          draftId: draft.id,
+          action: draft.action
+        });
+      }
+      const approved = await requireApprovedParameterInvocation(tx, auth, {
+        invocation: trustedInvocation,
+        projectId: input.projectId,
+        bindingId: draft.binding_id,
+        target: draftTarget(draft),
+        expectedValueId: draft.base_current_value_id
+      });
+      requireApprovedPinsMatchDraft(approved.pins, draft);
+    }
     const open = await getOpenCanonicalValueChangeRequestForDraft(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
@@ -277,7 +385,7 @@ export async function submitCanonicalValueChange(
         requestId: open.id
       });
     }
-    return insertCanonicalValueChangeRequest(tx, {
+    const inserted = await insertCanonicalValueChangeRequest(tx, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     draftId: draft.id,
@@ -301,6 +409,29 @@ export async function submitCanonicalValueChange(
     candidateMemberManifest: draft.candidate_member_manifest,
     candidateBindingManifest: draft.candidate_binding_manifest
     });
+    if (trustedInvocation.initiator === "agent") {
+      await writeTrustedGovernanceAudit(
+        asAuditTx(tx),
+        trustedInvocation,
+        {
+          action: "value-change-submitted",
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          targetType: "project-parameter-value-change-request",
+          targetId: inserted.id,
+          metadata: {
+            requestId: inserted.id,
+            draftId: inserted.draft_id,
+            bindingId: inserted.binding_id,
+            definitionId: inserted.definition_id,
+            effectiveRevisionId: inserted.definition_revision_id,
+            writeTargetRole: "canonical-project-value-change-request"
+          }
+        },
+        input.requestId.trim()
+      );
+    }
+    return inserted;
   });
   return toCanonicalValueChangeRequestDto(row);
 }
@@ -380,6 +511,7 @@ export async function reviewCanonicalValueChange(
   if (input.decision === "approve") {
     return db.transaction(async (tx) => {
       await requireCurrentReviewRole(tx);
+      await assertSingleRequestReview(tx, auth, input.projectId, input.requestId);
       // Keep the source-commit lock order: source cohort/files are locked before
       // the request row. The owner rechecks the request under its request lock.
       const visibleRequest = await getCanonicalValueChangeRequest(tx, {
@@ -432,6 +564,7 @@ export async function reviewCanonicalValueChange(
 
   return db.transaction(async (tx) => {
     await requireCurrentReviewRole(tx);
+    await assertSingleRequestReview(tx, auth, input.projectId, input.requestId);
     const request = await getCanonicalValueChangeRequestForUpdate(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
@@ -502,6 +635,7 @@ export async function withdrawCanonicalValueChange(
     projectId: input.projectId, operation: "canonical value withdraw", targetType: "project-parameter-value-change-request", targetId: input.requestId
   });
   await requireOwnedProject(db, auth, input.projectId);
+  await assertSingleRequestReview(db, auth, input.projectId, input.requestId);
 
   const request = await getCanonicalValueChangeRequest(db, {
     organizationId: auth.organization.id,
