@@ -226,20 +226,14 @@ describe("canonical DTS initialization source", () => {
       projectId: TARGET,
       bindingId: targetBindings[0]!.id,
     });
-    const targetPin = (await db.query<{ config_revision_id: string; current_value_id: string }>(
-      `select value.config_revision_id, binding.current_value_id
-         from parameter_catalog.current_project_parameter_bindings binding
-         join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
-        where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3`,
-      [ORG, TARGET, targetBindings[0]!.id],
-    )).rows[0]!;
+    if (!targetBefore) throw new Error("Expected target canonical binding source.");
     const draft = await createCanonicalValueDraft(db, auth, {
       projectId: TARGET,
       bindingId: targetBindings[0]!.id,
       targetValue: importTextToDtsValue("iin_max", "77"),
       reason: "Verify initialized DTS source writeback",
-      baseRevisionId: targetPin.config_revision_id,
-      baseCurrentValueId: targetPin.current_value_id,
+      baseRevisionId: targetBefore.configRevisionId,
+      baseCurrentValueId: targetBefore.currentValueId,
     }, {
       objectStore: storage,
       invocation: createUserInvocation(auth),
