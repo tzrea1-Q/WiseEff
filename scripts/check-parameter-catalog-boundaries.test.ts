@@ -34,6 +34,18 @@ import {
 } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
 import { t14FamilySuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
+import {
+  issue913T14RetiredSourceIds,
+  issue913T14SuccessorPairCount,
+  issue913T14SuccessorRelocationRecordPath,
+  issue913T14RewrittenRepositorySuccessorRelocationRecordPath,
+  issue913T14ServiceSuccessorRelocationRecordPath,
+} from "./parameter-catalog-allowlist/issue913T14Relocation";
+import {
+  issue913StaleRetiredSourceIds,
+  issue913StaleSuccessorPairCount,
+  issue913StaleSuccessorRelocationRecordPath,
+} from "./parameter-catalog-allowlist/issue913StaleSuccessorRelocation";
 import { seedDriverPositionRecordPath, seedDriverQueryRecordPath } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 import { issue901RoutesTestRelocationRecordPath } from "./parameter-catalog-allowlist/issue901RouteTestRelocation";
 import { issue900DashboardRelocationRecordPath } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
@@ -59,6 +71,16 @@ const familySuccessorRelocationRecord = JSON.parse(
 ) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
 const rewrittenSliceRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${t14RewrittenSliceSuccessorRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+const issue913T14SuccessorRecords = await Promise.all([
+  issue913T14SuccessorRelocationRecordPath,
+  issue913T14RewrittenRepositorySuccessorRelocationRecordPath,
+  issue913T14ServiceSuccessorRelocationRecordPath,
+].map(async (path) => JSON.parse(await readFile(`${process.cwd()}/${path}`, "utf8")) as {
+  files: Array<{ pairs: Array<{ old: { id: string } }> }>;
+}));
+const issue913StaleSuccessorRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${issue913StaleSuccessorRelocationRecordPath}`, "utf8"),
 ) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
 
 const originalRelocationRecord = JSON.parse(
@@ -935,8 +957,22 @@ describe("parameter catalog boundary checker", () => {
         (entry) => entry.observed.file === "server/modules/parameters/routes.test.ts",
       )).toBe(true);
       expect(report.relocations.filter((entry) => consumerIds.has(entry.id))).toHaveLength(237);
-      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(265);
-      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(57);
+      const t14SuccessorIds = new Set(issue913T14SuccessorRecords.flatMap((record) =>
+        record.files.flatMap((file) => file.pairs.map((pair) => pair.old.id))));
+      expect(t14SuccessorIds.size).toBe(issue913T14SuccessorPairCount);
+      expect(report.relocations.filter((entry) => t14SuccessorIds.has(entry.id))).toHaveLength(issue913T14SuccessorPairCount);
+      expect(issue913T14RetiredSourceIds.every((id) => !report.relocations.some((entry) => entry.id === id))).toBe(true);
+      const staleSuccessorIds = new Set(issue913StaleSuccessorRecord.files.flatMap((file) =>
+        file.pairs.map((pair) => pair.old.id)));
+      expect(staleSuccessorIds.size).toBe(issue913StaleSuccessorPairCount);
+      expect(report.relocations.filter((entry) => staleSuccessorIds.has(entry.id))).toHaveLength(issue913StaleSuccessorPairCount);
+      expect(issue913StaleRetiredSourceIds).toHaveLength(17);
+      expect(issue913StaleRetiredSourceIds.every((id) =>
+        !report.relocations.some((entry) => entry.id === id)
+        && !report.violations.some((entry) => entry.id === id),
+      )).toBe(true);
+      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(262);
+      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(56);
       const otherwiseUnclassified = report.relocations.filter(
           (entry) =>
             !historicalIds.has(entry.id)
@@ -944,7 +980,8 @@ describe("parameter catalog boundary checker", () => {
             && !familyIds.has(entry.id)
             && !rewrittenIds.has(entry.id)
             && !seedDriverIds.has(entry.id)
-            && !issue901RouteTestIds.has(entry.id),
+            && !issue901RouteTestIds.has(entry.id)
+            && !staleSuccessorIds.has(entry.id),
         );
       const expectedIssue911Unclassified = [...issue911Ids].filter((id) =>
         !historicalIds.has(id)
@@ -952,23 +989,22 @@ describe("parameter catalog boundary checker", () => {
         && !familyIds.has(id)
         && !rewrittenIds.has(id)
         && !seedDriverIds.has(id)
-        && !issue901RouteTestIds.has(id),
+        && !issue901RouteTestIds.has(id)
+        && !staleSuccessorIds.has(id),
       ).sort();
       expect(expectedIssue911Unclassified).toHaveLength(76);
       expect(otherwiseUnclassified.map((entry) => entry.id).sort()).toEqual(expectedIssue911Unclassified);
       expect(otherwiseUnclassified.filter((entry) => !issue911Ids.has(entry.id))).toHaveLength(0);
-      // This is the exact diagnostic inventory, not a passing debt baseline:
-      // Status remains failed with seven JSON DB-owner test observations unallowlisted
-      // alongside the prior 70. These diagnostic debts are not relocation identities.
-      // #899 adds 74 shifted and two fixture-origin aliases; #901 adds five,
-      // #900 adds 18 and retires 13. No new allowance is granted.
-      expect(report.relocations).toHaveLength(857);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(857);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(857);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_714);
+      // #901 shifts five routes; #900 adds 18 successors and retires 13;
+      // #899 adds 76 aliases; #897 proves 63 stale successors and retires 21.
+      // All 77 inherited unallowlisted observations remain diagnostic debt.
+      expect(report.relocations).toHaveLength(916);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(916);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(916);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_832);
       expect(report.summary).toEqual({
-        violations: 3_555,
-        allowlisted: 3_478,
+        violations: 3_534,
+        allowlisted: 3_457,
         unallowlisted: 77,
         staleAllowances: 0,
         metadataMismatches: 0,

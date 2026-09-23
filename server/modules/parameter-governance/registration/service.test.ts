@@ -138,6 +138,53 @@ describe("S4-REG public command contract", () => {
     });
   });
 
+  it("accepts a conditional Placement version and rejects malformed versions", () => {
+    expect(
+      validateRegistrationCommand({
+        kind: "move-placement",
+        organizationId: "org-s4-reg",
+        registrationId: "sreg-1" as never,
+        expectedRelease: pin,
+        destinationModuleId: "pmod-s4-reg-driver",
+        expectedPlacementVersion: "1727000000000000",
+        idempotencyKey: "move-key-1",
+        context: { actorKind: "org-admin", principalId: "user-org-admin" },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateRegistrationCommand({
+        kind: "move-placement",
+        organizationId: "org-s4-reg",
+        registrationId: "sreg-1" as never,
+        expectedRelease: pin,
+        destinationModuleId: "pmod-s4-reg-driver",
+        expectedPlacementVersion: " bad-version",
+        idempotencyKey: "move-key-2",
+        context: { actorKind: "org-admin", principalId: "user-org-admin" },
+      }),
+    ).toEqual({ ok: false, error: { kind: "invalid-command", reason: "expectedPlacementVersion" } });
+  });
+
+  it("binds the conditional Placement version into move fingerprints", () => {
+    const base = {
+      kind: "move-placement" as const,
+      organizationId: "org-s4-reg",
+      registrationId: "sreg-1" as never,
+      expectedRelease: pin,
+      destinationModuleId: "pmod-s4-reg-driver",
+      idempotencyKey: "move-fingerprint",
+      context: { actorKind: "org-admin" as const, principalId: "user-org-admin" },
+    };
+    expect(fingerprintRegistrationCommand(base)).not.toBe(
+      fingerprintRegistrationCommand({ ...base, expectedPlacementVersion: "1727000000000000" }),
+    );
+    expect(
+      fingerprintRegistrationCommand({ ...base, expectedPlacementVersion: "1727000000000000" }),
+    ).toBe(
+      fingerprintRegistrationCommand({ ...base, expectedPlacementVersion: "1727000000000000" }),
+    );
+  });
+
   it("maps each Catalog guard SQLSTATE to a typed failure", () => {
     expect(mapGuardDatabaseError(databaseError("PCA01", "PCAT-GUARD-RELEASE-MISMATCH"), pin, "csub")).toEqual({
       kind: "release-drift",

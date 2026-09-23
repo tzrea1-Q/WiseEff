@@ -10,6 +10,7 @@ import {
   issue900DashboardRelocationRecordPath,
   verifyHistoricalIssue900DashboardRelocation,
 } from "./issue900DashboardRelocation";
+import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
 
 const retirementRecordPath = "scripts/fixtures/parameter-catalog-allowlist/issue-900-dashboard-retirement.json";
 const retirementRecordSha256 = "069cd75d9cf3f29364149c96c63a13b2862db2b0de79896987f3de623062fe01";
@@ -124,7 +125,12 @@ describe("Issue #900 dashboard Catalog boundary proof", () => {
     expect(retiredEntries.map((entry) => entry.id)).toEqual(retiredIds);
     expect(retiredEntries).toHaveLength(13);
     expect(baseShard.entries.filter((entry) => retiredIds.includes(entry.id))).toEqual(retiredEntries);
-    expect(currentShard.entries).toEqual(baseShard.entries.filter((entry) => !retiredIds.includes(entry.id)));
+    const issue913ModuleIds = new Set<string>(issue913StaleRetiredSourceIds.filter((id) => id.startsWith("S12-PRJ:")));
+    expect(issue913ModuleIds.size).toBe(2);
+    expect([...issue913ModuleIds].filter((id) => retiredIds.includes(id))).toEqual([]);
+    expect(baseShard.entries.filter((entry) => issue913ModuleIds.has(entry.id))).toHaveLength(2);
+    expect(currentShard.entries).toEqual(baseShard.entries.filter((entry) =>
+      !retiredIds.includes(entry.id) && !issue913ModuleIds.has(entry.id)));
 
     const fixtureById = new Map(fixture.violations.map((entry) => [entry.id, entry]));
     const retiredById = new Map(retiredEntries.map((entry) => [entry.id, entry]));

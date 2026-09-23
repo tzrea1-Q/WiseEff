@@ -17,6 +17,8 @@ import {
 } from "./runtimeTopologyRelocation";
 import { verifyHistoricalEditServiceVersionIndexRelocation, editServiceVersionIndexRelocationRecordPath } from "./editServiceVersionIndexRelocation";
 import type { BoundaryViolation } from "./schema";
+import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
+import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
 import * as historicalExports from "./runtimeTopologyRelocation";
 
 const repoRoot = process.cwd();
@@ -30,6 +32,22 @@ const issue900Retirement = JSON.parse(await readFile(join(
 ), "utf8")) as { retiredAllowlistEntries: Array<{ id: string }> };
 const temporaryRoots: string[] = [];
 let discovered: BoundaryViolation[];
+const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T14RetiredSourceIds];
+const issue900RetiredIds = new Set(issue900Retirement.retiredAllowlistEntries.map((entry) => entry.id));
+
+function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds]);
+  expect(issue900RetiredIds.size).toBe(13);
+  expect(issue913StaleRetiredSourceIds).toHaveLength(17);
+  expect(issue913T14RetiredSourceIds).toHaveLength(4);
+  expect(retired.size).toBe(34);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(34);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4);
+  expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
+    .toEqual([...retired].sort());
+  expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
+}
+
 beforeAll(async () => { discovered = await scanParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha); }, 60_000);
 afterAll(async () => { await Promise.all(temporaryRoots.map((root) => rm(root, { recursive: true, force: true }))); });
 
@@ -75,22 +93,30 @@ describe("source workflow exact identity successor", () => {
       "S12-CGH:legacy-catalog-raw-read:f89031bd1c4f16f1:75286f5fbe8f462c",
       "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:54c0178542c4bf9b",
       "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:b31292a51ecbd11f",
+    ], []],
+    ["s12-prj.json", ["S12-PRJ:unresolved-boundary-expression:cc362bf31617ab18:e6547c8da21e8b6b"], [
+      "S12-PRJ:legacy-catalog-raw-read:613007d0d70a4003:0a30c88b9f209be9",
+      "S12-PRJ:unresolved-boundary-expression:64a8d2cbafc6a08a:347f2ea33343631c",
     ]],
-    ["s12-prj.json", ["S12-PRJ:unresolved-boundary-expression:cc362bf31617ab18:e6547c8da21e8b6b"]],
-  ] as const)("retires exactly the reviewed vanished slices in %s", async (name, retiredIds) => {
+  ] as const)("retires exactly the reviewed vanished slices in %s", async (name, historicalRetiredIds, issue913ShardRetiredIds) => {
     const shardPath = `scripts/parameter-catalog-allowlist/shards/${name}`;
     const previous = JSON.parse(execFileSync("git", [
       "show", `5355f973bfb42dbc4bf47bfac25d56204bf550a9:${shardPath}`,
     ], { cwd: repoRoot, encoding: "utf8" })) as { entries: typeof allowances };
-    const retiredByWorkflow = new Set<string>(retiredIds);
-    expect(previous.entries.filter((entry) => retiredByWorkflow.has(entry.id))).toHaveLength(retiredByWorkflow.size);
-    const retiredByIssue900 = new Set(name === "s12-prj.json"
-      ? issue900Retirement.retiredAllowlistEntries.map((entry) => entry.id)
-      : []);
-    if (retiredByIssue900.size > 0) {
-      expect(previous.entries.filter((entry) => retiredByIssue900.has(entry.id))).toHaveLength(retiredByIssue900.size);
+    const historicalRetired = new Set<string>(historicalRetiredIds);
+    const issue913ShardRetired = new Set<string>(issue913ShardRetiredIds);
+    const issue900ShardRetired = name === "s12-prj.json" ? issue900RetiredIds : new Set<string>();
+    const retired = new Set<string>([...historicalRetired, ...issue913ShardRetired, ...issue900ShardRetired]);
+    expect(previous.entries.filter((entry) => historicalRetired.has(entry.id))).toHaveLength(historicalRetired.size);
+    expect(previous.entries.filter((entry) => issue913ShardRetired.has(entry.id)).map((entry) => entry.id).sort())
+      .toEqual([...issue913ShardRetired].sort());
+    expect(previous.entries.filter((entry) => issue900ShardRetired.has(entry.id)).map((entry) => entry.id).sort())
+      .toEqual([...issue900ShardRetired].sort());
+    if (name === "s12-prj.json") {
+      expect(issue913StaleRetiredSourceIds.filter((id) => id.startsWith("S12-PRJ:")).sort())
+        .toEqual([...issue913ShardRetired].sort());
+      expect(issue913T14RetiredSourceIds.filter((id) => id.startsWith("S12-PRJ:"))).toEqual([]);
     }
-    const retired = new Set([...retiredByWorkflow, ...retiredByIssue900]);
     expect(JSON.parse(await readFile(join(repoRoot, shardPath), "utf8"))).toEqual({
       ...previous, entries: previous.entries.filter((entry) => !retired.has(entry.id)),
     });
@@ -172,7 +198,7 @@ describe("source workflow exact identity successor", () => {
     const extra = { id: pair.new.id, file: pair.new.file, rule: pair.new.rule, reason: pair.new.reason };
     await expect(applyReviewedSourceWorkflowConsumerRelocation(repoRoot, fixture, [...allowances, extra], first.violations, first.relocations)).rejects.toThrow("allowance growth");
     const removed = fixture.violations.filter((entry) => !allowances.some((allowance) => allowance.id === entry.id));
-    expect(removed).toHaveLength(41);
+    expectCurrentRemovedPartition(removed);
     const unrelated = { ...pair.new, id: pair.new.id.slice(0, -16) + "e".repeat(16) };
     const result = await applyReviewedSourceWorkflowConsumerRelocation(repoRoot, fixture, allowances, [...first.violations, unrelated, ...removed], first.relocations);
     expect(compareBoundaryInventory(result.violations, allowances, fixture.violations).unallowlisted).toEqual(expect.arrayContaining([unrelated, ...removed]));
@@ -381,9 +407,7 @@ describe("source workflow exact identity successor", () => {
       .rejects.toThrow("allowance growth");
 
     const removed = fixture.violations.filter((entry) => !allowances.some((allowance) => allowance.id === entry.id));
-    const issue900RetiredIds = new Set(issue900Retirement.retiredAllowlistEntries.map((entry) => entry.id));
-    expect(removed.filter((entry) => issue900RetiredIds.has(entry.id))).toHaveLength(13);
-    expect(removed.filter((entry) => !issue900RetiredIds.has(entry.id))).toHaveLength(28);
+    expectCurrentRemovedPartition(removed);
     const unrelated = { ...pair.new, id: `${pair.new.id.slice(0, -16)}${"e".repeat(16)}` };
     const result = await applyReviewedIssue911Relocation(
       repoRoot, fixture, allowances, [...issue911Observations(), unrelated, ...removed],
@@ -501,7 +525,7 @@ describe("source workflow exact identity successor", () => {
     const extra = { id: pair.new.id, file: pair.new.file, rule: pair.new.rule, reason: pair.new.reason };
     await expect(applyReviewedSourceWorkflowRelocation(repoRoot, fixture, [...allowances, extra], discovered)).rejects.toThrow("allowance growth");
     const removed = fixture.violations.filter((entry) => !allowances.some((allowance) => allowance.id === entry.id));
-    expect(removed).toHaveLength(41);
+    expectCurrentRemovedPartition(removed);
     const unrelated = { ...pair.new, id: pair.new.id.slice(0, -16) + "f".repeat(16) };
     const result = await applyReviewedSourceWorkflowRelocation(repoRoot, fixture, allowances, [...discovered, unrelated, ...removed]);
     expect(compareBoundaryInventory(result.violations, allowances, fixture.violations).unallowlisted).toEqual(expect.arrayContaining([unrelated, ...removed]));

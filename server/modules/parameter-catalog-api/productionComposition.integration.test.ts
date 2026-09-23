@@ -265,6 +265,14 @@ describe("OP-06 production Catalog composition", () => {
     expect(subjectBody.item.registration.id).toBe(registration.item.id);
     expect(subjectBody.item.registration.placement?.id).toBe(registration.item.placement.id);
 
+    const currentPlacement = await json(
+      "GET",
+      `/api/v2/organizations/${ORG_A}/subject-registrations/${registration.item.id}/placement`,
+    );
+    expect(currentPlacement.status).toBe(200);
+    const placementVersion = currentPlacement.headers.get("etag");
+    expect(placementVersion).toBeTruthy();
+
     const moved = await json(
       "PATCH",
       `/api/v2/organizations/${ORG_A}/subject-registrations/${registration.item.id}/placement`,
@@ -272,7 +280,7 @@ describe("OP-06 production Catalog composition", () => {
         headers: {
           [CATALOG_RELEASE_HEADER]: currentReleaseId,
           [CATALOG_IDEMPOTENCY_HEADER]: `move:${randomUUID()}`,
-          [CATALOG_IF_MATCH_HEADER]: created.headers.get("etag") ?? "",
+          [CATALOG_IF_MATCH_HEADER]: placementVersion ?? "",
         },
         body: { placement: { mode: "use-default" } },
       },

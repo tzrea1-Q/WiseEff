@@ -26811,6 +26811,22 @@
                   ],
                   "additionalProperties": false
                 },
+                "impact": {
+                  "type": "object",
+                  "properties": {
+                    "bindingCount": {
+                      "type": "number"
+                    },
+                    "projectCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bindingCount",
+                    "projectCount"
+                  ],
+                  "additionalProperties": false
+                },
                 "catalogReleaseId": {
                   "type": "string"
                 }
@@ -26913,6 +26929,9 @@
               }
             ]
           },
+          "destinationModuleId": {
+            "type": "string"
+          },
           "reason": {
             "type": "string"
           }
@@ -26977,6 +26996,22 @@
                   "id",
                   "displayName",
                   "parentPlacementId"
+                ],
+                "additionalProperties": false
+              },
+              "impact": {
+                "type": "object",
+                "properties": {
+                  "bindingCount": {
+                    "type": "number"
+                  },
+                  "projectCount": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "bindingCount",
+                  "projectCount"
                 ],
                 "additionalProperties": false
               },
@@ -27108,6 +27143,9 @@
                 "additionalProperties": false
               }
             ]
+          },
+          "destinationModuleId": {
+            "type": "string"
           }
         },
         "required": [
