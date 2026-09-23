@@ -169,7 +169,6 @@ type NodeOperationRow = {
   previous_value_digest?: string | null;
   readback_value_digest?: string | null;
   value_preview?: string | null;
-  parameter_spec_id?: string | null;
   project_parameter_binding_id?: string | null;
   canonical_binding_id?: string | null;
   canonical_project_id?: string | null;
