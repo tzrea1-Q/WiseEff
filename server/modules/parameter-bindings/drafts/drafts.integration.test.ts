@@ -37,7 +37,8 @@ import {
 } from "../../../shared/database/client";
 import { asAuditTx, withAuditedWrite } from "../../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
-import { createUserInvocation } from "../../auth/trustedInvocation";
+import { createAgentInvocation, createUserInvocation } from "../../auth/trustedInvocation";
+import { createAgentToolRegistry } from "../../agent/toolRegistry";
 import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
 import { parseDts } from "../../dts/parser";
@@ -220,6 +221,17 @@ describe("canonical pending value drafts", () => {
     organizationName: "Draft org",
     roles: [{ projectId: PROJECT, roleId: "software-committer" }]
   });
+
+  const readAgentOverview = async () => {
+    const auth = makeTestAuthContext({ userId: USER, organizationId: ORG,
+      roles: [{ projectId: PROJECT, roleId: "guest" }], permissions: ["parameter:view"] });
+    const invocation = createAgentInvocation(auth, { sessionId: "overview-session",
+      toolCallId: "overview-call", approval: { required: false } });
+    return createAgentToolRegistry({ db: root, objectStore }).run("perception.getProjectOverview", {
+      auth, invocation, requestId: "overview-request", sessionId: invocation.sessionId,
+      toolCallId: invocation.toolCallId, projectId: PROJECT
+    }, { projectId: PROJECT });
+  };
 
   const registerCommand = (expectedRelease: { id: string; digest: string }): RegisterSubjectCommand => ({
     kind: "register",
@@ -608,6 +620,13 @@ describe("canonical pending value drafts", () => {
     changeRequestId = submitted.id;
     submittedDraftId = draft.id;
     expect(await listCanonicalValueDraftsForUser(root, editorAuth, { projectId: PROJECT })).toEqual([]);
+
+    // A read-only Agent sees the real canonical request with no legacy rows.
+    expect((await pool.query(`select count(*)::int as count from project_parameter_bindings
+      where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0].count).toBe(0);
+    expect((await pool.query(`select count(*)::int as count from parameter_change_requests
+      where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0].count).toBe(0);
+    expect((await readAgentOverview()).data).toMatchObject({ parameter_count: 1, open_change_requests: 1 });
   });
 
   it("refuses self-approval and a non-reviewer approval", async () => {
@@ -789,6 +808,7 @@ describe("canonical pending value drafts", () => {
     // The canonical value advanced through the existing value owner.
     const after = await readCurrentValue();
     expect(after.value).toEqual(2500);
+    expect((await readAgentOverview()).data).toMatchObject({ parameter_count: 1, open_change_requests: 0 });
     expect(after.current_value_id).toBe(applied.appliedValueId);
     expect(after.current_value_id).not.toBe(before.current_value_id);
 

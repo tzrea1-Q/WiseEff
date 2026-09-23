@@ -427,17 +427,19 @@ export function createPlanningAgent(options: {
     }
     pushSink(config, finish({ status: "succeeded", summary: resumed.text }));
 
+    const citations = [...state.perceivedCitations, ...(resumed.citations ?? [])];
     const messages = [
       ...state.messages,
       {
         role: "tool",
         tool_call_id: pending.id,
-        content: JSON.stringify({ summary: resumed.text, data: {}, citations: state.perceivedCitations })
+        content: JSON.stringify({ summary: resumed.text, data: {}, citations: resumed.citations ?? [] })
       }
     ];
 
     return {
       messages,
+      perceivedCitations: citations,
       pendingMutatingCall: undefined,
       pendingMutatingToolCallId: undefined,
       interrupt: undefined,
