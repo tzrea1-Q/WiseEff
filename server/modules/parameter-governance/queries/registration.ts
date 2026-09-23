@@ -3,6 +3,7 @@ import {
   serializeContract,
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
+import type { Queryable } from "../../../shared/database/client";
 
 import { assertOrgScope, fail, isUsableToken, runQuery } from "./client";
 import { emptyReasonForView, mapRegistrationMethod, mapRegistrationStatus } from "./mapping";
@@ -47,6 +48,42 @@ type RegistrationJoinRow = {
 
 const LIST_LIMIT_MAX = 100;
 const LIST_LIMIT_DEFAULT = 50;
+
+export type ModuleRegistryFact = {
+  module_id: string;
+  subject_id: string;
+  binding_id: string | null;
+};
+
+/** Current registration, placement, and Binding facts for the shared module tree. */
+export async function listModuleRegistryFacts(
+  client: Queryable,
+  organizationId: string,
+): Promise<ModuleRegistryFact[]> {
+  const result = await client.query<ModuleRegistryFact>(
+    `with registered_modules as (
+           select registration.id as registration_id,
+                  registration.subject_id,
+                  placement.module_id
+             from parameter_catalog.organization_subject_registrations registration
+             join parameter_catalog.subject_placements placement
+               on placement.id = registration.current_placement_id
+              and placement.registration_id = registration.id
+              and placement.organization_id = registration.organization_id
+            where registration.organization_id = $1
+              and registration.status = 'active'
+         )
+         select registered.module_id,
+                registered.subject_id,
+                binding.id as binding_id
+           from registered_modules registered
+           left join parameter_catalog.current_project_parameter_bindings binding
+             on binding.registration_id = registered.registration_id
+            and binding.organization_id = $1`,
+    [organizationId],
+  );
+  return result.rows;
+}
 
 const registrationSelect = `
   select

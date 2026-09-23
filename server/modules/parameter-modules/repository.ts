@@ -5,6 +5,10 @@ import {
   type CatalogSnapshot,
 } from "../catalog-kernel/interface";
 import {
+  listModuleRegistryFacts,
+  type ModuleRegistryFact,
+} from "../parameter-catalog-api/governance";
+import {
   driverGroupDisplayNameFromCompatible,
   isScaffoldingDriverLabel,
   normalizeMatchToken,
@@ -66,12 +70,6 @@ function resolveEffectiveImportance(
   return byId.get(moduleId)?.importance ?? "medium";
 }
 
-type CanonicalRegistrationRow = {
-  module_id: string;
-  subject_id: string;
-  binding_id: string | null;
-};
-
 /**
  * The registry only needs this read facet of the captured Kernel snapshot.
  * Registration and Binding ownership remain SQL-owned facts; Definition
@@ -81,7 +79,7 @@ export type RegistryCatalogSnapshot = Pick<CatalogSnapshot, "listDefinitions">;
 
 function definitionFactsFromCatalog(
   catalog: RegistryCatalogSnapshot | null,
-  registrations: readonly CanonicalRegistrationRow[],
+  registrations: readonly ModuleRegistryFact[],
 ): Array<{ moduleId: string; parameterSpecId: string; bindingId: null }> {
   if (!catalog) return [];
 
@@ -150,35 +148,14 @@ export async function readRegistry(
       order by pm.sort_order asc, pm.path asc, pm.name asc`,
     [organizationId]
   );
-  const canonicalRegistrations = await db.query<CanonicalRegistrationRow>(
-    `with registered_modules as (
-           select registration.id as registration_id,
-                  registration.subject_id,
-                  placement.module_id
-             from parameter_catalog.organization_subject_registrations registration
-             join parameter_catalog.subject_placements placement
-               on placement.id = registration.current_placement_id
-              and placement.registration_id = registration.id
-              and placement.organization_id = registration.organization_id
-            where registration.organization_id = $1
-              and registration.status = 'active'
-         )
-         select registered.module_id,
-                registered.subject_id,
-                binding.id as binding_id
-           from registered_modules registered
-           left join parameter_catalog.current_project_parameter_bindings binding
-             on binding.registration_id = registered.registration_id
-            and binding.organization_id = $1`,
-    [organizationId]
-  );
+  const canonicalRegistrations = await listModuleRegistryFacts(db, organizationId);
   const canonicalFacts = [
-    ...canonicalRegistrations.rows.map((row) => ({
+    ...canonicalRegistrations.map((row) => ({
       moduleId: row.module_id,
       parameterSpecId: null,
       bindingId: row.binding_id,
     })),
-    ...definitionFactsFromCatalog(catalog, canonicalRegistrations.rows),
+    ...definitionFactsFromCatalog(catalog, canonicalRegistrations),
   ];
   const byId = new Map(modules.rows.map((row) => [row.id, row]));
   const subtreeCounts = rollupSubtreeAttributionCounts(
