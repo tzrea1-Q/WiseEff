@@ -11,7 +11,6 @@ import {
   installPublishedReleaseA,
   SUBJECT_ID,
   X_DEFINITION_ID,
-  X_REVISION_1,
 } from "../../catalog-kernel/runtime/catalogChain.fixture";
 import { writeGuardedRegistration } from "../../parameter-governance/registration/internalGuardedRegistrationWriter";
 import type { RegisterSubjectCommand } from "../../parameter-governance/registration/command";
@@ -20,10 +19,17 @@ import {
   loadPublishedCatalog,
   syncPublishedCatalogProjectValuesInTransaction,
 } from "../../parameter-bindings/catalogProjectValueSync";
+import { loadCanonicalBindingPins } from "../../parameter-bindings/drafts/repository";
 import type { Binding } from "../../parameter-bindings/binding";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 import { withAuditedWrite } from "../../audit/auditedWrite";
+import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import { createUserInvocation } from "../../auth/trustedInvocation";
+import { installConfigurationSourceFixture } from "../../../testing/parameterCatalog/configurationSource";
+import { addConfigSetFile, createConfigSet } from "../../parameter-files/configSetService";
+import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
+import { uploadProjectParameterFile } from "../../parameter-files/service";
 import {
   DefinitionRevisionId,
   CatalogSubjectId,
@@ -66,6 +72,11 @@ export type CanonicalParameterFixture = {
   readonly catalogReleaseId: string;
   readonly configRevisionId: string;
   readonly currentValueId: string;
+  readonly sourcePinId: string;
+  readonly sourceRef: string;
+  readonly sourceFormat: "dts" | "json";
+  readonly sourceFileId: string;
+  readonly sourceFileVersionId: string;
   readonly editorAuth: AuthContext;
   readonly reviewerAuth: AuthContext;
   readonly guestAuth: AuthContext;
@@ -229,15 +240,134 @@ async function seedCatalogRegistration(
   }
 }
 
+async function seedCanonicalJsonParameterSource(root: RootDatabase, objectStore: ObjectStore) {
+  const fixture = CANONICAL_PARAMETER_FIXTURE;
+  const auth = makeTestAuthContext({
+    userId: fixture.editorId,
+    organizationId: fixture.organizationId,
+    name: "Issue 905 Editor",
+    title: "Admin",
+    organizationName: "Issue 905 Canonical",
+    roles: [{ projectId: null, roleId: "admin" }],
+  });
+  const subjectId = "csub_issue905_json";
+  const schemaId = "wiseeff.issue905.parameters";
+  await installConfigurationSourceFixture(root, auth, { subjectId, schemaId });
+  const pool = getRootPostgresPool(root)!;
+  const snapshot = await loadPublishedCatalog(pool);
+  if (!snapshot) throw new Error("Issue 905 JSON Catalog fixture is unavailable.");
+
+  const configSet = await createConfigSet(root, auth, { projectId: fixture.projectId, name: "Issue 905 JSON source" });
+  const source = await uploadProjectParameterFile(root, objectStore, auth, {
+    projectId: fixture.projectId,
+    fileName: "issue-905-canonical.json",
+    bytes: Buffer.from('{ "limit": 5, "untouched": true }\n'),
+  });
+  await addConfigSetFile(root, auth, { configSetId: configSet.id, fileId: source.file.id, role: "base", sortOrder: 0 });
+  const registered = await root.transaction((tx) => registerCanonicalJsonSource(tx, objectStore, auth, snapshot, {
+    projectId: fixture.projectId,
+    configSetId: configSet.id,
+    fileId: source.file.id,
+    fileVersionId: source.version.id,
+    configurationSchemaId: schemaId,
+    rootPointer: "",
+    mappings: [{ definitionId: X_DEFINITION_ID, pointer: "/limit" }],
+    invocation: createUserInvocation(auth),
+    requestId: "issue-905-json-source-register",
+    refusalSink: createTrustedRefusalAuditSink(root),
+  }));
+  const binding = registered.bindings[0];
+  if (!binding) throw new Error("Issue 905 JSON Binding fixture is unavailable.");
+  const pins = await loadCanonicalBindingPins(root, {
+    organizationId: fixture.organizationId,
+    projectId: fixture.projectId,
+    bindingId: binding.id,
+  });
+  if (!pins || pins.sourceFormat !== "json") throw new Error("Issue 905 JSON source pin is unavailable.");
+  return { binding, pins, source, registrationId: binding.registrationId };
+}
+
+function fixtureAuthContexts() {
+  const fixture = CANONICAL_PARAMETER_FIXTURE;
+  return {
+    editorAuth: makeTestAuthContext({
+      userId: fixture.editorId,
+      organizationId: fixture.organizationId,
+      name: "Issue 905 Editor",
+      title: "Software User",
+      organizationName: "Issue 905 Canonical",
+      roles: [{ projectId: fixture.projectId, roleId: "software-user" }],
+    }),
+    reviewerAuth: makeTestAuthContext({
+      userId: fixture.reviewerId,
+      organizationId: fixture.organizationId,
+      name: "Issue 905 Reviewer",
+      title: "Software Committer",
+      organizationName: "Issue 905 Canonical",
+      roles: [{ projectId: fixture.projectId, roleId: "software-committer" }],
+    }),
+    guestAuth: makeTestAuthContext({
+      userId: fixture.guestId,
+      organizationId: fixture.organizationId,
+      name: "Issue 905 Guest",
+      title: "Guest",
+      organizationName: "Issue 905 Canonical",
+      roles: [{ projectId: fixture.projectId, roleId: "guest" }],
+    }),
+    otherAuth: makeTestAuthContext({
+      userId: fixture.otherOrganizationUserId,
+      organizationId: fixture.otherOrganizationId,
+      name: "Issue 905 Other",
+      title: "Admin",
+      organizationName: "Issue 905 Other",
+      roles: [{ projectId: null, roleId: "admin" }],
+    }),
+  };
+}
+
 export async function seedCanonicalParameterFixture(
   root: RootDatabase,
   objectStore: ObjectStore,
+  options: { sourceFormat?: "dts" | "json" } = {},
 ): Promise<CanonicalParameterFixture> {
   const pool = getRootPostgresPool(root);
   if (!pool)
     throw new Error("Issue 905 fixture requires a root PostgreSQL database.");
   const fixture = CANONICAL_PARAMETER_FIXTURE;
   await insertUsersAndRoles(root);
+  const { editorAuth, reviewerAuth, guestAuth, otherAuth } = fixtureAuthContexts();
+  if (options.sourceFormat === "json") {
+    const seeded = await seedCanonicalJsonParameterSource(root, objectStore);
+    return {
+      organizationId: fixture.organizationId,
+      projectId: fixture.projectId,
+      otherProjectId: fixture.otherProjectId,
+      otherOrganizationId: fixture.otherOrganizationId,
+      subjectId: seeded.binding.subjectId,
+      registrationId: seeded.registrationId,
+      bindingId: seeded.binding.id,
+      binding: seeded.binding,
+      definitionId: seeded.binding.definitionId,
+      definitionRevisionId: seeded.binding.effectiveRevisionId,
+      catalogReleaseId: seeded.binding.catalogRelease.id,
+      configRevisionId: seeded.pins.configRevisionId,
+      currentValueId: seeded.binding.currentValueId,
+      sourcePinId: seeded.pins.sourcePinId,
+      sourceRef: seeded.pins.sourceRef,
+      sourceFormat: seeded.pins.sourceFormat,
+      sourceFileId: seeded.source.file.id,
+      sourceFileVersionId: seeded.source.version.id,
+      editorAuth,
+      reviewerAuth,
+      guestAuth,
+      otherAuth,
+      editorUsername: fixture.editorUsername,
+      reviewerUsername: fixture.reviewerUsername,
+      guestUsername: fixture.guestUsername,
+      otherUsername: fixture.otherUsername,
+      password: fixture.password,
+    };
+  }
   const installed = await installPublishedReleaseA(pool);
   const registrationId = await seedCatalogRegistration(root, installed.pinA);
   const loaded = await createCatalogKernel(pool).loadPinnedCatalog(
@@ -412,53 +542,32 @@ export async function seedCanonicalParameterFixture(
   };
   const configRevisionId = revision.id;
 
-  const editorAuth = makeTestAuthContext({
-    userId: fixture.editorId,
+  const pins = await loadCanonicalBindingPins(root, {
     organizationId: fixture.organizationId,
-    name: "Issue 905 Editor",
-    title: "Software User",
-    organizationName: "Issue 905 Canonical",
-    roles: [{ projectId: fixture.projectId, roleId: "software-user" }],
+    projectId: fixture.projectId,
+    bindingId: binding.id,
   });
-  const reviewerAuth = makeTestAuthContext({
-    userId: fixture.reviewerId,
-    organizationId: fixture.organizationId,
-    name: "Issue 905 Reviewer",
-    title: "Software Committer",
-    organizationName: "Issue 905 Canonical",
-    roles: [{ projectId: fixture.projectId, roleId: "software-committer" }],
-  });
-  const guestAuth = makeTestAuthContext({
-    userId: fixture.guestId,
-    organizationId: fixture.organizationId,
-    name: "Issue 905 Guest",
-    title: "Guest",
-    organizationName: "Issue 905 Canonical",
-    roles: [{ projectId: fixture.projectId, roleId: "guest" }],
-  });
-  const otherAuth = makeTestAuthContext({
-    userId: fixture.otherOrganizationUserId,
-    organizationId: fixture.otherOrganizationId,
-    name: "Issue 905 Other",
-    title: "Admin",
-    organizationName: "Issue 905 Other",
-    roles: [{ projectId: null, roleId: "admin" }],
-  });
+  if (!pins) throw new Error("Issue 905 DTS source pin is unavailable.");
 
   return {
     organizationId: fixture.organizationId,
     projectId: fixture.projectId,
     otherProjectId: fixture.otherProjectId,
     otherOrganizationId: fixture.otherOrganizationId,
-    subjectId: SUBJECT_ID,
+    subjectId: binding.subjectId,
     registrationId,
     bindingId: binding.id,
     binding,
-    definitionId: X_DEFINITION_ID,
-    definitionRevisionId: X_REVISION_1,
-    catalogReleaseId: installed.pinA.id,
+    definitionId: binding.definitionId,
+    definitionRevisionId: binding.effectiveRevisionId,
+    catalogReleaseId: binding.catalogRelease.id,
     configRevisionId,
     currentValueId: binding.currentValueId,
+    sourcePinId: pins.sourcePinId,
+    sourceRef: pins.sourceRef,
+    sourceFormat: pins.sourceFormat,
+    sourceFileId: fileId,
+    sourceFileVersionId: fileVersionId,
     editorAuth,
     reviewerAuth,
     guestAuth,

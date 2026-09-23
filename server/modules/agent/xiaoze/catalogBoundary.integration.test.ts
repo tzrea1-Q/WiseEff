@@ -23,6 +23,7 @@ import {
   X_REVISION_1
 } from "../../catalog-kernel/runtime/catalogChain.fixture";
 import { createSourceBackedBindingService } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { renderDtsValue } from "../../dts/valueAst";
 import { DefinitionRevisionId, ParameterDefinitionId, SubjectRegistrationId } from "../../parameter-catalog-contract";
 import { setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 
@@ -965,11 +966,26 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     const replay = await resumeBindingAction(pending.threadId, "approve");
     expect(replay.status).toBe(200);
     expect(await businessState()).toEqual(beforeReplay);
-    const requests = await pool.query(
-      "select target_value from parameter_change_requests where project_parameter_binding_id = $1",
-      [sourceBindingId]
+    const requests = await pool.query<{
+      target_value: Parameters<typeof renderDtsValue>[0];
+      status: string;
+      config_revision_id: string;
+      source_pin_id: string;
+      candidate_id: string;
+    }>(
+      `select target_value, status, config_revision_id, source_pin_id, candidate_id
+       from project_parameter_value_change_requests
+       where organization_id = $1 and project_id = $2 and binding_id = $3`,
+      [ORG, PROJECT, sourceBindingId]
     );
-    expect(requests.rows).toEqual([{ target_value: "<2400>" }]);
+    expect(requests.rows).toHaveLength(1);
+    expect(requests.rows[0]).toMatchObject({
+      status: "pending",
+      config_revision_id: sourcePins.rows[0]!.config_revision_id,
+      source_pin_id: expect.any(String),
+      candidate_id: expect.any(String)
+    });
+    expect(renderDtsValue(requests.rows[0]!.target_value)).toBe("<2400>");
     expect(calls.rows[0]?.result.data).toMatchObject({
       projectId: PROJECT,
       parameterId: sourceBindingId,
