@@ -247,6 +247,12 @@ export function readJsonSourceValue(input: string | Buffer, pointer: string, roo
   return JSON.parse(base.source.slice(span.start, span.end)) as unknown;
 }
 
+/** Read the exact source token at a pinned pointer without normalising it. */
+export function readJsonSourceText(input: string | Buffer, pointer: string, rootPointer = ""): string {
+  const { base, span } = locateJsonSourceValue(input, pointer, rootPointer);
+  return base.source.slice(span.start, span.end);
+}
+
 /** Both pointers are document-absolute; the replacement is strict JSON text, not a coerced UI string. */
 export function patchJsonSource(
   input: string | Buffer,
