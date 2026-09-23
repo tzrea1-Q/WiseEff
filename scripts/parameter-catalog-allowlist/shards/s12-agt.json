@@ -136,12 +136,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-AGT:legacy-parameter-spec-identifier:41333e6758b504a7:2352cd7afd8496cb",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/agent/tools/actionTools.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-AGT:legacy-parameter-spec-identifier:64279d36d0d551de:0b7113b0a96a5aa2",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/agent/tools/actionTools.integration.test.ts",
@@ -181,12 +175,6 @@
       "id": "S12-AGT:legacy-parameter-spec-identifier:e113d31e9e34154f:a073fd3b2dde2887",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/agent/tools/actionTools.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-AGT:legacy-parameter-spec-identifier:f98934aa45a45cf4:3545c2d3303cc20c",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/agent/tools/actionTools.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {

@@ -4,7 +4,11 @@ import { resolve } from "node:path";
 import { z } from "zod";
 
 import type { AllowlistEntry } from "./schema";
-import { runReviewedRelocationRecord, type RelocationOutcome } from "./runtimeTopologyRelocation";
+import {
+  verifyHistoricalRelocationProof,
+  type RelocationConfig,
+  type RelocationOutcome,
+} from "./runtimeTopologyRelocation";
 import type { BoundaryViolation, BoundaryViolationFixture } from "./schema";
 
 /**
@@ -62,6 +66,13 @@ export const debuggingTransferRelocationFiles = [
 ] as const;
 
 export const debuggingTransferRelocationTotalPairs = 4;
+const relocationConfig: RelocationConfig = {
+  recordPath: debuggingTransferRelocationRecordPath,
+  recordSha256: reviewedRecordSha256,
+  files: debuggingTransferRelocationFiles,
+  totalPairs: debuggingTransferRelocationTotalPairs,
+  rejectAllowanceGrowth: true,
+};
 
 export function reviewedRelocationRecordSha256() {
   return reviewedRecordSha256;
@@ -77,21 +88,24 @@ export function relocationRecordDigest(bytes: Buffer) {
 }
 
 /**
- * Applies the reviewed #846 relocation. Runs after the earlier reviewed records so the
- * cross-record overlap checks see every previously granted alias.
+ * Authenticates the complete frozen #846 record at its reviewed Git tree. The current
+ * route and split-repository aliases are granted separately by the #853 C records.
  */
 export async function applyReviewedDebuggingTransferRelocation(
   repoRoot: string,
   fixture: BoundaryViolationFixture,
   allowances: readonly AllowlistEntry[],
   discovered: readonly BoundaryViolation[],
-  existingRelocations: readonly { id: string; observed: BoundaryViolation }[] = []
+  _existingRelocations: readonly { id: string; observed: BoundaryViolation }[] = []
 ): Promise<RelocationOutcome> {
-  return runReviewedRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, {
-    recordPath: debuggingTransferRelocationRecordPath,
-    recordSha256: reviewedRecordSha256,
-    files: debuggingTransferRelocationFiles,
-    totalPairs: debuggingTransferRelocationTotalPairs,
-    rejectAllowanceGrowth: true
+  if (!fixture.violations.some((entry) => debuggingTransferRelocationFiles.some(({ file }) => file === entry.file))) {
+    return { violations: [...discovered], relocations: [] };
+  }
+  await verifyHistoricalRelocationProof(repoRoot, fixture, allowances, relocationConfig, {
+    commit: "47a67562df2920d804ea6ca0f27b84e024ff2ac4",
+    tree: "3ff4fd6a2a1a212465b9eeea92df86f3c6b09312",
   });
+  // Both original target files changed under #915. The fixed record remains historical;
+  // #853's separately pinned successor supplies current aliases.
+  return { violations: [...discovered], relocations: [] };
 }

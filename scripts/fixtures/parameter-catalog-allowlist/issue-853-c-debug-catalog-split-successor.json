@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/debugging/catalogSplitRepository.ts",
+      "sourceBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+      "destinationBlobOid": "7b083b1cead606de182e46b13da95992af9e28da",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:82f4650627bf548b",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 240,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+            "byteStart": 6096,
+            "byteEnd": 6332,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeColumns} from debug_nodes n left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where ${conditions.join(\" and \")} order by n.name asc `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:5771330a82595db8",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "line": 248,
+            "column": 5,
+            "byteStart": 6390,
+            "byteEnd": 6626,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeColumns} from debug_nodes n left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where ${conditions.join(\" and \")} order by n.name asc `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "7b083b1cead606de182e46b13da95992af9e28da"
+          },
+          "sliceSha256": "ceb3a9fa3222cc3110caaea672126a60230b77eecc5bbfbab04639fe1168f201"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:9b0dbb8d7bc1d78a",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 258,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+            "byteStart": 6619,
+            "byteEnd": 6924,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeColumns} from debug_nodes n left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where n.organization_id = $1 and n.id = $2 ${input.includeArchived ? \"\" …"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:78c72d25f5f01d30",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "line": 266,
+            "column": 5,
+            "byteStart": 6913,
+            "byteEnd": 7218,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeColumns} from debug_nodes n left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where n.organization_id = $1 and n.id = $2 ${input.includeArchived ? \"\" …",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "7b083b1cead606de182e46b13da95992af9e28da"
+          },
+          "sliceSha256": "ac6eb1a808950f3dbd3b3c5315baef41e939c9b44ef6e6dbb3ebdb04da11e94a"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:3e1bed36c91414db",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 305,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+            "byteStart": 7874,
+            "byteEnd": 8174,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugRuntimeNodeColumns} from debug_nodes n inner join debug_node_bindings b on b.node_id = n.id left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where ${cond…"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:9790920fe15b9e07",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "line": 354,
+            "column": 5,
+            "byteStart": 9450,
+            "byteEnd": 9750,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugRuntimeNodeColumns} from debug_nodes n inner join debug_node_bindings b on b.node_id = n.id left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where ${cond…",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "7b083b1cead606de182e46b13da95992af9e28da"
+          },
+          "sliceSha256": "b1f2b1e4ff754bb07f7a7c53b2f242febfbd2eb12172b97c26ae530f6ba356de"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:43afc3cea2a099e2",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 565,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+            "byteStart": 15471,
+            "byteEnd": 15694,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeBindingColumns} from debug_node_bindings where organization_id = $1 and node_id = $2 and protocol = $3 ${input.includeDisabled ? \"\" : \"and enabled = true\"} limit 1 `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:c502e5e80a3110c3",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "line": 698,
+            "column": 5,
+            "byteStart": 20125,
+            "byteEnd": 20348,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeBindingColumns} from debug_node_bindings where organization_id = $1 and node_id = $2 and protocol = $3 ${input.includeDisabled ? \"\" : \"and enabled = true\"} limit 1 `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "7b083b1cead606de182e46b13da95992af9e28da"
+          },
+          "sliceSha256": "1fe25bbab32d08e1df2f35332d4925465cad04b4411e781df35a651853120b6b"
+        }
+      ]
+    }
+  ]
+}

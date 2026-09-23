@@ -19,6 +19,7 @@ import {
 import type { BoundaryViolation } from "./schema";
 import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
 import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
+import { issue853CActionRetiredSourceIds } from "./issue853CRelocation";
 
 const repoRoot = process.cwd();
 const record: RuntimeTopologyRelocationRecord = JSON.parse(
@@ -55,13 +56,13 @@ const issue900RetiredIds = new Set((JSON.parse(await readFile(
 )) as { retiredAllowlistEntries: Array<{ id: string }> }).retiredAllowlistEntries.map((entry) => entry.id));
 
 function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
-  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds]);
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds, ...issue853CActionRetiredSourceIds]);
   expect(issue900RetiredIds.size).toBe(13);
   expect(issue913StaleRetiredSourceIds).toHaveLength(17);
   expect(issue913T14RetiredSourceIds).toHaveLength(4);
-  expect(retired.size).toBe(34);
-  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(34);
-  expect(removed).toHaveLength(28 + 13 + 17 + 4);
+  expect(retired.size).toBe(36);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(36);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2);
   expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
     .toEqual([...retired].sort());
   expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
@@ -105,7 +106,7 @@ describe("historical exact reviewed runtime topology occurrence relocation", () 
     expect(new Set(result.map((pair) => pair.new.id)).size).toBe(16);
     expect(fixture.violations).toHaveLength(3519);
     expect(fixture.violations.length - 28).toBe(3491);
-    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4);
+    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 2);
   });
 
   it.each([
