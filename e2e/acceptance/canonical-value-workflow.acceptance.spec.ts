@@ -517,20 +517,23 @@ test.describe("canonical JSON deletion on a real source", () => {
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${jsonProjectId}`);
     const dismiss = page.getByRole("button", { name: "不再提示" });
     if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
+    await page.getByRole("tab", { name: /JSON 参数/ }).click();
     const panel = page.getByRole("region", { name: "JSON 参数", exact: true });
     await expect(panel).toBeVisible();
-    await panel.getByLabel("修改原因", { exact: true }).fill("Remove obsolete JSON member");
-    await panel.getByLabel("目标值", { exact: true }).fill("not-json");
+    await panel.getByRole("button", { name: "编辑 iin_max" }).click();
+    const dialog = page.getByRole("dialog", { name: "修改草稿" });
+    await dialog.getByLabel("修改原因", { exact: true }).fill("Remove obsolete JSON member");
+    await dialog.getByLabel("目标值", { exact: true }).fill("not-json");
     const invalidEdit = page.waitForResponse(r => r.request().method() === "POST"
       && r.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
-    await panel.getByRole("button", { name: "校验并创建草稿", exact: true }).click();
+    await dialog.getByRole("button", { name: "校验并创建草稿", exact: true }).click();
     const invalidResponse = await invalidEdit;
     expect(invalidResponse.status(), await invalidResponse.text()).toBe(400);
-    await expect(panel.getByRole("alert")).toContainText("目标值未通过校验");
+    await expect(dialog.getByRole("alert")).toContainText("目标值未通过校验");
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     const created = page.waitForResponse(r => r.request().method() === "POST"
       && r.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
-    await panel.getByRole("button", { name: "创建删除草稿", exact: true }).click();
+    await dialog.getByRole("button", { name: "创建删除草稿", exact: true }).click();
     const draftResponse = await created;
     expect(draftResponse.status(), await draftResponse.text()).toBe(201);
     const draftId = (await draftResponse.json()).item.draftId as string;
