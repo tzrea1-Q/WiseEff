@@ -5,6 +5,7 @@ import type {
   ParameterFileSourcePreview,
   ParameterFileSourceReviewResult
 } from "@/application/ports/ParameterFileRepository";
+import { sourceReviewReason } from "./sourceReviewReason";
 
 export type CandidateFileRepository = Pick<
   ParameterFileRepository,
@@ -531,7 +532,7 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         throw new Error("只有 ready 状态的候选可以提交来源审核。");
       }
       if (!sourcePreview || sourcePreview.kind !== "canonical" || !sourcePreview.canSubmit) {
-        const message = sourcePreview?.reason ?? "当前候选不满足来源审核条件。";
+        const message = sourceReviewReason(sourcePreview?.reason);
         sourceReviewError = message;
         error = message;
         emit();

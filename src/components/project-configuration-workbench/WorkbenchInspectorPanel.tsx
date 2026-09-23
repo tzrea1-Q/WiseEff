@@ -21,6 +21,7 @@ import type {
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionPropertyDraft } from "@/application/project-configuration/sessionDrafts";
+import { sourceReviewReason } from "@/application/project-configuration/sourceReviewReason";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import {
@@ -380,7 +381,7 @@ export function WorkbenchInspectorPanel({
                     <dt>来源工作流</dt>
                     <dd>
                       {sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
-                      {sourcePreview.reason ? <small> · {sourcePreview.reason}</small> : null}
+                      {sourcePreview.reason ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
                     </dd>
                   </div>
                   {sourcePreview.kind === "canonical" ? (
@@ -512,7 +513,7 @@ export function WorkbenchInspectorPanel({
                     className="button primary"
                     type="button"
                     disabled={!canSubmitSourceReview || submittingSourceReview}
-                    title={!canSubmitSourceReview ? sourcePreview.reason ?? "当前来源快照不允许提交。" : undefined}
+                    title={!canSubmitSourceReview ? sourceReviewReason(sourcePreview.reason) : undefined}
                     onClick={onSubmitSourceReview}
                   >
                     {submittingSourceReview ? "提交中…" : "提交来源变更审核"}
@@ -730,7 +731,7 @@ export function WorkbenchInspectorPanel({
                     : sourceWorkflowError
                       ? `${sourceWorkflowError} 受保护操作已禁用。`
                       : sourceWorkflow?.canonical
-                        ? `canonical 来源审核 · ${sourceWorkflow.bindingCount} 个绑定${sourceWorkflow.reason ? ` · ${sourceWorkflow.reason}` : ""}`
+                        ? `canonical 来源审核 · ${sourceWorkflow.bindingCount} 个绑定${sourceWorkflow.reason ? ` · ${sourceReviewReason(sourceWorkflow.reason)}` : ""}`
                         : "legacy 文件工作流"}
                   {sourceWorkflowError ? (
                     <button className="button subtle" type="button" onClick={onRetrySourceWorkflow}>

@@ -162,6 +162,27 @@ describe("createCandidateVersionFlow", () => {
     expect(flow.canActivate).toBe(false);
   });
 
+  it("explains a multi-binding candidate without submitting it", async () => {
+    const item = candidate();
+    const flow = createCandidateVersionFlow();
+    await flow.load("proj-1", item.id, {
+      getCandidate: vi.fn(async () => item),
+      downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", bytes: new TextEncoder().encode("source") })),
+      getCandidateSourcePreview: vi.fn(async () => ({
+        kind: "canonical" as const,
+        canSubmit: false,
+        candidateId: item.id,
+        format: "dts" as const,
+        reason: "candidate-changes-multiple-bindings"
+      }))
+    });
+    const submitCandidateSourceReview = vi.fn();
+    await expect(flow.submitSourceReview("proj-1", "review", { submitCandidateSourceReview })).rejects.toThrow(
+      "候选同时修改多个参数绑定；当前来源审核仅支持单个绑定，请拆分候选。"
+    );
+    expect(submitCandidateSourceReview).not.toHaveBeenCalled();
+  });
+
   it("reloads source proof and diff after recompute", async () => {
     const item = candidate({ status: "stale" });
     const firstPreview = {
