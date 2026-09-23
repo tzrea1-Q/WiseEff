@@ -489,9 +489,9 @@ export type BindingCompareItem = {
 };
 
 /**
- * Compare current canonical bindings by exact Definition and effective
- * DefinitionRevision identity. Same-project sibling source instances remain
- * visible; only the requested Binding is excluded.
+ * Compare current canonical bindings by Definition identity. Each peer retains
+ * its own effective DefinitionRevision; same-project sibling source instances
+ * remain visible, and only the requested Binding is excluded.
  */
 export async function getBindingCompare(
   db: Database,
