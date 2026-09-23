@@ -13,6 +13,7 @@ export type CanonicalChangeApplyOutcome = "committed" | "replayed";
 
 export type CanonicalValueChangeRequestRow = {
   id: string;
+  request_kind: "single" | "batch";
   organization_id: string;
   project_id: string;
   draft_id: string | null;
@@ -145,6 +146,7 @@ export async function getCanonicalValueChangeRequest(
      where request.organization_id = $1
        and request.project_id = $2
        and request.id = $3
+       and request.request_kind = 'single'
      limit 1
     `,
     [input.organizationId, input.projectId, input.requestId]
@@ -166,6 +168,7 @@ export async function getCanonicalValueChangeRequestForUpdate(
      where request.organization_id = $1
        and request.project_id = $2
        and request.id = $3
+       and request.request_kind = 'single'
      for update of request
     `,
     [input.organizationId, input.projectId, input.requestId]
@@ -211,6 +214,7 @@ export async function listCanonicalValueChangeRequests(
      where request.organization_id = $1
        and request.project_id = $2
        and ($3::text is null or request.status = $3)
+       and request.request_kind = 'single'
      order by updated_at desc, id
     `,
     [input.organizationId, input.projectId, input.status ?? null]

@@ -398,16 +398,36 @@ export function WorkbenchInspectorPanel({
                             sourcePreview.locator && `locator ${sourcePreview.locator}`
                           ]
                             .filter(Boolean)
-                            .join(" · ") || "缺少服务端来源身份"}
+                            .join(" · ") || (sourcePreview.bindings?.length
+                              ? `${sourcePreview.bindings.length} 个绑定的身份见下方目标列表`
+                              : "缺少服务端来源身份")}
                         </dd>
                       </div>
                       <div>
                         <dt>字节证明</dt>
                         <dd>
-                          <div>单参数变更校验</div>
+                          <div>{sourcePreview.bindings && sourcePreview.bindings.length > 1
+                            ? `${sourcePreview.bindings.length} 个参数绑定的只读差异证明`
+                            : "单参数变更校验"}</div>
                           <div className="mono">格式：{sourcePreview.format.toLowerCase() === "json" ? "JSON" : sourcePreview.format.toUpperCase()}</div>
-                          <div className="mono">基准摘要：{sourcePreview.baseDigest ?? "缺失"}</div>
-                          <div className="mono">提议摘要：{sourcePreview.proposedDigest ?? "缺失"}</div>
+                          {sourcePreview.bindings && sourcePreview.bindings.length > 1 ? (
+                            <ol aria-label="来源变更目标">
+                              {sourcePreview.bindings.map((binding) => (
+                                <li key={binding.bindingId}>
+                                  <div className="mono">{binding.locator}</div>
+                                  <div>{binding.action === "delete" ? "删除属性" : "设置值"}：{binding.beforeText} → {binding.afterText ?? "已删除"}</div>
+                                </li>
+                              ))}
+                            </ol>
+                          ) : null}
+                          <details>
+                            <summary>完整字节摘要与来源身份</summary>
+                            <div className="mono">基准摘要：{sourcePreview.baseDigest ?? "缺失"}</div>
+                            <div className="mono">提议摘要：{sourcePreview.proposedDigest ?? "缺失"}</div>
+                            {sourcePreview.bindings && sourcePreview.bindings.length > 1 ? sourcePreview.bindings.map((binding) => (
+                              <div className="mono" key={binding.bindingId}>binding {binding.bindingId} · pin {binding.sourcePinId}</div>
+                            )) : null}
+                          </details>
                           {sourcePreview.before != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.before}</pre> : null}
                           {sourcePreview.after != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.after}</pre> : null}
                         </dd>

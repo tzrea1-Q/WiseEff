@@ -24,6 +24,7 @@ const DELETE_ORDER = [
   "parameter_review_decisions",
   "parameter_submission_items",
   "parameter_draft_identity_invalidations",
+  "project_parameter_value_change_targets",
   "project_parameter_value_change_requests",
   "project_parameter_value_drafts",
   "parameter_change_requests",
@@ -401,10 +402,12 @@ async function loadSuccessorPks(
       asSet(
         await idsFrom(
           db,
-          `select id from public.project_parameter_value_change_requests
-            where organization_id = $1 and project_id = $2
-              and binding_id = any($3::text[])
-              and status in ('open', 'pending', 'submitted')`,
+          `select request.id from public.project_parameter_value_change_requests request
+            where request.organization_id = $1 and request.project_id = $2
+              and (request.binding_id = any($3::text[]) or exists (
+                select 1 from public.project_parameter_value_change_targets target
+                 where target.request_id = request.id and target.binding_id = any($3::text[])))
+              and request.status in ('open', 'pending', 'submitted')`,
           [organizationId, projectId, bindingList],
         ),
       ),
@@ -412,6 +415,12 @@ async function loadSuccessorPks(
   } catch {
     successor.set("project_parameter_value_change_requests", new Set());
   }
+  successor.set("project_parameter_value_change_targets", asSet(await idsFrom(
+    db,
+    `select target.id from public.project_parameter_value_change_targets target
+       where target.request_id = any($1::text[])`,
+    [[...(successor.get("project_parameter_value_change_requests") ?? new Set())]],
+  )));
   successor.set(
     "parameter_submission_rounds",
     asSet(

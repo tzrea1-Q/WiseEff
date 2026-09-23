@@ -54,6 +54,32 @@ export type CanonicalBindingPins = {
   sourceFormat: "dts" | "json";
 };
 
+/**
+ * Bounded, target-free projection used by an authorized reviewer to inspect
+ * every author's canonical draft for one Binding.
+ */
+export type CanonicalValueDraftReviewRow = {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  binding_id: string;
+  user_id: string | null;
+  definition_id: string;
+  definition_revision_id: string;
+  catalog_release_id: string;
+  base_current_value_id: string;
+  config_revision_id: string;
+  source_ref: string;
+  source_pin_id: string | null;
+  candidate_id: string | null;
+  candidate_base_digest: string | null;
+  candidate_proposed_digest: string | null;
+  candidate_diff_digest: string | null;
+  source_format: "dts" | "json" | null;
+  pending_request_id: string | null;
+  stale: boolean;
+};
+
 export async function loadCanonicalBindingPins(
   db: Queryable,
   input: { organizationId: string; projectId: string; bindingId: string }
@@ -112,6 +138,89 @@ export async function loadCanonicalBindingPins(
     sourcePinId: row.source_pin_id,
     sourceFormat: row.source_format
   };
+}
+
+/**
+ * List all canonical drafts for one exact tenant/project/Binding scope.
+ * Pending review requests deliberately remain visible: review needs to know
+ * every competing frozen base before choosing one draft.
+ */
+export async function listCanonicalValueDraftsForBinding(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string }
+): Promise<CanonicalValueDraftReviewRow[]> {
+  const result = await db.query<CanonicalValueDraftReviewRow>(
+    `
+    select draft.id,
+           draft.organization_id,
+           draft.project_id,
+           draft.binding_id,
+           draft.user_id,
+           draft.definition_id,
+           draft.definition_revision_id,
+           draft.catalog_release_id,
+           draft.base_current_value_id,
+           draft.config_revision_id,
+           draft.source_ref,
+           draft.source_pin_id,
+           draft.candidate_id,
+           draft.candidate_base_digest,
+           draft.candidate_proposed_digest,
+           draft.candidate_diff_digest,
+           draft_pin.format as source_format,
+           pending.id as pending_request_id,
+           (
+             current_binding.id is null
+             or current_value.id is null
+             or draft.definition_id is distinct from current_binding.definition_id
+             or draft.definition_id is distinct from current_value.definition_id
+             or draft.definition_revision_id is distinct from current_binding.effective_revision_id
+             or draft.definition_revision_id is distinct from current_value.definition_revision_id
+             or draft.catalog_release_id is distinct from current_binding.catalog_release_id
+             or draft.base_current_value_id is distinct from current_binding.current_value_id
+             or draft.config_revision_id is distinct from current_value.config_revision_id
+             or draft.source_ref is distinct from current_value.source_ref
+             or draft.source_pin_id is null
+             or current_pin.id is null
+             or draft.source_pin_id is distinct from current_pin.id
+           ) as stale
+      from public.project_parameter_value_drafts draft
+      left join parameter_catalog.project_value_source_pins draft_pin
+        on draft_pin.id = draft.source_pin_id
+       and draft_pin.organization_id = draft.organization_id
+       and draft_pin.project_id = draft.project_id
+       and draft_pin.binding_id = draft.binding_id
+      left join parameter_catalog.project_parameter_bindings current_binding
+        on current_binding.organization_id = draft.organization_id
+       and current_binding.project_id = draft.project_id
+       and current_binding.id = draft.binding_id
+      left join parameter_catalog.project_parameter_values current_value
+        on current_value.binding_id = current_binding.id
+       and current_value.definition_id = current_binding.definition_id
+       and current_value.id = current_binding.current_value_id
+      left join parameter_catalog.project_value_source_pins current_pin
+        on current_pin.organization_id = current_binding.organization_id
+       and current_pin.project_id = current_binding.project_id
+       and current_pin.binding_id = current_binding.id
+       and current_pin.project_value_id = current_binding.current_value_id
+      left join lateral (
+        select request.id
+          from public.project_parameter_value_change_requests request
+         where request.organization_id = draft.organization_id
+           and request.project_id = draft.project_id
+           and request.draft_id = draft.id
+           and request.status = 'pending'
+         order by request.updated_at desc, request.id
+         limit 1
+      ) pending on true
+     where draft.organization_id = $1
+       and draft.project_id = $2
+       and draft.binding_id = $3
+     order by draft.updated_at desc, draft.id
+    `,
+    [input.organizationId, input.projectId, input.bindingId]
+  );
+  return result.rows;
 }
 
 export async function upsertCanonicalValueDraft(

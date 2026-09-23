@@ -34,7 +34,7 @@ const sourceDigest = (value: string) => value.startsWith("sha256:") ? value : `s
 const same = (left: unknown, right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
 function conflict(message: string): never { throw new ApiError("CONFLICT", message); }
 
-async function assertDeletedAnchorsRemainAbsent(
+export async function assertDeletedAnchorsRemainAbsent(
   db: Queryable,
   input: { configSetId: string; revisionId: string; manifest: CanonicalSourceManifest; baseFiles: Array<{ content: string }>; candidateFileId: string; candidateAfter: string },
 ) {

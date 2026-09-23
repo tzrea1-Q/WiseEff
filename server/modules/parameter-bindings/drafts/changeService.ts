@@ -172,6 +172,19 @@ async function requireOwnedProject(db: Database, auth: AuthContext, projectId: s
   }
 }
 
+async function assertSingleRequestReview(db: Database, auth: AuthContext, projectId: string, requestId: string) {
+  const kind = (await db.query<{ request_kind: string }>(
+    `select request_kind from public.project_parameter_value_change_requests
+      where id=$1 and organization_id=$2 and project_id=$3`,
+    [requestId, auth.organization.id, projectId]
+  )).rows[0]?.request_kind;
+  if (kind === "batch") {
+    throw new ApiError("CONFLICT", "The batch source commit proof is not available for review.", {
+      reason: "canonical-batch-source-commit-unavailable"
+    });
+  }
+}
+
 function requireProjectEditor(auth: AuthContext, projectId: string) {
   if (!canEditParameters(auth) || !canEditParameters(auth, projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter edit role is required for this project.");
@@ -498,6 +511,7 @@ export async function reviewCanonicalValueChange(
   if (input.decision === "approve") {
     return db.transaction(async (tx) => {
       await requireCurrentReviewRole(tx);
+      await assertSingleRequestReview(tx, auth, input.projectId, input.requestId);
       // Keep the source-commit lock order: source cohort/files are locked before
       // the request row. The owner rechecks the request under its request lock.
       const visibleRequest = await getCanonicalValueChangeRequest(tx, {
@@ -550,6 +564,7 @@ export async function reviewCanonicalValueChange(
 
   return db.transaction(async (tx) => {
     await requireCurrentReviewRole(tx);
+    await assertSingleRequestReview(tx, auth, input.projectId, input.requestId);
     const request = await getCanonicalValueChangeRequestForUpdate(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
@@ -620,6 +635,7 @@ export async function withdrawCanonicalValueChange(
     projectId: input.projectId, operation: "canonical value withdraw", targetType: "project-parameter-value-change-request", targetId: input.requestId
   });
   await requireOwnedProject(db, auth, input.projectId);
+  await assertSingleRequestReview(db, auth, input.projectId, input.requestId);
 
   const request = await getCanonicalValueChangeRequest(db, {
     organizationId: auth.organization.id,

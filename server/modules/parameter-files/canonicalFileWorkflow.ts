@@ -6,7 +6,8 @@ import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
-import { canAdminParameters, canEditParameters } from "../parameter-kernel/policy";
+import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
+import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import {
@@ -23,6 +24,7 @@ import {
   loadCanonicalSourceCohort,
   loadCanonicalSourceSnapshot,
   loadPinnedDtsProperty,
+  readPinnedDtsSourceBatchChanges,
   readPinnedDtsSourceChange,
   lockCanonicalSourceCohort,
   validatePinnedDtsSourceDeletion
@@ -70,6 +72,8 @@ export type CanonicalSourcePreviewBindingDto = {
   baseDigest: string;
   proposedDigest: string;
   action: SourceAction;
+  beforeText: string;
+  afterText?: string;
 };
 
 export type CanonicalSourcePreviewDto = {
@@ -135,6 +139,8 @@ export type CanonicalSourceBatchTargetDto = Readonly<{
   baseDigest: string;
   proposedDigest: string;
   action: SourceAction;
+  beforeText: string;
+  afterText?: string;
   targetText?: string;
 }>;
 
@@ -145,7 +151,7 @@ export type CanonicalSourceBatchPrepareDto = Readonly<{
   projectId: string;
   candidateId: string;
   fileId: string;
-  format: "json";
+  format: "json" | "dts";
   baseVersionId: string;
   configSetId: string;
   baseDigest: string;
@@ -175,6 +181,7 @@ type SourceChange = {
   binding: CanonicalSourceBindingPin;
   pin: CanonicalValueSourcePin;
   action: SourceAction;
+  beforeTargetText: string;
   targetText?: string;
   targetValue?: DtsValue;
   baseText: string;
@@ -518,6 +525,25 @@ async function inspectCandidate(
   const jsonPatchPlans: Array<{ baseBytes: Buffer; pointer: string; rootPointer: string; action: SourceAction; targetText?: string }> = [];
   let jsonBaseBytes: Buffer | undefined;
   let dtsRenderProofFailed = false;
+  let dtsBatchChanges: Awaited<ReturnType<typeof readPinnedDtsSourceBatchChanges>> | null = null;
+  if (candidate.format === "dts" && matches.length > 1) {
+    const first = matches[0]!.source;
+    const index = first.manifest.members.findIndex((member) =>
+      member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId);
+    if (index < 0 || !matches.every((match) =>
+      match.source.manifest.configRevisionId === first.manifest.configRevisionId
+      && match.source.files[match.source.manifest.members.findIndex((member) =>
+        member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId)]?.content === first.files[index]?.content)) {
+      return { workflow, candidate, reason: "dts-batch-source-proof-failed" };
+    }
+    try {
+      dtsBatchChanges = await readPinnedDtsSourceBatchChanges(
+        db, matches.map((match) => match.source.manifest), first.files[index]!.content, candidateText);
+    } catch (error) {
+      if (!(error instanceof ApiError || error instanceof SyntaxError)) throw error;
+      return { workflow, candidate, reason: "dts-batch-source-proof-failed" };
+    }
+  }
   for (const match of matches) {
     const sourceIndex = match.source.manifest.members.findIndex((member) =>
       member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId
@@ -528,6 +554,7 @@ async function inspectCandidate(
     if (candidateBytes.equals(baseBytes)) continue;
     try {
       let action: SourceAction;
+      let beforeTargetText: string;
       let targetText: string | undefined;
       let targetValue: DtsValue | undefined;
       if (candidate.format === "json") {
@@ -545,6 +572,7 @@ async function inspectCandidate(
           candidateTarget = undefined;
         }
         const baseTarget = readJsonSourceText(baseBytes, pointer, rootPointer);
+        beforeTargetText = baseTarget;
         if (candidateTarget === undefined) {
           // Deletion is proved against the complete candidate below; this plan
           // only records the exact pinned locator for the reconstruction.
@@ -557,46 +585,54 @@ async function inspectCandidate(
           jsonPatchPlans.push({ baseBytes, pointer, rootPointer, action, targetText });
         }
       } else {
-        const deletion = (() => {
-          try {
-            const row = match.pin.locator;
-            if (row.kind !== "dts-property" || typeof row.propertyName !== "string") return null;
-            return validatePinnedDtsSourceDeletion(db, match.source.manifest, baseText, candidateText)
-              .then(() => true);
-          } catch {
-            return null;
-          }
-        })();
-        let isDeletion = false;
-        if (deletion) {
-          try {
-            await deletion;
-            isDeletion = true;
-          } catch {
-            isDeletion = false;
-          }
-        }
-        if (isDeletion) {
-          action = "delete";
+        beforeTargetText = (await loadPinnedDtsProperty(db, match.source.manifest)).raw_text;
+        const batchTarget = dtsBatchChanges?.get(match.pin.sourcePinId);
+        if (batchTarget) {
+          action = batchTarget.action;
+          targetText = batchTarget.rawText;
+          targetValue = batchTarget.value;
         } else {
-          const read = await readPinnedDtsSourceChange(db, match.source.manifest, baseText, candidateText);
-          const row = await loadPinnedDtsProperty(db, match.source.manifest);
-          const ownerRawText = renderDtsValue(read.value);
-          const exact = ensureOverlayProperty(baseText, {
-            propertyKey: row.property_name,
-            rawText: ownerRawText,
-            action: "set",
-            targetRef: row.node_locator,
-            expectedChecksum: match.source.manifest.members[sourceIndex]!.checksum.replace(/^sha256:/, ""),
-            occurrenceSpan: { start: row.start_offset, end: row.end_offset }
-          });
-          if (exact !== candidateText) {
-            dtsRenderProofFailed = true;
-            continue;
+          const deletion = (() => {
+            try {
+              const row = match.pin.locator;
+              if (row.kind !== "dts-property" || typeof row.propertyName !== "string") return null;
+              return validatePinnedDtsSourceDeletion(db, match.source.manifest, baseText, candidateText)
+                .then(() => true);
+            } catch {
+              return null;
+            }
+          })();
+          let isDeletion = false;
+          if (deletion) {
+            try {
+              await deletion;
+              isDeletion = true;
+            } catch {
+              isDeletion = false;
+            }
           }
-          action = "set";
-          targetText = read.rawText;
-          targetValue = read.value;
+          if (isDeletion) {
+            action = "delete";
+          } else {
+            const read = await readPinnedDtsSourceChange(db, match.source.manifest, baseText, candidateText);
+            const row = await loadPinnedDtsProperty(db, match.source.manifest);
+            const ownerRawText = renderDtsValue(read.value);
+            const exact = ensureOverlayProperty(baseText, {
+              propertyKey: row.property_name,
+              rawText: ownerRawText,
+              action: "set",
+              targetRef: row.node_locator,
+              expectedChecksum: match.source.manifest.members[sourceIndex]!.checksum.replace(/^sha256:/, ""),
+              occurrenceSpan: { start: row.start_offset, end: row.end_offset }
+            });
+            if (exact !== candidateText) {
+              dtsRenderProofFailed = true;
+              continue;
+            }
+            action = "set";
+            targetText = read.rawText;
+            targetValue = read.value;
+          }
         }
       }
       const baseDigest = digest(baseBytes);
@@ -619,6 +655,7 @@ async function inspectCandidate(
         binding: match.binding,
         pin: match.pin,
         action,
+        beforeTargetText,
         ...(targetText === undefined ? {} : { targetText }),
         ...(targetValue === undefined ? {} : { targetValue }),
         baseText,
@@ -688,7 +725,9 @@ function previewBinding(change: SourceChange): CanonicalSourcePreviewBindingDto 
     locator: sourceLocator(change.pin),
     baseDigest: change.baseDigest,
     proposedDigest: change.proposedDigest,
-    action: change.action
+    action: change.action,
+    beforeText: change.beforeTargetText,
+    ...(change.targetText === undefined ? {} : { afterText: change.targetText })
   };
 }
 
@@ -714,7 +753,11 @@ function previewFromInspection(inspection: SourceInspection, request?: RequestSt
       canSubmit: false,
       ...common,
       reason: inspection.reason ?? "canonical-batch-writer-unavailable",
-      bindings: inspection.changes.map(previewBinding)
+      baseDigest: inspection.changes[0]!.baseDigest,
+      proposedDigest: inspection.changes[0]!.proposedDigest,
+      bindings: inspection.changes.map(previewBinding),
+      before: inspection.changes[0]!.baseText,
+      after: inspection.changes[0]!.candidateText
     };
   }
   if (!change) {
@@ -772,6 +815,15 @@ export async function prepareCanonicalCandidateBatchInTransaction(
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
   }
+  return prepareCanonicalCandidateBatchLocked(tx, objectStore, auth, input);
+}
+
+async function prepareCanonicalCandidateBatchLocked(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedProofToken: string }
+): Promise<CanonicalSourceBatchPrepareDto> {
   const candidate = await getParameterFileCandidateById(tx, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
@@ -810,8 +862,8 @@ export async function prepareCanonicalCandidateBatchInTransaction(
   if (!inspection.proofToken || inspection.proofToken !== input.expectedProofToken) {
     throw new ApiError("CONFLICT", "Canonical source proof changed after preview.", { reason: "source-proof-stale" });
   }
-  if (lockedCandidate.format !== "json" || !inspection.changes || inspection.changes.length < 2 || !inspection.workflow.configSetId || !inspection.workflow.proofToken) {
-    throw new ApiError("CONFLICT", "Candidate has no exact JSON multi-Binding source change.", {
+  if ((lockedCandidate.format !== "json" && lockedCandidate.format !== "dts") || !inspection.changes || inspection.changes.length < 2 || !inspection.workflow.configSetId || !inspection.workflow.proofToken) {
+    throw new ApiError("CONFLICT", "Candidate has no exact multi-Binding source change.", {
       reason: inspection.reason ?? "canonical-batch-writer-unavailable"
     });
   }
@@ -843,7 +895,7 @@ export async function prepareCanonicalCandidateBatchInTransaction(
     projectId: input.projectId,
     candidateId: lockedCandidate.id,
     fileId: lockedCandidate.fileId!,
-    format: "json" as const,
+    format: lockedCandidate.format,
     baseVersionId: lockedCandidate.baseVersionId!,
     configSetId: inspection.workflow.configSetId,
     baseDigest: changes[0]!.baseDigest,
@@ -855,6 +907,56 @@ export async function prepareCanonicalCandidateBatchInTransaction(
     targets
   };
   return { ...frozen, batchProofDigest: proofDigest(frozen) };
+}
+
+/** Reviewer proof recheck under the same source locks, before the request row is locked. */
+export async function recheckCanonicalCandidateBatchForReviewInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedProofToken: string }
+): Promise<CanonicalSourceBatchPrepareDto> {
+  if (!canReviewParameters(auth) || !canEditParameters(auth, input.projectId)
+    || !canReviewParameterStage(auth, input.projectId, "software_review")
+    || !await hasCurrentCanonicalReviewRole(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+    })) {
+    throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
+  }
+  return prepareCanonicalCandidateBatchLocked(tx, objectStore, auth, input);
+}
+
+/** Freeze the locked source proof for the request owner without creating a request or changing values. */
+export async function freezeCanonicalCandidateBatchSnapshotInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedProofToken: string }
+): Promise<CanonicalSourceBatchPrepareDto> {
+  const proof = await prepareCanonicalCandidateBatchInTransaction(tx, objectStore, auth, input);
+  const snapshot = (await tx.query<{
+    base_digest: string | null; proposed_digest: string | null; diff_digest: string | null;
+    frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
+  }>(`select base_digest,proposed_digest,diff_digest,frozen_member_manifest,frozen_binding_manifest
+      from project_parameter_file_candidates
+     where id=$1 and organization_id=$2 and project_id=$3 for update`,
+    [proof.candidateId, proof.organizationId, proof.projectId])).rows[0];
+  if (!snapshot) throw new ApiError("NOT_FOUND", "Canonical source candidate was not found.");
+  if (snapshot.base_digest === null) {
+    await tx.query(`update project_parameter_file_candidates
+        set base_digest=$4,proposed_digest=$5,diff_digest=$6,
+            frozen_member_manifest=$7::jsonb,frozen_binding_manifest=$8::jsonb
+        where id=$1 and organization_id=$2 and project_id=$3`,
+      [proof.candidateId, proof.organizationId, proof.projectId, proof.baseDigest,
+        proof.proposedDigest, proof.batchProofDigest, JSON.stringify(proof.members), JSON.stringify(proof.cohort)]);
+  } else if (snapshot.base_digest !== proof.baseDigest
+    || snapshot.proposed_digest !== proof.proposedDigest
+    || snapshot.diff_digest !== proof.batchProofDigest
+    || JSON.stringify(stableProofValue(snapshot.frozen_member_manifest)) !== JSON.stringify(stableProofValue(proof.members))
+    || JSON.stringify(stableProofValue(snapshot.frozen_binding_manifest)) !== JSON.stringify(stableProofValue(proof.cohort))) {
+    throw new ApiError("CONFLICT", "Candidate snapshot disagrees with the locked batch proof.", { reason: "candidate-snapshot-stale" });
+  }
+  return proof;
 }
 
 async function findExistingDraft(

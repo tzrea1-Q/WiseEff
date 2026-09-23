@@ -313,6 +313,91 @@ export async function readPinnedDtsSourceChange(
   return { rawText: target.rawText, value: parseDtsValue(target.name, target.rawText).value };
 }
 
+/** Rebuild a multi-property candidate from exact pinned spans before exposing its targets. */
+export async function readPinnedDtsSourceBatchChanges(
+  db: Queryable,
+  manifests: readonly CanonicalSourceManifest[],
+  beforeText: string,
+  afterText: string,
+) {
+  const propertyPaths = (document: DtsDocument) => {
+    const properties: Array<{ property: DtsPropertyCst; path: number[] }> = [];
+    const visit = (node: DtsDocument["topLevel"][number], path: number[]) => {
+      node.children.forEach((child, index) => {
+        if (child.kind === "property") properties.push({ property: child, path: [...path, index] });
+        else if (child.kind === "node") visit(child, [...path, index]);
+      });
+    };
+    document.topLevel.forEach((node, index) => visit(node, [index]));
+    return properties;
+  };
+  const statementAt = (document: DtsDocument, path: readonly number[]) => {
+    let statement: DtsDocument["topLevel"][number] | DtsDocument["topLevel"][number]["children"][number] | undefined = document.topLevel[path[0]!];
+    for (const index of path.slice(1)) {
+      if (statement?.kind !== "node") return undefined;
+      statement = statement.children[index];
+    }
+    return statement;
+  };
+  const beforeProperties = propertyPaths(parseDts(beforeText));
+  const after = parseDts(afterText);
+  const propertyIndex = new Map(beforeProperties.map(({ property }, index) =>
+    [`${property.name}:${property.span.start}:${property.span.end}`, index] as const));
+  const targets: Array<{
+    sourcePinId: string;
+    index: number;
+    path: number[];
+    row: Awaited<ReturnType<typeof loadPinnedDtsProperty>>;
+    action: "set" | "delete";
+    rawText?: string;
+    value?: ReturnType<typeof parseDtsValue>["value"];
+  }> = [];
+  for (const manifest of manifests) {
+    const row = await loadPinnedDtsProperty(db, manifest);
+    const index = propertyIndex.get(`${row.property_name}:${row.start_offset}:${row.end_offset}`);
+    if (index === undefined || beforeProperties[index]!.property.rawText !== row.raw_text) {
+      throw new ApiError("CONFLICT", "DTS batch has a stale property pin.");
+    }
+    const path = beforeProperties[index]!.path;
+    const statement = statementAt(after, path);
+    if (!statement || (statement.kind !== "property" && statement.kind !== "delete-property")
+      || statement.name !== row.property_name) {
+      throw new ApiError("CONFLICT", "DTS batch changed its target structure.");
+    }
+    targets.push({ sourcePinId: manifest.sourcePinId, index, path, row,
+      action: statement.kind === "delete-property" ? "delete" as const : "set" as const,
+      ...(statement.kind === "property" ? {
+        rawText: statement.rawText,
+        value: parseDtsValue(row.property_name, statement.rawText).value
+      } : {}) });
+  }
+  if (new Set(targets.map((target) => target.index)).size !== targets.length) {
+    throw new ApiError("CONFLICT", "DTS batch has duplicate target properties.");
+  }
+  let reconstructed = beforeText;
+  // ponytail: reparsing for each target costs O(targets × file size); batch CST edits if large cohorts need it.
+  for (const target of targets.filter((entry) => entry.action === "delete" || beforeProperties[entry.index]!.property.rawText !== entry.rawText)
+    .sort((left, right) => left.index - right.index)) {
+    const current = statementAt(parseDts(reconstructed), target.path);
+    if (!current || current.kind !== "property" || current.name !== target.row.property_name) {
+      throw new ApiError("CONFLICT", "DTS batch target moved during reconstruction.");
+    }
+    reconstructed = ensureOverlayProperty(reconstructed, {
+      propertyKey: target.row.property_name,
+      rawText: target.action === "delete" ? "" : renderDtsValue(target.value!),
+      action: target.action,
+      targetRef: target.row.node_locator,
+      expectedChecksum: createHash("sha256").update(reconstructed).digest("hex"),
+      occurrenceSpan: { start: current.span.start, end: current.span.end },
+    });
+  }
+  if (reconstructed !== afterText) {
+    throw new ApiError("CONFLICT", "DTS batch changed bytes outside its pinned properties.");
+  }
+  return new Map(targets.filter((entry) => entry.action === "delete" || beforeProperties[entry.index]!.property.rawText !== entry.rawText)
+    .map((entry) => [entry.sourcePinId, { action: entry.action, rawText: entry.rawText, value: entry.value }] as const));
+}
+
 /** Repeat the immutable-base patch proof at preparation and at actual apply. */
 export async function validatePinnedDtsSourceChange(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
   return (await readPinnedDtsSourceChange(db, manifest, beforeText, afterText)).value;
