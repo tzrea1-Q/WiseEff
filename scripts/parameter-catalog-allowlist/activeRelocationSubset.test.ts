@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -8,6 +9,7 @@ import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
 import {
   runReviewedRelocationRecord,
   runtimeTopologyRelocationRecordPath,
+  verifyHistoricalRelocationProof,
   type RuntimeTopologyRelocationRecord,
   type RelocationConfig,
 } from "./runtimeTopologyRelocation";
@@ -29,6 +31,24 @@ function config(activeFiles: readonly string[]): RelocationConfig {
     activeFiles,
   };
 }
+
+function historyConfig(activeFiles: readonly string[] = [record.files[0]!.file]): RelocationConfig {
+  return {
+    recordPath: runtimeTopologyRelocationRecordPath,
+    recordSha256: "7c99527e2473aac06b64fc3e3db892d1b866843a8092bf39c058bdc5e81afaa2",
+    files: [
+      { file: "server/modules/parameter-topology/ingestService.ts", pairs: 15 },
+      { file: "server/modules/parameter-topology/schemas.ts", pairs: 1 },
+    ],
+    totalPairs: 16,
+    activeFiles,
+  };
+}
+
+const historyProvenance = {
+  commit: "e31226b6cc06c2278230b810bb1becd8dbc1f32a",
+  tree: "d55df1260ea99a60fa38a3101a5e9f5af7c29fc8",
+};
 
 async function proofRoot(tamperInactiveFile = false) {
   const root = await mkdtemp(join(tmpdir(), "active-relocation-subset-"));
@@ -91,5 +111,35 @@ describe("fixed relocation record active-file subsets", () => {
       [],
       config([record.files[0]!.file]),
     )).rejects.toThrow("exact destination occurrence");
+  });
+
+  it("proves every fixed historical file and pair even when the config selects a current subset", async () => {
+    const proof = await verifyHistoricalRelocationProof(
+      repoRoot, fixture, allowances, historyConfig(), historyProvenance,
+    );
+    expect(proof.pairs).toHaveLength(16);
+    expect(proof).not.toHaveProperty("relocations");
+    await expect(verifyHistoricalRelocationProof(
+      repoRoot,
+      fixture,
+      allowances,
+      historyConfig(),
+      { ...historyProvenance, tree: "0".repeat(40) },
+    )).rejects.toThrow("historical tree identity");
+  });
+
+  it("rejects a re-signed record with a destination blob outside the pinned historical tree", async () => {
+    const root = await proofRoot();
+    const altered = structuredClone(record);
+    altered.files[1]!.destinationBlobOid = "0".repeat(40);
+    const bytes = `${JSON.stringify(altered, null, 2)}\n`;
+    await writeFile(join(root, runtimeTopologyRelocationRecordPath), bytes);
+    await expect(verifyHistoricalRelocationProof(
+      root,
+      fixture,
+      allowances,
+      { ...historyConfig(), recordSha256: createHash("sha256").update(bytes).digest("hex") },
+      historyProvenance,
+    )).rejects.toThrow("destination whole-file blob");
   });
 });
