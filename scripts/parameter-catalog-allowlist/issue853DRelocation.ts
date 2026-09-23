@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -10,7 +11,7 @@ import {
 } from "./runtimeTopologyRelocation";
 
 const inventoryPath = "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json";
-const inventorySha256 = "7a9e868118ea283b33eefb2f465af3291034d568d76d59326887d2d802b550ab";
+const inventorySha256 = "cdc7312ae736676de8b45f233d9c1605a86d20d06d02c087fbe11e85b782aa78";
 
 const exactConfig: RelocationConfig = {
   recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-exact-successor.json",
@@ -46,6 +47,7 @@ type Inventory = {
   schemaVersion: 1;
   sourcePullRequest: 910;
   sourceHeadSha: string;
+  sourceObservationCommit: string;
   sourceObservationTree: string;
   retiredIds: string[];
   unmatchedNewIds: string[];
@@ -71,8 +73,12 @@ export async function verifyIssue853DInventory(
   const inventory = JSON.parse(bytes.toString("utf8")) as Inventory;
   requireD(inventory.schemaVersion === 1 && inventory.sourcePullRequest === 910
     && inventory.sourceHeadSha === "c0c60cb3296154f7e46e222e15c2d595d083bd05"
-    && inventory.sourceObservationTree === "bf9fb5e16472c7919460d255b3c32d61dbb61a0a",
+    && inventory.sourceObservationCommit === "bf9fb5e16472c7919460d255b3c32d61dbb61a0a"
+    && inventory.sourceObservationTree === "b90bc952ca05f1ad96d8af27fe4b940fecc5017a",
   "source provenance");
+  requireD(execFileSync("git", ["rev-parse", `${inventory.sourceObservationCommit}^{tree}`],
+    { cwd: repoRoot, encoding: "utf8" }).trim() === inventory.sourceObservationTree,
+  "source observation tree identity");
   const old = new Map(fixture.violations.map((entry) => [entry.id, entry]));
   const current = new Map(discovered.map((entry) => [entry.id, entry]));
   const allowed = new Set(allowances.map((entry) => entry.id));

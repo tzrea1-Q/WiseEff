@@ -2,7 +2,6 @@
   "schemaVersion": 1,
   "sourcePullRequest": 910,
   "sourceHeadSha": "c0c60cb3296154f7e46e222e15c2d595d083bd05",
-  "sourceObservationTree": "bf9fb5e16472c7919460d255b3c32d61dbb61a0a",
   "retiredIds": [
     "S12-PRJ:legacy-catalog-module-import:efa83e3e8e390daa:f6fb2c262ab929ef",
     "S12-PRJ:legacy-catalog-raw-read:2bb0408e61c36ff3:b253ae1d933881fb",
@@ -65,5 +64,7 @@
     "server/modules/parameters/mergeInitializationBindings.test.ts": "0aa06b7fdf40c0c940d63f347933e5277f2073ee",
     "server/modules/parameters/mergeInitializationBindings.ts": "b571301ac8011ff19aed2758e3e07e4985aed3a7",
     "server/modules/parameters/schemas.test.ts": "b4403bf6cad602ab31b876ccb74d429800e751a5"
-  }
+  },
+  "sourceObservationCommit": "bf9fb5e16472c7919460d255b3c32d61dbb61a0a",
+  "sourceObservationTree": "b90bc952ca05f1ad96d8af27fe4b940fecc5017a"
 }
