@@ -6,7 +6,10 @@ import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { getConfigSetById } from "../parameter-files/configSetRepository";
 import { getProjectById } from "../projects/repository";
+import { readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
 import {
+  listCanonicalBindingCompareRows,
+  listCanonicalBindingHistoryValueRows,
   getBindingForProject,
   listBindingCompareRows,
   listBindingRevisionRows,
@@ -30,12 +33,18 @@ vi.mock("../parameter-files/configSetRepository", () => ({
   getConfigSetById: vi.fn()
 }));
 
+vi.mock("../parameter-bindings/catalogProjectValueSync", () => ({
+  readCanonicalBindingChangeHistory: vi.fn().mockResolvedValue(null)
+}));
+
 vi.mock("./bindingService", () => ({
   listProjectBindingRows: vi.fn(),
   listIdentityMappingTaskRows: vi.fn(),
   getIdentityMappingTaskById: vi.fn(),
   resolveIdentityMappingTaskRow: vi.fn(),
   getBindingForProject: vi.fn(),
+  listCanonicalBindingCompareRows: vi.fn().mockResolvedValue(null),
+  listCanonicalBindingHistoryValueRows: vi.fn().mockResolvedValue([]),
   listBindingRevisionRows: vi.fn(),
   listBindingCompareRows: vi.fn()
 }));
@@ -79,6 +88,9 @@ function makeDb(): Database {
 describe("parameter topology service org scope", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(readCanonicalBindingChangeHistory).mockResolvedValue(null);
+    vi.mocked(listCanonicalBindingCompareRows).mockResolvedValue(null);
+    vi.mocked(listCanonicalBindingHistoryValueRows).mockResolvedValue([]);
   });
 
   it("listProjectBindings returns 404 when projectId is outside caller organization", async () => {
@@ -149,57 +161,132 @@ describe("parameter topology service org scope", () => {
     expect(listIdentityMappingTaskRows).not.toHaveBeenCalled();
   });
 
-  it("getBindingHistory orders binding revisions newest-first and maps adjacent raw values into from→to", async () => {
+  it("getBindingHistory refuses a legacy-only binding instead of reading semantic snapshots", async () => {
     vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
     vi.mocked(getBindingForProject).mockResolvedValue({ id: "binding-1" });
-    // Intentionally provided out of order to prove the service sorts before mapping.
-    vi.mocked(listBindingRevisionRows).mockResolvedValue([
-      { id: "rev-2", configRevisionId: "cr-2", revisionNumber: 2, rawValue: "<1>", createdAt: "2026-01-02T00:00:00.000Z" },
-      { id: "rev-1", configRevisionId: "cr-1", revisionNumber: 1, rawValue: "<0>", createdAt: "2026-01-01T00:00:00.000Z" },
-      { id: "rev-3", configRevisionId: "cr-3", revisionNumber: 3, rawValue: "<2>", createdAt: "2026-01-03T00:00:00.000Z" }
-    ]);
-
-    const result = await getBindingHistory(makeDb(), makeAuth(), {
+    await expect(getBindingHistory(makeDb(), makeAuth(), {
       projectId: "project-1",
       bindingId: "binding-1"
-    });
-
-    expect(result.items).toEqual([
-      { id: "rev-3", changedAt: "2026-01-03T00:00:00.000Z", fromRawValue: "<1>", toRawValue: "<2>" },
-      { id: "rev-2", changedAt: "2026-01-02T00:00:00.000Z", fromRawValue: "<0>", toRawValue: "<1>" },
-      { id: "rev-1", changedAt: "2026-01-01T00:00:00.000Z", fromRawValue: null, toRawValue: "<0>" }
-    ]);
-    expect(getBindingForProject).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: "org-1",
-      projectId: "project-1",
-      bindingId: "binding-1"
-    });
-    expect(listBindingRevisionRows).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: "org-1",
-      projectId: "project-1",
-      bindingId: "binding-1"
-    });
+    })).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    expect(getBindingForProject).not.toHaveBeenCalled();
+    expect(listBindingRevisionRows).not.toHaveBeenCalled();
   });
 
-  it("getBindingHistory omits no-op config-revision snapshots that did not change raw value", async () => {
+  it("rejects a caller whose role is scoped to another project", async () => {
     vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
-    vi.mocked(getBindingForProject).mockResolvedValue({ id: "binding-1" });
-    vi.mocked(listBindingRevisionRows).mockResolvedValue([
-      { id: "rev-1", configRevisionId: "cr-1", revisionNumber: 1, rawValue: "<0>", createdAt: "2026-01-01T00:00:00.000Z" },
-      { id: "rev-2", configRevisionId: "cr-2", revisionNumber: 2, rawValue: "<0>", createdAt: "2026-01-02T00:00:00.000Z" },
-      { id: "rev-3", configRevisionId: "cr-3", revisionNumber: 3, rawValue: "<1>", createdAt: "2026-01-03T00:00:00.000Z" },
-      { id: "rev-4", configRevisionId: "cr-4", revisionNumber: 4, rawValue: "<1>", createdAt: "2026-01-04T00:00:00.000Z" }
+    const auth = makeAuth();
+    auth.roles = [{ projectId: "project-2", roleId: "hardware-user" }];
+
+    await expect(getBindingHistory(makeDb(), auth, {
+      projectId: "project-1",
+      bindingId: "canonical-binding-1"
+    })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(readCanonicalBindingChangeHistory).not.toHaveBeenCalled();
+  });
+
+  it("keeps project-bound admin roles organization-wide for canonical compare", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(listCanonicalBindingCompareRows).mockResolvedValue([]);
+    const auth = makeTestAuthContext({
+      userId: "admin-1",
+      organizationId: "org-1",
+      roles: [{ projectId: "project-2", roleId: "admin" }],
+      permissions: ["parameter:view"]
+    });
+
+    await getBindingCompare(makeDb(), auth, {
+      projectId: "project-1",
+      bindingId: "canonical-binding-1"
+    });
+
+    expect(listCanonicalBindingCompareRows).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      visibleProjectIds: null
+    }));
+  });
+
+  it("getBindingHistory reads canonical binding events for a canonical-only DTS binding", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(readCanonicalBindingChangeHistory).mockResolvedValue([
+      {
+        id: "event-2",
+        bindingId: "canonical-binding-1",
+        definitionId: "cdef-1",
+        oldDefinitionRevisionId: "drev-1",
+        newDefinitionRevisionId: "drev-2",
+        oldCurrentValueId: "value-1",
+        newCurrentValueId: "value-2",
+        reason: "raise limit",
+        successAuditRef: "audit-2",
+        catalogReleaseId: "release-1",
+        createdAt: "2026-01-02T00:00:00.000Z",
+        valueState: "present"
+      }
+    ]);
+    vi.mocked(listCanonicalBindingHistoryValueRows).mockResolvedValue([
+      {
+        id: "value-1",
+        bindingId: "canonical-binding-1",
+        definitionId: "cdef-1",
+        definitionRevisionId: "drev-1",
+        sourceRef: "config-set:cs-1",
+        sourceOccurrenceId: "source-occurrence-1",
+        sourceIdentity: "source-occurrence-1",
+        valueState: "present",
+        rawValue: "<1>",
+        sourceAvailable: true,
+        configSetId: "cs-1",
+        fileId: "file-1",
+        fileVersionId: "file-version-1",
+        fileName: "board.dts",
+        sourceLocator: { kind: "dts-property", propertyName: "limit" }
+      },
+      {
+        id: "value-2",
+        bindingId: "canonical-binding-1",
+        definitionId: "cdef-1",
+        definitionRevisionId: "drev-value-2",
+        sourceRef: "config-set:cs-1",
+        sourceOccurrenceId: "source-occurrence-1",
+        sourceIdentity: "source-occurrence-1",
+        valueState: "present",
+        rawValue: "<2>",
+        sourceAvailable: true,
+        configSetId: "cs-1",
+        fileId: "file-1",
+        fileVersionId: "file-version-2",
+        fileName: "board.dts",
+        sourceLocator: { kind: "dts-property", propertyName: "limit" }
+      }
     ]);
 
     const result = await getBindingHistory(makeDb(), makeAuth(), {
       projectId: "project-1",
-      bindingId: "binding-1"
+      bindingId: "canonical-binding-1"
     });
 
     expect(result.items).toEqual([
-      { id: "rev-3", changedAt: "2026-01-03T00:00:00.000Z", fromRawValue: "<0>", toRawValue: "<1>" },
-      { id: "rev-1", changedAt: "2026-01-01T00:00:00.000Z", fromRawValue: null, toRawValue: "<0>" }
+      expect.objectContaining({
+        id: "event-2",
+        bindingId: "canonical-binding-1",
+        definitionId: "cdef-1",
+        effectiveRevisionId: "drev-2",
+        definitionRevisionId: "drev-value-2",
+        currentValueId: "value-2",
+        valueState: "present",
+        reason: "raise limit"
+      })
     ]);
+    expect(getBindingForProject).not.toHaveBeenCalled();
+    expect(listBindingRevisionRows).not.toHaveBeenCalled();
+  });
+
+  it("getBindingHistory returns 404 for a binding absent from the canonical owner", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    await expect(getBindingHistory(makeDb(), makeAuth(), {
+      projectId: "project-1",
+      bindingId: "binding-1"
+    })).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    expect(listBindingRevisionRows).not.toHaveBeenCalled();
   });
 
   it("getBindingHistory returns 404 when the project is outside the caller organization", async () => {
@@ -232,21 +319,50 @@ describe("parameter topology service org scope", () => {
     expect(listBindingRevisionRows).not.toHaveBeenCalled();
   });
 
-  it("getBindingCompare returns other projects sharing the binding spec+module, org-scoped", async () => {
+  it("getBindingCompare returns each canonical source instance, including same-project siblings", async () => {
     vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
-    vi.mocked(getBindingForProject).mockResolvedValue({ id: "binding-1" });
-    vi.mocked(listBindingCompareRows).mockResolvedValue([
+    vi.mocked(listCanonicalBindingCompareRows).mockResolvedValue([
       {
-        projectId: "project-2",
-        projectName: "Aurora",
+        projectId: "project-1",
+        projectName: "Project",
+        bindingId: "binding-sibling",
+        definitionId: "cdef-1",
+        effectiveRevisionId: "drev-2",
+        definitionRevisionId: "drev-2",
+        currentValueId: "value-sibling",
+        sourceOccurrenceId: "source-sibling",
+        sourceIdentity: "source-sibling",
+        sourceRef: "config-set:cs-1",
+        valueState: "present",
         rawValue: "<1>",
+        sourceAvailable: true,
+        configSetId: "cs-1",
+        fileId: "file-1",
+        fileVersionId: "file-version-sibling",
+        fileName: "board.dts",
+        sourceLocator: { kind: "dts-property", propertyName: "limit" },
         moduleName: "充电策略",
         driverModule: "sc8562"
       },
       {
         projectId: "project-3",
         projectName: "Borealis",
+        bindingId: "binding-3",
+        definitionId: "cdef-1",
+        effectiveRevisionId: "drev-3",
+        definitionRevisionId: "drev-3",
+        currentValueId: "value-3",
+        sourceOccurrenceId: "source-3",
+        sourceIdentity: "source-3",
+        sourceRef: "config-set:cs-3",
+        valueState: "present",
         rawValue: "<2>",
+        sourceAvailable: true,
+        configSetId: "cs-3",
+        fileId: "file-3",
+        fileVersionId: "file-version-3",
+        fileName: "board.dts",
+        sourceLocator: { kind: "dts-property", propertyName: "limit" },
         moduleName: "充电策略",
         driverModule: "sc8562"
       }
@@ -258,20 +374,18 @@ describe("parameter topology service org scope", () => {
     });
 
     expect(result.items).toEqual([
-      { projectId: "project-2", projectName: "Aurora", rawValue: "<1>", moduleName: "充电策略", driverModule: "sc8562" },
-      { projectId: "project-3", projectName: "Borealis", rawValue: "<2>", moduleName: "充电策略", driverModule: "sc8562" }
+      expect.objectContaining({ projectId: "project-1", bindingId: "binding-sibling", sourceIdentity: "source-sibling" }),
+      expect.objectContaining({ projectId: "project-3", bindingId: "binding-3", effectiveRevisionId: "drev-3" })
     ]);
-    expect(result.items.some((item) => item.projectId === "project-1")).toBe(false);
-    expect(getBindingForProject).toHaveBeenCalledWith(expect.anything(), {
+    expect(result.items.some((item) => item.bindingId === "binding-1")).toBe(false);
+    expect(getBindingForProject).not.toHaveBeenCalled();
+    expect(listBindingCompareRows).not.toHaveBeenCalled();
+    expect(listCanonicalBindingCompareRows).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       organizationId: "org-1",
       projectId: "project-1",
-      bindingId: "binding-1"
-    });
-    expect(listBindingCompareRows).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: "org-1",
-      projectId: "project-1",
-      bindingId: "binding-1"
-    });
+      bindingId: "binding-1",
+      visibleProjectIds: ["project-1"]
+    }));
   });
 
   it("getBindingCompare returns 404 when the project is outside the caller organization", async () => {

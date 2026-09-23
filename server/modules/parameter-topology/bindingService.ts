@@ -14,6 +14,13 @@ import {
   type LogicalNodeCandidate,
   type LogicalNodeSnapshot,
 } from "../dts/identity";
+import { payloadToBindingView } from "../parameter-bindings/catalogProjectValueSync";
+import type { ProjectValuePayload } from "../parameter-bindings/values";
+import {
+  readCanonicalCompareRows,
+  readCanonicalHistoryValueRows,
+  type CanonicalValueRow,
+} from "../parameter-bindings/queries/dts";
 import type { Queryable } from "../../shared/database/client";
 import type {
   TrustedInvocationDomainAttribution,
@@ -1345,6 +1352,132 @@ export async function listBindingCompareRows(
     projectId: row.project_id,
     projectName: row.project_name,
     rawValue: row.raw_value ?? "",
+    moduleName: row.module_name,
+    driverModule: row.driver_module,
+  }));
+}
+
+export type CanonicalBindingHistoryValueRow = {
+  id: string;
+  bindingId: string;
+  definitionId: string;
+  definitionRevisionId: string;
+  sourceRef: string;
+  sourceOccurrenceId: string | null;
+  sourceIdentity: string | null;
+  valueState: "present" | "deleted";
+  rawValue: string | null;
+  sourceAvailable: boolean;
+  configSetId: string | null;
+  fileId: string | null;
+  fileVersionId: string | null;
+  fileName: string | null;
+  sourceLocator: Record<string, unknown> | null;
+};
+
+function canonicalValueRawValue(row: CanonicalValueRow): string | null {
+  if (row.value_state === "deleted") return "";
+  if (!row.source_format) return null;
+  try {
+    return payloadToBindingView(
+      { kind: row.value_kind, value: row.value } as ProjectValuePayload,
+      row.source_format,
+    ).rawValue;
+  } catch {
+    // A historical canonical value may predate its source pin (the initial
+    // identity placeholder is one example). Preserve its immutable payload
+    // instead of dropping the event or borrowing the current tip.
+    return typeof row.value === "string" ? row.value : JSON.stringify(row.value);
+  }
+}
+
+/**
+ * Resolve history payloads by the immutable value ids recorded in each event.
+ * The current value tip is deliberately not consulted: old/new history rows
+ * must remain readable after a later value write.
+ */
+export async function listCanonicalBindingHistoryValueRows(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string; valueIds: readonly string[] },
+): Promise<CanonicalBindingHistoryValueRow[]> {
+  const rows = await readCanonicalHistoryValueRows(db, input);
+  return rows.map((row) => ({
+    id: row.id,
+    bindingId: row.binding_id,
+    definitionId: row.definition_id,
+    definitionRevisionId: row.definition_revision_id,
+    sourceRef: row.source_ref,
+    sourceOccurrenceId: row.source_occurrence_id,
+    sourceIdentity: row.source_occurrence_id,
+    valueState: row.value_state,
+    rawValue: canonicalValueRawValue(row),
+    sourceAvailable: Boolean(row.source_pin_format),
+    configSetId: row.config_set_id,
+    fileId: row.file_id,
+    fileVersionId: row.file_version_id,
+    fileName: row.file_name,
+    sourceLocator: row.source_locator,
+  }));
+}
+
+export type CanonicalBindingCompareRow = {
+  projectId: string;
+  projectName: string;
+  bindingId: string;
+  definitionId: string;
+  effectiveRevisionId: string;
+  definitionRevisionId: string;
+  currentValueId: string;
+  sourceOccurrenceId: string;
+  sourceIdentity: string;
+  sourceRef: string;
+  valueState: "present" | "deleted";
+  rawValue: string;
+  sourceAvailable: boolean;
+  configSetId: string | null;
+  fileId: string | null;
+  fileVersionId: string | null;
+  fileName: string | null;
+  sourceLocator: Record<string, unknown> | null;
+  moduleName: string | null;
+  driverModule: string | null;
+};
+
+/**
+ * Compare current canonical bindings by Definition identity. Every source
+ * occurrence remains a peer, including siblings in the selected project; each
+ * row carries its exact effective DefinitionRevision and source pin.
+ */
+export async function listCanonicalBindingCompareRows(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    bindingId: string;
+    visibleProjectIds?: readonly string[] | null;
+  },
+): Promise<CanonicalBindingCompareRow[] | null> {
+  const rows = await readCanonicalCompareRows(db, input);
+  if (!rows) return null;
+  return rows.map((row) => ({
+    projectId: row.project_id,
+    projectName: row.project_name,
+    bindingId: row.binding_id,
+    definitionId: row.definition_id,
+    effectiveRevisionId: row.effective_revision_id,
+    definitionRevisionId: row.definition_revision_id,
+    currentValueId: row.current_value_id,
+    sourceOccurrenceId: row.source_occurrence_id,
+    sourceIdentity: row.source_occurrence_id,
+    sourceRef: row.source_ref,
+    valueState: row.value_state,
+    rawValue: canonicalValueRawValue(row) ?? "",
+    sourceAvailable: Boolean(row.source_pin_format),
+    configSetId: row.config_set_id,
+    fileId: row.file_id,
+    fileVersionId: row.file_version_id,
+    fileName: row.file_name,
+    sourceLocator: row.source_locator,
     moduleName: row.module_name,
     driverModule: row.driver_module,
   }));

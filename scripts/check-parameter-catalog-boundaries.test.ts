@@ -27,7 +27,11 @@ import {
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
 import { debuggingTransferRelocationRecordPath } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
 import { editServiceVersionIndexRelocationRecordPath } from "./parameter-catalog-allowlist/editServiceVersionIndexRelocation";
-import { sourceWorkflowConsumerRelocationRecordPath } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
+import {
+  issue911RelocationRecordPath,
+  sourceWorkflowRelocationRecordPath,
+  sourceWorkflowConsumerRelocationRecordPath,
+} from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
 import { t14FamilySuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
 import { seedDriverPositionRecordPath, seedDriverQueryRecordPath } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
@@ -38,6 +42,12 @@ const seedDriverRecords = await Promise.all([seedDriverPositionRecordPath, seedD
 
 const consumerRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${sourceWorkflowConsumerRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+const issue911RelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${issue911RelocationRecordPath}`, "utf8"),
+) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+const sourceWorkflowRelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${sourceWorkflowRelocationRecordPath}`, "utf8"),
 ) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
 const familySuccessorRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${t14FamilySuccessorRelocationRecordPath}`, "utf8"),
@@ -877,9 +887,15 @@ describe("parameter catalog boundary checker", () => {
         ),
       ).toHaveLength(5);
       expect(editServiceVersionIndexRelocations.every((entry) => entry.id !== entry.observed.id)).toBe(true);
-      // The successor retains all 75 historical identities above and adds exactly
-      // seven already-allowed occurrences whose formerly stable positions moved.
-      const historicalIds = new Set([...originalIds, ...runtimeIds, ...postCutoverIds, ...debuggingTransferIds, ...editServiceVersionIndexIds]);
+      // This set distinguishes the fixed source-workflow proof identities from the
+      // new successor aliases; the historical record itself remains unchanged.
+      const sourceWorkflowIds = new Set(
+        sourceWorkflowRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
+      );
+      const historicalIds = new Set([
+        ...originalIds, ...runtimeIds, ...postCutoverIds, ...debuggingTransferIds,
+        ...editServiceVersionIndexIds, ...sourceWorkflowIds,
+      ]);
       const consumerIds = new Set(consumerRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
       const familyIds = new Set(
         familySuccessorRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
@@ -888,29 +904,42 @@ describe("parameter catalog boundary checker", () => {
         rewrittenSliceRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
       );
       const seedDriverIds = new Set(seedDriverRecords.flatMap((record) => record.files.flatMap((file) => file.pairs.map((pair) => pair.old.id))));
+      const issue911Ids = new Set(
+        issue911RelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
+      );
       expect(seedDriverRecords.map((record) => record.files[0]!.pairs.length)).toEqual([50, 11]);
       expect(report.relocations.filter((entry) => seedDriverIds.has(entry.id))).toHaveLength(61);
+      expect(report.relocations.filter((entry) => issue911Ids.has(entry.id))).toHaveLength(133);
       expect(report.relocations.filter((entry) => consumerIds.has(entry.id))).toHaveLength(237);
       expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(265);
       expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(57);
-      expect(
-        report.relocations.filter(
+      const otherwiseUnclassified = report.relocations.filter(
           (entry) =>
             !historicalIds.has(entry.id)
             && !consumerIds.has(entry.id)
             && !familyIds.has(entry.id)
             && !rewrittenIds.has(entry.id)
             && !seedDriverIds.has(entry.id),
-        ),
-      ).toHaveLength(7);
+        );
+      const expectedIssue911Unclassified = [...issue911Ids].filter((id) =>
+        !historicalIds.has(id)
+        && !consumerIds.has(id)
+        && !familyIds.has(id)
+        && !rewrittenIds.has(id)
+        && !seedDriverIds.has(id),
+      ).sort();
+      expect(expectedIssue911Unclassified).toHaveLength(76);
+      expect(otherwiseUnclassified.map((entry) => entry.id).sort()).toEqual(expectedIssue911Unclassified);
+      expect(otherwiseUnclassified.filter((entry) => !issue911Ids.has(entry.id))).toHaveLength(0);
       // This is the exact diagnostic inventory, not a passing debt baseline:
-      // status remains failed; the seven new JSON DB-owner test observations
-      // remain unallowlisted alongside the prior 70, without granting allowances.
-      // PR #894 adds only the 61 existing owner-query/position identities above.
-      expect(report.relocations).toHaveLength(758);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(758);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(758);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_516);
+      // Status remains failed with seven JSON DB-owner test observations unallowlisted
+      // alongside the prior 70. These diagnostic debts are not relocation identities.
+      // #899 adds 74 exact shifted aliases and retains two fixture-origin aliases without
+      // changing the allowlist. #894 adds its 61 aliases.
+      expect(report.relocations).toHaveLength(834);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(834);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(834);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_668);
       expect(report.summary).toEqual({
         violations: 3_568,
         allowlisted: 3_491,

@@ -18,6 +18,10 @@ export type DtsParameterWorkbenchRow = {
   bindingId: string;
   parameterSpecId: string;
   parameterSpecVersionId: string;
+  /** Canonical definition identity; legacy fields remain as compatibility labels. */
+  definitionId?: string;
+  /** Exact canonical revision pinned by this binding. */
+  effectiveRevisionId?: string;
   logicalNodeId: string | null;
   propertyKey: string;
   /** Presentation copy from the parameter spec version pinned by the binding revision. */

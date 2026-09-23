@@ -19,8 +19,8 @@ import {
 } from "../parameter-catalog-api/read";
 import { parameterCatalogCanonicalRoutes } from "../contracts/dtoSchemas/parameterCatalog";
 import type { Database } from "../../shared/database/client";
+import { getBindingForProject, listBindingRevisionRows } from "./bindingService";
 import {
-  getBindingHistory,
   listIdentityMappingTasks,
   listProjectBindings,
 } from "./service";
@@ -417,15 +417,39 @@ async function observeBindingHistory(
     };
   }
   try {
-    const history = await getBindingHistory(database, inventoryAuth(record.organizationId), {
+    const scope = {
+      organizationId: record.organizationId,
       projectId: record.projectId,
       bindingId: record.id,
-    });
+    };
+    // This is the legacy side of the migration comparison. Keep its read on the
+    // legacy owner so the workbench's canonical-only history cannot mask drift.
+    if (!(await getBindingForProject(database, scope))) {
+      return {
+        status: "query-failure",
+        code: TOP_UNQUERYABLE_FAILURE_CODE,
+        detail: "binding-history",
+      };
+    }
+    const rows = await listBindingRevisionRows(database, scope);
+    const ordered = [...rows].sort((left, right) =>
+      left.revisionNumber !== right.revisionNumber
+        ? left.revisionNumber - right.revisionNumber
+        : left.createdAt.localeCompare(right.createdAt),
+    );
+    let historyCount = 0;
+    let lastEmittedRaw: string | null | undefined;
+    for (const row of ordered) {
+      const toRawValue = row.rawValue ?? null;
+      if (lastEmittedRaw !== undefined && lastEmittedRaw === toRawValue) continue;
+      historyCount += 1;
+      lastEmittedRaw = toRawValue;
+    }
     return {
       status: "value",
       value: {
         bindingId: record.id,
-        historyCount: history.items.length,
+        historyCount,
       },
     };
   } catch (error) {

@@ -39,6 +39,12 @@ export type ProjectBindingDto = {
   id: string;
   parameterSpecId: string;
   parameterSpecVersionId: string;
+  /** Canonical Catalog identity; legacy spec fields above remain wire aliases. */
+  definitionId?: string;
+  definitionRevisionId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
+  projectId?: string;
   propertyKey: string;
   driverModule: string | null;
   logicalNodeId: string | null;
@@ -53,6 +59,37 @@ export type ProjectBindingDto = {
   description: string | null;
   documentation: string | null;
 };
+
+function sourceLocatorDisplayLabel(sourceLocator: BindingCompareEntry["sourceLocator"]): string | null {
+  if (!sourceLocator) return null;
+  if (typeof sourceLocator === "string") return sourceLocator.trim() || null;
+  for (const key of ["path", "nodePath", "propertyPath", "locator", "filePath"]) {
+    const value = sourceLocator[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  const startLine = sourceLocator.startLine;
+  const startColumn = sourceLocator.startColumn;
+  const endLine = sourceLocator.endLine;
+  const endColumn = sourceLocator.endColumn;
+  if (
+    typeof startLine === "number" &&
+    typeof startColumn === "number" &&
+    typeof endLine === "number" &&
+    typeof endColumn === "number"
+  ) {
+    return `行 ${startLine}:${startColumn}–${endLine}:${endColumn}`;
+  }
+  return null;
+}
+
+/** Preserves canonical compare identity while adding a safe display-only locator label. */
+export function bindingCompareEntryFromDto(dto: BindingCompareEntry): BindingCompareEntry {
+  const displayLocator = dto.displayLocator?.trim() ||
+    dto.locator?.trim() ||
+    sourceLocatorDisplayLabel(dto.sourceLocator) ||
+    null;
+  return displayLocator ? { ...dto, displayLocator } : { ...dto };
+}
 
 export type ParameterSpecSummaryDto = ParameterSpecSummary;
 export type ParameterSpecDetailDto = ParameterSpecDetail;
@@ -165,6 +202,11 @@ export function bindingFromDto(
     id: dto.id,
     parameterSpecId: dto.parameterSpecId,
     parameterSpecVersionId: dto.parameterSpecVersionId,
+    ...(dto.definitionId !== undefined ? { definitionId: dto.definitionId } : {}),
+    ...(dto.definitionRevisionId !== undefined ? { definitionRevisionId: dto.definitionRevisionId } : {}),
+    ...(dto.effectiveRevisionId !== undefined ? { effectiveRevisionId: dto.effectiveRevisionId } : {}),
+    ...(dto.currentValueId !== undefined ? { currentValueId: dto.currentValueId } : {}),
+    ...(dto.projectId !== undefined ? { projectId: dto.projectId } : {}),
     propertyKey: dto.propertyKey,
     driverModule: dto.driverModule,
     logicalNodeId: dto.logicalNodeId,
@@ -648,7 +690,7 @@ export function createHttpParameterTopologyRepository(
       const response = await apiClient.get<ItemsEnvelope<BindingCompareEntry>>(
         buildBindingComparePath(projectId, bindingId),
       );
-      return response.items.map((entry) => ({ ...entry }));
+      return response.items.map(bindingCompareEntryFromDto);
     },
     async listConfigRevisions(projectId, configSetId) {
       const response = await apiClient.get<
