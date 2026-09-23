@@ -789,6 +789,9 @@ describe("legacy parameter plane archive", () => {
       { child: "parameter_catalog.definition_replacement_projects", parent: "parameter_catalog.project_parameter_values", delete_action: "RESTRICT", constraint_count: "2" },
       { child: "parameter_catalog.parameter_observation_matches", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "2" },
       { child: "parameter_catalog.parameter_observations", parent: "parameter_catalog.project_parameter_source_occurrences", delete_action: "RESTRICT", constraint_count: "1" },
+      { child: "parameter_catalog.project_source_member_tombstones", parent: "public.dts_config_revision_members", delete_action: "RESTRICT", constraint_count: "1" },
+      { child: "parameter_catalog.project_source_member_tombstones", parent: "public.dts_config_set", delete_action: "RESTRICT", constraint_count: "1" },
+      { child: "parameter_catalog.project_source_member_tombstones", parent: "public.project_parameter_files", delete_action: "RESTRICT", constraint_count: "1" },
       { child: "public.debug_nodes", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "2" },
       { child: "public.debugging_parameters", parent: "public.project_parameter_bindings", delete_action: "NO ACTION", constraint_count: "1" },
       { child: "public.dts_node_occurrences", parent: "public.dts_config_revisions", delete_action: "CASCADE", constraint_count: "1" },
@@ -855,6 +858,7 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.project_parameter_file_candidates", trigger_name: "project_parameter_file_candidates_execution_identity_default_us", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
+      { relation: "public.project_parameter_files", trigger_name: "project_parameter_file_canonical_member_tombstone_ck", function_name: "parameter_catalog.assert_removed_member_has_tombstone" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_files_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_applied_source_result_ow", function_name: "parameter_catalog.assert_source_apply_result" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_batch_ck", function_name: "parameter_catalog.assert_batch_value_request" },
@@ -887,6 +891,10 @@ describe("legacy parameter plane archive", () => {
       {
         view_name: "parameter_catalog.current_project_parameter_bindings",
         parent: "parameter_catalog.project_parameter_bindings",
+      },
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "parameter_catalog.project_parameter_source_occurrences",
       },
       // 0160/0161 hide deleted current values through their retained tombstone pins.
       {

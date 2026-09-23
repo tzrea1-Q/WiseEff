@@ -1,3 +1,4 @@
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase } from "../../server/shared/database/client";
 import { makeTestAuthContext } from "../../server/testing/authContext";

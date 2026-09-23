@@ -645,12 +645,12 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       where schemaname = 'parameter_catalog'
       order by tablename
     `);
-    expect(tables.rows.length).toBe(
-      CATALOG_RELATIONS.length +
-        GOVERNANCE_RELATIONS.length +
-        BINDING_CUTOVER_RELATIONS.length +
-        VERIFICATION_RELATIONS.length,
-    );
+    expect(tables.rows.map((row) => row.tablename)).toEqual([
+      ...CATALOG_RELATIONS,
+      ...GOVERNANCE_RELATIONS,
+      ...BINDING_CUTOVER_RELATIONS,
+      ...VERIFICATION_RELATIONS,
+    ].sort());
     expect(new Set(tables.rows.map((row) => row.tableowner))).toEqual(
       new Set([CATALOG_MIGRATION_OWNER]),
     );
@@ -1350,7 +1350,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0166 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0168 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1428,6 +1428,12 @@ describe("0138 Catalog role migration paths", () => {
         });
         await applyMigrations(db, migrationsDir, {
           through: "0166_canonical_batch_applied_revision.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0167_canonical_member_removal_tombstone.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0168_pinned_file_version_trigger_guard.sql",
         });
         upgrade = await aclFingerprint(db);
       },

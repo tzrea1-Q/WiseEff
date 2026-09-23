@@ -227,6 +227,7 @@ describe("canonical parameter Catalog schema", () => {
       "project_parameter_bindings",
       "project_parameter_source_occurrences",
       "project_parameter_values",
+      "project_source_member_tombstones",
       "project_value_source_pins",
       "subject_placements",
       "verification_approvals",

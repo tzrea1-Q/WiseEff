@@ -127,11 +127,11 @@ function makeDb(): Database {
   return db;
 }
 
-function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
+function makeServer(options: { db?: Database; auth?: AuthContext; withoutObjectStore?: boolean } = {}) {
   const router = createRouter();
   registerCatalogProjectValueConsumerRoutes(router, {
     db: options.db,
-    objectStore: {
+    objectStore: options.withoutObjectStore ? undefined : {
       put: async () => { throw new Error("Unexpected object write in route-only test"); },
       get: async () => { throw new Error("Unexpected object read in route-only test"); },
       delete: async () => undefined,
@@ -1182,7 +1182,9 @@ describe("canonical request tracking access", () => {
   });
 
   it("returns only the authenticated submitter and denies another person's source diff", async () => {
-    const server = makeServer({ db: makeDb() });
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const server = makeServer({ db, withoutObjectStore: true });
     const response = await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?mine=true");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [own] });
@@ -1205,11 +1207,38 @@ describe("canonical request tracking access", () => {
     const auth = makeAuth({ roles: [{ projectId: "another-project", roleId: "software-user" }] });
     const unauthorized = await requestJson(makeServer({ db: makeDb(), auth }), "/api/v2/projects/project-1/parameter-value-change-requests");
     expect(unauthorized.status).toBe(403);
-    const hidden = await requestJson(makeServer({ db: makeDb(), auth }), "/api/v2/projects/project-1/parameter-value-change-requests/own-request/source-diff");
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const hidden = await requestJson(makeServer({ db, auth, withoutObjectStore: true }), "/api/v2/projects/project-1/parameter-value-change-requests/own-request/source-diff");
     expect(hidden.status).toBe(404);
     const inactive = makeAuth();
     inactive.user = { ...inactive.user, isActive: false };
     expect((await requestJson(makeServer({ db: makeDb(), auth: inactive }), "/api/v2/projects/project-1/parameter-value-change-requests")).status).toBe(403);
     expect((await requestJson(makeServer({ db: makeDb() }), "/api/v2/projects/project-1/parameter-value-change-requests?mine=user-2")).status).toBe(400);
+  });
+
+  it("reports missing source storage only after confirming the submitter can see a single request", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const response = await requestJson(
+      makeServer({ db, withoutObjectStore: true }),
+      "/api/v2/projects/project-1/parameter-value-change-requests/own-request/source-diff"
+    );
+    expect(response.status).toBe(500);
+    expect(drafts.listCanonicalValueChangesForAuth).toHaveBeenCalledWith(db, expect.anything(), { projectId: "project-1" });
+  });
+
+  it("checks batch reviewer visibility before reporting missing source storage", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue(null);
+    const path = "/api/v2/projects/project-1/parameter-value-change-requests/batch-request/source-diff";
+    expect((await requestJson(makeServer({ db, withoutObjectStore: true }), path)).status).toBe(404);
+    expect(drafts.getCanonicalBatchValueChangeForReviewer).toHaveBeenCalledWith(
+      db, expect.anything(), { projectId: "project-1", requestId: "batch-request" }
+    );
+
+    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue({ id: "batch-request" } as never);
+    expect((await requestJson(makeServer({ db, withoutObjectStore: true }), path)).status).toBe(500);
   });
 });
