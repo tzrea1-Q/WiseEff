@@ -44,3 +44,8 @@ export {
   type CanonicalChangeRequestStatus,
   type CanonicalValueChangeRequestRow
 } from "./changeRepository";
+export {
+  getCanonicalBatchValueChangeForReviewer,
+  submitCanonicalBatchValueChange,
+  type CanonicalBatchChangeRequestDto
+} from "./batchChangeService";

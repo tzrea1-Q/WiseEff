@@ -407,6 +407,7 @@ describe("legacy parameter plane archive", () => {
     expect(archive.counts.dts_logical_node_revisions).toBe(1);
     expect(archive.counts.project_parameter_value_drafts).toBe(1);
     expect(archive.counts.project_parameter_value_change_requests).toBe(1);
+    expect(archive.counts.project_parameter_value_change_targets).toBe(1);
     expect(archive.counts.binding_history_events).toBe(1);
     expect(archive.counts.canonical_values).toBe(1);
     expect(archive.counts.canonical_bindings).toBe(1);
@@ -441,6 +442,7 @@ describe("legacy parameter plane archive", () => {
     );
     expect(document.relations.project_parameter_value_drafts[0].id).toBe("value_draft_archive");
     expect(document.relations.project_parameter_value_change_requests[0].id).toBe("value_request_archive");
+    expect(document.relations.project_parameter_value_change_targets[0].request_id).toBe("value_request_archive");
     expect(document.relations.binding_history_events[0].id).toBe("binding_history_archive");
     expect(document.relations.canonical_bindings[0].id).toBe("binding_archive");
     // Nothing from the other project leaked into this project's archive.
@@ -449,7 +451,7 @@ describe("legacy parameter plane archive", () => {
     expect(JSON.stringify(document.relations)).not.toContain("pfv_other");
 
     // Every declared relation is accounted for, even when it is empty.
-    expect(Object.keys(archive.counts).length).toBe(34);
+    expect(Object.keys(archive.counts).length).toBe(35);
     const retainedDrafts = await pool.query<{ count: string }>(
       `select count(*)::text as count from public.parameter_drafts
         where organization_id = $1 and project_id = $2`,
@@ -855,8 +857,14 @@ describe("legacy parameter plane archive", () => {
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
       { relation: "public.project_parameter_files", trigger_name: "project_parameter_files_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_applied_source_result_ow", function_name: "parameter_catalog.assert_source_apply_result" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_batch_ck", function_name: "parameter_catalog.assert_batch_value_request" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_batch_immutable", function_name: "parameter_catalog.protect_batch_value_request" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_candidate_snapshot_ck", function_name: "parameter_catalog.assert_source_candidate_snapshot" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_single_target_apply", function_name: "parameter_catalog.mirror_single_value_request_target" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_single_target_insert", function_name: "parameter_catalog.mirror_single_value_request_target" },
       { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_source_immutable", function_name: "parameter_catalog.protect_submitted_source_request" },
+      { relation: "public.project_parameter_value_change_targets", trigger_name: "project_parameter_value_change_target_batch_ck", function_name: "parameter_catalog.assert_batch_value_request" },
+      { relation: "public.project_parameter_value_change_targets", trigger_name: "project_parameter_value_change_target_immutable", function_name: "parameter_catalog.protect_batch_value_target" },
       { relation: "public.project_parameter_value_drafts", trigger_name: "project_parameter_value_draft_candidate_snapshot_ck", function_name: "parameter_catalog.assert_source_candidate_snapshot" },
       { relation: "public.project_parameter_values", trigger_name: "project_parameter_values_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
     ]);

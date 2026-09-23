@@ -1510,4 +1510,33 @@ describe("canonical pending value drafts", () => {
       tamper.release();
     }
   });
+
+  it("allows the archive disposer to remove an approved target before its history and delete pin", async () => {
+    const referenced = await pool.query<{ target_id: string; request_id: string }>(`
+      select target.id as target_id, request.id as request_id
+        from public.project_parameter_value_change_requests request
+        join public.project_parameter_value_change_targets target on target.request_id=request.id
+        join parameter_catalog.binding_history_events history
+          on history.applied_request_id=request.id and history.binding_id=target.binding_id
+        join parameter_catalog.project_value_source_pins pin
+          on pin.delete_request_id=request.id and pin.binding_id=target.binding_id
+       where request.organization_id=$1 and request.project_id=$2
+         and request.status='approved' and target.action='delete'
+       limit 1`, [ORG, PROJECT]);
+    expect(referenced.rows).toHaveLength(1);
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const removed = await client.query<{ count: number }>(
+        `select parameter_catalog.dispose_plane_residue($1, 'public.project_parameter_value_change_targets', 'id', $2::text[]) as count`,
+        ["c906-approved-disposal-probe", [referenced.rows[0]!.target_id]]
+      );
+      expect(removed.rows[0]?.count).toBe(1);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+    expect((await pool.query(`select id from public.project_parameter_value_change_targets where id=$1`,
+      [referenced.rows[0]!.target_id])).rows).toHaveLength(1);
+  });
 });
