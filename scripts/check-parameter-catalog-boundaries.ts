@@ -40,6 +40,7 @@ import { applyReviewedIssue913StaleSuccessorRelocation } from "./parameter-catal
 import { applyReviewedSeedDriverLookupRelocation } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 import { applyReviewedIssue901RoutesTestRelocation } from "./parameter-catalog-allowlist/issue901RouteTestRelocation";
 import { applyReviewedIssue900DashboardRelocation } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
+import { applyReviewedIssue853DRelocation } from "./parameter-catalog-allowlist/issue853DRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -442,8 +443,23 @@ export async function checkParameterCatalogBoundaries(
       ...issue901RoutesTestRelocated.relocations,
     ],
   );
+  const issue853DRelocated = await applyReviewedIssue853DRelocation(
+    repoRoot,
+    fixture,
+    allowlist.entries,
+    issue900DashboardRelocated.violations,
+    [
+      ...priorRelocations,
+      ...consumerRelocated.relocations,
+      ...t14Relocated.relocations,
+      ...staleSuccessorRelocated.relocations,
+      ...seedDriverRelocated.relocations,
+      ...issue901RoutesTestRelocated.relocations,
+      ...issue900DashboardRelocated.relocations,
+    ],
+  );
   return {
-    ...compareBoundaryInventory(issue900DashboardRelocated.violations, allowlist.entries, fixture.violations),
+    ...compareBoundaryInventory(issue853DRelocated.violations, allowlist.entries, fixture.violations),
     relocations: [
       ...priorRelocations,
       ...consumerRelocated.relocations,
@@ -452,6 +468,7 @@ export async function checkParameterCatalogBoundaries(
       ...seedDriverRelocated.relocations,
       ...issue901RoutesTestRelocated.relocations,
       ...issue900DashboardRelocated.relocations,
+      ...issue853DRelocated.relocations,
     ],
   };
 }
