@@ -923,7 +923,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
       if (!requestKind) throw new ApiError("NOT_FOUND", "Canonical value request was not found.");
       if (requestKind === "batch") {
-        const visibleBatch = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
+        const visibleBatch = await getCanonicalBatchValueChangeForReviewer(db, auth, params, {
+          invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink: refusalAuditSink
+        });
         if (!visibleBatch) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
         if (body.decision !== "approve") {
           throw new ApiError("CONFLICT", "Batch rejection is not available through this reviewer entry.", {

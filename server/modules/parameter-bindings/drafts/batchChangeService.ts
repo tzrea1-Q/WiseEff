@@ -321,18 +321,32 @@ export async function submitCanonicalBatchValueChange(
 
 /** B reviewer handoff: one request ID and all targets under a current DB role check. */
 export async function getCanonicalBatchValueChangeForReviewer(
-  db: Database, auth: AuthContext, input: { projectId: string; requestId: string }
+  db: Database, auth: AuthContext, input: { projectId: string; requestId: string },
+  security?: CanonicalSourceSecurityContext
 ): Promise<CanonicalBatchChangeRequestDto | null> {
+  if (security) await requireCanonicalUserInvocation(auth, security, {
+    projectId: input.projectId, operation: "canonical batch approve",
+    targetType: "project-parameter-value-change-request", targetId: input.requestId
+  });
   if (!await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
   }
-  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, "software_review")) {
+  const denyReview = async () => {
+    if (security) await recordCanonicalPermissionRefusal(security, {
+      projectId: input.projectId, operation: "canonical batch approve",
+      targetType: "project-parameter-value-change-request", targetId: input.requestId,
+      details: { permission: "parameter:edit-and-review", reason: "current-review-role-required" }
+    });
     throw new ApiError("FORBIDDEN", "The software review role is required.");
+  };
+  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, "software_review")
+    || (security && !canEditParameters(auth, input.projectId))) {
+    await denyReview();
   }
   return db.transaction(async (tx) => {
     if (!await hasCurrentCanonicalReviewRole(tx, {
       organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
-    })) throw new ApiError("FORBIDDEN", "The software review role is required.");
+    })) await denyReview();
     return loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId);
   });
 }
@@ -353,7 +367,9 @@ export async function approveCanonicalBatchValueChange(
     note?: string | null;
   }
 ): Promise<CanonicalBatchChangeRequestDto> {
-  const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, input);
+  const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, input, {
+    invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink
+  });
   if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
   if (!/^[0-9a-f]{64}$/.test(input.batchProofDigest)
     || frozen.batchProofDigest !== input.batchProofDigest) {

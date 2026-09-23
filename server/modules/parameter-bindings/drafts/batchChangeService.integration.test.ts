@@ -371,7 +371,14 @@ describe("#906 C frozen multi-target request", () => {
     const reviewBody = (batchProofDigest?: string, decision = "approve") => ({
       method: "POST", body: JSON.stringify({ decision, ...(batchProofDigest ? { batchProofDigest } : {}) })
     });
+    const deniedAudits = () => db.query<{ count: number }>(`
+      select count(*)::int as count from audit_events
+       where organization_id=$1 and project_id=$2 and target_id=$3
+         and kind='parameter-source-permission-denied' and action='deny'`,
+      [ORG, PROJECT, request.id]);
+    const deniedBefore = (await deniedAudits()).rows[0]!.count;
     expect((await requestJson(route(editor), `${base}/review`, reviewBody(proof.batchProofDigest))).status).toBe(403);
+    expect((await deniedAudits()).rows[0]!.count).toBe(deniedBefore + 1);
     expect((await requestJson(route(foreign), `${base}/review`, reviewBody(proof.batchProofDigest))).status).toBe(404);
     expect((await requestJson(route(), `${base}/review`, reviewBody())).status).toBe(400);
     expect((await requestJson(route(), `${base}/review`, reviewBody(proof.batchProofDigest, "reject"))).status).toBe(409);
