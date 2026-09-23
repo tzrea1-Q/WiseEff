@@ -45,6 +45,8 @@ export type AgentToolAuthorization = {
 };
 
 export type AgentToolRegistry = {
+  /** Store bound to production tools, when source-backed actions are available. */
+  readonly sourceObjectStore?: ObjectStore;
   list(): AgentToolDefinition[];
   get(name: string): AgentToolDefinition | undefined;
   require(name: string): AgentToolDefinition;
@@ -60,7 +62,7 @@ export type AgentToolRegistry = {
     authorization?: AgentToolAuthorization
   ): Promise<AgentToolResult>;
   /** Rebinds production tools to a transaction while retaining shared sinks/stores. */
-  forDatabase?(database: Database): AgentToolRegistry;
+  forDatabase?(database: Database, objectStore?: ObjectStore): AgentToolRegistry;
 };
 
 /** A registered tool is its metadata (single declaration in `toolMetadata.ts`) plus the runtime implementation. */
@@ -127,6 +129,7 @@ export function createAgentToolRegistry(options: {
   }
 
   return {
+    sourceObjectStore: options.objectStore,
     list: () => tools,
     get: (name: string) => byName.get(name),
     require(name: string) {
@@ -158,10 +161,10 @@ export function createAgentToolRegistry(options: {
       }
       return tool.run(context, payload);
     },
-    forDatabase(database: Database) {
+    forDatabase(database: Database, objectStore?: ObjectStore) {
       return createAgentToolRegistry({
         db: database,
-        objectStore: options.objectStore,
+        objectStore: objectStore ?? options.objectStore,
         knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
         refusalAuditSink
       });
