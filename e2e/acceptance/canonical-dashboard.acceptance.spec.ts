@@ -246,6 +246,10 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
       expect((await hotspots.json()).items).toHaveLength(1);
     }
 
+    await openHome("software-committer");
+    await expect(page.locator('[data-kpi="openItemCount"] dd')).toHaveText("0");
+    await page.getByRole("button", { name: /查看热区所在项目：DHLOCAL/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${projectId}$`));
     await openHome("software-user");
     await page.getByText("整体", { exact: true }).click();
     await expect(page.locator('[data-kpi="totalBindings"] dd')).toHaveText("1");
