@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../shared/http/errors";
 import { createAgentInvocation, TRUSTED_INVOCATION_CONTEXT_ERROR_CODE } from "../../auth/trustedInvocation";
 import { testRefusalAuditSink } from "../../audit/testRefusalSink";
+import { setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 
 vi.mock("../../parameter-bindings/drafts", () => ({
   createCanonicalValueDraft: vi.fn(),
@@ -116,6 +117,7 @@ function tool() {
 }
 
 beforeEach(() => {
+  setParameterIdentityMode("semantic");
   vi.clearAllMocks();
   mockedLoadPins.mockResolvedValue(canonicalPins);
   mockedApproved.mockResolvedValue({
@@ -141,6 +143,8 @@ beforeEach(() => {
     action: "set"
   } as never);
 });
+
+afterEach(() => setParameterIdentityMode(null));
 
 describe("action.submitParameterChange", () => {
   it("is mutating and approval-gated", () => {

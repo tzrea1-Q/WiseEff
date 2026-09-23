@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createWiseEffServer } from "../../../app";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
@@ -23,16 +23,20 @@ import {
   X_REVISION_1
 } from "../../catalog-kernel/runtime/catalogChain.fixture";
 import { createSourceBackedBindingService } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
-import { ensureLocalPostCutoverIdentity } from "../../parameter-topology/localPostCutover";
 import { DefinitionRevisionId, ParameterDefinitionId, SubjectRegistrationId } from "../../parameter-catalog-contract";
+import { setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 
 const ORG = "org-r2-818";
 const PROJECT = "project-r2-818";
 const ADMIN = "user-r2-818-admin";
 const RESTRICTED = "user-r2-818-restricted";
+const SOFTWARE_COMMITTER = "user-r2-818-software-committer";
 const PROJECT_B = "project-r2-818-b";
 const ORG_B = "org-r2-818-b";
 const ADMIN_B = "user-r2-818-admin-b";
+
+beforeEach(() => setParameterIdentityMode("semantic"));
+afterEach(() => setParameterIdentityMode(null));
 
 async function listen(server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -66,6 +70,8 @@ describe("R2-AGT real authenticated Catalog execution", () => {
   let advertisedTools: string[] = [];
   let providerUrl: string;
   let objectStoreRoot: string;
+  let objectStore: ReturnType<typeof createLocalObjectStore>;
+  const objectStoreWriteKeys = new Set<string>();
   let localPassword: string;
 
   const runAgent = async (
@@ -186,6 +192,14 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       [RESTRICTED, ORG]
     );
     await pool.query(
+      "insert into users (id, organization_id, name, title, is_active) values ($1, $2, 'R2 software committer', 'Software Committer', true)",
+      [SOFTWARE_COMMITTER, ORG]
+    );
+    await pool.query(
+      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ('urb-r2-818-software-committer', $1, $2, $3, 'software-committer')",
+      [SOFTWARE_COMMITTER, ORG, PROJECT]
+    );
+    await pool.query(
       "insert into users (id, organization_id, name, title, is_active) values ($1, $2, 'R2 Other admin', 'Admin', true)",
       [ADMIN_B, ORG_B]
     );
@@ -265,9 +279,18 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     });
     providerUrl = await listen(provider);
     objectStoreRoot = await mkdtemp(join(tmpdir(), "wiseeff-r2-818-source-"));
+    const localObjectStore = createLocalObjectStore(objectStoreRoot);
+    objectStore = {
+      ...localObjectStore,
+      put: async (input) => {
+        const stored = await localObjectStore.put(input);
+        objectStoreWriteKeys.add(stored.storageKey);
+        return stored;
+      }
+    };
     server = createWiseEffServer({
       db: root,
-      objectStore: createLocalObjectStore(objectStoreRoot),
+      objectStore,
       auth: { mode: "production" },
       localAuthService: createLocalAuthService(root),
       env: {
@@ -302,7 +325,8 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     const loaded = await createCatalogKernel(pool).loadPinnedCatalog(chain.pinA);
     if (!loaded.ok) throw new Error(`Pinned fixture unavailable: ${loaded.error.kind}`);
     const stabilized = await createSourceBackedBindingService(pool, {
-      initialPayload: { kind: "number", value: 1842 }
+      initialPayload: { kind: "number", value: 1842 },
+      objectStore
     }).stabilize({
       snapshot: loaded.value,
       organizationId: ORG,
@@ -764,7 +788,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     expect(await businessState()).toEqual(before);
   });
 
-  it("R2-AGT-06: approval reauthorizes edited arguments before any Binding write", async () => {
+  it("R2-AGT-06: approval refuses edits that change the approved project before any Binding write", async () => {
     const before = await businessState();
     const pending = await pendingBindingAction();
     const resumed = await resumeBindingAction(pending.threadId, "approve", {
@@ -773,7 +797,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       targetValue: "<2000>",
       reason: "forged project"
     });
-    expect(resumed.events).toContain("You are not permitted to perform that action.");
+    expect(resumed.events).toContain("操作与当前状态冲突");
     const pool = getRootPostgresPool(root)!;
     expect(
       (await pool.query("select status from agent_tool_calls where session_id = $1", [pending.threadId])).rows
@@ -820,52 +844,97 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     }
   });
 
-  it("R2-AGT-06: source-backed approval succeeds once, replays without writes, and still refuses a critical Agent write", async () => {
-    // Use the existing disposable-runtime initializer, never handwritten marker
-    // rows or schema weakening. This is the old semantic-identity initialization,
-    // not Catalog P12-P15 or a target-environment operation.
-    expect(await ensureLocalPostCutoverIdentity(root)).toMatchObject({ status: "applied" });
-    const set = await json("POST", `/api/v1/projects/${PROJECT}/config-sets`, {
-      name: "r2-agent-source",
-      description: "Isolated Agent approval source fixture"
-    });
-    expect(set.status, JSON.stringify(set.body)).toBe(201);
-    const source = `/dts-v1/;
-/ {
-  power {
-    compatible = "huawei,charging_core";
-    iin_max = <2300>;
-  };
-};
-`;
-    const upload = () =>
-      json("POST", `/api/v1/projects/${PROJECT}/parameter-files`, {
-        fileName: "r2-agent-source.dts",
-        contentBase64: Buffer.from(source).toString("base64")
-      });
-    const file = await upload();
-    expect(file.status, JSON.stringify(file.body)).toBe(201);
-    const member = await json("POST", `/api/v1/projects/${PROJECT}/config-sets/${set.body.item.id}/files`, {
-      fileId: file.body.item.id,
-      role: "base",
-      sortOrder: 0
-    });
-    expect([200, 201], JSON.stringify(member.body)).toContain(member.status);
-    const revision = await upload();
-    expect([200, 201], JSON.stringify(revision.body)).toContain(revision.status);
+  it("R2-AGT-06: post-put submission failure removes the candidate, draft, and stored object", async () => {
     const pool = getRootPostgresPool(root)!;
-    const bindings = await pool.query<{ id: string }>(
-      `
-      select b.id from project_parameter_bindings b
-      join project_parameter_binding_revisions br on br.binding_id = b.id
-      join dts_config_revisions cr on cr.id = br.config_revision_id
-      where b.organization_id = $1 and b.project_id = $2 and cr.config_set_id = $3
-        and br.raw_value = '<2300>'
-      `,
-      [ORG, PROJECT, set.body.item.id]
+    const draftsBefore = await pool.query<{ id: string }>(
+      `select id from project_parameter_value_drafts
+       where organization_id = $1 and project_id = $2 and binding_id = $3 and user_id = $4`,
+      [ORG, PROJECT, bindingId, RESTRICTED]
     );
-    expect(bindings.rows, "Real source ingest must produce an editable Binding before Agent approval").toHaveLength(1);
-    const sourceBindingId = bindings.rows[0]!.id;
+    expect(draftsBefore.rows).toEqual([]);
+    objectStoreWriteKeys.clear();
+
+    const removedRole = await pool.query(
+      `delete from user_role_bindings
+       where id = 'urb-r2-818-software-committer' and user_id = $1 and project_id = $2
+       returning id`,
+      [SOFTWARE_COMMITTER, PROJECT]
+    );
+    expect(removedRole.rows).toEqual([{ id: "urb-r2-818-software-committer" }]);
+    try {
+      const pending = await runAgent({
+        token: restrictedToken,
+        projectId: PROJECT,
+        tool: "action.submitParameterChange",
+        args: { projectId: PROJECT, parameterId: bindingId, targetValue: "<2150>", reason: "R2 post-put failure" }
+      });
+      expect(pending.calls.map((call) => call.status), pending.events).toEqual(["pending_approval"]);
+      const approved = await resumeBindingAction(pending.threadId, "approve");
+      expect(approved.status).toBe(200);
+
+      const calls = await pool.query<{ status: string; error_message: string | null }>(
+        "select status, error_message from agent_tool_calls where session_id = $1",
+        [pending.threadId]
+      );
+      expect(calls.rows).toEqual([
+        expect.objectContaining({ status: "failed", error_message: expect.stringContaining("active project software committer") })
+      ]);
+      expect(objectStoreWriteKeys.size).toBe(1);
+      const [attemptKey] = [...objectStoreWriteKeys];
+      if (!attemptKey) throw new Error("The rejected Agent submission did not write a source candidate object.");
+
+      const candidates = await pool.query(
+        "select id from project_parameter_file_candidates where storage_key = $1",
+        [attemptKey]
+      );
+      const draftsAfter = await pool.query(
+        `select id from project_parameter_value_drafts
+         where organization_id = $1 and project_id = $2 and binding_id = $3 and user_id = $4`,
+        [ORG, PROJECT, bindingId, RESTRICTED]
+      );
+      const storedObjectExists = await objectStore.get(attemptKey).then(() => true, () => false);
+      expect.soft(candidates.rows).toEqual([]);
+      expect.soft(draftsAfter.rows).toEqual(draftsBefore.rows);
+      expect.soft(storedObjectExists).toBe(false);
+    } finally {
+      await pool.query(
+        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+         values ('urb-r2-818-software-committer', $1, $2, $3, 'software-committer')`,
+        [SOFTWARE_COMMITTER, ORG, PROJECT]
+      );
+    }
+  });
+
+  it("R2-AGT-06: canonical source-pin approval succeeds once, replays without writes, and still refuses a critical Agent write", async () => {
+    const pool = getRootPostgresPool(root)!;
+    // The canonical Catalog fixture above owns a real DTS source pin. Legacy
+    // config-set imports do not create Catalog bindings or source pins.
+    const sourcePins = await pool.query<{
+      source_ref: string;
+      config_revision_id: string;
+      source_pin_id: string;
+      format: "dts" | "json";
+    }>(
+      `
+      select value.source_ref, value.config_revision_id, pin.id as source_pin_id, pin.format
+      from parameter_catalog.project_parameter_bindings binding
+      join parameter_catalog.project_parameter_values value
+        on value.id = binding.current_value_id and value.binding_id = binding.id
+      join parameter_catalog.project_value_source_pins pin
+        on pin.project_value_id = value.id and pin.binding_id = binding.id
+      where binding.organization_id = $1 and binding.project_id = $2 and binding.id = $3
+      `,
+      [ORG, PROJECT, bindingId]
+    );
+    expect(sourcePins.rows).toHaveLength(1);
+    expect(sourcePins.rows[0]).toMatchObject({
+      source_ref: expect.any(String),
+      config_revision_id: expect.any(String),
+      source_pin_id: expect.any(String),
+      format: "dts"
+    });
+    expect(sourcePins.rows[0]?.source_ref).not.toBe("canonical-binding-identity");
+    const sourceBindingId = bindingId;
     const beforeApproval = await businessState();
     const pending = await runAgent({
       token: restrictedToken,
@@ -885,19 +954,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       "select status, result, error_message from agent_tool_calls where session_id = $1",
       [pending.threadId]
     );
-    const sourceNodes = await pool.query(
-      `select n.node_path, n.compatible from dts_nodes n
-       join project_parameter_file_versions v on v.id = n.file_version_id where v.file_id = $1`,
-      [file.body.item.id]
-    );
-    const logicalNodes = await pool.query(
-      `select node_locator, compatible from dts_logical_node_revisions
-       where config_revision_id in (select id from dts_config_revisions where config_set_id = $1)`,
-      [set.body.item.id]
-    );
     expect(
       calls.rows.map((call) => call.status),
-      JSON.stringify({ calls: calls.rows, sourceNodes: sourceNodes.rows, logicalNodes: logicalNodes.rows })
+      JSON.stringify({ calls: calls.rows, sourcePins: sourcePins.rows })
     ).toEqual(["succeeded"]);
     const beforeReplay = await businessState();
     for (const key of ["bindings", "values", "registrations", "proposals"]) {
@@ -928,7 +987,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     // Source, Binding, draft, approval and submission remain real command paths.
     await pool.query(`insert into dts_sensitive_node_rules
       (id, organization_id, project_id, match_type, pattern, risk_tier, required_capability)
-      values ('rule-r2-818-critical', $1, $2, 'compatible', 'huawei,charging_core', 'critical', 'parameter:edit-critical')`,
+      values ('rule-r2-818-critical', $1, $2, 'path', '/logical-r2-818', 'critical', 'parameter:edit-critical')`,
       [ORG, PROJECT]);
     const beforeCritical = await businessState();
     const critical = await runAgent({

@@ -10,6 +10,7 @@ import { createAgentKnowledgeDraft } from "../../knowledge/service";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
+import { parameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import {
   createCanonicalValueDraft,
   loadCanonicalBindingPins,
@@ -196,10 +197,17 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             { projectId, parameterId, targetValue }
           );
         }
+        const db = options.db;
+        if (parameterIdentityMode() !== "semantic") {
+          throw new ApiError(
+            "CONFLICT",
+            "Agent parameter submission requires post-cutover binding identity.",
+            { reason: "legacy-identity-mode-retired-for-agent", projectId, parameterId }
+          );
+        }
         const target = readApprovedTarget(payload);
         const targetText = targetValue;
         validateTarget(target);
-        const db = options.db;
         return db.transaction(async (tx) => {
           const approved = await requireApprovedParameterInvocation(tx, context.auth, {
             invocation,
