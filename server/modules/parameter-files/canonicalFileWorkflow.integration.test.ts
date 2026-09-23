@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
@@ -11,7 +12,8 @@ import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
-import { createConfigSet, addConfigSetFile } from "./configSetService";
+import { createConfigSet, addConfigSetFile, removeConfigSetFile } from "./configSetService";
+import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { uploadProjectParameterFile } from "./service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
@@ -844,6 +846,111 @@ describe("#906 canonical JSON candidate workflow", () => {
       where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows;
     expect(movedTips).toHaveLength(pendingBatch.valueTips.length);
     expect(movedTips.every((entry, index) => entry.current_value_id !== pendingBatch.valueTips[index]!.current_value_id)).toBe(true);
+  }, 120_000);
+
+  it("requires an exact audited member tombstone and preserves historical source pins", async () => {
+    const before = (await db.query<{ id: string; current_value_id: string; pin_id: string; config_revision_id: string; file_version_id: string }>(`
+      select binding.id,binding.current_value_id,pin.id as pin_id,
+        pin.config_revision_id,pin.file_version_id
+      from parameter_catalog.current_project_parameter_bindings binding
+      join parameter_catalog.project_parameter_source_occurrences occurrence
+        on occurrence.id=binding.source_occurrence_id
+      join parameter_catalog.project_value_source_pins pin
+        on pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id
+      where binding.organization_id=$1 and binding.project_id=$2
+        and occurrence.config_set_id=$3 and occurrence.file_id=$4 order by binding.id`,
+      [ORG, JSON_PROJECT, configSetId, fileId])).rows;
+    expect(before.length).toBeGreaterThan(0);
+    expect([...new Set(before.map((row) => row.config_revision_id))]).toEqual([before[0]!.config_revision_id]);
+    expect([...new Set(before.map((row) => row.file_version_id))]).toEqual([before[0]!.file_version_id]);
+    const revisionId = before[0]!.config_revision_id;
+    const currentVersionId = before[0]!.file_version_id;
+    await expect(db.query(
+      "update project_parameter_file_versions set checksum='forged' where id=$1",
+      [currentVersionId]
+    )).rejects.toMatchObject({ code: "55000" });
+    await expect(db.query(
+      "delete from project_parameter_file_versions where id=$1", [currentVersionId]
+    )).rejects.toMatchObject({ code: "55000" });
+    const manifest = before.map((row) => ({ bindingId: row.id, valueId: row.current_value_id, sourcePinId: row.pin_id }));
+    const historyCount = (await db.query<{ count: number }>(`
+      select count(*)::int as count from parameter_catalog.binding_history_events
+      where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count;
+    const pinCount = (await db.query<{ count: number }>(`
+      select count(*)::int as count from parameter_catalog.project_value_source_pins
+      where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count;
+    expect((await db.query<{ allowed: boolean }>(`
+      select has_table_privilege('parameter_governance_writer_role',
+        'parameter_catalog.project_source_member_tombstones','INSERT') as allowed`
+    )).rows[0]!.allowed).toBe(false);
+    await expect(db.transaction(async (tx) => {
+      await tx.query("set local role parameter_governance_writer_role");
+      await tx.query("select id from parameter_catalog.project_source_member_tombstones limit 1");
+    })).rejects.toMatchObject({ code: "42501" });
+    await expect(removeConfigSetFile(db, admin, { configSetId, fileId }))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(db.transaction(async (tx) => {
+      await tx.query(`update project_parameter_files set config_set_id=null,
+        config_set_role=null,config_set_sort_order=0 where id=$1`, [fileId]);
+    })).rejects.toThrow(/Pinned source file identity/);
+    expect((await db.query<{ config_set_id: string }>(
+      "select config_set_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.config_set_id).toBe(configSetId);
+
+    const writeRemoval = async (rollback: boolean, corruptManifest = false) => db.transaction(async (tx) => {
+      const tombstoneId = randomUUID();
+      const auditId = randomUUID();
+      const frozen = corruptManifest ? manifest.slice(1) : manifest;
+      await writeAuditEventInTx(asAuditTx(tx), jsonReviewer, { requestId: tombstoneId }, {
+        id: auditId, app: "parameters", kind: "parameter-topology-governance",
+        action: "source-member-removed", severity: "Medium", projectId: JSON_PROJECT,
+        targetType: "project-parameter-file", targetId: fileId,
+        metadata: { tombstoneId, configSetId, configRevisionId: revisionId,
+          fileVersionId: currentVersionId, bindings: frozen }
+      });
+      await tx.query(`insert into parameter_catalog.project_source_member_tombstones
+        (id,organization_id,project_id,config_set_id,file_id,config_revision_id,
+         file_version_id,binding_manifest,audit_event_id)
+        values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,
+        [tombstoneId, ORG, JSON_PROJECT, configSetId, fileId,
+          revisionId, currentVersionId, JSON.stringify(frozen), auditId]);
+      await tx.query(`update project_parameter_files set config_set_id=null,
+        config_set_role=null,config_set_sort_order=0 where id=$1 and config_set_id=$2`, [fileId, configSetId]);
+      expect((await tx.query<{ count: number }>(`
+        select count(*)::int as count from parameter_catalog.current_project_parameter_bindings
+        where id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count).toBe(0);
+      if (rollback) throw new Error("injected-member-removal-rollback");
+      return { tombstoneId, auditId };
+    });
+    await expect(writeRemoval(true)).rejects.toThrow("injected-member-removal-rollback");
+    expect((await db.query<{ count: number }>(`
+      select count(*)::int as count from parameter_catalog.project_source_member_tombstones
+      where file_id=$1`, [fileId])).rows[0]!.count).toBe(0);
+    expect((await db.query<{ config_set_id: string }>(
+      "select config_set_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.config_set_id).toBe(configSetId);
+    await expect(writeRemoval(false, true)).rejects.toThrow(/exact source cohort/);
+    expect((await db.query<{ config_set_id: string }>(
+      "select config_set_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.config_set_id).toBe(configSetId);
+
+    const committed = await writeRemoval(false);
+    expect((await db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+      where id=any($1::text[]) order by id`, [before.map((row) => row.id)])).rows)
+      .toEqual(before.map((row) => ({ id: row.id, current_value_id: row.current_value_id })));
+    expect((await db.query<{ count: number }>(`
+      select count(*)::int as count from parameter_catalog.project_value_source_pins
+      where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count).toBe(pinCount);
+    expect((await db.query<{ count: number }>(`
+      select count(*)::int as count from parameter_catalog.binding_history_events
+      where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count).toBe(historyCount);
+    expect((await db.query<{ id: string }>(`
+      select id from audit_events where id=$1`, [committed.auditId])).rows).toHaveLength(1);
+    await expect(db.transaction(async (tx) => {
+      await tx.query(`update project_parameter_files set config_set_id=$2,
+        config_set_role='config',config_set_sort_order=0 where id=$1`, [fileId, configSetId]);
+    })).rejects.toThrow(/Pinned source file identity/);
   }, 120_000);
 });
 
