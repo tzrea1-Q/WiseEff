@@ -18,13 +18,11 @@ export const S2_SCH_CONTRACT_FINGERPRINT =
   "7bc944915eabc1689a9976332864bae3bc602fd9c407e91ed826340dbe0f69e1";
 
 /**
- * Current schema through 0161: DTS/JSON delete locator digest functions, revised
- * source-pin ownership/locator checks, and value-state/delete-proof columns,
- * checks and owner-scoped foreign keys. Existing trigger definitions are unchanged.
- * The historical S2-SCH pin above is unchanged.
+ * Current schema through 0166, including canonical DTS/debug pins and batch
+ * request/applied-revision storage. The historical S2-SCH pins above are unchanged.
  */
 export const S2_SCH_LIVE_FINGERPRINT =
-  "908f678605a35f9ed2aa36451a8c621c05a5ba2018cefe08f62f93721d982537";
+  "091f204fef70fbd7fd18f357bb15db14b75b15ee833628b14babeba75fa5bc42";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
