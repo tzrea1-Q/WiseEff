@@ -332,8 +332,8 @@ export function findAcceptanceEnvironmentHelperLoads(
     .sort();
 }
 
-/** 39 environment-backed specs (including canonical-value-workflow) plus both Playwright configs. */
-const ACCEPTANCE_ENVIRONMENT_HELPER_COUNT = 41;
+/** 40 environment-backed specs (including canonical-dashboard) plus both Playwright configs. */
+const ACCEPTANCE_ENVIRONMENT_HELPER_COUNT = 42;
 
 export function evaluateAcceptanceCiConfiguration(
   input: AcceptanceCiConfigurationInput

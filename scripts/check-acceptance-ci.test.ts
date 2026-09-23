@@ -311,7 +311,7 @@ describe("M5.12 acceptance CI configuration", () => {
 
     expect(findForbiddenAcceptanceDotenvImports(sources)).toEqual([]);
     const helperLoads = findAcceptanceEnvironmentHelperLoads(sources);
-    expect(helperLoads).toHaveLength(39);
+    expect(helperLoads).toHaveLength(40);
     expect(helperLoads).toContain("e2e/acceptance/canonical-value-workflow.acceptance.spec.ts");
     expect(helperLoads).toContain("e2e/acceptance/parameter-catalog-policy-usage.acceptance.spec.ts");
   });
