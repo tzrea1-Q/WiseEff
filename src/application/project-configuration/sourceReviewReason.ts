@@ -2,10 +2,14 @@
 export function sourceReviewReason(reason?: string): string {
   switch (reason) {
     case "candidate-changes-multiple-bindings":
-      return "候选同时修改多个参数绑定；当前来源审核仅支持单个绑定，请拆分候选。";
+      return "候选同时修改多个参数绑定；当前批量审核提交尚未开放。";
+    case "canonical-batch-writer-unavailable":
+      return "已证明多个参数绑定的来源差异；批量审核提交尚未开放。";
+    case "dts-batch-source-proof-failed":
+      return "DTS 批量来源差异无法逐项证明；请核对目标属性和文件内容。";
     case "candidate-changed-unbound-or-non-target-bytes":
     case "dts-render-not-byte-exact":
-      return "候选还修改了目标参数以外的内容，无法证明为单项来源变更；请拆分或重新准备候选。";
+      return "候选还修改了目标参数以外的内容；请拆分或重新准备候选。";
     case "source-membership-drift":
       return "配置集成员或文件版本已变化，请刷新后重新准备来源变更。";
     case "candidate-base-is-stale":

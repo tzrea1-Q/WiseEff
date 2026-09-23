@@ -317,6 +317,19 @@ export type ParameterFileSourcePreview = {
   proofToken?: string;
   before?: string;
   after?: string;
+  bindings?: Array<{
+    bindingId: string;
+    definitionId: string;
+    baseCurrentValueId: string;
+    configRevisionId: string;
+    sourcePinId: string;
+    locator: string;
+    baseDigest: string;
+    proposedDigest: string;
+    action: "set" | "delete";
+    beforeText: string;
+    afterText?: string;
+  }>;
   request?: {
     id: string;
     status: ParameterFileSourceReviewStatus;
