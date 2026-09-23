@@ -30,6 +30,12 @@ export type AgentToolExecutionContext = {
   approvalId?: string;
 };
 
+/** Context available while freezing server-owned approval pins, before approval exists. */
+export type AgentToolApprovalPreparationContext = Pick<
+  AgentToolExecutionContext,
+  "auth" | "requestId" | "sessionId" | "projectId"
+>;
+
 /** Server-owned proof that the exact tool/context/payload tuple passed authorization. */
 export type AgentToolAuthorization = {
   readonly [agentToolAuthorizationBrand]: true;
@@ -38,9 +44,35 @@ export type AgentToolAuthorization = {
   readonly payload: Record<string, unknown>;
 };
 
+export type AgentToolRegistry = {
+  /** Store bound to production tools, when source-backed actions are available. */
+  readonly sourceObjectStore?: ObjectStore;
+  list(): AgentToolDefinition[];
+  get(name: string): AgentToolDefinition | undefined;
+  require(name: string): AgentToolDefinition;
+  authorize(
+    name: AgentToolName,
+    context: AgentToolExecutionContext,
+    payload: Record<string, unknown>
+  ): AgentToolAuthorization;
+  run(
+    name: AgentToolName,
+    context: AgentToolExecutionContext,
+    payload: Record<string, unknown>,
+    authorization?: AgentToolAuthorization
+  ): Promise<AgentToolResult>;
+  /** Rebinds production tools to a transaction while retaining shared sinks/stores. */
+  forDatabase?(database: Database, objectStore?: ObjectStore): AgentToolRegistry;
+};
+
 /** A registered tool is its metadata (single declaration in `toolMetadata.ts`) plus the runtime implementation. */
 export type AgentToolDefinition = AgentToolMetadata & {
   name: AgentToolName;
+  /** Optional durable payload preparation for approval-gated tools. */
+  prepareApproval?(
+    context: AgentToolApprovalPreparationContext,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>>;
   run(context: AgentToolExecutionContext, payload: Record<string, unknown>): Promise<AgentToolResult>;
 };
 
@@ -72,7 +104,7 @@ export function createAgentToolRegistry(options: {
   objectStore?: ObjectStore;
   knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
   refusalAuditSink?: TrustedRefusalAuditSink;
-}) {
+}): AgentToolRegistry {
   const refusalAuditSink =
     options.refusalAuditSink ?? (isRootDatabase(options.db) ? createTrustedRefusalAuditSink(options.db) : undefined);
   const tools = [
@@ -97,6 +129,7 @@ export function createAgentToolRegistry(options: {
   }
 
   return {
+    sourceObjectStore: options.objectStore,
     list: () => tools,
     get: (name: string) => byName.get(name),
     require(name: string) {
@@ -127,6 +160,14 @@ export function createAgentToolRegistry(options: {
         authorizeTool(tool, context, payload);
       }
       return tool.run(context, payload);
+    },
+    forDatabase(database: Database, objectStore?: ObjectStore) {
+      return createAgentToolRegistry({
+        db: database,
+        objectStore: objectStore ?? options.objectStore,
+        knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
+        refusalAuditSink
+      });
     }
   };
 }
