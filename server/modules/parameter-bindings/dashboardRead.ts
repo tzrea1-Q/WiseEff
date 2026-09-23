@@ -343,6 +343,10 @@ export async function aggregateBindingDashboardHotspots(
        count(distinct history.id) as history_events_in_window,
        count(distinct b.id) filter (where exists (
          select 1 from parameter_catalog.binding_history_events modified_history
+          join parameter_catalog.project_parameter_values old_value
+            on old_value.id = modified_history.old_current_value_id
+           and old_value.binding_id = b.id
+           and old_value.source_ref <> 'canonical-binding-identity'
           where modified_history.binding_id = b.id
        )) as modified_param_count,
        count(distinct request.id) filter (where request.status = 'pending') as open_request_count,

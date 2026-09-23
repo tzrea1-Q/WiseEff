@@ -16,6 +16,11 @@ import { makeTestAuthContext } from "../../../testing/authContext";
 import { installConfigurationSourceFixture } from "../../../testing/parameterCatalog/configurationSource";
 import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
 import { ParameterDefinitionId } from "../../parameter-catalog-contract";
+import { createCanonicalValueDraft } from "../../parameter-bindings/drafts/service";
+import {
+  reviewCanonicalValueChange,
+  submitCanonicalValueChange
+} from "../../parameter-bindings/drafts/changeService";
 import {
   aggregateHotspotGroups
 } from "./hotspotRepository";
@@ -27,6 +32,7 @@ const USER_ID = "user-dashboard-canonical-repository";
 const SUBJECT_ID = "csub_dashboard_repository";
 const SCHEMA_ID = "wiseeff.dashboard.repository";
 const DEFINITION_ID = "pdef_acme_power_iin_max";
+const REVIEWER_ID = "user-dashboard-canonical-reviewer";
 
 describe("canonical dashboard repository", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
@@ -41,6 +47,11 @@ describe("canonical dashboard repository", () => {
     organizationId: ORGANIZATION_ID,
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
   });
+  const reviewerAuth = makeTestAuthContext({
+    userId: REVIEWER_ID,
+    organizationId: ORGANIZATION_ID,
+    roles: [{ projectId: PROJECT_ID, roleId: "software-committer" }]
+  });
 
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("dashboard_canonical_repository");
@@ -54,6 +65,10 @@ describe("canonical dashboard repository", () => {
       [USER_ID, ORGANIZATION_ID]
     );
     await db.query(
+      "insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Dashboard reviewer','Committer',true)",
+      [REVIEWER_ID, ORGANIZATION_ID]
+    );
+    await db.query(
       "insert into projects(id,organization_id,name,code,status) values ($1,$2,'Canonical dashboard project','CDR','initialized')",
       [PROJECT_ID, ORGANIZATION_ID]
     );
@@ -61,6 +76,11 @@ describe("canonical dashboard repository", () => {
       `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
        values ('dashboard-canonical-admin',$1,$2,null,'admin')`,
       [USER_ID, ORGANIZATION_ID]
+    );
+    await db.query(
+      `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+       values ('dashboard-canonical-committer',$1,$2,$3,'software-committer')`,
+      [REVIEWER_ID, ORGANIZATION_ID, PROJECT_ID]
     );
 
     await installConfigurationSourceFixture(db, auth, { subjectId: SUBJECT_ID, schemaId: SCHEMA_ID });
@@ -141,6 +161,7 @@ describe("canonical dashboard repository", () => {
     expect(projectGroups).toHaveLength(1);
     expect(projectGroups[0]?.parameterCount).toBe(2);
     expect(projectGroups[0]?.definitionCount).toBe(1);
+    expect(projectGroups[0]?.modifiedParamCount).toBe(0);
 
     const moduleGroups = await aggregateHotspotGroups(db, { ...baseInput, dimension: "module" });
     expect(moduleGroups).toHaveLength(1);
@@ -230,5 +251,64 @@ describe("canonical dashboard repository", () => {
         expect(trend.map((point) => point.bucketStart)).toEqual([input.windowStart]);
       }
     });
+  });
+
+  it("excludes identity bootstrap from modified scope but counts a later committed change", async () => {
+    const binding = canonicalBindings[0];
+    expect(binding).toBeDefined();
+    const input = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      authorizedProjectIds: [PROJECT_ID],
+      windowStart: "2000-01-01T00:00:00.000Z",
+      windowEnd: "2999-01-01T00:00:00.000Z",
+      dimension: "project" as const
+    };
+    const initial = await aggregateHotspotGroups(db, input);
+    expect(initial[0]?.modifiedParamCount).toBe(0);
+
+    const currentValue = await db.query<{ config_revision_id: string }>(
+      `select config_revision_id from parameter_catalog.project_parameter_values where id = $1`,
+      [binding.currentValueId]
+    );
+    expect(currentValue.rows).toHaveLength(1);
+    const draft = await createCanonicalValueDraft(db, auth, {
+      projectId: PROJECT_ID,
+      bindingId: binding.id,
+      sourceTarget: { format: "json", sourceText: '{"first":{"value":37.5},"second":{"value":42}}' },
+      reason: "Count a later committed canonical value change",
+      baseRevisionId: currentValue.rows[0]!.config_revision_id,
+      baseCurrentValueId: binding.currentValueId
+    }, {
+      objectStore: storage,
+      invocation: createUserInvocation(auth),
+      requestId: "dashboard-canonical-change-draft",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    const request = await submitCanonicalValueChange(db, auth, {
+      projectId: PROJECT_ID,
+      draftId: draft.id,
+      invocation: createUserInvocation(auth),
+      requestId: "dashboard-canonical-change-submit",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!snapshot) throw new Error("Published dashboard Definition fixture is unavailable");
+    await reviewCanonicalValueChange(db, reviewerAuth, {
+      projectId: PROJECT_ID,
+      requestId: request.id,
+      decision: "approve"
+    }, {
+      objectStore: storage,
+      snapshot,
+      invocation: createUserInvocation(reviewerAuth),
+      traceId: "dashboard-canonical-change-review",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+
+    const changed = await aggregateHotspotGroups(db, input);
+    // One reviewed JSON file revision moves both source-backed Binding tips to
+    // the new exact file-version pin, so both are modified scope members.
+    expect(changed[0]?.modifiedParamCount).toBe(2);
   });
 });
