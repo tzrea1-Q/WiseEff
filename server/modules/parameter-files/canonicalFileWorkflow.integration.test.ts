@@ -197,7 +197,7 @@ describe("#906 canonical JSON candidate workflow", () => {
       bytes: Buffer.from('{ "settings": { "limit": 50, "keep": true }, "other": { "limit": 60 } }\n')
     });
     const multiPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: JSON_PROJECT, candidateId: changedBoth.id });
-    
+
     expect(multiPreview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "candidate-changes-multiple-bindings" });
 
     const changedNonTarget = await createCandidate(db, storage, admin, {
