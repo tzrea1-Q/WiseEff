@@ -7,6 +7,8 @@ import type { AuthContext } from "../auth/types";
 import { asAuditTx, withAuditedWrite, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import { createAgentInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { createCanonicalSourceAttempt } from "../parameter-files/canonicalSourceAttempt";
+import type { ObjectStore } from "../logs/objectStore";
 import { APPROVED_PARAMETER_PAYLOAD_KEY } from "./approvedParameterInvocation";
 import { createAgentToolRegistry, type AgentToolRegistry } from "./toolRegistry";
 import type { AgentToolExecutionContext } from "./toolRegistry";
@@ -137,10 +139,10 @@ export function createAgentOrchestrator(options: {
   const metrics = options.metrics;
   const tracing = options.tracing;
   const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
-  const registryFor = (database: Database): AgentToolRegistry =>
-    options.toolRegistry?.forDatabase?.(database) ??
+  const registryFor = (database: Database, objectStore?: ObjectStore): AgentToolRegistry =>
+    options.toolRegistry?.forDatabase?.(database, objectStore) ??
     options.toolRegistry ??
-    createAgentToolRegistry({ db: database, refusalAuditSink });
+    createAgentToolRegistry({ db: database, objectStore, refusalAuditSink });
   const toolRegistry = registryFor(db);
 
   function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
@@ -502,7 +504,11 @@ export function createAgentOrchestrator(options: {
     await loadSessionOrThrow(input, toolCall.sessionId);
     assertApprovalTarget(approval, toolCall, input);
 
-    const executionError = await db.transaction(async (tx) => {
+    const sourceAttempt = toolCall.name === "action.submitParameterChange" &&
+      toolRegistry.sourceObjectStore && toolRegistry.forDatabase
+      ? createCanonicalSourceAttempt(toolRegistry.sourceObjectStore)
+      : undefined;
+    const runApprovalTransaction = async (tx: Database) => {
       const persistedApproval = await getAgentApproval(tx, input.auth.organization.id, approval.id);
       if (!persistedApproval || persistedApproval.status !== "pending") {
         throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
@@ -513,7 +519,7 @@ export function createAgentOrchestrator(options: {
       }
       assertApprovalTarget(persistedApproval, persistedToolCall, input);
 
-      const txToolRegistry = registryFor(tx);
+      const txToolRegistry = registryFor(tx, sourceAttempt?.objectStore);
       if (input.editedArgs !== undefined) {
         let editedPayload = input.editedArgs;
         const originalApproved = recordPayload(persistedToolCall.payload[APPROVED_PARAMETER_PAYLOAD_KEY]);
@@ -637,7 +643,33 @@ export function createAgentOrchestrator(options: {
         }
       }, asAuditTx(tx));
       return null;
-    });
+    };
+    let callbackFailed = false;
+    let callbackFailure: unknown;
+    let executionError: unknown;
+    try {
+      executionError = await db.transaction(async (tx) => {
+        try {
+          return await runApprovalTransaction(tx);
+        } catch (error) {
+          callbackFailed = true;
+          callbackFailure = error;
+          throw error;
+        }
+      });
+    } catch (error) {
+      // The database rethrows the callback error only after ROLLBACK succeeds.
+      // A COMMIT error has uncertain outcome, so its object must remain.
+      if (sourceAttempt && callbackFailed && error === callbackFailure) {
+        await sourceAttempt.cleanupAfterConfirmedRollback();
+      }
+      throw error;
+    }
+    if (sourceAttempt && executionError) {
+      // Tool failure was saved in the outer transaction; the tool savepoint
+      // rolled back its candidate before this transaction committed.
+      await sourceAttempt.cleanupAfterConfirmedRollback();
+    }
     recordAgentApprovalMetric("approved", toolCall);
     recordAgentToolResultMetric(executionError ? "failed" : "succeeded", toolCall);
     if (executionError) {
