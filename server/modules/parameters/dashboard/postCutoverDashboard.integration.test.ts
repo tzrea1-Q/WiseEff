@@ -468,7 +468,7 @@ function hotspotWindowBounds() {
 
 describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () => {
   it(
-    "serves /dashboard/summary and /dashboard/hotspots from semantic tables only",
+    "does not count migrated legacy semantic rows in canonical dashboard summary or hotspots",
     async () => {
       await withTempDatabase(async (db) => {
         const seeded = await seedPreCutoverDashboardGraph(db);
@@ -504,47 +504,49 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
           item: {
             kpis: {
               totalParameters: number;
-              highRiskParameters: number;
+              totalBindings: number;
+              totalDefinitions: number;
+              highRiskParameters: number | null;
+              riskAvailability: string;
               managedProjects: number;
             };
-            riskBuckets: Array<{ high: number; low: number }>;
+            riskBuckets: Array<{ high: number | null; low: number | null }>;
           };
         }>(server, "/api/v1/parameters/dashboard/summary?window=30d");
 
         expect(summaryResponse.status).toBe(200);
-        expect(summaryResponse.body.item.kpis.totalParameters).toBe(2);
-        expect(summaryResponse.body.item.kpis.highRiskParameters).toBe(1);
+        expect(summaryResponse.body.item.kpis.totalParameters).toBe(0);
+        expect(summaryResponse.body.item.kpis.totalBindings).toBe(0);
+        expect(summaryResponse.body.item.kpis.totalDefinitions).toBe(0);
+        expect(summaryResponse.body.item.kpis.highRiskParameters).toBeNull();
+        expect(summaryResponse.body.item.kpis.riskAvailability).toBe("unavailable");
         expect(summaryResponse.body.item.kpis.managedProjects).toBe(1);
-        expect(summaryResponse.body.item.riskBuckets[0]?.high).toBe(1);
-        expect(summaryResponse.body.item.riskBuckets[0]?.low).toBe(1);
+        expect(summaryResponse.body.item.riskBuckets).toEqual([]);
 
         const hotspotResponse = await requestJson<{
           items: Array<{ kind: string; title: string; score: number }>;
         }>(server, "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=project");
 
         expect(hotspotResponse.status).toBe(200);
-        expect(hotspotResponse.body.items.length).toBeGreaterThan(0);
-        expect(hotspotResponse.body.items[0]?.kind).toBe("project");
-        expect(hotspotResponse.body.items[0]?.title).toBe("PCD");
-        expect(hotspotResponse.body.items[0]?.score).toBeGreaterThanOrEqual(0);
+        expect(hotspotResponse.body.items).toEqual([]);
 
         const moduleHotspots = await requestJson<{ items: Array<{ kind: string; module: string }> }>(
           server,
           "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=module"
         );
         expect(moduleHotspots.status).toBe(200);
-        expect(moduleHotspots.body.items.some((item) => item.module === DRIVER)).toBe(true);
+        expect(moduleHotspots.body.items).toEqual([]);
       });
     },
     120_000
   );
 
   it(
-    "includes org-owned and global vendor specs in parameter hotspots via binding tenant scope",
+    "does not count semantic tenant fixtures as canonical parameter hotspots",
     async () => {
       await withTempDatabase(async (db) => {
         await bootstrapPostCutoverDatabase(db);
-        const seeded = await seedSemanticHotspotTenantGraph(db);
+        await seedSemanticHotspotTenantGraph(db);
         const { windowStart, windowEnd } = hotspotWindowBounds();
 
         const groups = await aggregateHotspotGroups(db, {
@@ -555,15 +557,7 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
           windowEnd
         });
 
-        const globalGroup = groups.find((group) => group.groupId === seeded.globalSpecId);
-        const orgOwnedGroup = groups.find((group) => group.groupId === seeded.orgOwnedSpecId);
-        expect(globalGroup?.title).toBe(GLOBAL_VENDOR_PROPERTY);
-        expect(orgOwnedGroup?.title).toBe(ORG_OWNED_PROPERTY);
-        expect(globalGroup?.relatedRequestCount).toBe(1);
-        expect(globalGroup?.historyEventsInWindow).toBe(2);
-        expect(globalGroup?.openRequestCount).toBe(1);
-        expect(orgOwnedGroup?.relatedRequestCount).toBe(1);
-        expect(orgOwnedGroup?.historyEventsInWindow).toBe(1);
+        expect(groups).toEqual([]);
 
         const server = makeDashboardServer(db, makeAuthFor(ORG_A, USER_A, "Hotspot Org A"));
         const hotspotResponse = await requestJson<{
@@ -571,24 +565,18 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
         }>(server, "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=parameter");
 
         expect(hotspotResponse.status).toBe(200);
-        const titles = hotspotResponse.body.items.map((item) => item.title);
-        expect(titles).toContain(GLOBAL_VENDOR_PROPERTY);
-        expect(titles).toContain(ORG_OWNED_PROPERTY);
-        const globalHotspot = hotspotResponse.body.items.find(
-          (item) => item.id === `parameter:${seeded.globalSpecId}`
-        );
-        expect(globalHotspot?.evidence.some((line) => line.includes("个项目中修改"))).toBe(true);
+        expect(hotspotResponse.body.items).toEqual([]);
       });
     },
     120_000
   );
 
   it(
-    "isolates parameter hotspots across orgs sharing the same global vendor spec",
+    "keeps legacy tenant fixtures out of both canonical hotspot scopes",
     async () => {
       await withTempDatabase(async (db) => {
         await bootstrapPostCutoverDatabase(db);
-        const seeded = await seedSemanticHotspotTenantGraph(db);
+        await seedSemanticHotspotTenantGraph(db);
         const { windowStart, windowEnd } = hotspotWindowBounds();
 
         const orgAGroups = await aggregateHotspotGroups(db, {
@@ -606,17 +594,8 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
           windowEnd
         });
 
-        const globalA = orgAGroups.find((group) => group.groupId === seeded.globalSpecId);
-        const globalB = orgBGroups.find((group) => group.groupId === seeded.globalSpecId);
-        const orgOwnedB = orgBGroups.find((group) => group.groupId === seeded.orgOwnedSpecId);
-
-        expect(globalA?.parameterCount).toBe(1);
-        expect(globalA?.historyEventsInWindow).toBe(2);
-        expect(globalA?.relatedRequestCount).toBe(1);
-        expect(globalB?.parameterCount).toBe(1);
-        expect(globalB?.historyEventsInWindow).toBe(1);
-        expect(globalB?.relatedRequestCount).toBe(1);
-        expect(orgOwnedB).toBeUndefined();
+        expect(orgAGroups).toEqual([]);
+        expect(orgBGroups).toEqual([]);
 
         const serverA = makeDashboardServer(db, makeAuthFor(ORG_A, USER_A, "Hotspot Org A"));
         const serverB = makeDashboardServer(db, makeAuthFor(ORG_B, USER_B, "Hotspot Org B"));
@@ -630,19 +609,8 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
 
         expect(responseA.status).toBe(200);
         expect(responseB.status).toBe(200);
-        expect(responseA.body.items.some((item) => item.title === ORG_OWNED_PROPERTY)).toBe(true);
-        expect(responseB.body.items.some((item) => item.title === ORG_OWNED_PROPERTY)).toBe(false);
-
-        const globalHotspotA = responseA.body.items.find(
-          (item) => item.id === `parameter:${seeded.globalSpecId}`
-        );
-        const globalHotspotB = responseB.body.items.find(
-          (item) => item.id === `parameter:${seeded.globalSpecId}`
-        );
-        expect(globalHotspotA?.projectCode).toBe("1 个项目");
-        expect(globalHotspotB?.projectCode).toBe("1 个项目");
-        expect(globalHotspotA?.title).toBe(GLOBAL_VENDOR_PROPERTY);
-        expect(globalHotspotB?.title).toBe(GLOBAL_VENDOR_PROPERTY);
+        expect(responseA.body.items).toEqual([]);
+        expect(responseB.body.items).toEqual([]);
       });
     },
     120_000

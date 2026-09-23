@@ -9,10 +9,13 @@ const summary: DashboardSummary = {
   projectId: null,
   kpis: {
     totalParameters: 51,
+    totalBindings: 51,
+    totalDefinitions: 40,
     managedProjects: 3,
     changeFrequency: 19,
     activeContributors: 5,
-    highRiskParameters: 12
+    highRiskParameters: null,
+    riskAvailability: "unavailable"
   },
   trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 6, workflowEventCount: 2 }],
   personalKpis: {

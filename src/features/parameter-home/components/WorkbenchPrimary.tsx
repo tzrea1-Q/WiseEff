@@ -1,15 +1,42 @@
 import { ArrowRight } from "lucide-react";
 import type { WorkbenchAction, WorkbenchScenarioEntry, PersonalWorkbenchViewModel } from "../workbench/derivePersonalWorkbench";
 import { getNextActionPresentation } from "./nextActionPresentation";
+import type { SectionStatus } from "@/application/parameters/dashboardState";
+import { SectionError, SectionSkeleton } from "./SectionState";
 import "../parameter-home.css";
 
 type WorkbenchPrimaryProps = {
   workbench: PersonalWorkbenchViewModel;
+  summaryStatus?: SectionStatus;
+  summaryError?: string | null;
+  onSummaryRetry?: () => void;
   onNavigate: (path: string) => void;
   onNewProject?: () => void;
 };
 
-export function WorkbenchPrimary({ workbench, onNavigate, onNewProject }: WorkbenchPrimaryProps) {
+export function WorkbenchPrimary({
+  workbench,
+  summaryStatus = "ready",
+  summaryError,
+  onSummaryRetry = () => undefined,
+  onNavigate,
+  onNewProject
+}: WorkbenchPrimaryProps) {
+  if (summaryStatus === "loading" || summaryStatus === "idle") {
+    return (
+      <section className="parameter-home__workbench" aria-label="个人工作台">
+        <SectionSkeleton label="加载待办事项" />
+      </section>
+    );
+  }
+  if (summaryStatus === "error") {
+    return (
+      <section className="parameter-home__workbench" aria-label="个人工作台">
+        <SectionError message={summaryError ?? "待办事项加载失败"} onRetry={onSummaryRetry} />
+      </section>
+    );
+  }
+
   const actionPanel = <NextActionList actions={workbench.nextActions} onNavigate={onNavigate} />;
   const scenarioPanel = (
     <ScenarioEntryPanel entries={workbench.scenarioEntries} onNavigate={onNavigate} onNewProject={onNewProject} />

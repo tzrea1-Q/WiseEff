@@ -31,6 +31,7 @@ import { sourceWorkflowConsumerRelocationRecordPath } from "./parameter-catalog-
 import { t14FamilySuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
 import { seedDriverPositionRecordPath, seedDriverQueryRecordPath } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
+import { issue900DashboardRelocationRecordPath } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
 
 const seedDriverRecords = await Promise.all([seedDriverPositionRecordPath, seedDriverQueryRecordPath].map(async (path) =>
   JSON.parse(await readFile(`${process.cwd()}/${path}`, "utf8")) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> },
@@ -60,6 +61,9 @@ const debuggingTransferRelocationRecord = JSON.parse(
 ) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
 const editServiceVersionIndexRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${editServiceVersionIndexRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
+const issue900DashboardRelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${issue900DashboardRelocationRecordPath}`, "utf8"),
 ) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
 
 describe("parameter catalog boundary checker", () => {
@@ -877,9 +881,16 @@ describe("parameter catalog boundary checker", () => {
         ),
       ).toHaveLength(5);
       expect(editServiceVersionIndexRelocations.every((entry) => entry.id !== entry.observed.id)).toBe(true);
-      // The successor retains all 75 historical identities above and adds exactly
-      // seven already-allowed occurrences whose formerly stable positions moved.
-      const historicalIds = new Set([...originalIds, ...runtimeIds, ...postCutoverIds, ...debuggingTransferIds, ...editServiceVersionIndexIds]);
+      const issue900Ids = new Set(issue900DashboardRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
+      const issue900Relocations = report.relocations.filter((entry) => issue900Ids.has(entry.id));
+      expect(issue900Relocations).toHaveLength(18);
+      expect(issue900Relocations.filter((entry) => entry.observed.file === "server/modules/parameters/lifecycleRanking.integration.test.ts")).toHaveLength(14);
+      expect(issue900Relocations.filter((entry) => entry.observed.file === "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts")).toHaveLength(1);
+      expect(issue900Relocations.filter((entry) => entry.observed.file === "server/modules/parameters/dashboard/repository.ts")).toHaveLength(3);
+      expect(issue900Relocations.every((entry) => entry.id !== entry.observed.id)).toBe(true);
+      // Preserve all predecessor mappings and keep the seven existing shifted
+      // occurrences separate from these reviewed Issue #900 successors.
+      const historicalIds = new Set([...originalIds, ...runtimeIds, ...postCutoverIds, ...debuggingTransferIds, ...editServiceVersionIndexIds, ...issue900Ids]);
       const consumerIds = new Set(consumerRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
       const familyIds = new Set(
         familySuccessorRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
@@ -903,17 +914,17 @@ describe("parameter catalog boundary checker", () => {
             && !seedDriverIds.has(entry.id),
         ),
       ).toHaveLength(7);
-      // This is the exact diagnostic inventory, not a passing debt baseline:
-      // status remains failed; the seven new JSON DB-owner test observations
-      // remain unallowlisted alongside the prior 70, without granting allowances.
-      // PR #894 adds only the 61 existing owner-query/position identities above.
-      expect(report.relocations).toHaveLength(758);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(758);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(758);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_516);
+      // This remains the exact diagnostic inventory, not a passing debt baseline.
+      // Issue #900 retires 13 exact dashboard observations and records 18 successor
+      // pairs without granting new allowances; the same 77 inherited main-branch
+      // violations remain unallowlisted.
+      expect(report.relocations).toHaveLength(776);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(776);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(776);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_552);
       expect(report.summary).toEqual({
-        violations: 3_568,
-        allowlisted: 3_491,
+        violations: 3_555,
+        allowlisted: 3_478,
         unallowlisted: 77,
         staleAllowances: 0,
         metadataMismatches: 0,

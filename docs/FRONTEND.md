@@ -267,7 +267,7 @@ View-model types live in `src/domain/parameters/dashboardTypes.ts` (`DashboardSu
 - `components/SituationStrip.tsx` renders KPI cards from `summary.kpis`.
 - `components/AnalysisContextControls.tsx` owns in-page time-window and hotspot-dimension toggles (not the TopBar).
 - `components/InsightSection.tsx` loads trend/risk charts and the hotspot leaderboard from dashboard state.
-- `workbench/derivePersonalWorkbench.ts` composes role-specific next actions from `WorkbenchSignals`, drafts, change requests, and hotspot context.
+- `workbench/derivePersonalWorkbench.ts` composes role-specific next actions from authoritative `WorkbenchSignals` and available hotspot context; legacy drafts and requests are not added to canonical counts.
 
 `dashboardState` keeps independent section status for `summary` and `hotspots` (`idle | loading | ready | empty | error`). `ParameterHomePage` triggers `loadSummary` and `loadHotspots` itself when it mounts or when `window`, `dimension`, or the project scope changes; the shell no longer watches `page.key` on the page's behalf.
 
@@ -276,7 +276,13 @@ Runtime split:
 - `mock` mode uses `src/infrastructure/mock/mockParameterDashboardRepository.ts`, deriving trend, risk buckets, hotspots, and workbench signals from `PrototypeState`.
 - `api` mode uses `src/infrastructure/http/parameterDashboardClient.ts` against `/api/v1/parameters/dashboard/summary` and `/api/v1/parameters/dashboard/hotspots`.
 
-Browser acceptance for the production dashboard path lives in `e2e/acceptance/parameter-home.acceptance.spec.ts` (`PARAM-HOME-001`).
+In API mode, parameter metrics use canonical bindings, values, drafts, requests, and history events. Active Binding counts require a present value and an owned source pin; superseded bindings, deleted values, and identity-only source placeholders are excluded. “Bound Definition” counts distinct definitions represented by those active bindings, not the whole Catalog. `totalParameters` remains a compatibility alias for the Binding count. Historical events survive deletion, but do not restore an active count. No legacy semantic counts are added.
+
+Trend and hotspot windows cover the preceding 7, 30, or 180 complete UTC days: start inclusive, today's UTC midnight exclusive. Draft/pending counts describe current state independently of that event window. Only pending canonical requests enter the review queue. A user's latest rejected request remains a returned-work todo while its draft exists and is excluded from the editable-draft count; a withdrawn request returns its existing draft to the editable-draft count; resubmission clears the returned-work todo, and approval removes the draft. Hotspot modified counts require a committed history event whose previous value is not the identity placeholder, excluding initial materialization while including later source-revision propagation; they are not person-only edit counts. Canonical risk classification is unavailable and appears as such, never as zero or “low risk”; behavioral heat is not a risk classification. Project/account governance metrics retain their existing meaning. Summary errors and unavailable fields remain distinct from a successful zero result, and each asynchronous section ignores superseded responses.
+
+The display perspective can select a lower role actually held in the chosen scope; it never grants permissions. A card aggregating all projects opens an explicit project chooser before a project-specific workbench or review queue. Canonical hotspot links preserve supported project context; they do not invent legacy parameter/module filters or promise a Binding selection the destination cannot consume.
+
+Browser acceptance for the production dashboard path lives in `e2e/acceptance/parameter-home.acceptance.spec.ts` (`PARAM-HOME-001`). The canonical-only create/submit/reject/approve/delete lifecycle and project-scoped navigation are covered by `e2e/acceptance/canonical-dashboard.acceptance.spec.ts`, using a disposable real API, PostgreSQL, and object store at 1440×900.
 
 ## Log Analysis Repository
 

@@ -72,6 +72,19 @@ export const requiredSmokeSpecPaths = [
   "e2e/acceptance/parameter-home.acceptance.spec.ts"
 ] as const;
 
+export const requiredAcceptanceEnvironmentHelperExceptions = [
+  "e2e/acceptance/catalog-publication-delivery.acceptance.spec.ts",
+  "e2e/acceptance/config-set-revision-gate.acceptance.spec.ts",
+  "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
+  "e2e/acceptance/runtime-warmup.spec.ts",
+  "e2e/acceptance/shell-navigation.acceptance.spec.ts",
+] as const;
+
+export const requiredAcceptanceEnvironmentConfigurationPaths = [
+  "playwright.acceptance.config.ts",
+  "playwright.quality.config.ts",
+] as const;
+
 export const ACCEPTANCE_LOCAL_NON_HDC_PLATFORM_OVERHEAD_MINUTES = 5;
 export const ACCEPTANCE_GATE0_OWNER_MINUTES = 60;
 export const acceptanceLocalNonHdcPreludeSteps = [
@@ -179,6 +192,9 @@ export type AcceptanceCiConfigurationResult = {
   forbiddenPlaywrightImports: string[];
   forbiddenAcceptanceDotenvImports: string[];
   acceptanceEnvironmentHelperCount: number;
+  missingAcceptanceEnvironmentHelperPaths: string[];
+  missingAcceptanceEnvironmentExceptionPaths: string[];
+  missingAcceptanceEnvironmentConfigurationPaths: string[];
   acceptanceEnvironmentGate: boolean;
   localNonHdcBudget: AcceptanceLocalNonHdcBudgetResult;
   immutableUploadContract: ImmutableUploadContractResult;
@@ -300,12 +316,11 @@ export function readAcceptanceEnvironmentSources(
     .map((name) => {
       const path = join(root, name).replaceAll("\\", "/");
       return { path, source: readFileSync(path, "utf8") };
-    })
-    .filter(({ source }) => source.includes("dotenv/config") || source.includes("loadAcceptanceEnvironment"));
+    });
 }
 
 export function readAcceptanceConfigurationSources(
-  paths = ["playwright.acceptance.config.ts", "playwright.quality.config.ts"],
+  paths: readonly string[] = requiredAcceptanceEnvironmentConfigurationPaths,
 ): Array<{ path: string; source: string }> {
   return paths
     .filter((path) => existsSync(path))
@@ -326,14 +341,29 @@ export function findForbiddenAcceptanceDotenvImports(
 export function findAcceptanceEnvironmentHelperLoads(
   files: Array<{ path: string; source: string }>,
 ): string[] {
+  const sideEffectHelperImport = /^\s*import\s+["'][^"']*\/helpers\/loadAcceptanceEnvironment["']/m;
+  const namedHelperImport = /^\s*import\s*\{[^}]*\bloadAcceptanceEnvironment\b[^}]*\}\s*from\s+["'][^"']*\/helpers\/acceptanceEnvironment["']/m;
+  const helperCall = /^\s*(?:(?:const|let|var)\s+[\w$]+\s*=\s*)?loadAcceptanceEnvironment\s*\(/m;
   return files
-    .filter(({ source }) => /loadAcceptanceEnvironment(?:["']|\s*\(\s*\))/.test(source))
+    .filter(({ source }) => sideEffectHelperImport.test(source)
+      || (namedHelperImport.test(source) && helperCall.test(source)))
     .map(({ path }) => path)
     .sort();
 }
 
-/** 39 environment-backed specs (including canonical-value-workflow) plus both Playwright configs. */
-const ACCEPTANCE_ENVIRONMENT_HELPER_COUNT = 41;
+export function findMissingAcceptanceEnvironmentHelperLoads(
+  files: Array<{ path: string; source: string }>,
+): string[] {
+  const exceptions = new Set<string>(requiredAcceptanceEnvironmentHelperExceptions);
+  const loaded = new Set(findAcceptanceEnvironmentHelperLoads(files).map((path) => path.replaceAll("\\", "/")));
+  return files
+    .filter(({ path }) => {
+      const normalizedPath = path.replaceAll("\\", "/");
+      return !exceptions.has(normalizedPath) && !loaded.has(normalizedPath);
+    })
+    .map(({ path }) => path.replaceAll("\\", "/"))
+    .sort();
+}
 
 export function evaluateAcceptanceCiConfiguration(
   input: AcceptanceCiConfigurationInput
@@ -356,9 +386,16 @@ export function evaluateAcceptanceCiConfiguration(
   const acceptanceEnvironmentSources = input.acceptanceEnvironmentSources ?? [];
   const forbiddenAcceptanceDotenvImports = findForbiddenAcceptanceDotenvImports(acceptanceEnvironmentSources);
   const acceptanceEnvironmentHelperCount = findAcceptanceEnvironmentHelperLoads(acceptanceEnvironmentSources).length;
-  const acceptanceEnvironmentGate = input.acceptanceEnvironmentSources === undefined
-    || (forbiddenAcceptanceDotenvImports.length === 0 &&
-      acceptanceEnvironmentHelperCount === ACCEPTANCE_ENVIRONMENT_HELPER_COUNT);
+  const acceptanceEnvironmentPaths = new Set(acceptanceEnvironmentSources.map(({ path }) => path.replaceAll("\\", "/")));
+  const missingAcceptanceEnvironmentHelperPaths = findMissingAcceptanceEnvironmentHelperLoads(acceptanceEnvironmentSources);
+  const missingAcceptanceEnvironmentExceptionPaths = requiredAcceptanceEnvironmentHelperExceptions
+    .filter((path) => !acceptanceEnvironmentPaths.has(path));
+  const missingAcceptanceEnvironmentConfigurationPaths = requiredAcceptanceEnvironmentConfigurationPaths
+    .filter((path) => !acceptanceEnvironmentPaths.has(path));
+  const acceptanceEnvironmentGate = forbiddenAcceptanceDotenvImports.length === 0
+    && missingAcceptanceEnvironmentHelperPaths.length === 0
+    && missingAcceptanceEnvironmentExceptionPaths.length === 0
+    && missingAcceptanceEnvironmentConfigurationPaths.length === 0;
   const localNonHdcBudget = evaluateAcceptanceLocalNonHdcBudget(input.workflowText);
   const immutableUploadContract = evaluateImmutableAcceptanceUpload(input.workflowText);
 
@@ -386,6 +423,9 @@ export function evaluateAcceptanceCiConfiguration(
     forbiddenPlaywrightImports,
     forbiddenAcceptanceDotenvImports,
     acceptanceEnvironmentHelperCount,
+    missingAcceptanceEnvironmentHelperPaths,
+    missingAcceptanceEnvironmentExceptionPaths,
+    missingAcceptanceEnvironmentConfigurationPaths,
     acceptanceEnvironmentGate,
     localNonHdcBudget,
     immutableUploadContract,

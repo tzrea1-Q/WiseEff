@@ -5,7 +5,7 @@ import type {
   DashboardWindow,
   HotspotDimension,
   PersonalDashboardKpis,
-  ProjectRiskBucket,
+  DashboardRiskBucket,
   TrendPoint
 } from "@/domain/parameters/dashboardTypes";
 import {
@@ -149,7 +149,8 @@ function buildPersonalKpis(
       workflowCount: 0,
       openItemCount: 0,
       pendingTodoCount: 0,
-      highRiskTouchCount: 0
+      highRiskTouchCount: null,
+      riskAvailability: "unavailable"
     };
   }
 
@@ -171,19 +172,13 @@ function buildPersonalKpis(
     const pendingReviews = scopedRequests.filter(
       (request) => !["已合入", "已打回"].includes(request.status) && canActOnReviewRequest(roleId, request)
     );
-    const requestRisk = (requestId: string) =>
-      parameters.find((parameter) => parameter.id === scopedRequests.find((entry) => entry.id === requestId)?.parameterId)?.risk;
-    const highRiskPending = pendingReviews.filter((request) => requestRisk(request.id) === "High");
-    const highRiskReviewRequestIds = new Set(
-      windowDecisions.filter((decision) => requestRisk(decision.requestId) === "High").map((decision) => decision.requestId)
-    );
-
     return {
       contributionCount: new Set(windowDecisions.map((decision) => decision.requestId)).size,
       workflowCount: windowDecisions.length,
       openItemCount: pendingReviews.length,
-      pendingTodoCount: highRiskPending.length,
-      highRiskTouchCount: highRiskReviewRequestIds.size
+      pendingTodoCount: 0,
+      highRiskTouchCount: null,
+      riskAvailability: "unavailable"
     };
   }
 
@@ -198,7 +193,8 @@ function buildPersonalKpis(
       workflowCount: 0,
       openItemCount: signals.unappliedImportBatches,
       pendingTodoCount: signals.inactiveAccounts,
-      highRiskTouchCount: governanceEvents.filter((event) => event.severity === "High").length
+      highRiskTouchCount: governanceEvents.filter((event) => event.severity === "High").length,
+      riskAvailability: "available"
     };
   }
 
@@ -218,24 +214,13 @@ function buildPersonalKpis(
       matchesCurrentUser(request.submitter, state.currentUserId, user?.name) &&
       inWindow(request.createdAtTs, windowStart, windowEnd)
   ).length;
-  const highRiskTouchCount = parameters.reduce((total, parameter) => {
-    if (parameter.risk !== "High") return total;
-    return (
-      total +
-      parameter.history.filter(
-        (entry) =>
-          matchesCurrentUser(entry.changedBy, state.currentUserId, user?.name) &&
-          inWindow(entry.changedAt, windowStart, windowEnd)
-      ).length
-    );
-  }, 0);
-
   return {
     contributionCount,
     workflowCount,
-    highRiskTouchCount,
+    highRiskTouchCount: null,
+    riskAvailability: "unavailable",
     openItemCount: signals.myDrafts,
-    pendingTodoCount: signals.returnedChanges + signals.waitingMerge
+    pendingTodoCount: signals.returnedChanges
   };
 }
 
@@ -275,22 +260,19 @@ function buildTrend(state: PrototypeState, window: DashboardWindow, projectId?: 
   return buckets;
 }
 
-function buildRiskBuckets(state: PrototypeState, projectId?: string): ProjectRiskBucket[] {
+function buildRiskBuckets(state: PrototypeState, projectId?: string): DashboardRiskBucket[] {
   return state.configDraft.projects
     .filter((project) => !projectId || project.id === projectId)
     .map((project) => {
-      const parameters = state.parameters.filter((parameter) => parameter.projectId === project.id);
-      const high = parameters.filter((parameter) => parameter.risk === "High").length;
-      const medium = parameters.filter((parameter) => parameter.risk === "Medium").length;
-      const low = parameters.filter((parameter) => parameter.risk === "Low").length;
       return {
         projectId: project.id,
         projectCode: project.code,
         projectName: project.name,
-        high,
-        medium,
-        low,
-        total: high + medium + low
+        high: null,
+        medium: null,
+        low: null,
+        total: null,
+        riskAvailability: "unavailable" as const
       };
     });
 }
@@ -556,12 +538,15 @@ export function createMockParameterDashboardRepository(getState: () => Prototype
         projectId: input.projectId ?? null,
         kpis: {
           totalParameters: parameters.length,
+          totalBindings: parameters.length,
+          totalDefinitions: new Set(parameters.map((parameter) => parameter.name)).size,
           managedProjects: input.projectId
             ? 1
             : new Set(parameters.map((parameter) => parameter.projectId)).size,
           changeFrequency: windowedRequests.length,
           activeContributors: contributors.size,
-          highRiskParameters: parameters.filter((parameter) => parameter.risk === "High").length
+          highRiskParameters: null,
+          riskAvailability: "unavailable"
         },
         trend: buildTrend(state, input.window, input.projectId),
         personalKpis: buildPersonalKpis(

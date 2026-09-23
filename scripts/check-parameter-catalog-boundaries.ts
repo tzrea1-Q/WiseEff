@@ -38,6 +38,7 @@ import { applyReviewedSourceWorkflowRelocation, applyReviewedSourceWorkflowConsu
 import { applyReviewedT14FamilySuccessorRelocation } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
 import { applyReviewedT14RewrittenSliceSuccessorRelocation } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
 import { applyReviewedSeedDriverLookupRelocation } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
+import { applyReviewedIssue900DashboardRelocation } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -408,14 +409,28 @@ export async function checkParameterCatalogBoundaries(
     repoRoot, fixture, allowlist.entries, rewrittenRelocated.violations,
     [...priorRelocations, ...consumerRelocated.relocations, ...familyRelocated.relocations, ...rewrittenRelocated.relocations],
   );
+  const issue900DashboardRelocated = await applyReviewedIssue900DashboardRelocation(
+    repoRoot,
+    fixture,
+    allowlist.entries,
+    seedDriverRelocated.violations,
+    [
+      ...priorRelocations,
+      ...consumerRelocated.relocations,
+      ...familyRelocated.relocations,
+      ...rewrittenRelocated.relocations,
+      ...seedDriverRelocated.relocations,
+    ],
+  );
   return {
-    ...compareBoundaryInventory(seedDriverRelocated.violations, allowlist.entries, fixture.violations),
+    ...compareBoundaryInventory(issue900DashboardRelocated.violations, allowlist.entries, fixture.violations),
     relocations: [
       ...priorRelocations,
       ...consumerRelocated.relocations,
       ...familyRelocated.relocations,
       ...rewrittenRelocated.relocations,
       ...seedDriverRelocated.relocations,
+      ...issue900DashboardRelocated.relocations,
     ],
   };
 }

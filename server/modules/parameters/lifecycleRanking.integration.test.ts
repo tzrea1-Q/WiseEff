@@ -12,7 +12,6 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { aggregateHotspotGroups } from "./dashboard/hotspotRepository";
 import { listParameterDefinitionsForImport } from "./importBatchRepository";
 import { getProjectParameterForUpdate, listParameters } from "./repository";
 import {
@@ -278,18 +277,6 @@ describe.skipIf(!databaseAvailable)("D6 lifecycle ranking", () => {
     const pinned = await loadPinnedSpecVersionId(db, "bpr-td049");
     expect(pinned).toBe(PINNED_VERSION);
     expect(pinned).not.toBe(DRAFT_VERSION);
-  });
-
-  it("dashboard identity titles pin the binding revision when one is in scope", async () => {
-    const groups = await aggregateHotspotGroups(db, {
-      organizationId: ORG,
-      projectId: PROJECT,
-      dimension: "parameter",
-      windowStart: "2026-01-01T00:00:00Z",
-      windowEnd: "2026-12-31T00:00:00Z"
-    });
-    expect(groups.find((group) => group.groupId === SPEC)?.title).toBe(PROPERTY_KEY);
-    expect(groups.some((group) => group.title === "gpio_int_draft")).toBe(false);
   });
 
   it("cross-spec match ranks deprecated above a higher-version draft", async () => {

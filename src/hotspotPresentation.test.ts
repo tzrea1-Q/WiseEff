@@ -3,6 +3,12 @@ import type { PrototypeState } from "@/domain/prototype/types";
 import { computeEyebrow } from "./hotspotPresentation";
 
 describe("computeEyebrow", () => {
+  it("uses canonical hotspot coverage even when the legacy parameter list is empty", () => {
+    expect(computeEyebrow({ kind: "module", module: "Configuration", projectCode: "2 个项目" }, { parameters: [] }))
+      .toBe("2 个项目");
+    expect(computeEyebrow({ kind: "project", module: "项目参数", projectCode: "LOCAL" }, { parameters: [] }))
+      .toBe("窗口内暂无变更");
+  });
   it("shows project coverage for module hotspots and recent change for project hotspots", () => {
     const state = {
       parameters: [

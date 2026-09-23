@@ -52,6 +52,7 @@ import {
   projectListResponseSchema
 } from "./parameters";
 import { parameterModuleRegistryResponseSchema } from "./parameterModules";
+import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 
 /**
  * OpenAPI component names realized with Zod (parameters / logs / debugging /
@@ -69,6 +70,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ParameterChangeRequestListResponse: parameterChangeRequestListResponseSchema,
   ParameterChangeRequestResponse: parameterChangeRequestResponseSchema,
   ParameterImportBatchResponse: parameterImportBatchResponseSchema,
+  ParameterDashboardSummaryResponse: parameterDashboardSummaryResponseSchema,
   ParameterDashboardHotspotsResponse: parameterDashboardHotspotsResponseSchema,
   ParameterModuleRegistryResponse: parameterModuleRegistryResponseSchema,
 
@@ -121,6 +123,7 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters.reviewChangeRequest",
   "parameters.createImportBatch",
   "parameters.applyImportBatch",
+  "parameters-dashboard-summary",
   "parameters-dashboard-hotspots",
   "parameterModules.getRegistry",
   "logs.uploadFile",

@@ -10,10 +10,13 @@ const summary: DashboardSummary = {
   projectId: null,
   kpis: {
     totalParameters: 10,
+    totalBindings: 10,
+    totalDefinitions: 8,
     managedProjects: 2,
     changeFrequency: 5,
     activeContributors: 3,
-    highRiskParameters: 2
+    highRiskParameters: null,
+    riskAvailability: "unavailable"
   },
   trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 2, workflowEventCount: 1 }],
   personalKpis: {
@@ -56,7 +59,7 @@ const hotspot = {
   score: 180,
   scoreBreakdown: { frequency: 30, scope: 40, workflow: 25, collaboration: 15 },
   evidence: [
-    "累计修改 12 / 200 个参数（6%）",
+    "已有已提交变更记录的参数绑定 12 / 200（6%），含来源修订传播",
     "窗口内 8 次参数变更",
     "待处理流程 2 项 · 窗口内 3 项请求"
   ],
@@ -113,6 +116,7 @@ describe("InsightSection", () => {
       />
     );
     expect(screen.getByText("热榜失败")).toBeInTheDocument();
+    expect(screen.getByText("近 30 天 · 不可用")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(onHotspotsRetry).toHaveBeenCalledOnce();
   });

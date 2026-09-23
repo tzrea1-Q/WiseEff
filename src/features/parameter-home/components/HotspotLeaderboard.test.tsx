@@ -21,7 +21,7 @@ const hotspots: DashboardHotspot[] = [
     score: 182.4,
     scoreBreakdown: { frequency: 40, scope: 36, workflow: 28, collaboration: 24 },
     evidence: [
-      "累计修改 18 / 240 个参数（8%）",
+      "已有已提交变更记录的参数绑定 18 / 240（8%），含来源修订传播",
       "窗口内 12 次参数变更",
       "待处理流程 3 项 · 窗口内 4 项请求"
     ],
@@ -40,7 +40,7 @@ const hotspots: DashboardHotspot[] = [
     score: 146.2,
     scoreBreakdown: { frequency: 28, scope: 24, workflow: 26, collaboration: 22 },
     evidence: [
-      "累计修改 10 / 180 个参数（6%）",
+      "已有已提交变更记录的参数绑定 10 / 180（6%），含来源修订传播",
       "窗口内 6 次参数变更",
       "待处理流程 2 项 · 窗口内 3 项请求"
     ],
