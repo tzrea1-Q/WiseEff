@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/parameter-modules/repository.ts",
+      "sourceBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+      "destinationBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-raw-read:793383a189598e86:56d3fda64851e1d7",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 351,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+            "byteStart": 10594,
+            "byteEnd": 11720,
+            "token": "read:parameter_specs",
+            "evidence": "read parameter_specs: select b.id, b.project_id, b.logical_node_id, b.parameter_spec_id, ps.attribution_subject_id, b.module_id, nullif( case when cardinality(string_to_array(ps.specification_key, '/')) >= 3 then (string_to_array(ps.specif…"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-raw-read:793383a189598e86:8b54c031fd4588ff",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "line": 407,
+            "column": 5,
+            "byteStart": 12754,
+            "byteEnd": 13995,
+            "token": "read:parameter_specs",
+            "evidence": "read parameter_specs: select b.id, b.project_id, b.logical_node_id, b.parameter_spec_id, ps.attribution_subject_id, b.module_id, asub.source_key as driver_module, lnr.compatible, case when lnr.unit_address is not null then lnr.name || '@' …",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d"
+          },
+          "sourceSliceSha256": "5a0c699ffc5bc3e518b36f58c6af435fa9a2237578e087cb0c2e972e34c49929",
+          "sliceSha256": "ee917edacff64360df6f1477d8d3f9e81e2542f820cd9392172bb0a77faec5b3"
+        },
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:ee0b2c3459693bc1",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 351,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+            "byteStart": 10594,
+            "byteEnd": 11720,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select b.id, b.project_id, b.logical_node_id, b.parameter_spec_id, ps.attribution_subject_id, b.module_id, nullif( case when cardinality(string_to_array(ps.specification_key, '/')) >= 3 then (string_to_arra…"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:451e5ac30f1b722c",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "line": 407,
+            "column": 5,
+            "byteStart": 12754,
+            "byteEnd": 13995,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select b.id, b.project_id, b.logical_node_id, b.parameter_spec_id, ps.attribution_subject_id, b.module_id, asub.source_key as driver_module, lnr.compatible, case when lnr.unit_address is not null then lnr.n…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d"
+          },
+          "sourceSliceSha256": "5a0c699ffc5bc3e518b36f58c6af435fa9a2237578e087cb0c2e972e34c49929",
+          "sliceSha256": "ee917edacff64360df6f1477d8d3f9e81e2542f820cd9392172bb0a77faec5b3"
+        },
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-raw-read:53ad866a08746f75:ce84e82527b0a716",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 412,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+            "byteStart": 12530,
+            "byteEnd": 13943,
+            "token": "read:parameter_module_mappings",
+            "evidence": "read parameter_module_mappings: select lower(trim(both '\"' from trim(both '''' from trim(both from lnr.compatible)))) as compatible, count(*)::text as binding_count, count(distinct b.project_id)::text as project_count from project_paramete…"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-raw-read:53ad866a08746f75:fcff8b883a14994d",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "line": 472,
+            "column": 5,
+            "byteStart": 14805,
+            "byteEnd": 16456,
+            "token": "read:parameter_module_mappings",
+            "evidence": "read parameter_module_mappings: select lower(trim(both '\"' from trim(both '''' from trim(both from lnr.compatible)))) as compatible, count(*)::text as binding_count, count(distinct b.project_id)::text as project_count from project_paramete…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d"
+          },
+          "sourceSliceSha256": "64862e06125866be707cdd53f8543342c47d01c14628caff9f607fb34df8b2db",
+          "sliceSha256": "481f1cf0867eaa4724b14996341152230f5eac6c18612a068c65f048f0b99d32"
+        },
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-raw-read:6851e7727de8a43c:699566f9c3bb9e20",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 412,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+            "byteStart": 12530,
+            "byteEnd": 13943,
+            "token": "read:parameter_module_dismissed_compatibles",
+            "evidence": "read parameter_module_dismissed_compatibles: select lower(trim(both '\"' from trim(both '''' from trim(both from lnr.compatible)))) as compatible, count(*)::text as binding_count, count(distinct b.project_id)::text as project_count from pro…"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-raw-read:6851e7727de8a43c:45913aee51aa03cb",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "line": 472,
+            "column": 5,
+            "byteStart": 14805,
+            "byteEnd": 16456,
+            "token": "read:parameter_module_dismissed_compatibles",
+            "evidence": "read parameter_module_dismissed_compatibles: select lower(trim(both '\"' from trim(both '''' from trim(both from lnr.compatible)))) as compatible, count(*)::text as binding_count, count(distinct b.project_id)::text as project_count from pro…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d"
+          },
+          "sourceSliceSha256": "64862e06125866be707cdd53f8543342c47d01c14628caff9f607fb34df8b2db",
+          "sliceSha256": "481f1cf0867eaa4724b14996341152230f5eac6c18612a068c65f048f0b99d32"
+        },
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:0f55dcc99ed7a5d0",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 412,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+            "byteStart": 12530,
+            "byteEnd": 13943,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select lower(trim(both '\"' from trim(both '''' from trim(both from lnr.compatible)))) as compatible, count(*)::text as binding_count, count(distinct b.project_id)::text as project_count from project_paramet…"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:64e930ffdfc9936c",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "line": 472,
+            "column": 5,
+            "byteStart": 14805,
+            "byteEnd": 16456,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select lower(trim(both '\"' from trim(both '''' from trim(both from lnr.compatible)))) as compatible, count(*)::text as binding_count, count(distinct b.project_id)::text as project_count from project_paramet…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d"
+          },
+          "sourceSliceSha256": "64862e06125866be707cdd53f8543342c47d01c14628caff9f607fb34df8b2db",
+          "sliceSha256": "481f1cf0867eaa4724b14996341152230f5eac6c18612a068c65f048f0b99d32"
+        },
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-raw-read:6851e7727de8a43c:1f794257479d0050",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 483,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+            "byteStart": 14925,
+            "byteEnd": 15947,
+            "token": "read:parameter_module_dismissed_compatibles",
+            "evidence": "read parameter_module_dismissed_compatibles: select dc.compatible, dc.reason, dc.dismissed_at::text, coalesce(impact.binding_count, 0)::text as binding_count, coalesce(impact.project_count, 0)::text as project_count from parameter_module_d…"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-raw-read:6851e7727de8a43c:5d90d469dd33680e",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "line": 551,
+            "column": 5,
+            "byteStart": 17438,
+            "byteEnd": 18714,
+            "token": "read:parameter_module_dismissed_compatibles",
+            "evidence": "read parameter_module_dismissed_compatibles: select dc.compatible, dc.reason, dc.dismissed_at::text, coalesce(impact.binding_count, 0)::text as binding_count, coalesce(impact.project_count, 0)::text as project_count from parameter_module_d…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d"
+          },
+          "sourceSliceSha256": "a0dd56f6260982696dfddee62bb8ff2ea2789bf6bba593c77805d32fd5cfd7b0",
+          "sliceSha256": "58fd16c5c2cc804f70ebe146760efc096c22a897593f6054a2effd42c0c5a873"
+        },
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:70274dc2eca54d1b",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 483,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "317be751e3dc08d55a6ae13bd9d65cd10aab48fb",
+            "byteStart": 14925,
+            "byteEnd": 15947,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select dc.compatible, dc.reason, dc.dismissed_at::text, coalesce(impact.binding_count, 0)::text as binding_count, coalesce(impact.project_count, 0)::text as project_count from parameter_module_dismissed_com…"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:b43a8eca05733f81",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-modules/repository.ts",
+            "line": 551,
+            "column": 5,
+            "byteStart": 17438,
+            "byteEnd": 18714,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select dc.compatible, dc.reason, dc.dismissed_at::text, coalesce(impact.binding_count, 0)::text as binding_count, coalesce(impact.project_count, 0)::text as project_count from parameter_module_dismissed_com…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "204e51efd0a3fb30a50bb9280d1eae2f72f50e3d"
+          },
+          "sourceSliceSha256": "a0dd56f6260982696dfddee62bb8ff2ea2789bf6bba593c77805d32fd5cfd7b0",
+          "sliceSha256": "58fd16c5c2cc804f70ebe146760efc096c22a897593f6054a2effd42c0c5a873"
+        }
+      ]
+    }
+  ]
+}
