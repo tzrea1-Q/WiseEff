@@ -8,9 +8,12 @@ import { applyReviewedDebuggingTransferRelocation } from "./debuggingTransferRel
 import {
   applyReviewedIssue853CCatalogSplitRelocation,
   applyReviewedIssue853CRepositoryRelocation,
+  applyReviewedIssue853CRemainderRelocation,
   applyReviewedIssue853CRouteRelocation,
   issue853CActionRetiredSourceIds,
+  loadIssue853CRemainderRetiredSourceIds,
   verifyIssue853CActionRetirement,
+  verifyIssue853CRemainderRetirement,
 } from "./issue853CRelocation";
 import { applyReviewedIssue913T14Relocation } from "./issue913T14Relocation";
 import type { BoundaryViolation } from "./schema";
@@ -29,8 +32,9 @@ beforeAll(async () => {
 }, 60_000);
 
 describe("Issue #853 C fixed Catalog successor and retirement", () => {
-  it("proves complete old history, 2 action retirements, and exact 2+4+10 successors", async () => {
+  it("proves complete old history and the separate C successor and retirement partitions", async () => {
     await verifyIssue853CActionRetirement(root, fixture, allowances, discovered);
+    await verifyIssue853CRemainderRetirement(root, fixture, allowances, discovered);
     const transfer = await applyReviewedDebuggingTransferRelocation(root, fixture, allowances, discovered);
     expect(transfer.relocations).toEqual([]);
     const routes = await applyReviewedIssue853CRouteRelocation(root, fixture, allowances, transfer.violations, []);
@@ -44,6 +48,14 @@ describe("Issue #853 C fixed Catalog successor and retirement", () => {
       root, fixture, allowances, t14.violations,
       [...routes.relocations, ...split.relocations, ...t14.relocations],
     );
+    const remainder = await applyReviewedIssue853CRemainderRelocation(
+      root, fixture, allowances, repository.violations,
+      [...routes.relocations, ...split.relocations, ...t14.relocations, ...repository.relocations],
+    );
+    expect(remainder.relocations).toHaveLength(39);
+    expect(new Set(remainder.relocations.map((entry) => entry.id)).size).toBe(39);
+    expect(new Set(remainder.relocations.map((entry) => entry.observed.id)).size).toBe(39);
+    expect(await loadIssue853CRemainderRetiredSourceIds(root)).toHaveLength(42);
 
     const expected = await Promise.all([
       "debugging-transfer-relocation.json",
@@ -81,6 +93,16 @@ describe("Issue #853 C fixed Catalog successor and retirement", () => {
     await expect(verifyIssue853CActionRetirement(root, fixture, [
       ...allowances, { id: old.id, rule: old.rule, file: old.file, reason: old.reason },
     ], discovered)).rejects.toThrow("exact 2-to-0 partition");
+  });
+
+  it("rejects a revived C retirement observation or allowance", async () => {
+    const id = (await loadIssue853CRemainderRetiredSourceIds(root))[0]!;
+    const old = fixture.violations.find((entry) => entry.id === id)!;
+    await expect(verifyIssue853CRemainderRetirement(root, fixture, allowances, [...discovered, old]))
+      .rejects.toThrow("exact vanished slice");
+    await expect(verifyIssue853CRemainderRetirement(root, fixture, [
+      ...allowances, { id, rule: old.rule, file: old.file, reason: old.reason },
+    ], discovered)).rejects.toThrow("exact vanished slice");
   });
 
   it("rejects a changed route destination even when the old source still exists", async () => {

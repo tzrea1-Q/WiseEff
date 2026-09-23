@@ -40,7 +40,9 @@ import {
   applyReviewedIssue853CRouteRelocation,
   applyReviewedIssue853CCatalogSplitRelocation,
   applyReviewedIssue853CRepositoryRelocation,
+  applyReviewedIssue853CRemainderRelocation,
   verifyIssue853CActionRetirement,
+  verifyIssue853CRemainderRetirement,
 } from "./parameter-catalog-allowlist/issue853CRelocation";
 import { applyReviewedIssue913StaleSuccessorRelocation } from "./parameter-catalog-allowlist/issue913StaleSuccessorRelocation";
 import { applyReviewedSeedDriverLookupRelocation } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
@@ -412,6 +414,7 @@ export async function checkParameterCatalogBoundaries(
     repoRoot, fixture, allowlist.entries, sourceWorkflowRelocated.violations, priorRelocations,
   );
   await verifyIssue853CActionRetirement(repoRoot, fixture, allowlist.entries, violations);
+  await verifyIssue853CRemainderRetirement(repoRoot, fixture, allowlist.entries, violations);
   const t14Relocated = await applyReviewedIssue913T14Relocation(
     repoRoot,
     fixture,
@@ -423,17 +426,23 @@ export async function checkParameterCatalogBoundaries(
     repoRoot, fixture, allowlist.entries, t14Relocated.violations,
     [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations],
   );
+  const issue853CRemainderRelocated = await applyReviewedIssue853CRemainderRelocation(
+    repoRoot, fixture, allowlist.entries, issue853CRepositoryRelocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations,
+      ...issue853CRepositoryRelocated.relocations],
+  );
   const cRelocations = [
     ...priorRelocations,
     ...consumerRelocated.relocations,
     ...t14Relocated.relocations,
     ...issue853CRepositoryRelocated.relocations,
+    ...issue853CRemainderRelocated.relocations,
   ];
   const staleSuccessorRelocated = await applyReviewedIssue913StaleSuccessorRelocation(
     repoRoot,
     fixture,
     allowlist.entries,
-    issue853CRepositoryRelocated.violations,
+    issue853CRemainderRelocated.violations,
     cRelocations,
   );
   const seedDriverRelocated = await applyReviewedSeedDriverLookupRelocation(

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -48,6 +49,46 @@ const repositoryConfig: RelocationConfig = {
   requireStableStructuralAnchor: true,
   requireStableByteOrder: true,
 };
+
+const remainderExactConfig: RelocationConfig = {
+  recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-c-remainder-exact.json",
+  recordSha256: "1e6a54777f644aed11cbac490210bf803233ca6aa49b053eeac304f929ccc366",
+  files: [
+    { file: "server/modules/agent/tools/actionTools.integration.test.ts", pairs: 23 },
+    { file: "server/modules/dts-reload/history.test.ts", pairs: 6 },
+    { file: "server/modules/dts-reload/repository.ts", pairs: 1 },
+    { file: "server/modules/dts-reload/restoreBaseline.test.ts", pairs: 1 },
+    { file: "server/modules/parameter-topology/writeLock.ts", pairs: 4 },
+  ],
+  totalPairs: 35,
+  rejectAllowanceGrowth: true,
+  requireStableStructuralAnchor: true,
+  requireStableByteOrder: true,
+};
+
+const remainderRewrittenConfig: RelocationConfig = {
+  recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-c-remainder-rewritten.json",
+  recordSha256: "bf1366617336a652ef7c0c984b52a1093a3b6a0c2788c105013aa12a297deefa",
+  files: [{ file: "server/modules/parameter-topology/writeLock.ts", pairs: 4 }],
+  totalPairs: 4,
+  rejectAllowanceGrowth: true,
+  requireStableStructuralAnchor: true,
+  requireStableByteOrder: true,
+  requireIdenticalSlice: false,
+};
+
+const remainderRetiredRecordPath =
+  "scripts/fixtures/parameter-catalog-allowlist/issue-853-c-remainder-retired.json";
+const remainderRetiredRecordSha256 =
+  "3b00dbbf9ffe8ec945e15fd734669e6442fda3eaf7acfa915ec4607b112fd00a";
+const remainderRetiredFiles = [
+  ["server/modules/agent/tools/actionTools.test.ts", 3],
+  ["server/modules/dts-reload/behaviouralVerify.ts", 3],
+  ["server/modules/dts-reload/deploy.test.ts", 6],
+  ["server/modules/dts-reload/promote.test.ts", 7],
+  ["server/modules/dts-reload/repository.ts", 17],
+  ["server/modules/dts-reload/service.test.ts", 6],
+] as const;
 
 const rewrittenRepositoryConfig: RelocationConfig = {
   recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-c-debug-repository-rewritten-successor.json",
@@ -115,4 +156,76 @@ export async function applyReviewedIssue853CRepositoryRelocation(
     repoRoot, fixture, allowances, exact.violations, [...prior, ...exact.relocations], rewrittenRepositoryConfig,
   );
   return { violations: rewritten.violations, relocations: [...exact.relocations, ...rewritten.relocations] };
+}
+
+export async function applyReviewedIssue853CRemainderRelocation(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+  allowances: readonly AllowlistEntry[],
+  discovered: readonly BoundaryViolation[],
+  prior: readonly RuntimeTopologyRelocation[],
+) {
+  const exact = await runReviewedRelocationRecord(repoRoot, fixture, allowances, discovered, prior, remainderExactConfig);
+  const rewritten = await runReviewedRelocationRecord(
+    repoRoot, fixture, allowances, exact.violations, [...prior, ...exact.relocations], remainderRewrittenConfig,
+  );
+  return { violations: rewritten.violations, relocations: [...exact.relocations, ...rewritten.relocations] };
+}
+
+export async function verifyIssue853CRemainderRetirement(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+  allowances: readonly AllowlistEntry[],
+  discovered: readonly BoundaryViolation[],
+) {
+  if (fixture.trustedBaseSha !== "9b3ba7df7e21f5589684bc92c872da593ad4c246") return;
+  const record = await loadIssue853CRemainderRetirement(repoRoot);
+  const blobOid = (value: Buffer) => createHash("sha1")
+    .update(`blob ${value.length}\0`).update(value).digest("hex");
+  const baseline = new Map(fixture.violations.map((entry) => [entry.id, entry]));
+  const allowed = new Set(allowances.map((entry) => entry.id));
+  const current = new Set(discovered.map((entry) => entry.id));
+  if (record.schemaVersion !== 1 || record.trustedBaseSha !== fixture.trustedBaseSha
+    || record.files.length !== remainderRetiredFiles.length) {
+    throw new Error("Issue #853 C retirement rejected: fixed inventory.");
+  }
+  const seen = new Set<string>();
+  for (const [index, [file, count]] of remainderRetiredFiles.entries()) {
+    const section = record.files[index];
+    if (section.file !== file || section.retiredIds.length !== count) {
+      throw new Error("Issue #853 C retirement rejected: fixed file partition.");
+    }
+    const source = execFileSync("git", ["show", `${fixture.trustedBaseSha}:${file}`], { cwd: repoRoot });
+    const destination = await readFile(resolve(repoRoot, file));
+    if (blobOid(source) !== section.sourceBlobOid || blobOid(destination) !== section.destinationBlobOid) {
+      throw new Error(`Issue #853 C retirement rejected: whole-file blob ${file}.`);
+    }
+    for (const id of section.retiredIds) {
+      const old = baseline.get(id);
+      if (!old || old.file !== file || seen.has(id) || allowed.has(id) || current.has(id)
+        || old.trustedBlobOid !== section.sourceBlobOid
+        || destination.includes(source.subarray(old.byteStart, old.byteEnd))) {
+        throw new Error(`Issue #853 C retirement rejected: exact vanished slice ${id}.`);
+      }
+      seen.add(id);
+    }
+  }
+  if (seen.size !== 42) throw new Error("Issue #853 C retirement rejected: 42-item partition.");
+}
+
+export async function loadIssue853CRemainderRetiredSourceIds(repoRoot: string) {
+  const record = await loadIssue853CRemainderRetirement(repoRoot);
+  return record.files.flatMap((section) => section.retiredIds);
+}
+
+async function loadIssue853CRemainderRetirement(repoRoot: string) {
+  const bytes = await readFile(resolve(repoRoot, remainderRetiredRecordPath));
+  if (createHash("sha256").update(bytes).digest("hex") !== remainderRetiredRecordSha256) {
+    throw new Error("Issue #853 C retirement rejected: reviewed record integrity.");
+  }
+  return JSON.parse(bytes.toString("utf8")) as {
+    schemaVersion: number;
+    trustedBaseSha: string;
+    files: Array<{ file: string; sourceBlobOid: string; destinationBlobOid: string; retiredIds: string[] }>;
+  };
 }

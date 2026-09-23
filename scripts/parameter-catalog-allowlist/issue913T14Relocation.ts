@@ -8,7 +8,7 @@ import {
 } from "./runtimeTopologyRelocation";
 import { t14FamilySuccessorRelocationConfig } from "./t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationConfig } from "./t14RewrittenSliceSuccessorRelocation";
-import { issue853CActionRetiredSourceIds } from "./issue853CRelocation";
+import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
 
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
 const serviceTestFile = "server/modules/parameter-modules/service.test.ts";
@@ -94,18 +94,19 @@ export async function applyReviewedIssue913T14Relocation(
     return { violations: [...discovered], relocations: [] };
   }
 
+  const remainderRetiredIds = await loadIssue853CRemainderRetiredSourceIds(repoRoot);
   requireT14(
-    [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds]
+    [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds, ...remainderRetiredIds]
       .every((id) => !allowances.some((entry) => entry.id === id)),
     "retired sources remain allowlisted",
   );
   requireT14(
-    [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds]
+    [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds, ...remainderRetiredIds]
       .every((id) => !discovered.some((entry) => entry.id === id)),
     "retired source reappeared in the current scan",
   );
 
-  const historicalAllowances = withRetiredHistoricalAllowances(fixture, allowances);
+  const historicalAllowances = withRetiredHistoricalAllowances(fixture, allowances, remainderRetiredIds);
   const [familyProof, rewrittenProof] = await Promise.all([
     verifyHistoricalRelocationProof(
       repoRoot,
@@ -287,9 +288,10 @@ function activeUnchangedFiles(config: RelocationConfig) {
 function withRetiredHistoricalAllowances(
   fixture: BoundaryViolationFixture,
   allowances: readonly AllowlistEntry[],
+  remainderRetiredIds: readonly string[],
 ) {
   const historical = [...allowances];
-  for (const id of [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds]) {
+  for (const id of [...issue913T14RetiredSourceIds, ...issue853CActionRetiredSourceIds, ...remainderRetiredIds]) {
     const baseline = fixture.violations.find((entry) => entry.id === id);
     requireT14(baseline !== undefined, "retired source missing from historical fixture");
     historical.push({ id, rule: baseline.rule, file: baseline.file, reason: baseline.reason });

@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "sourceBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+      "destinationBlobOid": "eae0d8dee855159aa7bd4273ab446b9f81206e48",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:06efc9207f937f7e:a721e323d93a2d42",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 114,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 3718,
+            "byteEnd": 5828,
+            "token": "read:parameter_specs",
+            "evidence": "read parameter_specs: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( select lnr.no…"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:06efc9207f937f7e:48adf5313c702867",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 114,
+            "column": 5,
+            "byteStart": 3725,
+            "byteEnd": 6224,
+            "token": "read:parameter_specs",
+            "evidence": "read parameter_specs: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( select lnr.no…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "eae0d8dee855159aa7bd4273ab446b9f81206e48"
+          },
+          "sourceSliceSha256": "80d559b3bbf9290e9b2ffa2e308653a4ef9ffc57e1cef068aa5def4082240e15",
+          "sliceSha256": "07c21a74c3bafbf2c77b5ad73902078408de389914202b39cb620e8230c9bb1a"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:372741dc21d73796:26bb72ed1cde18a6",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 114,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 3718,
+            "byteEnd": 5828,
+            "token": "read:dts_property_specs",
+            "evidence": "read dts_property_specs: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( select lnr…"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:372741dc21d73796:2bfb661e10dec7b0",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 114,
+            "column": 5,
+            "byteStart": 3725,
+            "byteEnd": 6224,
+            "token": "read:dts_property_specs",
+            "evidence": "read dts_property_specs: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( select lnr…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "eae0d8dee855159aa7bd4273ab446b9f81206e48"
+          },
+          "sourceSliceSha256": "80d559b3bbf9290e9b2ffa2e308653a4ef9ffc57e1cef068aa5def4082240e15",
+          "sliceSha256": "07c21a74c3bafbf2c77b5ad73902078408de389914202b39cb620e8230c9bb1a"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:c54d100f15df8796:ac088dc6be1ec0fe",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 114,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 3718,
+            "byteEnd": 5828,
+            "token": "read:parameter_spec_versions",
+            "evidence": "read parameter_spec_versions: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( selec…"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:c54d100f15df8796:0996e18dab005d3b",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 114,
+            "column": 5,
+            "byteStart": 3725,
+            "byteEnd": 6224,
+            "token": "read:parameter_spec_versions",
+            "evidence": "read parameter_spec_versions: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( selec…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "eae0d8dee855159aa7bd4273ab446b9f81206e48"
+          },
+          "sourceSliceSha256": "80d559b3bbf9290e9b2ffa2e308653a4ef9ffc57e1cef068aa5def4082240e15",
+          "sliceSha256": "07c21a74c3bafbf2c77b5ad73902078408de389914202b39cb620e8230c9bb1a"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:eb9281d968864fc0:62d8b955b3815ddd",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 114,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 3718,
+            "byteEnd": 5828,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( se…"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:eb9281d968864fc0:1f88f81c427c98c3",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 114,
+            "column": 5,
+            "byteStart": 3725,
+            "byteEnd": 6224,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select b.id as binding_id, b.organization_id, b.project_id, b.parameter_spec_id, b.logical_node_id, coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key, ( se…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "eae0d8dee855159aa7bd4273ab446b9f81206e48"
+          },
+          "sourceSliceSha256": "80d559b3bbf9290e9b2ffa2e308653a4ef9ffc57e1cef068aa5def4082240e15",
+          "sliceSha256": "07c21a74c3bafbf2c77b5ad73902078408de389914202b39cb620e8230c9bb1a"
+        }
+      ]
+    }
+  ]
+}

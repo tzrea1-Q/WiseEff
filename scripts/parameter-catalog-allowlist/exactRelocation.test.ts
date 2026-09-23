@@ -11,7 +11,7 @@ import { compareBoundaryInventory } from "./deterministicOutput";
 import type { BoundaryViolation } from "./schema";
 import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
 import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
-import { issue853CActionRetiredSourceIds } from "./issue853CRelocation";
+import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
 
 const repoRoot = process.cwd();
 const record: {
@@ -28,15 +28,18 @@ const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T
 const issue900RetiredIds = new Set((JSON.parse(await readFile(
   `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-900-dashboard-retirement.json`, "utf8",
 )) as { retiredAllowlistEntries: Array<{ id: string }> }).retiredAllowlistEntries.map((entry) => entry.id));
+const issue853CRemainderRetiredIds = await loadIssue853CRemainderRetiredSourceIds(repoRoot);
 
 function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
-  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds, ...issue853CActionRetiredSourceIds]);
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
+    ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds]);
   expect(issue900RetiredIds.size).toBe(13);
   expect(issue913StaleRetiredSourceIds).toHaveLength(17);
   expect(issue913T14RetiredSourceIds).toHaveLength(4);
-  expect(retired.size).toBe(36);
-  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(36);
-  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2);
+  expect(issue853CRemainderRetiredIds).toHaveLength(42);
+  expect(retired.size).toBe(78);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(78);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2 + 42);
   expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
     .toEqual([...retired].sort());
   expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
@@ -62,7 +65,7 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(result[0]).toEqual(record.pairs[0]);
     expect(fixture.violations).toHaveLength(3519);
     expect(fixture.violations.length - 28).toBe(3491);
-    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 2);
+    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42);
   });
 
   it.each([
