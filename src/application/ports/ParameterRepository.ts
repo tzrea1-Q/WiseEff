@@ -27,8 +27,6 @@ export type ChangeRequestListQuery = {
 export type SubmissionRoundListQuery = {
   projectId?: string;
   status?: Array<ParameterSubmissionRound["status"]>;
-  /** Ask the server for the authenticated user's retained archive only. */
-  mine?: boolean;
 };
 
 export type SaveParameterDraftInput = {

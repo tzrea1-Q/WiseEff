@@ -174,8 +174,6 @@ export type ParameterSubmissionRound = {
   projectId: string;
   projectName: string;
   submitter: string;
-  /** Stable ownership identity; absent only for retained rows whose account was deleted. */
-  submitterUserId?: string;
   createdAt: string;
   status: RequestStatus | "已撤回" | "已暂存";
   summary: string;

@@ -341,12 +341,12 @@ describe("createHttpParameterRepository", () => {
   });
 
   it("requests only the authenticated user's retained rounds when mine is enabled", async () => {
-    const fetchMock = fetchQueue({ items: [{ ...submissionRoundDto, submitterUserId: "user-1" }] });
+    const fetchMock = fetchQueue({ items: [submissionRoundDto] });
     const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
 
-    await expect(repository.listSubmissionRounds({ projectId: "aurora", mine: true })).resolves.toMatchObject([
-      { submitterUserId: "user-1" }
-    ]);
+    const rounds = await repository.listSubmissionRounds({ projectId: "aurora", mine: true });
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]).not.toHaveProperty("submitterUserId");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/parameter-submission-rounds?projectId=aurora&mine=true",

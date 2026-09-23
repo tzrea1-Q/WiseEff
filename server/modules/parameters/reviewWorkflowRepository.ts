@@ -57,7 +57,6 @@ type SubmissionRoundRow = {
   project_id: string;
   project_name: string;
   submitter: string;
-  submitter_user_id?: string | null;
   status: ParameterSubmissionRoundStatus;
   summary: string;
   created_at: string | Date;
@@ -336,7 +335,6 @@ function toSubmissionRoundDto(row: SubmissionRoundRow, items: ParameterSubmissio
     projectId: row.project_id,
     projectName: row.project_name,
     submitter: row.submitter,
-    ...(row.submitter_user_id ? { submitterUserId: row.submitter_user_id } : {}),
     createdAt: dateTimeToIso(row.created_at),
     status: row.status,
     summary: row.summary,
@@ -541,7 +539,6 @@ export async function createSubmissionRound(
       inserted.id,
       inserted.project_id,
       projects.name as project_name,
-      inserted.submitter_user_id,
       ${TRUSTED_SUBMITTER_LABEL("inserted", "submitter_user")} as submitter,
       inserted.status,
       inserted.summary,
@@ -1144,13 +1141,7 @@ export async function createEnablementSubmissionItem(
 
 export async function listSubmissionRounds(
   db: Queryable,
-  query: {
-    organizationId: string;
-    projectId?: string;
-    status?: ParameterSubmissionRoundStatus[];
-    submitterUserId?: string;
-    authorizedProjectIds?: readonly string[] | null;
-  }
+  query: { organizationId: string; projectId?: string; status?: ParameterSubmissionRoundStatus[] }
 ) {
   const values: unknown[] = [query.organizationId];
   const where = ["psr.organization_id = $1"];
@@ -1163,23 +1154,9 @@ export async function listSubmissionRounds(
     addCondition(where, values, (placeholder) => `psr.status = any(${placeholder}::text[])`, query.status);
   }
 
-  if (query.submitterUserId) {
-    addCondition(where, values, (placeholder) => `psr.submitter_user_id = ${placeholder}`, query.submitterUserId);
-  }
-
-  if (query.authorizedProjectIds !== undefined && query.authorizedProjectIds !== null) {
-    addCondition(
-      where,
-      values,
-      (placeholder) => `psr.project_id = any(${placeholder}::text[])`,
-      query.authorizedProjectIds
-    );
-  }
-
   const result = await db.query<SubmissionRoundRow>(
     `
     select psr.id, psr.project_id, projects.name as project_name,
-      psr.submitter_user_id,
       ${TRUSTED_SUBMITTER_LABEL("psr", "users")} as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr
@@ -1217,7 +1194,6 @@ export async function getSubmissionRoundById(
   const result = await db.query<SubmissionRoundRow>(
     `
     select psr.id, psr.project_id, projects.name as project_name,
-      psr.submitter_user_id,
       ${TRUSTED_SUBMITTER_LABEL("psr", "users")} as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr

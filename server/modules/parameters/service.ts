@@ -459,8 +459,6 @@ export type DraftListQuery = {
 export type SubmissionRoundListQuery = {
   projectId?: string;
   status?: ParameterSubmissionRoundStatus[];
-  /** Personal archive projection; the server binds this to auth.user.id. */
-  mine?: boolean;
 };
 
 export type ChangeRequestListQuery = {
@@ -1949,16 +1947,10 @@ export async function listSubmissionRounds(db: Queryable, auth: AuthContext, que
   requireCanView(auth);
 
   const organizationId = auth.organization.id;
-  const authorizedProjectIds = query.mine
-    ? auth.roles.some((role) => role.projectId === null)
-      ? null
-      : [...new Set(auth.roles.map((role) => role.projectId).filter((id): id is string => Boolean(id)))]
-    : undefined;
   const rounds = await listSubmissionRoundRows(db, {
     organizationId,
     projectId: query.projectId,
-    status: query.status,
-    ...(query.mine ? { submitterUserId: auth.user.id, authorizedProjectIds } : {})
+    status: query.status
   });
 
   if (rounds.length === 0) {

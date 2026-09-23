@@ -48,6 +48,7 @@ import { createDefaultApiClient } from "./defaultApiClient";
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
 type OkEnvelope = { ok: true };
+type SubmissionRoundApiListQuery = SubmissionRoundListQuery & { mine?: boolean };
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -142,7 +143,7 @@ function buildChangeRequestsPath(query?: ChangeRequestListQuery) {
   return appendQuery("/api/v1/parameter-change-requests", params);
 }
 
-function buildSubmissionRoundsPath(query?: SubmissionRoundListQuery) {
+function buildSubmissionRoundsPath(query?: SubmissionRoundApiListQuery) {
   const params = new URLSearchParams();
   if (query?.projectId) params.set("projectId", query.projectId);
   if (query?.mine) params.set("mine", "true");
@@ -284,7 +285,7 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       );
       return response.items.map(changeRequestFromDto);
     },
-    async listSubmissionRounds(query?: SubmissionRoundListQuery) {
+    async listSubmissionRounds(query?: SubmissionRoundApiListQuery) {
       const response = parseContractDto(
         parameterSubmissionRoundListResponseSchema,
         await apiClient.get<ItemsEnvelope<ParameterSubmissionRoundDto>>(buildSubmissionRoundsPath(query)),

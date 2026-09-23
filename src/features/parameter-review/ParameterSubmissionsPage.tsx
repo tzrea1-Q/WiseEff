@@ -133,7 +133,8 @@ export function ParameterSubmissionsPage({
       setLegacyArchive({ status: "idle", rounds: [], error: null });
       return;
     }
-    if (!runtime?.parameterRepository) {
+    const parameterRepository = runtime?.parameterRepository;
+    if (!parameterRepository) {
       setLegacyArchive({ status: "error", rounds: [], error: "旧版提交归档接口未配置，暂时无法加载。" });
       return;
     }
@@ -144,15 +145,18 @@ export function ParameterSubmissionsPage({
 
     let cancelled = false;
     setLegacyArchive({ status: "loading", rounds: [], error: null });
-    void runtime.parameterRepository
-      .listSubmissionRounds({ projectId: canonicalProject.id, mine: true })
+    type SubmissionRoundListMethod = NonNullable<typeof parameterRepository>["listSubmissionRounds"];
+    const listSubmissionRounds = parameterRepository.listSubmissionRounds as (
+      query: Parameters<SubmissionRoundListMethod>[0] & { mine: true }
+    ) => ReturnType<SubmissionRoundListMethod>;
+    void listSubmissionRounds({ projectId: canonicalProject.id, mine: true })
       .then((rounds) => {
         if (cancelled) return;
         setLegacyArchive({
           status: "ready",
-          // The server query is authoritative; this exact-ID check prevents a
-          // stale or malformed adapter from turning a display name into ownership.
-          rounds: rounds.filter((round) => round.submitterUserId === state.currentUserId),
+          // `mine=true` is a server-owned projection. Legacy round DTOs do not
+          // expose submitter IDs, so the API client must trust this response.
+          rounds,
           error: null
         });
       })
@@ -164,7 +168,7 @@ export function ParameterSubmissionsPage({
     return () => {
       cancelled = true;
     };
-  }, [canonicalProject, isApiMode, runtime?.parameterRepository, state.currentUserId]);
+  }, [canonicalProject, isApiMode, runtime?.parameterRepository]);
 
   useEffect(() => {
     if (!legacyArchive.rounds.some((round) => round.id === selectedArchiveRoundId)) {
@@ -290,7 +294,6 @@ export function ParameterSubmissionsPage({
                             本轮提交包含 {selectedArchiveRound.items.length} 个参数，由 {selectedArchiveRound.submitter} 在{" "}
                             {formatSubmissionTimestamp(selectedArchiveRound.createdAt)} 提交。
                           </p>
-                          <p><small>提交人 ID：{selectedArchiveRound.submitterUserId}</small></p>
                           <SubmissionWorkflowTimeline
                             activeIndex={archiveTimelineView.activeIndex}
                             workflowStages={archiveWorkflowStages}

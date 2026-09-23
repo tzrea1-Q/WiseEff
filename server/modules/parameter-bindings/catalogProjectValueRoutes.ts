@@ -103,7 +103,10 @@ async function visibleValueChangeRequests(
     && await hasCurrentCanonicalReviewRole(db, {
       organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
     });
-  return canReadReviewQueue ? items : items.filter((item) => item.submitterUserId === auth.user.id);
+  if (!canReadReviewQueue) return items.filter((item) => item.submitterUserId === auth.user.id);
+  return input.status === "pending"
+    ? items.filter((item) => item.submitterUserId !== auth.user.id)
+    : items;
 }
 
 function topologyDraftToValueDraftDto(draft: ParameterDraftDto): CanonicalValueDraftDto | null {

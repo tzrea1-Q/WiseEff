@@ -1112,11 +1112,12 @@ describe("canonical request tracking access", () => {
     expect(diff.status).toBe(404);
   });
 
-  it("allows an existing current software reviewer to see the queue but keeps mine private", async () => {
+  it("keeps own pending work out of the reviewer queue while preserving personal and history views", async () => {
     vi.spyOn(reviewWorkflow, "hasCurrentCanonicalReviewRole").mockResolvedValue(true);
     const auth = makeAuth({ roles: [{ projectId: "project-1", roleId: "software-committer" }], permissions: ["parameter:view", "parameter:review"] });
     const server = makeServer({ db: makeDb(), auth });
     expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own, other] });
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?status=pending")).body).toEqual({ items: [other] });
     expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?mine=true")).body).toEqual({ items: [own] });
     vi.mocked(reviewWorkflow.hasCurrentCanonicalReviewRole).mockResolvedValue(false);
     expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own] });

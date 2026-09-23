@@ -260,6 +260,18 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     masks.push(page.locator(".parameter-home__chart-shell"));
   }
 
+  if (routePath === "/parameter-review") {
+    const details = page.getByRole("article", { name: "源文件请求详情" });
+    for (const label of ["参数记录", "请求 ID", "来源快照", "候选文件", "提交时间", "状态更新时间"]) {
+      masks.push(
+        details
+          .locator("dl > div")
+          .filter({ has: details.getByText(label, { exact: true }) })
+          .locator("dd")
+      );
+    }
+  }
+
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {
     // Bridge install guide: the API mints a fresh random 6-digit pairing code
     // on every page load; the surrounding copy is static, so only the <strong>

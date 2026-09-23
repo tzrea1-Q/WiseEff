@@ -1,5 +1,6 @@
 import "dotenv/config";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadServerEnv } from "../server/config/env";
@@ -20,8 +21,20 @@ import {
 } from "./compile-vendor-catalog-release";
 import { firstReleaseBundle } from "../server/testing/parameterCatalog/cutoverPopulatedFixture";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
-import { getRootPostgresPool, createPostgresDatabase, type Database, type Queryable } from "../server/shared/database/client";
+import { getRootPostgresPool, createPostgresDatabase, type Database, type Queryable, type RootDatabase } from "../server/shared/database/client";
 import type { AuthContext } from "../server/modules/auth/types";
+import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../server/modules/audit/trustedRefusalSink";
+import { createObjectStoreFromEnv } from "../server/objectStoreFactory";
+import { parseDtsValue } from "../server/modules/dts/valueAst";
+import { listCatalogBindingRowsForProject } from "../server/modules/parameter-bindings/catalogProjectValueSync";
+import {
+  createCanonicalValueDraft,
+  loadCanonicalBindingPins,
+  removeCanonicalValueDraft,
+  submitCanonicalValueChange,
+  withdrawCanonicalValueChange
+} from "../server/modules/parameter-bindings/drafts";
 import {
   assertVisualReviewFixtureConfigured,
   assertVisualReviewFixtureDatabase
@@ -146,6 +159,20 @@ const FIXTURE_SOFTWARE_USER_ID = "u-liu-min";
 const FIXTURE_TIMESTAMP = "2026-08-22T08:00:00.000Z";
 const FIXTURE_ROUND_SUMMARY = "Aurora 快充参数审阅";
 const FIXTURE_ITEM_REASON = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
+
+const qualityFixtureSubmitterAuth: AuthContext = {
+  user: {
+    id: FIXTURE_SUBMITTER_USER_ID,
+    organizationId: "org-chargelab",
+    name: "Zhao Heng",
+    email: "zhao@chargelab.cn",
+    title: "Hardware Engineer",
+    isActive: true
+  },
+  organization: { id: "org-chargelab", name: "ChargeLab" },
+  roles: [{ projectId: "aurora", roleId: "software-user" }],
+  permissions: ["parameter:view", "parameter:edit"]
+};
 
 type BindingFixtureRow = {
   binding_id: string;
@@ -362,6 +389,114 @@ export async function cleanupQualityVisualReview(db: Database) {
   return db.transaction(cleanupQualityVisualReviewRows);
 }
 
+async function cleanupCanonicalQualityVisualReview(db: RootDatabase) {
+  const binding = await findCanonicalQualityFixtureBinding(db);
+  if (!binding) return;
+  const targetValue = JSON.stringify(parseDtsValue("cccv_0", FIXTURE_TARGET_VALUE).value);
+  const fixtures = await db.query<{ id: string; draft_id: string | null; status: string }>(
+    `select request.id, request.draft_id, request.status
+       from project_parameter_value_change_requests request
+       inner join project_parameter_value_drafts draft
+         on draft.id = request.draft_id
+        and draft.organization_id = request.organization_id
+        and draft.project_id = request.project_id
+        and draft.user_id = request.submitter_user_id
+        and draft.binding_id = request.binding_id
+      where request.organization_id = $1
+        and request.project_id = 'aurora'
+        and request.submitter_user_id = $2
+        and request.binding_id = $3
+        and request.reason = $4
+        and request.status in ('pending', 'withdrawn')
+        and draft.reason = $4
+        and draft.action = 'set'
+        and draft.target_value = $5::jsonb`,
+    ["org-chargelab", FIXTURE_SUBMITTER_USER_ID, binding.id, FIXTURE_ITEM_REASON, targetValue]
+  );
+  const refusalSink = createTrustedRefusalAuditSink(db);
+  for (const request of fixtures.rows.filter((item) => item.status === "pending")) {
+    await withdrawCanonicalValueChange(db, qualityFixtureSubmitterAuth, {
+      projectId: "aurora",
+      requestId: request.id,
+      invocation: createUserInvocation(qualityFixtureSubmitterAuth),
+      refusalSink,
+      traceId: `quality-visual-cleanup:${request.id}`
+    });
+  }
+  const fixtureDrafts = await db.query<{ id: string }>(
+    `select id from project_parameter_value_drafts
+      where organization_id = $1
+        and project_id = 'aurora'
+        and user_id = $2
+        and binding_id = $3
+        and reason = $4
+        and action = 'set'
+        and target_value = $5::jsonb`,
+    ["org-chargelab", FIXTURE_SUBMITTER_USER_ID, binding.id, FIXTURE_ITEM_REASON, targetValue]
+  );
+  for (const draft of fixtureDrafts.rows) {
+    await removeCanonicalValueDraft(db, qualityFixtureSubmitterAuth, {
+      projectId: "aurora",
+      draftId: draft.id
+    }, {
+      invocation: createUserInvocation(qualityFixtureSubmitterAuth),
+      requestId: `quality-visual-draft-cleanup:${draft.id}`
+    });
+  }
+}
+
+async function findCanonicalQualityFixtureBinding(db: Database) {
+  const bindings = await listCatalogBindingRowsForProject(db, qualityFixtureAuth, { projectId: "aurora" });
+  return bindings.find((item) =>
+    item.propertyKey === "cccv_0" && item.instanceName?.split("@")[0] === "battery0"
+  );
+}
+
+async function seedCanonicalQualityVisualReview(
+  db: RootDatabase,
+  objectStore: ReturnType<typeof createObjectStoreFromEnv>
+) {
+  await cleanupCanonicalQualityVisualReview(db);
+  const binding = await findCanonicalQualityFixtureBinding(db);
+  if (!binding) {
+    throw new Error("Quality canonical review fixture requires the Aurora battery0 cccv_0 binding.");
+  }
+  if (binding.rawValue !== "<4500 0>") {
+    throw new Error(`Quality canonical review fixture expected cccv_0 base <4500 0>, found ${binding.rawValue}.`);
+  }
+  const pins = await loadCanonicalBindingPins(db, {
+    organizationId: "org-chargelab",
+    projectId: "aurora",
+    bindingId: binding.id
+  });
+  if (!pins) throw new Error("Quality canonical review fixture is missing exact source pins.");
+
+  const refusalSink = createTrustedRefusalAuditSink(db);
+  const invocation = createUserInvocation(qualityFixtureSubmitterAuth);
+  const draft = await createCanonicalValueDraft(db, qualityFixtureSubmitterAuth, {
+    projectId: "aurora",
+    bindingId: binding.id,
+    targetValue: parseDtsValue("cccv_0", FIXTURE_TARGET_VALUE).value,
+    reason: FIXTURE_ITEM_REASON,
+    baseRevisionId: pins.configRevisionId,
+    baseCurrentValueId: pins.currentValueId
+  }, {
+    objectStore,
+    invocation,
+    requestId: `quality-visual-draft:${randomUUID()}`,
+    refusalSink
+  });
+  const request = await submitCanonicalValueChange(db, qualityFixtureSubmitterAuth, {
+    projectId: "aurora",
+    draftId: draft.id,
+    assignedToUserId: FIXTURE_SOFTWARE_COMMITTER_USER_ID,
+    invocation,
+    requestId: `quality-visual-submit:${randomUUID()}`,
+    refusalSink
+  });
+  return { requestId: request.id, bindingId: binding.id, draftId: draft.id };
+}
+
 /**
  * Seed one product-shaped, quality-only review row after the normal M1 seed.
  * The visual gate needs a populated review workbench as well as the empty-state
@@ -496,7 +631,9 @@ async function main() {
     throw new Error("DATABASE_URL is required to seed the quality visual review fixture.");
   }
   const db = createPostgresDatabase(env.DATABASE_URL);
+  const objectStore = createObjectStoreFromEnv(env);
   if (process.argv.includes("--cleanup")) {
+    await cleanupCanonicalQualityVisualReview(db);
     await cleanupQualityVisualReview(db);
     console.log(`Removed deterministic quality review fixture ${FIXTURE_REQUEST_ID}.`);
     return;
@@ -505,6 +642,8 @@ async function main() {
   console.log(`Seeded quality canonical bindings: ${JSON.stringify(canonical.written)}.`);
   const seeded = await seedQualityVisualReview(db);
   console.log(`Seeded deterministic quality review fixture ${seeded.requestId} on ${seeded.bindingId}.`);
+  const canonicalReview = await seedCanonicalQualityVisualReview(db, objectStore);
+  console.log(`Seeded canonical quality review request ${canonicalReview.requestId} on ${canonicalReview.bindingId}.`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
