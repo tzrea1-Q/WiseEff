@@ -99,13 +99,20 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
     return (await response.json()).item;
   }
 
-  async function assertCounts(request: APIRequestContext, active: number, drafts: number, review: number) {
+  async function assertCounts(
+    request: APIRequestContext,
+    active: number,
+    draftRows: number,
+    review: number,
+    myDrafts = draftRows,
+    returnedChanges = 0
+  ) {
     const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: authHeadersForRole("software-user") });
     expect(listed.status(), await listed.text()).toBe(200);
     expect((await listed.json()).items).toHaveLength(active);
     const draftList = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`), { headers: authHeadersForRole("software-user") });
     expect(draftList.status(), await draftList.text()).toBe(200);
-    expect((await draftList.json()).items).toHaveLength(drafts);
+    expect((await draftList.json()).items).toHaveLength(draftRows);
     const reviewList = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests?status=pending`), {
       headers: authHeadersForRole("software-committer")
     });
@@ -122,10 +129,10 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
       expect(summary.kpis.totalDefinitions).toBe(active);
       expect(summary.kpis.highRiskParameters).toBeNull();
       expect(summary.kpis.riskAvailability).toBe("unavailable");
-      expect(summary.workbenchSignals.myDrafts).toBe(role === "software-user" ? drafts : 0);
+      expect(summary.workbenchSignals.myDrafts).toBe(role === "software-user" ? myDrafts : 0);
       expect(summary.workbenchSignals.reviewQueue).toBe(role === "software-committer" ? review : 0);
       expect(summary.workbenchSignals.waitingMerge).toBe(0);
-      expect(summary.workbenchSignals.returnedChanges).toBe(0);
+      expect(summary.workbenchSignals.returnedChanges).toBe(role === "software-user" ? returnedChanges : 0);
     }
   }
 
@@ -153,6 +160,13 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
     const response = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/review`), {
       headers: { ...authHeadersForRole("software-committer"), "X-WiseEff-Catalog-Release": releaseId, "Idempotency-Key": `${requestId}-${decision}` },
       data: { decision, reason: "Dashboard review verification" }
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+
+  async function withdraw(request: APIRequestContext, requestId: string) {
+    const response = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/withdraw`), {
+      headers: authHeadersForRole("software-user")
     });
     expect(response.ok(), await response.text()).toBe(true);
   }
@@ -206,13 +220,23 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
     await expect(page).toHaveURL(new RegExp(`/parameter-review\\?project=${projectId}$`));
     await expect(page.getByRole("region", { name: "软件配置审核", exact: true })).toBeVisible();
     await review(request, firstRequest, "reject");
-    await assertCounts(request, 1, 1, 0);
+    await assertCounts(request, 1, 1, 0, 0, 1);
+    await openHome("software-user");
+    await expect(page.locator('[data-kpi="openItemCount"] dd')).toHaveText("0");
+    await expect(page.getByRole("button", { name: /补充被退回的参数修改/ })).toBeVisible();
+    const secondRequest = await submit(request, draftId, "dashboard-submit-again");
+    await assertCounts(request, 1, 0, 1);
+    await openHome("software-user");
+    await expect(page.locator('[data-kpi="openItemCount"] dd')).toHaveText("0");
+    await expect(page.getByRole("button", { name: /补充被退回的参数修改/ })).toHaveCount(0);
+    await withdraw(request, secondRequest);
+    await assertCounts(request, 1, 1, 0, 1, 0);
     await openHome("software-user");
     await expect(page.locator('[data-kpi="openItemCount"] dd')).toHaveText("1");
     await expect(page.getByRole("button", { name: /补充被退回的参数修改/ })).toHaveCount(0);
-    const secondRequest = await submit(request, draftId, "dashboard-submit-again");
+    const finalRequest = await submit(request, draftId, "dashboard-submit-after-withdrawal");
     await assertCounts(request, 1, 0, 1);
-    await review(request, secondRequest, "approve");
+    await review(request, finalRequest, "approve");
     await assertCounts(request, 1, 0, 0);
     for (const dimension of ["project", "module", "parameter"]) {
       const hotspots = await request.get(apiRoute(`/api/v1/parameters/dashboard/hotspots?projectId=${projectId}&window=30d&dimension=${dimension}`), {

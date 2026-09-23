@@ -8,16 +8,18 @@ import { createLocalObjectStore } from "../../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { loadPublishedCatalog } from "../../parameter-bindings/catalogProjectValueSync";
+import { readProjectValueHistory } from "../../parameter-bindings/values/service";
 import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
 import { addConfigSetFile, createConfigSet } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { installConfigurationSourceFixture } from "../../../testing/parameterCatalog/configurationSource";
 import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
+import { ParameterDefinitionId } from "../../parameter-catalog-contract";
 import {
   aggregateHotspotGroups
 } from "./hotspotRepository";
-import { aggregateTrend, countKpis } from "./repository";
+import { aggregatePersonalTrend, aggregateTrend, countKpis } from "./repository";
 
 const ORGANIZATION_ID = "org-dashboard-canonical-repository";
 const PROJECT_ID = "project-dashboard-canonical-repository";
@@ -31,6 +33,9 @@ describe("canonical dashboard repository", () => {
   let db: ReturnType<typeof createPostgresDatabase>;
   let storageDirectory: string;
   let storage: ReturnType<typeof createLocalObjectStore>;
+  let canonicalBindings: Awaited<ReturnType<typeof registerCanonicalJsonSource>>["bindings"] = [];
+  let expectedTitle = "";
+  let expectedRevisionId = "";
   const auth = makeTestAuthContext({
     userId: USER_ID,
     organizationId: ORGANIZATION_ID,
@@ -73,13 +78,17 @@ describe("canonical dashboard repository", () => {
     });
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Published catalog fixture is unavailable");
+    const definition = snapshot.getDefinitionById(ParameterDefinitionId(DEFINITION_ID));
+    if (definition.status !== "found") throw new Error("Published dashboard Definition fixture is unavailable");
+    expectedTitle = definition.definition.selectedRevision.content.displayName ?? definition.definition.propertyKey;
+    expectedRevisionId = definition.definition.selectedRevision.id;
     const refusalSink = createTrustedRefusalAuditSink(db);
     const invocation = createUserInvocation(auth);
     for (const [requestId, rootPointer, pointer] of [
       ["dashboard-canonical-first", "/first", "/first/value"],
       ["dashboard-canonical-second", "/second", "/second/value"]
     ] as const) {
-      await db.transaction((tx) =>
+      const registration = await db.transaction((tx) =>
         registerCanonicalJsonSource(tx, storage, auth, snapshot, {
           projectId: PROJECT_ID,
           configSetId: configSet.id,
@@ -93,6 +102,7 @@ describe("canonical dashboard repository", () => {
           refusalSink
         })
       );
+      canonicalBindings.push(...registration.bindings);
     }
   }, 60_000);
 
@@ -142,28 +152,31 @@ describe("canonical dashboard repository", () => {
     expect(new Set(parameterGroups.map((group) => group.groupId)).size).toBe(2);
     expect(parameterGroups.every((group) => group.parameterCount === 1 && group.definitionCount === 1)).toBe(true);
     expect(parameterGroups.every((group) => group.groupId.length > 0)).toBe(true);
+    expect(parameterGroups.map((group) => group.title)).toEqual([expectedTitle, expectedTitle]);
+    expect(canonicalBindings).toHaveLength(2);
+    expect(canonicalBindings.every((binding) => binding.effectiveRevisionId === expectedRevisionId)).toBe(true);
   });
 
   it("uses the history window as [start, end) for real canonical events", async () => {
-    const history = await db.query<{ event_at: string; before_at: string; after_at: string }>(
-      `select history.created_at::text as event_at,
-              (history.created_at - interval '1 microsecond')::text as before_at,
-              (history.created_at + interval '1 microsecond')::text as after_at
-         from parameter_catalog.binding_history_events history
-         join parameter_catalog.project_parameter_bindings binding on binding.id = history.binding_id
-        where binding.organization_id = $1 and binding.project_id = $2
-        order by history.created_at asc, history.id asc
-        limit 1`,
-      [ORGANIZATION_ID, PROJECT_ID]
-    );
-    const event = history.rows[0];
-    expect(event).toBeDefined();
+    const binding = canonicalBindings[0];
+    expect(binding).toBeDefined();
+    const history = await readProjectValueHistory(getRootPostgresPool(db)!, {
+      binding,
+      definitionRevisionId: binding.effectiveRevisionId
+    });
+    expect(history.ok).toBe(true);
+    if (!history.ok) throw new Error("Canonical value history is unavailable");
+    const currentValue = history.value.find((value) => value.id === binding.currentValueId);
+    expect(currentValue).toBeDefined();
+    if (!currentValue) throw new Error("Canonical current value is unavailable");
+    // Both the value append and its Binding history event use the same transaction timestamp.
+    const eventAt = new Date(currentValue.createdAt);
     const input = {
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,
       authorizedProjectIds: [PROJECT_ID],
-      windowStart: event.event_at,
-      windowEnd: event.after_at
+      windowStart: eventAt.toISOString(),
+      windowEnd: new Date(eventAt.getTime() + 1_000).toISOString()
     } as const;
 
     const kpis = await countKpis(db, input);
@@ -173,9 +186,49 @@ describe("canonical dashboard repository", () => {
 
     const eventAtEnd = await countKpis(db, {
       ...input,
-      windowStart: event.before_at,
-      windowEnd: event.event_at
+      windowStart: new Date(eventAt.getTime() - 1_000).toISOString(),
+      windowEnd: eventAt.toISOString()
     });
     expect(eventAtEnd.changeFrequency).toBe(0);
+  });
+
+  it("keeps dashboard trend buckets on UTC day boundaries in a non-UTC session", async () => {
+    const binding = canonicalBindings[0];
+    expect(binding).toBeDefined();
+    const history = await readProjectValueHistory(getRootPostgresPool(db)!, {
+      binding,
+      definitionRevisionId: binding.effectiveRevisionId
+    });
+    expect(history.ok).toBe(true);
+    if (!history.ok) throw new Error("Canonical value history is unavailable");
+    const currentValue = history.value.find((value) => value.id === binding.currentValueId);
+    expect(currentValue).toBeDefined();
+    if (!currentValue) throw new Error("Canonical current value is unavailable");
+    const windowStart = new Date(currentValue.createdAt);
+    windowStart.setUTCHours(0, 0, 0, 0);
+    const input = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      authorizedProjectIds: [PROJECT_ID],
+      windowStart: windowStart.toISOString(),
+      windowEnd: new Date(windowStart.getTime() + 86_400_000).toISOString()
+    } as const;
+
+    await db.transaction(async (tx) => {
+      await tx.query("set local time zone 'Pacific/Honolulu'");
+      const trends = [
+        await aggregateTrend(tx, { ...input, granularity: "day" }),
+        ...await Promise.all(["user", "committer", "admin"].map((roleLevel) => aggregatePersonalTrend(tx, {
+          ...input,
+          userId: USER_ID,
+          granularity: "day",
+          roleLevel: roleLevel as "user" | "committer" | "admin"
+        })))
+      ];
+
+      for (const trend of trends) {
+        expect(trend.map((point) => point.bucketStart)).toEqual([input.windowStart]);
+      }
+    });
   });
 });

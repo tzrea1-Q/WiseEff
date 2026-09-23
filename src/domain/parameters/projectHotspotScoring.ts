@@ -62,8 +62,10 @@ export function buildBehavioralHotspotEvidence(
   const rate = Math.round((input.modifiedParamCount / Math.max(input.totalParamCount, 1)) * 100);
   const scopeLine =
     kind === "parameter"
-      ? `已在 ${input.modifiedParamCount} / ${input.totalParamCount} 个项目中修改（${rate}%）`
-      : `累计修改 ${input.modifiedParamCount} / ${input.totalParamCount} 个参数（${rate}%）`;
+      ? input.modifiedParamCount > 0
+        ? "该参数绑定已有已提交变更记录（含来源修订传播）"
+        : "该参数绑定暂无已提交变更记录"
+      : `已有已提交变更记录的参数绑定 ${input.modifiedParamCount} / ${input.totalParamCount}（${rate}%），含来源修订传播`;
 
   return [
     scopeLine,

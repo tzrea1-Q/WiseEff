@@ -59,7 +59,7 @@ const hotspot = {
   score: 180,
   scoreBreakdown: { frequency: 30, scope: 40, workflow: 25, collaboration: 15 },
   evidence: [
-    "累计修改 12 / 200 个参数（6%）",
+    "已有已提交变更记录的参数绑定 12 / 200（6%），含来源修订传播",
     "窗口内 8 次参数变更",
     "待处理流程 2 项 · 窗口内 3 项请求"
   ],
