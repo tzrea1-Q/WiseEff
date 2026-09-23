@@ -1853,6 +1853,60 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-preview": {
+      "get": {
+        "operationId": "parameterFiles.previewCanonicalCandidate",
+        "summary": "Preview a staged candidate against exact canonical source pins",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceCandidatePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/content": {
       "get": {
         "operationId": "parameters.getParameterFileCandidateContent",
@@ -15065,6 +15119,188 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/parameter-files/{fileId}/source-workflow": {
+      "get": {
+        "operationId": "parameterFiles.getCanonicalSourceWorkflow",
+        "summary": "Inspect the canonical source cohort and proof for a parameter file",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceWorkflowResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-submit": {
+      "post": {
+        "operationId": "parameterFiles.submitCanonicalCandidate",
+        "summary": "Submit one source candidate through canonical draft and human review",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalSourceSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceSubmissionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/parameter-files/{fileId}/source-rollback": {
+      "post": {
+        "operationId": "parameterFiles.rollbackCanonicalSource",
+        "summary": "Submit a historical source version through canonical draft and human review",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalSourceRollbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceSubmissionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameter-import/parse-dts": {
       "post": {
         "operationId": "parameters.parseDtsImport",
@@ -24097,6 +24333,26 @@
       "ParameterFileCandidateActivateResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterFileCandidateActivateResponse"
+      },
+      "CanonicalSourceWorkflowResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "CanonicalSourceWorkflowResponse"
+      },
+      "CanonicalSourceCandidatePreviewResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "CanonicalSourceCandidatePreviewResponse"
+      },
+      "CanonicalSourceSubmitRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CanonicalSourceSubmitRequest"
+      },
+      "CanonicalSourceSubmissionResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "CanonicalSourceSubmissionResponse"
+      },
+      "CanonicalSourceRollbackRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CanonicalSourceRollbackRequest"
       },
       "ProjectDeleteResponse": {
         "type": "object",
