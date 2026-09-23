@@ -637,10 +637,10 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         "ProjectValueChangeRequestResponse",
         { body: catalogSubmitValueChangeRequestSchema.parse(body), context }
       ),
-    listProjectValueChangeRequests: (projectId: string, query?: { status?: string }) =>
+    listProjectValueChangeRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
       request(
         "GET",
-        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests${query?.status ? `?${new URLSearchParams({ status: query.status })}` : ""}`,
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
         catalogValueChangeRequestListResponseSchema,
         "ProjectValueChangeRequestListResponse"
       ),

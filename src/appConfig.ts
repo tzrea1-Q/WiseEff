@@ -206,7 +206,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "参数管理",
       icon: FileText,
       title: "我的历史提交",
-      subtitle: "查看、撤回和追踪当前用户发起的参数提交轮次"
+      subtitle: "查看、撤回和追踪当前用户发起的参数变更请求"
     };
   }
 

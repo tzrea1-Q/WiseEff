@@ -190,6 +190,10 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` 加载；mock mode 由 `src/config/power-management.json` 的 `parent`/`path` 经 `buildPowerManagementModuleTree()` 派生。
 
 mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量。API mode 的 `db:seed:m1` 会在 seed 时从已提交的 `aurora-board.dts` 模板额外派生 228 个 DTS 来源参数；每个落库项目值都包含 `sourceFileName=aurora-board.dts` 和含属性名的 `sourceNodePath`。修改基础 DTS 或项目差异后，运行 `npm run dts:seed:generate` 重新生成三份项目主 DTS fixture。可选：`npm run dtc:seed:compile` 在 CI 中用钉扎工具链验证 seed 板——不是产品正确性叙事的前提（seed 板为 SoT）。
+API 模式的 `/parameter-submissions` 与 `/parameter-review` 复用 canonical 请求 owner 及 pending、approved、rejected、withdrawn 状态。个人追踪的 `mine=true` 由服务端绑定认证提交人 ID，审核可见性与固定来源差异读取保持项目和租户授权。面板展示固定来源、审核决定和应用结果，不生成旧提交轮次；撤回只使用现有 pending 请求 owner。
+
+`?project=…&request=…` 在刷新后恢复 canonical 选择；无效或不可见 ID 明确提示不可用。选择只更新 URL，保留行按钮焦点；终态动作同步或清除所选 ID，项目切换后丢弃旧响应。保留的旧请求使用 `legacyRequest`（仍识别已知旧 `request` 链接）；API 模式下，旧个人归档信任服务端按本人、组织及项目范围过滤后的 `mine=true` 结果。旧归档 DTO 不包含提交人 ID，因此客户端不再重复按身份过滤，也不显示缺失的 ID；mock/旧流程本地数据仍可使用已有身份字段。旧记录只读，不进入 canonical 待办；旧批量审核仅属于 mock/旧流程。`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts` 在隔离本地真实 API 中以 1440×900 验证 canonical-only 生命周期、本人/审核人追踪、权限拒绝、失效链接、键盘焦点、刷新和重启。
+
 - `/parameter-home`：参数看板首页。UI 位于 `src/features/parameter-home/`，通过 `ParameterDashboardRepository` 读取 `/api/v1/parameters/dashboard/summary` 与 `/api/v1/parameters/dashboard/hotspots`。页面内 `AnalysisContextControls` 负责时间窗口与热榜维度切换；`dashboardState` 为 `summary` 与 `hotspots` 维护独立异步分区（`idle | loading | ready | empty | error`）。`derivePersonalWorkbench.ts` 基于 `WorkbenchSignals` 与角色生成待办与场景入口。
 
 日志分析：
