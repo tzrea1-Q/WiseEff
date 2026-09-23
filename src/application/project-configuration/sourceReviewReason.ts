@@ -2,7 +2,7 @@
 export function sourceReviewReason(reason?: string): string {
   switch (reason) {
     case "candidate-changes-multiple-bindings":
-      return "候选同时修改多个参数绑定；当前来源审核仅支持单个绑定，请拆分候选。";
+      return "候选同时修改多个参数绑定；当前批量审核提交尚未开放。";
     case "canonical-batch-writer-unavailable":
       return "已证明多个参数绑定的来源差异；批量审核提交尚未开放。";
     case "dts-batch-source-proof-failed":
