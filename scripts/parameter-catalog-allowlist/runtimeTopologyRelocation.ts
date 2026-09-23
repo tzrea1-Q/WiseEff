@@ -59,6 +59,8 @@ export type RelocationConfig = {
   recordSha256: string;
   files: readonly { file: string; pairs: number }[];
   totalPairs: number;
+  /** Fixed compositions may keep a full record while activating only unchanged files after proving history. */
+  activeFiles?: readonly string[];
   rejectAllowanceGrowth?: boolean;
   /**
    * Assert that every pair restates the same stable structural anchor. Only a record
@@ -137,6 +139,7 @@ function validateRelocationRecord(value: unknown, input: RelocationInput, config
     requireMatch(section.file === expected.file && section.pairs.length === expected.pairs, "reviewed file inventory");
   }
   requireMatch(record.files.length === config.files.length, "reviewed file inventory");
+  const activeFiles = activeFileInventory(config);
 
   const baselineById = uniqueById(input.fixture.violations);
   const allowanceById = uniqueById(input.allowances);
@@ -169,6 +172,7 @@ function validateRelocationRecord(value: unknown, input: RelocationInput, config
   const newIds = new Set<string>();
   const pairs: RuntimeTopologyRelocationRecord["files"][number]["pairs"] = [];
   for (const section of record.files) {
+    if (!activeFiles.has(section.file)) continue;
     const source = input.sourceByFile.get(section.file);
     const destination = input.destinationByFile.get(section.file);
     requireMatch(source !== undefined && destination !== undefined, `missing source or destination bytes for ${section.file}`);
@@ -249,7 +253,15 @@ function validateRelocationRecord(value: unknown, input: RelocationInput, config
       }
     }
   }
-  requireMatch(oldIds.size === config.totalPairs && newIds.size === config.totalPairs, "complete reviewed mapping");
+  const expectedActivePairs = config.files
+    .filter(({ file }) => activeFiles.has(file))
+    .reduce((count, section) => count + section.pairs, 0);
+  requireMatch(
+    config.files.reduce((count, section) => count + section.pairs, 0) === config.totalPairs
+      && oldIds.size === expectedActivePairs
+      && newIds.size === expectedActivePairs,
+    "complete reviewed mapping",
+  );
   requireMatch([...oldIds].every((id) => !newIds.has(id)), "source and destination overlap");
   return pairs;
 }
@@ -304,6 +316,23 @@ async function verifyHistoricalRelocationRecord(
   }, config) };
 }
 
+/** Prove a complete fixed historical record; active-file subsets never apply to history. */
+export function verifyHistoricalRelocationProof(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+  allowances: readonly AllowlistEntry[],
+  fixedConfig: RelocationConfig,
+  provenance: { commit: string; tree: string },
+) {
+  return verifyHistoricalRelocationRecord(
+    repoRoot,
+    fixture,
+    allowances,
+    { ...fixedConfig, activeFiles: undefined },
+    provenance,
+  );
+}
+
 export function verifyHistoricalEditServiceVersionIndexRelocation(
   repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
 ) {
@@ -355,7 +384,7 @@ async function applyRelocationRecord(
   existingRelocations: readonly RuntimeTopologyRelocation[],
   config: RelocationConfig,
 ): Promise<RelocationOutcome> {
-  const targetFiles = new Set<string>(config.files.map(({ file }) => file));
+  const targetFiles = activeFileInventory(config);
   if (!fixture.violations.some((violation) => targetFiles.has(violation.file))) {
     return { violations: [...discovered], relocations: [] as RuntimeTopologyRelocation[] };
   }
@@ -367,6 +396,7 @@ async function applyRelocationRecord(
   const sourceByFile = new Map<string, Buffer>();
   const destinationByFile = new Map<string, Buffer>();
   for (const section of record.files) {
+    if (!targetFiles.has(section.file)) continue;
     sourceByFile.set(
       section.file,
       execFileSync("git", ["show", `${record.trustedBaseSha}:${section.file}`], { cwd: repoRoot }),
@@ -386,6 +416,18 @@ async function applyRelocationRecord(
     violations: discovered.map((violation) => aliases.get(violation.id) ?? violation),
     relocations: pairs.map((pair) => ({ id: pair.old.id, observed: pair.new })),
   };
+}
+
+function activeFileInventory(config: RelocationConfig) {
+  const files = config.activeFiles ?? config.files.map(({ file }) => file);
+  const activeFiles = new Set(files);
+  requireMatch(
+    files.length > 0
+      && activeFiles.size === files.length
+      && files.every((file) => config.files.some((section) => section.file === file)),
+    "active file inventory",
+  );
+  return activeFiles;
 }
 
 function uniqueById<T extends { id: string }>(values: readonly T[]) {

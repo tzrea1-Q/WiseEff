@@ -9,10 +9,13 @@ import {
   evaluateImmutableAcceptanceUpload,
   evaluateL1CiWorkflow,
   findAcceptanceEnvironmentHelperLoads,
+  findMissingAcceptanceEnvironmentHelperLoads,
   findForbiddenAcceptanceDotenvImports,
   findForbiddenPlaywrightImports,
   readAcceptanceConfigurationSources,
   readAcceptanceEnvironmentSources,
+  requiredAcceptanceEnvironmentConfigurationPaths,
+  requiredAcceptanceEnvironmentHelperExceptions,
   requiredAcceptanceCiArtifactPaths,
   requiredAcceptanceCiScripts,
   requiredAcceptanceCiWorkflowTokens
@@ -20,6 +23,10 @@ import {
 import { l1CommandIds } from "./ci-required-results";
 
 const compliantWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const compliantAcceptanceEnvironmentSources = [
+  ...readAcceptanceEnvironmentSources(),
+  ...readAcceptanceConfigurationSources(),
+];
 
 const compliantScripts = {
   ...Object.fromEntries(requiredAcceptanceCiScripts.map((script) => [script, "ok"])),
@@ -306,21 +313,97 @@ describe("M5.12 acceptance CI configuration", () => {
     });
   });
 
-  it("routes every formerly dotenv-backed acceptance spec through the owned-runtime-aware helper", () => {
+  it("routes every acceptance spec through the helper except the frozen main exceptions", () => {
     const sources = readAcceptanceEnvironmentSources();
 
+    expect(requiredAcceptanceEnvironmentHelperExceptions).toEqual([
+      "e2e/acceptance/catalog-publication-delivery.acceptance.spec.ts",
+      "e2e/acceptance/config-set-revision-gate.acceptance.spec.ts",
+      "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
+      "e2e/acceptance/runtime-warmup.spec.ts",
+      "e2e/acceptance/shell-navigation.acceptance.spec.ts",
+    ]);
     expect(findForbiddenAcceptanceDotenvImports(sources)).toEqual([]);
-    const helperLoads = findAcceptanceEnvironmentHelperLoads(sources);
-    expect(helperLoads).toHaveLength(39);
-    expect(helperLoads).toContain("e2e/acceptance/canonical-value-workflow.acceptance.spec.ts");
-    expect(helperLoads).toContain("e2e/acceptance/parameter-catalog-policy-usage.acceptance.spec.ts");
+    const loaded = new Set(findAcceptanceEnvironmentHelperLoads(sources));
+    const helperlessPaths = sources.filter(({ path }) => !loaded.has(path)).map(({ path }) => path);
+    expect(helperlessPaths).toEqual(requiredAcceptanceEnvironmentHelperExceptions);
+    expect(findMissingAcceptanceEnvironmentHelperLoads(sources)).toEqual([]);
   });
 
   it("routes both Playwright acceptance configs through the same owned-runtime-aware helper", () => {
     const sources = readAcceptanceConfigurationSources();
 
+    expect(sources.map(({ path }) => path)).toEqual(requiredAcceptanceEnvironmentConfigurationPaths);
     expect(findForbiddenAcceptanceDotenvImports(sources)).toEqual([]);
-    expect(findAcceptanceEnvironmentHelperLoads(sources)).toHaveLength(2);
+    expect(findAcceptanceEnvironmentHelperLoads(sources)).toEqual(requiredAcceptanceEnvironmentConfigurationPaths);
+    expect(findMissingAcceptanceEnvironmentHelperLoads(sources)).toEqual([]);
+  });
+
+  it("fails closed for an unlisted spec, a removed exception, or a missing config", () => {
+    const evaluateSources = (acceptanceEnvironmentSources: typeof compliantAcceptanceEnvironmentSources) =>
+      evaluateAcceptanceCiConfiguration({
+        packageJson: { scripts: compliantScripts },
+        workflowText: compliantWorkflow,
+        smokeTagCount: 3,
+        acceptanceEnvironmentSources,
+      });
+    const newSpecPath = "e2e/acceptance/new.acceptance.spec.ts";
+    const missingHelper = evaluateSources([
+      ...compliantAcceptanceEnvironmentSources,
+      { path: newSpecPath, source: '// loadAcceptanceEnvironment();\nimport { test } from "playwright/test";' },
+    ]);
+    expect(missingHelper.acceptanceEnvironmentGate).toBe(false);
+    expect(missingHelper.missingAcceptanceEnvironmentHelperPaths).toContain(newSpecPath);
+
+    const removedExceptionPath = requiredAcceptanceEnvironmentHelperExceptions[0];
+    const removedException = evaluateSources(
+      compliantAcceptanceEnvironmentSources.filter(({ path }) => path !== removedExceptionPath),
+    );
+    expect(removedException.acceptanceEnvironmentGate).toBe(false);
+    expect(removedException.missingAcceptanceEnvironmentExceptionPaths).toContain(removedExceptionPath);
+
+    const renamedExceptionPath = "e2e/acceptance/renamed-catalog-publication-delivery.acceptance.spec.ts";
+    const renamedException = evaluateSources(compliantAcceptanceEnvironmentSources.map((source) =>
+      source.path === removedExceptionPath ? { ...source, path: renamedExceptionPath } : source,
+    ));
+    expect(renamedException.acceptanceEnvironmentGate).toBe(false);
+    expect(renamedException.missingAcceptanceEnvironmentHelperPaths).toContain(renamedExceptionPath);
+    expect(renamedException.missingAcceptanceEnvironmentExceptionPaths).toContain(removedExceptionPath);
+
+    for (const configurationPath of requiredAcceptanceEnvironmentConfigurationPaths) {
+      const missingConfiguration = evaluateSources(
+        compliantAcceptanceEnvironmentSources.filter(({ path }) => path !== configurationPath),
+      );
+      expect(missingConfiguration.acceptanceEnvironmentGate).toBe(false);
+      expect(missingConfiguration.missingAcceptanceEnvironmentConfigurationPaths).toContain(configurationPath);
+    }
+
+    const noSources = evaluateAcceptanceCiConfiguration({
+      packageJson: { scripts: compliantScripts },
+      workflowText: compliantWorkflow,
+      smokeTagCount: 3,
+    });
+    expect(noSources.acceptanceEnvironmentGate).toBe(false);
+  });
+
+  it("rejects dotenv/config in any acceptance spec or Playwright config", () => {
+    for (const path of [
+      "e2e/acceptance/auth-runtime.acceptance.spec.ts",
+      requiredAcceptanceEnvironmentConfigurationPaths[0],
+    ]) {
+      const sources = compliantAcceptanceEnvironmentSources.map((source) =>
+        source.path === path ? { ...source, source: `${source.source}\nimport "dotenv/config";` } : source,
+      );
+      const result = evaluateAcceptanceCiConfiguration({
+        packageJson: { scripts: compliantScripts },
+        workflowText: compliantWorkflow,
+        smokeTagCount: 3,
+        acceptanceEnvironmentSources: sources,
+      });
+
+      expect(result.acceptanceEnvironmentGate).toBe(false);
+      expect(result.forbiddenAcceptanceDotenvImports).toEqual([path]);
+    }
   });
 
   it("requires layered job ids, smoke, and a single quality-run token", () => {
@@ -370,7 +453,8 @@ describe("M5.12 acceptance CI configuration", () => {
     const result = evaluateAcceptanceCiConfiguration({
       packageJson: { scripts: compliantScripts },
       workflowText: compliantWorkflow,
-      smokeTagCount: 3
+      smokeTagCount: 3,
+      acceptanceEnvironmentSources: compliantAcceptanceEnvironmentSources,
     });
 
     expect(result).toMatchObject({
