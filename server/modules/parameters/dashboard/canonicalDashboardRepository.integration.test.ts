@@ -17,6 +17,7 @@ import { installConfigurationSourceFixture } from "../../../testing/parameterCat
 import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
 import { ParameterDefinitionId } from "../../parameter-catalog-contract";
 import { createCanonicalValueDraft } from "../../parameter-bindings/drafts/service";
+import { loadCanonicalBindingPins } from "../../parameter-bindings/drafts/repository";
 import {
   reviewCanonicalValueChange,
   submitCanonicalValueChange
@@ -267,18 +268,20 @@ describe("canonical dashboard repository", () => {
     const initial = await aggregateHotspotGroups(db, input);
     expect(initial[0]?.modifiedParamCount).toBe(0);
 
-    const currentValue = await db.query<{ config_revision_id: string }>(
-      `select config_revision_id from parameter_catalog.project_parameter_values where id = $1`,
-      [binding.currentValueId]
-    );
-    expect(currentValue.rows).toHaveLength(1);
+    const pins = await loadCanonicalBindingPins(db, {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      bindingId: binding.id
+    });
+    expect(pins).not.toBeNull();
+    if (!pins) throw new Error("Canonical dashboard Binding pins are unavailable");
     const draft = await createCanonicalValueDraft(db, auth, {
       projectId: PROJECT_ID,
       bindingId: binding.id,
       sourceTarget: { format: "json", sourceText: '{"first":{"value":37.5},"second":{"value":42}}' },
       reason: "Count a later committed canonical value change",
-      baseRevisionId: currentValue.rows[0]!.config_revision_id,
-      baseCurrentValueId: binding.currentValueId
+      baseRevisionId: pins.configRevisionId,
+      baseCurrentValueId: pins.currentValueId
     }, {
       objectStore: storage,
       invocation: createUserInvocation(auth),
