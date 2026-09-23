@@ -20,9 +20,15 @@ import {
 import { asAuditTx } from "../../audit/auditedWrite";
 import type { TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { ObjectStore } from "../../logs/objectStore";
-import { canEditParameters, canViewParameters } from "../../parameter-kernel/policy";
+import {
+  canEditParameters,
+  canReviewParameterStage,
+  canReviewParameters,
+  canViewParameters
+} from "../../parameter-kernel/policy";
 import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
 import { getProjectById } from "../../projects/repository";
+import { hasCurrentCanonicalReviewRole } from "../../parameters/reviewWorkflowRepository";
 import { renderDtsValue } from "../../dts/valueAst";
 import type { DtsValue } from "../../dts/types";
 import { parseJsonSource } from "../../parameter-files/jsonSource";
@@ -31,9 +37,11 @@ import { serializeContract, type ContractJsonValue } from "../../parameter-catal
 import {
   deleteCanonicalValueDraft,
   listCanonicalValueDrafts,
+  listCanonicalValueDraftsForBinding,
   loadCanonicalBindingPins,
   upsertCanonicalValueDraft,
   type CanonicalValueDraftAction,
+  type CanonicalValueDraftReviewRow,
   type CanonicalValueDraftRow
 } from "./repository";
 
@@ -52,6 +60,32 @@ export type CanonicalValueDraftDto = {
   reason: string;
   updatedAt: string;
   action: CanonicalValueDraftAction;
+};
+
+/**
+ * Reviewer projection for all authors' drafts on one canonical Binding.
+ * Target values and reasons are intentionally omitted; review can inspect the
+ * exact frozen identity/source pins and candidate digests before selecting a
+ * draft through the existing request workflow.
+ */
+export type CanonicalValueDraftReviewerDto = {
+  draftId: string;
+  authorUserId: string | null;
+  bindingId: string;
+  definitionId: string;
+  definitionRevisionId: string;
+  catalogReleaseId: string;
+  baseCurrentValueId: string;
+  configRevisionId: string;
+  sourceRef: string;
+  sourcePinId: string | null;
+  sourceFormat: "dts" | "json" | null;
+  candidateId: string | null;
+  candidateBaseDigest: string | null;
+  candidateProposedDigest: string | null;
+  candidateDiffDigest: string | null;
+  stale: boolean;
+  pendingRequestId: string | null;
 };
 
 export type CreateCanonicalValueDraftInput = {
@@ -125,6 +159,28 @@ function toDto(row: CanonicalValueDraftRow): CanonicalValueDraftDto {
     reason: row.reason,
     updatedAt: row.updated_at,
     action: row.action
+  };
+}
+
+function toReviewerDto(row: CanonicalValueDraftReviewRow): CanonicalValueDraftReviewerDto {
+  return {
+    draftId: row.id,
+    authorUserId: row.user_id,
+    bindingId: row.binding_id,
+    definitionId: row.definition_id,
+    definitionRevisionId: row.definition_revision_id,
+    catalogReleaseId: row.catalog_release_id,
+    baseCurrentValueId: row.base_current_value_id,
+    configRevisionId: row.config_revision_id,
+    sourceRef: row.source_ref,
+    sourcePinId: row.source_pin_id,
+    sourceFormat: row.source_format,
+    candidateId: row.candidate_id,
+    candidateBaseDigest: row.candidate_base_digest,
+    candidateProposedDigest: row.candidate_proposed_digest,
+    candidateDiffDigest: row.candidate_diff_digest,
+    stale: row.stale,
+    pendingRequestId: row.pending_request_id
   };
 }
 
@@ -244,6 +300,37 @@ export async function listCanonicalValueDraftsForUser(
     userId: auth.user.id
   });
   return rows.map(toDto);
+}
+
+/**
+ * Read every canonical draft for one Binding as the current project reviewer.
+ * The role is checked both from the request context and current database state;
+ * the latter closes the gap after a committed role revocation.
+ */
+export async function listCanonicalValueDraftsForReviewer(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; bindingId: string }
+): Promise<CanonicalValueDraftReviewerDto[]> {
+  await requireOwnedProject(db, auth, input.projectId);
+  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, "software_review")) {
+    throw new ApiError("FORBIDDEN", "The software review role is required to inspect parameter drafts.");
+  }
+  const rows = await db.transaction(async (tx) => {
+    if (!await hasCurrentCanonicalReviewRole(tx, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      userId: auth.user.id
+    })) {
+      throw new ApiError("FORBIDDEN", "The software review role is required to inspect parameter drafts.");
+    }
+    return listCanonicalValueDraftsForBinding(tx, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      bindingId: input.bindingId
+    });
+  });
+  return rows.map(toReviewerDto);
 }
 
 export async function removeCanonicalValueDraft(
