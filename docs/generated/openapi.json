@@ -18344,10 +18344,31 @@
                 "id": {
                   "type": "string"
                 },
+                "changedAt": {
+                  "type": "string"
+                },
+                "fromRawValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "toRawValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "recordedAt": {
+                  "type": "string"
+                },
                 "bindingId": {
                   "type": "string"
                 },
                 "definitionId": {
+                  "type": "string"
+                },
+                "definitionRevisionId": {
                   "type": "string"
                 },
                 "effectiveRevisionId": {
@@ -18356,55 +18377,116 @@
                 "currentValueId": {
                   "type": "string"
                 },
-                "recordedAt": {
+                "sourceOccurrenceId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceIdentity": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "configSetId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileVersionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLocator": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": {}
+                },
+                "sourceAvailable": {
+                  "type": "boolean"
+                },
+                "valueState": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "present",
+                    "deleted"
+                  ]
+                },
+                "oldDefinitionRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "newDefinitionRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "oldCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "newCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "successAuditRef": {
+                  "type": "string"
+                },
+                "catalogReleaseId": {
                   "type": "string"
                 }
               },
               "required": [
                 "id",
+                "changedAt",
+                "recordedAt",
                 "bindingId",
                 "definitionId",
-                "effectiveRevisionId",
-                "currentValueId",
-                "recordedAt"
+                "effectiveRevisionId"
               ],
               "additionalProperties": false
             }
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "catalogReleaseId": {
-            "type": "string"
-          },
-          "totalCount": {
-            "type": "number"
-          },
-          "hasMore": {
-            "type": "boolean"
-          },
-          "placementModuleName": {
-            "type": "string"
-          },
-          "emptyReason": {
-            "type": "string",
-            "enum": [
-              "no-registrations",
-              "no-definitions",
-              "no-review-work",
-              "no-filter-match"
-            ]
           }
         },
         "required": [
-          "items",
-          "nextCursor",
-          "catalogReleaseId",
-          "totalCount",
-          "hasMore"
+          "items"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingHistoryListResponse"
@@ -18420,10 +18502,31 @@
                 "projectId": {
                   "type": "string"
                 },
+                "projectName": {
+                  "type": "string"
+                },
+                "rawValue": {
+                  "type": "string"
+                },
+                "moduleName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "driverModule": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "bindingId": {
                   "type": "string"
                 },
                 "definitionId": {
+                  "type": "string"
+                },
+                "definitionRevisionId": {
                   "type": "string"
                 },
                 "effectiveRevisionId": {
@@ -18431,52 +18534,74 @@
                 },
                 "currentValueId": {
                   "type": "string"
+                },
+                "sourceOccurrenceId": {
+                  "type": "string"
+                },
+                "sourceIdentity": {
+                  "type": "string"
+                },
+                "sourceRef": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileVersionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceLocator": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": {}
+                },
+                "sourceAvailable": {
+                  "type": "boolean"
+                },
+                "valueState": {
+                  "type": "string",
+                  "enum": [
+                    "present",
+                    "deleted"
+                  ]
                 }
               },
               "required": [
                 "projectId",
+                "projectName",
+                "rawValue",
                 "bindingId",
                 "definitionId",
+                "definitionRevisionId",
                 "effectiveRevisionId",
                 "currentValueId"
               ],
               "additionalProperties": false
             }
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "catalogReleaseId": {
-            "type": "string"
-          },
-          "totalCount": {
-            "type": "number"
-          },
-          "hasMore": {
-            "type": "boolean"
-          },
-          "placementModuleName": {
-            "type": "string"
-          },
-          "emptyReason": {
-            "type": "string",
-            "enum": [
-              "no-registrations",
-              "no-definitions",
-              "no-review-work",
-              "no-filter-match"
-            ]
           }
         },
         "required": [
-          "items",
-          "nextCursor",
-          "catalogReleaseId",
-          "totalCount",
-          "hasMore"
+          "items"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingCompareListResponse"

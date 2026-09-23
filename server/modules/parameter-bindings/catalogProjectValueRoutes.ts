@@ -23,7 +23,7 @@ import { readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff"
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
-import { createBindingDraft, listProjectBindings } from "../parameter-topology/service";
+import { createBindingDraft, listProjectBindings, requireCanViewProject } from "../parameter-topology/service";
 import {
   createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
@@ -305,6 +305,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({ limit: z.coerce.number().int().positive().max(200).optional() }),
         flattenQuery(request.query)
       );
+      requireCanViewProject(auth, params.projectId);
       const project = await getProjectById(db, {
         organizationId: auth.organization.id,
         projectId: params.projectId
@@ -354,6 +355,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({ projectId: z.string().min(1), bindingId: z.string().min(1) }),
         request.params
       );
+      requireCanViewProject(auth, params.projectId);
       const project = await getProjectById(db, {
         organizationId: auth.organization.id,
         projectId: params.projectId
