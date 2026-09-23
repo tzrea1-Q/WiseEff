@@ -10,6 +10,7 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/dat
 import { createRouter } from "../../../shared/http/router";
 import { createHttpServer } from "../../../shared/http/server";
 import { requestJson } from "../../../test/testClient";
+import { catalogBatchValueChangeRequestResponseSchema, catalogValueChangeReviewResponseSchema, catalogValueChangeSourceDiffResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { createLocalObjectStore } from "../../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import { createUserInvocation } from "../../auth/trustedInvocation";
@@ -351,12 +352,14 @@ describe("#906 C frozen multi-target request", () => {
       route(), `${base}/batch`
     );
     expect(frozen.status).toBe(200);
+    catalogBatchValueChangeRequestResponseSchema.parse(frozen.body);
     expect(frozen.body.item).toMatchObject({ id: request.id, batchProofDigest: proof.batchProofDigest });
     expect(frozen.body.item.targets.map((target) => target.ordinal)).toEqual([0, 1]);
     const diff = await requestJson<{ item: { batchProofDigest: string; targets: Array<{ bindingId: string; ordinal: number }> } }>(
       route(), `${base}/source-diff`
     );
     expect(diff.status).toBe(200);
+    catalogValueChangeSourceDiffResponseSchema.parse(diff.body);
     expect(diff.body.item.batchProofDigest).toBe(proof.batchProofDigest);
     expect(diff.body.item.targets.map((target) => target.bindingId)).toEqual(
       frozen.body.item.targets.map((target) => target.bindingId)
@@ -392,6 +395,7 @@ describe("#906 C frozen multi-target request", () => {
     );
     const applied = await approve();
     expect(applied.status).toBe(200);
+    catalogValueChangeReviewResponseSchema.parse(applied.body);
     expect(applied.body.item).toMatchObject({ id: request.id, status: "approved", batchProofDigest: proof.batchProofDigest });
     expect(applied.body.item.targets.map((target) => target.ordinal)).toEqual([0, 1]);
     expect(applied.body.item.targets.every((target) => Boolean(target.appliedValueId))).toBe(true);
