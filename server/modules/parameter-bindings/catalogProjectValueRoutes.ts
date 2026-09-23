@@ -855,8 +855,6 @@ export function registerCatalogProjectValueConsumerRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1),requestId: z.string().min(1) }),request.params);
-    if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
-    const objectStore = options.objectStore;
     const kind = (await db.query<{ request_kind: string }>(`
       select request_kind from public.project_parameter_value_change_requests
        where id=$1 and organization_id=$2 and project_id=$3`,
@@ -864,7 +862,8 @@ export function registerCatalogProjectValueConsumerRoutes(
     if (kind === "batch") {
       const frozen = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
       if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
-      const item = await readCanonicalBatchSourceDiff(db, objectStore, auth, params);
+      if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+      const item = await readCanonicalBatchSourceDiff(db, options.objectStore, auth, params);
       if (item.requestId !== frozen.id || item.candidateId !== frozen.candidateId
         || item.batchProofDigest !== frozen.batchProofDigest
         || item.targets.length !== frozen.targets.length
@@ -885,7 +884,8 @@ export function registerCatalogProjectValueConsumerRoutes(
       if (!visible.some((request) => request.id === params.requestId)) {
         throw new ApiError("NOT_FOUND", "Source change request was not found.");
       }
-      return readCanonicalSourceDiff(tx, objectStore, auth, params);
+      if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+      return readCanonicalSourceDiff(tx, options.objectStore, auth, params);
     });
     return { status: 200,body: { item } };
   });
