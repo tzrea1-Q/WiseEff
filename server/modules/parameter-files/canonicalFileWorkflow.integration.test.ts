@@ -865,6 +865,13 @@ describe("#906 canonical JSON candidate workflow", () => {
     expect([...new Set(before.map((row) => row.file_version_id))]).toEqual([before[0]!.file_version_id]);
     const revisionId = before[0]!.config_revision_id;
     const currentVersionId = before[0]!.file_version_id;
+    await expect(db.query(
+      "update project_parameter_file_versions set checksum='forged' where id=$1",
+      [currentVersionId]
+    )).rejects.toMatchObject({ code: "55000" });
+    await expect(db.query(
+      "delete from project_parameter_file_versions where id=$1", [currentVersionId]
+    )).rejects.toMatchObject({ code: "55000" });
     const manifest = before.map((row) => ({ bindingId: row.id, valueId: row.current_value_id, sourcePinId: row.pin_id }));
     const historyCount = (await db.query<{ count: number }>(`
       select count(*)::int as count from parameter_catalog.binding_history_events
