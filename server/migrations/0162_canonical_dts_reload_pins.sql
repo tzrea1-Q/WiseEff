@@ -106,4 +106,3 @@ alter table public.dts_reload_run_targets
 create unique index if not exists dts_reload_run_targets_canonical_identity_uk
   on public.dts_reload_run_targets (reload_run_id, canonical_binding_id)
   where canonical_binding_id is not null;
-
