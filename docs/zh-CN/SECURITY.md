@@ -131,6 +131,10 @@ Live Xiaoze LLM 只从 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_
 
 ## 设备安全
 
+Canonical 参数调试（#898）在已认证项目范围内解析真实 Binding、DefinitionRevision、ProjectValue 与来源 pin。非空旧 Binding ID 不足以证明 canonical 身份，仍返回明确阻断。DTS 重载只接受 DTS 来源，在运行历史保留操作时 pin，并在部署、晋升草稿前再次核对。晋升复用既有 canonical 草稿 owner，不提交请求、不改变正式值；提交与产品审核仍是独立操作。无关联设备节点保留独立读写能力。已关联节点的操作和回滚快照保留精确 canonical 关联，恢复设备快照不更新正式参数值。设备租约、敏感写批准、可信调用与审计继续生效。受控适配器测试只证明本地集成行为，不构成真机或部署证据。
+
+Canonical 调试历史按操作记录中的项目权限过滤，不依赖 Binding 当前值。公开调试响应只暴露 canonical 身份与 pin 标识，内部来源证明保留在存储中。其他项目的角色不能将本项目的 guest 身份转成 canonical 访问权限。
+
 设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。独立高风险写入仍收集 `confirm-high-risk-write`；`approvalId` 必须解析为已批准的 `agent_approvals` 行，且 tool call 为 `action.writeDebugNode`、payload 匹配本次写入（session、node/parameter、value）。回滚同样：独立路径用 `confirm-rollback`，Agent 路径用已批准且匹配该 snapshot 的 `action.rollbackDebugSnapshot` 审批。任意字符串不能代替确认令牌。
 
 Simulator-backed path 只用于本地验证。ADB/HDC 都必须经过同一个后端 gateway、权限、lease、snapshot、rollback 和 audit 边界。真实 pilot readiness 需要 HDC/device-lab 目标证据；本机 ADB lab 证据只能作为补充：不能有前端直接设备写入，不能无 lease 和 snapshot 写入，不能无确认 rollback，也不能绕过审计。

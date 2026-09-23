@@ -49,6 +49,7 @@ import { DtsNodeEnablementDialog } from "./DtsNodeEnablementDialog";
 import type { PendingEnablementDraft } from "./draftTrayTypes";
 import type { TrayHydrationDraft } from "@/application/parameters/canonicalDraftTray";
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
+import { buildDtsReloadHandoffPath } from "@/domain/dtsReload/handoff";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { loadCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
@@ -1395,6 +1396,7 @@ export function ApiProjectTopologyWorkspace({
             canEdit={canEditSemantic}
             onSelectBinding={handleSelectBinding}
             onEditBinding={handleEditBinding}
+            onStartDtsReload={(bindingId) => onNavigate(buildDtsReloadHandoffPath({ projectId, bindingIds: [bindingId] }))}
             onCreateDraft={handleValidateEdit}
             onEditNodeEnablement={canEditSemantic ? handleOpenNodeEnablement : undefined}
             loadBindingHistory={loadBindingHistory}

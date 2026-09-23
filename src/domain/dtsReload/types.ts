@@ -45,6 +45,28 @@ export type DtsReloadCandidate = {
   sensitiveMatch?: DtsReloadSensitiveMatch | null;
   /** Most recent reload attempt for this binding, when known. */
   lastReload?: DtsReloadLastReload | null;
+  protectedReferencePin?: {
+    kind: "canonical-pin";
+    bindingId: string;
+    configRevisionId?: string | null;
+    definitionId?: string;
+    definitionRevisionId?: string;
+    currentValueId?: string;
+    catalogReleaseId?: string;
+    sourcePinId?: string;
+    sourceOccurrenceId?: string;
+    sourceFormat?: "dts" | "json";
+    sourceLocator?: unknown;
+  };
+  writebackSourcePin?: {
+    kind: "source-writeback";
+    sourceRef: string;
+    configRevisionId?: string | null;
+    sourcePinId?: string;
+    sourceOccurrenceId?: string;
+    format?: "dts" | "json";
+    locator?: unknown;
+  };
 };
 
 export type DtsReloadLastReload = {
@@ -145,6 +167,17 @@ export type DtsReloadRun = {
     propertyKey: string;
     baselineValue: string | null;
     debugValue: string;
+    canonicalBindingId?: string | null;
+    canonicalDefinitionId?: string | null;
+    canonicalDefinitionRevisionId?: string | null;
+    canonicalCurrentValueId?: string | null;
+    canonicalCatalogReleaseId?: string | null;
+    canonicalSourcePinId?: string | null;
+    canonicalSourceOccurrenceId?: string | null;
+    canonicalConfigRevisionId?: string | null;
+    canonicalSourceRef?: string | null;
+    canonicalSourceFormat?: "dts" | "json" | null;
+    canonicalSourceLocator?: unknown;
   }>;
   steps: Array<{
     step: string;
