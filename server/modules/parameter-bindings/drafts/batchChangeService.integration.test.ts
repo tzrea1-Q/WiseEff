@@ -7,18 +7,22 @@ import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { installConfigurationSourceFixture } from "../../../testing/parameterCatalog/configurationSource";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { createRouter } from "../../../shared/http/router";
+import { createHttpServer } from "../../../shared/http/server";
+import { requestJson } from "../../../test/testClient";
 import { createLocalObjectStore } from "../../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createConfigSet, addConfigSetFile } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { createCandidate } from "../../parameter-files/candidateService";
-import { prepareCanonicalCandidateBatchInTransaction, previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
 import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
 import { loadPublishedCatalog } from "../catalogProjectValueSync";
+import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
 import { createCanonicalValueDraft, listCanonicalValueDraftsForReviewer } from "./service";
 import { reviewCanonicalValueChange } from "./changeService";
-import { getCanonicalBatchValueChangeForReviewer, submitCanonicalBatchValueChange } from "./batchChangeService";
+import { approveCanonicalBatchValueChange, getCanonicalBatchValueChangeForReviewer, submitCanonicalBatchValueChange } from "./batchChangeService";
 
 const ORG = "org-906-c-batch";
 const PROJECT = "project-906-c-batch";
@@ -95,7 +99,7 @@ describe("#906 C frozen multi-target request", () => {
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
 
-  it("fails closed without D's persisted snapshot, then freezes a test-prefrozen request over two real Bindings", async () => {
+  it("fails closed before a persisted snapshot, then freezes one request over two real Bindings", async () => {
     const pin = (await db.query<{ config_revision_id: string }>(`
       select config_revision_id from parameter_catalog.project_value_source_pins
        where binding_id=$1 and project_value_id=$2`,
@@ -116,25 +120,20 @@ describe("#906 C frozen multi-target request", () => {
       projectId: PROJECT, candidateId: candidate.id
     });
     expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-writer-unavailable" });
+    let expectedProofToken = preview.proofToken!;
     const submit = () => submitCanonicalBatchValueChange(db, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id,
-      expectedProofToken: preview.proofToken!, reason: "one human review for both targets",
+      expectedProofToken, reason: "one human review for both targets",
       assignedToUserId: REVIEWER, invocation: createUserInvocation(admin),
       requestId: "c906-submit", refusalSink: createTrustedRefusalAuditSink(db)
     });
     await expect(submit()).rejects.toMatchObject({ code: "CONFLICT" });
     expect((await db.query(`select count(*)::int as count from public.project_parameter_value_change_requests
       where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0]!.count).toBe(0);
-    // Synthetic boundary fixture only: D currently exposes a read-only proof,
-    // not the candidate snapshot writer required before a real batch submit.
-    const proof = await db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, admin, {
+    const proof = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
     }));
-    await db.query(`update public.project_parameter_file_candidates
-      set base_digest=$2, proposed_digest=$3, diff_digest=$4,
-          frozen_member_manifest=$5::jsonb, frozen_binding_manifest=$6::jsonb
-      where id=$1`, [candidate.id, proof.baseDigest, proof.proposedDigest, proof.batchProofDigest,
-      JSON.stringify(proof.members), JSON.stringify(proof.cohort)]);
+    expectedProofToken = proof.proofToken;
     const frozen = await submit();
     expect(frozen).toMatchObject({
       status: "pending", candidateId: candidate.id,
@@ -206,5 +205,189 @@ describe("#906 C frozen multi-target request", () => {
       );
       expect(removedRequest.rows[0]?.removed).toBe(1);
     });
+  }, 120_000);
+
+  it("approves a real frozen two-target request once and replays the same proof", async () => {
+    const candidate = await createCandidate(db, storage, admin, {
+      projectId: PROJECT, fileId, fileName: "settings.json",
+      bytes: Buffer.from('{ "settings": { "limit": 75 }, "other": { "limit": 85 } }\n')
+    });
+    const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: PROJECT, candidateId: candidate.id });
+    const proof = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
+    }));
+    const request = await submitCanonicalBatchValueChange(db, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, expectedProofToken: proof.proofToken,
+      reason: "Approve both current source targets together", assignedToUserId: REVIEWER,
+      invocation: createUserInvocation(admin), requestId: "c906-real-batch-submit",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    expect(request.targets).toHaveLength(2);
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Published Catalog fixture is unavailable");
+    const approve = (auth = reviewer, batchProofDigest = proof.batchProofDigest) => db.transaction((tx) =>
+      approveCanonicalBatchValueChange(tx, storage, auth, catalog, {
+        projectId: PROJECT, requestId: request.id, batchProofDigest,
+        invocation: createUserInvocation(auth), traceId: "c906-real-batch-review",
+        refusalSink: createTrustedRefusalAuditSink(db)
+      }));
+    await expect(approve(reviewer, "0".repeat(64))).rejects.toMatchObject({
+      code: "CONFLICT", details: { reason: "canonical-batch-proof-mismatch" }
+    });
+    await expect(approve(editor)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const foreign = makeTestAuthContext({
+      userId: REVIEWER, organizationId: "org-906-foreign",
+      permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+      roles: [{ roleId: "software-committer", projectId: PROJECT }]
+    });
+    await expect(approve(foreign)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id).toBe(versionId);
+
+    const applied = await approve();
+    expect(applied).toMatchObject({
+      id: request.id, status: "approved", batchProofDigest: proof.batchProofDigest,
+      targets: [
+        expect.objectContaining({ ordinal: 0, appliedValueId: expect.any(String), appliedHistoryEventId: expect.any(String) }),
+        expect.objectContaining({ ordinal: 1, appliedValueId: expect.any(String), appliedHistoryEventId: expect.any(String) })
+      ]
+    });
+    const activated = (await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id;
+    expect(activated).not.toBe(versionId);
+    expect(await approve()).toEqual(applied);
+    expect((await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id).toBe(activated);
+    for (const target of applied.targets) {
+      expect((await db.query<{ current_value_id: string }>(
+        "select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [target.bindingId]
+      )).rows[0]!.current_value_id).toBe(target.appliedValueId);
+    }
+    const oldDrafts = await listCanonicalValueDraftsForReviewer(db, reviewer, {
+      projectId: PROJECT, bindingId: bindings[0]!.id
+    });
+    expect(oldDrafts).toEqual(expect.arrayContaining([expect.objectContaining({ stale: true })]));
+  }, 120_000);
+
+  it("rejects an older frozen source after another complete batch advances the file", async () => {
+    const stage = async (bytes: string, traceId: string) => {
+      const candidate = await createCandidate(db, storage, admin, {
+        projectId: PROJECT, fileId, fileName: "settings.json", bytes: Buffer.from(bytes)
+      });
+      const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: PROJECT, candidateId: candidate.id });
+      const proof = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+        projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
+      }));
+      const request = await submitCanonicalBatchValueChange(db, storage, admin, {
+        projectId: PROJECT, candidateId: candidate.id, expectedProofToken: proof.proofToken,
+        reason: "Review an exact two-target source candidate", assignedToUserId: REVIEWER,
+        invocation: createUserInvocation(admin), requestId: traceId,
+        refusalSink: createTrustedRefusalAuditSink(db)
+      });
+      return { request, proof };
+    };
+    const older = await stage('{ "settings": { "limit": 90 }, "other": { "limit": 95 } }\n', "c906-stale-older");
+    const newer = await stage('{ "settings": { "limit": 100 }, "other": { "limit": 105 } }\n', "c906-stale-newer");
+    expect(older.proof.batchProofDigest).not.toBe(newer.proof.batchProofDigest);
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Published Catalog fixture is unavailable");
+    const approve = (item: typeof older, traceId: string) => db.transaction((tx) =>
+      approveCanonicalBatchValueChange(tx, storage, reviewer, catalog, {
+        projectId: PROJECT, requestId: item.request.id,
+        batchProofDigest: item.proof.batchProofDigest,
+        invocation: createUserInvocation(reviewer), traceId,
+        refusalSink: createTrustedRefusalAuditSink(db)
+      }));
+    expect((await approve(newer, "c906-stale-newer-approve")).status).toBe("approved");
+    const version = (await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id;
+    const tips = (await db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+       where organization_id=$1 and project_id=$2 order by id`, [ORG, PROJECT])).rows;
+    await expect(approve(older, "c906-stale-older-approve")).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(approve(older, "c906-stale-older-retry")).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await db.query<{ status: string }>(
+      "select status from project_parameter_value_change_requests where id=$1", [older.request.id]
+    )).rows[0]!.status).toBe("pending");
+    expect((await db.query<{ count: number }>(`
+      select count(*)::int as count from project_parameter_value_change_targets
+       where request_id=$1 and applied_value_id is not null`, [older.request.id])).rows[0]!.count).toBe(0);
+    expect((await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id).toBe(version);
+    expect((await db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+       where organization_id=$1 and project_id=$2 order by id`, [ORG, PROJECT])).rows).toEqual(tips);
+  }, 120_000);
+
+  it("serves the frozen proof and approves both targets through the protected HTTP review route", async () => {
+    const candidate = await createCandidate(db, storage, admin, {
+      projectId: PROJECT, fileId, fileName: "settings.json",
+      bytes: Buffer.from('{ "settings": { "limit": 110 }, "other": { "limit": 115 } }\n')
+    });
+    const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: PROJECT, candidateId: candidate.id });
+    const proof = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
+    }));
+    const request = await submitCanonicalBatchValueChange(db, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, expectedProofToken: proof.proofToken,
+      reason: "One protected review of both source targets", assignedToUserId: REVIEWER,
+      invocation: createUserInvocation(admin), requestId: "c906-http-batch-submit",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    const route = (auth = reviewer) => {
+      const router = createRouter();
+      registerCatalogProjectValueConsumerRoutes(router, {
+        db, objectStore: storage, getCurrentAuthContext: () => auth
+      });
+      return createHttpServer(router);
+    };
+    const base = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${request.id}`;
+    const frozen = await requestJson<{ item: { id: string; batchProofDigest: string; targets: Array<{ bindingId: string; ordinal: number }> } }>(
+      route(), `${base}/batch`
+    );
+    expect(frozen.status).toBe(200);
+    expect(frozen.body.item).toMatchObject({ id: request.id, batchProofDigest: proof.batchProofDigest });
+    expect(frozen.body.item.targets.map((target) => target.ordinal)).toEqual([0, 1]);
+    const diff = await requestJson<{ item: { batchProofDigest: string; targets: Array<{ bindingId: string; ordinal: number }> } }>(
+      route(), `${base}/source-diff`
+    );
+    expect(diff.status).toBe(200);
+    expect(diff.body.item.batchProofDigest).toBe(proof.batchProofDigest);
+    expect(diff.body.item.targets.map((target) => target.bindingId)).toEqual(
+      frozen.body.item.targets.map((target) => target.bindingId)
+    );
+    expect((await requestJson(route(editor), `${base}/batch`)).status).toBe(403);
+    const foreign = makeTestAuthContext({
+      userId: REVIEWER, organizationId: "org-906-foreign",
+      permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+      roles: [{ roleId: "software-committer", projectId: PROJECT }]
+    });
+    expect((await requestJson(route(foreign), `${base}/batch`)).status).toBe(404);
+    const reviewBody = (batchProofDigest?: string, decision = "approve") => ({
+      method: "POST", body: JSON.stringify({ decision, ...(batchProofDigest ? { batchProofDigest } : {}) })
+    });
+    expect((await requestJson(route(editor), `${base}/review`, reviewBody(proof.batchProofDigest))).status).toBe(403);
+    expect((await requestJson(route(foreign), `${base}/review`, reviewBody(proof.batchProofDigest))).status).toBe(404);
+    expect((await requestJson(route(), `${base}/review`, reviewBody())).status).toBe(400);
+    expect((await requestJson(route(), `${base}/review`, reviewBody(proof.batchProofDigest, "reject"))).status).toBe(409);
+    const bad = await requestJson<{ error: { code: string; details: { reason: string } } }>(
+      route(), `${base}/review`, reviewBody("0".repeat(64))
+    );
+    expect(bad.status).toBe(409);
+    expect(bad.body.error.details.reason).toBe("canonical-batch-proof-mismatch");
+    const approve = () => requestJson<{ item: { id: string; status: string; batchProofDigest: string; targets: Array<{ ordinal: number; appliedValueId: string }> } }>(
+      route(), `${base}/review`, reviewBody(proof.batchProofDigest)
+    );
+    const applied = await approve();
+    expect(applied.status).toBe(200);
+    expect(applied.body.item).toMatchObject({ id: request.id, status: "approved", batchProofDigest: proof.batchProofDigest });
+    expect(applied.body.item.targets.map((target) => target.ordinal)).toEqual([0, 1]);
+    expect(applied.body.item.targets.every((target) => Boolean(target.appliedValueId))).toBe(true);
+    expect(await approve()).toEqual(applied);
   }, 120_000);
 });

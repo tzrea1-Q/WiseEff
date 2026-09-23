@@ -18,7 +18,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { uploadProjectParameterFile } from "../parameter-files/service";
-import { readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff";
+import { readCanonicalBatchSourceDiff, readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff";
 import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
@@ -35,6 +35,8 @@ import {
 import { getProjectById } from "../projects/repository";
 import {
   createCanonicalValueDraft,
+  approveCanonicalBatchValueChange,
+  getCanonicalBatchValueChangeForReviewer,
   listCanonicalValueChangesForAuth,
   listCanonicalValueDraftsForUser,
   removeCanonicalValueDraft,
@@ -809,11 +811,42 @@ export function registerCatalogProjectValueConsumerRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/batch", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
+    const item = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
+    if (!item) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+    return { status: 200, body: { item } };
+  });
+
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/source-diff", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1),requestId: z.string().min(1) }),request.params);
     if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+    const kind = (await db.query<{ request_kind: string }>(`
+      select request_kind from public.project_parameter_value_change_requests
+       where id=$1 and organization_id=$2 and project_id=$3`,
+      [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+    if (kind === "batch") {
+      const frozen = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
+      if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+      const item = await readCanonicalBatchSourceDiff(db, options.objectStore, auth, params);
+      if (item.requestId !== frozen.id || item.candidateId !== frozen.candidateId
+        || item.batchProofDigest !== frozen.batchProofDigest
+        || item.targets.length !== frozen.targets.length
+        || item.targets.some((target, ordinal) => {
+          const expected = frozen.targets[ordinal];
+          return !expected || target.ordinal !== ordinal || target.bindingId !== expected.bindingId
+            || target.sourcePinId !== expected.sourcePinId || target.action !== expected.action;
+        })) {
+        throw new ApiError("CONFLICT", "Batch source diff disagrees with the frozen reviewer targets.", {
+          reason: "canonical-batch-proof-mismatch"
+        });
+      }
+      return { status: 200, body: { item } };
+    }
     const item = await readCanonicalSourceDiff(db,options.objectStore,auth,params);
     return { status: 200,body: { item } };
   });
@@ -835,7 +868,8 @@ export function registerCatalogProjectValueConsumerRoutes(
       const body = parseWithSchema(
         z.object({
           decision: z.enum(["approve", "reject"]),
-          note: z.string().nullable().optional()
+          note: z.string().nullable().optional(),
+          batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
         }),
         request.body ?? {}
       );
@@ -843,6 +877,40 @@ export function registerCatalogProjectValueConsumerRoutes(
       const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
       if (!refusalAuditSink) {
         throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical value review.");
+      }
+      const requestKind = (await db.query<{ request_kind: string }>(`
+        select request_kind from public.project_parameter_value_change_requests
+         where id=$1 and organization_id=$2 and project_id=$3`,
+        [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+      if (!requestKind) throw new ApiError("NOT_FOUND", "Canonical value request was not found.");
+      if (requestKind === "batch") {
+        const visibleBatch = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
+        if (!visibleBatch) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+        if (body.decision !== "approve") {
+          throw new ApiError("CONFLICT", "Batch rejection is not available through this reviewer entry.", {
+            reason: "canonical-batch-reject-unavailable"
+          });
+        }
+        if (!body.batchProofDigest) {
+          throw new ApiError("VALIDATION_FAILED", "The frozen batch proof digest is required.", {
+            reason: "canonical-batch-proof-required"
+          });
+        }
+        if (!pool || !options.objectStore) {
+          throw new ApiError("INTERNAL_ERROR", "Canonical batch approval requires the root database and object storage.");
+        }
+        const batchSnapshot = await loadPublishedCatalog(pool);
+        if (!batchSnapshot) throw new ApiError("CONFLICT", "The published catalog snapshot is unavailable.");
+        const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => ({
+          result: await approveCanonicalBatchValueChange(tx, options.objectStore!, auth, batchSnapshot, {
+            projectId: params.projectId, requestId: params.requestId,
+            batchProofDigest: body.batchProofDigest!, note: body.note ?? null,
+            invocation: createUserInvocation(auth), traceId: request.requestId,
+            refusalSink: refusalAuditSink
+          }),
+          audit: null
+        }));
+        return { status: 200, body: { item } };
       }
       let snapshot: Awaited<ReturnType<typeof loadPublishedCatalog>> = null;
       if (body.decision === "approve") {
