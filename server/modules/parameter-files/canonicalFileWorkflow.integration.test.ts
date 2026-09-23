@@ -16,7 +16,7 @@ import { uploadProjectParameterFile } from "./service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
-import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly } from "../parameter-bindings/values";
 import { createCandidate } from "./candidateService";
 import {
   getCanonicalSourceWorkflow,
@@ -196,9 +196,113 @@ describe("#906 canonical JSON candidate workflow", () => {
       fileName: "settings.json",
       bytes: Buffer.from('{ "settings": { "limit": 50, "keep": true }, "other": { "limit": 60 } }\n')
     });
+    const beforeMultiPreview = {
+      cohort: await loadSourceBindingCohortReadOnly(db, {
+        organizationId: ORG,
+        projectId: JSON_PROJECT,
+        configSetId
+      }),
+      file: (await db.query<{ current_version_id: string | null }>(
+        "select current_version_id from project_parameter_files where id=$1",
+        [fileId]
+      )).rows[0],
+      versions: (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_file_versions where file_id=$1",
+        [fileId]
+      )).rows[0]!.count,
+      drafts: (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_value_drafts where organization_id=$1 and project_id=$2",
+        [ORG, JSON_PROJECT]
+      )).rows[0]!.count,
+      requests: (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_value_change_requests where organization_id=$1 and project_id=$2",
+        [ORG, JSON_PROJECT]
+      )).rows[0]!.count
+    };
     const multiPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: JSON_PROJECT, candidateId: changedBoth.id });
+    const repeatedMultiPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: JSON_PROJECT, candidateId: changedBoth.id });
 
-    expect(multiPreview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "candidate-changes-multiple-bindings" });
+    expect(repeatedMultiPreview).toEqual(multiPreview);
+    expect(multiPreview).toMatchObject({
+      kind: "canonical",
+      canSubmit: false,
+      reason: "canonical-batch-writer-unavailable",
+      candidateId: changedBoth.id,
+      fileId,
+      format: "json",
+      baseVersionId: versionId,
+      configSetId,
+      cohortProofToken: expect.any(String),
+      proofToken: expect.any(String),
+      bindings: [
+        {
+          bindingId: expect.any(String),
+          definitionId: DEFINITION,
+          baseCurrentValueId: expect.any(String),
+          configRevisionId: expect.any(String),
+          sourcePinId: expect.any(String),
+          locator: expect.any(String),
+          baseDigest: expect.any(String),
+          proposedDigest: expect.any(String),
+          action: "set"
+        },
+        {
+          bindingId: expect.any(String),
+          definitionId: DEFINITION,
+          baseCurrentValueId: expect.any(String),
+          configRevisionId: expect.any(String),
+          sourcePinId: expect.any(String),
+          locator: expect.any(String),
+          baseDigest: expect.any(String),
+          proposedDigest: expect.any(String),
+          action: "set"
+        }
+      ]
+    });
+    expect(multiPreview.bindings).toHaveLength(2);
+    expect(multiPreview.bindings!.map((binding) => binding.bindingId)).toEqual(
+      [...multiPreview.bindings!.map((binding) => binding.bindingId)].sort()
+    );
+    expect(multiPreview.bindings![0]!.baseDigest).toBe(multiPreview.bindings![1]!.baseDigest);
+    expect(multiPreview.bindings![0]!.proposedDigest).toBe(multiPreview.bindings![1]!.proposedDigest);
+    expect([...multiPreview.bindings!.map((binding) => binding.locator)].sort()).toEqual([
+      '{"kind":"json-pointer","pointer":"/settings/limit"}',
+      '{"kind":"json-pointer","pointer":"/other/limit"}'
+    ].sort());
+    await expect(submitCanonicalCandidate(db, storage, admin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedCurrentVersionId: versionId,
+      expectedProofToken: multiPreview.proofToken!,
+      reason: "batch writer remains unavailable",
+      requestId: "906-json-multi-submit-refused",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-writer-unavailable" } });
+
+    const afterMultiPreview = {
+      cohort: await loadSourceBindingCohortReadOnly(db, {
+        organizationId: ORG,
+        projectId: JSON_PROJECT,
+        configSetId
+      }),
+      file: (await db.query<{ current_version_id: string | null }>(
+        "select current_version_id from project_parameter_files where id=$1",
+        [fileId]
+      )).rows[0],
+      versions: (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_file_versions where file_id=$1",
+        [fileId]
+      )).rows[0]!.count,
+      drafts: (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_value_drafts where organization_id=$1 and project_id=$2",
+        [ORG, JSON_PROJECT]
+      )).rows[0]!.count,
+      requests: (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_value_change_requests where organization_id=$1 and project_id=$2",
+        [ORG, JSON_PROJECT]
+      )).rows[0]!.count
+    };
+    expect(afterMultiPreview).toEqual(beforeMultiPreview);
 
     const changedNonTarget = await createCandidate(db, storage, admin, {
       projectId: JSON_PROJECT,
@@ -207,7 +311,8 @@ describe("#906 canonical JSON candidate workflow", () => {
       bytes: Buffer.from('{ "settings": { "limit": 36.5, "keep": false }, "other": { "limit": 48 } }\n')
     });
     const nonTargetPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: JSON_PROJECT, candidateId: changedNonTarget.id });
-    expect(nonTargetPreview).toMatchObject({ kind: "canonical", canSubmit: false });
+    expect(nonTargetPreview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "candidate-changed-unbound-or-non-target-bytes" });
+    expect(nonTargetPreview.bindings).toBeUndefined();
 
     const changedReservedBinding = await createCandidate(db, storage, admin, {
       projectId: JSON_PROJECT,

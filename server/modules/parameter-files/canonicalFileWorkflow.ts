@@ -60,6 +60,18 @@ export type CanonicalSourceWorkflowDto = {
   proofToken?: string;
 };
 
+export type CanonicalSourcePreviewBindingDto = {
+  bindingId: string;
+  definitionId: string;
+  baseCurrentValueId: string;
+  configRevisionId: string;
+  sourcePinId: string;
+  locator: string;
+  baseDigest: string;
+  proposedDigest: string;
+  action: SourceAction;
+};
+
 export type CanonicalSourcePreviewDto = {
   kind: "legacy" | "canonical";
   canSubmit: boolean;
@@ -68,6 +80,8 @@ export type CanonicalSourcePreviewDto = {
   fileId?: string;
   format: ParameterFileFormat;
   baseVersionId?: string;
+  configSetId?: string;
+  cohortProofToken?: string;
   bindingId?: string;
   definitionId?: string;
   baseCurrentValueId?: string;
@@ -79,6 +93,7 @@ export type CanonicalSourcePreviewDto = {
   proofToken?: string;
   before?: string;
   after?: string;
+  bindings?: CanonicalSourcePreviewBindingDto[];
   request?: { id: string; status: CanonicalChangeRequestStatus };
 };
 
@@ -113,6 +128,7 @@ type SourceInspection = {
   workflow: CanonicalSourceWorkflowDto;
   candidate: ProjectParameterFileCandidateDto;
   change?: SourceChange;
+  changes?: SourceChange[];
   proofToken?: string;
   reason?: string;
 };
@@ -575,13 +591,21 @@ async function inspectCandidate(
       changes.length = 0;
     }
   }
+  if (changes.length > 1) {
+    const orderedChanges = [...changes].sort((left, right) => left.binding.bindingId.localeCompare(right.binding.bindingId));
+    return {
+      workflow,
+      candidate,
+      changes: orderedChanges,
+      proofToken: workflow.proofToken ? candidateProofToken(workflow.proofToken, candidate, candidateDigest) : undefined,
+      reason: "canonical-batch-writer-unavailable"
+    };
+  }
   if (changes.length !== 1) {
     return {
       workflow,
       candidate,
-      reason: changes.length === 0
-        ? (dtsRenderProofFailed ? "dts-render-not-byte-exact" : "candidate-changed-unbound-or-non-target-bytes")
-        : "candidate-changes-multiple-bindings"
+      reason: dtsRenderProofFailed ? "dts-render-not-byte-exact" : "candidate-changed-unbound-or-non-target-bytes"
     };
   }
   return {
@@ -589,6 +613,20 @@ async function inspectCandidate(
     candidate,
     change: changes[0],
     proofToken: workflow.proofToken ? candidateProofToken(workflow.proofToken, candidate, candidateDigest) : undefined
+  };
+}
+
+function previewBinding(change: SourceChange): CanonicalSourcePreviewBindingDto {
+  return {
+    bindingId: change.binding.bindingId,
+    definitionId: change.binding.definitionId,
+    baseCurrentValueId: change.pin.projectValueId,
+    configRevisionId: change.pin.configRevisionId,
+    sourcePinId: change.pin.sourcePinId,
+    locator: sourceLocator(change.pin),
+    baseDigest: change.baseDigest,
+    proposedDigest: change.proposedDigest,
+    action: change.action
   };
 }
 
@@ -600,11 +638,22 @@ function previewFromInspection(inspection: SourceInspection, request?: RequestSt
     ...(candidate.fileId ? { fileId: candidate.fileId } : {}),
     format: candidate.format,
     ...(candidate.baseVersionId ? { baseVersionId: candidate.baseVersionId } : {}),
+    ...(inspection.workflow.configSetId ? { configSetId: inspection.workflow.configSetId } : {}),
+    ...(inspection.workflow.proofToken ? { cohortProofToken: inspection.workflow.proofToken } : {}),
     ...(inspection.proofToken ? { proofToken: inspection.proofToken } : {}),
     ...(request ? { request } : {})
   };
   if (!inspection.workflow.canonical) {
     return { kind: "legacy", canSubmit: false, ...common, ...(inspection.reason ? { reason: inspection.reason } : {}) };
+  }
+  if (inspection.changes && inspection.changes.length > 1) {
+    return {
+      kind: "canonical",
+      canSubmit: false,
+      ...common,
+      reason: inspection.reason ?? "canonical-batch-writer-unavailable",
+      bindings: inspection.changes.map(previewBinding)
+    };
   }
   if (!change) {
     return { kind: "canonical", canSubmit: false, ...common, ...(inspection.reason ? { reason: inspection.reason } : {}) };
@@ -621,6 +670,7 @@ function previewFromInspection(inspection: SourceInspection, request?: RequestSt
     locator: sourceLocator(change.pin),
     baseDigest: change.baseDigest,
     proposedDigest: change.proposedDigest,
+    bindings: [previewBinding(change)],
     before: change.baseText,
     after: change.candidateText
   };
@@ -936,6 +986,11 @@ export async function submitCanonicalCandidate(
     }
     const inspection = await inspectCandidate(tx, objectStore, auth, input);
     if (!inspection.workflow.canonical || !inspection.change) {
+      if (inspection.changes && inspection.proofToken && inspection.proofToken !== input.expectedProofToken) {
+        throw new ApiError("CONFLICT", "Canonical source preview is stale; refresh the exact source proof.", {
+          reason: "source-proof-stale"
+        });
+      }
       throw new ApiError("CONFLICT", "Candidate is not an exact single-binding canonical source change.", {
         reason: inspection.reason ?? "canonical-source-proof-failed"
       });
