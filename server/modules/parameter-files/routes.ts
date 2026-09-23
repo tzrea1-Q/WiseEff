@@ -67,6 +67,13 @@ import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
 import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./types";
 import { configSetRoleSchema } from "./schemas";
+import {
+  getCanonicalSourceWorkflow,
+  previewCanonicalCandidate,
+  rollbackCanonicalSource,
+  submitCanonicalCandidate,
+  syncCanonicalSource
+} from "./canonicalFileWorkflow";
 
 function firstQueryValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -132,6 +139,19 @@ const paramsWithCandidateIdSchema = paramsWithProjectIdSchema.extend({
 const syncFileBodySchema = z.object({
   versionId: z.string().min(1).optional()
 });
+
+const canonicalSourceSubmitBodySchema = z.object({
+  expectedCurrentVersionId: z.string().min(1),
+  expectedProofToken: z.string().min(1),
+  reason: z.string().trim().min(1).max(2000)
+}).strict();
+
+const canonicalSourceRollbackBodySchema = z.object({
+  versionId: z.string().min(1),
+  expectedCurrentVersionId: z.string().min(1),
+  expectedProofToken: z.string().min(1),
+  reason: z.string().trim().min(1).max(2000)
+}).strict();
 
 const resolveConflictBodySchema = z.object({
   resolution: z.enum(["file", "ui"]),
@@ -291,6 +311,15 @@ export function registerParameterFileRoutes(
     });
 
     return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-files/:fileId/source-workflow", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const item = await getCanonicalSourceWorkflow(db, auth, params);
+    return { status: 200, body: { item } };
   });
 
   router.post("/api/v1/projects/:projectId/parameter-files", async (request) => {
@@ -501,6 +530,15 @@ export function registerParameterFileRoutes(
     const versionId = body.versionId ?? file.currentVersionId;
     if (!versionId) {
       throw new ApiError("CONFLICT", "Project parameter file has no synced version.", { fileId: params.fileId });
+    }
+    const canonicalSummary = await syncCanonicalSource(
+      db,
+      requireObjectStore(options.objectStore),
+      auth,
+      { projectId: params.projectId, fileId: file.id, versionId }
+    );
+    if (canonicalSummary) {
+      return { status: 200, body: { item: canonicalSummary } };
     }
     // Manual re-sync previously ran its draft/binding/conflict writes and audits
     // auto-committed; one audited write makes the whole sync atomic (ADR-0027).
@@ -851,6 +889,15 @@ export function registerParameterFileRoutes(
     };
   });
 
+  router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const item = await previewCanonicalCandidate(db, requireObjectStore(options.objectStore), auth, params);
+    return { status: 200, body: { item } };
+  });
+
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
@@ -927,5 +974,44 @@ export function registerParameterFileRoutes(
         version: result.version
       }
     };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-submit", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const body = parseWithSchema(canonicalSourceSubmitBodySchema, request.body, "Invalid canonical source submit payload.");
+    const item = await submitCanonicalCandidate(db, objectStore, auth, {
+      projectId: params.projectId,
+      candidateId: params.candidateId,
+      expectedCurrentVersionId: body.expectedCurrentVersionId,
+      expectedProofToken: body.expectedProofToken,
+      reason: body.reason,
+      requestId: request.requestId,
+      refusalSink: requireSubmissionRefusalSink()
+    });
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-rollback", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const body = parseWithSchema(canonicalSourceRollbackBodySchema, request.body, "Invalid canonical source rollback payload.");
+    const item = await rollbackCanonicalSource(db, objectStore, auth, {
+      projectId: params.projectId,
+      fileId: params.fileId,
+      versionId: body.versionId,
+      expectedCurrentVersionId: body.expectedCurrentVersionId,
+      expectedProofToken: body.expectedProofToken,
+      reason: body.reason,
+      requestId: request.requestId,
+      refusalSink: requireSubmissionRefusalSink()
+    });
+    return { status: 200, body: { item } };
   });
 }

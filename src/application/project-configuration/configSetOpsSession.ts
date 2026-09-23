@@ -103,6 +103,11 @@ const ROLE_LABELS: Record<ConfigSetRole, string> = {
 };
 
 export function formatSyncSummary(result: FileSyncSummary): string {
+  if (result.sourceWorkflow === "canonical") {
+    return result.message?.trim()
+      ? `来源一致性校验：${result.message.trim()}`
+      : "来源一致性校验已完成。";
+  }
   if (result.skipped) return "已跳过（无活跃版本）";
   if (typeof result.draftsCreated === "number") {
     return `同步成功，已创建 ${result.draftsCreated} 条草稿。`;

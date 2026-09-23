@@ -93,6 +93,7 @@ export function WorkbenchCommandBar({
 }: WorkbenchCommandBarProps) {
   const [identitiesExpanded, setIdentitiesExpanded] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const activeFileFormatLabel = selectedMember?.format === "json" ? "JSON" : "DTS";
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const [createConfigSetOpen, setCreateConfigSetOpen] = useState(false);
   const [newConfigSetName, setNewConfigSetName] = useState("");
@@ -309,14 +310,14 @@ export function WorkbenchCommandBar({
                       ? "请先选择一个成员文件"
                       : !selectedMember.currentVersionId
                         ? "当前成员没有可下载的活跃版本"
-                        : "下载当前选中成员的活跃 DTS 版本"
+                        : `下载当前选中成员的活跃 ${activeFileFormatLabel} 版本`
                   }
                   onClick={() => {
                     setMoreMenuOpen(false);
                     void onDownloadActiveDts();
                   }}
                 >
-                  {downloadingDts ? "下载中…" : "下载 DTS"}
+                  {downloadingDts ? "下载中…" : `下载 ${activeFileFormatLabel}`}
                 </button>
                 {canAdmin && selectedConfigSet ? (
                   <button

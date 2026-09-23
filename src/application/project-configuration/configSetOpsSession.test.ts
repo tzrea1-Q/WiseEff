@@ -114,6 +114,19 @@ describe("createConfigSetOpsSession", () => {
     );
   });
 
+  it("labels canonical sync as a source consistency check without claiming drafts", () => {
+    expect(
+      formatSyncSummary({
+        sourceWorkflow: "canonical",
+        message: "single binding byte proof passed",
+        draftsCreated: 0,
+        unchanged: 1,
+        unmatched: 0,
+        skipped: false
+      })
+    ).toBe("来源一致性校验：single binding byte proof passed");
+  });
+
   it("exportConfigSet builds evidence from manifest", async () => {
     const session = createConfigSetOpsSession();
     const exportConfigSet = vi.fn(async () => ({
