@@ -395,6 +395,8 @@ type CatalogProjectValueSyncInput = {
   projectId: string;
   configSetId: string;
   configRevisionId: string;
+  /** Optional approval-frozen property set; omitted keeps legacy full-sync behavior. */
+  propertyOccurrenceIds?: readonly string[];
 };
 
 /** Prepare the immutable Catalog snapshot before owning a write connection. */
@@ -433,6 +435,9 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
   [input.organizationId,input.projectId,input.configSetId,input.configRevisionId]);
   if (established.rows.length) throw new ApiError("CONFLICT", "Existing source values require a reviewed source change, not re-materialization.");
   const observed = await listObservedProperties(write, input.configRevisionId);
+  const selectedPropertyOccurrenceIds = input.propertyOccurrenceIds === undefined
+    ? null
+    : new Set(input.propertyOccurrenceIds);
   // The config-set ref is the write the operator approved; the real `.dts`
   // source location is the file the occurrence came from.  Recording the file
   // keeps the value's provenance usable by identity correction and property-key
@@ -444,6 +449,7 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
       : configSetSourceRef;
   let written = 0;
   for (const row of observed) {
+    if (selectedPropertyOccurrenceIds && !selectedPropertyOccurrenceIds.has(row.propertyOccurrenceId)) continue;
     if (isStructuralPropertyKey(row.propertyKey)) continue;
     const compatibles = parseCompatibles(row.compatible);
     let driverCompatibles: ReturnType<typeof DriverCompatible>[];
@@ -559,6 +565,176 @@ type CatalogBindingRow = {
   effective_revision_id: string;
   current_value_id: string;
 };
+
+/**
+ * Canonical source candidates used by initialization preview.
+ *
+ * This read belongs to the Binding owner so callers can supply their current
+ * transaction.  The initialization module adapts these canonical names to
+ * its compatibility DTO; it must not own a second Catalog read path.
+ */
+export type CanonicalInitializationBindingCandidate = {
+  sourceProjectId: string;
+  sourceBindingId: string;
+  currentValueId: string;
+  definitionId: string;
+  effectiveRevisionId: string;
+  propertyKey: string;
+  moduleId: string | null;
+  logicalNodeId: string | null;
+  risk: string | null;
+  payload: ProjectValuePayload;
+  sourceConfigSetId: string;
+  sourceConfigRevisionId: string;
+  sourceOccurrenceId: string;
+  sourceFormat: "dts" | "json";
+  sourceName: string | null;
+  sourceLocatorLabel: string | null;
+};
+
+type CanonicalInitializationBindingRow = {
+  source_binding_id: string;
+  source_project_id: string;
+  current_value_id: string;
+  definition_id: string;
+  effective_revision_id: string;
+  property_key: string;
+  module_id: string | null;
+  logical_node_id: string | null;
+  risk: string | null;
+  value_kind: ProjectValuePayload["kind"];
+  value: unknown;
+  source_config_set_id: string;
+  source_config_revision_id: string;
+  source_occurrence_id: string;
+  source_format: "dts" | "json";
+  source_name: string | null;
+  source_locator_label: string | null;
+};
+
+/** Read exact current canonical Binding/Value/source-pin identities for preview. */
+export async function listCanonicalInitializationBindingCandidates(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectIds: readonly string[];
+    bindingIds?: readonly string[];
+    moduleIds?: readonly string[];
+    risks?: readonly string[];
+  },
+): Promise<CanonicalInitializationBindingCandidate[]> {
+  if (input.projectIds.length === 0) return [];
+
+  const values: unknown[] = [input.organizationId, [...input.projectIds]];
+  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])"];
+
+  if (input.bindingIds?.length) {
+    values.push([...input.bindingIds]);
+    conditions.push(`b.id = any($${values.length}::text[])`);
+  }
+  if (input.moduleIds?.length) {
+    values.push([...input.moduleIds]);
+    conditions.push(`placement.module_id = any($${values.length}::text[])`);
+  }
+
+  const result = await db.query<CanonicalInitializationBindingRow>(
+    `
+    select
+      b.id as source_binding_id,
+      b.project_id as source_project_id,
+      value.id as current_value_id,
+      b.definition_id,
+      b.effective_revision_id,
+      definition.property_key,
+      placement.module_id,
+      b.logical_node_id,
+      null::text as risk,
+      value.value_kind,
+      value.value,
+      occurrence.config_set_id as source_config_set_id,
+      pin.config_revision_id as source_config_revision_id,
+      pin.source_occurrence_id,
+      pin.format as source_format,
+      member.source_name,
+      coalesce(pin.locator->>'propertyName', pin.locator->>'pointer')
+        || coalesce(' @ ' || nullif(logical.node_locator, ''), '') as source_locator_label
+    from parameter_catalog.current_project_parameter_bindings b
+    inner join parameter_catalog.project_parameter_values value
+      on value.id = b.current_value_id
+     and value.binding_id = b.id
+     and value.definition_id = b.definition_id
+     and value.value_state = 'present'
+    inner join parameter_catalog.project_value_source_pins pin
+      on pin.project_value_id = value.id
+     and pin.binding_id = b.id
+     and pin.definition_id = b.definition_id
+     and pin.organization_id = b.organization_id
+     and pin.project_id = b.project_id
+     and pin.source_occurrence_id = b.source_occurrence_id
+    inner join parameter_catalog.project_parameter_source_occurrences occurrence
+      on occurrence.id = pin.source_occurrence_id
+     and occurrence.organization_id = b.organization_id
+     and occurrence.project_id = b.project_id
+    inner join parameter_catalog.parameter_definitions definition
+      on definition.id = b.definition_id
+    left join parameter_catalog.organization_subject_registrations registration
+      on registration.id = b.registration_id
+     and registration.organization_id = b.organization_id
+    left join parameter_catalog.subject_placements placement
+      on placement.id = registration.current_placement_id
+     and placement.organization_id = b.organization_id
+    inner join project_parameter_files file
+      on file.id = pin.file_id
+     and file.organization_id = b.organization_id
+     and file.project_id = b.project_id
+     and file.config_set_id = occurrence.config_set_id
+    left join dts_config_revision_members member
+      on member.config_revision_id = pin.config_revision_id
+     and member.file_id = pin.file_id
+     and member.file_version_id = pin.file_version_id
+    left join dts_occurrence_effects effect
+      on effect.config_revision_id = pin.config_revision_id
+     and effect.property_occurrence_id = (pin.locator->>'propertyOccurrenceId')
+     and effect.effect_kind in ('set', 'override')
+    left join dts_logical_node_revisions logical
+      on logical.id = effect.logical_node_revision_id
+     and logical.config_revision_id = pin.config_revision_id
+     and logical.logical_node_id = b.logical_node_id
+    where ${conditions.join(" and ")}
+    order by b.project_id, definition.property_key, b.id
+    `,
+    values,
+  );
+
+  const allowedRisks = input.risks?.length ? new Set(input.risks) : null;
+  return result.rows.flatMap((row) => {
+    if (allowedRisks && (row.risk === null || !allowedRisks.has(row.risk))) return [];
+    if (!row.source_name) {
+      throw new ApiError("CONFLICT", "Canonical source member has no immutable logical name.", {
+        sourceBindingId: row.source_binding_id,
+        sourceProjectValueId: row.current_value_id,
+      });
+    }
+    return [{
+      sourceProjectId: row.source_project_id,
+      sourceBindingId: row.source_binding_id,
+      currentValueId: row.current_value_id,
+      definitionId: row.definition_id,
+      effectiveRevisionId: row.effective_revision_id,
+      propertyKey: row.property_key,
+      moduleId: row.module_id,
+      logicalNodeId: row.logical_node_id,
+      risk: row.risk,
+      payload: { kind: row.value_kind, value: row.value } as ProjectValuePayload,
+      sourceConfigSetId: row.source_config_set_id,
+      sourceConfigRevisionId: row.source_config_revision_id,
+      sourceOccurrenceId: row.source_occurrence_id,
+      sourceFormat: row.source_format,
+      sourceName: row.source_name,
+      sourceLocatorLabel: row.source_locator_label,
+    }];
+  });
+}
 
 export async function findCatalogBindingRow(
   db: Queryable,

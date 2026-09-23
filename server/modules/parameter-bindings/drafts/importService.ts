@@ -7,6 +7,7 @@ import { canAdminParameters, canEditParameters } from "../../parameter-kernel/po
 import { asAuditTx, writeTrustedAuditEventInTx } from "../../audit/auditedWrite";
 import { getImportBatchForUpdate, type PersistedImportBatchItem } from "../../parameters/importBatchRepository";
 import { loadCanonicalSourceSnapshot, requireCanonicalUserInvocation, recordCanonicalPermissionRefusal, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
+import { withCanonicalSourceAttemptTransaction } from "../../parameter-files/canonicalSourceAttemptTransaction";
 import { MAX_PARAMETER_SOURCE_BYTES } from "../../parameter-files/jsonSource";
 import { getCanonicalValueDraftForUpdate } from "./repository";
 import { findCatalogBindingRow, importTextToDtsValue } from "../catalogProjectValueSync";
@@ -37,7 +38,8 @@ export async function stageCanonicalImportBatch(
   const bindingIds = selected.map((item) => item.projectParameterValueId);
   if (selected.some((item) => item.classification !== "updated" || !item.projectParameterValueId)
     || new Set(bindingIds).size !== bindingIds.length) throw new ApiError("CONFLICT", "Import rows require distinct exact canonical source mappings.");
-  return db.transaction(async (tx) => {
+  return withCanonicalSourceAttemptTransaction(db, storage, async (tx, attempt) => {
+    const attemptStorage = attempt.objectStore;
     const roots = await tx.query<{ config_set_id: string }>(`select distinct occurrence.config_set_id
       from parameter_catalog.project_parameter_bindings binding
       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
@@ -92,16 +94,16 @@ export async function stageCanonicalImportBatch(
         const stored = candidate.rows[0]!;
         const same = (left: unknown,right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
         if (!same(stored.frozen_member_manifest,draft.candidate_member_manifest) || !same(stored.frozen_binding_manifest,draft.candidate_binding_manifest)
-          || !storage.getBounded || !Number.isSafeInteger(stored.size_bytes) || stored.size_bytes < 0 || stored.size_bytes > MAX_PARAMETER_SOURCE_BYTES) {
+          || !attemptStorage.getBounded || !Number.isSafeInteger(stored.size_bytes) || stored.size_bytes < 0 || stored.size_bytes > MAX_PARAMETER_SOURCE_BYTES) {
           throw new ApiError("CONFLICT", "Staged artifact has invalid frozen source evidence.");
         }
-        const base = await loadCanonicalSourceSnapshot(tx,storage,{ organizationId: auth.organization.id,projectId,bindingId: proof.bindingId,projectValueId: proof.baseCurrentValueId });
+        const base = await loadCanonicalSourceSnapshot(tx,attemptStorage,{ organizationId: auth.organization.id,projectId,bindingId: proof.bindingId,projectValueId: proof.baseCurrentValueId });
         const members = base.manifest.members.map((member) => ({ ...member,configSetId: base.manifest.configSetId,isCandidateFile: member.fileId === base.manifest.fileId }))
           .sort((left,right) => left.fileId < right.fileId ? -1 : left.fileId > right.fileId ? 1 : 0);
         let bytes: Buffer;
         let after: string;
         try {
-          bytes = await storage.getBounded(stored.storage_key,MAX_PARAMETER_SOURCE_BYTES);
+          bytes = await attemptStorage.getBounded(stored.storage_key,MAX_PARAMETER_SOURCE_BYTES);
           after = new TextDecoder("utf-8",{ fatal: true,ignoreBOM: true }).decode(bytes);
         } catch { throw new ApiError("CONFLICT", "Staged source bytes are missing or unreadable."); }
         const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
@@ -144,7 +146,7 @@ export async function stageCanonicalImportBatch(
         const draft = await createCanonicalValueDraft(tx,auth,{
           projectId,bindingId: item.projectParameterValueId!,baseRevisionId: item.baseRevisionId,baseCurrentValueId: item.baseCurrentValueId,reason: `Import: ${batch.sourceName}`,
           ...(pin.format === "json" ? { sourceTarget: { format: "json" as const,sourceText } } : { targetValue: importTextToDtsValue(pin.property_name!,sourceText) })
-        },{ objectStore: storage,...security });
+        },{ objectStore: attemptStorage,...security });
         const proof = (await tx.query<{ base_digest: string; proposed_digest: string; diff_digest: string }>(
           `select base_digest,proposed_digest,diff_digest from project_parameter_file_candidates where id=$1`, [draft.candidateId])).rows[0]!;
         if (!draft.candidateId || !draft.sourcePinId || !proof) throw new ApiError("CONFLICT", "Import did not create a prepared source draft.");
@@ -172,7 +174,7 @@ export async function stageCanonicalImportBatch(
           targetValue: importTextToDtsValue(item.name, sourceText),
           reason: `Import: ${batch.sourceName}`
         },
-        { objectStore: storage },
+        { objectStore: attemptStorage },
         { invocation: security.invocation, requestId: security.requestId, refusalSink: security.refusalSink }
       );
       const digest = (value: string) => createHash("sha256").update(value).digest("hex");

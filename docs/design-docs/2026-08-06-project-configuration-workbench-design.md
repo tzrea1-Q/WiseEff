@@ -658,3 +658,15 @@ At `768×1024` and `390×844`:
 | Quality | Add browser acceptance and user-operation coverage/evidence |
 | Reliability | Review release-readiness failure handling and candidate cleanup |
 | Generated artifacts | Update schema summary when candidate persistence lands |
+
+## 21. Canonical source workflow amendment (#906)
+
+For a DTS/JSON file protected by a canonical source pin, upload remains an immutable candidate. The workbench previews the exact Binding, current Value, source pin, configuration revision and file-version base. A supported candidate changes one Binding and must reproduce the complete bytes prepared by the existing source owner; non-target changes are rejected. Submitting creates the existing canonical value-change request. Human approval applies its prepared successor through the source transaction; submission itself does not activate the uploaded file.
+
+Manual sync checks the current canonical source/value consistency. It does not populate legacy parameter rows or create legacy drafts. Historical rollback submits the same reviewed source-change workflow against the current file version. Retry returns the existing request and its current status; it does not create another approval or relabel the original upload as active.
+
+Read-only previews return a proof token for the complete source cohort; candidate previews also bind the uploaded bytes. Submission and rollback require that token and recheck it under source locks. A pin or cohort change invalidates the preview even when the file version remains unchanged. Read-only discovery does not acquire mutation locks.
+
+Existing canonical drafts are preserved. A conflicting draft or stale source blocks submission rather than replacing selected work. Multi-Binding changes, source structure/member changes, and conflict resolutions requiring a missing atomic batch or exact-base draft-deletion interface remain explicitly unsupported in this bounded integration. Their controls explain the limitation. This is not whole-file replacement authorization and does not weaken `assertLegacySourceMutationAllowed`.
+
+The acceptance boundary for this amendment is the supported single-Binding DTS/JSON workflow in API mode at `1440×900`, dedicated PostgreSQL and object storage, plus focused drift/retry/failure/permission checks. Historical broader viewport claims above are not new evidence for this amendment.

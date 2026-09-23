@@ -56,8 +56,10 @@ import { createLocalObjectStore, type ObjectStore } from "../../logs/objectStore
 import {
   createCanonicalValueDraft,
   listCanonicalValueDraftsForUser,
+  listCanonicalValueDraftsForReviewer,
   removeCanonicalValueDraft
 } from "./service";
+import { listCanonicalValueDraftsForBinding } from "./repository";
 import {
   listCanonicalValueChangesForAuth,
   reviewCanonicalValueChange,
@@ -1220,6 +1222,133 @@ describe("canonical pending value drafts", () => {
     expect(submittedDraftId.length).toBeGreaterThan(0);
   });
 
+  it("lists all canonical authors, retains pending requests, and marks the unselected draft stale", async () => {
+    const otherAuthorId = "user-849-second-author";
+    const otherAuthor = makeTestAuthContext({
+      userId: otherAuthorId,
+      organizationId: ORG,
+      roles: [{ projectId: PROJECT, roleId: "software-user" }]
+    });
+    await pool.query(
+      `insert into users (id, organization_id, name, email, title, is_active)
+       values ($1, $2, 'Second author', 'second-author-849@example.com', 'Engineer', true)`,
+      [otherAuthorId, ORG]
+    );
+    await pool.query(
+      `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+       values ($1, $2, $3, $4, 'software-user')`,
+      [`urb-849-second-author-${randomUUID()}`, otherAuthorId, ORG, PROJECT]
+    );
+
+    const baseRevisionId = (await readCurrentValue()).config_revision_id;
+    const firstAuthorDraft = await createPreparedDraft(root, editorAuth, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("2900"),
+      reason: "first author candidate",
+      baseRevisionId
+    }, objectStore);
+    const selectedDraft = await createPreparedDraft(root, otherAuthor, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("2550"),
+      reason: "selected author candidate",
+      baseRevisionId
+    }, objectStore);
+    const firstRequest = await submitChange(editorAuth, {
+      projectId: PROJECT,
+      draftId: firstAuthorDraft.id,
+      assignedToUserId: REVIEWER
+    });
+    const selectedRequest = await submitChange(otherAuthor, {
+      projectId: PROJECT,
+      draftId: selectedDraft.id,
+      assignedToUserId: REVIEWER
+    });
+
+    const lowLevel = await listCanonicalValueDraftsForBinding(root, {
+      organizationId: ORG,
+      projectId: PROJECT,
+      bindingId
+    });
+    const createdRows = lowLevel.filter((row) =>
+      row.id === firstAuthorDraft.id || row.id === selectedDraft.id
+    );
+    expect(createdRows).toHaveLength(2);
+    expect(lowLevel.map((row) => row.user_id)).toEqual(
+      expect.arrayContaining([USER, otherAuthorId])
+    );
+    expect(lowLevel.every((row) => !("target_value" in row))).toBe(true);
+    expect(createdRows.find((row) => row.id === firstAuthorDraft.id)?.pending_request_id).toBe(firstRequest.id);
+    expect(createdRows.find((row) => row.id === selectedDraft.id)?.pending_request_id).toBe(selectedRequest.id);
+    expect(createdRows.every((row) => row.stale === false)).toBe(true);
+
+    const reviewerRows = await listCanonicalValueDraftsForReviewer(root, reviewerAuth, {
+      projectId: PROJECT,
+      bindingId
+    });
+    const createdReviewerRows = reviewerRows.filter((row) =>
+      row.draftId === firstAuthorDraft.id || row.draftId === selectedDraft.id
+    );
+    expect(createdReviewerRows).toHaveLength(2);
+    expect(reviewerRows.every((row) => !("targetValue" in row))).toBe(true);
+    expect(createdReviewerRows.find((row) => row.draftId === selectedDraft.id)).toMatchObject({
+      authorUserId: otherAuthorId,
+      pendingRequestId: selectedRequest.id,
+      baseCurrentValueId: expect.any(String),
+      configRevisionId: baseRevisionId,
+      sourcePinId: expect.any(String),
+      candidateId: expect.any(String),
+      candidateBaseDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      candidateProposedDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      candidateDiffDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      stale: false
+    });
+
+    await expect(
+      listCanonicalValueDraftsForReviewer(root, editorAuth, { projectId: PROJECT, bindingId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const otherProjectId = "project-849-reviewer-scope";
+    await pool.query(
+      `insert into projects (id, organization_id, name, code, status)
+       values ($1, $2, 'Reviewer scope project', 'D849S', 'initialized')`,
+      [otherProjectId, ORG]
+    );
+    await expect(
+      listCanonicalValueDraftsForReviewer(root, reviewerAuth, {
+        projectId: otherProjectId,
+        bindingId
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const applied = await reviewChange(reviewerAuth, {
+      projectId: PROJECT,
+      requestId: selectedRequest.id,
+      decision: "approve"
+    }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-selective-review"));
+    expect(applied.status).toBe("approved");
+
+    const remaining = await listCanonicalValueDraftsForReviewer(root, reviewerAuth, {
+      projectId: PROJECT,
+      bindingId
+    });
+    const remainingFirstAuthor = remaining.find((row) => row.draftId === firstAuthorDraft.id);
+    expect(remainingFirstAuthor).toMatchObject({
+      draftId: firstAuthorDraft.id,
+      authorUserId: USER,
+      pendingRequestId: firstRequest.id,
+      stale: true
+    });
+    expect((await readCurrentValue()).value).toBe(2550);
+
+    // Leave the competing stale row in place, but close its request so the
+    // following deletion case can reuse the existing per-author draft slot.
+    await withdrawChange(editorAuth, { projectId: PROJECT, requestId: firstRequest.id });
+  });
+
   it("deletes a pinned DTS property through review, preserves its historical export, and fails closed on replay tampering", async () => {
     const before = await readCurrentValue();
     const beforeFile = (await pool.query<{ current_version_id: string }>(
@@ -1380,5 +1509,34 @@ describe("canonical pending value drafts", () => {
       await tamper.query("rollback").catch(() => undefined);
       tamper.release();
     }
+  });
+
+  it("allows the archive disposer to remove an approved target before its history and delete pin", async () => {
+    const referenced = await pool.query<{ target_id: string; request_id: string }>(`
+      select target.id as target_id, request.id as request_id
+        from public.project_parameter_value_change_requests request
+        join public.project_parameter_value_change_targets target on target.request_id=request.id
+        join parameter_catalog.binding_history_events history
+          on history.applied_request_id=request.id and history.binding_id=target.binding_id
+        join parameter_catalog.project_value_source_pins pin
+          on pin.delete_request_id=request.id and pin.binding_id=target.binding_id
+       where request.organization_id=$1 and request.project_id=$2
+         and request.status='approved' and target.action='delete'
+       limit 1`, [ORG, PROJECT]);
+    expect(referenced.rows).toHaveLength(1);
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const removed = await client.query<{ count: number }>(
+        `select parameter_catalog.dispose_plane_residue($1, 'public.project_parameter_value_change_targets', 'id', $2::text[]) as count`,
+        ["c906-approved-disposal-probe", [referenced.rows[0]!.target_id]]
+      );
+      expect(removed.rows[0]?.count).toBe(1);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+    expect((await pool.query(`select id from public.project_parameter_value_change_targets where id=$1`,
+      [referenced.rows[0]!.target_id])).rows).toHaveLength(1);
   });
 });

@@ -74,6 +74,7 @@ export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "dts_property_occurrence_spec_decisions", from: "public.dts_property_occurrence_spec_decisions", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_value_drafts", from: "public.project_parameter_value_drafts", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_value_change_requests", from: "public.project_parameter_value_change_requests", scope: { kind: "project", projectId: "" } },
+  { key: "project_parameter_value_change_targets", from: "public.project_parameter_value_change_targets", scope: { kind: "project", projectId: "" } },
   { key: "parameter_review_decisions", from: "public.parameter_review_decisions", scope: { kind: "request" } },
   { key: "parameter_submission_items", from: "public.parameter_submission_items", scope: { kind: "round" } },
   { key: "project_parameter_binding_revisions", from: "public.project_parameter_binding_revisions", scope: { kind: "binding" } },

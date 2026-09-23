@@ -1773,6 +1773,32 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterFileCandidateActivateResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.getCanonicalSourceWorkflow": {
+    summary: "Inspect the canonical source cohort and proof for a parameter file",
+    tags: ["parameter-files"],
+    responseBody: "CanonicalSourceWorkflowResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewCanonicalCandidate": {
+    summary: "Preview a staged candidate against exact canonical source pins",
+    tags: ["parameter-files"],
+    responseBody: "CanonicalSourceCandidatePreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.submitCanonicalCandidate": {
+    summary: "Submit one source candidate through canonical draft and human review",
+    tags: ["parameter-files"],
+    requestBody: "CanonicalSourceSubmitRequest",
+    responseBody: "CanonicalSourceSubmissionResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.rollbackCanonicalSource": {
+    summary: "Submit a historical source version through canonical draft and human review",
+    tags: ["parameter-files"],
+    requestBody: "CanonicalSourceRollbackRequest",
+    responseBody: "CanonicalSourceSubmissionResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
 
   "parameters.deleteAdminProject": {
     summary: "Delete a project and its parameter-management data (cascade)",
