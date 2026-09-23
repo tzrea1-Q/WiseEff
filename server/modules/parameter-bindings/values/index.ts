@@ -9,6 +9,7 @@ export {
   discoverDeletedSourceRevisionPins,
   loadDeletedSourceAnchors,
   loadSourceBindingCohort,
+  loadSourceBindingCohortReadOnly,
   hasDeletedCurrentValue,
   loadOwnedProjectValueSourcePin,
   isCurrentGovernedSourceValue,

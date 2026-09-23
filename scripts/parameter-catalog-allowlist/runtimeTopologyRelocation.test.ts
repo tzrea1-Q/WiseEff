@@ -53,15 +53,19 @@ const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T
 const issue900RetiredIds = new Set((JSON.parse(await readFile(
   `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-900-dashboard-retirement.json`, "utf8",
 )) as { retiredAllowlistEntries: Array<{ id: string }> }).retiredAllowlistEntries.map((entry) => entry.id));
+const issue853DRetiredIds = (JSON.parse(await readFile(
+  `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json`, "utf8",
+)) as { retiredIds: string[] }).retiredIds;
 
 function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
-  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds]);
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds, ...issue853DRetiredIds]);
   expect(issue900RetiredIds.size).toBe(13);
   expect(issue913StaleRetiredSourceIds).toHaveLength(17);
   expect(issue913T14RetiredSourceIds).toHaveLength(4);
-  expect(retired.size).toBe(34);
-  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(34);
-  expect(removed).toHaveLength(28 + 13 + 17 + 4);
+  expect(issue853DRetiredIds).toHaveLength(22);
+  expect(retired.size).toBe(56);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(56);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 22);
   expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
     .toEqual([...retired].sort());
   expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
@@ -105,7 +109,7 @@ describe("historical exact reviewed runtime topology occurrence relocation", () 
     expect(new Set(result.map((pair) => pair.new.id)).size).toBe(16);
     expect(fixture.violations).toHaveLength(3519);
     expect(fixture.violations.length - 28).toBe(3491);
-    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4);
+    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 22);
   });
 
   it.each([

@@ -14,6 +14,7 @@ import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode
 import { canReviewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { assertLegacySourceMutationAllowed } from "./repository";
 
 export type DetectFileUiDraftConflictInput = {
   organizationId: string;
@@ -152,6 +153,11 @@ export async function resolveParameterFileConflict(
         conflictId: input.conflictId
       });
     }
+
+    if (!conflict.fileId) {
+      throw new ApiError("CONFLICT", "Conflict source file is unavailable; no draft was changed.");
+    }
+    await assertLegacySourceMutationAllowed(tx, conflict.fileId);
 
     // Resolve before deleting drafts: ui/file draft FKs cascade-delete the conflict row.
     const resolved = await resolveConflict(tx, {
@@ -310,6 +316,9 @@ export async function resolveConflictsBulk(
   // rolls the whole batch back instead of leaving it half-applied. `skipped` still
   // reports the entries preview classified as ineligible up front.
   const resolved = await db.transaction(async (tx) => {
+    // Lock the entire selected source set in the owner's stable order before
+    // any per-conflict deletion; one protected source rejects the whole batch.
+    await assertLegacySourceMutationAllowed(tx, preview.eligible.flatMap((conflict) => conflict.fileId ? [conflict.fileId] : []));
     const items: FileSyncConflictRecord[] = [];
     for (const conflict of preview.eligible) {
       const item = await resolveParameterFileConflict(tx, auth, {

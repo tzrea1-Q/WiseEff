@@ -136,9 +136,11 @@ describe("Issue #913 T1.4 successor relocation", () => {
 
     expect(issue913T14SuccessorPairCount).toBe(45);
     expect(issue913T14ExpectedActiveRelocationCount).toBe(318);
-    expect(result.relocations).toHaveLength(318);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(318);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(318);
+    expect(result.relocations).toHaveLength(issue913T14ExpectedActiveRelocationCount - 4);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size)
+      .toBe(issue913T14ExpectedActiveRelocationCount - 4);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size)
+      .toBe(issue913T14ExpectedActiveRelocationCount - 4);
     expect(changedRelocations).toHaveLength(45);
     expect(changedRelocations.filter((entry) => entry.observed.file === repositoryFile)).toHaveLength(20);
     expect(changedRelocations.filter((entry) => entry.observed.file === serviceTestFile)).toHaveLength(25);

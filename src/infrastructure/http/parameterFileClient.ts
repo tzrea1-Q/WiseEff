@@ -10,6 +10,10 @@ import type {
   ParameterFileCandidateImpact,
   ParameterFileConflictBulkPreview,
   ParameterFileConflictBulkResolveResult,
+  ParameterFileSourcePreview,
+  ParameterFileSourceReviewResult,
+  ParameterFileSourceWorkflow,
+  RollbackParameterFileSourceReviewInput,
   RollbackParameterFileVersionResult,
   ParameterFileRepository,
   ParameterFileSyncConflict,
@@ -18,6 +22,7 @@ import type {
   ProjectParameterFileVersion,
   ResolveConflictsBulkInput,
   ResolveParameterFileConflictInput,
+  SubmitParameterFileSourceReviewInput,
   UploadParameterFileInput
 } from "@/application/ports/ParameterFileRepository";
 import { createApiClient } from "./apiClient";
@@ -85,6 +90,14 @@ function routeCandidate(projectId: string, candidateId: string) {
   return `${routeProjectCandidates(projectId)}/${encodeURIComponent(candidateId)}`;
 }
 
+function routeSourceWorkflow(projectId: string, fileId: string) {
+  return `${routeProjectFiles(projectId)}/${encodeURIComponent(fileId)}/source-workflow`;
+}
+
+function routeCandidateSourcePreview(projectId: string, candidateId: string) {
+  return `${routeCandidate(projectId, candidateId)}/source-preview`;
+}
+
 export function createParameterFileClient(client: ApiClient = createDefaultApiClient()): ParameterFileRepository {
   return {
     async listFiles(projectId: string) {
@@ -133,6 +146,12 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
     },
     async syncFile(projectId: string, fileId: string) {
       const response = await client.post<ItemEnvelope<FileSyncSummary>>(routeFileSync(projectId, fileId), {});
+      return response.item;
+    },
+    async getSourceWorkflow(projectId: string, fileId: string) {
+      const response = await client.get<ItemEnvelope<ParameterFileSourceWorkflow>>(
+        routeSourceWorkflow(projectId, fileId)
+      );
       return response.item;
     },
     async listConflicts(projectId: string) {
@@ -226,6 +245,34 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
         version: ProjectParameterFileVersion;
       }>(`${routeCandidate(projectId, candidateId)}/activate`, input);
       return { item: response.item, file: response.file, version: response.version };
+    },
+    async getCandidateSourcePreview(projectId: string, candidateId: string) {
+      const response = await client.get<ItemEnvelope<ParameterFileSourcePreview>>(
+        routeCandidateSourcePreview(projectId, candidateId)
+      );
+      return response.item;
+    },
+    async submitCandidateSourceReview(
+      projectId: string,
+      candidateId: string,
+      input: SubmitParameterFileSourceReviewInput
+    ) {
+      const response = await client.post<ItemEnvelope<ParameterFileSourceReviewResult>>(
+        `${routeCandidate(projectId, candidateId)}/source-submit`,
+        input
+      );
+      return response.item;
+    },
+    async rollbackVersionThroughSourceReview(
+      projectId: string,
+      fileId: string,
+      input: RollbackParameterFileSourceReviewInput
+    ) {
+      const response = await client.post<ItemEnvelope<ParameterFileSourceReviewResult>>(
+        `${routeProjectFiles(projectId)}/${encodeURIComponent(fileId)}/source-rollback`,
+        input
+      );
+      return response.item;
     }
   };
 }

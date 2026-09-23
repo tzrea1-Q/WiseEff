@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
@@ -12,6 +12,7 @@ import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { resolveConflict } from "../parameters/fileSyncConflictRepository";
 import { insertFileVersion, insertProjectParameterFile } from "./repository";
+import * as sourceRepository from "./repository";
 import {
   detectFileUiDraftConflict,
   previewBulkConflictResolution,
@@ -94,6 +95,7 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await db?.rollback();
   });
 
@@ -174,6 +176,33 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
     );
     return result.rows;
   }
+
+  it.each(["file", "ui"] as const)("preserves legacy conflict and both drafts when the source owner refuses %s arbitration", async (resolution) => {
+    const { conflict } = await detectConflict({ ppvId: "ppv-1", pdId: "pd-1", fileValue: "90", uiValue: "95", suffix: "protected" });
+    const beforeDrafts = await draftIds("ppv-1");
+    const beforeConflicts = await conflictRows("ppv-1");
+    // The canonical owner guard is covered by its source integration tests;
+    // this seam test proves legacy arbitration cannot bypass its refusal.
+    const guard = vi.spyOn(sourceRepository, "assertLegacySourceMutationAllowed").mockRejectedValue(
+      new ApiError("CONFLICT", "Canonical source changes require a prepared and approved source transaction.")
+    );
+    await expect(resolveParameterFileConflict(db, reviewerAuth(), { conflictId: conflict.id, resolution })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(guard).toHaveBeenCalledWith(expect.anything(), "file-1");
+    expect(await draftIds("ppv-1")).toEqual(beforeDrafts);
+    expect(await conflictRows("ppv-1")).toEqual(beforeConflicts);
+  });
+
+  it("refuses a selected bulk arbitration before deleting any draft when a source is protected", async () => {
+    const first = await detectConflict({ ppvId: "ppv-1", pdId: "pd-1", fileValue: "90", uiValue: "95", suffix: "protected-first" });
+    const second = await detectConflict({ ppvId: "ppv-2", pdId: "pd-2", fileValue: "11", uiValue: "12", suffix: "protected-second" });
+    const before = await Promise.all([draftIds("ppv-1"), draftIds("ppv-2"), conflictRows("ppv-1"), conflictRows("ppv-2")]);
+    const guard = vi.spyOn(sourceRepository, "assertLegacySourceMutationAllowed").mockRejectedValue(
+      new ApiError("CONFLICT", "Canonical source changes require a prepared and approved source transaction.")
+    );
+    await expect(resolveConflictsBulk(db, reviewerAuth(), { projectId: "project-1", resolution: "file", conflictIds: [first.conflict.id, second.conflict.id] })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(await Promise.all([draftIds("ppv-1"), draftIds("ppv-2"), conflictRows("ppv-1"), conflictRows("ppv-2")])).toEqual(before);
+  });
 
   it("file_sync + manual with different value creates conflict", async () => {
     const { fileDraftId, uiDraftId } = await seedDraftPair({

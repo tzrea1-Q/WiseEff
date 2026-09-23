@@ -9,6 +9,9 @@ import type {
   ParameterFileConflictBulkIneligible,
   ParameterFileConflictBulkPreview,
   ParameterFileRepository,
+  ParameterFileSourcePreview,
+  ParameterFileSourceReviewResult,
+  ParameterFileSourceWorkflow,
   ParameterFileSyncConflict,
   PreviewBulkConflictResolutionInput,
   ProjectParameterFile,
@@ -442,6 +445,15 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       };
     },
 
+    async getSourceWorkflow(projectId, _fileId): Promise<ParameterFileSourceWorkflow> {
+      ensureProjectFiles(store, projectId);
+      return {
+        canonical: false,
+        bindingCount: 0,
+        reason: "模拟模式没有 canonical source workflow。"
+      };
+    },
+
     async listConflicts(projectId) {
       return ensureProjectConflicts(store, projectId)
         .filter((item) => item.status === "open")
@@ -657,6 +669,40 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       candidate.activatedVersionId = version.id;
       candidate.updatedAt = MOCK_NOW;
       return { item: { ...candidate }, file: { ...file }, version: { ...version } };
+    },
+
+    async getCandidateSourcePreview(projectId, candidateId): Promise<ParameterFileSourcePreview> {
+      const candidate = (store.candidatesByProject.get(projectId) ?? []).find((item) => item.id === candidateId);
+      if (!candidate) {
+        return {
+          kind: "legacy",
+          canSubmit: false,
+          reason: "旧候选沿用激活流程。",
+          candidateId,
+          format: "dts"
+        };
+      }
+      const bytes = store.contentByCandidate.get(candidateId) ?? new Uint8Array();
+      const source = new TextDecoder().decode(bytes);
+      return {
+        kind: "legacy",
+        canSubmit: false,
+        reason: "旧候选沿用激活流程。",
+        candidateId,
+        ...(candidate.fileId ? { fileId: candidate.fileId } : {}),
+        format: candidate.format,
+        ...(candidate.baseVersionId ? { baseVersionId: candidate.baseVersionId } : {}),
+        before: "",
+        after: source
+      };
+    },
+
+    async submitCandidateSourceReview(): Promise<ParameterFileSourceReviewResult> {
+      throw mockApiError("UNSUPPORTED", "模拟模式不提供来源审核。", {});
+    },
+
+    async rollbackVersionThroughSourceReview(): Promise<ParameterFileSourceReviewResult> {
+      throw mockApiError("UNSUPPORTED", "模拟模式不提供来源审核。", {});
     }
   };
 }

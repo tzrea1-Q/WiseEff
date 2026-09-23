@@ -163,4 +163,72 @@ describe("createParameterFileClient", () => {
       { expectedCurrentVersionId: "ver/1", configSetId: "set/1", role: "overlay" }
     );
   });
+
+  it("maps canonical source workflow, preview, submit, and rollback endpoints", async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce({
+        item: { canonical: true, configSetId: "set-1", bindingCount: 1, proofToken: "proof-workflow-1" }
+      })
+      .mockResolvedValueOnce({
+        item: {
+          kind: "canonical",
+          canSubmit: true,
+          candidateId: "candidate-1",
+          fileId: "file-1",
+          format: "json",
+          baseVersionId: "version-1",
+          bindingId: "binding-1",
+          sourcePinId: "pin-1",
+          proofToken: "proof-1",
+          before: "old",
+          after: "new"
+        }
+      });
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ item: { requestId: "request-1", status: "pending", replayed: false } })
+      .mockResolvedValueOnce({ item: { requestId: "request-2", status: "pending", replayed: false } });
+    const client = createParameterFileClient({ get, post } as never);
+
+    await expect(client.getSourceWorkflow("project/1", "file/1")).resolves.toMatchObject({ canonical: true });
+    await expect(client.getCandidateSourcePreview("project/1", "candidate/1")).resolves.toMatchObject({
+      sourcePinId: "pin-1"
+    });
+    await client.submitCandidateSourceReview("project/1", "candidate/1", {
+      expectedCurrentVersionId: "version-1",
+      expectedProofToken: "proof-1",
+      reason: "review"
+    });
+    await client.rollbackVersionThroughSourceReview("project/1", "file/1", {
+      versionId: "version-0",
+      expectedCurrentVersionId: "version-1",
+      expectedProofToken: "proof-workflow-1",
+      reason: "rollback"
+    });
+
+    expect(get).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/projects/project%2F1/parameter-files/file%2F1/source-workflow"
+    );
+    expect(get).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/projects/project%2F1/parameter-file-candidates/candidate%2F1/source-preview"
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/projects/project%2F1/parameter-file-candidates/candidate%2F1/source-submit",
+      { expectedCurrentVersionId: "version-1", expectedProofToken: "proof-1", reason: "review" }
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/projects/project%2F1/parameter-files/file%2F1/source-rollback",
+      {
+        versionId: "version-0",
+        expectedCurrentVersionId: "version-1",
+        expectedProofToken: "proof-workflow-1",
+        reason: "rollback"
+      }
+    );
+  });
 });

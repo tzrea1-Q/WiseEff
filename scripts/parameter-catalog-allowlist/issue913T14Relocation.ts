@@ -30,6 +30,10 @@ export const issue913T14ServiceSuccessorRelocationRecordPath =
 
 const changedFiles = [repositoryFile, serviceTestFile] as const;
 const changedFileSet = new Set<string>(changedFiles);
+const issue853DFixedFileSet = new Set<string>([
+  "server/modules/parameter-files/conflictService.test.ts",
+  "server/modules/parameter-files/syncService.test.ts",
+]);
 const retiredSourceIdSet = new Set<string>(issue913T14RetiredSourceIds);
 const history = {
   commit: "097ad35625cc8ca2401f2cd028404f16a18a75ba",
@@ -123,7 +127,7 @@ export async function applyReviewedIssue913T14Relocation(
       activeFiles: activeUnchangedFiles(t14FamilySuccessorRelocationConfig),
     },
   );
-  requireT14(family.relocations.length === 228, "active family historical subset");
+  requireT14(family.relocations.length === 224, "active family historical subset");
 
   const familyAndPrior = [...existingRelocations, ...family.relocations];
   const rewritten = await runReviewedRelocationRecord(
@@ -209,7 +213,7 @@ export async function applyReviewedIssue913T14Relocation(
     ...successorRelocations,
   ];
   requireT14(
-    relocations.length === issue913T14ExpectedActiveRelocationCount,
+    relocations.length === issue913T14ExpectedActiveRelocationCount - 4,
     "complete active relocation inventory",
   );
   return { violations: service.violations, relocations };
@@ -269,7 +273,8 @@ function requireExactSourceIds(
 }
 
 function activeUnchangedFiles(config: RelocationConfig) {
-  return config.files.map(({ file }) => file).filter((file) => !changedFileSet.has(file));
+  return config.files.map(({ file }) => file)
+    .filter((file) => !changedFileSet.has(file) && !issue853DFixedFileSet.has(file));
 }
 
 function withRetiredHistoricalAllowances(
