@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { EventType } from "@ag-ui/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { ApiError } from "../../../shared/http/errors";
 import {
@@ -17,6 +17,7 @@ import {
   type ParameterCatalogDatabase,
 } from "../../../testing/parameterCatalog";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import { resolveParameterIdentityMode, setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { createAgentOrchestrator } from "../orchestrator";
 import {
   getAgentApproval,
@@ -448,9 +449,14 @@ describe.skipIf(!databaseAvailable)(
     beforeAll(async () => {
       const configuredUrl =
         process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-      if (!configuredUrl || new URL(configuredUrl).port !== "55438") {
+      const postgres = configuredUrl ? new URL(configuredUrl) : null;
+      const localLane = postgres?.port === "55438";
+      const ciBackend = process.env.GITHUB_ACTIONS === "true" &&
+        postgres?.hostname === "127.0.0.1" && postgres.port === "5432" &&
+        postgres.pathname === "/wiseeff_l1_server";
+      if (!localLane && !ciBackend) {
         throw new Error(
-          "Issue 905 acceptance requires the dedicated PostgreSQL lane on port 55438.",
+          "Issue 905 acceptance requires lane905 or the isolated CI backend PostgreSQL service.",
         );
       }
       resetSharedPostgresCheckpointerSaverForTests();
@@ -464,9 +470,20 @@ describe.skipIf(!databaseAvailable)(
       storageRoot = await mkdtemp(`${tmpdir()}/wiseeff-905-agent-`);
       objectStore = createLocalObjectStore(storageRoot);
       fixture = await seedCanonicalParameterFixture(root, objectStore);
+      await root.query(`insert into parameter_identity_migration_runs (
+          id, mode, status, report, db_snapshot_id, object_snapshot_id, write_lock_confirmed, completed_at
+        ) values ('migration-905-agent-post-cutover', 'apply', 'completed', '{}'::jsonb,
+          'issue-905-agent-fixture', 'issue-905-agent-fixture', true, now())`);
+      await root.query(`insert into parameter_identity_cutovers (id, migration_run_id)
+        values ('cutover-905-agent-post-cutover', 'migration-905-agent-post-cutover')`);
     }, 120_000);
 
+    beforeEach(async () => {
+      expect(await resolveParameterIdentityMode(root)).toBe("semantic");
+    });
+
     afterAll(async () => {
+      setParameterIdentityMode(null);
       await closeSharedPostgresCheckpointerSaversForTests();
       catalogLease?.release();
       await root?.close();

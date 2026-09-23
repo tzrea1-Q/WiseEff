@@ -23,6 +23,7 @@ vi.mock("../../parameters/repository", () => ({
 }));
 
 vi.mock("../../parameter-kernel/parameterIdentityMode", () => ({
+  parameterIdentityMode: vi.fn().mockReturnValue("semantic"),
   resolveParameterIdentityMode: vi.fn().mockResolvedValue("semantic")
 }));
 

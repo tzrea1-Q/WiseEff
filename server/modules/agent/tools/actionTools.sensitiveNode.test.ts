@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../shared/http/errors";
+import { setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 
 vi.mock("../../parameter-bindings/drafts", () => ({
   createCanonicalValueDraft: vi.fn(),
@@ -36,9 +37,12 @@ const canonicalPins = {
 
 describe("action.submitParameterChange sensitive node guard", () => {
   beforeEach(() => {
+    setParameterIdentityMode("semantic");
     vi.clearAllMocks();
     mockedApproved.mockResolvedValue({ pins: canonicalPins } as never);
   });
+
+  afterEach(() => setParameterIdentityMode(null));
 
   it("propagates a canonical critical-node refusal and does not submit", async () => {
     const db = {
