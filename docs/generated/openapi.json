@@ -22696,6 +22696,37 @@
                 },
                 "organizationId": {
                   "type": "string"
+                },
+                "bindingId": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "definitionId": {
+                  "type": "string"
+                },
+                "effectiveRevisionId": {
+                  "type": "string"
+                },
+                "currentValueId": {
+                  "type": "string"
+                },
+                "sourcePinId": {
+                  "type": "string"
+                },
+                "configRevisionId": {
+                  "type": "string"
+                },
+                "protectedReferenceKind": {
+                  "type": "string",
+                  "enum": [
+                    "canonical-pin",
+                    "typed-block"
+                  ]
+                },
+                "protectedReferenceReason": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -22836,6 +22867,65 @@
                   "type": "string"
                 },
                 "updatedAt": {
+                  "type": "string"
+                },
+                "canonicalBinding": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "expectedEffectiveRevisionId": {
+                      "type": "string"
+                    },
+                    "expectedCurrentValueId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "bindingId"
+                  ],
+                  "additionalProperties": false
+                },
+                "bindingId": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "definitionId": {
+                  "type": "string"
+                },
+                "effectiveRevisionId": {
+                  "type": "string"
+                },
+                "currentValueId": {
+                  "type": "string"
+                },
+                "sourcePinId": {
+                  "type": "string"
+                },
+                "configRevisionId": {
+                  "type": "string"
+                },
+                "protectedReferenceKind": {
+                  "type": "string",
+                  "enum": [
+                    "canonical-pin",
+                    "typed-block"
+                  ]
+                },
+                "protectedReferenceReason": {
                   "type": "string"
                 }
               },
@@ -23207,6 +23297,74 @@
                     "string",
                     "null"
                   ]
+                },
+                "canonicalPin": {
+                  "type": "object",
+                  "properties": {
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "effectiveRevisionId": {
+                      "type": "string"
+                    },
+                    "currentValueId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "protectedReferenceKind": {
+                      "type": "string",
+                      "enum": [
+                        "canonical-pin",
+                        "typed-block"
+                      ]
+                    },
+                    "protectedReferenceReason": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "bindingId": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "definitionId": {
+                  "type": "string"
+                },
+                "effectiveRevisionId": {
+                  "type": "string"
+                },
+                "currentValueId": {
+                  "type": "string"
+                },
+                "sourcePinId": {
+                  "type": "string"
+                },
+                "configRevisionId": {
+                  "type": "string"
+                },
+                "protectedReferenceKind": {
+                  "type": "string",
+                  "enum": [
+                    "canonical-pin",
+                    "typed-block"
+                  ]
+                },
+                "protectedReferenceReason": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -23427,6 +23585,74 @@
                   "string",
                   "null"
                 ]
+              },
+              "canonicalPin": {
+                "type": "object",
+                "properties": {
+                  "bindingId": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "effectiveRevisionId": {
+                    "type": "string"
+                  },
+                  "currentValueId": {
+                    "type": "string"
+                  },
+                  "sourcePinId": {
+                    "type": "string"
+                  },
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "protectedReferenceKind": {
+                    "type": "string",
+                    "enum": [
+                      "canonical-pin",
+                      "typed-block"
+                    ]
+                  },
+                  "protectedReferenceReason": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "bindingId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "definitionId": {
+                "type": "string"
+              },
+              "effectiveRevisionId": {
+                "type": "string"
+              },
+              "currentValueId": {
+                "type": "string"
+              },
+              "sourcePinId": {
+                "type": "string"
+              },
+              "configRevisionId": {
+                "type": "string"
+              },
+              "protectedReferenceKind": {
+                "type": "string",
+                "enum": [
+                  "canonical-pin",
+                  "typed-block"
+                ]
+              },
+              "protectedReferenceReason": {
+                "type": "string"
               }
             },
             "required": [
@@ -23476,6 +23702,106 @@
               },
               "createdAt": {
                 "type": "string"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameterId": {
+                      "type": "string"
+                    },
+                    "nodeId": {
+                      "type": "string"
+                    },
+                    "protocol": {
+                      "type": "string",
+                      "enum": [
+                        "hdc",
+                        "adb"
+                      ]
+                    },
+                    "nodePath": {
+                      "type": "string"
+                    },
+                    "previousValue": {
+                      "type": "string"
+                    },
+                    "targetValue": {
+                      "type": "string"
+                    },
+                    "valueKind": {
+                      "type": "string",
+                      "enum": [
+                        "scalar",
+                        "complex"
+                      ]
+                    },
+                    "valueFormat": {
+                      "type": "string",
+                      "enum": [
+                        "raw",
+                        "json",
+                        "dts",
+                        "line-list",
+                        "kv-list"
+                      ]
+                    },
+                    "normalizationMode": {
+                      "type": "string",
+                      "enum": [
+                        "exact",
+                        "trim",
+                        "line-ending-normalized",
+                        "json-canonical"
+                      ]
+                    },
+                    "previousDigest": {
+                      "type": "string"
+                    },
+                    "targetDigest": {
+                      "type": "string"
+                    },
+                    "canonicalPin": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "effectiveRevisionId": {
+                          "type": "string"
+                        },
+                        "currentValueId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "configRevisionId": {
+                          "type": "string"
+                        },
+                        "protectedReferenceKind": {
+                          "type": "string",
+                          "enum": [
+                            "canonical-pin",
+                            "typed-block"
+                          ]
+                        },
+                        "protectedReferenceReason": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -23533,6 +23859,106 @@
               },
               "createdAt": {
                 "type": "string"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "parameterId": {
+                      "type": "string"
+                    },
+                    "nodeId": {
+                      "type": "string"
+                    },
+                    "protocol": {
+                      "type": "string",
+                      "enum": [
+                        "hdc",
+                        "adb"
+                      ]
+                    },
+                    "nodePath": {
+                      "type": "string"
+                    },
+                    "previousValue": {
+                      "type": "string"
+                    },
+                    "targetValue": {
+                      "type": "string"
+                    },
+                    "valueKind": {
+                      "type": "string",
+                      "enum": [
+                        "scalar",
+                        "complex"
+                      ]
+                    },
+                    "valueFormat": {
+                      "type": "string",
+                      "enum": [
+                        "raw",
+                        "json",
+                        "dts",
+                        "line-list",
+                        "kv-list"
+                      ]
+                    },
+                    "normalizationMode": {
+                      "type": "string",
+                      "enum": [
+                        "exact",
+                        "trim",
+                        "line-ending-normalized",
+                        "json-canonical"
+                      ]
+                    },
+                    "previousDigest": {
+                      "type": "string"
+                    },
+                    "targetDigest": {
+                      "type": "string"
+                    },
+                    "canonicalPin": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "effectiveRevisionId": {
+                          "type": "string"
+                        },
+                        "currentValueId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "configRevisionId": {
+                          "type": "string"
+                        },
+                        "protectedReferenceKind": {
+                          "type": "string",
+                          "enum": [
+                            "canonical-pin",
+                            "typed-block"
+                          ]
+                        },
+                        "protectedReferenceReason": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -23730,6 +24156,74 @@
                     "string",
                     "null"
                   ]
+                },
+                "canonicalPin": {
+                  "type": "object",
+                  "properties": {
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "effectiveRevisionId": {
+                      "type": "string"
+                    },
+                    "currentValueId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "protectedReferenceKind": {
+                      "type": "string",
+                      "enum": [
+                        "canonical-pin",
+                        "typed-block"
+                      ]
+                    },
+                    "protectedReferenceReason": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "bindingId": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "definitionId": {
+                  "type": "string"
+                },
+                "effectiveRevisionId": {
+                  "type": "string"
+                },
+                "currentValueId": {
+                  "type": "string"
+                },
+                "sourcePinId": {
+                  "type": "string"
+                },
+                "configRevisionId": {
+                  "type": "string"
+                },
+                "protectedReferenceKind": {
+                  "type": "string",
+                  "enum": [
+                    "canonical-pin",
+                    "typed-block"
+                  ]
+                },
+                "protectedReferenceReason": {
+                  "type": "string"
                 }
               },
               "required": [

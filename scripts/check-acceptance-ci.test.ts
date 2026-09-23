@@ -329,6 +329,7 @@ describe("M5.12 acceptance CI configuration", () => {
     expect(helperlessPaths).toEqual(requiredAcceptanceEnvironmentHelperExceptions);
     expect(findMissingAcceptanceEnvironmentHelperLoads(sources)).toEqual([]);
     expect(loaded.has("e2e/acceptance/canonical-dashboard.acceptance.spec.ts")).toBe(true);
+    expect(loaded.has("e2e/acceptance/canonical-dts-reload.acceptance.spec.ts")).toBe(true);
   });
 
   it("routes both Playwright acceptance configs through the same owned-runtime-aware helper", () => {

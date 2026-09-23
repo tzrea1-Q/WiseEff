@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/debugging/repository.ts",
+      "sourceBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+      "destinationBlobOid": "4369660f1663211d1482383691acd8efbd88e2af",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:9403efc8241367a6:4dbf4f1e8bdb8f05",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 1454,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 40019,
+            "byteEnd": 41623,
+            "token": "unresolved:database",
+            "evidence": "database: semantic ? ` insert into node_operations ( id, organization_id, session_id, parameter_id, node_id, protocol, node_path, operation_type, status, requested_value, previous_value, read_value, readback_value, verified, write_outcome,…"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:9403efc8241367a6:034e9e4a01da4e0e",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 1480,
+            "column": 5,
+            "byteStart": 41161,
+            "byteEnd": 42925,
+            "token": "unresolved:database",
+            "evidence": "database: semantic ? ` insert into node_operations ( id, organization_id, session_id, parameter_id, node_id, protocol, node_path, operation_type, status, requested_value, previous_value, read_value, readback_value, verified, write_outcome,…",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "f1fe3de960d6b8bfb3dcc5da440065021764efa1953edb6ba45cefb68193443b",
+          "sourceSliceSha256": "6c367d92237444466f5c07953529f1b112a84d3639e93310b6502a32436d7ea3"
+        }
+      ]
+    }
+  ]
+}

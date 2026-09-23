@@ -36,6 +36,14 @@ import {
 import { applyReviewedDebuggingTransferRelocation } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
 import { applyReviewedSourceWorkflowRelocation, applyReviewedSourceWorkflowConsumerRelocation } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
 import { applyReviewedIssue913T14Relocation } from "./parameter-catalog-allowlist/issue913T14Relocation";
+import {
+  applyReviewedIssue853CRouteRelocation,
+  applyReviewedIssue853CCatalogSplitRelocation,
+  applyReviewedIssue853CRepositoryRelocation,
+  applyReviewedIssue853CRemainderRelocation,
+  verifyIssue853CActionRetirement,
+  verifyIssue853CRemainderRetirement,
+} from "./parameter-catalog-allowlist/issue853CRelocation";
 import { applyReviewedIssue913StaleSuccessorRelocation } from "./parameter-catalog-allowlist/issue913StaleSuccessorRelocation";
 import { applyReviewedSeedDriverLookupRelocation } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 import { applyReviewedIssue901RoutesTestRelocation } from "./parameter-catalog-allowlist/issue901RouteTestRelocation";
@@ -372,26 +380,41 @@ export async function checkParameterCatalogBoundaries(
     postCutoverRelocated.violations,
     [...relocated.relocations, ...postCutoverRelocated.relocations],
   );
+  const issue853CRoutesRelocated = await applyReviewedIssue853CRouteRelocation(
+    repoRoot, fixture, allowlist.entries, debuggingTransferRelocated.violations,
+    [...relocated.relocations, ...postCutoverRelocated.relocations, ...debuggingTransferRelocated.relocations],
+  );
+  const issue853CCatalogSplitRelocated = await applyReviewedIssue853CCatalogSplitRelocation(
+    repoRoot, fixture, allowlist.entries, issue853CRoutesRelocated.violations,
+    [...relocated.relocations, ...postCutoverRelocated.relocations,
+      ...debuggingTransferRelocated.relocations, ...issue853CRoutesRelocated.relocations],
+  );
   const sourceWorkflowRelocated = await applyReviewedSourceWorkflowRelocation(
     repoRoot,
     fixture,
     allowlist.entries,
-    debuggingTransferRelocated.violations,
+    issue853CCatalogSplitRelocated.violations,
     [
       ...relocated.relocations,
       ...postCutoverRelocated.relocations,
       ...debuggingTransferRelocated.relocations,
+      ...issue853CRoutesRelocated.relocations,
+      ...issue853CCatalogSplitRelocated.relocations,
     ],
   );
   const priorRelocations = [
       ...relocated.relocations,
       ...postCutoverRelocated.relocations,
       ...debuggingTransferRelocated.relocations,
+      ...issue853CRoutesRelocated.relocations,
+      ...issue853CCatalogSplitRelocated.relocations,
       ...sourceWorkflowRelocated.relocations,
   ];
   const consumerRelocated = await applyReviewedSourceWorkflowConsumerRelocation(
     repoRoot, fixture, allowlist.entries, sourceWorkflowRelocated.violations, priorRelocations,
   );
+  await verifyIssue853CActionRetirement(repoRoot, fixture, allowlist.entries, violations);
+  await verifyIssue853CRemainderRetirement(repoRoot, fixture, allowlist.entries, violations);
   const t14Relocated = await applyReviewedIssue913T14Relocation(
     repoRoot,
     fixture,
@@ -399,19 +422,33 @@ export async function checkParameterCatalogBoundaries(
     consumerRelocated.violations,
     [...priorRelocations, ...consumerRelocated.relocations],
   );
+  const issue853CRepositoryRelocated = await applyReviewedIssue853CRepositoryRelocation(
+    repoRoot, fixture, allowlist.entries, t14Relocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations],
+  );
+  const issue853CRemainderRelocated = await applyReviewedIssue853CRemainderRelocation(
+    repoRoot, fixture, allowlist.entries, issue853CRepositoryRelocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations,
+      ...issue853CRepositoryRelocated.relocations],
+  );
+  const cRelocations = [
+    ...priorRelocations,
+    ...consumerRelocated.relocations,
+    ...t14Relocated.relocations,
+    ...issue853CRepositoryRelocated.relocations,
+    ...issue853CRemainderRelocated.relocations,
+  ];
   const staleSuccessorRelocated = await applyReviewedIssue913StaleSuccessorRelocation(
     repoRoot,
     fixture,
     allowlist.entries,
-    t14Relocated.violations,
-    [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations],
+    issue853CRemainderRelocated.violations,
+    cRelocations,
   );
   const seedDriverRelocated = await applyReviewedSeedDriverLookupRelocation(
     repoRoot, fixture, allowlist.entries, staleSuccessorRelocated.violations,
     [
-      ...priorRelocations,
-      ...consumerRelocated.relocations,
-      ...t14Relocated.relocations,
+      ...cRelocations,
       ...staleSuccessorRelocated.relocations,
     ],
   );
@@ -421,9 +458,7 @@ export async function checkParameterCatalogBoundaries(
     allowlist.entries,
     seedDriverRelocated.violations,
     [
-      ...priorRelocations,
-      ...consumerRelocated.relocations,
-      ...t14Relocated.relocations,
+      ...cRelocations,
       ...staleSuccessorRelocated.relocations,
       ...seedDriverRelocated.relocations,
     ],
@@ -434,9 +469,7 @@ export async function checkParameterCatalogBoundaries(
     allowlist.entries,
     issue901RoutesTestRelocated.violations,
     [
-      ...priorRelocations,
-      ...consumerRelocated.relocations,
-      ...t14Relocated.relocations,
+      ...cRelocations,
       ...staleSuccessorRelocated.relocations,
       ...seedDriverRelocated.relocations,
       ...issue901RoutesTestRelocated.relocations,
@@ -445,9 +478,7 @@ export async function checkParameterCatalogBoundaries(
   return {
     ...compareBoundaryInventory(issue900DashboardRelocated.violations, allowlist.entries, fixture.violations),
     relocations: [
-      ...priorRelocations,
-      ...consumerRelocated.relocations,
-      ...t14Relocated.relocations,
+      ...cRelocations,
       ...staleSuccessorRelocated.relocations,
       ...seedDriverRelocated.relocations,
       ...issue901RoutesTestRelocated.relocations,

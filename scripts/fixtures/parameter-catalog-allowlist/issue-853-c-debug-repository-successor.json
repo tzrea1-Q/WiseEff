@@ -1,0 +1,311 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/debugging/repository.ts",
+      "sourceBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+      "destinationBlobOid": "4369660f1663211d1482383691acd8efbd88e2af",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:193c01a58d2dafb1",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 537,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 14292,
+            "byteEnd": 14451,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterColumns} from debugging_parameters where ${where.join(\"\\n and \")} order by sort_order asc, name asc, id asc `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:031dac3597e8bf0f",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 560,
+            "column": 5,
+            "byteStart": 15309,
+            "byteEnd": 15468,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterColumns} from debugging_parameters where ${where.join(\"\\n and \")} order by sort_order asc, name asc, id asc `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "56606ca00d99b0abd1008e85893ae0f9be97e7ba79bec87c1b43e894034cea4c"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:6c226813b5a10b75",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 769,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 20141,
+            "byteEnd": 20392,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterNodeBindingColumns} from debugging_parameter_node_bindings where organization_id = $1 and parameter_id = $2 and protocol = $3 ${input.includeDisabled ? \"\" : \"and enabled = true\"} limit 1 `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:dc3c9b340dac2704",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 792,
+            "column": 5,
+            "byteStart": 21158,
+            "byteEnd": 21409,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterNodeBindingColumns} from debugging_parameter_node_bindings where organization_id = $1 and parameter_id = $2 and protocol = $3 ${input.includeDisabled ? \"\" : \"and enabled = true\"} limit 1 `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "c5a8bd12aa9014471946f9f15ccd79a0c09aca3b9f9f08634b2113d2bba90fd9"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:9ecd5141ce3d8a3e",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 799,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 21207,
+            "byteEnd": 21388,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterNodeBindingColumns} from debugging_parameter_node_bindings where ${where.join(\"\\n and \")} order by parameter_id asc, protocol asc `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:ecdc1e33003d382b",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 822,
+            "column": 5,
+            "byteStart": 22224,
+            "byteEnd": 22405,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterNodeBindingColumns} from debugging_parameter_node_bindings where ${where.join(\"\\n and \")} order by parameter_id asc, protocol asc `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "d20ba5c60aa83d8a7624b5a7f091f64eccce94e95c5a5824cc69a6bdc0a7c38b"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:fdbbcabafc55f05c",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 896,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 23856,
+            "byteEnd": 24136,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterNodeBindingColumns} from debugging_parameter_node_bindings where organization_id = $1 and protocol = 'adb' and is_smoke_default = true ${input.includeDisabled ? \"\" : \"and enabled = true\"} order by id asc …"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:dc9608ac42b52d47",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 919,
+            "column": 5,
+            "byteStart": 24873,
+            "byteEnd": 25153,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugParameterNodeBindingColumns} from debugging_parameter_node_bindings where organization_id = $1 and protocol = 'adb' and is_smoke_default = true ${input.includeDisabled ? \"\" : \"and enabled = true\"} order by id asc …",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "f0f368457a9f4f69e96dc4fc2f086b2f4ce3dc82d5551e65c5f3f3ff57514e4b"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:1249f3d31a01153c",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 985,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 26251,
+            "byteEnd": 26459,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${semantic ? nodeOperationColumnsSemantic : nodeOperationColumnsLegacy} from node_operations where organization_id = $1 and session_id = $2 order by created_at asc, id asc `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:7b65440846eb58e5",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 1008,
+            "column": 5,
+            "byteStart": 27268,
+            "byteEnd": 27476,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${semantic ? nodeOperationColumnsSemantic : nodeOperationColumnsLegacy} from node_operations where organization_id = $1 and session_id = $2 order by created_at asc, id asc `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "bef6d99fae07061df56b64de3ea8d8e0d4e47af1ade9263ac59320ab605ffa7f"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:799693a886f66d09",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 1004,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 26832,
+            "byteEnd": 27008,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${semantic ? nodeOperationColumnsSemantic : nodeOperationColumnsLegacy} from node_operations where organization_id = $1 and id = $2 limit 1 `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:c3ed7c419b8d96d4",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 1027,
+            "column": 5,
+            "byteStart": 27849,
+            "byteEnd": 28025,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${semantic ? nodeOperationColumnsSemantic : nodeOperationColumnsLegacy} from node_operations where organization_id = $1 and id = $2 limit 1 `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "5807e8ef9b37ff1ccea3f203a49992128edaa70229ca5df6cb3feb9244d921dc"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:legacy-parameter-spec-identifier:3424d335d60c1751:2dc1627e248e89be",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-DBG",
+            "line": 1424,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 38954,
+            "byteEnd": 38969,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-DBG:legacy-parameter-spec-identifier:3424d335d60c1751:75e49c832bf545d7",
+            "family": "S12-DBG",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 1447,
+            "column": 5,
+            "byteStart": 39971,
+            "byteEnd": 39986,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:legacy-parameter-spec-identifier:a5e1b6afd58d3283:d04c3e6e27ce871b",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-DBG",
+            "line": 1517,
+            "column": 17,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 42961,
+            "byteEnd": 42976,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-DBG:legacy-parameter-spec-identifier:a5e1b6afd58d3283:e4cd63d0d59cf396",
+            "family": "S12-DBG",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 1545,
+            "column": 17,
+            "byteStart": 44263,
+            "byteEnd": 44278,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:legacy-parameter-spec-identifier:a5e1b6afd58d3283:ef72fb98f48f038f",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/debugging/repository.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-DBG",
+            "line": 1551,
+            "column": 17,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "e710e29dcd772c5c4977211b2b9256dd8a67a874",
+            "byteStart": 44202,
+            "byteEnd": 44217,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-DBG:legacy-parameter-spec-identifier:a5e1b6afd58d3283:64b951df11eeaff9",
+            "family": "S12-DBG",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/debugging/repository.ts",
+            "line": 1582,
+            "column": 17,
+            "byteStart": 45666,
+            "byteEnd": 45681,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4369660f1663211d1482383691acd8efbd88e2af"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        }
+      ]
+    }
+  ]
+}
