@@ -340,10 +340,10 @@ describe("#906 C frozen multi-target request", () => {
       invocation: createUserInvocation(admin), requestId: "c906-http-batch-submit",
       refusalSink: createTrustedRefusalAuditSink(db)
     });
-    const route = (auth = reviewer) => {
+    const route = (auth = reviewer, withObjectStore = true) => {
       const router = createRouter();
       registerCatalogProjectValueConsumerRoutes(router, {
-        db, objectStore: storage, getCurrentAuthContext: () => auth
+        db, objectStore: withObjectStore ? storage : undefined, getCurrentAuthContext: () => auth
       });
       return createHttpServer(router);
     };
@@ -371,6 +371,9 @@ describe("#906 C frozen multi-target request", () => {
       roles: [{ roleId: "software-committer", projectId: PROJECT }]
     });
     expect((await requestJson(route(foreign), `${base}/batch`)).status).toBe(404);
+    expect((await requestJson(route(reviewer, false), `${base}/source-diff`)).status).toBe(500);
+    expect((await requestJson(route(editor, false), `${base}/source-diff`)).status).toBe(403);
+    expect((await requestJson(route(foreign, false), `${base}/source-diff`)).status).toBe(404);
     const reviewBody = (batchProofDigest?: string, decision = "approve") => ({
       method: "POST", body: JSON.stringify({ decision, ...(batchProofDigest ? { batchProofDigest } : {}) })
     });
