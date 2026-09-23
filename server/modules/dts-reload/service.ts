@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   asAuditTx,
@@ -8,17 +9,7 @@ import {
 import type { AuthContext } from "../auth/types";
 import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import { createCatalogKernel } from "../catalog-kernel/interface";
 import {
-  handleCatalogRead,
-  kernelOnlyTimelineComposer,
-  unregisteredProjection,
-  zeroUsageProjection
-} from "../parameter-catalog-api/read";
-import { readProtectedReference } from "../parameter-bindings/adapters";
-import {
-  getRootPostgresPool,
-  isRootDatabase,
   type Database,
   type Queryable
 } from "../../shared/database/client";
@@ -26,7 +17,13 @@ import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
 import { classifyReloadCandidate, normalizeReloadCandidates } from "./candidates";
 import {
+  payloadToBindingView
+} from "../parameter-bindings/catalogProjectValueSync";
+import { loadSourceBindingCohort } from "../parameter-bindings/values/repositories";
+import type { ProjectValuePayload } from "../parameter-bindings/values";
+import {
   describeReloadValueShapeAuthoring,
+  inferReloadValueShape,
   resolveReloadValueShape,
   validateAuthoredDebugValue,
   type CandidateValueShape,
@@ -42,6 +39,7 @@ import {
 import {
   assertDtsReloadInvocationContext,
   requireDtsReload,
+  requireDtsReloadProjectMutation,
   requireDtsReloadUserInvocation,
   requireDtsReloadView,
   type DtsReloadInvocationContext
@@ -90,7 +88,8 @@ import type {
   ReloadRunListCursor,
   ReloadRunListItemDto,
   ReloadRunPurpose,
-  ReloadRunStatus
+  ReloadRunStatus,
+  ReloadRunTargetDto
 } from "./types";
 import {
   DEPLOY_RECLAIMED_FAILURE_CODE,
@@ -106,9 +105,16 @@ export type DtsReloadServiceContext = DtsReloadInvocationContext;
 export type StartReloadRunTargetInput = {
   bindingId: string;
   debugValue: string;
+  definitionId?: string;
   definitionRevisionId?: string;
   currentValueId?: string;
   catalogReleaseId?: string;
+  configRevisionId?: string;
+  sourcePinId?: string;
+  sourceOccurrenceId?: string;
+  sourceRef?: string;
+  sourceFormat?: "dts" | "json";
+  sourceLocator?: unknown;
 };
 
 export type StartReloadRunInput = {
@@ -176,6 +182,29 @@ function sha256Hex(bytes: Buffer | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function hasReloadProjectScope(auth: AuthContext, projectId: string): boolean {
+  return auth.user.isActive && auth.roles.some((role) =>
+    ["admin", "platform-admin", "hardware-user", "software-user", "hardware-committer", "software-committer"].includes(role.roleId) &&
+    (role.projectId === null || role.projectId === projectId));
+}
+
+function requireReloadProjectScope(auth: AuthContext, projectId: string): void {
+  if (!hasReloadProjectScope(auth, projectId)) {
+    throw new ApiError("FORBIDDEN", "DTS reload project scope is required.", {
+      code: "reload-project-scope-required",
+      projectId
+    });
+  }
+}
+
+function requireReloadOrganizationScope(auth: AuthContext): void {
+  if (!hasReloadProjectScope(auth, "")) {
+    throw new ApiError("FORBIDDEN", "An organization-wide DTS reload role is required for this filter.", {
+      code: "reload-organization-scope-required"
+    });
+  }
+}
+
 function asConstraints(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -186,12 +215,56 @@ function asValueShape(value: unknown): CandidateValueShape {
   return value as CandidateValueShape;
 }
 
-function rowToCandidate(row: ReloadCandidateRow): {
+function textFromDefinitionField(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const nested = (value as Record<string, unknown>).value;
+  return typeof nested === "string" && nested.trim() ? nested.trim() : null;
+}
+
+function constraintsFromDefinition(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const constraints = record.constraints;
+  if (constraints && typeof constraints === "object" && !Array.isArray(constraints)) {
+    return constraints as Record<string, unknown>;
+  }
+  const schema = record.valueSchema;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return {};
+  const schemaRecord = schema as Record<string, unknown>;
+  return Object.fromEntries(
+    ["minimum", "maximum", "minItems", "maxItems"].flatMap((key) =>
+      schemaRecord[key] === undefined
+        ? []
+        : [[key === "minimum" ? "min" : key === "maximum" ? "max" : key, schemaRecord[key]]]
+    )
+  );
+}
+
+export function rowToCandidate(row: ReloadCandidateRow): {
   candidate: ReloadCandidateDto;
   resolvedShape: CandidateValueShape;
 } {
-  const valueShape = asValueShape(row.value_shape);
-  const resolvedShape = resolveReloadValueShape(valueShape, row.baseline_value);
+  const content = row.definition_content;
+  const payload = {
+    kind: row.value_kind,
+    value: row.value_payload
+  } as ProjectValuePayload;
+  const view = payloadToBindingView(
+    payload,
+    row.source_format
+  );
+  const baselineValue = view.rawValue;
+  const inferredValueShape = view.typedValue.kind === "json" ? null : inferReloadValueShape(view.typedValue);
+  const valueShape = asValueShape(row.value_shape) ?? inferredValueShape;
+  const resolvedShape = resolveReloadValueShape(valueShape, baselineValue);
+  const contentRecord =
+    content && typeof content === "object" && !Array.isArray(content)
+      ? (content as Record<string, unknown>)
+      : {};
+  const description =
+    textFromDefinitionField(contentRecord.documentation) ?? textFromDefinitionField(contentRecord.description);
+  const unit = textFromDefinitionField(contentRecord.unit);
   const classified = classifyReloadCandidate({
     bindingId: row.binding_id,
     projectId: row.project_id,
@@ -199,12 +272,15 @@ function rowToCandidate(row: ReloadCandidateRow): {
     displayName: row.display_name,
     module: row.module_name,
     nodePath: row.node_path,
-    baselineValue: row.baseline_value,
-    description: row.description,
+    baselineValue,
+    description,
     valueShape,
     valueShapeKind: valueShape?.kind ?? null,
-    unit: row.unit,
-    constraints: asConstraints(row.constraints)
+    unit,
+    constraints: {
+      ...asConstraints(row.constraints),
+      ...constraintsFromDefinition(content)
+    }
   });
   return {
     candidate: {
@@ -216,89 +292,28 @@ function rowToCandidate(row: ReloadCandidateRow): {
       protectedReferencePin: {
         kind: "canonical-pin",
         bindingId: row.binding_id,
-        configRevisionId: row.config_revision_id
+        configRevisionId: row.config_revision_id,
+        definitionId: row.definition_id,
+        definitionRevisionId: row.definition_revision_id,
+        currentValueId: row.current_value_id,
+        catalogReleaseId: row.catalog_release_id,
+        sourcePinId: row.source_pin_id,
+        sourceOccurrenceId: row.source_occurrence_id,
+        sourceFormat: row.source_format,
+        sourceLocator: row.source_locator
       },
       writebackSourcePin: {
         kind: "source-writeback",
-        sourceRef: `reload-binding:${row.binding_id}`,
-        configRevisionId: row.config_revision_id
+        sourceRef: row.source_ref,
+        configRevisionId: row.config_revision_id,
+        sourcePinId: row.source_pin_id,
+        sourceOccurrenceId: row.source_occurrence_id,
+        format: row.source_format,
+        locator: row.source_locator
       }
     },
     resolvedShape
   };
-}
-
-const DTS_UNBOUND_REVISION = "drev_dts_unbound";
-
-async function touchDtsCanonicalSeams(db: Queryable, organizationId: string): Promise<void> {
-  if (!isRootDatabase(db)) {
-    return;
-  }
-  const pool = getRootPostgresPool(db);
-  if (!pool) {
-    return;
-  }
-  try {
-    const kernel = createCatalogKernel(pool);
-    const scope = {
-      principalId: `dts-reload:${organizationId}`,
-      organizationId,
-      actorKind: "user" as const,
-      canReadCatalog: true,
-      projectScope: { kind: "only" as const, ids: [] },
-      canRegister: false,
-      subjects: { kind: "all" as const },
-      definitions: { kind: "all" as const }
-    };
-    const catalogRead = await handleCatalogRead(
-      {
-        runtime: kernel,
-        readiness: {
-          async current() {
-            await pool.query("select 1 as ok");
-            return { status: "not-ready", retryAfterSeconds: 1 };
-          },
-          async named() {
-            await pool.query("select 1 as ok");
-            return { status: "unknown" };
-          }
-        },
-        registration: unregisteredProjection,
-        usage: zeroUsageProjection,
-        timeline: kernelOnlyTimelineComposer,
-        authenticate: async () => ({ ok: true as const, scope })
-      },
-      {
-        method: "GET",
-        path: "/api/v2/catalog",
-        params: {},
-        query: {},
-        headers: {},
-        requestId: `dts-reload:${organizationId}`
-      }
-    );
-    if (typeof catalogRead.status !== "number") {
-      return;
-    }
-    await readProtectedReference(pool, {
-      snapshot: {
-        release: { id: "crel_dts_unbound", version: "0.0.0", digest: `sha256:${"0".repeat(64)}` },
-        getSubject: () => ({ status: "unknown" as const, target: "subject" as const }),
-        listSubjects: () => ({ status: "invalid-page" as const, reason: "cursor-malformed" as const }),
-        resolveSubject: () => ({ status: "unknown" as const, reason: "no-candidate" as const }),
-        getDefinition: () => ({ status: "unknown" as const, target: "definition" as const }),
-        getDefinitionById: () => ({ status: "unknown" as const, target: "definition" as const }),
-        listDefinitions: () => ({ status: "invalid-page" as const, reason: "cursor-malformed" as const }),
-        getDefinitionRevision: () => ({ status: "unknown" as const, target: "definition" as const }),
-        listDefinitionRevisions: () => ({ status: "unknown" as const, target: "definition" as const }),
-        listDefinitionTimelineFacts: () => ({ status: "unknown" as const, target: "definition" as const })
-      } as never,
-      binding: null,
-      definitionRevisionId: DTS_UNBOUND_REVISION as never
-    });
-  } catch {
-    return;
-  }
 }
 
 type ReloadAuditInput = {
@@ -465,12 +480,168 @@ async function assertDeploySensitiveReloadAllowed(
   });
 }
 
+async function assertReloadRunCanonicalPinsCurrent(
+  db: Queryable,
+  auth: AuthContext,
+  run: ReloadRunDto
+): Promise<void> {
+  for (const target of run.targets) {
+    if (
+      !target.canonicalBindingId ||
+      !target.canonicalDefinitionId ||
+      !target.canonicalDefinitionRevisionId ||
+      !target.canonicalCurrentValueId ||
+      !target.canonicalCatalogReleaseId ||
+      !target.canonicalSourcePinId ||
+      !target.canonicalSourceOccurrenceId ||
+      !target.canonicalConfigRevisionId ||
+      !target.canonicalSourceRef ||
+      target.canonicalSourceFormat !== "dts"
+    ) {
+      throw new ApiError(
+        "CONFLICT",
+        "Legacy reload targets cannot be deployed after the canonical cutover.",
+        { code: "reload-deploy-legacy-target", runId: run.id, bindingId: target.bindingId }
+      );
+    }
+    const current = await getReloadCandidateRow(db, {
+      organizationId: auth.organization.id,
+      projectId: run.projectId,
+      bindingId: target.canonicalBindingId
+    });
+    if (!current) {
+      throw new ApiError(
+        "CONFLICT",
+        "A reload target's canonical parameter is no longer available; start a fresh run.",
+        { code: "reload-deploy-canonical-binding-missing", runId: run.id, bindingId: target.bindingId }
+      );
+    }
+    const exact: Array<[string, unknown, unknown]> = [
+      ["canonicalBindingId", target.canonicalBindingId, current.binding_id],
+      ["canonicalDefinitionId", target.canonicalDefinitionId, current.definition_id],
+      ["canonicalDefinitionRevisionId", target.canonicalDefinitionRevisionId, current.definition_revision_id],
+      ["canonicalCurrentValueId", target.canonicalCurrentValueId, current.current_value_id],
+      ["canonicalCatalogReleaseId", target.canonicalCatalogReleaseId, current.catalog_release_id],
+      ["canonicalSourcePinId", target.canonicalSourcePinId, current.source_pin_id],
+      ["canonicalSourceOccurrenceId", target.canonicalSourceOccurrenceId, current.source_occurrence_id],
+      ["canonicalConfigRevisionId", target.canonicalConfigRevisionId, current.config_revision_id],
+      ["canonicalSourceRef", target.canonicalSourceRef, current.source_ref],
+      ["canonicalSourceFormat", target.canonicalSourceFormat, current.source_format],
+      ["propertyKey", target.propertyKey, current.property_key],
+      ["nodePath", target.nodePath, current.node_path]
+    ];
+    const mismatch = exact.find(([, recorded, value]) => recorded !== value);
+    if (mismatch || !isDeepStrictEqual(target.canonicalSourceLocator, current.source_locator)) {
+      throw new ApiError(
+        "CONFLICT",
+        "A reload target's canonical value or exact DTS source pin changed; start a fresh run.",
+        {
+          code: "reload-deploy-canonical-pin-drift",
+          runId: run.id,
+          bindingId: target.bindingId,
+          field: mismatch?.[0] ?? "canonicalSourceLocator",
+          recorded: mismatch?.[1] ?? target.canonicalSourceLocator,
+          current: mismatch?.[2] ?? current.source_locator
+        }
+      );
+    }
+  }
+}
+
+/**
+ * Hold the canonical source cohort and its Bindings while the device write runs.
+ * Canonical value/source writers use this same occurrence-then-Binding lock order;
+ * keeping the transaction open through device I/O prevents a current tip or source
+ * cohort from changing after the deploy claim and before the write.
+ */
+async function lockReloadCanonicalSourceCohorts(
+  db: Queryable,
+  auth: AuthContext,
+  run: ReloadRunDto
+): Promise<void> {
+  const targetSourceOccurrenceIds = run.targets.map((target) => target.canonicalSourceOccurrenceId);
+  if (targetSourceOccurrenceIds.some((sourceOccurrenceId) => !sourceOccurrenceId)) {
+    throw new ApiError(
+      "CONFLICT",
+      "Legacy reload targets cannot be deployed after the canonical cutover.",
+      { code: "reload-deploy-legacy-target", runId: run.id }
+    );
+  }
+  const sourceOccurrenceIds = [...new Set(targetSourceOccurrenceIds as string[])];
+
+  const occurrences = await db.query<{ id: string; config_set_id: string }>(
+    `
+    select occurrence.id, occurrence.config_set_id
+      from parameter_catalog.project_parameter_source_occurrences occurrence
+     where occurrence.organization_id = $1
+       and occurrence.project_id = $2
+       and occurrence.id = any($3::text[])
+     order by occurrence.config_set_id, occurrence.id
+    `,
+    [auth.organization.id, run.projectId, sourceOccurrenceIds]
+  );
+  if (occurrences.rows.length !== sourceOccurrenceIds.length) {
+    throw new ApiError(
+      "CONFLICT",
+      "A reload target's canonical source cohort is no longer available; start a fresh run.",
+      { code: "reload-deploy-source-cohort-missing", runId: run.id }
+    );
+  }
+  const configSetIds = [...new Set(occurrences.rows.map((row) => row.config_set_id))].sort();
+  const sourceOccurrenceConfigSets = new Map(
+    occurrences.rows.map((row) => [row.id, row.config_set_id])
+  );
+
+  try {
+    for (const configSetId of configSetIds) {
+      // The parent FK lock also fences new occurrence/Binding membership.
+      await db.query(
+        "select id from dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update nowait",
+        [configSetId, auth.organization.id, run.projectId]
+      );
+      const cohort = await loadSourceBindingCohort(db, {
+        organizationId: auth.organization.id,
+        projectId: run.projectId,
+        configSetId
+      });
+      const cohortBindingIds = new Set(cohort.map((row) => row.bindingId));
+      const scopedTargets = run.targets.filter(
+        (target) => sourceOccurrenceConfigSets.get(target.canonicalSourceOccurrenceId!) === configSetId
+      );
+      const targetBindingIds = scopedTargets
+        .map((target) => target.canonicalBindingId)
+        .filter((bindingId): bindingId is string => Boolean(bindingId));
+      if (
+        targetBindingIds.length !== scopedTargets.length ||
+        targetBindingIds.some((bindingId) => !cohortBindingIds.has(bindingId))
+      ) {
+        throw new ApiError(
+          "CONFLICT",
+          "A reload target's canonical Binding is no longer in its source cohort; start a fresh run.",
+          { code: "reload-deploy-source-cohort-drift", runId: run.id, configSetId }
+        );
+      }
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "55P03") {
+      throw new ApiError(
+        "CONFLICT",
+        "The canonical source cohort is being changed; retry the deploy.",
+        { code: "reload-deploy-source-cohort-busy", runId: run.id }
+      );
+    }
+    throw error;
+  }
+}
+
 export async function listReloadCandidates(
   db: Queryable,
   auth: AuthContext,
   projectId: string
 ): Promise<{ items: ReloadCandidateDto[] }> {
   requireDtsReloadView(auth);
+  requireReloadProjectScope(auth, projectId);
   const rows = await listReloadCandidateRows(db, {
     organizationId: auth.organization.id,
     projectId
@@ -522,6 +693,11 @@ export async function listReloadRuns(
       { code: "reload-run-list-filter-required" }
     );
   }
+  if (projectId) {
+    requireReloadProjectScope(auth, projectId);
+  } else {
+    requireReloadOrganizationScope(auth);
+  }
   const limit = input.limit ?? 20;
   return listReloadRunRows(db, {
     organizationId: auth.organization.id,
@@ -546,19 +722,26 @@ async function loadBaseSource(
   db: Queryable,
   objectStore: ObjectStore,
   auth: AuthContext,
-  projectId: string
-): Promise<{ configSetId: string; baseSource: string }> {
-  const { configSetId, members } = await listProjectDtsMemberSources(db, {
+  projectId: string,
+  configRevisionIds: string[]
+): Promise<{ baseSource: string }> {
+  const members = await listProjectDtsMemberSources(db, {
     organizationId: auth.organization.id,
-    projectId
+    projectId,
+    configRevisionIds
   });
 
-  if (!configSetId || members.length === 0) {
+  if (members.length === 0) {
     throw new ApiError(
       "CONFLICT",
       "The project has no DTS configuration-set members to build a base device tree from.",
       { code: "reload-base-missing", projectId }
     );
+  }
+  if (new Set(members.map((member) => member.file_id)).size !== members.length) {
+    throw new ApiError("CONFLICT", "Reload targets reference incompatible versions of the same source file.", {
+      code: "reload-base-source-version-conflict", projectId
+    });
   }
 
   const sources = [];
@@ -588,7 +771,7 @@ async function loadBaseSource(
     });
   }
 
-  return { configSetId, baseSource: buildReloadBaseSource(sources) };
+  return { baseSource: buildReloadBaseSource(sources) };
 }
 
 /**
@@ -690,7 +873,6 @@ async function resolveStartTargets(
   auth: AuthContext,
   input: StartReloadRunInput
 ): Promise<ResolvedReloadTarget[]> {
-  await touchDtsCanonicalSeams(db, auth.organization.id);
   if (input.targets.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one reload target is required.");
   }
@@ -722,6 +904,30 @@ async function resolveStartTargets(
     }
 
     const { candidate, resolvedShape } = rowToCandidate(row);
+    const pinMismatch = [
+      ["definitionId", target.definitionId, row.definition_id],
+      ["definitionRevisionId", target.definitionRevisionId, row.definition_revision_id],
+      ["currentValueId", target.currentValueId, row.current_value_id],
+      ["catalogReleaseId", target.catalogReleaseId, row.catalog_release_id],
+      ["configRevisionId", target.configRevisionId, row.config_revision_id],
+      ["sourcePinId", target.sourcePinId, row.source_pin_id],
+      ["sourceOccurrenceId", target.sourceOccurrenceId, row.source_occurrence_id],
+      ["sourceRef", target.sourceRef, row.source_ref],
+      ["sourceFormat", target.sourceFormat, row.source_format]
+    ].find(([, received, expected]) => received !== expected);
+    if (pinMismatch || !isDeepStrictEqual(target.sourceLocator, row.source_locator)) {
+      throw new ApiError(
+        "CONFLICT",
+        "The canonical parameter or exact DTS source pin changed after the candidate list was loaded. Reload candidates and retry.",
+        {
+          code: "reload-canonical-pin-stale",
+          bindingId: target.bindingId,
+          field: pinMismatch?.[0] ?? "sourceLocator",
+          expected: pinMismatch?.[2] ?? row.source_locator,
+          received: pinMismatch?.[1] ?? target.sourceLocator
+        }
+      );
+    }
     if (!candidate.debuggable || !candidate.nodePath) {
       const detail = candidate.blockReason
         ? BLOCK_REASON_MESSAGES[candidate.blockReason]
@@ -787,6 +993,7 @@ export async function startReloadRun(
 ): Promise<ReloadRunDto> {
   const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDtsReload(auth);
+  requireDtsReloadProjectMutation(auth, input.projectId);
 
   const purpose: ReloadRunPurpose = input.purpose ?? "ordinary";
   await requireDtsReloadUserInvocation(auth, {
@@ -833,7 +1040,8 @@ export async function startReloadRun(
   const overlayTargets = groupDebugOverlayTargets(resolved.map((item) => item.binding));
   const overlaySource = generateDebugOverlay(overlayTargets);
   const runId = randomUUID();
-  const configRevisionId = resolved[0]?.configRevisionId ?? null;
+  const configRevisionIds = [...new Set(resolved.map((target) => target.configRevisionId!))];
+  const configRevisionId = configRevisionIds.length === 1 ? configRevisionIds[0]! : null;
 
   const beforeFingerprint = await readLibraryFingerprint(db, {
     organizationId: auth.organization.id,
@@ -876,7 +1084,7 @@ export async function startReloadRun(
 
   let baseSource: string;
   try {
-    ({ baseSource } = await loadBaseSource(db, objectStore, auth, input.projectId));
+    ({ baseSource } = await loadBaseSource(db, objectStore, auth, input.projectId, configRevisionIds));
   } catch (error) {
     const failureCode =
       error instanceof ApiError ? String(error.details?.code ?? "reload-base-missing") : "reload-base-missing";
@@ -979,6 +1187,7 @@ export async function startRestoreBaselineRun(
 ): Promise<ReloadRunDto> {
   const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDtsReload(auth);
+  requireDtsReloadProjectMutation(auth, input.projectId);
   await requireDtsReloadUserInvocation(auth, {
     context: trustedContext,
     action: "restore",
@@ -1045,7 +1254,8 @@ export async function startRestoreBaselineRun(
         }
       );
     }
-    const baselineValue = candidate.baseline_value;
+    const { candidate: candidateDto } = rowToCandidate(candidate);
+    const baselineValue = candidateDto.baselineValue;
     if (baselineValue === null || baselineValue === undefined || baselineValue === "") {
       throw new ApiError(
         "CONFLICT",
@@ -1053,7 +1263,20 @@ export async function startRestoreBaselineRun(
         { code: "reload-residue-baseline-missing", bindingId: parameter.bindingId }
       );
     }
-    targets.push({ bindingId: parameter.bindingId, debugValue: baselineValue });
+    targets.push({
+      bindingId: parameter.bindingId,
+      debugValue: baselineValue,
+      definitionId: candidate.definition_id,
+      definitionRevisionId: candidate.definition_revision_id,
+      currentValueId: candidate.current_value_id,
+      catalogReleaseId: candidate.catalog_release_id,
+      configRevisionId: candidate.config_revision_id ?? undefined,
+      sourcePinId: candidate.source_pin_id,
+      sourceOccurrenceId: candidate.source_occurrence_id,
+      sourceRef: candidate.source_ref,
+      sourceFormat: candidate.source_format,
+      sourceLocator: candidate.source_locator
+    });
   }
 
   return startReloadRun(
@@ -1078,10 +1301,12 @@ export async function getReloadResidue(
   deviceId: string
 ): Promise<ReloadResidueDto | null> {
   requireDtsReloadView(auth);
-  return getDeviceResidue(db, {
+  const residue = await getDeviceResidue(db, {
     organizationId: auth.organization.id,
     deviceId
   });
+  if (residue) requireReloadProjectScope(auth, residue.projectId);
+  return residue;
 }
 
 async function persistRunOutcome(
@@ -1119,68 +1344,114 @@ async function persistRunOutcome(
   let artifactKey: string | null = null;
   let artifactSha: string | null = null;
   let artifactBytes: number | null = null;
-  if (input.overlayBlob && input.status === "validated") {
-    const storedArtifact = await objectStore.put({
-      organizationId: auth.organization.id,
-      fileName: `debug-overlay-${input.runId}.dtbo`,
-      contentType: "application/octet-stream",
-      bytes: input.overlayBlob
-    });
-    artifactKey = storedArtifact.storageKey;
-    artifactSha = storedArtifact.checksumSha256;
-    artifactBytes = storedArtifact.fileSizeBytes;
-  }
-
-  const completedAt = new Date().toISOString();
-  // Run row, targets, and the outcome audit commit together (ADR-0027); the object
-  // store uploads above deliberately stay outside (orphaned blobs are swept).
-  const row = await db.transaction(async (tx) => {
-    const run = await insertReloadRun(tx, {
-      id: input.runId,
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      configRevisionId: input.configRevisionId,
-      status: input.status,
-      purpose: input.purpose,
-      deviceId: input.deviceId ?? null,
-      restoresSourceRunId: input.restoresSourceRunId ?? null,
-      failureCode: input.failureCode,
-      steps: input.steps,
-      diagnostics: input.diagnostics,
-      toolVersions: input.toolVersions,
-      overlaySourceStorageKey: storedSource.storageKey,
-      overlaySourceSha256: storedSource.checksumSha256 || sha256Hex(sourceBytes),
-      overlayArtifactStorageKey: artifactKey,
-      overlayArtifactSha256: artifactSha,
-      overlayArtifactBytes: artifactBytes,
-      createdByUserId: auth.user.id,
-      completedAt
-    });
-
-    for (const [index, target] of input.targets.entries()) {
-      await insertReloadRunTarget(tx, {
-        id: randomUUID(),
-        reloadRunId: input.runId,
-        bindingId: target.candidate.bindingId,
-        nodePath: target.candidate.nodePath!,
-        propertyKey: target.candidate.propertyKey,
-        baselineValue: target.candidate.baselineValue,
-        debugValue: target.debugValue,
-        sortOrder: index
+  let row: Awaited<ReturnType<typeof insertReloadRun>>;
+  let transactionBodyCompleted = false;
+  try {
+    if (input.overlayBlob && input.status === "validated") {
+      const storedArtifact = await objectStore.put({
+        organizationId: auth.organization.id,
+        fileName: `debug-overlay-${input.runId}.dtbo`,
+        contentType: "application/octet-stream",
+        bytes: input.overlayBlob
       });
+      artifactKey = storedArtifact.storageKey;
+      artifactSha = storedArtifact.checksumSha256;
+      artifactBytes = storedArtifact.fileSizeBytes;
     }
 
-    await writeTrustedAuditEventInTx(asAuditTx(tx), {
-      ...reloadAuditInput(input.audit, auth, context),
-      metadata: {
-        ...reloadAuditInput(input.audit, auth, context).metadata,
+    const completedAt = new Date().toISOString();
+    // Run row, targets, and the outcome audit commit together (ADR-0027).
+    row = await db.transaction(async (tx) => {
+      const run = await insertReloadRun(tx, {
+        id: input.runId,
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        configRevisionId: input.configRevisionId,
+        status: input.status,
+        purpose: input.purpose,
+        deviceId: input.deviceId ?? null,
+        restoresSourceRunId: input.restoresSourceRunId ?? null,
+        failureCode: input.failureCode,
+        steps: input.steps,
+        diagnostics: input.diagnostics,
+        toolVersions: input.toolVersions,
+        overlaySourceStorageKey: storedSource.storageKey,
         overlaySourceSha256: storedSource.checksumSha256 || sha256Hex(sourceBytes),
-        artifactSha256: artifactSha
-      }
-    });
+        overlayArtifactStorageKey: artifactKey,
+        overlayArtifactSha256: artifactSha,
+        overlayArtifactBytes: artifactBytes,
+        createdByUserId: auth.user.id,
+        completedAt
+      });
 
-    return run;
-  });
+      for (const [index, target] of input.targets.entries()) {
+        const pin = target.candidate.protectedReferencePin;
+        const source = target.candidate.writebackSourcePin;
+        if (
+          !pin?.definitionId ||
+          !pin.definitionRevisionId ||
+          !pin.currentValueId ||
+          !pin.catalogReleaseId ||
+          !pin.sourcePinId ||
+          !pin.sourceOccurrenceId ||
+          pin.sourceFormat !== "dts" ||
+          !source?.sourceRef ||
+          !source.sourcePinId ||
+          !source.sourceOccurrenceId ||
+          source.format !== "dts"
+        ) {
+          throw new ApiError(
+            "CONFLICT",
+            "Reload target is missing the exact canonical DTS source pin.",
+            { code: "reload-canonical-source-pin-missing", bindingId: target.candidate.bindingId }
+          );
+        }
+        await insertReloadRunTarget(tx, {
+          id: randomUUID(),
+          reloadRunId: input.runId,
+          bindingId: null,
+          nodePath: target.candidate.nodePath!,
+          propertyKey: target.candidate.propertyKey,
+          baselineValue: target.candidate.baselineValue,
+          debugValue: target.debugValue,
+          sortOrder: index,
+          canonicalBindingId: pin.bindingId,
+          canonicalDefinitionId: pin.definitionId,
+          canonicalDefinitionRevisionId: pin.definitionRevisionId,
+          canonicalCurrentValueId: pin.currentValueId,
+          canonicalCatalogReleaseId: pin.catalogReleaseId,
+          canonicalSourcePinId: pin.sourcePinId,
+          canonicalSourceOccurrenceId: pin.sourceOccurrenceId,
+          canonicalConfigRevisionId: pin.configRevisionId ?? undefined,
+          canonicalSourceRef: source.sourceRef,
+          canonicalSourceFormat: source.format,
+          canonicalSourceLocator: source.locator ?? pin.sourceLocator
+        });
+      }
+
+      await writeTrustedAuditEventInTx(asAuditTx(tx), {
+        ...reloadAuditInput(input.audit, auth, context),
+        metadata: {
+          ...reloadAuditInput(input.audit, auth, context).metadata,
+          overlaySourceSha256: storedSource.checksumSha256 || sha256Hex(sourceBytes),
+          artifactSha256: artifactSha
+        }
+      });
+
+      transactionBodyCompleted = true;
+      return run;
+    });
+  } catch (error) {
+    // Failed transactions have no run for the retention sweeper to discover.
+    // Preserve the original failure if an optional store cleanup also fails.
+    // A failed COMMIT response may still have committed; retain those objects.
+    if (!transactionBodyCompleted) {
+      await Promise.allSettled([storedSource.storageKey, artifactKey]
+        .filter((key): key is string => key !== null)
+        .map((key) => objectStore.delete?.(key)));
+    }
+    throw error;
+  }
 
   const targets = await listReloadRunTargets(db, input.runId);
   return toReloadRunDto(row, targets, input.overlaySource);
@@ -1219,6 +1490,7 @@ export async function getReloadRun(
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }
+  requireReloadProjectScope(auth, row.project_id);
 
   const targets = await listReloadRunTargets(db, runId);
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
@@ -1254,6 +1526,7 @@ export async function getReloadRunRecord(
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }
+  requireReloadProjectScope(auth, row.project_id);
 
   const targets = await listReloadRunTargets(db, runId);
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
@@ -1278,6 +1551,7 @@ export async function getReloadRunArtifact(
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }
+  requireReloadProjectScope(auth, row.project_id);
 
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
   const completedAt = row.completed_at
@@ -1429,6 +1703,7 @@ export async function deployReloadRun(
   }
 
   const run = await getReloadRun(db, objectStore, auth, input.runId);
+  requireDtsReloadProjectMutation(auth, run.projectId);
   if (!run.artifact?.sha256) {
     throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", {
       code: "reload-artifact-missing",
@@ -1469,6 +1744,11 @@ export async function deployReloadRun(
       );
     }
   }
+
+  // Every deploy must re-resolve the exact canonical binding/value/source pins captured by the
+  // run. A candidate that drifted after compilation is a different write and must be refused
+  // before any device-side work or deploy milestone is emitted.
+  await assertReloadRunCanonicalPinsCurrent(db, auth, run);
 
   // Re-run the sensitive-node gate against the deployer's capability + confirmation. The start-time
   // gate cannot vouch for a different subject who triggers the actual device write here.
@@ -1517,13 +1797,20 @@ export async function deployReloadRun(
 
   let result: ReloadRunDto;
   try {
-    result = await executeReloadDeploy({
+    result = await db.transaction(async (tx) => {
+      await lockReloadCanonicalSourceCohorts(tx, auth, run);
+      await assertReloadRunCanonicalPinsCurrent(tx, auth, run);
+      return executeReloadDeploy({
       db,
       auth,
       run,
       artifactBytes,
       deploy: input,
       deps,
+      // The source cohort/Bindings are locked by the surrounding transaction, which stays open
+      // through bridge I/O. Keep the exact-pin assertion on that same connection immediately
+      // before device setup.
+      beforeDeviceIo: () => assertReloadRunCanonicalPinsCurrent(tx, auth, run),
       persistProgress: async (update, options) => {
         const payload = {
           runId: run.id,
@@ -1541,7 +1828,15 @@ export async function deployReloadRun(
           completedAt: update.completedAt
         };
         if (options?.claim) {
-          const claimed = await claimReloadRunForDeploy(db, payload);
+          // Claim and the final canonical pin check share one transaction. The early check above
+          // gives a cheap refusal before deploy milestones; this second check closes the race in
+          // which a value/source pin changes between that read and the deploy claim.
+          const claimed = await db.transaction(async (tx) => {
+            const next = await claimReloadRunForDeploy(tx, payload);
+            if (!next) return null;
+            await assertReloadRunCanonicalPinsCurrent(tx, auth, run);
+            return next;
+          });
           if (!claimed) {
             throw new ApiError(
               "CONFLICT",
@@ -1610,6 +1905,7 @@ export async function deployReloadRun(
           return dto;
         });
       }
+      });
     });
   } catch (error) {
     // A throw after the deploy-started audit (bridge offline / not-found / upgrade required /

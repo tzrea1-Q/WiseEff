@@ -36,6 +36,7 @@ import type {
   DebugTargetStatus
 } from "./status";
 import type { DebugReadbackOutcome, DebugWriteOutcome } from "./gateway";
+import type { CanonicalDebugPin } from "./canonicalProtectedReference";
 
 type DebugDeviceRow = {
   id: string;
@@ -168,8 +169,10 @@ type NodeOperationRow = {
   previous_value_digest?: string | null;
   readback_value_digest?: string | null;
   value_preview?: string | null;
-  parameter_spec_id?: string | null;
   project_parameter_binding_id?: string | null;
+  canonical_binding_id?: string | null;
+  canonical_project_id?: string | null;
+  canonical_pin?: CanonicalDebugPin | string | null;
 };
 
 function dateTimeToIso(value: string | Date | null) {
@@ -183,6 +186,11 @@ function toNumberOrNull(value: number | string | null) {
 
 function parseEntries(value: DebugSnapshotEntry[] | string): DebugSnapshotEntry[] {
   return typeof value === "string" ? (JSON.parse(value) as DebugSnapshotEntry[]) : value;
+}
+
+function parseCanonicalPin(value: CanonicalDebugPin | string | null | undefined): CanonicalDebugPin | undefined {
+  if (!value) return undefined;
+  return typeof value === "string" ? (JSON.parse(value) as CanonicalDebugPin) : value;
 }
 
 function toDebugDeviceRecord(row: DebugDeviceRow): DebugDeviceRecord {
@@ -331,7 +339,10 @@ function toNodeOperationRecord(row: NodeOperationRow): NodeOperationRecord {
     previousValueDigest: row.previous_value_digest ?? null,
     readbackValueDigest: row.readback_value_digest ?? null,
     valuePreview: row.value_preview ?? null,
-    projectParameterBindingId: row.project_parameter_binding_id ?? null
+    projectParameterBindingId: row.project_parameter_binding_id ?? null,
+    canonicalBindingId: row.canonical_binding_id ?? null,
+    canonicalProjectId: row.canonical_project_id ?? null,
+    canonicalPin: parseCanonicalPin(row.canonical_pin)
   };
 }
 
@@ -413,7 +424,10 @@ const nodeOperationColumnsLegacy = `
   readback_value_digest,
   value_preview,
   parameter_spec_id,
-  project_parameter_binding_id
+  project_parameter_binding_id,
+  canonical_binding_id,
+  canonical_project_id,
+  canonical_pin
 `;
 
 const nodeOperationColumnsSemantic = `
@@ -447,7 +461,10 @@ const nodeOperationColumnsSemantic = `
   readback_value_digest,
   value_preview,
   parameter_spec_id,
-  project_parameter_binding_id
+  project_parameter_binding_id,
+  canonical_binding_id,
+  canonical_project_id,
+  canonical_pin
 `;
 
 export type WriteDebugParameterInput = {
@@ -1429,6 +1446,9 @@ export async function insertNodeOperation(
     parameterDefinitionId?: string | null;
     parameterSpecId?: string | null;
     projectParameterBindingId?: string | null;
+    canonicalBindingId?: string | null;
+    canonicalProjectId?: string | null;
+    canonicalPin?: CanonicalDebugPin | null;
     protocol?: DebugConnectionProtocol;
     nodePath: string;
     operationType: DebugOperationType;
@@ -1467,9 +1487,10 @@ export async function insertNodeOperation(
       value_kind, value_format, normalization_mode,
       requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
       actor_user_id,
-      parameter_spec_id, project_parameter_binding_id
+      parameter_spec_id, project_parameter_binding_id,
+      canonical_binding_id, canonical_project_id, canonical_pin
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
     returning ${nodeOperationColumnsSemantic}
     `
       : `
@@ -1481,9 +1502,10 @@ export async function insertNodeOperation(
       value_kind, value_format, normalization_mode,
       requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
       actor_user_id,
-      parameter_spec_id, project_parameter_binding_id
+      parameter_spec_id, project_parameter_binding_id,
+      canonical_binding_id, canonical_project_id, canonical_pin
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
     returning ${nodeOperationColumnsLegacy}
     `,
     semantic
@@ -1521,7 +1543,10 @@ export async function insertNodeOperation(
           input.valuePreview ?? null,
           input.actorUserId,
           input.parameterSpecId ?? null,
-          input.projectParameterBindingId ?? null
+          input.projectParameterBindingId ?? null,
+          input.canonicalBindingId ?? null,
+          input.canonicalProjectId ?? null,
+          input.canonicalPin ? JSON.stringify(input.canonicalPin) : null
         ]
       : [
           randomUUID(),
@@ -1555,7 +1580,10 @@ export async function insertNodeOperation(
           input.valuePreview ?? null,
           input.actorUserId,
           input.parameterSpecId ?? null,
-          input.projectParameterBindingId ?? null
+          input.projectParameterBindingId ?? null,
+          input.canonicalBindingId ?? null,
+          input.canonicalProjectId ?? null,
+          input.canonicalPin ? JSON.stringify(input.canonicalPin) : null
         ]
   );
 

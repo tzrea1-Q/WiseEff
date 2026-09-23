@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 import type { DebugConnectionProtocol } from "@/domain/debugging/types";
 import type {
   DebuggingGateway,
@@ -20,6 +18,7 @@ import {
   debugNodeOperationResponseSchema,
   debugParameterListResponseSchema,
   debugRollbackResponseSchema,
+  debugSessionEventListResponseSchema,
   debugSessionResponseSchema,
   debugTargetListResponseSchema
 } from "@wiseeff/dto-schemas";
@@ -47,26 +46,13 @@ export type GetSessionResponseEnvelope = ItemEnvelope<DebugSessionSnapshot | nul
 type WriteNodeResponse = { operation: NodeOperationDto; snapshot?: DebugSnapshotDto };
 type RollbackSnapshotResponse = { snapshot: DebugSnapshotDto; operations: NodeOperationDto[] };
 
-const canonicalPinFields = {
-  bindingId: z.string().optional(),
-  effectiveRevisionId: z.string().optional(),
-  currentValueId: z.string().optional(),
-  protectedReferenceKind: z.enum(["canonical-pin", "typed-block"]).optional(),
-  protectedReferenceReason: z.string().optional()
-};
-
-const pinnedParameterSchema = debugParameterListResponseSchema.shape.items.element.extend(canonicalPinFields);
-const pinnedRuntimeNodeSchema = debugNodeListResponseSchema.shape.items.element.extend(canonicalPinFields);
-const pinnedOperationSchema = debugNodeOperationResponseSchema.shape.operation.extend(canonicalPinFields);
-const pinnedParameterListSchema = z.object({ items: z.array(pinnedParameterSchema) });
-const pinnedRuntimeNodeListSchema = z.object({ items: z.array(pinnedRuntimeNodeSchema) });
-const pinnedSessionEventListSchema = z.object({ items: z.array(pinnedOperationSchema) });
-const pinnedNodeOperationResponseSchema = debugNodeOperationResponseSchema.extend({
-  operation: pinnedOperationSchema
-});
-const pinnedRollbackResponseSchema = debugRollbackResponseSchema.extend({
-  operations: z.array(pinnedOperationSchema)
-});
+// Canonical fields are part of the shared DTO schemas. Keep one parser for the
+// wire contract so frontend extensions cannot drift from the server projection.
+const pinnedParameterListSchema = debugParameterListResponseSchema;
+const pinnedRuntimeNodeListSchema = debugNodeListResponseSchema;
+const pinnedSessionEventListSchema = debugSessionEventListResponseSchema;
+const pinnedNodeOperationResponseSchema = debugNodeOperationResponseSchema;
+const pinnedRollbackResponseSchema = debugRollbackResponseSchema;
 
 function appendQuery(path: string, params: URLSearchParams) {
   const query = params.toString();

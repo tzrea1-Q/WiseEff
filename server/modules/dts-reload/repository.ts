@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { canonicalizeLogicalNodeCompatible } from "../parameter-topology/writeLock";
 import type {
   PreflightDiagnostic,
   PreflightStep
@@ -22,6 +23,19 @@ import type {
 export type ReloadCandidateRow = {
   binding_id: string;
   project_id: string;
+  definition_id: string;
+  definition_revision_id: string;
+  current_value_id: string;
+  catalog_release_id: string;
+  source_pin_id: string;
+  source_occurrence_id: string;
+  source_format: "dts" | "json";
+  source_ref: string;
+  source_locator: unknown;
+  value_kind: "string" | "number" | "boolean" | "string-array" | "number-array" | "json";
+  value_payload: unknown;
+  definition_content: unknown;
+  value_schema: unknown;
   property_key: string;
   display_name: string;
   /** Binding module id when assigned; used by the UI module navigator hierarchy. */
@@ -33,9 +47,9 @@ export type ReloadCandidateRow = {
   config_revision_id: string | null;
   baseline_value: string | null;
   /** Resolved parameter meaning: documentation, else description. */
-  description: string | null;
+  description: unknown;
   value_shape: unknown;
-  unit: string | null;
+  unit: unknown;
   constraints: unknown;
 };
 
@@ -66,12 +80,24 @@ export type InsertReloadRunInput = {
 export type InsertReloadRunTargetInput = {
   id: string;
   reloadRunId: string;
-  bindingId: string;
+  /** Legacy binding_id is retained for old history and must stay null for canonical rows. */
+  bindingId?: string | null;
   nodePath: string;
   propertyKey: string;
   baselineValue: string | null;
   debugValue: string;
   sortOrder: number;
+  canonicalBindingId?: string;
+  canonicalDefinitionId?: string;
+  canonicalDefinitionRevisionId?: string;
+  canonicalCurrentValueId?: string;
+  canonicalCatalogReleaseId?: string;
+  canonicalSourcePinId?: string;
+  canonicalSourceOccurrenceId?: string;
+  canonicalConfigRevisionId?: string;
+  canonicalSourceRef?: string;
+  canonicalSourceFormat?: "dts" | "json";
+  canonicalSourceLocator?: unknown;
 };
 
 export type UpdateReloadRunDeployInput = {
@@ -120,7 +146,18 @@ type ReloadRunRow = {
 };
 
 type ReloadRunTargetRow = {
-  binding_id: string;
+  binding_id: string | null;
+  canonical_binding_id: string | null;
+  canonical_definition_id: string | null;
+  canonical_definition_revision_id: string | null;
+  canonical_current_value_id: string | null;
+  canonical_catalog_release_id: string | null;
+  canonical_source_pin_id: string | null;
+  canonical_source_occurrence_id: string | null;
+  canonical_config_revision_id: string | null;
+  canonical_source_ref: string | null;
+  canonical_source_format: "dts" | "json" | null;
+  canonical_source_locator: unknown;
   node_path: string;
   property_key: string;
   baseline_value: string | null;
@@ -187,11 +224,26 @@ function asReloadSnapshot(value: unknown): ReloadSnapshotDto | null {
 
 function toTargetDto(row: ReloadRunTargetRow): ReloadRunTargetDto {
   return {
-    bindingId: row.binding_id,
+    bindingId: row.canonical_binding_id ?? row.binding_id ?? "",
     nodePath: row.node_path,
     propertyKey: row.property_key,
     baselineValue: row.baseline_value,
-    debugValue: row.debug_value
+    debugValue: row.debug_value,
+    ...(row.canonical_binding_id
+      ? {
+          canonicalBindingId: row.canonical_binding_id,
+          canonicalDefinitionId: row.canonical_definition_id,
+          canonicalDefinitionRevisionId: row.canonical_definition_revision_id,
+          canonicalCurrentValueId: row.canonical_current_value_id,
+          canonicalCatalogReleaseId: row.canonical_catalog_release_id,
+          canonicalSourcePinId: row.canonical_source_pin_id,
+          canonicalSourceOccurrenceId: row.canonical_source_occurrence_id,
+          canonicalConfigRevisionId: row.canonical_config_revision_id,
+          canonicalSourceRef: row.canonical_source_ref,
+          canonicalSourceFormat: row.canonical_source_format,
+          canonicalSourceLocator: row.canonical_source_locator
+        }
+      : {})
   };
 }
 
@@ -248,70 +300,97 @@ export function toReloadRunDto(
   };
 }
 
+const canonicalReloadCandidateSelect = [
+  "select",
+  "  binding.id as binding_id,",
+  "  binding.project_id as project_id,",
+  "  binding.definition_id as definition_id,",
+  "  binding.effective_revision_id as definition_revision_id,",
+  "  binding.current_value_id as current_value_id,",
+  "  binding.catalog_release_id as catalog_release_id,",
+  "  definition.property_key as property_key,",
+  "  coalesce(nullif(revision.content ->> 'displayName', ''), definition.property_key) as display_name,",
+  "  placement.module_id as module_id,",
+  "  coalesce(module.name, '') as module_name,",
+  "  coalesce(nullif(logical_revision.node_locator, ''), nullif(node.ref_target, ''), nullif(node.node_path, '')) as node_path,",
+  "  logical_revision.compatible as compatible,",
+  "  pin.config_revision_id as config_revision_id,",
+  "  value.source_ref as source_ref,",
+  "  value.value_kind as value_kind,",
+  "  value.value as value_payload,",
+  "  revision.content as definition_content,",
+  "  pin.id as source_pin_id,",
+  "  pin.source_occurrence_id as source_occurrence_id,",
+  "  pin.format as source_format,",
+  "  pin.locator as source_locator,",
+  "  coalesce(revision.content -> 'valueShape', 'null'::jsonb) as value_shape,",
+  "  coalesce(revision.content -> 'constraints', '{}'::jsonb) as constraints,",
+  "  revision.content -> 'valueSchema' as value_schema,",
+  "  revision.content -> 'unit' as unit,",
+  "  revision.content -> 'documentation' as documentation,",
+  "  revision.content -> 'description' as definition_description,",
+  "  null::text as baseline_value,",
+  "  null::text as description",
+  "from parameter_catalog.current_project_parameter_bindings binding",
+  "join parameter_catalog.parameter_definitions definition on definition.id = binding.definition_id",
+  "join parameter_catalog.definition_revisions revision",
+  "  on revision.id = binding.effective_revision_id",
+  " and revision.definition_id = binding.definition_id",
+  " and revision.catalog_release_id = binding.catalog_release_id",
+  "join parameter_catalog.project_parameter_values value",
+  "  on value.id = binding.current_value_id",
+  " and value.binding_id = binding.id",
+  " and value.definition_id = binding.definition_id",
+  "join parameter_catalog.project_value_source_pins pin",
+  "  on pin.project_value_id = value.id",
+  " and pin.binding_id = binding.id",
+  " and pin.definition_id = binding.definition_id",
+  " and pin.organization_id = binding.organization_id",
+  " and pin.project_id = binding.project_id",
+  " and pin.source_occurrence_id = binding.source_occurrence_id",
+  " and pin.config_revision_id = value.config_revision_id",
+  "left join parameter_catalog.project_parameter_source_occurrences occurrence",
+  "  on occurrence.id = pin.source_occurrence_id",
+  " and occurrence.organization_id = binding.organization_id",
+  " and occurrence.project_id = binding.project_id",
+  " and occurrence.file_id = pin.file_id",
+  "left join dts_logical_node_revisions logical_revision",
+  "  on logical_revision.logical_node_id = occurrence.logical_node_id",
+  " and logical_revision.config_revision_id = pin.config_revision_id",
+  "left join dts_property_occurrences property",
+  "  on property.id = pin.property_occurrence_id",
+  " and property.config_revision_id = pin.config_revision_id",
+  " and property.file_version_id = pin.file_version_id",
+  "left join dts_node_occurrences node",
+  "  on node.id = property.node_occurrence_id",
+  " and node.config_revision_id = property.config_revision_id",
+  " and node.file_version_id = property.file_version_id",
+  "left join parameter_catalog.organization_subject_registrations registration",
+  "  on registration.id = binding.registration_id",
+  "left join parameter_catalog.subject_placements placement",
+  "  on placement.id = registration.current_placement_id",
+  "left join public.parameter_modules module",
+  "  on module.id = placement.module_id",
+  "where binding.organization_id = $1",
+  "  and binding.project_id = $2",
+  "  and pin.format = 'dts'"
+].join("\n");
+
 /**
- * List project bindings enriched with value shape, constraints, and locator for reload candidacy.
+ * List project bindings enriched with the exact canonical value and DTS source pin.
+ * The legacy project_parameter_bindings/specification tables are deliberately absent:
+ * an old id cannot make a parameter a reload candidate after the canonical cutover.
  */
 export async function listReloadCandidateRows(
   db: Queryable,
   input: { organizationId: string; projectId: string }
 ): Promise<ReloadCandidateRow[]> {
   const result = await db.query<ReloadCandidateRow>(
-    `
-    select
-      b.id as binding_id,
-      b.project_id as project_id,
-      dps.property_key as property_key,
-      coalesce(psv.display_name, dps.property_key) as display_name,
-      b.module_id as module_id,
-      coalesce(asub.display_name, pm.name, '') as module_name,
-      lnr.node_locator as node_path,
-      lnr.compatible as compatible,
-      br.config_revision_id as config_revision_id,
-      br.raw_value as baseline_value,
-      nullif(
-        trim(
-          both from coalesce(
-            nullif(psv.documentation, ''),
-            nullif(psv.description, ''),
-            nullif(dps.documentation, ''),
-            ''
-          )
-        ),
-        ''
-      ) as description,
-      psv.value_shape as value_shape,
-      psv.units as unit,
-      coalesce(dps.constraints, '{}'::jsonb) as constraints
-    from project_parameter_bindings b
-    join parameter_specs ps on ps.id = b.parameter_spec_id
-    left join attribution_subjects asub on asub.id = ps.attribution_subject_id
-    left join parameter_modules pm on pm.id = b.module_id
-    inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-    left join lateral (
-      select *
-      from project_parameter_binding_revisions
-      where binding_id = b.id
-      order by created_at desc
-      limit 1
-    ) br on true
-    left join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
-    left join lateral (
-      select node_locator, compatible
-      from dts_logical_node_revisions
-      where logical_node_id = b.logical_node_id
-        and config_revision_id = br.config_revision_id
-      order by id desc
-      limit 1
-    ) lnr on true
-    where b.organization_id = $1
-      and b.project_id = $2
-      and br.parameter_spec_version_id is not null
-    order by coalesce(lnr.node_locator, ''), dps.property_key
-    `,
+    canonicalReloadCandidateSelect + "\norder by coalesce(node_path, ''), property_key",
     [input.organizationId, input.projectId]
   );
 
-  return result.rows;
+  return result.rows.map((row) => ({ ...row, compatible: canonicalizeLogicalNodeCompatible(row.compatible) }));
 }
 
 export async function getReloadCandidateRow(
@@ -319,63 +398,12 @@ export async function getReloadCandidateRow(
   input: { organizationId: string; projectId: string; bindingId: string }
 ): Promise<ReloadCandidateRow | null> {
   const result = await db.query<ReloadCandidateRow>(
-    `
-    select
-      b.id as binding_id,
-      b.project_id as project_id,
-      dps.property_key as property_key,
-      coalesce(psv.display_name, dps.property_key) as display_name,
-      b.module_id as module_id,
-      coalesce(asub.display_name, pm.name, '') as module_name,
-      lnr.node_locator as node_path,
-      lnr.compatible as compatible,
-      br.config_revision_id as config_revision_id,
-      br.raw_value as baseline_value,
-      nullif(
-        trim(
-          both from coalesce(
-            nullif(psv.documentation, ''),
-            nullif(psv.description, ''),
-            nullif(dps.documentation, ''),
-            ''
-          )
-        ),
-        ''
-      ) as description,
-      psv.value_shape as value_shape,
-      psv.units as unit,
-      coalesce(dps.constraints, '{}'::jsonb) as constraints
-    from project_parameter_bindings b
-    join parameter_specs ps on ps.id = b.parameter_spec_id
-    left join attribution_subjects asub on asub.id = ps.attribution_subject_id
-    left join parameter_modules pm on pm.id = b.module_id
-    inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-    left join lateral (
-      select *
-      from project_parameter_binding_revisions
-      where binding_id = b.id
-      order by created_at desc
-      limit 1
-    ) br on true
-    left join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
-    left join lateral (
-      select node_locator, compatible
-      from dts_logical_node_revisions
-      where logical_node_id = b.logical_node_id
-        and config_revision_id = br.config_revision_id
-      order by id desc
-      limit 1
-    ) lnr on true
-    where b.organization_id = $1
-      and b.project_id = $2
-      and b.id = $3
-      and br.parameter_spec_version_id is not null
-    limit 1
-    `,
+    canonicalReloadCandidateSelect + "\nand binding.id = $3\nlimit 1",
     [input.organizationId, input.projectId, input.bindingId]
   );
 
-  return result.rows[0] ?? null;
+  const row = result.rows[0];
+  return row ? { ...row, compatible: canonicalizeLogicalNodeCompatible(row.compatible) } : null;
 }
 
 export async function insertReloadRun(db: Queryable, input: InsertReloadRunInput): Promise<ReloadRunRow> {
@@ -427,8 +455,15 @@ export async function insertReloadRunTarget(db: Queryable, input: InsertReloadRu
   await db.query(
     `
     insert into dts_reload_run_targets (
-      id, reload_run_id, binding_id, node_path, property_key, baseline_value, debug_value, sort_order
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8)
+      id, reload_run_id, binding_id, node_path, property_key, baseline_value, debug_value, sort_order,
+      canonical_binding_id, canonical_definition_id, canonical_definition_revision_id,
+      canonical_current_value_id, canonical_catalog_release_id, canonical_source_pin_id,
+      canonical_source_occurrence_id, canonical_config_revision_id, canonical_source_ref,
+      canonical_source_format, canonical_source_locator
+    ) values (
+      $1, $2, $3, $4, $5, $6, $7, $8,
+      $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb
+    )
     `,
     [
       input.id,
@@ -438,7 +473,18 @@ export async function insertReloadRunTarget(db: Queryable, input: InsertReloadRu
       input.propertyKey,
       input.baselineValue,
       input.debugValue,
-      input.sortOrder
+      input.sortOrder,
+      input.canonicalBindingId ?? null,
+      input.canonicalDefinitionId ?? null,
+      input.canonicalDefinitionRevisionId ?? null,
+      input.canonicalCurrentValueId ?? null,
+      input.canonicalCatalogReleaseId ?? null,
+      input.canonicalSourcePinId ?? null,
+      input.canonicalSourceOccurrenceId ?? null,
+      input.canonicalConfigRevisionId ?? null,
+      input.canonicalSourceRef ?? null,
+      input.canonicalSourceFormat ?? null,
+      input.canonicalSourceLocator === undefined ? null : JSON.stringify(input.canonicalSourceLocator)
     ]
   );
 }
@@ -774,8 +820,8 @@ export async function listLastReloadByBindingIds(
 
   const result = await db.query<LastReloadRow>(
     `
-    select distinct on (t.binding_id)
-      t.binding_id,
+    select distinct on (coalesce(t.canonical_binding_id, t.binding_id))
+      coalesce(t.canonical_binding_id, t.binding_id) as binding_id,
       r.id as run_id,
       t.debug_value,
       r.status,
@@ -785,8 +831,8 @@ export async function listLastReloadByBindingIds(
     join dts_reload_runs r on r.id = t.reload_run_id
     where r.organization_id = $1
       and r.project_id = $2
-      and t.binding_id = any($3::text[])
-    order by t.binding_id, r.created_at desc, r.id desc
+      and coalesce(t.canonical_binding_id, t.binding_id) = any($3::text[])
+    order by coalesce(t.canonical_binding_id, t.binding_id), r.created_at desc, r.id desc
     `,
     [input.organizationId, input.projectId, input.bindingIds]
   );
@@ -806,7 +852,24 @@ export async function listLastReloadByBindingIds(
 export async function listReloadRunTargets(db: Queryable, reloadRunId: string): Promise<ReloadRunTargetDto[]> {
   const result = await db.query<ReloadRunTargetRow>(
     `
-    select binding_id, node_path, property_key, baseline_value, debug_value, sort_order
+    select
+      binding_id,
+      canonical_binding_id,
+      canonical_definition_id,
+      canonical_definition_revision_id,
+      canonical_current_value_id,
+      canonical_catalog_release_id,
+      canonical_source_pin_id,
+      canonical_source_occurrence_id,
+      canonical_config_revision_id,
+      canonical_source_ref,
+      canonical_source_format,
+      canonical_source_locator,
+      node_path,
+      property_key,
+      baseline_value,
+      debug_value,
+      sort_order
     from dts_reload_run_targets
     where reload_run_id = $1
     order by sort_order asc, id asc
@@ -835,10 +898,25 @@ export async function readLibraryFingerprint(
     `
     select
       count(*)::text as count,
-      coalesce(md5(string_agg(br.id || coalesce(br.raw_value, '') || br.created_at::text, '|' order by br.id)), '') as checksum
-    from project_parameter_binding_revisions br
-    join project_parameter_bindings b on b.id = br.binding_id
-    where b.organization_id = $1 and b.project_id = $2
+      coalesce(
+        md5(string_agg(
+          binding.id || value.id || value.definition_revision_id || value.config_revision_id ||
+          value.value_digest || value.source_ref || coalesce(pin.id, '') || coalesce(pin.locator::text, ''),
+          '|' order by binding.id
+        )),
+        ''
+      ) as checksum
+    from parameter_catalog.current_project_parameter_bindings binding
+    join parameter_catalog.project_parameter_values value
+      on value.id = binding.current_value_id
+     and value.binding_id = binding.id
+     and value.definition_id = binding.definition_id
+    left join parameter_catalog.project_value_source_pins pin
+      on pin.project_value_id = value.id
+     and pin.binding_id = binding.id
+     and pin.organization_id = binding.organization_id
+     and pin.project_id = binding.project_id
+    where binding.organization_id = $1 and binding.project_id = $2
     `,
     [input.organizationId, input.projectId]
   );
@@ -846,9 +924,8 @@ export async function readLibraryFingerprint(
   const drafts = await db.query<{ count: string | number }>(
     `
     select count(*)::text as count
-    from parameter_drafts d
-    join project_parameter_bindings b on b.id = d.project_parameter_binding_id
-    where b.organization_id = $1 and b.project_id = $2
+    from project_parameter_value_drafts draft
+    where draft.organization_id = $1 and draft.project_id = $2
     `,
     [input.organizationId, input.projectId]
   );
@@ -882,6 +959,8 @@ export async function readLibraryFingerprint(
 }
 
 export type ConfigSetMemberSourceRow = {
+  file_id: string;
+  file_version_id: string;
   file_name: string;
   role: string;
   sort_order: number | string;
@@ -891,47 +970,24 @@ export type ConfigSetMemberSourceRow = {
 
 export async function listProjectDtsMemberSources(
   db: Queryable,
-  input: { organizationId: string; projectId: string; configSetId?: string }
-): Promise<{ configSetId: string; members: ConfigSetMemberSourceRow[] }> {
-  const configSetId = input.configSetId
-    ? input.configSetId
-    : (
-        await db.query<{ id: string }>(
-          `
-          select id
-          from dts_config_set
-          where organization_id = $1 and project_id = $2
-          order by name asc, id asc
-          limit 1
-          `,
-          [input.organizationId, input.projectId]
-        )
-      ).rows[0]?.id;
-
-  if (!configSetId) {
-    return { configSetId: "", members: [] };
-  }
-
+  input: { organizationId: string; projectId: string; configRevisionIds: string[] }
+): Promise<ConfigSetMemberSourceRow[]> {
   const result = await db.query<ConfigSetMemberSourceRow>(
-    `
-    select
-      ppf.file_name as file_name,
-      coalesce(ppf.config_set_role::text, 'misc') as role,
-      ppf.config_set_sort_order as sort_order,
-      v.storage_key as storage_key,
-      ppf.format as format
-    from project_parameter_files ppf
-    join project_parameter_file_versions v on v.id = ppf.current_version_id
-    where ppf.organization_id = $1
-      and ppf.project_id = $2
-      and ppf.config_set_id = $3
-      and ppf.format = 'dts'
-    order by ppf.config_set_sort_order asc, ppf.file_name asc
-    `,
-    [input.organizationId, input.projectId, configSetId]
+    `select distinct ppf.id as file_id, v.id as file_version_id,
+       member.source_name as file_name, member.role, member.sort_order,
+       v.storage_key, ppf.format
+     from dts_config_revision_members member
+     join dts_config_revisions revision on revision.id=member.config_revision_id
+     join project_parameter_files ppf on ppf.id=member.file_id
+       and ppf.config_set_id=revision.config_set_id
+       and ppf.organization_id=revision.organization_id and ppf.project_id=revision.project_id
+     join project_parameter_file_versions v on v.id=member.file_version_id and v.file_id=ppf.id
+     where revision.organization_id=$1 and revision.project_id=$2
+       and revision.id=any($3::text[]) and ppf.format='dts'
+     order by member.sort_order, member.source_name, ppf.id, v.id`,
+    [input.organizationId, input.projectId, input.configRevisionIds]
   );
-
-  return { configSetId, members: result.rows };
+  return result.rows;
 }
 
 /** Re-export for service consumers that map rows → DTOs. */

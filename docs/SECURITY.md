@@ -235,6 +235,10 @@ Domain result webhooks make the server issue outbound HTTP requests to admin-sup
 
 ## Device Safety
 
+Canonical parameter debugging (#898) resolves real Binding, DefinitionRevision, ProjectValue and source pins within the authenticated project. A non-empty legacy binding ID is insufficient evidence and remains a typed block. DTS reload accepts DTS sources only, records operation-time pins in run history, and checks them again before deployment and draft promotion. Promotion uses the existing canonical draft owner; it does not submit a request or change the formal value. Submission and product review remain separate operations. Unassociated device nodes retain standalone read/write behavior. Linked node operations and rollback snapshots retain their exact canonical association; restoring a device snapshot does not update the formal parameter value. Device leases, sensitive-write approval, trusted invocation and audit still apply. Controlled adapter tests establish local integration behavior, not real-device or deployment evidence.
+
+Canonical debug history is filtered by the stored operation's project permission, independently of the current Binding tip. Public debug responses expose only the canonical identity and pin identifiers; internal source proofs stay in storage. A project role elsewhere cannot turn a guest membership into canonical access.
+
 Device access must go through a gateway boundary. Write requests need:
 
 - request id,

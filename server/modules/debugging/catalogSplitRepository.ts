@@ -43,6 +43,8 @@ type DebugNodeRow = {
   archived_at: string | Date | null;
   archived_by: string | null;
   archive_reason: string | null;
+  canonical_binding_id: string | null;
+  canonical_project_id: string | null;
   created_at: string | Date;
   updated_at: string | Date;
 };
@@ -106,6 +108,8 @@ function toDebugNodeRecord(row: DebugNodeRow): DebugNodeRecord {
     archivedAt: dateTimeToIso(row.archived_at),
     archivedBy: row.archived_by,
     archiveReason: row.archive_reason,
+    canonicalBindingId: row.canonical_binding_id ?? null,
+    canonicalProjectId: row.canonical_project_id ?? null,
     createdAt: dateTimeToIso(row.created_at) ?? "",
     updatedAt: dateTimeToIso(row.updated_at) ?? ""
   };
@@ -159,6 +163,8 @@ const debugNodeColumns = `
   n.archived_at,
   n.archived_by,
   n.archive_reason,
+  n.canonical_binding_id,
+  n.canonical_project_id,
   n.created_at,
   n.updated_at
 `;
@@ -184,6 +190,8 @@ const debugNodeReturningColumns = `
   archived_at,
   archived_by,
   archive_reason,
+  canonical_binding_id,
+  canonical_project_id,
   created_at,
   updated_at
 `;
@@ -376,6 +384,8 @@ export async function createDebugNode(
     archivedAt?: string | null;
     archivedBy?: string | null;
     archiveReason?: string | null;
+    canonicalBindingId?: string | null;
+    canonicalProjectId?: string | null;
   }
 ): Promise<DebugNodeRecord> {
   const result = await db.query<DebugNodeRow>(
@@ -384,9 +394,9 @@ export async function createDebugNode(
       id, organization_id, name, description, detailed_description,
       write_format_example, write_format_hint, module, debug_node_module_id,
       value_kind, value_format, normalization_mode, max_value_bytes, enabled,
-      archived_at, archived_by, archive_reason
+      archived_at, archived_by, archive_reason, canonical_binding_id, canonical_project_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
     returning ${debugNodeReturningColumns}
     `,
     [
@@ -406,7 +416,9 @@ export async function createDebugNode(
       input.enabled ?? true,
       input.archivedAt ?? null,
       input.archivedBy ?? null,
-      input.archiveReason ?? null
+      input.archiveReason ?? null,
+      input.canonicalBindingId ?? null,
+      input.canonicalProjectId ?? null
     ]
   );
 
@@ -433,6 +445,8 @@ export async function updateDebugNode(
     archivedAt?: string | null;
     archivedBy?: string | null;
     archiveReason?: string | null;
+    canonicalBindingId?: string | null;
+    canonicalProjectId?: string | null;
   }
 ): Promise<DebugNodeRecord | null> {
   const result = await db.query<DebugNodeRow>(
@@ -454,6 +468,8 @@ export async function updateDebugNode(
       archived_at = coalesce($15, archived_at),
       archived_by = coalesce($16, archived_by),
       archive_reason = coalesce($17, archive_reason),
+      canonical_binding_id = case when $18::boolean then $19::text else canonical_binding_id end,
+      canonical_project_id = case when $20::boolean then $21::text else canonical_project_id end,
       updated_at = now()
     where organization_id = $1 and id = $2
     returning ${debugNodeReturningColumns}
@@ -475,7 +491,11 @@ export async function updateDebugNode(
       input.enabled ?? null,
       input.archivedAt ?? null,
       input.archivedBy ?? null,
-      input.archiveReason ?? null
+      input.archiveReason ?? null,
+      input.canonicalBindingId !== undefined,
+      input.canonicalBindingId ?? null,
+      input.canonicalProjectId !== undefined,
+      input.canonicalProjectId ?? null
     ]
   );
 

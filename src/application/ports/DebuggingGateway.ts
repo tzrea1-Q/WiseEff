@@ -45,8 +45,12 @@ export type DebugSnapshotSummary = {
 
 export type CanonicalDebugPin = {
   bindingId?: string;
+  projectId?: string;
+  definitionId?: string;
   effectiveRevisionId?: string;
   currentValueId?: string;
+  sourcePinId?: string;
+  configRevisionId?: string;
   protectedReferenceKind?: "canonical-pin" | "typed-block";
   protectedReferenceReason?: string;
 };
