@@ -85,7 +85,7 @@ describe("historical exact reviewed runtime topology occurrence relocation", () 
     expect(new Set(result.map((pair) => pair.old.id)).size).toBe(16);
     expect(new Set(result.map((pair) => pair.new.id)).size).toBe(16);
     expect(fixture.violations).toHaveLength(3519);
-    expect(allowlist.entries).toHaveLength(3491);
+    expect(allowlist.entries).toHaveLength(3478);
   });
 
   it.each([
@@ -143,13 +143,13 @@ describe("historical exact reviewed runtime topology occurrence relocation", () 
     })).toThrow("cross-record");
   });
 
-  it("does not absorb unrelated debt or restore the six removed allowances", () => {
+  it("does not absorb unrelated debt or restore removed allowances", () => {
     const altered = input();
     const result = validateRuntimeTopologyRelocation(record, altered);
     const unrelated = { ...record.files[0].pairs[0].new, id: `${record.files[0].pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
     const removed = fixture.violations.filter((entry) => !allowlist.entries.some((allowance) => allowance.id === entry.id));
 
-    expect(removed).toHaveLength(28);
+    expect(removed).toHaveLength(41);
     expect(compareBoundaryInventory([...result.map((pair) => pair.old), unrelated], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(unrelated);
     for (const entry of removed) {
       expect(compareBoundaryInventory([entry], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(entry);
