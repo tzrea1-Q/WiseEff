@@ -125,6 +125,22 @@ const jointUnallowlistedRecord = JSON.parse(
   moved: Array<{ oldId: string; newId: string; file: string; oldRule: string; oldLine: number; oldByteStart: number; oldByteEnd: number; oldSliceSha256: string }>;
   currentUnallowlistedIds: string[];
 };
+const c940CurrentSuccessor = JSON.parse(
+  await readFile(`${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-c940-current-successor.json`, "utf8"),
+) as {
+  schemaVersion: number;
+  priorHead: string;
+  cHead: string;
+  dHead: string;
+  blobs: Record<string, { before: string; after: string }>;
+  moved: Array<{ oldId: string; newId: string; file: string; oldByteStart: number; oldByteEnd: number; sliceSha256: string }>;
+};
+const c940FixedSuccessors = await Promise.all([
+  "issue-853-c-940-conflict-service-successor.json",
+  "issue-853-c-940-conflict-service-owner-successor.json",
+].map(async (name) => JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/${name}`, "utf8",
+)) as { files: Array<{ pairs: Array<{ old: { id: string }; new: { id: string } }> }> }));
 
 const originalRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${exactRelocationRecordPath}`, "utf8"),
@@ -1091,7 +1107,55 @@ describe("parameter catalog boundary checker", () => {
       expect(jointUnallowlistedRecord.retired).toHaveLength(27);
       expect(jointUnallowlistedRecord.moved).toHaveLength(11);
       expect(jointUnallowlistedRecord.currentUnallowlistedIds).toHaveLength(173);
-      expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual(jointUnallowlistedRecord.currentUnallowlistedIds);
+      expect(c940CurrentSuccessor.schemaVersion).toBe(1);
+      expect(c940CurrentSuccessor.priorHead).toBe("a51ba55c955cb0852819bc49d95ea26404093b73");
+      expect(c940CurrentSuccessor.cHead).toBe("5f8a05f8bfbc9374c64a8b147653170894db2a1b");
+      expect(c940CurrentSuccessor.dHead).toBe("fbec1bd5134fc0256205f6fcfb40d0ccf6fa48f5");
+      for (const sha of [c940CurrentSuccessor.priorHead, c940CurrentSuccessor.cHead, c940CurrentSuccessor.dHead]) {
+        expect(execFileSync("git", ["merge-base", "--is-ancestor", sha, "HEAD"], { encoding: "utf8" })).toBe("");
+      }
+      expect(Object.keys(c940CurrentSuccessor.blobs).sort()).toEqual([
+        "server/modules/parameter-files/conflictService.test.ts",
+        "server/modules/parameter-files/conflictService.ts",
+      ]);
+      const previousBytes = new Map<string, Buffer>();
+      for (const [file, blobs] of Object.entries(c940CurrentSuccessor.blobs)) {
+        expect(execFileSync("git", ["rev-parse", `${c940CurrentSuccessor.priorHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        expect(execFileSync("git", ["rev-parse", `${c940CurrentSuccessor.cHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        expect(execFileSync("git", ["rev-parse", `${c940CurrentSuccessor.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        const current = await readFile(`${process.cwd()}/${file}`);
+        expect(createHash("sha1").update(`blob ${current.length}\0`).update(current).digest("hex")).toBe(blobs.after);
+        previousBytes.set(file, execFileSync("git", ["cat-file", "blob", blobs.before]));
+      }
+      expect(c940CurrentSuccessor.moved).toHaveLength(3);
+      const oldMoved = new Set(c940CurrentSuccessor.moved.map((entry) => entry.oldId));
+      const newMoved = new Set(c940CurrentSuccessor.moved.map((entry) => entry.newId));
+      expect(oldMoved.size).toBe(3);
+      expect(newMoved.size).toBe(3);
+      expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual([
+        ...jointUnallowlistedRecord.currentUnallowlistedIds.filter((id) => !oldMoved.has(id)), ...newMoved,
+      ].sort());
+      for (const entry of c940CurrentSuccessor.moved) {
+        expect(jointUnallowlistedRecord.currentUnallowlistedIds).toContain(entry.oldId);
+        expect(entry.oldId.split(":").slice(0, 3)).toEqual(entry.newId.split(":").slice(0, 3));
+        const oldSlice = previousBytes.get(entry.file)!.subarray(entry.oldByteStart, entry.oldByteEnd);
+        const observed = report.unallowlisted.find((violation) => violation.id === entry.newId);
+        expect(observed?.file).toBe(entry.file);
+        expect(createHash("sha256").update(oldSlice).digest("hex")).toBe(entry.sliceSha256);
+        const currentBytes = await readFile(`${process.cwd()}/${entry.file}`);
+        expect(currentBytes.subarray(observed!.byteStart, observed!.byteEnd)).toEqual(oldSlice);
+        expect(createHash("sha256").update([
+          "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          c940CurrentSuccessor.blobs[entry.file]!.before,
+          String(entry.oldByteStart), String(entry.oldByteEnd), observed!.token, observed!.evidence,
+          entry.file, observed!.family, observed!.rule,
+        ].join("\0")).digest("hex").slice(0, 16)).toBe(entry.oldId.split(":")[3]);
+      }
+      const fixedSuccessorPairs = c940FixedSuccessors.flatMap((record) => record.files.flatMap((file) => file.pairs));
+      expect(fixedSuccessorPairs).toHaveLength(5);
+      for (const pair of fixedSuccessorPairs) {
+        expect(report.relocations.find((entry) => entry.id === pair.old.id)?.observed.id).toBe(pair.new.id);
+      }
       expect(previousIds.filter((id) => !jointUnallowlistedRecord.currentUnallowlistedIds.includes(id))).toEqual(
         [...jointUnallowlistedRecord.retired, ...jointUnallowlistedRecord.moved].map((entry) => entry.oldId).sort(),
       );

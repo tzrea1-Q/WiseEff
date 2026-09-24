@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import type { AllowlistEntry, BoundaryViolation, BoundaryViolationFixture } from "./schema";
 import {
   runReviewedRelocationRecord,
+  verifyHistoricalRelocationProof,
   type RelocationConfig,
   type RuntimeTopologyRelocation,
 } from "./runtimeTopologyRelocation";
@@ -44,6 +45,16 @@ const fixedConfig: RelocationConfig = {
   requireStableByteOrder: true,
 };
 
+const conflictServiceC940Config: RelocationConfig = {
+  recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-c-940-conflict-service-successor.json",
+  recordSha256: "c990414c0d7389c5161ff28d7314f66d215b051b65c52590fad54794407e41d0",
+  files: [{ file: "server/modules/parameter-files/conflictService.test.ts", pairs: 3 }],
+  totalPairs: 3,
+  rejectAllowanceGrowth: true,
+  requireStableStructuralAnchor: true,
+  requireStableByteOrder: true,
+};
+
 const additionalFixedConfig: RelocationConfig = {
   recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-additional-fixed-successor.json",
   recordSha256: "ab50f316281e61ccdd8d4e55ab245ef750f0a38b2b309751706d0df2d3b34640",
@@ -54,6 +65,16 @@ const additionalFixedConfig: RelocationConfig = {
     { file: "src/infrastructure/http/parameterFileClient.ts", pairs: 2 },
   ],
   totalPairs: 6,
+  rejectAllowanceGrowth: true,
+  requireStableStructuralAnchor: true,
+  requireStableByteOrder: true,
+};
+
+const conflictServiceOwnerC940Config: RelocationConfig = {
+  recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-c-940-conflict-service-owner-successor.json",
+  recordSha256: "891a8cc7306557dd28a21ce98b4e7e03d27f00b571caaa44fb5c5af754b05bf0",
+  files: [{ file: "server/modules/parameter-files/conflictService.ts", pairs: 2 }],
+  totalPairs: 2,
   rejectAllowanceGrowth: true,
   requireStableStructuralAnchor: true,
   requireStableByteOrder: true,
@@ -73,8 +94,8 @@ type Inventory = {
 };
 
 const fixedNewIds = [
-  "S12-FIL:legacy-parameter-spec-identifier:33112c839be81779:c1b17ee60ab63c11",
-  "S12-FIL:legacy-parameter-spec-identifier:67aefab892891aa4:dd17e92284959a7d",
+  "S12-FIL:legacy-parameter-spec-identifier:33112c839be81779:5e44d58cd28e0ec2",
+  "S12-FIL:legacy-parameter-spec-identifier:67aefab892891aa4:7cafdea8ef014734",
   "S12-FIL:legacy-parameter-spec-identifier:2bf833958035c0a7:176a53d5f5c83514",
 ] as const;
 
@@ -147,22 +168,43 @@ export async function applyReviewedIssue853DRelocation(
   const exact = await runReviewedRelocationRecord(
     repoRoot, fixture, allowances, discovered, prior, exactConfig,
   );
+  await verifyHistoricalRelocationProof(repoRoot, fixture, allowances, fixedConfig, {
+    commit: "a51ba55c955cb0852819bc49d95ea26404093b73",
+    tree: "682b22c73cd9f46b300b297ec67b46f6d2641e9c",
+  });
   const fixed = await runReviewedRelocationRecord(
-    repoRoot, fixture, allowances, exact.violations, [...prior, ...exact.relocations], fixedConfig,
+    repoRoot, fixture, allowances, exact.violations, [...prior, ...exact.relocations],
+    { ...fixedConfig, activeFiles: ["server/modules/parameter-files/syncService.test.ts"] },
+  );
+  const conflictService = await runReviewedRelocationRecord(
+    repoRoot, fixture, allowances, fixed.violations,
+    [...prior, ...exact.relocations, ...fixed.relocations], conflictServiceC940Config,
   );
   const fixedFiles = new Set(fixedConfig.files.map(({ file }) => file));
   const fixedUnmatched = discovered.filter((entry) => fixedFiles.has(entry.file)
-    && !fixed.relocations.some((pair) => pair.observed.id === entry.id));
+    && ![...fixed.relocations, ...conflictService.relocations].some((pair) => pair.observed.id === entry.id));
   requireD(fixedUnmatched.length === fixedNewIds.length
     && fixedNewIds.every((id) => fixedUnmatched.some((entry) => entry.id === id)),
   "three newly introduced fixed-file observations remain unallowed");
+  await verifyHistoricalRelocationProof(repoRoot, fixture, allowances, additionalFixedConfig, {
+    commit: "a51ba55c955cb0852819bc49d95ea26404093b73",
+    tree: "682b22c73cd9f46b300b297ec67b46f6d2641e9c",
+  });
   const additional = await runReviewedRelocationRecord(
-    repoRoot, fixture, allowances, fixed.violations,
-    [...prior, ...exact.relocations, ...fixed.relocations], additionalFixedConfig,
+    repoRoot, fixture, allowances, conflictService.violations,
+    [...prior, ...exact.relocations, ...fixed.relocations, ...conflictService.relocations],
+    { ...additionalFixedConfig, activeFiles: additionalFixedConfig.files
+      .map(({ file }) => file).filter((file) => file !== "server/modules/parameter-files/conflictService.ts") },
+  );
+  const conflictServiceOwner = await runReviewedRelocationRecord(
+    repoRoot, fixture, allowances, additional.violations,
+    [...prior, ...exact.relocations, ...fixed.relocations, ...conflictService.relocations,
+      ...additional.relocations], conflictServiceOwnerC940Config,
   );
   return {
-    violations: additional.violations,
-    relocations: [...exact.relocations, ...fixed.relocations, ...additional.relocations],
+    violations: conflictServiceOwner.violations,
+    relocations: [...exact.relocations, ...fixed.relocations, ...conflictService.relocations,
+      ...additional.relocations, ...conflictServiceOwner.relocations],
   };
 }
 
