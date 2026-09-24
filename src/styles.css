@@ -10575,6 +10575,23 @@ td small {
   max-height: min(900px, calc(100dvh - 48px));
 }
 
+.canonical-batch-submit-dialog {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.canonical-batch-submit-dialog code,
+.canonical-batch-submit-dialog__targets li {
+  overflow-wrap: anywhere;
+}
+
+.canonical-batch-submit-dialog__targets {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: var(--space-6);
+}
+
 .submission-dialog-head {
   display: flex;
   align-items: flex-start;

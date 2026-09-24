@@ -10,7 +10,7 @@ import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutov
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test("D #906 real API JSON batch source preview stays read-only", async ({ page, request }, testInfo) => {
+test("D #906 real API JSON batch source preview shows complete targets and B submit entry", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
   let runtime: DisposablePostCutoverRuntime | undefined;
   let restore: RestoreDisposablePostCutoverRuntime | undefined;
@@ -95,7 +95,7 @@ test("D #906 real API JSON batch source preview stays read-only", async ({ page,
     await expect(inspector.getByRole("list", { name: "来源变更目标" }).getByRole("listitem")).toHaveCount(2);
     await expect(inspector).toContainText("36.5 → 50");
     await expect(inspector).toContainText("48 → 60");
-    await expect(inspector.getByRole("button", { name: "提交来源变更审核" })).toBeDisabled();
+    await expect(inspector.getByRole("button", { name: "提交 JSON 批量审核" })).toBeEnabled();
     const proofSummary = inspector.getByText("完整字节摘要与来源身份", { exact: true });
     const proofDetails = proofSummary.locator("..");
     await proofSummary.focus();

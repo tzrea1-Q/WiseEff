@@ -383,6 +383,76 @@ describe("parameter catalog client contract", () => {
     );
   });
 
+  it("parses one ordered JSON batch and sends its proof to the existing review route", async () => {
+    const proof = "a".repeat(64);
+    const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
+      ordinal, draftId: null, bindingId, definitionId: "definition-1",
+      definitionRevisionId: "revision-1", catalogReleaseId: "release-1",
+      baseCurrentValueId: `old-${ordinal}`, configRevisionId: `config-${ordinal}`,
+      sourceRef: `source-${ordinal}`, sourcePinId: `pin-${ordinal}`,
+      action: "set", targetText: String(50 + ordinal), appliedValueId: null,
+      appliedHistoryEventId: null, appliedSourcePinId: null, appliedFileVersionId: null
+    }));
+    const batch = { item: {
+      id: "batch-1", projectId: "project-1", candidateId: "candidate-1",
+      batchProofDigest: proof, cohortCount: 2, status: "pending", reason: "calibrate",
+      submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
+      reviewerNote: null, sourceProofToken: "source-proof", cohortProofToken: "cohort-proof",
+      fileId: "file-1", baseVersionId: "version-1", configSetId: "set-1",
+      appliedAt: null, appliedAuditRef: null, targets
+    } };
+    const diff = { item: {
+      kind: "batch", requestId: "batch-1", candidateId: "candidate-1",
+      batchProofDigest: proof, format: "json", sourceName: "config.json",
+      baseDigest: "old-digest", proposedDigest: "new-digest", diffDigest: proof,
+      before: '{"a":1}', after: '{"a":2}',
+      bindings: targets.map((target) => ({
+        bindingId: target.bindingId, oldValueId: target.baseCurrentValueId,
+        sourcePinId: target.sourcePinId, sourceOccurrenceId: `occ-${target.ordinal}`,
+        definitionId: target.definitionId, effectiveRevisionId: target.definitionRevisionId,
+        catalogReleaseId: target.catalogReleaseId, locator: { kind: "json-pointer", pointer: `/item/${target.ordinal}` },
+        valueKind: "json", valueDigest: "value-digest", configSetId: "set-1"
+      })),
+      targets: targets.map((target) => ({ ordinal: target.ordinal, bindingId: target.bindingId,
+        sourcePinId: target.sourcePinId, action: target.action, beforeText: "1", afterText: target.targetText }))
+    } };
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      const path = String(url);
+      if (path.endsWith("/source-diff")) return jsonResponse(diff);
+      if (path.endsWith("/withdraw")) return jsonResponse({ item: { ...batch.item, status: "withdrawn" } });
+      if (path.includes("/batches") && init?.method === "GET") return jsonResponse({ items: [batch.item] });
+      return jsonResponse(batch, init?.method === "POST" && path.endsWith("/batches") ? 201 : 200);
+    });
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getProjectValueBatchChangeRequest("project-1", "batch-1")).resolves.toEqual(batch);
+    await expect(client.submitProjectValueBatchChangeRequest("project-1", {
+      candidateId: "candidate-1", expectedProofToken: "preview-proof", reason: "calibrate", assignedToUserId: "reviewer"
+    }, { catalogReleaseId: "release-1", idempotencyKey: "submit-1" })).resolves.toEqual(batch);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project-1/parameter-value-change-requests/batches",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({
+        candidateId: "candidate-1", expectedProofToken: "preview-proof", reason: "calibrate", assignedToUserId: "reviewer"
+      }) })
+    );
+    await expect(client.listProjectValueBatchChangeRequests("project-1", { status: "pending", mine: true }))
+      .resolves.toEqual({ items: [batch.item] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project-1/parameter-value-change-requests/batches?status=pending&mine=true",
+      expect.objectContaining({ method: "GET" })
+    );
+    await expect(client.getProjectValueChangeSourceDiff("project-1", "batch-1")).resolves.toEqual(diff);
+    await expect(client.reviewProjectValueChangeRequest("project-1", "batch-1",
+      { decision: "approve", batchProofDigest: proof },
+      { catalogReleaseId: "release-1", idempotencyKey: "review-1" })).resolves.toEqual(batch);
+    const [url, options] = fetchMock.mock.lastCall!;
+    expect(url).toBe("/api/v2/projects/project-1/parameter-value-change-requests/batch-1/review");
+    expect(options).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "approve", batchProofDigest: proof }) }));
+    await expect(client.withdrawProjectValueChangeRequest("project-1", "batch-1",
+      { catalogReleaseId: "release-1", idempotencyKey: "withdraw-1" }))
+      .resolves.toEqual({ item: { ...batch.item, status: "withdrawn" } });
+  });
+
   it("sends the pending-review filter without the Catalog list whitelist dropping it", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ items: [] }));
     const client = createParameterCatalogClient({ baseUrl: "",fetchImpl: fetchMock });
@@ -390,6 +460,53 @@ describe("parameter catalog client contract", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=pending",expect.objectContaining({ method: "GET" }));
     await client.listProjectValueChangeRequests("project_1", { status: "rejected", mine: true });
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=rejected&mine=true", expect.objectContaining({ method: "GET" }));
+  });
+
+  it("carries the exact frozen member-removal proof through submit, detail and review", async () => {
+    const proofDigest = "a".repeat(64);
+    const member = (fileId: string) => ({ fileId, fileVersionId: `v-${fileId}`,
+      sourceName: `${fileId}.json`, format: "json", role: "base", sortOrder: 0,
+      checksum: "sha256:source", sizeBytes: 12 });
+    const cohort = (bindingId: string) => ({ bindingId, oldValueId: `v-${bindingId}`,
+      sourcePinId: `pin-${bindingId}`, sourceOccurrenceId: `occ-${bindingId}`,
+      definitionId: "def", effectiveRevisionId: "rev", catalogReleaseId: "release",
+      fileId: "file-a", fileVersionId: "v-file-a", locator: { pointer: "/value" },
+      valueDigest: "sha256:value" });
+    const item = { id: "request-1", projectId: "project-1", configSetId: "set-1",
+      fileId: "file-a", fileVersionId: "v-file-a", proofDigest,
+      frozenProof: { kind: "canonical-member-removal", organizationId: "org-1",
+        projectId: "project-1", configSetId: "set-1", fileId: "file-a",
+        fileVersionId: "v-file-a", configRevisionId: "config-rev",
+        members: [member("file-a"), member("file-b")],
+        cohort: [cohort("binding-a"), cohort("binding-b")], proofDigest },
+      status: "pending", reason: "retire member", submitterUserId: "submitter",
+      assignedToUserId: "reviewer", reviewerUserId: null, reviewerNote: null,
+      appliedSourceResult: null, createdAt: "2026-09-24T00:00:00Z",
+      updatedAt: "2026-09-24T00:00:00Z" };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item }));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    const context = { catalogReleaseId: "release", idempotencyKey: "member-key" };
+    const submitted = await client.submitMemberRemovalRequest("project-1", {
+      configSetId: "set-1", fileId: "file-a", reason: "retire member",
+      assignedToUserId: "reviewer"
+    }, context);
+    expect(submitted.item.frozenProof).toEqual(item.frozenProof);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/v2/projects/project-1/parameter-value-change-requests/member-removals"
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      fileId: "file-a", assignedToUserId: "reviewer"
+    });
+    await expect(client.getMemberRemovalRequest("project-1", "request-1")).resolves.toEqual({ item });
+    await client.reviewMemberRemovalRequest("project-1", "request-1", {
+      decision: "approve", memberProofDigest: submitted.item.proofDigest
+    }, context);
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
+      decision: "approve", memberProofDigest: proofDigest
+    });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      "/api/v2/projects/project-1/parameter-value-change-requests/request-1/review"
+    );
   });
 
   it("rejects binding drafts that still carry a legacy spec identity", async () => {

@@ -1063,8 +1063,49 @@ export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   })).min(2)
 });
 export const catalogBatchValueChangeRequestResponseSchema = itemEnvelopeSchema(catalogBatchValueChangeRequestDtoSchema);
+export const catalogBatchValueChangeRequestListResponseSchema = catalogObject({
+  items: z.array(catalogBatchValueChangeRequestDtoSchema)
+});
+export const catalogMemberRemovalProofSchema = catalogObject({
+  kind: z.literal("canonical-member-removal"),
+  organizationId: z.string(), projectId: z.string(), configSetId: z.string(),
+  fileId: z.string(), fileVersionId: z.string(), configRevisionId: z.string(),
+  members: z.array(catalogObject({
+    fileId: z.string(), fileVersionId: z.string(), sourceName: z.string(),
+    format: z.literal("json"), role: z.string(), sortOrder: z.number().int(),
+    checksum: z.string(), sizeBytes: z.number().nonnegative()
+  })).min(2),
+  cohort: z.array(catalogObject({
+    bindingId: z.string(), oldValueId: z.string(), sourcePinId: z.string(),
+    sourceOccurrenceId: z.string(), definitionId: z.string(), effectiveRevisionId: z.string(),
+    catalogReleaseId: z.string(), fileId: z.string(), fileVersionId: z.string(),
+    locator: z.record(z.string(), z.unknown()), valueDigest: z.string()
+  })).min(2),
+  proofDigest: z.string().regex(/^[0-9a-f]{64}$/)
+});
+export const catalogMemberRemovalRequestDtoSchema = catalogObject({
+  id: z.string(), projectId: z.string(), configSetId: z.string(),
+  fileId: z.string(), fileVersionId: z.string(), proofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  frozenProof: catalogMemberRemovalProofSchema,
+  status: closedEnum(["pending", "approved", "rejected", "withdrawn"]),
+  reason: z.string(), submitterUserId: z.string(), assignedToUserId: z.string(),
+  reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
+  appliedSourceResult: catalogObject({
+    tombstoneId: z.string(), successorConfigRevisionId: z.string()
+  }).nullable(),
+  createdAt: z.string(), updatedAt: z.string()
+});
+export const catalogMemberRemovalRequestResponseSchema = itemEnvelopeSchema(catalogMemberRemovalRequestDtoSchema);
+export const catalogMemberRemovalRequestListResponseSchema = catalogObject({
+  items: z.array(catalogMemberRemovalRequestDtoSchema)
+});
 export const catalogValueChangeReviewResponseSchema = itemEnvelopeSchema(z.union([
-  catalogValueChangeRequestDtoSchema, catalogBatchValueChangeRequestDtoSchema
+  catalogValueChangeRequestDtoSchema, catalogBatchValueChangeRequestDtoSchema,
+  catalogMemberRemovalRequestDtoSchema
+]));
+export const catalogValueChangeWithdrawalResponseSchema = itemEnvelopeSchema(z.union([
+  catalogValueChangeRequestDtoSchema, catalogBatchValueChangeRequestDtoSchema,
+  catalogMemberRemovalRequestDtoSchema
 ]));
 const catalogValueChangeSourceBindingSchema = catalogObject({
   bindingId: z.string(),oldValueId: z.string(),sourcePinId: z.string(),sourceOccurrenceId: z.string(),
@@ -1103,10 +1144,25 @@ export const catalogRegisterConfigurationInstancesRequestSchema = catalogObject(
 export const catalogSubmitValueChangeRequestSchema = catalogObject({
   assignedToUserId: z.string().nullable().optional()
 });
+export const catalogSubmitMemberRemovalRequestSchema = catalogObject({
+  configSetId: z.string().min(1), fileId: z.string().min(1),
+  reason: z.string().trim().min(1), assignedToUserId: z.string().min(1)
+});
+export const catalogSubmitBatchValueChangeRequestSchema = catalogObject({
+  candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
+  reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
+  selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional()
+});
+export const catalogReviewMemberRemovalRequestSchema = catalogObject({
+  decision: closedEnum(["approve", "reject"]),
+  note: z.string().nullable().optional(),
+  memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/)
+});
 export const catalogReviewValueChangeRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
   note: z.string().nullable().optional(),
-  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
 });
 
 export const catalogCreateNodeEnablementDraftRequestSchema = catalogObject({
@@ -1394,7 +1450,13 @@ export const parameterCatalogDtoSchemaCatalog = {
   ProjectValueDraftRemovedResponse: projectValueDraftRemovedResponseSchema,
   ProjectValueChangeRequestResponse: catalogValueChangeRequestResponseSchema,
   ProjectValueBatchChangeRequestResponse: catalogBatchValueChangeRequestResponseSchema,
+  ProjectValueBatchChangeRequestListResponse: catalogBatchValueChangeRequestListResponseSchema,
+  SubmitProjectValueBatchChangeRequest: catalogSubmitBatchValueChangeRequestSchema,
+  MemberRemovalRequestResponse: catalogMemberRemovalRequestResponseSchema,
+  MemberRemovalRequestListResponse: catalogMemberRemovalRequestListResponseSchema,
+  SubmitMemberRemovalRequest: catalogSubmitMemberRemovalRequestSchema,
   ProjectValueChangeReviewResponse: catalogValueChangeReviewResponseSchema,
+  ProjectValueChangeWithdrawalResponse: catalogValueChangeWithdrawalResponseSchema,
   ProjectValueChangeRequestListResponse: catalogValueChangeRequestListResponseSchema,
   SubmitProjectValueChangeRequest: catalogSubmitValueChangeRequestSchema,
   ReviewProjectValueChangeRequest: catalogReviewValueChangeRequestSchema,

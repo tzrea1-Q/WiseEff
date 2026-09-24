@@ -216,6 +216,7 @@ export function ParameterAdminNextPage({
               dispatch={dispatch}
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
+              parameterCatalogRepository={runtime?.parameterCatalogRepository}
               onNewProject={onNewProject}
               parameterFileRepository={parameterFileRepository}
               dtsStructuredRepository={dtsStructuredRepository}
