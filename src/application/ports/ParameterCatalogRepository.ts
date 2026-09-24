@@ -6,6 +6,8 @@ import type {
   CatalogProjectValueDraftRemovedResponse,
   CatalogValueChangeRequestListResponse,
   CatalogValueChangeRequestResponse,
+  CatalogBatchValueChangeRequestResponse,
+  CatalogValueChangeReviewResponse,
   CatalogValueChangeSourceDiffResponse,
   CatalogCreateReplacementRequest,
   CatalogCreatePublicationCandidateRequest,
@@ -141,12 +143,16 @@ export interface ParameterCatalogRepository {
     projectId: string,
     query?: { status?: string; mine?: boolean }
   ): Promise<CatalogValueChangeRequestListResponse>;
+  getProjectValueBatchChangeRequest?(
+    projectId: string,
+    requestId: string
+  ): Promise<CatalogBatchValueChangeRequestResponse>;
   reviewProjectValueChangeRequest?(
     projectId: string,
     requestId: string,
-    body: { decision: "approve" | "reject"; note?: string | null },
+    body: { decision: "approve" | "reject"; note?: string | null; batchProofDigest?: string },
     context: CatalogPublicationWriteContext & { idempotencyKey: string }
-  ): Promise<CatalogValueChangeRequestResponse>;
+  ): Promise<CatalogValueChangeReviewResponse>;
   withdrawProjectValueChangeRequest?(
     projectId: string,
     requestId: string,

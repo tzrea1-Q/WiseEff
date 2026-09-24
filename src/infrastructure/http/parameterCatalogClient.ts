@@ -65,6 +65,8 @@ import {
   projectValueDraftRemovedResponseSchema,
   catalogSubmitValueChangeRequestSchema,
   catalogReviewValueChangeRequestSchema,
+  catalogBatchValueChangeRequestResponseSchema,
+  catalogValueChangeReviewResponseSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
   catalogValueChangeSourceDiffResponseSchema,
@@ -668,17 +670,24 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogValueChangeRequestListResponseSchema,
         "ProjectValueChangeRequestListResponse"
       ),
+    getProjectValueBatchChangeRequest: (projectId: string, requestId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/batch`,
+        catalogBatchValueChangeRequestResponseSchema,
+        "ProjectValueBatchChangeRequestResponse"
+      ),
     reviewProjectValueChangeRequest: (
       projectId: string,
       requestId: string,
-      body: { decision: "approve" | "reject"; note?: string | null },
+      body: { decision: "approve" | "reject"; note?: string | null; batchProofDigest?: string },
       context: CatalogWriteContext
     ) =>
       request(
         "POST",
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`,
-        catalogValueChangeRequestResponseSchema,
-        "ProjectValueChangeRequestResponse",
+        catalogValueChangeReviewResponseSchema,
+        "ProjectValueChangeReviewResponse",
         { body: catalogReviewValueChangeRequestSchema.parse(body), context }
       ),
     getProjectValueChangeSourceDiff: (projectId: string, requestId: string) =>
