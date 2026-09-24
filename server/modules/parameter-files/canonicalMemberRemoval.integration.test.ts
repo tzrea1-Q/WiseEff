@@ -11,13 +11,14 @@ import { installConfigurationSourceFixture } from "../../testing/parameterCatalo
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, loadPublishedCatalog, readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
+import { loadBindingById, loadHistoryByRevision, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values/repositories";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
 import { uploadProjectParameterFile } from "./service";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { applyReviewedCanonicalMemberRemoval, prepareCanonicalMemberRemoval,
-  type ReviewedCanonicalMemberRemoval } from "./canonicalMemberRemoval";
+  type CanonicalMemberRemovalProof, type ReviewedCanonicalMemberRemoval } from "./canonicalMemberRemoval";
 import { insertFileVersion } from "./repository";
 
 const organizationId = "org-906-member-cohort";
@@ -61,6 +62,32 @@ describe("#906 reviewed canonical member removal cohort", () => {
     [review.requestId, organizationId, projectId, review.submitterUserId,
       review.reviewerUserId, review.frozen.fileId, review.frozen.configSetId,
       review.frozen.fileVersionId, review.frozen.proofDigest, JSON.stringify(review.frozen)]);
+  }
+
+  async function cohortState(frozen: CanonicalMemberRemovalProof) {
+    const pool = getRootPostgresPool(db)!;
+    const bindings = await Promise.all(frozen.cohort.map(async (entry) => {
+      const binding = await loadBindingById(asValueClient(db), entry.bindingId);
+      expect(binding).toMatchObject({ organization_id: organizationId, project_id: projectId,
+        source_occurrence_id: entry.sourceOccurrenceId });
+      const values = await loadHistoryByRevision(asValueClient(db), entry.bindingId, entry.effectiveRevisionId);
+      const history = await readCanonicalBindingChangeHistory(pool, {
+        organizationId, projectId, bindingId: entry.bindingId, limit: 200
+      });
+      expect(history?.length).toBeLessThan(200);
+      return {
+        binding,
+        values,
+        pins: await Promise.all(values.map((value) => loadOwnedProjectValueSourcePin(db, {
+          organizationId, projectId, bindingId: entry.bindingId, projectValueId: value.id
+        }))),
+        history
+      };
+    }));
+    const revisions = (await db.query<{ count: number }>(
+      "select count(*)::int as count from dts_config_revisions where config_set_id=$1", [configSetId]
+    )).rows[0]!.count;
+    return { bindings, revisions };
   }
 
   beforeAll(async () => {
@@ -151,10 +178,10 @@ describe("#906 reviewed canonical member removal cohort", () => {
     expect((await db.query<{ config_set_id: string }>(
       "select config_set_id from project_parameter_files where id=$1", [removedFileId]
     )).rows[0]!.config_set_id).toBe(configSetId);
-    expect((await db.query<{ id: string; current_value_id: string }>(`
-      select id,current_value_id from parameter_catalog.project_parameter_bindings
-      where id=any($1::text[]) order by id`, [before.map((row) => row.binding_id)])).rows)
-      .toEqual(before.map((row) => ({ id: row.binding_id, current_value_id: row.value_id })).sort((a,b) => a.id.localeCompare(b.id)));
+    expect(await Promise.all(before.map(async (row) => ({
+      id: row.binding_id,
+      current_value_id: (await loadBindingById(asValueClient(db), row.binding_id))?.current_value_id
+    })))).toEqual(before.map((row) => ({ id: row.binding_id, current_value_id: row.value_id })));
     expect((await db.query<{ id: string }>("select id from audit_events where id=$1", [auditId])).rows).toEqual([]);
   }, 120_000);
 
@@ -260,12 +287,7 @@ describe("#906 reviewed canonical member removal cohort", () => {
     await submitReview(review);
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
-    const before = (await db.query<{ values: number; pins: number; history: number; revisions: number }>(`
-      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
-        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
-        (select count(*)::int from parameter_catalog.binding_history_events) as history,
-        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
-    [configSetId])).rows[0]!;
+    const before = await cohortState(frozen);
     await expect(db.transaction(async (tx) => {
       await applyReviewedCanonicalMemberRemoval(tx, storage, reviewer, snapshot, review, {
         invocation: createUserInvocation(reviewer), traceId: review.requestId,
@@ -273,12 +295,7 @@ describe("#906 reviewed canonical member removal cohort", () => {
       });
       throw new Error("injected-member-fault");
     })).rejects.toThrow("injected-member-fault");
-    expect((await db.query<typeof before>(`
-      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
-        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
-        (select count(*)::int from parameter_catalog.binding_history_events) as history,
-        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
-    [configSetId])).rows[0]).toEqual(before);
+    expect(await cohortState(frozen)).toEqual(before);
     expect((await db.query<{ count: number }>(`
       select count(*)::int as count from parameter_catalog.project_source_member_tombstones
       where file_id=$1`, [removedFileId])).rows[0]!.count).toBe(0);
@@ -289,9 +306,8 @@ describe("#906 reviewed canonical member removal cohort", () => {
       select config_set_id from project_parameter_files where id=$1`, [removedFileId])).rows[0]!.config_set_id)
       .toBe(configSetId);
     const sibling = frozen.cohort.find((row) => row.fileId === siblingFileId)!;
-    expect((await db.query<{ current_value_id: string }>(`
-      select current_value_id from parameter_catalog.project_parameter_bindings where id=$1`,
-    [sibling.bindingId])).rows[0]!.current_value_id).toBe(sibling.oldValueId);
+    expect((await loadBindingById(asValueClient(db), sibling.bindingId))?.current_value_id)
+      .toBe(sibling.oldValueId);
   }, 120_000);
 
   it("rolls back the complete cohort when PostgreSQL rejects the tombstone insert", async () => {
@@ -305,12 +321,7 @@ describe("#906 reviewed canonical member removal cohort", () => {
     const requestId = "reviewed-member-pg-fault";
     await submitReview({ requestId, submitterUserId: adminId, reviewerUserId: reviewerId,
       decision: "approve", frozen });
-    const before = (await db.query<{ values: number; pins: number; history: number; revisions: number }>(`
-      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
-        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
-        (select count(*)::int from parameter_catalog.binding_history_events) as history,
-        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
-    [configSetId])).rows[0]!;
+    const before = await cohortState(frozen);
     await db.query(`create function public.t906_member_tombstone_fail() returns trigger
       language plpgsql as $$ begin raise exception 'injected-member-tombstone-failure'; end $$`);
     await db.query(`create trigger t906_member_tombstone_fail before insert
@@ -328,12 +339,7 @@ describe("#906 reviewed canonical member removal cohort", () => {
       await db.query("drop trigger t906_member_tombstone_fail on parameter_catalog.project_source_member_tombstones");
       await db.query("drop function public.t906_member_tombstone_fail()");
     }
-    expect((await db.query<typeof before>(`
-      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
-        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
-        (select count(*)::int from parameter_catalog.binding_history_events) as history,
-        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
-    [configSetId])).rows[0]).toEqual(before);
+    expect(await cohortState(frozen)).toEqual(before);
     expect((await db.query<{ count: number }>(`
       select count(*)::int as count from audit_events where metadata->>'reviewRequestId'=$1`,
     [requestId])).rows[0]!.count).toBe(0);
@@ -356,12 +362,7 @@ describe("#906 reviewed canonical member removal cohort", () => {
     await submitReview(review);
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
-    const before = (await db.query<{ values: number; pins: number; history: number; revisions: number }>(`
-      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
-        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
-        (select count(*)::int from parameter_catalog.binding_history_events) as history,
-        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
-    [configSetId])).rows[0]!;
+    const before = await cohortState(frozen);
     const cohortQuery = `select binding.id,binding.current_value_id,pin.id as pin_id,
         pin.config_revision_id,pin.file_version_id,file.config_set_id,file.current_version_id
       from parameter_catalog.current_project_parameter_bindings binding
@@ -386,12 +387,7 @@ describe("#906 reviewed canonical member removal cohort", () => {
         refusalSink: createTrustedRefusalAuditSink(db)
       }))).rejects.toMatchObject({ code: "CONFLICT" });
     expect(reads).toBe(2);
-    expect((await db.query<typeof before>(`
-      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
-        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
-        (select count(*)::int from parameter_catalog.binding_history_events) as history,
-        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
-    [configSetId])).rows[0]).toEqual(before);
+    expect(await cohortState(frozen)).toEqual(before);
     expect((await db.query(cohortQuery,
       [organizationId, projectId, configSetId])).rows).toEqual(cohortBefore);
     expect((await db.query<{ status: string; applied_at: Date | null }>(`
@@ -463,19 +459,20 @@ describe("#906 reviewed canonical member removal cohort", () => {
         config_revision_id: result.successorConfigRevisionId,
         file_version_id: old.fileVersionId });
       expect(binding.current_value_id).not.toBe(old.oldValueId);
-      expect((await db.query<{ count: number }>(`
-        select count(*)::int as count from parameter_catalog.binding_history_events
-        where binding_id=$1 and new_current_value_id=$2`,
-      [binding.id, binding.current_value_id])).rows[0]!.count).toBe(1);
-      expect((await db.query<{ count: number }>(`
-        select count(*)::int as count from parameter_catalog.project_value_source_pins
-        where binding_id=$1`, [binding.id])).rows[0]!.count).toBe(2);
+      const history = await readCanonicalBindingChangeHistory(getRootPostgresPool(db)!, {
+        organizationId, projectId, bindingId: binding.id
+      });
+      expect(history?.filter((event) => event.newCurrentValueId === binding.current_value_id)).toHaveLength(1);
+      const values = await loadHistoryByRevision(asValueClient(db), binding.id, old.effectiveRevisionId);
+      const pins = await Promise.all(values.map((value) => loadOwnedProjectValueSourcePin(db, {
+        organizationId, projectId, bindingId: binding.id, projectValueId: value.id
+      })));
+      expect(pins.filter(Boolean)).toHaveLength(2);
     }
     expect((await db.query<{ id: string; config_set_id: string | null }>(`
       select id,config_set_id from project_parameter_files where id=$1`, [removedFileId])).rows)
       .toEqual([{ id: removedFileId, config_set_id: null }]);
-    expect((await db.query<{ count: number }>(`
-      select count(*)::int as count from parameter_catalog.project_parameter_bindings
-      where id=$1`, [frozen.cohort.find((row) => row.fileId === removedFileId)!.bindingId])).rows[0]!.count).toBe(1);
+    expect(await loadBindingById(asValueClient(db),
+      frozen.cohort.find((row) => row.fileId === removedFileId)!.bindingId)).not.toBeNull();
   }, 120_000);
 });
