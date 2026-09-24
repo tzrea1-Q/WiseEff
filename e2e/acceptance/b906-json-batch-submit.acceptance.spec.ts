@@ -5,7 +5,7 @@ import { createPostgresDatabase } from "../../server/shared/database/client";
 import { makeTestAuthContext } from "../../server/testing/authContext";
 import { installConfigurationSourceFixture } from "../../server/testing/parameterCatalog/configurationSource";
 import { insertFileVersion } from "../../server/modules/parameter-files/repository";
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { dismissXiaozeHint } from "./helpers/catalogBrowser";
 import { startSwappedDisposablePostCutoverRuntime, type RestoreDisposablePostCutoverRuntime } from "./helpers/semanticBindingFixture";
@@ -42,6 +42,9 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
         permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
         roles: [{ roleId: "admin", projectId: null }]
       }), { subjectId: "csub_b906_batch_submit_ui", schemaId: "wiseeff.b906.batch.submit.ui" });
+      await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('b906-other-software-reviewer',$1,'org-chargelab','aurora','software-committer')`,
+      [acceptanceCast.chenNa.userId]);
 
       const setup = async (suffix: string) => {
         const createSet = await request.post(api("/api/v1/projects/aurora/config-sets"), {
@@ -117,11 +120,24 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
 
       const approvedFixture = await setup("approved");
       const approved = await submitFromPage(approvedFixture, "浏览器批量批准");
+      const otherReviewerHeaders = authHeadersForUser(
+        acceptanceCast.chenNa.userId, acceptanceCast.chenNa.email, acceptanceCast.chenNa.name
+      );
+      const otherReviewerQueue = await request.get(api("/api/v2/projects/aurora/parameter-value-change-requests/batches?status=pending"), {
+        headers: otherReviewerHeaders
+      });
+      expect(otherReviewerQueue.status()).toBe(200);
+      expect((await otherReviewerQueue.json()).items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: approved.id })]));
       const unauthorized = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${approved.id}/review`), {
         headers: authHeadersForRole("software-user"),
         data: { decision: "reject", batchProofDigest: approved.batchProofDigest }
       });
-      expect([403, 404]).toContain(unauthorized.status());
+      const otherReviewerReject = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${approved.id}/review`), {
+        headers: otherReviewerHeaders,
+        data: { decision: "reject", batchProofDigest: approved.batchProofDigest }
+      });
+      expect(unauthorized.status()).toBe(404);
+      expect(otherReviewerReject.status()).toBe(404);
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
       const queue = page.getByRole("table", { name: "软件配置审核请求" });
       await expect(queue.getByRole("row").filter({ hasText: "浏览器批量批准" })).toBeVisible();

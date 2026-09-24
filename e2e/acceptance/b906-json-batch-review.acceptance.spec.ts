@@ -8,7 +8,7 @@ import { createTrustedRefusalAuditSink } from "../../server/modules/audit/truste
 import { createUserInvocation } from "../../server/modules/auth/trustedInvocation";
 import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "../../server/modules/parameter-files/canonicalFileWorkflow";
 import { submitCanonicalBatchValueChange } from "../../server/modules/parameter-bindings/drafts/batchChangeService";
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { startSwappedDisposablePostCutoverRuntime, type RestoreDisposablePostCutoverRuntime } from "./helpers/semanticBindingFixture";
 import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
@@ -41,6 +41,9 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       await installConfigurationSourceFixture(db, admin, {
         subjectId: "csub_b906_ui", schemaId: "wiseeff.b906.ui"
       });
+      await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('b906-other-software-reviewer',$1,'org-chargelab','aurora','software-committer')`,
+      [acceptanceCast.chenNa.userId]);
       const createSet = await request.post(api("/api/v1/projects/aurora/config-sets"), {
         headers: adminHeaders, data: { name: "B #906 review" }
       });
@@ -114,10 +117,26 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       });
 
       const reviewPath = `/api/v2/projects/aurora/parameter-value-change-requests/${pending.id}`;
+      const otherReviewerHeaders = authHeadersForUser(
+        acceptanceCast.chenNa.userId, acceptanceCast.chenNa.email, acceptanceCast.chenNa.name
+      );
+      const unqualifiedQueue = await request.get(api("/api/v2/projects/aurora/parameter-value-change-requests/batches?status=pending"), {
+        headers: authHeadersForRole("software-user")
+      });
+      expect(unqualifiedQueue.status()).toBe(403);
+      const otherReviewerQueue = await request.get(api("/api/v2/projects/aurora/parameter-value-change-requests/batches?status=pending"), {
+        headers: otherReviewerHeaders
+      });
+      expect(otherReviewerQueue.status()).toBe(200);
+      expect((await otherReviewerQueue.json()).items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: pending.id })]));
       const forbidden = await request.get(api(`${reviewPath}/batch`), {
         headers: authHeadersForRole("software-user")
       });
-      expect([403, 404]).toContain(forbidden.status());
+      const otherReviewerRead = await request.get(api(`${reviewPath}/batch`), {
+        headers: otherReviewerHeaders
+      });
+      expect(forbidden.status()).toBe(404);
+      expect(otherReviewerRead.status()).toBe(404);
       const reviewerRead = await request.get(api(`${reviewPath}/batch`), { headers: reviewerHeaders });
       expect(reviewerRead.ok(), await reviewerRead.text()).toBe(true);
       const browserErrors: string[] = [];
