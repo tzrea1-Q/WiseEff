@@ -70,7 +70,9 @@ export function CanonicalProjectValueReviewPanel({
   const canonicalRepository = repository;
   const [view, setView] = useState<ReviewView>("pending");
   const [requests, setRequests] = useState<readonly CanonicalRequest[]>([]);
+  const [batchRequests, setBatchRequests] = useState<readonly BatchRequest[]>([]);
   const [batchRequest, setBatchRequest] = useState<BatchRequest | null>(null);
+  const [batchDetailLoadedId, setBatchDetailLoadedId] = useState<string | null>(null);
   const [batchSelected, setBatchSelected] = useState(false);
   const [batchRefresh, setBatchRefresh] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -107,7 +109,9 @@ export function CanonicalProjectValueReviewPanel({
     setLoading(true);
     setError(null);
     setRequests([]);
+    setBatchRequests([]);
     setBatchRequest(null);
+    setBatchDetailLoadedId(null);
     setBatchSelected(false);
     setSelectedId(null);
     setStaleRequestId(null);
@@ -127,6 +131,15 @@ export function CanonicalProjectValueReviewPanel({
     )
       .then(async (response) => {
         if (cancelled) return;
+        const batchResponse = canonicalRepository.listProjectValueBatchChangeRequests
+          ? await canonicalRepository.listProjectValueBatchChangeRequests(projectId,
+            Object.keys(query).length > 0 ? query : undefined)
+          : { items: [] as BatchRequest[] };
+        if (cancelled) return;
+        const nextBatches = batchResponse.items.filter((request) =>
+          (!mineOnly || request.submitterUserId === currentUserId)
+          && (view === "pending" ? request.status === "pending" : request.status !== "pending"));
+        setBatchRequests(nextBatches);
         const nextRequests = response.items.filter((request) =>
           (!mineOnly || request.submitterUserId === currentUserId)
           && (view === "pending" ? isCanonicalPending(request) : isCanonicalHistory(request))
@@ -138,6 +151,21 @@ export function CanonicalProjectValueReviewPanel({
           ? requestedCandidate
           : undefined;
         if (deepLinkRequestId && !requested) {
+          const listedBatch = batchResponse.items.find((request) => request.id === deepLinkRequestId
+            && (!mineOnly || request.submitterUserId === currentUserId));
+          if (listedBatch) {
+            if ((view === "pending") !== (listedBatch.status === "pending")) {
+              setView(listedBatch.status === "pending" ? "pending" : "history");
+              return;
+            }
+            setRequests(nextRequests);
+            setBatchRequest(listedBatch);
+            setBatchDetailLoadedId(mineOnly ? listedBatch.id : null);
+            setBatchSelected(true);
+            setSelectedId(null);
+            deepLinkRequestRef.current = null;
+            return;
+          }
           if (!mineOnly && canonicalRepository.getProjectValueBatchChangeRequest) {
             try {
               const batch = (await canonicalRepository.getProjectValueBatchChangeRequest(projectId, deepLinkRequestId)).item;
@@ -148,6 +176,7 @@ export function CanonicalProjectValueReviewPanel({
               }
               setRequests(nextRequests);
               setBatchRequest(batch);
+              setBatchDetailLoadedId(batch.id);
               setBatchSelected(true);
               setSelectedId(null);
               deepLinkRequestRef.current = null;
@@ -177,6 +206,11 @@ export function CanonicalProjectValueReviewPanel({
           : nextRequests[0]?.id ?? null;
         setRequests(nextRequests);
         setSelectedId(nextSelectedId);
+        if (!nextSelectedId && nextBatches.length > 0) {
+          setBatchRequest(nextBatches[0]);
+          setBatchDetailLoadedId(mineOnly ? nextBatches[0].id : null);
+          setBatchSelected(true);
+        }
         if (deepLinkRequestId) {
           deepLinkRequestRef.current = null;
         }
@@ -193,11 +227,27 @@ export function CanonicalProjectValueReviewPanel({
   }, [batchRefresh, canonicalRepository, currentUserId, initialRequestId, mineOnly, projectId, view]);
 
   useEffect(() => {
+    if (!batchSelected || !batchRequest || mineOnly || batchDetailLoadedId === batchRequest.id) return;
+    const read = canonicalRepository?.getProjectValueBatchChangeRequest;
+    if (!read) return;
+    let cancelled = false;
+    const requestId = batchRequest.id;
+    void read(projectId, requestId).then(({ item }) => {
+      if (cancelled) return;
+      setBatchRequest(item);
+      setBatchDetailLoadedId(requestId);
+    }).catch((cause) => {
+      if (!cancelled) setError(presentError(cause, "加载批量请求详情失败，已阻止审核。"));
+    });
+    return () => { cancelled = true; };
+  }, [batchSelected, batchRequest, batchDetailLoadedId, canonicalRepository, mineOnly, projectId]);
+
+  useEffect(() => {
     const requestId = effectiveSelectedId;
     const loadSourceDiff = canonicalRepository?.getProjectValueChangeSourceDiff;
     setSourceDiff(null);
     setSourceDiffError(null);
-    if (!requestId) {
+    if (!requestId || (mineOnly && batchSelected)) {
       setSourceDiffState("idle");
       return undefined;
     }
@@ -222,7 +272,7 @@ export function CanonicalProjectValueReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [canonicalRepository, projectId, effectiveSelectedId]);
+  }, [canonicalRepository, projectId, effectiveSelectedId, mineOnly, batchSelected]);
 
   if (!canonicalRepository?.listProjectValueChangeRequests || (!mineOnly && !canonicalRepository.reviewProjectValueChangeRequest)) {
     return (
@@ -291,12 +341,13 @@ export function CanonicalProjectValueReviewPanel({
   );
   const singleDiff = sourceDiff && !("kind" in sourceDiff) ? sourceDiff : null;
   const batchDiff = sourceDiff && "kind" in sourceDiff ? sourceDiff : null;
-  const batchProofReady = Boolean(batchRequest && batchSelected && sourceDiffState === "ready"
+  const batchProofReady = Boolean(batchRequest && batchSelected && batchDetailLoadedId === batchRequest.id
+    && sourceDiffState === "ready"
     && batchDiff && matchesFrozenBatch(batchRequest, batchDiff));
   const canReviewBatch = Boolean(!mineOnly && canReview && currentUserId && batchRequest
-    && batchRequest.submitterUserId !== currentUserId);
-  const approveBatch = async () => {
-    if (!batchRequest || !batchProofReady || !canReviewBatch || busy || batchRequest.status !== "pending"
+    && batchRequest.submitterUserId !== currentUserId && batchRequest.assignedToUserId === currentUserId);
+  const reviewBatch = async (decision: "approve" | "reject") => {
+    if (!batchRequest || (decision === "approve" && !batchProofReady) || !canReviewBatch || busy || batchRequest.status !== "pending"
       || !reviewProjectValueChangeRequest || !canonicalRepository.getProjectValueBatchChangeRequest) return;
     setBusy(true);
     setError(null);
@@ -307,15 +358,18 @@ export function CanonicalProjectValueReviewPanel({
       const catalogReleaseId = catalog.item?.catalogReleaseId;
       if (!catalogReleaseId) throw new Error("当前 catalog release 不可用，已阻止审核。");
       await reviewProjectValueChangeRequest(projectId, requestId,
-        { decision: "approve", batchProofDigest: batchRequest.batchProofDigest },
+        { decision, batchProofDigest: batchRequest.batchProofDigest },
         { catalogReleaseId, idempotencyKey: idempotencyKey() });
       if (!isCurrentScope()) return;
       const refreshed = (await canonicalRepository.getProjectValueBatchChangeRequest(projectId, requestId)).item;
       if (!isCurrentScope()) return;
-      if (refreshed.status !== "approved" || refreshed.batchProofDigest !== batchRequest.batchProofDigest
+      if (refreshed.status !== (decision === "approve" ? "approved" : "rejected")
+        || refreshed.batchProofDigest !== batchRequest.batchProofDigest
         || refreshed.targets.length !== batchRequest.targets.length
-        || refreshed.targets.some((target, index) => target.ordinal !== index || !target.appliedValueId
-          || !target.appliedHistoryEventId || !target.appliedSourcePinId || !target.appliedFileVersionId)) {
+        || refreshed.targets.some((target, index) => target.ordinal !== index
+          || target.bindingId !== batchRequest.targets[index].bindingId
+          || (decision === "approve" && (!target.appliedValueId
+            || !target.appliedHistoryEventId || !target.appliedSourcePinId || !target.appliedFileVersionId)))) {
         throw new Error("批量审核结果不完整，已停止展示成功状态。");
       }
       setBatchRequest(refreshed);
@@ -343,6 +397,35 @@ export function CanonicalProjectValueReviewPanel({
       if (isCurrentScope()) setBusy(false);
     }
   };
+  const withdrawBatch = async () => {
+    if (!batchRequest || busy || batchRequest.status !== "pending"
+      || batchRequest.submitterUserId !== currentUserId
+      || !canonicalRepository.withdrawProjectValueChangeRequest) return;
+    const requestId = batchRequest.id;
+    setBusy(true);
+    setError(null);
+    try {
+      const catalogReleaseId = (await canonicalRepository.getCatalog()).item?.catalogReleaseId;
+      if (!isCurrentScope()) return;
+      if (!catalogReleaseId) throw new Error("当前 catalog release 不可用，已阻止撤回。");
+      const response = await canonicalRepository.withdrawProjectValueChangeRequest(projectId, requestId,
+        { catalogReleaseId, idempotencyKey: idempotencyKey() });
+      if (!isCurrentScope()) return;
+      if (!("batchProofDigest" in response.item) || response.item.id !== requestId
+        || response.item.status !== "withdrawn" || response.item.batchProofDigest !== batchRequest.batchProofDigest) {
+        throw new Error("批量撤回结果不完整，请刷新状态核对。");
+      }
+      setBatchRequest(response.item);
+      deepLinkRequestRef.current = requestId;
+      setView("history");
+    } catch (withdrawError) {
+      if (isCurrentScope()) {
+        setError(presentError(withdrawError, "批量撤回失败，请刷新状态后重试。"));
+        deepLinkRequestRef.current = requestId;
+        setBatchRefresh((value) => value + 1);
+      }
+    } finally { if (isCurrentScope()) setBusy(false); }
+  };
 
   return (
     <section className="canonical-project-value-review" aria-label={mineOnly ? "我的参数提交" : "软件配置审核"}>
@@ -369,8 +452,8 @@ export function CanonicalProjectValueReviewPanel({
         <p role="alert">请求「{staleRequestId}」已失效、已归档或不属于当前项目，未自动切换到其他请求。</p>
       ) : null}
       {loading ? <p role="status">正在加载源文件审核请求…</p> : null}
-      {!loading && !error && !staleRequestId && requests.length === 0 && !batchRequest ? <p role="status">当前没有{mineOnly ? "你的" : view === "pending" ? "待审核" : "历史"}源文件请求。</p> : null}
-      {requests.length > 0 || batchRequest ? (
+      {!loading && !error && !staleRequestId && requests.length === 0 && batchRequests.length === 0 && !batchRequest ? <p role="status">当前没有{mineOnly ? "你的" : view === "pending" ? "待审核" : "历史"}源文件请求。</p> : null}
+      {requests.length > 0 || batchRequests.length > 0 || batchRequest ? (
         <div className="canonical-project-value-review__content">
           <div className="table-wrap">
             <table aria-label={mineOnly ? "我的参数提交请求" : "软件配置审核请求"}>
@@ -378,18 +461,21 @@ export function CanonicalProjectValueReviewPanel({
                 <tr><th>绑定</th><th>格式</th><th>动作</th><th>状态</th><th>原因</th></tr>
               </thead>
               <tbody>
-                {batchRequest ? (
-                  <tr>
-                    <td><button type="button" disabled={busy} aria-current={batchSelected ? "true" : undefined}
+                {(batchRequest && !batchRequests.some((request) => request.id === batchRequest.id)
+                  ? [batchRequest, ...batchRequests] : batchRequests).map((request) => (
+                  <tr key={request.id}>
+                    <td><button type="button" disabled={busy} aria-current={batchSelected && batchRequest?.id === request.id ? "true" : undefined}
                       className="button subtle" onClick={() => {
+                        setBatchRequest(request);
+                        setBatchDetailLoadedId(mineOnly ? request.id : null);
                         setBatchSelected(true);
                         setSelectedId(null);
-                        onSelectRequest?.(batchRequest.id);
+                        onSelectRequest?.(request.id);
                       }}>查看批量请求</button></td>
-                    <td>JSON</td><td>{batchRequest.targets.length} 项来源变更</td>
-                    <td>{canonicalStatusLabels[batchRequest.status]}</td><td>{batchRequest.reason}</td>
+                    <td>JSON</td><td>{request.targets.length} 项来源变更</td>
+                    <td>{canonicalStatusLabels[request.status]}</td><td>{request.reason}</td>
                   </tr>
-                ) : null}
+                ))}
                 {requests.map((request) => (
                   <tr key={request.id}>
                     <td>
@@ -510,6 +596,7 @@ export function CanonicalProjectValueReviewPanel({
                 <div><dt>实际审核人 ID</dt><dd><code>{batchRequest.reviewerUserId ?? "—"}</code></dd></div>
               </dl>
               {sourceDiffState === "loading" ? <p role="status">正在加载全部目标的固定源差异…</p> : null}
+              {mineOnly ? <p role="note">提交者可查看服务端冻结的全部目标；固定源差异由被指派审核人核对。</p> : null}
               {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}
               <button type="button" className="button subtle" disabled={busy} onClick={() => {
                 deepLinkRequestRef.current = batchRequest.id;
@@ -559,14 +646,21 @@ export function CanonicalProjectValueReviewPanel({
                 <div>
                   <p role="note">批准时服务端会重新核对当前来源，并将全部目标作为一次事务提交。</p>
                   <button type="button" className="button primary" disabled={busy || !batchProofReady}
-                    onClick={() => void approveBatch()}>批准全部 {batchRequest.targets.length} 项</button>
-                  <p role="note">批量驳回接口尚未开放；当前请求不能在此驳回。</p>
+                    onClick={() => void reviewBatch("approve")}>批准全部 {batchRequest.targets.length} 项</button>{" "}
+                  <button type="button" className="button subtle" disabled={busy}
+                    onClick={() => void reviewBatch("reject")}>驳回全部 {batchRequest.targets.length} 项</button>
                 </div>
               ) : batchRequest.status === "pending" ? (
                 <p role="note">{batchRequest.submitterUserId === currentUserId
                   ? "不能审核自己的提交；请由其他合格审核员处理。"
-                  : "当前账号不是该项目的软件审核员；审核操作由服务端拒绝。"}</p>
+                  : "当前账号不是此请求的被指派审核人；审核操作由服务端拒绝。"}</p>
               ) : null}
+              {batchRequest.status === "pending" && batchRequest.submitterUserId === currentUserId
+                && canonicalRepository.withdrawProjectValueChangeRequest ? (
+                  <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawBatch()}>
+                    撤回我的批量提交
+                  </button>
+                ) : null}
             </article>
           ) : null}
         </div>

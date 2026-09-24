@@ -66,9 +66,12 @@ import {
   catalogSubmitValueChangeRequestSchema,
   catalogReviewValueChangeRequestSchema,
   catalogBatchValueChangeRequestResponseSchema,
+  catalogBatchValueChangeRequestListResponseSchema,
+  catalogSubmitBatchValueChangeRequestSchema,
   catalogValueChangeReviewResponseSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
+  catalogValueChangeWithdrawalResponseSchema,
   catalogMemberRemovalRequestResponseSchema,
   catalogMemberRemovalRequestListResponseSchema,
   catalogSubmitMemberRemovalRequestSchema,
@@ -674,6 +677,24 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogValueChangeRequestListResponseSchema,
         "ProjectValueChangeRequestListResponse"
       ),
+    submitProjectValueBatchChangeRequest: (
+      projectId: string,
+      body: z.infer<typeof catalogSubmitBatchValueChangeRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches`,
+      catalogBatchValueChangeRequestResponseSchema,
+      "ProjectValueBatchChangeRequestResponse",
+      { body: catalogSubmitBatchValueChangeRequestSchema.parse(body), context }
+    ),
+    listProjectValueBatchChangeRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
+        catalogBatchValueChangeRequestListResponseSchema,
+        "ProjectValueBatchChangeRequestListResponse"
+      ),
     getProjectValueBatchChangeRequest: (projectId: string, requestId: string) =>
       request(
         "GET",
@@ -756,8 +777,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       request(
         "POST",
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/withdraw`,
-        catalogValueChangeRequestResponseSchema,
-        "ProjectValueChangeRequestResponse",
+        catalogValueChangeWithdrawalResponseSchema,
+        "ProjectValueChangeWithdrawalResponse",
         { context }
       ),
     getCanonicalBindingChangeHistory: (projectId: string, bindingId: string, limit?: number) =>

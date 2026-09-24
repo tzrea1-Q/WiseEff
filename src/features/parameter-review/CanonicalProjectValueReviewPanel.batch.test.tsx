@@ -41,6 +41,7 @@ function repository(source = diff) {
   const getProjectValueChangeSourceDiff = vi.fn().mockResolvedValue({ item: source });
   return {
     listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] }),
+    listProjectValueBatchChangeRequests: vi.fn().mockResolvedValue({ items: [] }),
     getProjectValueBatchChangeRequest,
     getProjectValueChangeSourceDiff,
     reviewProjectValueChangeRequest,
@@ -147,14 +148,52 @@ describe("canonical JSON batch reviewer", () => {
     expect(within(detail).getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
   });
 
-  it("hides approval for the submitter and never offers unsupported batch rejection", async () => {
+  it("hides review actions for the submitter", async () => {
     const repo = repository();
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
       currentUserId="author-1" initialRequestId={batch.id} />);
     const detail = await screen.findByRole("article", { name: "JSON 批量源文件请求详情" });
     expect(within(detail).queryByRole("button", { name: /批准全部/ })).not.toBeInTheDocument();
-    expect(within(detail).queryByRole("button", { name: "驳回" })).not.toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: /驳回全部/ })).not.toBeInTheDocument();
     expect(repo.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+  });
+
+  it("discovers the assigned pending batch in the queue and rejects once", async () => {
+    const repo = repository();
+    vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValue({ items: [batch] } as never);
+    vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValueOnce({ item: batch } as never)
+      .mockResolvedValue({ item: { ...batch, status: "rejected" } } as never);
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo} currentUserId="reviewer-1" />);
+    const detail = await screen.findByRole("article", { name: "JSON 批量源文件请求详情" });
+    expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
+    fireEvent.click(within(detail).getByRole("button", { name: "驳回全部 2 项" }));
+    await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
+      "project-1", batch.id, { decision: "reject", batchProofDigest: proof }, expect.any(Object)
+    ));
+    await waitFor(() => expect(detail).toHaveTextContent("已驳回"));
+    expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds the submitter's batch in mine and withdraws with a refreshed terminal result", async () => {
+    const repo = repository();
+    vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValue({ items: [batch] } as never);
+    repo.withdrawProjectValueChangeRequest = vi.fn().mockResolvedValue({ item: { ...batch, status: "withdrawn" } });
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
+      currentUserId="author-1" mineOnly />);
+    const detail = await screen.findByRole("article", { name: "JSON 批量源文件请求详情" });
+    expect(within(detail).getByText(proof)).toBeVisible();
+    fireEvent.click(within(detail).getByRole("button", { name: "撤回我的批量提交" }));
+    await waitFor(() => expect(repo.withdrawProjectValueChangeRequest).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(detail).toHaveTextContent("已撤回"));
+  });
+
+  it("does not offer approval to a reviewer who is not assigned", async () => {
+    const repo = repository();
+    vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValue({ items: [batch] } as never);
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo} currentUserId="reviewer-2" />);
+    const detail = await screen.findByRole("article", { name: "JSON 批量源文件请求详情" });
+    expect(within(detail).queryByRole("button", { name: /批准全部/ })).not.toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: /驳回全部/ })).not.toBeInTheDocument();
   });
 
   it("does not expose a batch detail when the reviewer read is forbidden", async () => {

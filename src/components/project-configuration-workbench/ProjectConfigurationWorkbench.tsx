@@ -9,6 +9,7 @@ import type {
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
+import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/CanonicalBatchSubmitDialog";
 import type {
   ParameterFileRepository,
   ParameterFileSourceWorkflow,
@@ -1079,9 +1080,18 @@ export function ProjectConfigurationWorkbench({
   });
 
   const [sourceReviewDialogOpen, setSourceReviewDialogOpen] = useState(false);
+  const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && activeCandidate?.status === "ready"
+    && sourcePreview?.kind === "canonical" && sourcePreview.candidateId === activeCandidate.id
+    && sourcePreview.format.toLowerCase() === "json" && sourcePreview.proofToken
+    && sourcePreview.bindings && sourcePreview.bindings.length >= 2
+    && sourcePreview.bindings.every((binding) => binding.bindingId && binding.sourcePinId
+      && (binding.action === "delete" || binding.afterText !== undefined))
+    && new Set(sourcePreview.bindings.map((binding) => binding.bindingId)).size === sourcePreview.bindings.length
+    && !sourcePreview.request && !sourcePreviewLoading && !sourcePreviewError
+    && memberRemovalRepository?.submitProjectValueBatchChangeRequest);
   const handleOpenSourceReview = useCallback(() => {
-    if (canSubmitSourceReview) setSourceReviewDialogOpen(true);
-  }, [canSubmitSourceReview]);
+    if (canSubmitSourceReview || canSubmitBatchReview) setSourceReviewDialogOpen(true);
+  }, [canSubmitSourceReview, canSubmitBatchReview]);
   const handleConfirmSourceReview = useCallback(
     async (reason: string) => {
       try {
@@ -1652,6 +1662,7 @@ export function ProjectConfigurationWorkbench({
               sourcePreviewLoading={sourcePreviewLoading}
               sourcePreviewError={sourcePreviewError}
               canSubmitSourceReview={canSubmitSourceReview}
+              canSubmitBatchReview={canSubmitBatchReview}
               submittingSourceReview={submittingSourceReview}
               sourceReviewError={sourceReviewError}
               sourceReviewResult={sourceReviewResult}
@@ -1752,7 +1763,7 @@ export function ProjectConfigurationWorkbench({
       />
 
       <WorkbenchCandidateSourceReviewDialog
-        open={sourceReviewDialogOpen}
+        open={sourceReviewDialogOpen && !canSubmitBatchReview}
         activeCandidate={activeCandidate}
         sourcePreview={sourcePreview}
         submitting={submittingSourceReview}
@@ -1762,6 +1773,16 @@ export function ProjectConfigurationWorkbench({
         }}
         onConfirm={(reason) => void handleConfirmSourceReview(reason)}
       />
+      {sourceReviewDialogOpen && canSubmitBatchReview && sourcePreview && activeCandidate ? (
+        <CanonicalBatchSubmitDialog projectId={project.id} currentUserId={currentUserId}
+          candidate={activeCandidate} preview={sourcePreview} repository={memberRemovalRepository}
+          onDismiss={() => setSourceReviewDialogOpen(false)}
+          onSubmitted={(requestId) => {
+            setSourceReviewDialogOpen(false);
+            setSourceWorkflowReloadToken((value) => value + 1);
+            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+          }} />
+      ) : null}
 
       <WorkbenchSourceRollbackDialog
         open={Boolean(rollbackReviewVersion)}
