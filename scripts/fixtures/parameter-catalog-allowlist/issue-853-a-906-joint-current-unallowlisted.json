@@ -1,8 +1,27 @@
 {
   "schemaVersion": 1,
   "baseHead": "f73abe902926625d49ba4a402df067c2df8f54ee",
-  "ownerHead": "443a7149df6689a6fd9fd9692558d5827cc2525d",
+  "priorOwnerHead": "443a7149df6689a6fd9fd9692558d5827cc2525d",
+  "ownerHead": "6aa8a6655fe273c1f690d5309ce678d2ecd9a911",
   "dHead": "200b90a95c53c41fe4c3a9545b17ba8b5a8164b7",
+  "bChangedBlobs": {
+    "e2e/acceptance/b906-json-member-removal.acceptance.spec.ts": {
+      "before": "69a158a199b8c7d4e6b84a4cc68f729b59a2bb92",
+      "after": "43a693fde109021a34a89b404ec1c8a007e750cf"
+    },
+    "server/modules/parameter-bindings/catalogProjectValueRoutes.ts": {
+      "before": "96be169339d9f9704d1d1450943a7a1511f3a31d",
+      "after": "6378ac1d1bf7356cd1c8a67258c39975adb76a1f"
+    },
+    "server/modules/parameter-bindings/drafts/memberRemovalChangeService.ts": {
+      "before": "19cfa06856b5474fc803a594b8cc04f3e97051da",
+      "after": "6164aebc8ffb9a4614c10ff247a1048a3ffe131e"
+    },
+    "server/modules/parameter-bindings/drafts/memberRemovalRoutes.integration.test.ts": {
+      "before": "16bb7ec786a5278c0dc66b16a662f9d544232197",
+      "after": "4ec46be4a3fab961478ffe9d4bd376de15ce0881"
+    }
+  },
   "oldBlobs": {
     "server/modules/parameter-files/canonicalFileWorkflow.integration.test.ts": "74939f9fcf4eb969da677350d9bd6979919acef7",
     "server/modules/parameter-files/canonicalMemberRemoval.integration.test.ts": "3ee0a47ff0610093b1af26747760cdea5a3fa4ab",

@@ -115,8 +115,10 @@ const jointUnallowlistedRecord = JSON.parse(
 ) as {
   schemaVersion: number;
   baseHead: string;
+  priorOwnerHead: string;
   ownerHead: string;
   dHead: string;
+  bChangedBlobs: Record<string, { before: string; after: string }>;
   oldBlobs: Record<string, string>;
   currentBlobs: Record<string, string>;
   retired: Array<{ oldId: string; file: string; oldRule: string; oldLine: number; oldByteStart: number; oldByteEnd: number; oldSliceSha256: string }>;
@@ -1071,10 +1073,21 @@ describe("parameter catalog boundary checker", () => {
       ].sort();
       expect(jointUnallowlistedRecord.schemaVersion).toBe(1);
       expect(jointUnallowlistedRecord.baseHead).toBe("f73abe902926625d49ba4a402df067c2df8f54ee");
-      expect(jointUnallowlistedRecord.ownerHead).toBe("443a7149df6689a6fd9fd9692558d5827cc2525d");
+      expect(jointUnallowlistedRecord.priorOwnerHead).toBe("443a7149df6689a6fd9fd9692558d5827cc2525d");
+      expect(jointUnallowlistedRecord.ownerHead).toBe("6aa8a6655fe273c1f690d5309ce678d2ecd9a911");
       expect(jointUnallowlistedRecord.dHead).toBe("200b90a95c53c41fe4c3a9545b17ba8b5a8164b7");
       expect(execFileSync("git", ["cat-file", "-t", jointUnallowlistedRecord.ownerHead], { encoding: "utf8" }).trim()).toBe("commit");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", jointUnallowlistedRecord.priorOwnerHead, jointUnallowlistedRecord.ownerHead], { encoding: "utf8" })).toBe("");
       expect(execFileSync("git", ["merge-base", "--is-ancestor", jointUnallowlistedRecord.ownerHead, "HEAD"], { encoding: "utf8" })).toBe("");
+      expect(execFileSync("git", ["diff", "--name-only", jointUnallowlistedRecord.priorOwnerHead, jointUnallowlistedRecord.ownerHead], { encoding: "utf8" }).trim().split("\n").sort()).toEqual(
+        Object.keys(jointUnallowlistedRecord.bChangedBlobs).sort(),
+      );
+      for (const [file, blobs] of Object.entries(jointUnallowlistedRecord.bChangedBlobs)) {
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.priorOwnerHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.ownerHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        const source = await readFile(`${process.cwd()}/${file}`);
+        expect(createHash("sha1").update(`blob ${source.length}\0`).update(source).digest("hex")).toBe(blobs.after);
+      }
       expect(jointUnallowlistedRecord.retired).toHaveLength(27);
       expect(jointUnallowlistedRecord.moved).toHaveLength(11);
       expect(jointUnallowlistedRecord.currentUnallowlistedIds).toHaveLength(173);
