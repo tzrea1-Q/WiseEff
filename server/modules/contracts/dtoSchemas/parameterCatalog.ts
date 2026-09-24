@@ -1063,6 +1063,9 @@ export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   })).min(2)
 });
 export const catalogBatchValueChangeRequestResponseSchema = itemEnvelopeSchema(catalogBatchValueChangeRequestDtoSchema);
+export const catalogBatchValueChangeRequestListResponseSchema = catalogObject({
+  items: z.array(catalogBatchValueChangeRequestDtoSchema)
+});
 export const catalogMemberRemovalProofSchema = catalogObject({
   kind: z.literal("canonical-member-removal"),
   organizationId: z.string(), projectId: z.string(), configSetId: z.string(),
@@ -1101,7 +1104,8 @@ export const catalogValueChangeReviewResponseSchema = itemEnvelopeSchema(z.union
   catalogMemberRemovalRequestDtoSchema
 ]));
 export const catalogValueChangeWithdrawalResponseSchema = itemEnvelopeSchema(z.union([
-  catalogValueChangeRequestDtoSchema, catalogMemberRemovalRequestDtoSchema
+  catalogValueChangeRequestDtoSchema, catalogBatchValueChangeRequestDtoSchema,
+  catalogMemberRemovalRequestDtoSchema
 ]));
 const catalogValueChangeSourceBindingSchema = catalogObject({
   bindingId: z.string(),oldValueId: z.string(),sourcePinId: z.string(),sourceOccurrenceId: z.string(),
@@ -1143,6 +1147,11 @@ export const catalogSubmitValueChangeRequestSchema = catalogObject({
 export const catalogSubmitMemberRemovalRequestSchema = catalogObject({
   configSetId: z.string().min(1), fileId: z.string().min(1),
   reason: z.string().trim().min(1), assignedToUserId: z.string().min(1)
+});
+export const catalogSubmitBatchValueChangeRequestSchema = catalogObject({
+  candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
+  reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
+  selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional()
 });
 export const catalogReviewMemberRemovalRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
@@ -1441,6 +1450,8 @@ export const parameterCatalogDtoSchemaCatalog = {
   ProjectValueDraftRemovedResponse: projectValueDraftRemovedResponseSchema,
   ProjectValueChangeRequestResponse: catalogValueChangeRequestResponseSchema,
   ProjectValueBatchChangeRequestResponse: catalogBatchValueChangeRequestResponseSchema,
+  ProjectValueBatchChangeRequestListResponse: catalogBatchValueChangeRequestListResponseSchema,
+  SubmitProjectValueBatchChangeRequest: catalogSubmitBatchValueChangeRequestSchema,
   MemberRemovalRequestResponse: catalogMemberRemovalRequestResponseSchema,
   MemberRemovalRequestListResponse: catalogMemberRemovalRequestListResponseSchema,
   SubmitMemberRemovalRequest: catalogSubmitMemberRemovalRequestSchema,
