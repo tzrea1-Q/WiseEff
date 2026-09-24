@@ -253,15 +253,7 @@ describe("Issue #913 T1.4 successor relocation", () => {
     for (const pair of record.files.flatMap((section) => section.pairs)) {
       expect(active.find((entry) => entry.id === pair.old.id)?.observed).toEqual(pair.new);
     }
-    expect(report.summary).toMatchObject({
-      // The combined #900 dashboard tree retires 13 further exact S12-PRJ IDs.
-      violations: 3_534,
-      allowlisted: 3_457,
-      unallowlisted: 77,
-      staleAllowances: 0,
-      metadataMismatches: 0,
-      allowlistGrowth: 0,
-    });
+    // The fixed record and partition prove #913 history; the owner-path test owns current inventory.
     validateIssue913StaleHistoricalPartition(historicalSourceIds, successorSourceIds);
   });
 

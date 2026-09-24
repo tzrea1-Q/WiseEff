@@ -711,14 +711,20 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     expect(typed.detail).toBe("PCAT-GUARD-DRIFT");
   });
 
-  it("T3: re-running 0138 is idempotent", async () => {
-    const before = await aclFingerprint(client);
-    const sql = await fs.readFile(path.join(migrationsDir, ROLES_MIGRATION), "utf8");
-    await client.query(sql);
-    const after = await aclFingerprint(client);
-    expect(after).toBe(before);
-    expect(before).toMatch(/^[0-9a-f]{64}$/);
-  });
+  it("T3: re-running 0138 at its historical migration boundary is idempotent", async () => {
+    await withTempDatabase(
+      { prefix: "pcat_rbac_0138_replay", migrate: false },
+      async ({ db }) => {
+        await applyMigrations(db, migrationsDir, { through: ROLES_MIGRATION });
+        const before = await aclFingerprint(db);
+        const sql = await fs.readFile(path.join(migrationsDir, ROLES_MIGRATION), "utf8");
+        await db.query(sql);
+        const after = await aclFingerprint(db);
+        expect(after).toBe(before);
+        expect(before).toMatch(/^[0-9a-f]{64}$/);
+      },
+    );
+  }, 120_000);
 
   it("T4: PUBLIC remains revoked for Catalog tables and the guard", async () => {
     const publicExecute = await client.query<{ allowed: boolean }>(`
@@ -1122,7 +1128,36 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         )
       order by procedure.proname
     `, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
-    expect(writerDefiners.rows).toEqual([{ proname: "assert_catalog_subject_active" }]);
+    expect(writerDefiners.rows).toEqual([
+      { proname: "assert_catalog_subject_active" },
+      { proname: "insert_reviewed_member_tombstone" },
+    ]);
+
+    const reviewedTombstoneGrant = await client.query<{
+      public_execute: boolean;
+      synchronizer_execute: boolean;
+      coordinator_execute: boolean;
+      reader_execute: boolean;
+      writer_execute: boolean;
+    }>(`
+      select
+        pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
+        pg_catalog.has_function_privilege($1, procedure.oid, 'execute') as synchronizer_execute,
+        pg_catalog.has_function_privilege('catalog_publication_coordinator_role', procedure.oid, 'execute') as coordinator_execute,
+        pg_catalog.has_function_privilege('catalog_baseline_reader_role', procedure.oid, 'execute') as reader_execute,
+        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute
+      from pg_catalog.pg_proc procedure
+      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'parameter_catalog'
+        and procedure.proname = 'insert_reviewed_member_tombstone'
+    `, [CATALOG_SYNCHRONIZER_ROLE, PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(reviewedTombstoneGrant.rows).toEqual([{
+      public_execute: false,
+      synchronizer_execute: false,
+      coordinator_execute: false,
+      reader_execute: false,
+      writer_execute: true,
+    }]);
 
     const guardBody = await client.query<{ definition: string }>(`
       select pg_catalog.pg_get_functiondef(procedure.oid) as definition
@@ -1350,7 +1385,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0168 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0169 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1434,6 +1469,9 @@ describe("0138 Catalog role migration paths", () => {
         });
         await applyMigrations(db, migrationsDir, {
           through: "0168_pinned_file_version_trigger_guard.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0169_reviewed_source_member_cohort.sql",
         });
         upgrade = await aclFingerprint(db);
       },
