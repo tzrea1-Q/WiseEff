@@ -888,10 +888,16 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
   it("keeps placement and observation-match guards SECURITY DEFINER without writer execute", async () => {
     const rows = await client.query<{
       identity: string;
+      owner: string;
       security_definer: boolean;
+      settings: string[];
       public_execute: boolean;
       synchronizer_execute: boolean;
       writer_execute: boolean;
+      coordinator_execute: boolean;
+      reader_execute: boolean;
+      verification_writer_execute: boolean;
+      verifier_execute: boolean;
     }>(`
       select
         format(
@@ -900,10 +906,16 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
           procedure.proname,
           pg_catalog.pg_get_function_identity_arguments(procedure.oid)
         ) as identity,
+        pg_catalog.pg_get_userbyid(procedure.proowner) as owner,
         procedure.prosecdef as security_definer,
+        procedure.proconfig as settings,
         pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
         pg_catalog.has_function_privilege($1, procedure.oid, 'execute') as synchronizer_execute,
-        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute
+        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute,
+        pg_catalog.has_function_privilege('catalog_publication_coordinator_role', procedure.oid, 'execute') as coordinator_execute,
+        pg_catalog.has_function_privilege('catalog_baseline_reader_role', procedure.oid, 'execute') as reader_execute,
+        pg_catalog.has_function_privilege('catalog_verification_writer_role', procedure.oid, 'execute') as verification_writer_execute,
+        pg_catalog.has_function_privilege('catalog_verifier_role', procedure.oid, 'execute') as verifier_execute
       from pg_catalog.pg_proc procedure
       join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
       where namespace.nspname = 'parameter_catalog'
@@ -922,10 +934,16 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     expect(rows.rows).toEqual(
       [...TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES].sort().map((identity) => ({
         identity,
+        owner: CATALOG_MIGRATION_OWNER,
         security_definer: true,
+        settings: ["search_path=pg_catalog, parameter_catalog"],
         public_execute: false,
         synchronizer_execute: false,
         writer_execute: false,
+        coordinator_execute: false,
+        reader_execute: false,
+        verification_writer_execute: false,
+        verifier_execute: false,
       })),
     );
   });
@@ -1331,6 +1349,157 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 });
 
 describe("0138 Catalog role migration paths", () => {
+  it("0170 upgrades a populated 0169 database without granting Catalog reads or direct guard execution", async () => {
+    await withTempDatabase(
+      { prefix: "pcat_rbac_0170_upgrade", migrate: false },
+      async ({ db, connectionString }) => {
+        await applyMigrations(db, migrationsDir, {
+          through: "0169_reviewed_source_member_cohort.sql",
+        });
+        const admin = new pg.Client({ connectionString });
+        await admin.connect();
+        try {
+          const prior = canonicalDriverFixture("upg170old", 88931);
+          await commitCanonicalDriverCatalog(admin, prior, {
+            includePlacement: true,
+            includeBinding: false,
+          });
+          const before = await admin.query<{ security_definer: boolean }>(`
+            select prosecdef as security_definer
+            from pg_catalog.pg_proc
+            where oid = 'parameter_catalog.assert_subject_placement_kind()'::regprocedure
+          `);
+          expect(before.rows).toEqual([{ security_definer: false }]);
+
+          expect(await applyMigrations(db, migrationsDir)).toEqual([
+            "0170_restore_subject_placement_definer.sql",
+          ]);
+          expect(await applyMigrations(db, migrationsDir)).toEqual([]);
+          const receipt = await admin.query<{ name: string }>(`
+            select name from schema_migrations
+            where name = '0170_restore_subject_placement_definer.sql'
+          `);
+          expect(receipt.rows).toEqual([{ name: "0170_restore_subject_placement_definer.sql" }]);
+          const preserved = await admin.query<{ id: string }>(
+            "select id from parameter_catalog.subject_placements where id = $1",
+            [prior.placementId],
+          );
+          expect(preserved.rows).toEqual([{ id: prior.placementId }]);
+
+          const guard = await admin.query<{
+            owner: string;
+            security_definer: boolean;
+            settings: string[];
+            public_execute: boolean;
+            synchronizer_execute: boolean;
+            writer_execute: boolean;
+            coordinator_execute: boolean;
+            reader_execute: boolean;
+            verification_writer_execute: boolean;
+            verifier_execute: boolean;
+            writer_catalog_select: boolean;
+          }>(`
+            select
+              pg_catalog.pg_get_userbyid(proowner) as owner,
+              prosecdef as security_definer,
+              proconfig as settings,
+              pg_catalog.has_function_privilege('public', oid, 'execute') as public_execute,
+              pg_catalog.has_function_privilege('catalog_synchronizer_role', oid, 'execute') as synchronizer_execute,
+              pg_catalog.has_function_privilege('parameter_governance_writer_role', oid, 'execute') as writer_execute,
+              pg_catalog.has_function_privilege('catalog_publication_coordinator_role', oid, 'execute') as coordinator_execute,
+              pg_catalog.has_function_privilege('catalog_baseline_reader_role', oid, 'execute') as reader_execute,
+              pg_catalog.has_function_privilege('catalog_verification_writer_role', oid, 'execute') as verification_writer_execute,
+              pg_catalog.has_function_privilege('catalog_verifier_role', oid, 'execute') as verifier_execute,
+              pg_catalog.has_table_privilege('parameter_governance_writer_role', 'parameter_catalog.catalog_subjects', 'select') as writer_catalog_select
+            from pg_catalog.pg_proc
+            where oid = 'parameter_catalog.assert_subject_placement_kind()'::regprocedure
+          `);
+          expect(guard.rows).toEqual([{
+            owner: CATALOG_MIGRATION_OWNER,
+            security_definer: true,
+            settings: ["search_path=pg_catalog, parameter_catalog"],
+            public_execute: false,
+            synchronizer_execute: false,
+            writer_execute: false,
+            coordinator_execute: false,
+            reader_execute: false,
+            verification_writer_execute: false,
+            verifier_execute: false,
+            writer_catalog_select: false,
+          }]);
+
+          const next = canonicalDriverFixture("upg170new", 88932);
+          await commitCanonicalDriverCatalog(admin, next, {
+            includePlacement: false,
+            includeBinding: false,
+          });
+          await withLocalRole(admin, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+            await admin.query(`
+              insert into parameter_catalog.organization_subject_registrations (
+                id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+              ) values ($1, $2, $3, 'active', 'explicit', '{}', $4)
+            `, [next.registrationId, next.orgId, next.subjectId, next.placementId]);
+            await admin.query(`
+              insert into parameter_catalog.subject_placements (
+                id, registration_id, organization_id, module_id, origin
+              ) values ($1, $2, $3, $4, 'curated')
+            `, [next.placementId, next.registrationId, next.orgId, next.moduleId]);
+            await admin.query("set constraints all immediate");
+          });
+
+          await admin.query("update public.parameter_modules set kind = 'node-type' where id = $1", [
+            next.moduleId,
+          ]);
+          await withLocalRole(admin, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+            await admin.query(`
+              insert into parameter_catalog.organization_subject_registrations (
+                id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+              ) values ($1, $2, $3, 'active', 'explicit', '{}', $4)
+            `, [next.registrationId, next.orgId, next.subjectId, next.placementId]);
+            await admin.query(`
+              insert into parameter_catalog.subject_placements (
+                id, registration_id, organization_id, module_id, origin
+              ) values ($1, $2, $3, $4, 'curated')
+            `, [next.placementId, next.registrationId, next.orgId, next.moduleId]);
+            const denied = await captureDatabaseError(admin.query("set constraints all immediate"));
+            expect(denied.code).toBe("23514");
+            expect(denied.constraint).toBe("subject_placement_kind_ck");
+          });
+
+          for (const role of [
+            CATALOG_SYNCHRONIZER_ROLE,
+            "catalog_publication_coordinator_role",
+            "catalog_baseline_reader_role",
+            "catalog_verification_writer_role",
+            "catalog_verifier_role",
+            PARAMETER_GOVERNANCE_WRITER_ROLE,
+          ]) {
+            const denied = await captureRoleStatementError(
+              admin,
+              role,
+              "select parameter_catalog.assert_subject_placement_kind()",
+            );
+            assertSqlstate42501(denied, p02Gate());
+          }
+          await withProductionLogin(admin, connectionString, "guard170", async (login, roleName) => {
+            await admin.query(`grant usage on schema parameter_catalog to ${quoteIdent(roleName)}`);
+            try {
+              const denied = await captureDatabaseError(
+                login.query("select parameter_catalog.assert_subject_placement_kind()"),
+              );
+              assertSqlstate42501(denied, p02Gate());
+              expect(denied.message).toContain("function assert_subject_placement_kind");
+            } finally {
+              await admin.query(`revoke usage on schema parameter_catalog from ${quoteIdent(roleName)}`);
+            }
+          });
+        } finally {
+          await admin.end();
+        }
+      },
+    );
+  }, 180_000);
+
   it("applies as the contiguous suffix after 0137", async () => {
     await withTempDatabase(
       { prefix: "pcat_rbac_floor", migrate: false },
@@ -1385,7 +1554,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0169 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0170 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1472,6 +1641,9 @@ describe("0138 Catalog role migration paths", () => {
         });
         await applyMigrations(db, migrationsDir, {
           through: "0169_reviewed_source_member_cohort.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0170_restore_subject_placement_definer.sql",
         });
         upgrade = await aclFingerprint(db);
       },
