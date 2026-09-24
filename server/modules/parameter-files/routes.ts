@@ -570,6 +570,7 @@ export function registerParameterFileRoutes(
     const params = parseWithSchema(paramsWithConflictIdSchema, request.params);
     const body = parseWithSchema(resolveConflictBodySchema, request.body, "Invalid parameter file conflict resolve payload.");
     const item = await resolveParameterFileConflict(db, auth, {
+      projectId: params.projectId,
       conflictId: params.conflictId,
       resolution: body.resolution,
       reason: body.reason

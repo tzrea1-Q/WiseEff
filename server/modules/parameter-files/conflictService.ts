@@ -77,6 +77,7 @@ export async function detectFileUiDraftConflict(
 }
 
 export type ResolveParameterFileConflictInput = {
+  projectId: string;
   conflictId: string;
   resolution: "file" | "ui";
   reason?: string;
@@ -146,6 +147,7 @@ export async function resolveParameterFileConflict(
   return db.transaction(async (tx) => {
     const [conflict] = await listOpenConflicts(tx, {
       organizationId: auth.organization.id,
+      projectId: input.projectId,
       conflictId: input.conflictId
     });
     if (!conflict) {
@@ -322,6 +324,7 @@ export async function resolveConflictsBulk(
     const items: FileSyncConflictRecord[] = [];
     for (const conflict of preview.eligible) {
       const item = await resolveParameterFileConflict(tx, auth, {
+        projectId: input.projectId,
         conflictId: conflict.id,
         resolution: input.resolution,
         reason: input.reason
