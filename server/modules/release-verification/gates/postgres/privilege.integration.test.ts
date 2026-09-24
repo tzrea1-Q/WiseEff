@@ -184,6 +184,35 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
     expect(attempt.results.find((result) => result.gateId === "PCAT-DB-P02")?.status).toBe("passed");
   }, 60_000);
 
+  it("rejects reviewed tombstone definer body or grant drift", async () => {
+    const identity = "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)";
+    const definition = await db.query<{ sql: string }>(
+      `select pg_catalog.pg_get_functiondef($1::regprocedure) as sql`, [identity],
+    );
+    const original = definition.rows[0]!.sql;
+    const edited = original.replace(
+      "Reviewed member removal has no exact user audit receipt",
+      "Altered reviewed member removal has no exact user audit receipt",
+    );
+    expect(edited).not.toBe(original);
+
+    for (const drift of [
+      edited,
+      `grant execute on function ${identity} to public`,
+    ]) {
+      await db.query("savepoint p02_reviewed_definer_drift");
+      try {
+        await db.query(drift);
+        const result = await runP02(db);
+        expect(result.status).toBe("failed");
+        expect(result.failureCode).toBe("PCAT-PRIV-LEGACY-WRITER-BYPASS");
+      } finally {
+        await db.query("rollback to savepoint p02_reviewed_definer_drift");
+        await db.query("release savepoint p02_reviewed_definer_drift");
+      }
+    }
+  }, 60_000);
+
   /**
    * The documented role model (`docs/SECURITY.md`) gives the API login a NOINHERIT
    * membership in `parameter_governance_writer_role` and the publication manager one in
