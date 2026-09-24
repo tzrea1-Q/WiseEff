@@ -22896,7 +22896,8 @@
                   "format": {
                     "type": "string",
                     "enum": [
-                      "json"
+                      "json",
+                      "dts"
                     ]
                   },
                   "sourceName": {

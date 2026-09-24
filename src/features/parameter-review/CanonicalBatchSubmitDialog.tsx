@@ -26,7 +26,7 @@ export function CanonicalBatchSubmitDialog({ projectId, currentUserId, candidate
   const [error, setError] = useState<string | null>(null);
   const bindings = preview.bindings ?? [];
   const ready = candidate.status === "ready" && preview.kind === "canonical"
-    && preview.candidateId === candidate.id && preview.format.toLowerCase() === "json"
+    && preview.candidateId === candidate.id && ["json", "dts"].includes(preview.format.toLowerCase())
     && Boolean(preview.proofToken) && bindings.length >= 2 && !preview.request
     && new Set(bindings.map((binding) => binding.bindingId)).size === bindings.length
     && bindings.every((binding) => binding.bindingId && binding.sourcePinId
@@ -63,7 +63,7 @@ export function CanonicalBatchSubmitDialog({ projectId, currentUserId, candidate
       if (item.status !== "pending" || item.candidateId !== candidate.id
         || item.assignedToUserId !== reviewerId || item.submitterUserId !== currentUserId
         || !/^[0-9a-f]{64}$/.test(item.batchProofDigest)
-        || item.cohortCount !== bindings.length || item.targets.length !== bindings.length
+        || item.cohortCount < bindings.length || item.targets.length !== bindings.length
         || item.targets.some((target, index) => target.ordinal !== index
           || target.bindingId !== bindings[index].bindingId || target.action !== bindings[index].action
           || target.sourcePinId !== bindings[index].sourcePinId
@@ -74,13 +74,13 @@ export function CanonicalBatchSubmitDialog({ projectId, currentUserId, candidate
     } catch (cause) {
       setError(cause instanceof WiseEffApiError && cause.code === "CONFLICT"
         ? `来源过期或请求冲突（409）：${presentError(cause, "请刷新候选来源后重试。")}`
-        : presentError(cause, "提交 JSON 批量审核失败。"));
+        : presentError(cause, "提交批量审核失败。"));
     } finally { setBusy(false); }
   };
 
   return <ModalDialog open className="submission-dialog canonical-batch-submit-dialog" onDismiss={busy ? undefined : onDismiss} describedBy>
     {({ titleId, descriptionId }) => <>
-      <h2 id={titleId}>提交 JSON 批量来源审核</h2>
+      <h2 id={titleId}>提交 {preview.format.toUpperCase()} 批量来源审核</h2>
       <p id={descriptionId}>候选「{candidate.fileName}」的完整有序目标。提交后服务端冻结 batchProofDigest；另一名被指派人只审核一次，批准后全部目标在一次事务中应用。</p>
       <p>候选 ID：<code>{candidate.id}</code>；预览证明：<code>{preview.proofToken ?? "缺失"}</code></p>
       <ol className="canonical-batch-submit-dialog__targets" aria-label="提交前批量目标">{bindings.map((binding, index) => <li key={binding.bindingId}>

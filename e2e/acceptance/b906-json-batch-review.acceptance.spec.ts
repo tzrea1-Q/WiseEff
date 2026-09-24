@@ -143,7 +143,7 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       page.on("pageerror", (error) => browserErrors.push(error.message));
       await signInBrowserAsRole(page, "software-committer",
         `${runtime.frontendUrl}/parameter-review?project=aurora&request=${pending.id}`);
-      const detail = page.getByRole("article", { name: "JSON 批量源文件请求详情" });
+      const detail = page.getByRole("article", { name: "批量源文件请求详情" });
       await expect(detail).toBeVisible();
       await expect(detail.getByText("同批次审核两项设置")).toBeVisible();
       await expect(detail.getByText(acceptanceCast.sunMei.userId)).toBeVisible();
@@ -164,13 +164,13 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       expect(approvedItem.targets).toHaveLength(2);
       expect(approvedItem.targets.every((target) => Boolean(target.appliedValueId && target.appliedHistoryEventId))).toBe(true);
       await page.reload();
-      await expect(page.getByRole("article", { name: "JSON 批量源文件请求详情" })).toContainText("已批准");
+      await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText("已批准");
       await expect(page.getByRole("region", { name: "批量固定源差异" })).toBeVisible();
       expect(browserErrors).toEqual([]);
       await detail.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath("b906-batch-review-1440x900.png") });
       await page.goto(`${runtime.frontendUrl}/parameter-review?project=aurora&request=${staleAfterApproval.id}`);
-      const staleDetail = page.getByRole("article", { name: "JSON 批量源文件请求详情" });
+      const staleDetail = page.getByRole("article", { name: "批量源文件请求详情" });
       await expect(staleDetail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       await staleDetail.getByRole("button", { name: "批准全部 2 项" }).click();
       await expect(staleDetail.getByText(/来源或审核证明已变化/)).toBeVisible();

@@ -1082,7 +1082,7 @@ export function ProjectConfigurationWorkbench({
   const [sourceReviewDialogOpen, setSourceReviewDialogOpen] = useState(false);
   const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && activeCandidate?.status === "ready"
     && sourcePreview?.kind === "canonical" && sourcePreview.candidateId === activeCandidate.id
-    && sourcePreview.format.toLowerCase() === "json" && sourcePreview.proofToken
+    && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && sourcePreview.proofToken
     && sourcePreview.bindings && sourcePreview.bindings.length >= 2
     && sourcePreview.bindings.every((binding) => binding.bindingId && binding.sourcePinId
       && (binding.action === "delete" || binding.afterText !== undefined))

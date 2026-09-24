@@ -1120,7 +1120,7 @@ const catalogSingleValueChangeSourceDiffSchema = catalogObject({
 });
 const catalogBatchValueChangeSourceDiffSchema = catalogObject({
   kind: z.literal("batch"), requestId: z.string(), candidateId: z.string(),
-  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), format: z.literal("json"),
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), format: closedEnum(["json", "dts"]),
   sourceName: z.string(), baseDigest: z.string(), proposedDigest: z.string(), diffDigest: z.string(),
   before: z.string(), after: z.string(), bindings: z.array(catalogValueChangeSourceBindingSchema),
   targets: z.array(catalogObject({

@@ -259,7 +259,7 @@ export function WorkbenchInspectorPanel({
         ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
       : "配置集来源一致性尚未完成校验，成员变更已禁用。";
   const batchPreview = sourcePreview?.kind === "canonical"
-    && sourcePreview.format.toLowerCase() === "json" && (sourcePreview.bindings?.length ?? 0) > 1;
+    && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && (sourcePreview.bindings?.length ?? 0) > 1;
 
   return (
     <aside
@@ -550,7 +550,7 @@ export function WorkbenchInspectorPanel({
                         : sourceReviewReason(sourcePreview.reason) : undefined}
                     onClick={onSubmitSourceReview}
                   >
-                    {submittingSourceReview ? "提交中…" : batchPreview ? "提交 JSON 批量审核" : "提交来源变更审核"}
+                    {submittingSourceReview ? "提交中…" : batchPreview ? `提交 ${sourcePreview.format.toUpperCase()} 批量审核` : "提交来源变更审核"}
                   </button>
                 ) : null}
                 {canAbandon ? (

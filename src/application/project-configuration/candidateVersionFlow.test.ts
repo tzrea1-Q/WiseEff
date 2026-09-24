@@ -178,7 +178,7 @@ describe("createCandidateVersionFlow", () => {
     });
     const submitCandidateSourceReview = vi.fn();
     await expect(flow.submitSourceReview("proj-1", "review", { submitCandidateSourceReview })).rejects.toThrow(
-      "候选同时修改多个参数绑定；当前批量审核提交尚未开放。"
+      "候选同时修改多个参数绑定；请核对完整来源证明后提交一次批量审核。"
     );
     expect(submitCandidateSourceReview).not.toHaveBeenCalled();
   });
