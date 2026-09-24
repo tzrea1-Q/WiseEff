@@ -126,6 +126,8 @@ describe("#906 D canonical DTS batch source writer", () => {
   }
 
   async function state(requestId: string) {
+    expect(await Promise.all(bindingIds.map((id) => loadLegacyBindingIdentity(getRootPostgresPool(db)!, id))))
+      .toEqual([null, null, null]);
     const file = (await db.query<{ current_version_id: string }>("select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!;
     const cohort = await Promise.all(bindingIds.map(async (bindingId) => {
       const binding = await loadBindingById(asValueClient(db), bindingId);
