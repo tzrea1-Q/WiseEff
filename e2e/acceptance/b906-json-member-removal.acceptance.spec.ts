@@ -11,7 +11,7 @@ import { createTrustedRefusalAuditSink } from "../../server/modules/audit/truste
 import { addConfigSetFile } from "../../server/modules/parameter-files/configSetService";
 import { registerCanonicalJsonSource } from "../../server/modules/parameter-files/canonicalJsonSource";
 import { loadPublishedCatalog } from "../../server/modules/parameter-bindings/catalogProjectValueSync";
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { dismissXiaozeHint } from "./helpers/catalogBrowser";
 import { startSwappedDisposablePostCutoverRuntime, type RestoreDisposablePostCutoverRuntime } from "./helpers/semanticBindingFixture";
@@ -42,6 +42,9 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       roles: [{ roleId: "admin", projectId: null }] });
     try {
       await installConfigurationSourceFixture(db, admin, { subjectId: "csub_b906_member_ui", schemaId: "wiseeff.b906.member.ui" });
+      await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('b906-member-other-reviewer',$1,'org-chargelab','aurora','software-committer')`,
+      [acceptanceCast.chenNa.userId]);
       const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
       if (!snapshot) throw new Error("Published catalog unavailable");
       const setup = async (suffix: string) => {
@@ -103,15 +106,35 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       };
 
       const rejected = await submitFromPage(reviewed, "浏览器驳回路径");
+      const otherReviewerHeaders = authHeadersForUser(
+        acceptanceCast.chenNa.userId, acceptanceCast.chenNa.email, acceptanceCast.chenNa.name
+      );
       const hidden = await request.get(api(`/api/v2/projects/aurora/parameter-value-change-requests/${rejected.id}/member-removal`), {
         headers: authHeadersForRole("software-user")
       });
-      expect([403, 404]).toContain(hidden.status());
+      const otherReviewerRead = await request.get(api(`/api/v2/projects/aurora/parameter-value-change-requests/${rejected.id}/member-removal`), {
+        headers: otherReviewerHeaders
+      });
+      expect(hidden.status()).toBe(404);
+      expect(otherReviewerRead.status()).toBe(404);
       const nonAssigneeReject = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${rejected.id}/review`), {
         headers: authHeadersForRole("software-user"),
         data: { decision: "reject", memberProofDigest: rejected.proofDigest }
       });
-      expect([403, 404]).toContain(nonAssigneeReject.status());
+      const otherReviewerReject = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${rejected.id}/review`), {
+        headers: otherReviewerHeaders,
+        data: { decision: "reject", memberProofDigest: rejected.proofDigest }
+      });
+      const hiddenWithoutProof = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${rejected.id}/review`), {
+        headers: authHeadersForRole("software-user"), data: { decision: "reject" }
+      });
+      const reviewerWithoutProof = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${rejected.id}/review`), {
+        headers: reviewerHeaders, data: { decision: "reject" }
+      });
+      expect(nonAssigneeReject.status()).toBe(404);
+      expect(otherReviewerReject.status()).toBe(404);
+      expect(hiddenWithoutProof.status()).toBe(404);
+      expect(reviewerWithoutProof.status()).toBe(400);
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
       const row = page.getByRole("table", { name: "成员删除请求列表" }).getByRole("button", { name: reviewed.removed.name });
       await expect(row).toBeVisible();
@@ -155,6 +178,12 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       await expect(page.getByText(/来源过期或请求冲突（409）/)).toBeVisible();
       await expect(staleDetail).toContainText("待审核");
       await expect(staleDetail.getByRole("button", { name: "批准成员删除" })).toHaveCount(0);
+      expect((await db.query<{ status: string }>(
+        "select status from project_parameter_value_change_requests where id=$1", [staleRequest.id]
+      )).rows[0]!.status).toBe("pending");
+      expect((await db.query<{ count: number }>(`select count(*)::int as count
+        from parameter_catalog.project_source_member_tombstones where file_id=$1`,
+      [stale.removed.id])).rows[0]!.count).toBe(0);
       await page.screenshot({ path: testInfo.outputPath("b906-member-stale-1440x900.png") });
 
       const approved = await submitFromPage(reviewed, "浏览器批准路径");

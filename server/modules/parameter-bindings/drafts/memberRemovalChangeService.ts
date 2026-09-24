@@ -182,18 +182,20 @@ export async function reviewCanonicalMemberRemoval(db: Database, storage: Object
   });
   await ownedProject(db, auth, input.projectId);
   return db.transaction(async (tx) => {
-    await currentReviewer(tx, auth, input.projectId, input, input.requestId);
     // Approval uses D's own request/source lock sequence. Do not pre-lock the row.
     const visible = await load(tx, auth, input.projectId, input.requestId);
-    if (!visible) throw new ApiError("NOT_FOUND", "Member removal request was not found.");
-    if (visible.submitter_user_id === auth.user.id || visible.assigned_to_user_id !== auth.user.id) {
-      await recordCanonicalPermissionRefusal(security(input), {
+    if (!visible || visible.submitter_user_id === auth.user.id || visible.assigned_to_user_id !== auth.user.id) {
+      if (visible) await recordCanonicalPermissionRefusal(security(input), {
         projectId: input.projectId, operation: "canonical member removal review",
         targetType: "project-parameter-value-change-request", targetId: input.requestId,
         details: { reason: "separate-assigned-reviewer-required" }
       });
-      throw new ApiError("FORBIDDEN", "The separate assigned reviewer is required.");
+      throw new ApiError("NOT_FOUND", "Member removal request was not found.");
     }
+    await currentReviewer(tx, auth, input.projectId, input, input.requestId);
+    if (!input.proofDigest) throw new ApiError("VALIDATION_FAILED", "The frozen member proof digest is required.", {
+      reason: "canonical-member-removal-proof-required"
+    });
     if (visible.member_proof_digest !== input.proofDigest) {
       throw new ApiError("CONFLICT", "Member removal proof disagrees with the frozen request.", {
         reason: "canonical-member-removal-proof-mismatch"
