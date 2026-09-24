@@ -383,7 +383,7 @@ describe("parameter catalog client contract", () => {
     );
   });
 
-  it("parses one ordered JSON batch and sends its proof to the existing review route", async () => {
+  it.each(["json", "dts"] as const)("parses one ordered %s batch and sends its proof to the existing review route", async (format) => {
     const proof = "a".repeat(64);
     const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
       ordinal, draftId: null, bindingId, definitionId: "definition-1",
@@ -403,7 +403,7 @@ describe("parameter catalog client contract", () => {
     } };
     const diff = { item: {
       kind: "batch", requestId: "batch-1", candidateId: "candidate-1",
-      batchProofDigest: proof, format: "json", sourceName: "config.json",
+      batchProofDigest: proof, format, sourceName: `config.${format}`,
       baseDigest: "old-digest", proposedDigest: "new-digest", diffDigest: proof,
       before: '{"a":1}', after: '{"a":2}',
       bindings: targets.map((target) => ({

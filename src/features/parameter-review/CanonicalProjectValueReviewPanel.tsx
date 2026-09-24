@@ -131,7 +131,7 @@ export function CanonicalProjectValueReviewPanel({
     )
       .then(async (response) => {
         if (cancelled) return;
-        const batchResponse = canonicalRepository.listProjectValueBatchChangeRequests
+        const batchResponse = canonicalRepository.listProjectValueBatchChangeRequests && (mineOnly || canReview)
           ? await canonicalRepository.listProjectValueBatchChangeRequests(projectId,
             Object.keys(query).length > 0 ? query : undefined)
           : { items: [] as BatchRequest[] };
@@ -224,7 +224,7 @@ export function CanonicalProjectValueReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [batchRefresh, canonicalRepository, currentUserId, initialRequestId, mineOnly, projectId, view]);
+  }, [batchRefresh, canReview, canonicalRepository, currentUserId, initialRequestId, mineOnly, projectId, view]);
 
   useEffect(() => {
     if (!batchSelected || !batchRequest || mineOnly || batchDetailLoadedId === batchRequest.id) return;
@@ -472,7 +472,7 @@ export function CanonicalProjectValueReviewPanel({
                         setSelectedId(null);
                         onSelectRequest?.(request.id);
                       }}>查看批量请求</button></td>
-                    <td>JSON</td><td>{request.targets.length} 项来源变更</td>
+                    <td>批量</td><td>{request.targets.length} 项来源变更</td>
                     <td>{canonicalStatusLabels[request.status]}</td><td>{request.reason}</td>
                   </tr>
                 ))}
@@ -581,8 +581,8 @@ export function CanonicalProjectValueReviewPanel({
             </article>
           ) : null}
           {batchSelected && batchRequest ? (
-            <article aria-label="JSON 批量源文件请求详情">
-              <h3>JSON 批量来源变更</h3>
+            <article aria-label="批量源文件请求详情">
+              <h3>批量来源变更</h3>
               <dl>
                 <div><dt>请求 ID</dt><dd><code>{batchRequest.id}</code></dd></div>
                 <div><dt>状态</dt><dd>{canonicalStatusLabels[batchRequest.status]}</dd></div>
@@ -590,6 +590,7 @@ export function CanonicalProjectValueReviewPanel({
                 <div><dt>基线文件版本</dt><dd><code>{batchRequest.baseVersionId}</code></dd></div>
                 <div><dt>配置集</dt><dd><code>{batchRequest.configSetId}</code></dd></div>
                 <div><dt>批量证明摘要</dt><dd><code>{batchRequest.batchProofDigest}</code></dd></div>
+                {batchDiff ? <div><dt>来源格式</dt><dd>{batchDiff.format.toUpperCase()}</dd></div> : null}
                 <div><dt>修改原因</dt><dd>{batchRequest.reason}</dd></div>
                 <div><dt>提交人 ID</dt><dd><code>{batchRequest.submitterUserId ?? "—"}</code></dd></div>
                 <div><dt>指定审核人 ID</dt><dd><code>{batchRequest.assignedToUserId ?? "—"}</code></dd></div>

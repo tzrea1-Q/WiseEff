@@ -114,7 +114,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
         expect(item.targets.map((target) => target.ordinal)).toEqual([0, 1]);
         expect(item.batchProofDigest).toMatch(/^[0-9a-f]{64}$/);
         await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=aurora&request=${item.id}`));
-        await expect(page.getByRole("article", { name: "JSON 批量源文件请求详情" })).toContainText(reason);
+        await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText(reason);
         return item;
       };
 
@@ -142,7 +142,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       const queue = page.getByRole("table", { name: "软件配置审核请求" });
       await expect(queue.getByRole("row").filter({ hasText: "浏览器批量批准" })).toBeVisible();
       await queue.getByRole("row").filter({ hasText: "浏览器批量批准" }).getByRole("button", { name: "查看批量请求" }).click();
-      const detail = page.getByRole("article", { name: "JSON 批量源文件请求详情" });
+      const detail = page.getByRole("article", { name: "批量源文件请求详情" });
       await expect(detail.getByText(approved.batchProofDigest)).toBeVisible();
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
@@ -152,7 +152,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       expect((await approvalResponse).status()).toBe(200);
       await expect(detail).toContainText("已批准");
       await page.reload();
-      await expect(page.getByRole("article", { name: "JSON 批量源文件请求详情" })).toContainText("已批准");
+      await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText("已批准");
       await page.screenshot({ path: testInfo.outputPath("b906-batch-approved-1440x900.png") });
 
       const rejectedFixture = await setup("rejected");
@@ -173,7 +173,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       expect((await withdrawResponse).status()).toBe(200);
       await expect(detail).toContainText("已撤回");
       await page.reload();
-      await expect(page.getByRole("article", { name: "JSON 批量源文件请求详情" })).toContainText("已撤回");
+      await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText("已撤回");
 
       const staleFixture = await setup("stale");
       const stale = await submitFromPage(staleFixture, "浏览器批量来源漂移");

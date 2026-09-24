@@ -32,6 +32,21 @@ const request = {
 };
 
 describe("CanonicalProjectValueReviewPanel", () => {
+  it("keeps a non-reviewer's single-target request available without reading the reviewer batch queue", async () => {
+    const listProjectValueBatchChangeRequests = vi.fn().mockRejectedValue(new Error("403"));
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
+      listProjectValueBatchChangeRequests,
+      reviewProjectValueChangeRequest: vi.fn(),
+      withdrawProjectValueChangeRequest: vi.fn(),
+      getProjectValueChangeSourceDiff: vi.fn().mockRejectedValue(new Error("source unavailable"))
+    } as unknown as ParameterCatalogRepository;
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      currentUserId="user-1" canReview={false} />);
+    expect(await screen.findByRole("button", { name: "撤回我的提交" })).toBeEnabled();
+    expect(listProjectValueBatchChangeRequests).not.toHaveBeenCalled();
+  });
+
   it("does not replace the new project's selection when an earlier withdrawal finishes", async () => {
     let finishWithdrawal!: (value: unknown) => void;
     const withdrawProjectValueChangeRequest = vi.fn().mockImplementation(() => new Promise((resolve) => { finishWithdrawal = resolve; }));
