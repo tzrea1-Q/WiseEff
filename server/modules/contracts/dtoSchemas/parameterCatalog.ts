@@ -1444,7 +1444,6 @@ export const parameterCatalogDtoSchemaCatalog = {
   MemberRemovalRequestResponse: catalogMemberRemovalRequestResponseSchema,
   MemberRemovalRequestListResponse: catalogMemberRemovalRequestListResponseSchema,
   SubmitMemberRemovalRequest: catalogSubmitMemberRemovalRequestSchema,
-  ReviewMemberRemovalRequest: catalogReviewMemberRemovalRequestSchema,
   ProjectValueChangeReviewResponse: catalogValueChangeReviewResponseSchema,
   ProjectValueChangeWithdrawalResponse: catalogValueChangeWithdrawalResponseSchema,
   ProjectValueChangeRequestListResponse: catalogValueChangeRequestListResponseSchema,
