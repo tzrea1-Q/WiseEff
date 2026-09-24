@@ -1,4 +1,4 @@
-/** #906 C owner: freeze one JSON source candidate into one ordered request. */
+/** #906 C owner: freeze one source candidate into one ordered request. */
 import { randomUUID } from "node:crypto";
 
 import { asAuditTx } from "../../audit/auditedWrite";
@@ -18,6 +18,7 @@ import { hasCurrentCanonicalReviewRole, hasEligibleWorkflowAssignee } from "../.
 import { freezeCanonicalCandidateBatchSnapshotInTransaction } from "../../parameter-files/canonicalFileWorkflow";
 import { commitCanonicalSourceBatchRevision } from "../../parameter-files/canonicalSourceBatchCommit";
 import { parseJsonSource } from "../../parameter-files/jsonSource";
+import { parseDtsValue } from "../../dts";
 import { recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
 
 export type CanonicalBatchChangeRequestDto = {
@@ -180,7 +181,7 @@ export async function submitCanonicalBatchValueChange(
       expectedProofToken: input.expectedProofToken
     });
     if (proof.organizationId !== auth.organization.id || proof.projectId !== input.projectId
-      || proof.candidateId !== input.candidateId || proof.format !== "json"
+      || proof.candidateId !== input.candidateId || (proof.format !== "json" && proof.format !== "dts")
       || proof.targets.length < 2 || !/^[0-9a-f]{64}$/.test(proof.batchProofDigest)) {
       throw new ApiError("CONFLICT", "Canonical batch source proof is incomplete.");
     }
@@ -272,13 +273,21 @@ export async function submitCanonicalBatchValueChange(
         || base.config_revision_id !== target.configRevisionId
         || base.source_pin_id !== target.sourcePinId
         || base.source_pin_id !== cohortPin.sourcePinId
+        || serializeContract(target.locator) !== serializeContract(cohortPin.locator)
         || target.baseDigest !== proof.baseDigest
         || target.proposedDigest !== proof.proposedDigest) {
         throw new ApiError("CONFLICT", "Batch target no longer matches its locked canonical base.");
       }
-      const targetValue = target.action === "delete" ? "" : {
-        kind: "json-source", value: parseJsonSource(target.targetText ?? "")
-      };
+      if (proof.format === "dts" && (target.locator.kind !== "dts-property"
+        || typeof target.locator.propertyName !== "string" || !target.locator.propertyName
+        || (target.action === "set" && target.targetText === undefined)
+        || (target.action === "delete" && target.targetText !== undefined))) {
+        throw new ApiError("CONFLICT", "DTS batch target has no exact property locator.");
+      }
+      const targetValue = target.action === "delete" ? ""
+        : proof.format === "dts"
+          ? parseDtsValue(target.locator.propertyName as string, target.targetText!).value
+          : { kind: "json-source", value: parseJsonSource(target.targetText ?? "") };
       const selectedDraftId = selected.get(target.bindingId) ?? null;
       if (selectedDraftId) {
         const draft = (await tx.query<{
