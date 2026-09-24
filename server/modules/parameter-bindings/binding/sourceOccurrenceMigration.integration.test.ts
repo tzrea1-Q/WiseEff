@@ -500,6 +500,7 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           "0168_pinned_file_version_trigger_guard.sql",
           "0169_reviewed_source_member_cohort.sql",
           "0170_restore_subject_placement_definer.sql",
+          "0171_canonical_dts_batch_target_contract.sql",
         ]);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
@@ -589,6 +590,7 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         "0168_pinned_file_version_trigger_guard.sql",
         "0169_reviewed_source_member_cohort.sql",
         "0170_restore_subject_placement_definer.sql",
+        "0171_canonical_dts_batch_target_contract.sql",
       ]);
 
       const rows = await db.query<{

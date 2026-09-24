@@ -60,7 +60,7 @@ export async function assertDeletedAnchorsRemainAbsent(
   }
 }
 
-async function loadFinalDtsDeleteProof(
+export async function loadFinalDtsDeleteProof(
   db: Queryable,
   input: { configRevisionId: string; logicalNodeId: string; nodeOccurrenceId?: string; fileVersionId: string; propertyName: string },
 ) {
