@@ -1371,8 +1371,13 @@ describe("0138 Catalog role migration paths", () => {
           `);
           expect(before.rows).toEqual([{ security_definer: false }]);
 
-          expect(await applyMigrations(db, migrationsDir)).toEqual([
+          expect(await applyMigrations(db, migrationsDir, {
+            through: "0170_restore_subject_placement_definer.sql",
+          })).toEqual([
             "0170_restore_subject_placement_definer.sql",
+          ]);
+          expect(await applyMigrations(db, migrationsDir)).toEqual([
+            "0171_canonical_dts_batch_target_contract.sql",
           ]);
           expect(await applyMigrations(db, migrationsDir)).toEqual([]);
           const receipt = await admin.query<{ name: string }>(`
