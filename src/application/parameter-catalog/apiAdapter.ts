@@ -51,6 +51,10 @@ export function createApiParameterCatalogRepository(
       client.submitProjectValueDraft(projectId, draftId, body, context),
     listProjectValueChangeRequests: (projectId, query) =>
       client.listProjectValueChangeRequests(projectId, query),
+    submitProjectValueBatchChangeRequest: (projectId, body, context) =>
+      client.submitProjectValueBatchChangeRequest(projectId, body, context),
+    listProjectValueBatchChangeRequests: (projectId, query) =>
+      client.listProjectValueBatchChangeRequests(projectId, query),
     getProjectValueBatchChangeRequest: (projectId, requestId) =>
       client.getProjectValueBatchChangeRequest(projectId, requestId),
     submitMemberRemovalRequest: (projectId, body, context) =>

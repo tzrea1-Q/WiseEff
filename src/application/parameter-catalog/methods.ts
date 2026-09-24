@@ -24,6 +24,8 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "deleteProjectValueDraft",
   "submitProjectValueDraft",
   "listProjectValueChangeRequests",
+  "submitProjectValueBatchChangeRequest",
+  "listProjectValueBatchChangeRequests",
   "getProjectValueBatchChangeRequest",
   "submitMemberRemovalRequest",
   "listMemberRemovalRequests",

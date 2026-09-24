@@ -416,10 +416,31 @@ describe("parameter catalog client contract", () => {
       targets: targets.map((target) => ({ ordinal: target.ordinal, bindingId: target.bindingId,
         sourcePinId: target.sourcePinId, action: target.action, beforeText: "1", afterText: target.targetText }))
     } };
-    const fetchMock = vi.fn<typeof fetch>(async (url) => jsonResponse(String(url).endsWith("/source-diff") ? diff : batch));
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      const path = String(url);
+      if (path.endsWith("/source-diff")) return jsonResponse(diff);
+      if (path.endsWith("/withdraw")) return jsonResponse({ item: { ...batch.item, status: "withdrawn" } });
+      if (path.includes("/batches") && init?.method === "GET") return jsonResponse({ items: [batch.item] });
+      return jsonResponse(batch, init?.method === "POST" && path.endsWith("/batches") ? 201 : 200);
+    });
     const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
 
     await expect(client.getProjectValueBatchChangeRequest("project-1", "batch-1")).resolves.toEqual(batch);
+    await expect(client.submitProjectValueBatchChangeRequest("project-1", {
+      candidateId: "candidate-1", expectedProofToken: "preview-proof", reason: "calibrate", assignedToUserId: "reviewer"
+    }, { catalogReleaseId: "release-1", idempotencyKey: "submit-1" })).resolves.toEqual(batch);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project-1/parameter-value-change-requests/batches",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({
+        candidateId: "candidate-1", expectedProofToken: "preview-proof", reason: "calibrate", assignedToUserId: "reviewer"
+      }) })
+    );
+    await expect(client.listProjectValueBatchChangeRequests("project-1", { status: "pending", mine: true }))
+      .resolves.toEqual({ items: [batch.item] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project-1/parameter-value-change-requests/batches?status=pending&mine=true",
+      expect.objectContaining({ method: "GET" })
+    );
     await expect(client.getProjectValueChangeSourceDiff("project-1", "batch-1")).resolves.toEqual(diff);
     await expect(client.reviewProjectValueChangeRequest("project-1", "batch-1",
       { decision: "approve", batchProofDigest: proof },
@@ -427,6 +448,9 @@ describe("parameter catalog client contract", () => {
     const [url, options] = fetchMock.mock.lastCall!;
     expect(url).toBe("/api/v2/projects/project-1/parameter-value-change-requests/batch-1/review");
     expect(options).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "approve", batchProofDigest: proof }) }));
+    await expect(client.withdrawProjectValueChangeRequest("project-1", "batch-1",
+      { catalogReleaseId: "release-1", idempotencyKey: "withdraw-1" }))
+      .resolves.toEqual({ item: { ...batch.item, status: "withdrawn" } });
   });
 
   it("sends the pending-review filter without the Catalog list whitelist dropping it", async () => {

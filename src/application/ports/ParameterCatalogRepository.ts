@@ -7,6 +7,8 @@ import type {
   CatalogValueChangeRequestListResponse,
   CatalogValueChangeRequestResponse,
   CatalogBatchValueChangeRequestResponse,
+  CatalogBatchValueChangeRequestListResponse,
+  CatalogSubmitBatchValueChangeRequest,
   CatalogValueChangeReviewResponse,
   CatalogMemberRemovalRequestResponse,
   CatalogMemberRemovalRequestListResponse,
@@ -147,6 +149,15 @@ export interface ParameterCatalogRepository {
     projectId: string,
     query?: { status?: string; mine?: boolean }
   ): Promise<CatalogValueChangeRequestListResponse>;
+  submitProjectValueBatchChangeRequest?(
+    projectId: string,
+    body: CatalogSubmitBatchValueChangeRequest,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogBatchValueChangeRequestResponse>;
+  listProjectValueBatchChangeRequests?(
+    projectId: string,
+    query?: { status?: string; mine?: boolean }
+  ): Promise<CatalogBatchValueChangeRequestListResponse>;
   getProjectValueBatchChangeRequest?(
     projectId: string,
     requestId: string
@@ -185,7 +196,7 @@ export interface ParameterCatalogRepository {
     projectId: string,
     requestId: string,
     context: CatalogPublicationWriteContext & { idempotencyKey: string }
-  ): Promise<CatalogValueChangeRequestResponse>;
+  ): Promise<{ item: CatalogValueChangeRequestResponse["item"] | CatalogBatchValueChangeRequestResponse["item"] | CatalogMemberRemovalRequestResponse["item"] }>;
   getProjectValueChangeSourceDiff?(
     projectId: string,
     requestId: string

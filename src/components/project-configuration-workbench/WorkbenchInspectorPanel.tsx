@@ -89,6 +89,7 @@ export type WorkbenchInspectorPanelProps = {
   sourcePreviewLoading: boolean;
   sourcePreviewError: string;
   canSubmitSourceReview: boolean;
+  canSubmitBatchReview: boolean;
   submittingSourceReview: boolean;
   sourceReviewError: string;
   sourceReviewResult: ParameterFileSourceReviewResult | null;
@@ -180,6 +181,7 @@ export function WorkbenchInspectorPanel({
   sourcePreviewLoading,
   sourcePreviewError,
   canSubmitSourceReview,
+  canSubmitBatchReview,
   submittingSourceReview,
   sourceReviewResult,
   onSubmitSourceReview,
@@ -386,7 +388,8 @@ export function WorkbenchInspectorPanel({
                     <dt>来源工作流</dt>
                     <dd>
                       {sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
-                      {sourcePreview.reason ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
+                      {sourcePreview.reason && !(canSubmitBatchReview && sourcePreview.reason === "canonical-batch-writer-unavailable")
+                        ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
                     </dd>
                   </div>
                   {sourcePreview.kind === "canonical" ? (
@@ -537,11 +540,11 @@ export function WorkbenchInspectorPanel({
                   <button
                     className="button primary"
                     type="button"
-                    disabled={!canSubmitSourceReview || submittingSourceReview}
-                    title={!canSubmitSourceReview ? sourceReviewReason(sourcePreview.reason) : undefined}
+                    disabled={!(canSubmitSourceReview || canSubmitBatchReview) || submittingSourceReview}
+                    title={!(canSubmitSourceReview || canSubmitBatchReview) ? sourceReviewReason(sourcePreview.reason) : undefined}
                     onClick={onSubmitSourceReview}
                   >
-                    {submittingSourceReview ? "提交中…" : "提交来源变更审核"}
+                    {submittingSourceReview ? "提交中…" : canSubmitBatchReview ? "提交 JSON 批量审核" : "提交来源变更审核"}
                   </button>
                 ) : null}
                 {canAbandon ? (

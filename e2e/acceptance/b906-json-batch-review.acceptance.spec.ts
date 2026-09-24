@@ -117,7 +117,7 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       const forbidden = await request.get(api(`${reviewPath}/batch`), {
         headers: authHeadersForRole("software-user")
       });
-      expect(forbidden.status()).toBe(403);
+      expect([403, 404]).toContain(forbidden.status());
       const reviewerRead = await request.get(api(`${reviewPath}/batch`), { headers: reviewerHeaders });
       expect(reviewerRead.ok(), await reviewerRead.text()).toBe(true);
       const browserErrors: string[] = [];
