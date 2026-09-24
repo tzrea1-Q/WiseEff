@@ -25,6 +25,7 @@ const organizationId = "org-906-c-member-entry";
 const projectId = "project-906-c-member-entry";
 const adminId = "user-906-c-member-admin";
 const reviewerId = "user-906-c-member-reviewer";
+const otherReviewerId = "user-906-c-member-other-reviewer";
 const schemaId = "wiseeff.906.c.member.entry";
 const definitionId = "pdef_acme_power_iin_max";
 const admin = makeTestAuthContext({ userId: adminId, organizationId,
@@ -35,6 +36,9 @@ const reviewer = makeTestAuthContext({ userId: reviewerId, organizationId,
   roles: [{ roleId: "software-committer", projectId }] });
 const reviewerWithoutEdit = makeTestAuthContext({ userId: reviewerId, organizationId,
   permissions: ["parameter:view", "parameter:review"],
+  roles: [{ roleId: "software-committer", projectId }] });
+const otherReviewer = makeTestAuthContext({ userId: otherReviewerId, organizationId,
+  permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId }] });
 const foreign = makeTestAuthContext({ userId: "user-906-c-member-foreign", organizationId: "org-906-c-member-foreign",
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
@@ -72,6 +76,9 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     }>(route(auth, objectStore),
       `/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/review`,
       { method: "POST", body: JSON.stringify({ decision, memberProofDigest: proofDigest }) });
+  const reviewWithoutProof = (requestId: string, auth = reviewer) => requestJson(route(auth),
+    `/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/review`,
+    { method: "POST", body: JSON.stringify({ decision: "reject" }) });
   const withdraw = (requestId: string, auth = admin) => requestJson<{ item: { status: string } }>(
     route(auth), `/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/withdraw`,
     { method: "POST" });
@@ -83,14 +90,14 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     storage = createLocalObjectStore(storageDirectory);
     await db.query("insert into organizations(id,name) values ($1,'#906 C member'),($2,'#906 foreign')",
       [organizationId, foreign.organization.id]);
-    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'admin','Admin',true),($3,$2,'reviewer','Reviewer',true),($4,$5,'foreign','Admin',true)",
-      [adminId, organizationId, reviewerId, foreign.user.id, foreign.organization.id]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'admin','Admin',true),($3,$2,'reviewer','Reviewer',true),($4,$5,'foreign','Admin',true),($6,$2,'other reviewer','Reviewer',true)",
+      [adminId, organizationId, reviewerId, foreign.user.id, foreign.organization.id, otherReviewerId]);
     await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'unscoped','Reviewer',true)",
       [wrongProject.user.id, organizationId]);
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Member entry','C906','initialized')",
       [projectId, organizationId]);
-    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-906-c-admin',$1,$2,null,'admin'),('role-906-c-reviewer',$3,$2,$4,'software-committer')",
-      [adminId, organizationId, reviewerId, projectId]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-906-c-admin',$1,$2,null,'admin'),('role-906-c-reviewer',$3,$2,$4,'software-committer'),('role-906-c-other-reviewer',$5,$2,$4,'software-committer')",
+      [adminId, organizationId, reviewerId, projectId, otherReviewerId]);
     await installConfigurationSourceFixture(db, admin, { subjectId: "csub_906_c_member", schemaId });
     configSetId = (await createConfigSet(db, admin, { projectId, name: "reviewed members" })).id;
     const removed = await uploadProjectParameterFile(db, storage, admin, {
@@ -152,7 +159,33 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     expect((await submit(foreign)).status).toBe(404);
     expect((await requestJson(route(foreign),
       `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`)).status).toBe(404);
-    expect((await review(pendingId, pendingDigest, "reject", admin)).status).toBe(403);
+    expect((await review("missing-member-removal", pendingDigest, "reject")).status).toBe(404);
+    expect((await review(pendingId, pendingDigest, "reject", foreign)).status).toBe(404);
+    const deniedBefore = (await db.query<{ count: number }>(`select count(*)::int as count from audit_events
+      where target_id=$1 and kind='parameter-source-permission-denied' and action='deny'`, [pendingId])).rows[0]!.count;
+    expect((await review(pendingId, pendingDigest, "reject", admin)).status).toBe(404);
+    expect((await review(pendingId, pendingDigest, "reject", otherReviewer)).status).toBe(404);
+    expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events
+      where target_id=$1 and kind='parameter-source-permission-denied' and action='deny'`, [pendingId])).rows[0]!.count).toBe(deniedBefore + 2);
+    expect((await reviewWithoutProof("missing-member-removal")).status).toBe(404);
+    expect((await reviewWithoutProof(pendingId, foreign)).status).toBe(404);
+    expect((await reviewWithoutProof(pendingId, admin)).status).toBe(404);
+    expect((await reviewWithoutProof(pendingId, otherReviewer)).status).toBe(404);
+    expect((await reviewWithoutProof(pendingId, reviewerWithoutEdit)).status).toBe(403);
+    const missingProof = await reviewWithoutProof(pendingId);
+    expect(missingProof.status).toBe(400);
+    expect(missingProof.body).toMatchObject({ error: { details: {
+      reason: "canonical-member-removal-proof-required"
+    } } });
+    await db.query("delete from user_role_bindings where id='role-906-c-reviewer'");
+    try {
+      expect((await review(pendingId, pendingDigest, "reject")).status).toBe(403);
+      expect((await reviewWithoutProof(pendingId)).status).toBe(403);
+    } finally {
+      await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('role-906-c-reviewer',$1,$2,$3,'software-committer')`,
+      [reviewerId, organizationId, projectId]);
+    }
     const rejected = await review(pendingId, pendingDigest, "reject");
     expect(rejected.status).toBe(200);
     expect(rejected.body.item.status).toBe("rejected");
@@ -176,7 +209,7 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     })).status).toBe(500);
     expect((await requestJson(route(wrongProject, null),
       `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`)).status).toBe(404);
-    expect((await review(pendingId, pendingDigest, "approve", wrongProject, null)).status).toBe(403);
+    expect((await review(pendingId, pendingDigest, "approve", wrongProject, null)).status).toBe(404);
     expect((await review(pendingId, pendingDigest, "reject", reviewerWithoutEdit, null)).status).toBe(403);
     expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events
       where kind='parameter-source-permission-denied' and target_id=$1`,

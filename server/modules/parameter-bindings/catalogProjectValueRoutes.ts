@@ -1004,11 +1004,8 @@ export function registerCatalogProjectValueConsumerRoutes(
         [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
       if (!requestKind) throw new ApiError("NOT_FOUND", "Canonical value request was not found.");
       if (requestKind === "member-removal") {
-        if (!body.memberProofDigest) throw new ApiError("VALIDATION_FAILED", "The frozen member proof digest is required.", {
-          reason: "canonical-member-removal-proof-required"
-        });
         const item = await reviewCanonicalMemberRemoval(db, options.objectStore, auth, {
-          ...params, decision: body.decision, proofDigest: body.memberProofDigest,
+          ...params, decision: body.decision, proofDigest: body.memberProofDigest ?? "",
           note: body.note ?? null, invocation: createUserInvocation(auth),
           traceId: request.requestId, refusalSink: refusalAuditSink
         });
