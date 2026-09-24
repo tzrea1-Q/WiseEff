@@ -46,6 +46,10 @@ import {
   issue913StaleSuccessorPairCount,
   issue913StaleSuccessorRelocationRecordPath,
 } from "./parameter-catalog-allowlist/issue913StaleSuccessorRelocation";
+import {
+  issue853CActionRetiredSourceIds,
+  loadIssue853CRemainderRetiredSourceIds,
+} from "./parameter-catalog-allowlist/issue853CRelocation";
 import { seedDriverPositionRecordPath, seedDriverQueryRecordPath } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 import { issue901RoutesTestRelocationRecordPath } from "./parameter-catalog-allowlist/issue901RouteTestRelocation";
 import { issue900DashboardRelocationRecordPath } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
@@ -82,6 +86,29 @@ const issue913T14SuccessorRecords = await Promise.all([
 const issue913StaleSuccessorRecord = JSON.parse(
   await readFile(`${process.cwd()}/${issue913StaleSuccessorRelocationRecordPath}`, "utf8"),
 ) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+const issue853SuccessorRecords = await Promise.all([
+  "issue-853-c-debug-routes-successor.json",
+  "issue-853-c-debug-catalog-split-successor.json",
+  "issue-853-c-debug-repository-successor.json",
+  "issue-853-c-debug-repository-rewritten-successor.json",
+  "issue-853-c-remainder-exact.json",
+  "issue-853-c-remainder-rewritten.json",
+  "issue-853-d-902-exact-successor.json",
+  "issue-853-d-914-fixed-successor.json",
+  "issue-853-d-additional-fixed-successor.json",
+].map(async (name) => JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/${name}`, "utf8",
+)) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> }));
+const currentUnallowlistedRecord = JSON.parse(
+  await readFile(`${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-0169-current-unallowlisted.json`, "utf8"),
+) as {
+  schemaVersion: number;
+  baseHead: string;
+  ownerHead: string;
+  ownerBlobs: Record<string, string>;
+  baseUnallowlistedIds: string[];
+  ownerAddedUnallowlistedIds: string[];
+};
 
 const originalRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${exactRelocationRecordPath}`, "utf8"),
@@ -971,8 +998,23 @@ describe("parameter catalog boundary checker", () => {
         !report.relocations.some((entry) => entry.id === id)
         && !report.violations.some((entry) => entry.id === id),
       )).toBe(true);
-      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(262);
-      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(56);
+      const issue853SuccessorIds = new Set(issue853SuccessorRecords.flatMap((record) =>
+        record.files.flatMap((file) => file.pairs.map((pair) => pair.old.id))));
+      expect(issue853SuccessorIds.size).toBe(85);
+      expect(report.relocations.filter((entry) => issue853SuccessorIds.has(entry.id))).toHaveLength(85);
+      const retiredIds = new Set([
+        ...issue913T14RetiredSourceIds,
+        ...issue853CActionRetiredSourceIds,
+        ...await loadIssue853CRemainderRetiredSourceIds(process.cwd()),
+      ]);
+      const activeFamilyIds = report.relocations
+        .filter((entry) => familyIds.has(entry.id)).map((entry) => entry.id).sort();
+      const activeRewrittenIds = report.relocations
+        .filter((entry) => rewrittenIds.has(entry.id)).map((entry) => entry.id).sort();
+      expect([...familyIds].filter((id) => retiredIds.has(id))).toHaveLength(14);
+      expect(activeFamilyIds).toEqual([...familyIds].filter((id) => !retiredIds.has(id)).sort());
+      expect(activeFamilyIds).toHaveLength(251);
+      expect(activeRewrittenIds).toEqual([...rewrittenIds].filter((id) => !retiredIds.has(id)).sort());
       const otherwiseUnclassified = report.relocations.filter(
           (entry) =>
             !historicalIds.has(entry.id)
@@ -981,7 +1023,8 @@ describe("parameter catalog boundary checker", () => {
             && !rewrittenIds.has(entry.id)
             && !seedDriverIds.has(entry.id)
             && !issue901RouteTestIds.has(entry.id)
-            && !staleSuccessorIds.has(entry.id),
+            && !staleSuccessorIds.has(entry.id)
+            && !issue853SuccessorIds.has(entry.id),
         );
       const expectedIssue911Unclassified = [...issue911Ids].filter((id) =>
         !historicalIds.has(id)
@@ -995,17 +1038,39 @@ describe("parameter catalog boundary checker", () => {
       expect(expectedIssue911Unclassified).toHaveLength(76);
       expect(otherwiseUnclassified.map((entry) => entry.id).sort()).toEqual(expectedIssue911Unclassified);
       expect(otherwiseUnclassified.filter((entry) => !issue911Ids.has(entry.id))).toHaveLength(0);
-      // #901 shifts five routes; #900 adds 18 successors and retires 13;
-      // #899 adds 76 aliases; #897 proves 63 stale successors and retires 21.
-      // All 77 inherited unallowlisted observations remain diagnostic debt.
-      expect(report.relocations).toHaveLength(916);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(916);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(916);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_832);
+      expect(report.relocations).toHaveLength(946);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(946);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(946);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_892);
+      expect(currentUnallowlistedRecord.schemaVersion).toBe(1);
+      expect(currentUnallowlistedRecord.baseHead).toBe("78e10fb2e9ebb29ada9db7fdf854a5c60f4bfc89");
+      expect(currentUnallowlistedRecord.ownerHead).toBe("78e7d699d6868d76560f166ec9d233aece1657b1");
+      expect(currentUnallowlistedRecord.baseUnallowlistedIds).toHaveLength(177);
+      expect(currentUnallowlistedRecord.ownerAddedUnallowlistedIds).toHaveLength(23);
+      expect(new Set([
+        ...currentUnallowlistedRecord.baseUnallowlistedIds,
+        ...currentUnallowlistedRecord.ownerAddedUnallowlistedIds,
+      ]).size).toBe(200);
+      expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual([
+        ...currentUnallowlistedRecord.baseUnallowlistedIds,
+        ...currentUnallowlistedRecord.ownerAddedUnallowlistedIds,
+      ].sort());
+      const ownerAddedIds = new Set(currentUnallowlistedRecord.ownerAddedUnallowlistedIds);
+      expect(Object.keys(currentUnallowlistedRecord.ownerBlobs).sort()).toEqual([
+        "server/modules/parameter-files/canonicalMemberRemoval.integration.test.ts",
+        "server/modules/parameter-files/canonicalMemberRemoval.ts",
+      ]);
+      for (const entry of report.unallowlisted.filter((item) => ownerAddedIds.has(item.id))) {
+        expect(entry.trustedBlobOid).toBe(currentUnallowlistedRecord.ownerBlobs[entry.file]);
+      }
+      for (const [file, blob] of Object.entries(currentUnallowlistedRecord.ownerBlobs)) {
+        const source = await readFile(`${process.cwd()}/${file}`);
+        expect(createHash("sha1").update(`blob ${source.length}\0`).update(source).digest("hex")).toBe(blob);
+      }
       expect(report.summary).toEqual({
-        violations: 3_534,
-        allowlisted: 3_457,
-        unallowlisted: 77,
+        violations: 3_591,
+        allowlisted: 3_391,
+        unallowlisted: 200,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,

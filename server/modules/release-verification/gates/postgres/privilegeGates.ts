@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import pg from "pg";
 import {
   CATALOG_MIGRATION_OWNER,
@@ -197,6 +198,13 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
   });
 };
 
+// #930 / 0169: exact audited tombstone entry point, not a general writer DML grant.
+// Re-review the migration body and role matrix before changing this fingerprint.
+const REVIEWED_TOMBSTONE_IDENTITY =
+  "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)";
+const REVIEWED_TOMBSTONE_BODY_SHA256 =
+  "34ac6fdf032badb57c998b3597810048b06d78e480fd8edb4c052c25d967edd5";
+
 export const runP02 = async (db: Database): Promise<GateResult> => {
   const probes: PrivilegeProbe[] = [];
   for (const role of [PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE]) {
@@ -216,9 +224,26 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
     ),
   );
 
-  const definers = await db.query<{ proname: string }>(
+  const definers = await db.query<{
+    identity: string;
+    proname: string;
+    body: string;
+    function_owner: string;
+    settings: string[] | null;
+    public_execute: boolean;
+    synchronizer_execute: boolean;
+    coordinator_execute: boolean;
+    reader_execute: boolean;
+  }>(
     `
-    select procedure.proname
+    select procedure.oid::regprocedure::text as identity,
+      procedure.proname, procedure.prosrc as body,
+      pg_catalog.pg_get_userbyid(procedure.proowner) as function_owner,
+      procedure.proconfig as settings,
+      pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
+      pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as synchronizer_execute,
+      pg_catalog.has_function_privilege('catalog_publication_coordinator_role', procedure.oid, 'execute') as coordinator_execute,
+      pg_catalog.has_function_privilege('catalog_baseline_reader_role', procedure.oid, 'execute') as reader_execute
     from pg_catalog.pg_proc procedure
     join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
     where procedure.prosecdef
@@ -230,10 +255,20 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
       )
     order by procedure.proname
     `,
-    [PARAMETER_GOVERNANCE_WRITER_ROLE],
+    [PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE],
   );
   const unexpectedDefiners = definers.rows.filter(
-    (row) => row.proname !== "assert_catalog_subject_active",
+    (row) => row.proname !== "assert_catalog_subject_active" && !(
+      row.identity === REVIEWED_TOMBSTONE_IDENTITY
+      && createHash("sha256").update(row.body).digest("hex") === REVIEWED_TOMBSTONE_BODY_SHA256
+      && row.function_owner === CATALOG_MIGRATION_OWNER
+      && row.settings?.length === 1
+      && row.settings[0] === "search_path=pg_catalog, parameter_catalog, public"
+      && !row.public_execute
+      && !row.synchronizer_execute
+      && !row.coordinator_execute
+      && !row.reader_execute
+    ),
   );
 
   const bypasses = probes.filter((item) => item.succeeded || item.sqlstate !== "42501");
