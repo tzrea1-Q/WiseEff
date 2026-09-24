@@ -12,6 +12,7 @@ import type {
   ParameterFileSyncConflict,
   ProjectParameterFile
 } from "@/application/ports/ParameterFileRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 export type ConfigSetOpsStructuredRepository = Pick<
   DtsStructuredRepository,
@@ -104,9 +105,7 @@ const ROLE_LABELS: Record<ConfigSetRole, string> = {
 
 export function formatSyncSummary(result: FileSyncSummary): string {
   if (result.sourceWorkflow === "canonical") {
-    return result.message?.trim()
-      ? `来源一致性校验：${result.message.trim()}`
-      : "来源一致性校验已完成。";
+    return "来源一致性校验：已检查当前文件版本；存在可用固定来源时，已与其中一份来源修订核对配置集成员及文件版本。未逐项证明全部参数绑定一致，也未同步参数、创建草稿或审核请求。";
   }
   if (result.skipped) return "已跳过（无活跃版本）";
   if (typeof result.draftsCreated === "number") {
@@ -263,7 +262,9 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
         emit();
         return { ok: true, summary, evidence, files, conflicts };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "手动同步失败。";
+        const message = err instanceof WiseEffApiError && err.details.reason === "source-membership-drift"
+          ? "配置集成员或文件版本与固定来源不一致，校验已停止；未同步参数或创建审核请求。请刷新并核对成员与版本，再从页面顶部「上传候选」查看来源差异；来源证明完整且基版本有效时才能提交人工审核。"
+          : err instanceof Error ? err.message : "手动同步失败。";
         lastError = message;
         lastMessage = "";
         emit();

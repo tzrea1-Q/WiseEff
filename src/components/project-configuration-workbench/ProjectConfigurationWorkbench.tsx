@@ -989,6 +989,7 @@ export function ProjectConfigurationWorkbench({
     memberRole,
     memberSortOrder,
     syncEvidence,
+    canonicalSyncCheck,
     exportEvidence,
     setMemberFileId,
     setMemberRole,
@@ -1801,6 +1802,7 @@ export function ProjectConfigurationWorkbench({
         onTasksOpenChange={setTasksOpen}
         sessionDraftRows={sessionDraftRows}
         syncEvidence={syncEvidence}
+        canonicalSyncCheck={canonicalSyncCheck}
         exportEvidence={exportEvidence}
         syncConflicts={syncConflicts}
         releaseReadiness={releaseReadiness}

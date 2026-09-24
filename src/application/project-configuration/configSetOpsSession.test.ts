@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DtsConfigSet, DtsConfigSetFile } from "@/application/ports/DtsStructuredRepository";
 import type { ProjectParameterFile } from "@/application/ports/ParameterFileRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createConfigSetOpsSession, formatSyncSummary } from "./configSetOpsSession";
 
 function configSet(overrides: Partial<DtsConfigSet> = {}): DtsConfigSet {
@@ -124,7 +125,19 @@ describe("createConfigSetOpsSession", () => {
         unmatched: 0,
         skipped: false
       })
-    ).toBe("来源一致性校验：single binding byte proof passed");
+    ).toBe("来源一致性校验：已检查当前文件版本；存在可用固定来源时，已与其中一份来源修订核对配置集成员及文件版本。未逐项证明全部参数绑定一致，也未同步参数、创建草稿或审核请求。");
+  });
+
+  it("guides source membership drift to the reviewed candidate flow", async () => {
+    const session = createConfigSetOpsSession();
+    const result = await session.syncFile("proj-1", { fileId: "file-1", fileName: "board.json" }, {
+      syncFile: async () => { throw new WiseEffApiError("CONFLICT", "Canonical source members are out of sync; use a reviewed source candidate.", { reason: "source-membership-drift" }, "request-1"); },
+      listFiles: vi.fn(),
+      listConflicts: vi.fn()
+    });
+    expect(result).toEqual({ ok: false, message: expect.stringContaining("「上传候选」") });
+    expect(session.lastError).toContain("来源证明完整且基版本有效时才能提交人工审核");
+    expect(session.lastError).not.toContain("Canonical source");
   });
 
   it("exportConfigSet builds evidence from manifest", async () => {
