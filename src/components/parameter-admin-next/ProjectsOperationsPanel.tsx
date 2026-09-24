@@ -3,6 +3,7 @@ import type { AppAction } from "@/application/state/appState";
 import { canPerform } from "@/app/permissions";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import { resolveAuditQuery } from "@/application/parameters/auditQueryRuntime";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
@@ -63,6 +64,7 @@ export type ProjectsOperationsPanelProps = {
   runtimeMode?: WiseEffRuntimeMode;
   onNewProject?: () => void;
   parameterFileRepository?: ParameterFileRepository;
+  parameterCatalogRepository?: ParameterCatalogRepository;
   dtsStructuredRepository?: DtsStructuredRepository;
   /** @deprecated Flag retired; workbench is always on. Prop kept for call-site compat. */
   configurationWorkbenchEnabled?: boolean;
@@ -82,6 +84,7 @@ export function ProjectsOperationsPanel({
   runtimeMode = "mock",
   onNewProject,
   parameterFileRepository,
+  parameterCatalogRepository,
   dtsStructuredRepository
 }: ProjectsOperationsPanelProps) {
   const { dispatch: adminDispatch, application } = useParameterAdmin();
@@ -354,6 +357,8 @@ export function ProjectsOperationsPanel({
           onNavigate={onNavigate}
           dtsRepository={dtsRepo}
           fileRepository={fileRepository}
+          memberRemovalRepository={parameterCatalogRepository}
+          apiMode={isApiMode}
           listAuditEvents={(params) => auditQuery.listAuditEvents(params)}
           currentUserId={state.currentUserId}
           canEdit

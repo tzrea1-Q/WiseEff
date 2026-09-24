@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   DtsReleaseReadinessIssue,
+  DtsConfigSetMemberFile,
   DtsSearchHit,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
 import type {
   ParameterFileRepository,
   ParameterFileSourceWorkflow,
@@ -98,6 +101,8 @@ export type ProjectConfigurationWorkbenchProps = {
   listAuditEvents: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
   /** Authenticated user for draft scoping. Defaults to "local-user" for back-compat tests. */
   currentUserId?: string;
+  memberRemovalRepository?: ParameterCatalogRepository;
+  apiMode?: boolean;
   /** Optional org override; prefer selectedConfigSet.organizationId at runtime. */
   organizationId?: string;
   /** Injectable storage for recoverable session drafts (tests / non-DOM). */
@@ -123,11 +128,14 @@ export function ProjectConfigurationWorkbench({
   canAdmin = true,
   listAuditEvents,
   currentUserId = "local-user",
+  memberRemovalRepository,
+  apiMode = false,
   organizationId,
   draftStorage,
   topologyRepository
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
+  const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
   const {
     session: workspaceLoadSession,
@@ -578,6 +586,9 @@ export function ProjectConfigurationWorkbench({
     !sourceWorkflowSetError;
   const sourceWorkflowSetLoading =
     sourceWorkflowLoading || filesLoading || membersListLoading;
+  const canRequestReviewedMemberRemoval = apiMode && selectedMembers.length >= 2
+    && selectedMembers.every((member) => member.format === "json"
+      && sourceWorkflowsByFileId[member.fileId]?.canonical === true);
   useEffect(() => {
     if (
       canvasMode !== "working" &&
@@ -1674,7 +1685,11 @@ export function ProjectConfigurationWorkbench({
                   addMemberToConfigSet(memberFileId, memberRole, memberSortOrder)
                 )
               }
-              onRequestRemoveMember={requestRemoveMember}
+              onRequestRemoveMember={(member) => {
+                if (canRequestReviewedMemberRemoval && member.format === "json") setMemberRemovalTarget(member);
+                else requestRemoveMember(member);
+              }}
+              canRequestReviewedMemberRemoval={canRequestReviewedMemberRemoval}
               onSyncFile={() => void runAction("sync-file", syncSelectedFile)}
               sourceWorkflow={sourceWorkflow}
               sourceWorkflowLoading={sourceWorkflowLoading}
@@ -1808,6 +1823,20 @@ export function ProjectConfigurationWorkbench({
         onReadinessRetry={() => setReadinessRetry((value) => value + 1)}
       />
 
+      {memberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog
+        projectId={project.id}
+        configSetId={selectedConfigSet.id}
+        configSetName={selectedConfigSet.name}
+        member={memberRemovalTarget}
+        members={selectedMembers}
+        currentUserId={currentUserId}
+        repository={memberRemovalRepository}
+        onDismiss={() => setMemberRemovalTarget(null)}
+        onSubmitted={(requestId) => {
+          setMemberRemovalTarget(null);
+          onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&memberRequest=${encodeURIComponent(requestId)}`);
+        }}
+      /> : null}
       <WorkbenchBaselineDialogs
         createOpen={createBaselineOpen}
         releaseOpen={releaseBaselineOpen}
