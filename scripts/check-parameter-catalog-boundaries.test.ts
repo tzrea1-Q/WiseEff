@@ -1073,6 +1073,8 @@ describe("parameter catalog boundary checker", () => {
       expect(jointUnallowlistedRecord.baseHead).toBe("f73abe902926625d49ba4a402df067c2df8f54ee");
       expect(jointUnallowlistedRecord.ownerHead).toBe("443a7149df6689a6fd9fd9692558d5827cc2525d");
       expect(jointUnallowlistedRecord.dHead).toBe("200b90a95c53c41fe4c3a9545b17ba8b5a8164b7");
+      expect(execFileSync("git", ["cat-file", "-t", jointUnallowlistedRecord.ownerHead], { encoding: "utf8" }).trim()).toBe("commit");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", jointUnallowlistedRecord.ownerHead, "HEAD"], { encoding: "utf8" })).toBe("");
       expect(jointUnallowlistedRecord.retired).toHaveLength(27);
       expect(jointUnallowlistedRecord.moved).toHaveLength(11);
       expect(jointUnallowlistedRecord.currentUnallowlistedIds).toHaveLength(173);
@@ -1101,9 +1103,11 @@ describe("parameter catalog boundary checker", () => {
         newSources.set(file, source);
       }
       for (const entry of [...jointUnallowlistedRecord.retired, ...jointUnallowlistedRecord.moved]) {
+        expect(entry.oldId.split(":")[1]).toBe(entry.oldRule);
         const oldSlice = oldSources.get(entry.file)!.subarray(entry.oldByteStart, entry.oldByteEnd);
         expect(createHash("sha256").update(oldSlice).digest("hex")).toBe(entry.oldSliceSha256);
         if ("newId" in entry) {
+          expect(entry.newId.split(":").slice(0, 3)).toEqual(entry.oldId.split(":").slice(0, 3));
           const observed = report.unallowlisted.find((item) => item.id === entry.newId);
           expect(observed).toBeDefined();
           expect(observed!.file).toBe(entry.file);
