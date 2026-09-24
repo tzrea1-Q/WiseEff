@@ -69,6 +69,10 @@ import {
   catalogValueChangeReviewResponseSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
+  catalogMemberRemovalRequestResponseSchema,
+  catalogMemberRemovalRequestListResponseSchema,
+  catalogSubmitMemberRemovalRequestSchema,
+  catalogReviewMemberRemovalRequestSchema,
   catalogValueChangeSourceDiffResponseSchema,
   catalogBindingChangeHistoryListResponseSchema,
   type CatalogApiFailureReason,
@@ -677,6 +681,53 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogBatchValueChangeRequestResponseSchema,
         "ProjectValueBatchChangeRequestResponse"
       ),
+    submitMemberRemovalRequest: (
+      projectId: string,
+      body: z.infer<typeof catalogSubmitMemberRemovalRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/member-removals`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { body: catalogSubmitMemberRemovalRequestSchema.parse(body), context }
+    ),
+    listMemberRemovalRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/member-removals${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
+        catalogMemberRemovalRequestListResponseSchema,
+        "MemberRemovalRequestListResponse"
+      ),
+    getMemberRemovalRequest: (projectId: string, requestId: string) => request(
+      "GET",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/member-removal`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse"
+    ),
+    reviewMemberRemovalRequest: (
+      projectId: string,
+      requestId: string,
+      body: z.infer<typeof catalogReviewMemberRemovalRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { body: catalogReviewMemberRemovalRequestSchema.parse(body), context }
+    ),
+    withdrawMemberRemovalRequest: (
+      projectId: string,
+      requestId: string,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/withdraw`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { context }
+    ),
     reviewProjectValueChangeRequest: (
       projectId: string,
       requestId: string,

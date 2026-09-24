@@ -8,6 +8,10 @@ import type {
   CatalogValueChangeRequestResponse,
   CatalogBatchValueChangeRequestResponse,
   CatalogValueChangeReviewResponse,
+  CatalogMemberRemovalRequestResponse,
+  CatalogMemberRemovalRequestListResponse,
+  CatalogSubmitMemberRemovalRequest,
+  CatalogReviewMemberRemovalRequest,
   CatalogValueChangeSourceDiffResponse,
   CatalogCreateReplacementRequest,
   CatalogCreatePublicationCandidateRequest,
@@ -147,6 +151,30 @@ export interface ParameterCatalogRepository {
     projectId: string,
     requestId: string
   ): Promise<CatalogBatchValueChangeRequestResponse>;
+  submitMemberRemovalRequest?(
+    projectId: string,
+    body: CatalogSubmitMemberRemovalRequest,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogMemberRemovalRequestResponse>;
+  listMemberRemovalRequests?(
+    projectId: string,
+    query?: { status?: string; mine?: boolean }
+  ): Promise<CatalogMemberRemovalRequestListResponse>;
+  getMemberRemovalRequest?(
+    projectId: string,
+    requestId: string
+  ): Promise<CatalogMemberRemovalRequestResponse>;
+  reviewMemberRemovalRequest?(
+    projectId: string,
+    requestId: string,
+    body: CatalogReviewMemberRemovalRequest,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogMemberRemovalRequestResponse>;
+  withdrawMemberRemovalRequest?(
+    projectId: string,
+    requestId: string,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogMemberRemovalRequestResponse>;
   reviewProjectValueChangeRequest?(
     projectId: string,
     requestId: string,

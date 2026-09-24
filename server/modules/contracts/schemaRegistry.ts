@@ -949,6 +949,27 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse"
     }
   },
+  "parameterTopology.submitMemberRemovalRequest": {
+    summary: "Freeze one canonical JSON source member removal for a separate human reviewer",
+    tags: ["parameters"],
+    requestBody: "SubmitMemberRemovalRequest",
+    responseBody: "MemberRemovalRequestResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.listMemberRemovalRequests": {
+    summary: "List visible canonical member removal requests",
+    tags: ["parameters"],
+    responseBody: "MemberRemovalRequestListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterTopology.getMemberRemovalRequest": {
+    summary: "Read one frozen canonical member removal proof for its submitter or assigned reviewer",
+    tags: ["parameters"],
+    responseBody: "MemberRemovalRequestResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterTopology.getProjectValueBatchChangeRequest": {
     summary: "Read one frozen canonical batch request with its ordered targets for software review",
     tags: ["parameters"],
@@ -959,7 +980,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     }
   },
   "parameterTopology.reviewProjectValueChangeRequest": {
-    summary: "Review one canonical value request; batch approval requires its frozen proof digest",
+    summary: "Review one canonical value, batch, or member removal request with its frozen proof",
     tags: ["parameters"],
     requestBody: "ReviewProjectValueChangeRequest",
     responseBody: "ProjectValueChangeReviewResponse",
@@ -973,7 +994,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "parameterTopology.withdrawProjectValueChangeRequest": {
     summary: "Withdraw one pending canonical value change request as its submitter",
     tags: ["parameters"],
-    responseBody: "ProjectValueChangeRequestResponse",
+    responseBody: "ProjectValueChangeWithdrawalResponse",
     additionalResponses: {
       "403": "ErrorResponse",
       "404": "ErrorResponse",
