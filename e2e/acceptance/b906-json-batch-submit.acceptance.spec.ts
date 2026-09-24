@@ -119,7 +119,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       const approved = await submitFromPage(approvedFixture, "浏览器批量批准");
       const unauthorized = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${approved.id}/review`), {
         headers: authHeadersForRole("software-user"),
-        data: { decision: "approve", batchProofDigest: approved.batchProofDigest }
+        data: { decision: "reject", batchProofDigest: approved.batchProofDigest }
       });
       expect([403, 404]).toContain(unauthorized.status());
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
