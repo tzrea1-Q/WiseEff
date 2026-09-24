@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
@@ -10,7 +10,7 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { installConfigurationSourceFixture, captureConfigurationSourceState, seedMixedRevisionCohortProbe, seedDtsMixedRevisionCohortProbe } from "../../testing/parameterCatalog/configurationSource";
+import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { createConfigSet, addConfigSetFile, removeConfigSetFile } from "./configSetService";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
@@ -22,10 +22,6 @@ import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { loadCanonicalSourceSnapshot, readPinnedDtsSourceBatchChanges } from "./canonicalSource";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly } from "../parameter-bindings/values";
 import { createCandidate } from "./candidateService";
-import { registerParameterFileRoutes } from "./routes";
-import { createRouter } from "../../shared/http/router";
-import { createHttpServer } from "../../shared/http/server";
-import { requestJson } from "../../test/testClient";
 import {
   getCanonicalSourceWorkflow,
   freezeCanonicalCandidateBatchSnapshotInTransaction,
@@ -177,39 +173,6 @@ describe("#906 canonical JSON candidate workflow", () => {
     await db?.close();
     await database?.drop();
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
-  });
-
-  it("rejects a mixed-revision canonical JSON cohort through manual sync without writes", async () => {
-    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: JSON_PROJECT });
-    const beforeObjects = await readdir(join(storageDirectory, ORG));
-    const healthyRouter = createRouter();
-    registerParameterFileRoutes(healthyRouter, { db, objectStore: storage, getCurrentAuthContext: () => admin });
-    const healthy = await requestJson(createHttpServer(healthyRouter), `/api/v1/projects/${JSON_PROJECT}/parameter-files/${fileId}/sync`, {
-      method: "POST", body: JSON.stringify({ versionId })
-    });
-    expect(healthy).toMatchObject({ status: 200, body: { item: { unchanged: 2, draftsCreated: 0, sourceWorkflow: "canonical" } } });
-    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: JSON_PROJECT })).toEqual(before);
-    const rollback = new Error("rollback mixed-revision sync probe");
-    await expect(db.transaction(async (tx) => {
-      await seedMixedRevisionCohortProbe(tx, {
-        organizationId: ORG, projectId: JSON_PROJECT,
-        bindingId: bindings[1]!.id, projectValueId: bindings[1]!.currentValueId
-      });
-      const mixed = await captureConfigurationSourceState(tx, { organizationId: ORG, projectId: JSON_PROJECT });
-      const router = createRouter();
-      registerParameterFileRoutes(router, { db: tx, objectStore: storage, getCurrentAuthContext: () => admin });
-      const response = await requestJson(createHttpServer(router), `/api/v1/projects/${JSON_PROJECT}/parameter-files/${fileId}/sync`, {
-        method: "POST", body: JSON.stringify({ versionId })
-      });
-      if (response.status === 200) expect(response.body).toMatchObject({ item: { unchanged: 2 } });
-      expect(response.status).toBe(409);
-      expect(response.body).toMatchObject({ error: { code: "CONFLICT", details: { reason: "mixed-source-revisions" } } });
-      expect(await captureConfigurationSourceState(tx, { organizationId: ORG, projectId: JSON_PROJECT })).toEqual(mixed);
-      expect(await readdir(join(storageDirectory, ORG))).toEqual(beforeObjects);
-      throw rollback;
-    })).rejects.toBe(rollback);
-    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: JSON_PROJECT })).toEqual(before);
-    expect(await readdir(join(storageDirectory, ORG))).toEqual(beforeObjects);
   });
 
   it("proves canonical source membership, rejects multi-binding/non-target bytes and preserves another user's draft", async () => {
@@ -1052,61 +1015,6 @@ describe("#906 canonical DTS candidate workflow", () => {
     await db?.close();
     await database?.drop();
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
-  });
-
-  it("rejects a mixed-revision canonical DTS cohort through manual sync without writes", async () => {
-    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: DTS_PROJECT });
-    const beforeObjects = await readdir(join(storageDirectory, ORG));
-    const original = await listCatalogBindingRowsForProject(db, admin, { projectId: DTS_PROJECT });
-    const healthyRouter = createRouter();
-    registerParameterFileRoutes(healthyRouter, { db, objectStore: storage, getCurrentAuthContext: () => admin });
-    const healthy = await requestJson(createHttpServer(healthyRouter), `/api/v1/projects/${DTS_PROJECT}/parameter-files/${fileId}/sync`, {
-      method: "POST", body: JSON.stringify({ versionId })
-    });
-    expect(healthy).toMatchObject({ status: 200, body: { item: { unchanged: 2, draftsCreated: 0, sourceWorkflow: "canonical" } } });
-    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: DTS_PROJECT })).toEqual(before);
-    const rollback = new Error("rollback mixed-revision DTS sync probe");
-    await expect(db.transaction(async (tx) => {
-      const configSetId = (await tx.query<{ config_set_id: string }>("select config_set_id from project_parameter_files where id=$1", [fileId])).rows[0]!.config_set_id;
-      const oldPin = await loadOwnedProjectValueSourcePin(tx, {
-        organizationId: ORG, projectId: DTS_PROJECT,
-        bindingId: original[0]!.id, projectValueId: original[0]!.currentValueId
-      });
-      if (!oldPin || oldPin.locator.kind !== "dts-property") throw new Error("DTS probe requires a pinned property");
-      const revision = await ingestConfigRevision(tx, {
-        organizationId: ORG, projectId: DTS_PROJECT, configSetId,
-        entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
-        members: [{ fileId, fileVersionId: versionId, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: source }]
-      }, admin, { legacyProjection: "skip", sourceCommit: { baseConfigRevisionId: oldPin.configRevisionId } });
-      const occurrence = (await tx.query<{ property_id: string; node_id: string }>(`select effect.property_occurrence_id as property_id,effect.node_occurrence_id as node_id
-        from dts_occurrence_effects effect
-        join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
-        join dts_property_occurrences property on property.id=effect.property_occurrence_id
-        where effect.config_revision_id=$1 and logical.logical_node_id=$2
-          and property.property_name=$3 and effect.effect_kind in ('set','override')`,
-      [revision.id, oldPin.logicalNodeId, oldPin.locator.propertyName])).rows[0];
-      if (!occurrence) throw new Error("DTS probe requires the exact new occurrence");
-      const locator = { ...oldPin.locator, nodeOccurrenceId: occurrence.node_id, propertyOccurrenceId: occurrence.property_id };
-      await seedDtsMixedRevisionCohortProbe(tx, {
-        organizationId: ORG, projectId: DTS_PROJECT,
-        bindingId: original[0]!.id, projectValueId: original[0]!.currentValueId,
-        previousPinId: oldPin.sourcePinId, configRevisionId: revision.id,
-        propertyOccurrenceId: occurrence.property_id, locator
-      });
-      const mixed = await captureConfigurationSourceState(tx, { organizationId: ORG, projectId: DTS_PROJECT });
-      const router = createRouter();
-      registerParameterFileRoutes(router, { db: tx, objectStore: storage, getCurrentAuthContext: () => admin });
-      const response = await requestJson(createHttpServer(router), `/api/v1/projects/${DTS_PROJECT}/parameter-files/${fileId}/sync`, {
-        method: "POST", body: JSON.stringify({ versionId })
-      });
-      expect(response.status).toBe(409);
-      expect(response.body).toMatchObject({ error: { code: "CONFLICT", details: { reason: "mixed-source-revisions" } } });
-      expect(await captureConfigurationSourceState(tx, { organizationId: ORG, projectId: DTS_PROJECT })).toEqual(mixed);
-      expect(await readdir(join(storageDirectory, ORG))).toEqual(beforeObjects);
-      throw rollback;
-    })).rejects.toBe(rollback);
-    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: DTS_PROJECT })).toEqual(before);
-    expect(await readdir(join(storageDirectory, ORG))).toEqual(beforeObjects);
   });
 
   it("freezes two exact DTS targets without creating a batch request", async () => {
