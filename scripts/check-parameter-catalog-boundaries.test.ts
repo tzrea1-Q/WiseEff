@@ -110,6 +110,20 @@ const currentUnallowlistedRecord = JSON.parse(
   ownerAddedUnallowlistedIds: string[];
 };
 
+const jointUnallowlistedRecord = JSON.parse(
+  await readFile(`${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-906-joint-current-unallowlisted.json`, "utf8"),
+) as {
+  schemaVersion: number;
+  baseHead: string;
+  ownerHead: string;
+  dHead: string;
+  oldBlobs: Record<string, string>;
+  currentBlobs: Record<string, string>;
+  retired: Array<{ oldId: string; file: string; oldRule: string; oldLine: number; oldByteStart: number; oldByteEnd: number; oldSliceSha256: string }>;
+  moved: Array<{ oldId: string; newId: string; file: string; oldRule: string; oldLine: number; oldByteStart: number; oldByteEnd: number; oldSliceSha256: string }>;
+  currentUnallowlistedIds: string[];
+};
+
 const originalRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${exactRelocationRecordPath}`, "utf8"),
 ) as { pairs: Array<{ old: { id: string } }> };
@@ -1051,26 +1065,59 @@ describe("parameter catalog boundary checker", () => {
         ...currentUnallowlistedRecord.baseUnallowlistedIds,
         ...currentUnallowlistedRecord.ownerAddedUnallowlistedIds,
       ]).size).toBe(200);
-      expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual([
+      const previousIds = [
         ...currentUnallowlistedRecord.baseUnallowlistedIds,
         ...currentUnallowlistedRecord.ownerAddedUnallowlistedIds,
-      ].sort());
-      const ownerAddedIds = new Set(currentUnallowlistedRecord.ownerAddedUnallowlistedIds);
+      ].sort();
+      expect(jointUnallowlistedRecord.schemaVersion).toBe(1);
+      expect(jointUnallowlistedRecord.baseHead).toBe("f73abe902926625d49ba4a402df067c2df8f54ee");
+      expect(jointUnallowlistedRecord.ownerHead).toBe("443a7149df6689a6fd9fd9692558d5827cc2525d");
+      expect(jointUnallowlistedRecord.dHead).toBe("200b90a95c53c41fe4c3a9545b17ba8b5a8164b7");
+      expect(jointUnallowlistedRecord.retired).toHaveLength(27);
+      expect(jointUnallowlistedRecord.moved).toHaveLength(11);
+      expect(jointUnallowlistedRecord.currentUnallowlistedIds).toHaveLength(173);
+      expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual(jointUnallowlistedRecord.currentUnallowlistedIds);
+      expect(previousIds.filter((id) => !jointUnallowlistedRecord.currentUnallowlistedIds.includes(id))).toEqual(
+        [...jointUnallowlistedRecord.retired, ...jointUnallowlistedRecord.moved].map((entry) => entry.oldId).sort(),
+      );
+      expect(jointUnallowlistedRecord.currentUnallowlistedIds.filter((id) => !previousIds.includes(id))).toEqual(
+        jointUnallowlistedRecord.moved.map((entry) => entry.newId).sort(),
+      );
       expect(Object.keys(currentUnallowlistedRecord.ownerBlobs).sort()).toEqual([
         "server/modules/parameter-files/canonicalMemberRemoval.integration.test.ts",
         "server/modules/parameter-files/canonicalMemberRemoval.ts",
       ]);
-      for (const entry of report.unallowlisted.filter((item) => ownerAddedIds.has(item.id))) {
-        expect(entry.trustedBlobOid).toBe(currentUnallowlistedRecord.ownerBlobs[entry.file]);
-      }
       for (const [file, blob] of Object.entries(currentUnallowlistedRecord.ownerBlobs)) {
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.baseHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blob);
+      }
+      const oldSources = new Map<string, Buffer>();
+      const newSources = new Map<string, Buffer>();
+      for (const [file, oldBlob] of Object.entries(jointUnallowlistedRecord.oldBlobs)) {
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.baseHead}:${file}`], { encoding: "utf8" }).trim()).toBe(oldBlob);
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(jointUnallowlistedRecord.currentBlobs[file]);
+        oldSources.set(file, execFileSync("git", ["cat-file", "blob", oldBlob]));
         const source = await readFile(`${process.cwd()}/${file}`);
-        expect(createHash("sha1").update(`blob ${source.length}\0`).update(source).digest("hex")).toBe(blob);
+        expect(createHash("sha1").update(`blob ${source.length}\0`).update(source).digest("hex")).toBe(jointUnallowlistedRecord.currentBlobs[file]);
+        newSources.set(file, source);
+      }
+      for (const entry of [...jointUnallowlistedRecord.retired, ...jointUnallowlistedRecord.moved]) {
+        const oldSlice = oldSources.get(entry.file)!.subarray(entry.oldByteStart, entry.oldByteEnd);
+        expect(createHash("sha256").update(oldSlice).digest("hex")).toBe(entry.oldSliceSha256);
+        if ("newId" in entry) {
+          const observed = report.unallowlisted.find((item) => item.id === entry.newId);
+          expect(observed).toBeDefined();
+          expect(observed!.file).toBe(entry.file);
+          expect(observed!.rule).toBe(entry.oldRule);
+          expect(observed!.line).toBe(entry.oldLine + 1);
+          expect(newSources.get(entry.file)!.subarray(observed!.byteStart, observed!.byteEnd)).toEqual(oldSlice);
+        } else {
+          expect(newSources.get(entry.file)!.includes(oldSlice)).toBe(false);
+        }
       }
       expect(report.summary).toEqual({
-        violations: 3_591,
+        violations: 3_564,
         allowlisted: 3_391,
-        unallowlisted: 200,
+        unallowlisted: 173,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,
