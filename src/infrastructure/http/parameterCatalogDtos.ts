@@ -10,9 +10,11 @@ import type {
   catalogCreatePublicationCandidateRequestSchema,
   catalogBindingExportResponseSchema,
   catalogBindingDraftDtoSchema,
+  catalogBatchValueChangeRequestResponseSchema,
   catalogValueChangeRequestDtoSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
+  catalogValueChangeReviewResponseSchema,
   catalogValueChangeSourceDiffResponseSchema,
   catalogCreateReplacementRequestSchema,
   catalogContinueReplacementRequestSchema,
@@ -138,6 +140,8 @@ export type CatalogProjectValueDraftRemovedResponse = z.infer<typeof projectValu
 export type CatalogValueChangeRequestDto = z.infer<typeof catalogValueChangeRequestDtoSchema>;
 export type CatalogValueChangeRequestListResponse = z.infer<typeof catalogValueChangeRequestListResponseSchema>;
 export type CatalogValueChangeRequestResponse = z.infer<typeof catalogValueChangeRequestResponseSchema>;
+export type CatalogBatchValueChangeRequestResponse = z.infer<typeof catalogBatchValueChangeRequestResponseSchema>;
+export type CatalogValueChangeReviewResponse = z.infer<typeof catalogValueChangeReviewResponseSchema>;
 export type CatalogValueChangeSourceDiffResponse = z.infer<
   typeof catalogValueChangeSourceDiffResponseSchema
 >;

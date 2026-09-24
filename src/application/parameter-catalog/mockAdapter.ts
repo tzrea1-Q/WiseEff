@@ -570,6 +570,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       assertReadyForRead(store);
       return emptyCatalogCollection("no-review-work");
     },
+    async getProjectValueBatchChangeRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
     async reviewProjectValueChangeRequest() {
       assertReadyForRead(store);
       throw catalogApiFailure("unsupported-catalog-capability");

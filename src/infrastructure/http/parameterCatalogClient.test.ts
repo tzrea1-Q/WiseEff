@@ -383,6 +383,52 @@ describe("parameter catalog client contract", () => {
     );
   });
 
+  it("parses one ordered JSON batch and sends its proof to the existing review route", async () => {
+    const proof = "a".repeat(64);
+    const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
+      ordinal, draftId: null, bindingId, definitionId: "definition-1",
+      definitionRevisionId: "revision-1", catalogReleaseId: "release-1",
+      baseCurrentValueId: `old-${ordinal}`, configRevisionId: `config-${ordinal}`,
+      sourceRef: `source-${ordinal}`, sourcePinId: `pin-${ordinal}`,
+      action: "set", targetText: String(50 + ordinal), appliedValueId: null,
+      appliedHistoryEventId: null, appliedSourcePinId: null, appliedFileVersionId: null
+    }));
+    const batch = { item: {
+      id: "batch-1", projectId: "project-1", candidateId: "candidate-1",
+      batchProofDigest: proof, cohortCount: 2, status: "pending", reason: "calibrate",
+      submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
+      reviewerNote: null, sourceProofToken: "source-proof", cohortProofToken: "cohort-proof",
+      fileId: "file-1", baseVersionId: "version-1", configSetId: "set-1",
+      appliedAt: null, appliedAuditRef: null, targets
+    } };
+    const diff = { item: {
+      kind: "batch", requestId: "batch-1", candidateId: "candidate-1",
+      batchProofDigest: proof, format: "json", sourceName: "config.json",
+      baseDigest: "old-digest", proposedDigest: "new-digest", diffDigest: proof,
+      before: '{"a":1}', after: '{"a":2}',
+      bindings: targets.map((target) => ({
+        bindingId: target.bindingId, oldValueId: target.baseCurrentValueId,
+        sourcePinId: target.sourcePinId, sourceOccurrenceId: `occ-${target.ordinal}`,
+        definitionId: target.definitionId, effectiveRevisionId: target.definitionRevisionId,
+        catalogReleaseId: target.catalogReleaseId, locator: { kind: "json-pointer", pointer: `/item/${target.ordinal}` },
+        valueKind: "json", valueDigest: "value-digest", configSetId: "set-1"
+      })),
+      targets: targets.map((target) => ({ ordinal: target.ordinal, bindingId: target.bindingId,
+        sourcePinId: target.sourcePinId, action: target.action, beforeText: "1", afterText: target.targetText }))
+    } };
+    const fetchMock = vi.fn<typeof fetch>(async (url) => jsonResponse(String(url).endsWith("/source-diff") ? diff : batch));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getProjectValueBatchChangeRequest("project-1", "batch-1")).resolves.toEqual(batch);
+    await expect(client.getProjectValueChangeSourceDiff("project-1", "batch-1")).resolves.toEqual(diff);
+    await expect(client.reviewProjectValueChangeRequest("project-1", "batch-1",
+      { decision: "approve", batchProofDigest: proof },
+      { catalogReleaseId: "release-1", idempotencyKey: "review-1" })).resolves.toEqual(batch);
+    const [url, options] = fetchMock.mock.lastCall!;
+    expect(url).toBe("/api/v2/projects/project-1/parameter-value-change-requests/batch-1/review");
+    expect(options).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "approve", batchProofDigest: proof }) }));
+  });
+
   it("sends the pending-review filter without the Catalog list whitelist dropping it", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ items: [] }));
     const client = createParameterCatalogClient({ baseUrl: "",fetchImpl: fetchMock });
