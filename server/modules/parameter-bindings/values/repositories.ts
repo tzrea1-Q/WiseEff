@@ -492,6 +492,7 @@ export const casCurrentTip = async (
               and request.status='pending' and request.organization_id=binding.organization_id
               and request.project_id=binding.project_id
               and request.member_config_set_id=occurrence.config_set_id
+              and occurrence.file_id=base_pin.file_id
               and request.member_file_id<>base_pin.file_id
               and base_pin.config_revision_id=request.member_frozen_proof->>'configRevisionId'
               and next_value.config_revision_id<>base_pin.config_revision_id
@@ -500,7 +501,8 @@ export const casCurrentTip = async (
               and next_value.value_digest=old_value.value_digest
               and request.member_frozen_proof->'cohort' @> jsonb_build_array(jsonb_build_object(
                 'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id,
-                'sourceOccurrenceId',binding.source_occurrence_id,'fileId',base_pin.file_id)))
+                'sourceOccurrenceId',binding.source_occurrence_id,'fileId',base_pin.file_id,
+                'fileVersionId',base_pin.file_version_id)))
         )`,
     [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null],
   );

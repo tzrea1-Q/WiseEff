@@ -468,6 +468,13 @@ describe("#906 reviewed canonical member removal cohort", () => {
         organizationId, projectId, bindingId: binding.id, projectValueId: value.id
       })));
       expect(pins.filter(Boolean)).toHaveLength(2);
+      expect(pins.find((pin) => pin?.projectValueId === old.oldValueId)).toMatchObject({
+        sourcePinId: old.sourcePinId, fileId: siblingFileId, fileVersionId: old.fileVersionId
+      });
+      expect(pins.find((pin) => pin?.projectValueId === binding.current_value_id)).toMatchObject({
+        configRevisionId: result.successorConfigRevisionId,
+        fileId: siblingFileId, fileVersionId: old.fileVersionId
+      });
     }
     expect((await db.query<{ id: string; config_set_id: string | null }>(`
       select id,config_set_id from project_parameter_files where id=$1`, [removedFileId])).rows)
