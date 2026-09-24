@@ -117,6 +117,7 @@ export type WorkbenchInspectorPanelProps = {
   onMemberSortOrderChange: (sortOrder: number) => void;
   onAddMember: () => void;
   onRequestRemoveMember: (member: DtsConfigSetMemberFile) => void;
+  canRequestReviewedMemberRemoval?: boolean;
   onSyncFile: () => void;
   sourceWorkflow: ParameterFileSourceWorkflow | null;
   sourceWorkflowLoading: boolean;
@@ -206,6 +207,7 @@ export function WorkbenchInspectorPanel({
   onMemberSortOrderChange,
   onAddMember,
   onRequestRemoveMember,
+  canRequestReviewedMemberRemoval = false,
   onSyncFile,
   sourceWorkflow,
   sourceWorkflowLoading,
@@ -241,6 +243,9 @@ export function WorkbenchInspectorPanel({
     !sourceWorkflowSetReady ||
     Boolean(sourceWorkflowSetError) ||
     sourceWorkflowSetCanonical;
+  const reviewedRemovalReady = (member: DtsConfigSetMemberFile) =>
+    canRequestReviewedMemberRemoval && member.format === "json" && sourceWorkflowSetReady
+    && !sourceWorkflowSetLoading && !sourceWorkflowSetError;
   const sourceMutationReason = sourceWorkflowError
     ? sourceWorkflowError
     : sourceWorkflow?.reason ?? "canonical 来源成员必须通过来源审核流程。";
@@ -669,7 +674,7 @@ export function WorkbenchInspectorPanel({
                             aria-label={`移除 ${member.fileName}`}
                             disabled={
                               pendingAction !== null ||
-                              sourceSetMutationBlocked
+                              (sourceSetMutationBlocked && !reviewedRemovalReady(member))
                             }
                             onClick={() => onRequestRemoveMember(member)}
                           >
@@ -793,8 +798,10 @@ export function WorkbenchInspectorPanel({
                   <button
                     className="button subtle"
                     type="button"
-                    disabled={pendingAction !== null || sourceSetMutationBlocked || selectedSourceCanonical}
-                    title={sourceSetMutationBlocked ? sourceSetMutationReason : selectedSourceCanonical ? sourceMutationReason : undefined}
+                    disabled={pendingAction !== null || (!reviewedRemovalReady(selectedMember)
+                      && (sourceSetMutationBlocked || selectedSourceCanonical))}
+                    title={reviewedRemovalReady(selectedMember) ? "提交成员删除审核" : sourceSetMutationBlocked
+                      ? sourceSetMutationReason : selectedSourceCanonical ? sourceMutationReason : undefined}
                     onClick={() => onRequestRemoveMember(selectedMember)}
                   >
                     从配置集移除
