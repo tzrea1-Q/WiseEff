@@ -60,7 +60,7 @@ describe("ParameterReviewPage deep link", () => {
     </TopBarActionsContext.Provider>);
     const panel = await screen.findByRole("region", { name: "软件配置审核" });
     await within(panel).findByText("Scoped review", { selector: "td" });
-    expect(within(panel).queryByRole("button", { name: "批准软件配置" }) !== null).toBe(allowed);
+    await waitFor(() => expect(within(panel).queryByRole("button", { name: "批准软件配置" }) !== null).toBe(allowed));
   });
 
   it("mounts the canonical queue for the requested project even when ordinary requests are empty", async () => {

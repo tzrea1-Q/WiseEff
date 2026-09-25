@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   CatalogBatchValueChangeRequestResponse,
+  CatalogSourceConflictDecisionResponse,
   CatalogValueChangeSourceDiffResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -32,7 +33,47 @@ type ReviewView = "pending" | "history";
 type SourceDiff = CatalogValueChangeSourceDiffResponse["item"];
 type BatchRequest = CatalogBatchValueChangeRequestResponse["item"];
 type BatchSourceDiff = Extract<SourceDiff, { kind: "batch" }>;
+type ConflictDecision = CatalogSourceConflictDecisionResponse["item"];
 type SourceDiffState = "idle" | "loading" | "ready" | "error";
+
+function matchesFrozenConflict(request: CanonicalRequest, diff: SourceDiff | null,
+  decision: ConflictDecision | null): boolean {
+  if (!decision || !diff || "kind" in diff) return false;
+  const frozenBindings = decision.sourceDiff.bindings;
+  if (!Array.isArray(frozenBindings) || frozenBindings.length !== diff.bindings.length
+    || !diff.bindings.every((binding, index) => {
+      const frozen = frozenBindings[index];
+      return frozen && typeof frozen === "object"
+        && binding.bindingId === frozen.bindingId && binding.oldValueId === frozen.oldValueId
+        && binding.sourcePinId === frozen.sourcePinId
+        && binding.sourceOccurrenceId === frozen.sourceOccurrenceId
+        && binding.definitionId === frozen.definitionId
+        && binding.effectiveRevisionId === frozen.effectiveRevisionId
+        && binding.catalogReleaseId === frozen.catalogReleaseId
+        && binding.configSetId === frozen.configSetId
+        && binding.valueKind === frozen.valueKind && binding.valueDigest === frozen.valueDigest
+        && JSON.stringify(binding.locator) === JSON.stringify(frozen.locator);
+    })) return false;
+  return /^[0-9a-f]{64}$/.test(decision.decisionProofDigest)
+    && decision.request.id === request.id && decision.request.bindingId === request.bindingId
+    && decision.request.targetValue === request.targetValue
+    && decision.request.status === request.status
+    && decision.request.assignedToUserId === request.assignedToUserId
+    && decision.request.submitterUserId === request.submitterUserId
+    && decision.sourceCandidateId !== request.candidateId
+    && decision.selectedBindingId === request.bindingId && Boolean(decision.selectedDraftId)
+    && (decision.choice === "file" || decision.choice === "draft")
+    && decision.sourceDiff.requestId === request.id && diff.requestId === request.id
+    && decision.sourceDiff.format === request.sourceFormat && diff.format === request.sourceFormat
+    && decision.sourceDiff.bindingId === request.bindingId && diff.bindingId === request.bindingId
+    && decision.sourceDiff.candidateId === request.candidateId && diff.candidateId === request.candidateId
+    && decision.sourceDiff.sourcePinId === request.sourcePinId && diff.sourcePinId === request.sourcePinId
+    && decision.sourceDiff.baseDigest === diff.baseDigest
+    && decision.sourceDiff.proposedDigest === diff.proposedDigest
+    && decision.sourceDiff.diffDigest === diff.diffDigest
+    && decision.sourceDiff.before === diff.before && decision.sourceDiff.after === diff.after
+    && diff.bindings.filter((binding) => binding.bindingId === request.bindingId).length === 1;
+}
 
 function matchesFrozenBatch(request: BatchRequest, diff: BatchSourceDiff): boolean {
   const seen = new Set<string>();
@@ -82,15 +123,21 @@ export function CanonicalProjectValueReviewPanel({
   const [sourceDiff, setSourceDiff] = useState<SourceDiff | null>(null);
   const [sourceDiffState, setSourceDiffState] = useState<SourceDiffState>("idle");
   const [sourceDiffError, setSourceDiffError] = useState<string | null>(null);
+  const [conflictDecision, setConflictDecision] = useState<ConflictDecision | null>(null);
+  const [conflictDecisionState, setConflictDecisionState] = useState<"idle" | "loading" | "ordinary" | "ready" | "error">("idle");
+  const [conflictDecisionError, setConflictDecisionError] = useState<string | null>(null);
   const [staleRequestId, setStaleRequestId] = useState<string | null>(null);
   const deepLinkRequestRef = useRef<string | null>(initialRequestId ?? null);
   const scopeRef = useRef({ projectId, currentUserId });
   scopeRef.current = { projectId, currentUserId };
   const isCurrentScope = () => scopeRef.current.projectId === projectId && scopeRef.current.currentUserId === currentUserId;
   const selected = batchSelected ? null : requests.find((request) => request.id === selectedId) ?? null;
+  const selectedRequestId = selected?.id ?? null;
   const effectiveSelectedId = batchSelected ? batchRequest?.id ?? null : selected?.id ?? null;
   const canReviewSelected = Boolean(
     !mineOnly && canReview && currentUserId && selected && selected.submitterUserId !== currentUserId
+      && (conflictDecisionState === "ordinary" || (conflictDecisionState === "ready"
+        && selected.assignedToUserId === currentUserId))
   );
 
   useEffect(() => {
@@ -272,7 +319,34 @@ export function CanonicalProjectValueReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [canonicalRepository, projectId, effectiveSelectedId, mineOnly, batchSelected]);
+  }, [canonicalRepository, projectId, effectiveSelectedId, mineOnly, batchSelected, batchRefresh]);
+
+  useEffect(() => {
+    setConflictDecision(null);
+    setConflictDecisionError(null);
+    if (!selectedRequestId || !canonicalRepository?.getProjectValueConflictDecision) {
+      setConflictDecisionState(selectedRequestId ? "ordinary" : "idle");
+      return;
+    }
+    let cancelled = false;
+    setConflictDecisionState("loading");
+    void canonicalRepository.getProjectValueConflictDecision(projectId, selectedRequestId).then(({ item }) => {
+      if (cancelled) return;
+      setConflictDecision(item);
+      setConflictDecisionState("ready");
+    }).catch((cause) => {
+      if (cancelled) return;
+      if (cause instanceof WiseEffApiError && cause.code === "NOT_FOUND") {
+        setConflictDecisionState("ordinary");
+      } else {
+        setConflictDecisionState("error");
+        setConflictDecisionError(cause instanceof WiseEffApiError && cause.code === "CONFLICT"
+          ? "冲突决策来源或证明已过期（409），已阻止批准；请刷新请求状态。"
+          : presentError(cause, "读取冲突决策详情失败，已阻止批准。"));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [canonicalRepository, projectId, selectedRequestId, batchRefresh]);
 
   if (!canonicalRepository?.listProjectValueChangeRequests || (!mineOnly && !canonicalRepository.reviewProjectValueChangeRequest)) {
     return (
@@ -296,6 +370,13 @@ export function CanonicalProjectValueReviewPanel({
         catalogReleaseId, idempotencyKey: idempotencyKey()
       });
       if (!isCurrentScope()) return;
+      if (conflictDecisionState === "ready") {
+        deepLinkRequestRef.current = selected.id;
+        onSelectRequest?.(selected.id);
+        setView("history");
+        setBatchRefresh((value) => value + 1);
+        return;
+      }
       const next = requests.filter((request) => request.id !== selected.id);
       const nextId = next[0]?.id ?? null;
       setRequests(next);
@@ -309,7 +390,7 @@ export function CanonicalProjectValueReviewPanel({
   };
   const reviewSelected = async (decision: "approve" | "reject") => {
     if (!selected || busy || view !== "pending" || !canReviewSelected || !reviewProjectValueChangeRequest) return;
-    if (decision === "approve" && (sourceDiffState !== "ready" || sourceDiff?.requestId !== selected.id)) return;
+    if (decision === "approve" && !sourceDiffReadyForSelected) return;
     setBusy(true);
     setError(null);
     try {
@@ -324,13 +405,28 @@ export function CanonicalProjectValueReviewPanel({
         { catalogReleaseId, idempotencyKey: idempotencyKey() }
       );
       if (!isCurrentScope()) return;
+      if (conflictDecisionState === "ready") {
+        deepLinkRequestRef.current = selected.id;
+        onSelectRequest?.(selected.id);
+        setView("history");
+        setBatchRefresh((value) => value + 1);
+        return;
+      }
       const next = requests.filter((request) => request.id !== selected.id);
       const nextId = next[0]?.id ?? null;
       setRequests(next);
       setSelectedId(nextId);
       onSelectRequest?.(nextId);
     } catch (reviewError) {
-      if (isCurrentScope()) setError(presentError(reviewError, "软件审核失败，请稍后重试。"));
+      if (isCurrentScope()) {
+        setError(reviewError instanceof WiseEffApiError && reviewError.code === "CONFLICT"
+          ? "来源或决策证明已过期（409），审核未应用；请刷新请求状态。"
+          : presentError(reviewError, "软件审核失败，请稍后重试。"));
+        if (conflictDecisionState === "ready") {
+          setConflictDecisionState("error");
+          setConflictDecisionError("审核结果待重新核对，已阻止再次批准；请刷新请求状态。");
+        }
+      }
     } finally {
       if (isCurrentScope()) setBusy(false);
     }
@@ -338,6 +434,8 @@ export function CanonicalProjectValueReviewPanel({
   const sourceDiffReadyForSelected = Boolean(
     selected && sourceDiffState === "ready" && sourceDiff?.requestId === selected.id
       && !("kind" in sourceDiff)
+      && (conflictDecisionState === "ordinary" || (conflictDecisionState === "ready"
+        && matchesFrozenConflict(selected, sourceDiff, conflictDecision)))
   );
   const singleDiff = sourceDiff && !("kind" in sourceDiff) ? sourceDiff : null;
   const batchDiff = sourceDiff && "kind" in sourceDiff ? sourceDiff : null;
@@ -522,6 +620,31 @@ export function CanonicalProjectValueReviewPanel({
                 <div><dt>应用结果</dt><dd>{selected.applyOutcome === "committed" ? "已应用" : selected.applyOutcome === "replayed" ? "已应用（幂等重放）" : "—"}</dd></div>
               </dl>
               <pre aria-label="固定源目标内容">{canonicalRequestSourceText(selected)}</pre>
+              {conflictDecisionState === "loading" ? <p role="status">正在核对冲突决策详情…</p> : null}
+              {conflictDecisionError ? <p role="alert">{conflictDecisionError}</p> : null}
+              {conflictDecisionState !== "ordinary" ? <button type="button" className="button subtle"
+                disabled={busy} onClick={() => {
+                  deepLinkRequestRef.current = selected.id;
+                  setBatchRefresh((value) => value + 1);
+                }}>刷新冲突请求与来源</button> : null}
+              {conflictDecisionState === "ready" && conflictDecision ? (
+                <section aria-label="冻结的单项来源冲突决策">
+                  <h4>单项来源冲突决策</h4>
+                  <dl>
+                    <div><dt>选择</dt><dd>{conflictDecision.choice === "file" ? "文件值" : "界面草稿值"}</dd></div>
+                    <div><dt>选中 Binding</dt><dd><code>{conflictDecision.selectedBindingId}</code></dd></div>
+                    <div><dt>选中草稿</dt><dd><code>{conflictDecision.selectedDraftId}</code></dd></div>
+                    <div><dt>原候选</dt><dd><code>{conflictDecision.sourceCandidateId}</code></dd></div>
+                    <div><dt>决策证明</dt><dd><code>{conflictDecision.decisionProofDigest}</code></dd></div>
+                    <div><dt>来源格式</dt><dd>{conflictDecision.sourceDiff.format.toUpperCase()}</dd></div>
+                  </dl>
+                  {matchesFrozenConflict(selected, sourceDiff, conflictDecision) ? <>
+                    <p>经验证的冻结来源差异</p>
+                    <pre tabIndex={0} aria-label="冲突来源变更前">{conflictDecision.sourceDiff.before}</pre>
+                    <pre tabIndex={0} aria-label="冲突来源变更后">{conflictDecision.sourceDiff.after}</pre>
+                  </> : <p role="alert">冲突详情、目标、顺序或证明与请求来源不符，已阻止批准。</p>}
+                </section>
+              ) : null}
               <p role="note">以下差异固定于提交时，不随当前文件变化。</p>
               {sourceDiffState === "loading" ? <p role="status">正在加载固定源差异…</p> : null}
               {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}

@@ -1005,7 +1005,8 @@ describe("canonical value change request routes", () => {
 
   it("lets an editor reject a pending request without a sensitive-node check", async () => {
     const db = makeDb();
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }] } as never);
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }] } as never)
+      .mockResolvedValueOnce({ rows: [{ request_kind: "single", has_conflict_decision: false }] } as never);
     vi.mocked(drafts.reviewCanonicalValueChange).mockResolvedValue({
       ...changeRequest,
       status: "rejected",
@@ -1195,7 +1196,9 @@ describe("canonical request tracking access", () => {
   it("keeps own pending work out of the reviewer queue while preserving personal and history views", async () => {
     vi.spyOn(reviewWorkflow, "hasCurrentCanonicalReviewRole").mockResolvedValue(true);
     const auth = makeAuth({ roles: [{ projectId: "project-1", roleId: "software-committer" }], permissions: ["parameter:view", "parameter:review"] });
-    const server = makeServer({ db: makeDb(), auth });
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const server = makeServer({ db, auth });
     expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own, other] });
     expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?status=pending")).body).toEqual({ items: [other] });
     expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?mine=true")).body).toEqual({ items: [own] });

@@ -1659,6 +1659,9 @@ export function ProjectConfigurationWorkbench({
               onExitBaselineCompare={exitBaselineCompare}
               onSelectBaselineCompareMember={selectBaselineCompareMember}
               activeCandidate={activeCandidate}
+              projectId={project.id}
+              currentUserId={currentUserId}
+              onConflictSubmitted={(requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)}
               sourcePreview={sourcePreview}
               sourcePreviewLoading={sourcePreviewLoading}
               sourcePreviewError={sourcePreviewError}

@@ -233,6 +233,20 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterFiles.listCanonicalSourceConflicts",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflicts",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.submitCanonicalSourceConflict",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflict-submit",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
     id: "parameters.getParameterFileCandidateContent",
     method: "GET",
     path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content",
@@ -704,6 +718,13 @@ export const routeManifest = [
     id: "parameterTopology.getProjectValueChangeRequestSourceDiff",
     method: "GET",
     path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/source-diff",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.getCanonicalSourceConflictDecision",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/conflict-decision",
     module: "parameters",
     stability: "mvp"
   },

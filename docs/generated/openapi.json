@@ -1907,6 +1907,124 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-conflicts": {
+      "get": {
+        "operationId": "parameterFiles.listCanonicalSourceConflicts",
+        "summary": "Find exact canonical file/UI draft choices for a staged source candidate",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceConflictListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-conflict-submit": {
+      "post": {
+        "operationId": "parameterFiles.submitCanonicalSourceConflict",
+        "summary": "Freeze one selected canonical source conflict for human review",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalSourceConflictSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceConflictSubmitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/content": {
       "get": {
         "operationId": "parameters.getParameterFileCandidateContent",
@@ -6802,6 +6920,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ValueChangeSourceDiffResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/conflict-decision": {
+      "get": {
+        "operationId": "parameterTopology.getCanonicalSourceConflictDecision",
+        "summary": "Read the frozen choice and verified source diff of one visible conflict request",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceConflictDecisionResponse"
                 }
               }
             }
@@ -27963,6 +28135,711 @@
       "CanonicalSourceCandidatePreviewResponse": {
         "type": "object",
         "x-wiseeff-schema": "CanonicalSourceCandidatePreviewResponse"
+      },
+      "CanonicalSourceConflictListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "selectedBindingId": {
+                  "type": "string"
+                },
+                "selectedDraftId": {
+                  "type": "string"
+                },
+                "authorUserId": {
+                  "type": "string"
+                },
+                "choices": {
+                  "type": "object",
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "properties": {
+                        "candidateId": {
+                          "type": "string"
+                        },
+                        "selectedBindingId": {
+                          "type": "string"
+                        },
+                        "selectedDraftId": {
+                          "type": "string"
+                        },
+                        "choice": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "draft"
+                          ]
+                        },
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "baseVersionId": {
+                          "type": "string"
+                        },
+                        "configSetId": {
+                          "type": "string"
+                        },
+                        "sourceProofToken": {
+                          "type": "string"
+                        },
+                        "cohortProofToken": {
+                          "type": "string"
+                        },
+                        "sourceCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateId": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftProof": {
+                          "type": "string"
+                        },
+                        "selectedSourcePinId": {
+                          "type": "string"
+                        },
+                        "selectedBaseValueId": {
+                          "type": "string"
+                        },
+                        "selectedRevisionId": {
+                          "type": "string"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "memberId": {
+                                "type": "string"
+                              },
+                              "fileId": {
+                                "type": "string"
+                              },
+                              "fileVersionId": {
+                                "type": "string"
+                              },
+                              "sourceName": {
+                                "type": "string"
+                              },
+                              "format": {
+                                "type": "string",
+                                "enum": [
+                                  "json",
+                                  "dts"
+                                ]
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "sortOrder": {
+                                "type": "number"
+                              },
+                              "checksum": {
+                                "type": "string"
+                              },
+                              "sizeBytes": {
+                                "type": "number"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              },
+                              "isCandidateFile": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "memberId",
+                              "fileId",
+                              "fileVersionId",
+                              "sourceName",
+                              "format",
+                              "role",
+                              "sortOrder",
+                              "checksum",
+                              "sizeBytes",
+                              "configSetId",
+                              "isCandidateFile"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "cohort": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bindingId": {
+                                "type": "string"
+                              },
+                              "oldValueId": {
+                                "type": "string"
+                              },
+                              "sourcePinId": {
+                                "type": "string"
+                              },
+                              "sourceOccurrenceId": {
+                                "type": "string"
+                              },
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "effectiveRevisionId": {
+                                "type": "string"
+                              },
+                              "catalogReleaseId": {
+                                "type": "string"
+                              },
+                              "locator": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              },
+                              "valueKind": {
+                                "type": "string"
+                              },
+                              "valueDigest": {
+                                "type": "string"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "bindingId",
+                              "oldValueId",
+                              "sourcePinId",
+                              "sourceOccurrenceId",
+                              "definitionId",
+                              "effectiveRevisionId",
+                              "catalogReleaseId",
+                              "locator",
+                              "valueKind",
+                              "valueDigest",
+                              "configSetId"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "action": {
+                          "type": "string",
+                          "enum": [
+                            "set",
+                            "delete"
+                          ]
+                        },
+                        "targetText": {
+                          "type": "string"
+                        },
+                        "decisionProofDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "candidateId",
+                        "selectedBindingId",
+                        "selectedDraftId",
+                        "choice",
+                        "fileId",
+                        "baseVersionId",
+                        "configSetId",
+                        "sourceProofToken",
+                        "cohortProofToken",
+                        "sourceCandidateDigest",
+                        "selectedDraftCandidateId",
+                        "selectedDraftCandidateDigest",
+                        "selectedDraftProof",
+                        "selectedSourcePinId",
+                        "selectedBaseValueId",
+                        "selectedRevisionId",
+                        "members",
+                        "cohort",
+                        "action",
+                        "decisionProofDigest"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "draft": {
+                      "type": "object",
+                      "properties": {
+                        "candidateId": {
+                          "type": "string"
+                        },
+                        "selectedBindingId": {
+                          "type": "string"
+                        },
+                        "selectedDraftId": {
+                          "type": "string"
+                        },
+                        "choice": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "draft"
+                          ]
+                        },
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "baseVersionId": {
+                          "type": "string"
+                        },
+                        "configSetId": {
+                          "type": "string"
+                        },
+                        "sourceProofToken": {
+                          "type": "string"
+                        },
+                        "cohortProofToken": {
+                          "type": "string"
+                        },
+                        "sourceCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateId": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftProof": {
+                          "type": "string"
+                        },
+                        "selectedSourcePinId": {
+                          "type": "string"
+                        },
+                        "selectedBaseValueId": {
+                          "type": "string"
+                        },
+                        "selectedRevisionId": {
+                          "type": "string"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "memberId": {
+                                "type": "string"
+                              },
+                              "fileId": {
+                                "type": "string"
+                              },
+                              "fileVersionId": {
+                                "type": "string"
+                              },
+                              "sourceName": {
+                                "type": "string"
+                              },
+                              "format": {
+                                "type": "string",
+                                "enum": [
+                                  "json",
+                                  "dts"
+                                ]
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "sortOrder": {
+                                "type": "number"
+                              },
+                              "checksum": {
+                                "type": "string"
+                              },
+                              "sizeBytes": {
+                                "type": "number"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              },
+                              "isCandidateFile": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "memberId",
+                              "fileId",
+                              "fileVersionId",
+                              "sourceName",
+                              "format",
+                              "role",
+                              "sortOrder",
+                              "checksum",
+                              "sizeBytes",
+                              "configSetId",
+                              "isCandidateFile"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "cohort": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bindingId": {
+                                "type": "string"
+                              },
+                              "oldValueId": {
+                                "type": "string"
+                              },
+                              "sourcePinId": {
+                                "type": "string"
+                              },
+                              "sourceOccurrenceId": {
+                                "type": "string"
+                              },
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "effectiveRevisionId": {
+                                "type": "string"
+                              },
+                              "catalogReleaseId": {
+                                "type": "string"
+                              },
+                              "locator": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              },
+                              "valueKind": {
+                                "type": "string"
+                              },
+                              "valueDigest": {
+                                "type": "string"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "bindingId",
+                              "oldValueId",
+                              "sourcePinId",
+                              "sourceOccurrenceId",
+                              "definitionId",
+                              "effectiveRevisionId",
+                              "catalogReleaseId",
+                              "locator",
+                              "valueKind",
+                              "valueDigest",
+                              "configSetId"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "action": {
+                          "type": "string",
+                          "enum": [
+                            "set",
+                            "delete"
+                          ]
+                        },
+                        "targetText": {
+                          "type": "string"
+                        },
+                        "decisionProofDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "candidateId",
+                        "selectedBindingId",
+                        "selectedDraftId",
+                        "choice",
+                        "fileId",
+                        "baseVersionId",
+                        "configSetId",
+                        "sourceProofToken",
+                        "cohortProofToken",
+                        "sourceCandidateDigest",
+                        "selectedDraftCandidateId",
+                        "selectedDraftCandidateDigest",
+                        "selectedDraftProof",
+                        "selectedSourcePinId",
+                        "selectedBaseValueId",
+                        "selectedRevisionId",
+                        "members",
+                        "cohort",
+                        "action",
+                        "decisionProofDigest"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "file",
+                    "draft"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "selectedBindingId",
+                "selectedDraftId",
+                "authorUserId",
+                "choices"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "ineligible": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "selectedBindingId": {
+                  "type": "string"
+                },
+                "selectedDraftId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "selectedBindingId",
+                "selectedDraftId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items",
+          "ineligible"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictListResponse"
+      },
+      "CanonicalSourceConflictSubmitRequest": {
+        "type": "object",
+        "properties": {
+          "selectedBindingId": {
+            "type": "string"
+          },
+          "selectedDraftId": {
+            "type": "string"
+          },
+          "choice": {
+            "type": "string",
+            "enum": [
+              "file",
+              "draft"
+            ]
+          },
+          "expectedDecisionProofDigest": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "assignedToUserId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selectedBindingId",
+          "selectedDraftId",
+          "choice",
+          "expectedDecisionProofDigest",
+          "reason",
+          "assignedToUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictSubmitRequest"
+      },
+      "CanonicalSourceConflictSubmitResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              },
+              "replayed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "requestId",
+              "status",
+              "replayed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictSubmitResponse"
+      },
+      "CanonicalSourceConflictDecisionResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "request": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "bindingId": {
+                    "type": "string"
+                  },
+                  "targetValue": {
+                    "type": "string"
+                  },
+                  "sourceFormat": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "dts"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "withdrawn"
+                    ]
+                  },
+                  "assignedToUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "submitterUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "bindingId",
+                  "targetValue",
+                  "sourceFormat",
+                  "status",
+                  "assignedToUserId",
+                  "submitterUserId"
+                ],
+                "additionalProperties": true
+              },
+              "sourceCandidateId": {
+                "type": "string"
+              },
+              "selectedBindingId": {
+                "type": "string"
+              },
+              "selectedDraftId": {
+                "type": "string"
+              },
+              "choice": {
+                "type": "string",
+                "enum": [
+                  "file",
+                  "draft"
+                ]
+              },
+              "decisionProofDigest": {
+                "type": "string"
+              },
+              "sourceDiff": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "bindingId": {
+                    "type": "string"
+                  },
+                  "candidateId": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "dts"
+                    ]
+                  },
+                  "sourcePinId": {
+                    "type": "string"
+                  },
+                  "baseDigest": {
+                    "type": "string"
+                  },
+                  "proposedDigest": {
+                    "type": "string"
+                  },
+                  "diffDigest": {
+                    "type": "string"
+                  },
+                  "before": {
+                    "type": "string"
+                  },
+                  "after": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "bindingId",
+                  "candidateId",
+                  "format",
+                  "sourcePinId",
+                  "baseDigest",
+                  "proposedDigest",
+                  "diffDigest",
+                  "before",
+                  "after"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "request",
+              "sourceCandidateId",
+              "selectedBindingId",
+              "selectedDraftId",
+              "choice",
+              "decisionProofDigest",
+              "sourceDiff"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictDecisionResponse"
       },
       "CanonicalSourceSubmitRequest": {
         "type": "object",

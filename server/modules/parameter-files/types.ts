@@ -128,6 +128,15 @@ export type CanonicalSourceWorkflowLink = {
   preparedCandidateId: string;
   draftId: string;
   requestId: string;
+  conflictDecision?: {
+    choice: "file" | "draft";
+    selectedDraftId: string;
+    selectedDraftCandidateId: string;
+    selectedDraftCandidateDigest: string;
+    sourceProofToken: string;
+    sourceCandidateDigest: string;
+    decisionProofDigest: string;
+  };
   status: "pending" | "approved" | "rejected" | "withdrawn";
 };
 

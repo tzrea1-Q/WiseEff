@@ -2,6 +2,7 @@ import type { z } from "zod";
 
 import type {
   bindingDraftResponseSchema,
+  canonicalSourceConflictDecisionResponseSchema,
   catalogBindingChangeHistoryListResponseSchema,
   bindingCompareListResponseSchema,
   bindingHistoryListResponseSchema,
@@ -144,6 +145,7 @@ export type CatalogBindingDraftDto = z.infer<typeof catalogBindingDraftDtoSchema
 export type CatalogProjectValueDraftListResponse = z.infer<typeof projectValueDraftListResponseSchema>;
 export type CatalogProjectValueDraftRemovedResponse = z.infer<typeof projectValueDraftRemovedResponseSchema>;
 export type CatalogValueChangeRequestDto = z.infer<typeof catalogValueChangeRequestDtoSchema>;
+export type CatalogSourceConflictDecisionResponse = z.infer<typeof canonicalSourceConflictDecisionResponseSchema>;
 export type CatalogValueChangeRequestListResponse = z.infer<typeof catalogValueChangeRequestListResponseSchema>;
 export type CatalogValueChangeRequestResponse = z.infer<typeof catalogValueChangeRequestResponseSchema>;
 export type CatalogBatchValueChangeRequestResponse = z.infer<typeof catalogBatchValueChangeRequestResponseSchema>;
