@@ -1397,54 +1397,68 @@ export async function rollbackCanonicalSource(
 }
 
 export async function syncCanonicalSource(
-  db: Queryable,
+  db: Database,
   objectStore: ObjectStore,
   auth: AuthContext,
   input: { projectId: string; fileId: string; versionId: string }
 ) {
-  const workflow = await fileWorkflow(db, auth, { projectId: input.projectId, fileId: input.fileId });
-  if (!workflow.canonical || !workflow.configSetId) return null;
-  const file = await getProjectParameterFileById(db, { organizationId: auth.organization.id, fileId: input.fileId });
-  if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
-  if (file.currentVersionId !== input.versionId) throw new ApiError("CONFLICT", "Canonical manual sync only accepts the current pinned version.", { reason: "stale-base" });
-  const bindings = await loadSourceBindingCohortReadOnly(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    configSetId: workflow.configSetId
-  });
-  const first = bindings.find((binding) => binding.sourcePinId && binding.oldValueId);
-  if (first?.sourcePinId && first.oldValueId) {
-    const pin = await loadOwnedProjectValueSourcePin(db, {
+  return db.transaction(async (tx) => {
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: input.fileId });
+    if (!workflow.canonical || !workflow.configSetId) return null;
+    const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
+    if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
+    if (file.currentVersionId !== input.versionId) throw new ApiError("CONFLICT", "Canonical manual sync only accepts the current pinned version.", { reason: "stale-base" });
+    const bindings = await loadSourceBindingCohortReadOnly(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
-      bindingId: first.bindingId,
-      projectValueId: first.oldValueId
+      configSetId: workflow.configSetId
     });
-    if (!pin || !pin.configRevisionId.trim()) throw new ApiError("CONFLICT", "Canonical source has no exact config revision.", { reason: "source-config-revision-required" });
-    const source = await loadExactSourceRevisionForProof(db, objectStore, {
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      configSetId: workflow.configSetId,
-      configRevisionId: pin.configRevisionId,
-      fileId: pin.fileId,
-      fileVersionId: pin.fileVersionId
-    });
-    const current = await db.query<{ id: string; current_version_id: string | null; config_set_role: string | null; config_set_sort_order: number; format: string }>(
-      `select id,current_version_id,config_set_role,config_set_sort_order,format
-         from project_parameter_files where config_set_id=$1 order by id`,
-      [workflow.configSetId]
-    );
-    if (current.rows.length !== source.members.length || current.rows.some((member) => !source.members.some((pinned) => canonicalSourceMemberMatchesCurrentFile({ fileId: pinned.fileId, fileVersionId: pinned.fileVersionId, role: pinned.role, sortOrder: pinned.sortOrder, format: pinned.format }, member)))) {
-      throw new ApiError("CONFLICT", "Canonical source members are out of sync; use a reviewed source candidate.", { reason: "source-membership-drift" });
+    const first = bindings.find((binding) => binding.sourcePinId && binding.oldValueId);
+    if (!first) throw new ApiError("CONFLICT", "Canonical source cohort has no active owned pin to validate.", { reason: "source-pin-missing" });
+    if (first?.sourcePinId && first.oldValueId) {
+      const pin = await loadOwnedProjectValueSourcePin(tx, {
+        organizationId: auth.organization.id, projectId: input.projectId,
+        bindingId: first.bindingId, projectValueId: first.oldValueId
+      });
+      if (!pin || !pin.configRevisionId.trim()) throw new ApiError("CONFLICT", "Canonical source has no exact config revision.", { reason: "source-config-revision-required" });
+      await lockCanonicalSourceScope(tx, pin, workflow.configSetId);
+      const cohort = await loadCanonicalSourceCohort(tx, {
+        organizationId: auth.organization.id, projectId: input.projectId, configSetId: workflow.configSetId
+      });
+      if (JSON.stringify(cohort) !== JSON.stringify(bindings)) throw new ApiError("CONFLICT", "Canonical source cohort changed during validation.", { reason: "source-proof-busy" });
+      const source = await loadExactSourceRevisionForProof(tx, objectStore, {
+        organizationId: auth.organization.id, projectId: input.projectId,
+        configSetId: workflow.configSetId, configRevisionId: pin.configRevisionId,
+        fileId: pin.fileId, fileVersionId: pin.fileVersionId
+      });
+      for (const binding of cohort) {
+        const currentPin = await loadOwnedProjectValueSourcePin(tx, {
+          organizationId: auth.organization.id, projectId: input.projectId,
+          bindingId: binding.bindingId, projectValueId: binding.oldValueId
+        });
+        if (!currentPin || currentPin.sourcePinId !== binding.sourcePinId
+          || currentPin.configRevisionId !== pin.configRevisionId
+          || !source.members.some((member) => member.fileId === currentPin.fileId && member.fileVersionId === currentPin.fileVersionId)) {
+          throw new ApiError("CONFLICT", "Canonical source cohort has inconsistent revision members.", { reason: "source-membership-drift" });
+        }
+      }
+      const current = await tx.query<{ id: string; current_version_id: string | null; config_set_role: string | null; config_set_sort_order: number; format: string }>(
+        `select id,current_version_id,config_set_role,config_set_sort_order,format
+           from project_parameter_files where config_set_id=$1 order by id`,
+        [workflow.configSetId]
+      );
+      if (current.rows.length !== source.members.length || current.rows.some((member) => !source.members.some((pinned) => canonicalSourceMemberMatchesCurrentFile({ fileId: pinned.fileId, fileVersionId: pinned.fileVersionId, role: pinned.role, sortOrder: pinned.sortOrder, format: pinned.format }, member)))) {
+        throw new ApiError("CONFLICT", "Canonical source members are out of sync; use a reviewed source candidate.", { reason: "source-membership-drift" });
+      }
     }
-  }
-  return {
-    draftsCreated: 0,
-    unchanged: bindings.filter((binding) => binding.sourcePinId).length,
-    unmatched: 0,
-    skipped: false,
-    identityFallbackUses: 0,
-    sourceWorkflow: "canonical" as const,
-    message: "Canonical source is consistent; no legacy synchronization was run."
-  };
+    return {
+      draftsCreated: 0,
+      unchanged: bindings.length,
+      unmatched: 0,
+      skipped: false,
+      identityFallbackUses: 0,
+      sourceWorkflow: "canonical" as const,
+      message: "Canonical source is consistent; no legacy synchronization was run."
+    };
+  }).catch((error) => rethrowSourceTransactionError(error));
 }
