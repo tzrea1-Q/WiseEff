@@ -383,6 +383,23 @@ describe("parameter catalog client contract", () => {
     );
   });
 
+  it("reads the frozen conflict decision through the request-scoped route", async () => {
+    const sourceDiff = { requestId: "request-1", bindingId: "binding-1", candidateId: "prepared-1",
+      format: "json", sourcePinId: "pin-1", baseDigest: "a".repeat(64), proposedDigest: "b".repeat(64),
+      diffDigest: "c".repeat(64), before: "old", after: "new" };
+    const item = { request: { id: "request-1", bindingId: "binding-1", targetValue: "50",
+      sourceFormat: "json", status: "pending", assignedToUserId: "reviewer-1", submitterUserId: "author-1" },
+      sourceCandidateId: "uploaded-1", selectedBindingId: "binding-1", selectedDraftId: "draft-1",
+      choice: "file", decisionProofDigest: "d".repeat(64), sourceDiff };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item }));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    await expect(client.getProjectValueConflictDecision("project/1", "request/1")).resolves.toEqual({ item });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project%2F1/parameter-value-change-requests/request%2F1/conflict-decision",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it.each(["json", "dts"] as const)("parses one ordered %s batch and sends its proof to the existing review route", async (format) => {
     const proof = "a".repeat(64);
     const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({

@@ -73,6 +73,8 @@ export function createApiParameterCatalogRepository(
       client.withdrawProjectValueChangeRequest(projectId, requestId, context),
     getProjectValueChangeSourceDiff: (projectId, requestId) =>
       client.getProjectValueChangeSourceDiff(projectId, requestId),
+    getProjectValueConflictDecision: (projectId, requestId) =>
+      client.getProjectValueConflictDecision(projectId, requestId),
     getCanonicalBindingChangeHistory: (projectId, bindingId, limit) =>
       client.getCanonicalBindingChangeHistory(projectId, bindingId, limit),
     getCanonicalBindingExport: (projectId, bindingId, projectValueId) =>

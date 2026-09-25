@@ -2,6 +2,7 @@ import type { ZodTypeAny, z } from "zod";
 
 import {
   bindingDraftResponseSchema,
+  canonicalSourceConflictDecisionResponseSchema,
   bindingCompareListResponseSchema,
   bindingHistoryListResponseSchema,
   catalogBindingExportResponseSchema,
@@ -768,6 +769,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/source-diff`,
         catalogValueChangeSourceDiffResponseSchema,
         "CatalogValueChangeSourceDiffResponse"
+      ),
+    getProjectValueConflictDecision: (projectId: string, requestId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/conflict-decision`,
+        canonicalSourceConflictDecisionResponseSchema,
+        "CanonicalSourceConflictDecisionResponse"
       ),
     withdrawProjectValueChangeRequest: (
       projectId: string,

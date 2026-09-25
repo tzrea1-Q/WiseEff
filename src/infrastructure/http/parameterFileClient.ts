@@ -1,5 +1,6 @@
 import type {
   ActivateParameterFileCandidateInput,
+  CanonicalSourceConflictSubmitInput,
   ActivateParameterFileCandidateResult,
   CreateParameterFileCandidateInput,
   DownloadParameterFileCandidateResult,
@@ -25,6 +26,10 @@ import type {
   SubmitParameterFileSourceReviewInput,
   UploadParameterFileInput
 } from "@/application/ports/ParameterFileRepository";
+import {
+  canonicalSourceConflictListResponseSchema,
+  canonicalSourceConflictSubmitResponseSchema
+} from "@wiseeff/dto-schemas";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
 
@@ -251,6 +256,15 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
         routeCandidateSourcePreview(projectId, candidateId)
       );
       return response.item;
+    },
+    async listCandidateSourceConflicts(projectId, candidateId) {
+      return canonicalSourceConflictListResponseSchema.parse(await client.get(
+        `${routeCandidate(projectId, candidateId)}/source-conflicts`
+      ));
+    },
+    async submitCandidateSourceConflict(projectId, candidateId, input: CanonicalSourceConflictSubmitInput) {
+      const response = await client.post(`${routeCandidate(projectId, candidateId)}/source-conflict-submit`, input);
+      return canonicalSourceConflictSubmitResponseSchema.parse(response).item;
     },
     async submitCandidateSourceReview(
       projectId: string,

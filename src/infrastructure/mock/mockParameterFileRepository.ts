@@ -697,6 +697,14 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       };
     },
 
+    async listCandidateSourceConflicts() {
+      return { items: [], ineligible: [] };
+    },
+
+    async submitCandidateSourceConflict(): Promise<never> {
+      throw mockApiError("UNSUPPORTED", "模拟模式不提供 canonical 来源冲突审核。", {});
+    },
+
     async submitCandidateSourceReview(): Promise<ParameterFileSourceReviewResult> {
       throw mockApiError("UNSUPPORTED", "模拟模式不提供来源审核。", {});
     },

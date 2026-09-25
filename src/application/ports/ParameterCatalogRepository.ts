@@ -201,6 +201,10 @@ export interface ParameterCatalogRepository {
     projectId: string,
     requestId: string
   ): Promise<CatalogValueChangeSourceDiffResponse>;
+  getProjectValueConflictDecision?(
+    projectId: string,
+    requestId: string
+  ): Promise<import("@/infrastructure/http/parameterCatalogDtos").CatalogSourceConflictDecisionResponse>;
   getCanonicalBindingChangeHistory?(
     projectId: string,
     bindingId: string,

@@ -14,6 +14,7 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   ParameterFileCandidate,
+  ParameterFileRepository,
   ParameterFileSourcePreview,
   ParameterFileSourceReviewResult,
   ParameterFileSourceWorkflow,
@@ -30,6 +31,7 @@ import {
 } from "@/components/parameters/StructuredValueEditor";
 import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
 import { WorkbenchBaselineDock } from "./WorkbenchBaselineDock";
+import { WorkbenchCanonicalConflictDecision } from "./WorkbenchCanonicalConflictDecision";
 import { workbenchReadinessAllowsRelease } from "./WorkbenchReleaseReadiness";
 import type { WorkbenchActivityRow } from "./workbenchActivityModel";
 import {
@@ -85,6 +87,10 @@ export type WorkbenchInspectorPanelProps = {
   onExitBaselineCompare: () => void;
   onSelectBaselineCompareMember: (member: DtsBaselineMemberComparison) => void;
   activeCandidate: ParameterFileCandidate | null;
+  projectId: string;
+  currentUserId: string;
+  fileRepository: ParameterFileRepository;
+  onConflictSubmitted: (requestId: string) => void;
   sourcePreview: ParameterFileSourcePreview | null;
   sourcePreviewLoading: boolean;
   sourcePreviewError: string;
@@ -177,6 +183,10 @@ export function WorkbenchInspectorPanel({
   onExitBaselineCompare,
   onSelectBaselineCompareMember,
   activeCandidate,
+  projectId,
+  currentUserId,
+  fileRepository,
+  onConflictSubmitted,
   sourcePreview,
   sourcePreviewLoading,
   sourcePreviewError,
@@ -328,6 +338,13 @@ export function WorkbenchInspectorPanel({
           onSelectCompareMember={onSelectBaselineCompareMember}
         />
         {revisionGate}
+        {canAdmin && canEdit && activeCandidate?.status === "ready" && canvasMode === "candidate"
+          && sourcePreview?.kind === "canonical" && !sourcePreview.request ? (
+            <WorkbenchCanonicalConflictDecision key={activeCandidate.id}
+              projectId={projectId} currentUserId={currentUserId} candidate={activeCandidate}
+              preview={sourcePreview} repository={fileRepository} allowed
+              onSubmitted={onConflictSubmitted} />
+          ) : null}
         <dl>
           <div>
             <dt>检查层级</dt>

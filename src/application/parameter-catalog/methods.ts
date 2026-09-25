@@ -36,7 +36,8 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "withdrawProjectValueChangeRequest",
   "getCanonicalBindingChangeHistory",
   "getCanonicalBindingExport",
-  "getProjectValueChangeSourceDiff"
+  "getProjectValueChangeSourceDiff",
+  "getProjectValueConflictDecision"
 ] as const;
 
 export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [
