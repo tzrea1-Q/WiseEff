@@ -1649,6 +1649,305 @@ export async function recheckCanonicalConflictDecisionForReview(
   }
 }
 
+export type CanonicalBatchRollbackPrepareDto = CanonicalSourceBatchPrepareDto & Readonly<{
+  historicalVersionId: string;
+  historicalDigest: string;
+  historicalSizeBytes: number;
+  expectedCurrentVersionId: string;
+  expectedWorkflowProofToken: string;
+  replayed: boolean;
+}>;
+
+export type CanonicalBatchRollbackSubmitDto = Readonly<{
+  candidateId: string;
+  requestId: string;
+  status: "pending" | "approved";
+  batchProofDigest: string;
+  replayed: boolean;
+}>;
+
+async function historicalRollbackBytes(
+  db: Queryable, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; fileId: string; versionId: string }
+) {
+  const file = await getProjectParameterFileById(db, { organizationId: auth.organization.id, fileId: input.fileId });
+  if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
+  const version = await getFileVersionById(db, { versionId: input.versionId });
+  if (!version || version.fileId !== file.id) throw new ApiError("NOT_FOUND", "Historical source version was not found.");
+  const bytes = await getBoundedObject(objectStore, version.storageKey);
+  const checksum = digest(bytes);
+  if (version.checksum.replace(/^sha256:/, "") !== checksum || version.sizeBytes !== bytes.length) {
+    throw new ApiError("CONFLICT", "Historical source object disagrees with its version metadata.", {
+      reason: "historical-version-stale"
+    });
+  }
+  return { file, version, bytes, checksum };
+}
+
+/** D-owned candidate preparation; writes a candidate, object and audit, never a review request or Value. */
+export async function prepareCanonicalBatchRollbackCandidate(
+  db: Database, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; fileId: string; versionId: string; expectedCurrentVersionId: string;
+    expectedWorkflowProofToken: string; requestId: string }
+): Promise<CanonicalBatchRollbackPrepareDto> {
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  if (!input.requestId.trim()) throw new ApiError("VALIDATION_FAILED", "A preparation request ID is required.");
+  return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
+    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `${auth.organization.id}:${input.projectId}:batch-rollback:${input.requestId}`
+    ]);
+    const { file, bytes, checksum } = await historicalRollbackBytes(tx, objectStore, auth, input);
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: file.id });
+    if (!workflow.canonical || workflow.proofToken !== input.expectedWorkflowProofToken) {
+      throw new ApiError("CONFLICT", "Canonical source proof changed after rollback selection.", { reason: "source-proof-stale" });
+    }
+    if (file.currentVersionId !== input.expectedCurrentVersionId || file.currentVersionId === input.versionId) {
+      throw new ApiError("CONFLICT", "Historical rollback file version is stale.", { reason: "stale-base" });
+    }
+    // ponytail: file-scoped scan is enough here; add an indexed preparation key if volume grows.
+    const prior = (await listParameterFileCandidates(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, fileId: file.id, includeAbandoned: true
+    })).find((candidate) => candidate.impact.canonicalBatchRollback?.prepareRequestId === input.requestId);
+    if (prior && (prior.impact.canonicalBatchRollback?.historicalVersionId !== input.versionId
+      || prior.impact.canonicalBatchRollback.expectedCurrentVersionId !== input.expectedCurrentVersionId
+      || prior.impact.canonicalBatchRollback.expectedWorkflowProofToken !== input.expectedWorkflowProofToken
+      || prior.impact.canonicalBatchRollback.historicalDigest !== checksum || prior.status !== "ready")) {
+      throw new ApiError("CONFLICT", "Rollback preparation request was reused for a different source.", {
+        reason: "rollback-replay-mismatch"
+      });
+    }
+    const candidate = prior ?? await createCandidate(tx, attempt.objectStore, auth, {
+      projectId: input.projectId, fileId: file.id, fileName: file.fileName, bytes
+    }, { invocation: createUserInvocation(auth), requestId: input.requestId });
+    const inspection = await inspectCandidate(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id
+    });
+    if (!inspection.proofToken || !inspection.changes || inspection.changes.length < 2) {
+      throw new ApiError("CONFLICT", "Historical version has no exact multi-Binding source proof.", {
+        reason: inspection.reason ?? "canonical-batch-writer-unavailable"
+      });
+    }
+    const proof = await prepareCanonicalCandidateBatchInTransaction(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: inspection.proofToken
+    });
+    if (proof.fileId !== file.id || proof.baseVersionId !== input.expectedCurrentVersionId
+      || proof.cohortProofToken !== input.expectedWorkflowProofToken || proof.proposedDigest !== checksum
+      || proof.targets.length < 2) {
+      throw new ApiError("CONFLICT", "Historical rollback proof changed under source locks.", { reason: "source-proof-stale" });
+    }
+    if (prior && (prior.impact.canonicalBatchRollback?.historicalSizeBytes !== bytes.length
+      || prior.impact.canonicalBatchRollback.candidateProofToken !== proof.proofToken
+      || prior.impact.canonicalBatchRollback.batchProofDigest !== proof.batchProofDigest)) {
+      throw new ApiError("CONFLICT", "Prepared rollback no longer matches its frozen batch proof.", {
+        reason: "rollback-replay-mismatch"
+      });
+    }
+    if (!prior) {
+      await tx.query(`update project_parameter_file_candidates
+        set impact=jsonb_set(coalesce(impact,'{}'::jsonb),'{canonicalBatchRollback}',$4::jsonb,true)
+        where id=$1 and organization_id=$2 and project_id=$3`, [candidate.id, auth.organization.id,
+        input.projectId, JSON.stringify({ prepareRequestId: input.requestId,
+          historicalVersionId: input.versionId, historicalDigest: checksum, historicalSizeBytes: bytes.length,
+          expectedCurrentVersionId: input.expectedCurrentVersionId,
+          expectedWorkflowProofToken: input.expectedWorkflowProofToken,
+          candidateProofToken: proof.proofToken, batchProofDigest: proof.batchProofDigest })]);
+    }
+    return { ...proof, historicalVersionId: input.versionId, historicalDigest: checksum,
+      historicalSizeBytes: bytes.length, expectedCurrentVersionId: input.expectedCurrentVersionId,
+      expectedWorkflowProofToken: input.expectedWorkflowProofToken, replayed: Boolean(prior) };
+  }).catch((error) => rethrowSourceTransactionError(error));
+}
+
+/** D-owned transaction; C's existing batch request is frozen inside the same outer transaction. */
+export async function submitCanonicalBatchRollback(
+  db: Database, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; fileId: string; versionId: string; candidateId: string;
+    expectedCurrentVersionId: string; expectedWorkflowProofToken: string;
+    expectedCandidateProofToken: string; expectedBatchProofDigest: string;
+    reason: string; assignedToUserId: string; requestId: string; refusalSink: TrustedRefusalAuditSink }
+): Promise<CanonicalBatchRollbackSubmitDto> {
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  const reason = input.reason.trim();
+  if (!reason) throw new ApiError("VALIDATION_FAILED", "A rollback reason is required.");
+  return withCanonicalSourceAttemptTransaction<CanonicalBatchRollbackSubmitDto>(db, objectStore, async (tx) => {
+    const { file, bytes, checksum } = await historicalRollbackBytes(tx, objectStore, auth, input);
+    // Match C's reviewer-before-source lock order; C's nested submit reuses this row lock.
+    if (!await lockUserById(tx, { organizationId: auth.organization.id, userId: input.assignedToUserId })) {
+      throw new ApiError("VALIDATION_FAILED", "The assigned reviewer was not found.");
+    }
+    const candidate = await getParameterFileCandidateById(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+    });
+    const origin = candidate?.impact.canonicalBatchRollback;
+    if (!candidate || !origin || candidate.fileId !== file.id || candidate.baseVersionId !== input.expectedCurrentVersionId
+      || origin.historicalVersionId !== input.versionId || origin.historicalDigest !== checksum
+      || origin.historicalSizeBytes !== bytes.length || origin.expectedCurrentVersionId !== input.expectedCurrentVersionId
+      || origin.expectedWorkflowProofToken !== input.expectedWorkflowProofToken
+      || origin.candidateProofToken !== input.expectedCandidateProofToken
+      || origin.batchProofDigest !== input.expectedBatchProofDigest
+      || !candidate.storageKey || candidate.checksum?.replace(/^sha256:/, "") !== checksum) {
+      throw new ApiError("CONFLICT", "Rollback candidate disagrees with the exact historical proof.", {
+        reason: "historical-version-stale"
+      });
+    }
+    const candidateBytes = await getBoundedObject(objectStore, candidate.storageKey);
+    if (!candidateBytes.equals(bytes) || candidate.sizeBytes !== bytes.length) {
+      throw new ApiError("CONFLICT", "Rollback candidate bytes no longer match the historical version.", {
+        reason: "historical-version-stale"
+      });
+    }
+    const prior = (await tx.query<{ id: string; status: string; reason: string; submitter_user_id: string;
+      assigned_to_user_id: string; batch_proof_digest: string; batch_source_proof_token: string;
+      batch_cohort_proof_token: string; batch_base_version_id: string; batch_target_count: number;
+      applied_audit_ref: string | null }>(
+      `select id,status,reason,submitter_user_id,assigned_to_user_id,batch_proof_digest,
+        batch_source_proof_token,batch_cohort_proof_token,batch_base_version_id,batch_target_count,applied_audit_ref
+       from project_parameter_value_change_requests where organization_id=$1 and project_id=$2
+         and candidate_id=$3 and request_kind='batch' and status in ('pending','approved')`,
+      [auth.organization.id, input.projectId, candidate.id])).rows;
+    if (prior.length > 1) throw new ApiError("CONFLICT", "Rollback candidate has multiple active review requests.");
+    if (prior.length) {
+      const request = prior[0]!;
+      const receipts = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+        where organization_id=$1 and project_id=$2 and target_id=$3 and action='value-change-submitted'
+          and metadata ? 'canonicalRollbackVersionId'`, [auth.organization.id, input.projectId, request.id]);
+      if (request.reason !== reason || request.submitter_user_id !== auth.user.id
+        || request.assigned_to_user_id !== input.assignedToUserId
+        || request.batch_proof_digest !== input.expectedBatchProofDigest
+        || request.batch_source_proof_token !== input.expectedCandidateProofToken
+        || request.batch_cohort_proof_token !== input.expectedWorkflowProofToken
+        || request.batch_base_version_id !== input.expectedCurrentVersionId
+        || receipts.rows.length !== 1 || receipts.rows[0]!.metadata.canonicalRollbackVersionId !== input.versionId
+        || receipts.rows[0]!.metadata.historicalDigest !== checksum
+        || receipts.rows[0]!.metadata.historicalSizeBytes !== bytes.length
+        || receipts.rows[0]!.metadata.candidateId !== candidate.id
+        || receipts.rows[0]!.metadata.batchProofDigest !== input.expectedBatchProofDigest
+        || receipts.rows[0]!.metadata.candidateProofToken !== input.expectedCandidateProofToken
+        || receipts.rows[0]!.metadata.baseVersionId !== input.expectedCurrentVersionId
+        || receipts.rows[0]!.metadata.workflowProofToken !== input.expectedWorkflowProofToken) {
+        throw new ApiError("CONFLICT", "Rollback retry disagrees with the reviewed request.", {
+          reason: "rollback-replay-mismatch"
+        });
+      }
+      if (request.status === "approved") {
+        const applied = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+          where id=$1 and organization_id=$2 and project_id=$3 and target_id=$4 and action='value-change-applied'`,
+          [request.applied_audit_ref, auth.organization.id, input.projectId, request.id]);
+        const complete = await tx.query<{ total: number; applied: number }>(`select count(*)::int as total,
+          count(*) filter (where applied_value_id is not null and applied_history_event_id is not null
+            and applied_source_pin_id is not null and applied_file_version_id is not null)::int as applied
+          from project_parameter_value_change_targets where request_id=$1 and organization_id=$2 and project_id=$3`,
+          [request.id, auth.organization.id, input.projectId]);
+        if (applied.rows.length !== 1 || applied.rows[0]!.metadata.batchProofDigest !== input.expectedBatchProofDigest
+          || complete.rows[0]?.total !== request.batch_target_count
+          || complete.rows[0]?.applied !== request.batch_target_count || candidate.status !== "active") {
+          throw new ApiError("CONFLICT", "Approved rollback lacks a complete source receipt.");
+        }
+        return { candidateId: candidate.id, requestId: request.id, status: "approved",
+          batchProofDigest: input.expectedBatchProofDigest, replayed: true };
+      }
+    }
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: file.id });
+    if (!workflow.canonical || workflow.proofToken !== input.expectedWorkflowProofToken
+      || file.currentVersionId !== input.expectedCurrentVersionId || candidate.status !== "ready") {
+      throw new ApiError("CONFLICT", "Canonical rollback source changed before submission.", { reason: "source-proof-stale" });
+    }
+    const proof = await prepareCanonicalCandidateBatchInTransaction(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: input.expectedCandidateProofToken
+    });
+    if (proof.batchProofDigest !== input.expectedBatchProofDigest || proof.proposedDigest !== checksum
+      || proof.targets.length < 2 || proof.baseVersionId !== input.expectedCurrentVersionId) {
+      throw new ApiError("CONFLICT", "Rollback target order or cohort changed.", { reason: "source-proof-stale" });
+    }
+    if (prior.length) {
+      const locked = await tx.query<{ status: string }>(`select status from project_parameter_value_change_requests
+        where id=$1 and organization_id=$2 and project_id=$3 for update`,
+        [prior[0]!.id, auth.organization.id, input.projectId]);
+      if (locked.rows[0]?.status !== "pending") {
+        throw new ApiError("CONFLICT", "Rollback request changed during retry.", { reason: "source-proof-stale" });
+      }
+      return { candidateId: candidate.id, requestId: prior[0]!.id,
+        status: "pending", batchProofDigest: proof.batchProofDigest, replayed: true };
+    }
+    const { submitCanonicalBatchValueChange } = await import("../parameter-bindings/drafts/batchChangeService");
+    const request = await submitCanonicalBatchValueChange(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: proof.proofToken,
+      reason, assignedToUserId: input.assignedToUserId, invocation: createUserInvocation(auth),
+      requestId: input.requestId, refusalSink: input.refusalSink
+    });
+    if (request.status !== "pending" || request.batchProofDigest !== proof.batchProofDigest
+      || request.targets.length !== proof.targets.length) {
+      throw new ApiError("CONFLICT", "Batch review request lost its exact rollback proof.");
+    }
+    const submittedReceipts = await tx.query<{ trace_id: string; metadata: Record<string, unknown> }>(
+      `select trace_id,metadata from audit_events where organization_id=$1 and project_id=$2
+        and target_id=$3 and action='value-change-submitted' and metadata->>'requestKind'='batch'`,
+      [auth.organization.id, input.projectId, request.id]);
+    if (submittedReceipts.rows.length !== 1 || submittedReceipts.rows[0]!.trace_id !== input.requestId) {
+      throw new ApiError("CONFLICT", "Another submission already owns this batch request.", {
+        reason: "rollback-replay-mismatch"
+      });
+    }
+    await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
+      action: "value-change-submitted", organizationId: auth.organization.id, projectId: input.projectId,
+      targetType: "project-parameter-value-change-request", targetId: request.id,
+      metadata: { requestId: request.id, candidateId: candidate.id, canonicalRollbackVersionId: input.versionId,
+        historicalDigest: checksum, historicalSizeBytes: bytes.length, batchProofDigest: proof.batchProofDigest,
+        candidateProofToken: proof.proofToken, baseVersionId: input.expectedCurrentVersionId,
+        workflowProofToken: input.expectedWorkflowProofToken }
+    }, input.requestId);
+    return { candidateId: candidate.id, requestId: request.id, status: "pending",
+      batchProofDigest: proof.batchProofDigest, replayed: false };
+  }).catch((error) => rethrowSourceTransactionError(error));
+}
+
+/** Approval side of D's historical byte proof; ordinary batch requests remain unchanged. */
+export async function recheckCanonicalBatchRollbackForReview(
+  tx: Database, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; requestId: string; candidateId: string; fileId: string;
+    baseVersionId: string; candidateProofToken: string; workflowProofToken: string;
+    batchProofDigest: string; candidateBytes: Buffer }
+): Promise<void> {
+  const candidate = await getParameterFileCandidateById(tx, {
+    organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+  });
+  const origin = candidate?.impact.canonicalBatchRollback;
+  const receipts = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+    where organization_id=$1 and project_id=$2 and target_id=$3 and action='value-change-submitted'
+      and metadata ? 'canonicalRollbackVersionId'`, [auth.organization.id, input.projectId, input.requestId]);
+  if (!origin && !receipts.rows.length) return;
+  if (!origin || receipts.rows.length !== 1) {
+    throw new ApiError("CONFLICT", "Batch rollback lost its historical source receipt.");
+  }
+  const receipt = receipts.rows[0]!.metadata;
+  const historical = await historicalRollbackBytes(tx, objectStore, auth, {
+    projectId: input.projectId, fileId: input.fileId, versionId: origin.historicalVersionId
+  });
+  if (origin.expectedCurrentVersionId !== input.baseVersionId
+    || origin.expectedWorkflowProofToken !== input.workflowProofToken
+    || origin.candidateProofToken !== input.candidateProofToken
+    || origin.batchProofDigest !== input.batchProofDigest
+    || origin.historicalDigest !== historical.checksum
+    || origin.historicalSizeBytes !== historical.bytes.length
+    || !historical.bytes.equals(input.candidateBytes)
+    || receipt.canonicalRollbackVersionId !== origin.historicalVersionId
+    || receipt.historicalDigest !== origin.historicalDigest
+    || receipt.historicalSizeBytes !== origin.historicalSizeBytes
+    || receipt.candidateId !== input.candidateId
+    || receipt.batchProofDigest !== input.batchProofDigest
+    || receipt.candidateProofToken !== input.candidateProofToken
+    || receipt.baseVersionId !== input.baseVersionId
+    || receipt.workflowProofToken !== input.workflowProofToken) {
+    throw new ApiError("CONFLICT", "Batch rollback historical source proof changed after review submission.", {
+      reason: "historical-version-stale"
+    });
+  }
+}
+
 export async function rollbackCanonicalSource(
   db: Database,
   objectStore: ObjectStore,

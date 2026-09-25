@@ -118,6 +118,16 @@ export type CandidateImpact = {
   conflicts?: CandidateConflictEvidence[];
   blockers?: CandidateBlocker[];
   canonicalSourceWorkflow?: CanonicalSourceWorkflowLink;
+  canonicalBatchRollback?: {
+    prepareRequestId: string;
+    historicalVersionId: string;
+    historicalDigest: string;
+    historicalSizeBytes: number;
+    expectedCurrentVersionId: string;
+    expectedWorkflowProofToken: string;
+    candidateProofToken: string;
+    batchProofDigest: string;
+  };
 };
 
 export type CanonicalSourceWorkflowLink = {
