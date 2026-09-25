@@ -128,16 +128,32 @@ describe("createConfigSetOpsSession", () => {
     ).toBe("来源一致性校验：已检查当前文件版本；存在可用固定来源时，已与其中一份来源修订核对配置集成员及文件版本。未逐项证明全部参数绑定一致，也未同步参数、创建草稿或审核请求。");
   });
 
-  it("guides source membership drift to the reviewed candidate flow", async () => {
+  it.each([
+    ["source-membership-drift", "成员、文件版本或参数绑定的来源记录", "仅在来源证明完整且基版本有效时提交人工审核"],
+    ["mixed-source-revisions", "不同的来源修订", "上传候选不能直接解除此冲突"],
+    ["source-pin-missing", "缺少可验证的活动来源固定记录", "先修复来源，再重新校验"],
+    ["source-proof-busy", "暂时无法取得稳定证明", "等待相关操作完成后刷新重试"]
+  ])("maps canonical sync %s to an actionable Chinese error", async (reason, cause, action) => {
     const session = createConfigSetOpsSession();
     const result = await session.syncFile("proj-1", { fileId: "file-1", fileName: "board.json" }, {
-      syncFile: async () => { throw new WiseEffApiError("CONFLICT", "Canonical source members are out of sync; use a reviewed source candidate.", { reason: "source-membership-drift" }, "request-1"); },
+      syncFile: async () => { throw new WiseEffApiError("CONFLICT", "Canonical source check failed.", { reason }, "request-1"); },
       listFiles: vi.fn(),
       listConflicts: vi.fn()
     });
-    expect(result).toEqual({ ok: false, message: expect.stringContaining("「上传候选」") });
-    expect(session.lastError).toContain("来源证明完整且基版本有效时才能提交人工审核");
+    expect(result).toEqual({ ok: false, message: expect.stringContaining(cause) });
+    expect(session.lastError).toContain(action);
+    expect(session.lastError).toContain("未同步参数或创建审核请求");
     expect(session.lastError).not.toContain("Canonical source");
+  });
+
+  it("keeps legacy sync errors unchanged", async () => {
+    const session = createConfigSetOpsSession();
+    const result = await session.syncFile("proj-1", { fileId: "file-1", fileName: "board.dts" }, {
+      syncFile: async () => { throw new Error("旧同步失败"); },
+      listFiles: vi.fn(),
+      listConflicts: vi.fn()
+    });
+    expect(result).toEqual({ ok: false, message: "旧同步失败" });
   });
 
   it("exportConfigSet builds evidence from manifest", async () => {
