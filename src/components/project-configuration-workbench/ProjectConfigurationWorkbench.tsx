@@ -1661,7 +1661,6 @@ export function ProjectConfigurationWorkbench({
               activeCandidate={activeCandidate}
               projectId={project.id}
               currentUserId={currentUserId}
-              fileRepository={fileRepository}
               onConflictSubmitted={(requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)}
               sourcePreview={sourcePreview}
               sourcePreviewLoading={sourcePreviewLoading}

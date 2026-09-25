@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import type { createCanonicalConflictClient } from "@/infrastructure/http/canonicalConflictClient";
 import { WorkbenchCanonicalConflictDecision } from "./WorkbenchCanonicalConflictDecision";
 
 const digest = "a".repeat(64);
@@ -30,7 +30,7 @@ const conflict = { selectedBindingId: "binding-1", selectedDraftId: "draft-1", a
 function setup(items = [conflict]) {
   const submitCandidateSourceConflict = vi.fn().mockResolvedValue({ requestId: "request-1", status: "pending", replayed: true });
   const repository = { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items, ineligible: [] }),
-    submitCandidateSourceConflict } as unknown as ParameterFileRepository;
+    submitCandidateSourceConflict } as unknown as ReturnType<typeof createCanonicalConflictClient>;
   const onSubmitted = vi.fn();
   render(<WorkbenchCanonicalConflictDecision projectId="project-1" currentUserId="author-1"
     candidate={candidate} preview={preview} repository={repository} allowed onSubmitted={onSubmitted}

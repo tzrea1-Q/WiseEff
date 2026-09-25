@@ -14,7 +14,6 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   ParameterFileCandidate,
-  ParameterFileRepository,
   ParameterFileSourcePreview,
   ParameterFileSourceReviewResult,
   ParameterFileSourceWorkflow,
@@ -89,7 +88,6 @@ export type WorkbenchInspectorPanelProps = {
   activeCandidate: ParameterFileCandidate | null;
   projectId: string;
   currentUserId: string;
-  fileRepository: ParameterFileRepository;
   onConflictSubmitted: (requestId: string) => void;
   sourcePreview: ParameterFileSourcePreview | null;
   sourcePreviewLoading: boolean;
@@ -185,7 +183,6 @@ export function WorkbenchInspectorPanel({
   activeCandidate,
   projectId,
   currentUserId,
-  fileRepository,
   onConflictSubmitted,
   sourcePreview,
   sourcePreviewLoading,
@@ -342,7 +339,7 @@ export function WorkbenchInspectorPanel({
           && sourcePreview?.kind === "canonical" && !sourcePreview.request ? (
             <WorkbenchCanonicalConflictDecision key={activeCandidate.id}
               projectId={projectId} currentUserId={currentUserId} candidate={activeCandidate}
-              preview={sourcePreview} repository={fileRepository} allowed
+              preview={sourcePreview} allowed
               onSubmitted={onConflictSubmitted} />
           ) : null}
         <dl>

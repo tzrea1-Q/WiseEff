@@ -1,10 +1,3 @@
-import type { z } from "zod";
-import type {
-  canonicalSourceConflictListResponseSchema,
-  canonicalSourceConflictSubmitRequestSchema,
-  canonicalSourceConflictSubmitResponseSchema
-} from "@wiseeff/dto-schemas";
-
 export type ParameterFileFormat = "dts" | "json";
 export type ParameterFileVersionOrigin = "upload" | "writeback" | "rollback";
 
@@ -293,10 +286,6 @@ export type DownloadParameterFileCandidateResult = {
   bytes: Uint8Array;
 };
 
-export type CanonicalSourceConflictList = z.infer<typeof canonicalSourceConflictListResponseSchema>;
-export type CanonicalSourceConflictSubmitInput = z.infer<typeof canonicalSourceConflictSubmitRequestSchema>;
-export type CanonicalSourceConflictSubmitResult = z.infer<typeof canonicalSourceConflictSubmitResponseSchema>["item"];
-
 export type ParameterFileSourceReviewStatus = "pending" | "approved" | "rejected" | "withdrawn";
 
 export type ParameterFileSourceWorkflow = {
@@ -411,8 +400,6 @@ export interface ParameterFileRepository {
     input: ActivateParameterFileCandidateInput
   ): Promise<ActivateParameterFileCandidateResult>;
   getCandidateSourcePreview(projectId: string, candidateId: string): Promise<ParameterFileSourcePreview>;
-  listCandidateSourceConflicts(projectId: string, candidateId: string): Promise<CanonicalSourceConflictList>;
-  submitCandidateSourceConflict(projectId: string, candidateId: string, input: CanonicalSourceConflictSubmitInput): Promise<CanonicalSourceConflictSubmitResult>;
   submitCandidateSourceReview(
     projectId: string,
     candidateId: string,

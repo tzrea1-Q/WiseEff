@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
-  CanonicalSourceConflictList,
   ParameterFileCandidate,
-  ParameterFileRepository,
   ParameterFileSourcePreview
 } from "@/application/ports/ParameterFileRepository";
+import { createCanonicalConflictClient, type CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
@@ -38,12 +37,13 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
   currentUserId: string;
   candidate: ParameterFileCandidate;
   preview: ParameterFileSourcePreview;
-  repository: Pick<ParameterFileRepository, "listCandidateSourceConflicts" | "submitCandidateSourceConflict">;
+  repository?: ReturnType<typeof createCanonicalConflictClient>;
   allowed: boolean;
   onSubmitted: (requestId: string) => void;
   governanceClient?: ReturnType<typeof createUserGovernanceClient>;
 }) {
   const client = useMemo(() => governanceClient ?? createUserGovernanceClient(), [governanceClient]);
+  const conflictClient = useMemo(() => repository ?? createCanonicalConflictClient(), [repository]);
   const [conflicts, setConflicts] = useState<CanonicalSourceConflictList | null>(null);
   const [reviewers, setReviewers] = useState<Array<{ userId: string; name: string }>>([]);
   const [reviewerId, setReviewerId] = useState("");
@@ -61,7 +61,7 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
     setSelected(null);
     setError("");
     void Promise.all([
-      repository.listCandidateSourceConflicts(projectId, candidate.id),
+      conflictClient.listCandidateSourceConflicts(projectId, candidate.id),
       client.getProjectWorkflowRoleBindings(projectId)
     ]).then(([next, roles]) => {
       if (cancelled) return;
@@ -75,7 +75,7 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
       if (!cancelled) setError(presentError(cause, "加载来源冲突或审核人失败，请刷新重试。"));
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [candidate.id, client, currentUserId, projectId, reload, repository]);
+  }, [candidate.id, client, conflictClient, currentUserId, projectId, reload]);
 
   const item = conflicts?.items.find((entry) => entry.selectedBindingId === selected?.bindingId
     && entry.selectedDraftId === selected?.draftId);
@@ -86,7 +86,7 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
     setBusy(true);
     setError("");
     try {
-      const result = await repository.submitCandidateSourceConflict(projectId, candidate.id, {
+      const result = await conflictClient.submitCandidateSourceConflict(projectId, candidate.id, {
         selectedBindingId: selected.bindingId,
         selectedDraftId: selected.draftId,
         choice: selected.choice,
