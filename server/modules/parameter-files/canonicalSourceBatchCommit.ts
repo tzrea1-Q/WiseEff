@@ -18,7 +18,7 @@ import { deriveHistoryEventId, loadBindingById, loadProjectValueById } from "../
 import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNumber } from "../parameter-topology/repository";
 import { assertPinnedCanonicalSensitiveNodeWriteAllowed, loadCanonicalSourceSnapshot, readPinnedDtsSourceBatchChanges, recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, validatePinnedDtsSourceChange, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import { assertDeletedAnchorsRemainAbsent, loadFinalDtsDeleteProof } from "./canonicalSourceCommit";
-import { recheckCanonicalCandidateBatchForReviewInTransaction } from "./canonicalFileWorkflow";
+import { recheckCanonicalBatchRollbackForReview, recheckCanonicalCandidateBatchForReviewInTransaction } from "./canonicalFileWorkflow";
 import { deleteJsonSourceMember, MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "./jsonSource";
 import { insertFileVersion } from "./repository";
 import { rethrowSourceTransactionError } from "./sourceVersion";
@@ -169,6 +169,12 @@ export async function commitCanonicalSourceBatchRevision(
     const bytes = await getBounded(candidate.storage_key, MAX_PARAMETER_SOURCE_BYTES);
     if (bytes.length !== candidate.size_bytes || digest(bytes) !== proof.proposedDigest
       || digest(bytes) !== candidate.checksum.replace(/^sha256:/, "")) conflict("Batch candidate bytes failed integrity verification.");
+    await recheckCanonicalBatchRollbackForReview(tx, storage, auth, {
+      projectId: input.projectId, requestId: request.id, candidateId: candidate.id, fileId: proof.fileId,
+      baseVersionId: proof.baseVersionId, candidateProofToken: proof.proofToken,
+      workflowProofToken: proof.cohortProofToken, batchProofDigest: proof.batchProofDigest,
+      candidateBytes: bytes
+    });
     if (proof.format === "json") parseJsonSource(bytes);
     const after = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     const first = proof.cohort[0];
