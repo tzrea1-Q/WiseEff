@@ -1830,6 +1830,26 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "CanonicalSourceCandidatePreviewResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.listCanonicalSourceConflicts": {
+    summary: "Find exact canonical file/UI draft choices for a staged source candidate",
+    tags: ["parameter-files"],
+    responseBody: "CanonicalSourceConflictListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.submitCanonicalSourceConflict": {
+    summary: "Freeze one selected canonical source conflict for human review",
+    tags: ["parameter-files"],
+    requestBody: "CanonicalSourceConflictSubmitRequest",
+    responseBody: "CanonicalSourceConflictSubmitResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.getCanonicalSourceConflictDecision": {
+    summary: "Read the frozen choice and verified source diff of one visible conflict request",
+    tags: ["parameters"],
+    responseBody: "CanonicalSourceConflictDecisionResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.submitCanonicalCandidate": {
     summary: "Submit one source candidate through canonical draft and human review",
     tags: ["parameter-files"],

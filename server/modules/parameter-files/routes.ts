@@ -69,8 +69,10 @@ import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./ty
 import { configSetRoleSchema } from "./schemas";
 import {
   getCanonicalSourceWorkflow,
+  prepareCanonicalConflictDecision,
   previewCanonicalCandidate,
   rollbackCanonicalSource,
+  submitCanonicalConflictDecision,
   submitCanonicalCandidate,
   syncCanonicalSource
 } from "./canonicalFileWorkflow";
@@ -151,6 +153,15 @@ const canonicalSourceRollbackBodySchema = z.object({
   expectedCurrentVersionId: z.string().min(1),
   expectedProofToken: z.string().min(1),
   reason: z.string().trim().min(1).max(2000)
+}).strict();
+
+const canonicalConflictSubmitBodySchema = z.object({
+  selectedBindingId: z.string().min(1),
+  selectedDraftId: z.string().min(1),
+  choice: z.enum(["file", "draft"]),
+  expectedDecisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  reason: z.string().trim().min(1).max(2000),
+  assignedToUserId: z.string().min(1)
 }).strict();
 
 const resolveConflictBodySchema = z.object({
@@ -897,6 +908,78 @@ export function registerParameterFileRoutes(
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const item = await previewCanonicalCandidate(db, requireObjectStore(options.objectStore), auth, params);
     return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflicts", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    if (!canAdminParameters(auth) || !canEditParameters(auth, params.projectId)) {
+      throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+    }
+    const objectStore = requireObjectStore(options.objectStore);
+    const preview = await previewCanonicalCandidate(db, objectStore, auth, params);
+    const bindings = preview.bindings ?? (preview.bindingId && preview.sourcePinId && preview.baseCurrentValueId
+      ? [{ bindingId: preview.bindingId, sourcePinId: preview.sourcePinId,
+        baseCurrentValueId: preview.baseCurrentValueId, configRevisionId: preview.configRevisionId }]
+      : []);
+    if (preview.kind !== "canonical" || preview.request || bindings.length === 0) {
+      return { status: 200, body: { items: [], ineligible: [] } };
+    }
+    const rows = await db.query<{ id: string; binding_id: string; user_id: string;
+      source_pin_id: string; base_current_value_id: string; config_revision_id: string }>(
+      `select draft.id,draft.binding_id,draft.user_id,draft.source_pin_id,
+              draft.base_current_value_id,draft.config_revision_id
+         from project_parameter_value_drafts draft
+        where draft.organization_id=$1 and draft.project_id=$2 and draft.binding_id=any($3::text[])
+          and draft.candidate_id is not null
+          and not exists (select 1 from project_parameter_value_change_requests request
+                           where request.draft_id=draft.id and request.status='pending')
+        order by draft.binding_id,draft.id`,
+      [auth.organization.id, params.projectId, bindings.map((binding) => binding.bindingId)]
+    );
+    const items = [];
+    const ineligible = [];
+    for (const draft of rows.rows) {
+      const binding = bindings.find((item) => item.bindingId === draft.binding_id);
+      if (!binding) continue;
+      if (binding.sourcePinId !== draft.source_pin_id
+        || binding.baseCurrentValueId !== draft.base_current_value_id
+        || binding.configRevisionId !== draft.config_revision_id) {
+        ineligible.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          reason: "selected-draft-stale" });
+        continue;
+      }
+      try {
+        const file = await prepareCanonicalConflictDecision(db, objectStore, auth, {
+          ...params, selectedBindingId: draft.binding_id, selectedDraftId: draft.id, choice: "file"
+        });
+        const draftChoice = await prepareCanonicalConflictDecision(db, objectStore, auth, {
+          ...params, selectedBindingId: draft.binding_id, selectedDraftId: draft.id, choice: "draft"
+        });
+        items.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          authorUserId: draft.user_id, choices: { file, draft: draftChoice } });
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.code !== "CONFLICT") throw error;
+        ineligible.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          reason: typeof error.details?.reason === "string" ? error.details.reason : "source-proof-stale" });
+      }
+    }
+    return { status: 200, body: { items, ineligible } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflict-submit", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const body = parseWithSchema(canonicalConflictSubmitBodySchema, request.body,
+      "Invalid canonical source conflict decision payload.");
+    if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical source conflict submit requires root database.");
+    const item = await submitCanonicalConflictDecision(db, requireObjectStore(options.objectStore), auth, {
+      ...params, ...body, requestId: request.requestId,
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    return { status: 201, body: { item } };
   });
 
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content", async (request) => {

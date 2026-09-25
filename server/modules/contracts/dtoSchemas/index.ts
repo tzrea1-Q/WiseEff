@@ -7,10 +7,12 @@ import {
   parameterCatalogCoveredRouteIds,
   parameterCatalogDtoSchemaCatalog
 } from "./parameterCatalog";
+import { canonicalConflictDtoSchemaCatalog } from "./canonicalConflict";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...coreDtoSchemaCatalog,
-  ...parameterCatalogDtoSchemaCatalog
+  ...parameterCatalogDtoSchemaCatalog,
+  ...canonicalConflictDtoSchemaCatalog
 };
 
 export const dtoSchemaCoveredRouteIds = [
@@ -32,3 +34,4 @@ export * from "./logs";
 export * from "./debugging";
 export * from "./agent";
 export * from "./parameterCatalog";
+export * from "./canonicalConflict";

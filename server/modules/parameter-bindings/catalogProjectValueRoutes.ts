@@ -23,6 +23,7 @@ import { readCanonicalBatchSourceDiff, readCanonicalSourceDiff } from "../parame
 import { getCanonicalMemberRemovalForAuth, listCanonicalMemberRemovalsForAuth,
   reviewCanonicalMemberRemoval, submitCanonicalMemberRemoval,
   withdrawCanonicalMemberRemoval } from "./drafts/memberRemovalChangeService";
+import { assertSingleRequestReview } from "./drafts/changeService";
 import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
@@ -114,9 +115,67 @@ async function visibleValueChangeRequests(
       organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
     });
   if (!canReadReviewQueue) return items.filter((item) => item.submitterUserId === auth.user.id);
-  return input.status === "pending"
-    ? items.filter((item) => item.submitterUserId !== auth.user.id)
-    : items;
+  const conflictIds = await db.query<{ id: string }>(`
+    select distinct target_id as id from audit_events
+     where organization_id=$1 and project_id=$2 and action='value-change-submitted'
+       and metadata ? 'decisionProofDigest'
+    union
+    select impact->'canonicalSourceWorkflow'->>'requestId' as id
+      from project_parameter_file_candidates
+     where organization_id=$1 and project_id=$2
+       and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null`,
+    [auth.organization.id, input.projectId]);
+  const frozenConflictIds = new Set(conflictIds.rows.map((row) => row.id));
+  return items.filter((item) => (!frozenConflictIds.has(item.id)
+    || item.assignedToUserId === auth.user.id || item.submitterUserId === auth.user.id)
+    && (input.status !== "pending" || item.submitterUserId !== auth.user.id));
+}
+
+async function visibleConflictDecision(
+  db: Database, auth: AuthContext, input: { projectId: string; requestId: string }
+) {
+  const links = await db.query<{ candidate_id: string; link: {
+    requestId: string; preparedCandidateId: string; bindingId: string; fingerprint: string;
+    conflictDecision: { choice: "file" | "draft"; selectedDraftId: string; decisionProofDigest: string }
+  } }>(`select id as candidate_id, impact->'canonicalSourceWorkflow' as link
+      from project_parameter_file_candidates
+     where organization_id=$1 and project_id=$2
+       and impact->'canonicalSourceWorkflow'->>'requestId'=$3
+      and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null`,
+    [auth.organization.id, input.projectId, input.requestId]);
+  const receipts = await db.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+     where organization_id=$1 and project_id=$2 and target_id=$3
+       and action='value-change-submitted' and metadata ? 'decisionProofDigest'`,
+    [auth.organization.id, input.projectId, input.requestId]);
+  if (!links.rows.length && !receipts.rows.length) return null;
+  const requests = await visibleValueChangeRequests(db, auth, { projectId: input.projectId }, true);
+  const visible = requests.find((item) => item.id === input.requestId);
+  const mayRead = visible && (visible.submitterUserId === auth.user.id
+    || (visible.assignedToUserId === auth.user.id && canReviewParameters(auth)
+      && canReviewParameterStage(auth, input.projectId, "software_review")
+      && await hasCurrentCanonicalReviewRole(db, {
+        organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      })));
+  if (!mayRead) throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
+  if (links.rows.length !== 1) throw new ApiError("CONFLICT", "Source conflict decision link is missing or duplicated.", {
+    reason: "conflict-decision-stale"
+  });
+  const { candidate_id: sourceCandidateId, link } = links.rows[0]!;
+  const decision = link?.conflictDecision;
+  const receipt = receipts.rows[0]?.metadata;
+  if (!decision || receipts.rows.length !== 1 || link.requestId !== visible.id
+    || link.preparedCandidateId !== visible.candidateId || link.bindingId !== visible.bindingId
+    || link.fingerprint !== decision.decisionProofDigest
+    || receipt?.sourceCandidateId !== sourceCandidateId
+    || receipt?.decisionProofDigest !== decision.decisionProofDigest
+    || receipt?.choice !== decision.choice || receipt?.selectedDraftId !== decision.selectedDraftId) {
+    throw new ApiError("CONFLICT", "Frozen source conflict decision is inconsistent.", {
+      reason: "conflict-decision-stale"
+    });
+  }
+  return { request: visible, sourceCandidateId, selectedBindingId: link.bindingId,
+    selectedDraftId: decision.selectedDraftId, choice: decision.choice,
+    decisionProofDigest: decision.decisionProofDigest };
 }
 
 function topologyDraftToValueDraftDto(draft: ParameterDraftDto): CanonicalValueDraftDto | null {
@@ -959,6 +1018,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       return { status: 200, body: { item } };
     }
     const item = await db.transaction(async (tx) => {
+      await visibleConflictDecision(tx, auth, params);
       // Keep the current-review-role lock through the frozen single-source object read.
       const visible = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
       if (!visible.some((request) => request.id === params.requestId)) {
@@ -968,6 +1028,24 @@ export function registerCatalogProjectValueConsumerRoutes(
       return readCanonicalSourceDiff(tx, options.objectStore, auth, params);
     });
     return { status: 200,body: { item } };
+  });
+
+  router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/conflict-decision", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
+    const item = await db.transaction(async (tx) => {
+      const decision = await visibleConflictDecision(tx, auth, params);
+      if (!decision) throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
+      if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+      const sourceDiff = await readCanonicalSourceDiff(tx, options.objectStore, auth, params);
+      if (sourceDiff.bindingId !== decision.selectedBindingId
+        || sourceDiff.candidateId !== decision.request.candidateId) {
+        throw new ApiError("CONFLICT", "Frozen source conflict target disagrees with its source diff.");
+      }
+      return { ...decision, sourceDiff };
+    });
+    return { status: 200, body: { item } };
   });
 
   /**
@@ -1045,6 +1123,8 @@ export function registerCatalogProjectValueConsumerRoutes(
         }));
         return { status: 200, body: { item } };
       }
+      // Conceal conflict requests from non-assignees before source storage or Catalog checks.
+      await assertSingleRequestReview(db, auth, params.projectId, params.requestId, true);
       let snapshot: Awaited<ReturnType<typeof loadPublishedCatalog>> = null;
       if (body.decision === "approve") {
         if (!pool) {

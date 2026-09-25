@@ -118,7 +118,7 @@ function buildBulkImpact(eligible: FileSyncConflictRecord[]) {
   };
 }
 
-export type BulkConflictIneligibleReason = "not_found" | "already_resolved" | "wrong_project" | "missing_values";
+export type BulkConflictIneligibleReason = "not_found" | "already_resolved" | "wrong_project" | "missing_values" | "canonical_source";
 
 export type BulkConflictPreviewResult = {
   resolution: "file" | "ui";
@@ -223,17 +223,28 @@ export async function previewBulkConflictResolution(
     organizationId: auth.organization.id,
     projectId: input.projectId
   });
+  const protectedFiles = await db.query<{ id: string }>(`
+    select file.id from project_parameter_files file
+     where file.organization_id=$1 and file.project_id=$2
+       and file.id=any($3::text[])
+       and exists (select 1 from parameter_catalog.project_parameter_source_occurrences occurrence
+                    where occurrence.file_id=file.id or occurrence.config_set_id=file.config_set_id)`,
+    [auth.organization.id, input.projectId, openConflicts.flatMap((conflict) => conflict.fileId ? [conflict.fileId] : [])]);
+  const canonicalFileIds = new Set(protectedFiles.rows.map((row) => row.id));
 
   if (input.conflictIds === undefined) {
-    const eligible = openConflicts.filter((conflict) => isEligibleOpenConflict(conflict, input.projectId));
+    const eligible = openConflicts.filter((conflict) => isEligibleOpenConflict(conflict, input.projectId)
+      && !canonicalFileIds.has(conflict.fileId ?? ""));
+    const ineligible = openConflicts.filter((conflict) => canonicalFileIds.has(conflict.fileId ?? ""))
+      .map((conflict) => ({ conflict, reason: "canonical_source" as const }));
     const impact = buildBulkImpact(eligible);
     return {
       resolution: input.resolution,
       eligible,
-      ineligible: [],
+      ineligible,
       impact: {
         ...impact,
-        ineligibleCount: 0
+        ineligibleCount: ineligible.length
       }
     };
   }
@@ -254,6 +265,10 @@ export async function previewBulkConflictResolution(
 
   for (const conflictId of input.conflictIds) {
     const open = openById.get(conflictId);
+    if (open && canonicalFileIds.has(open.fileId ?? "")) {
+      ineligible.push({ conflict: open, reason: "canonical_source" });
+      continue;
+    }
     if (open && isEligibleOpenConflict(open, input.projectId)) {
       eligible.push(open);
       continue;
