@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { seedUser } from "../../testing/fixtures";
+import { PARAMETER_DASHBOARD_FIXTURE, seedParameterDashboardFixture } from "../../testing/parameterDashboardFixture";
 import { canonicalSourceConflictDecisionResponseSchema,
   canonicalSourceConflictListResponseSchema, canonicalSourceConflictSubmitResponseSchema }
   from "../contracts/dtoSchemas/canonicalConflict";
@@ -447,39 +449,70 @@ describe("#906 C canonical conflict HTTP", () => {
   }, 120_000);
 
   it("marks an old conflict on a canonical file ineligible before bulk arbitration", async () => {
-    const f = await fixture("json");
-    expect((await f.db.query("select id from project_parameter_values where organization_id=$1 and project_id=$2",
-      [ORG, PROJECT])).rows).toEqual([]);
-    const file = (await f.db.query<{ file_id: string; base_version_id: string }>(
-      "select file_id,base_version_id from project_parameter_file_candidates where id=$1", [f.candidate.id])).rows[0]!;
-    await f.db.query(`insert into parameter_definitions(id,organization_id,name,description,explanation,config_format,module,default_range,unit,risk)
-      values ('legacy-c906',$1,'legacy','legacy','legacy','JSON','legacy','0-100','','Low')`, [ORG]);
-    await f.db.query(`insert into project_parameter_values(id,organization_id,project_id,parameter_definition_id,
-      current_value,recommended_value,value_version,updated_by_user_id)
-      values ('legacy-value-c906',$1,$2,'legacy-c906','36','36',1,$3)`, [ORG, PROJECT, ADMIN]);
-    await f.db.query(`insert into parameter_drafts(id,organization_id,project_id,project_parameter_value_id,user_id,
-      target_value,reason,origin,origin_file_version_id) values
-      ('legacy-file-c906',$1,$2,'legacy-value-c906',$3,'50','old sync','file_sync',$4),
-      ('legacy-ui-c906',$1,$2,'legacy-value-c906',$5,'99','old UI','manual',null)`, [ORG, PROJECT, ADMIN, file.base_version_id, AUTHOR]);
-    const conflict = await insertFileSyncConflict(f.db, {
-      id: "legacy-conflict-c906", organizationId: ORG, projectId: PROJECT,
-      projectParameterValueId: "legacy-value-c906", parameterDefinitionId: "legacy-c906",
-      fileVersionId: file.base_version_id, fileDraftId: "legacy-file-c906", uiDraftId: "legacy-ui-c906",
-      fileValue: "50", uiDraftValue: "99"
+    const database = await createEphemeralTestDatabase("issue906-c-historical-conflict");
+    const db = createPostgresDatabase(database.url);
+    const directory = await mkdtemp(join(tmpdir(), "wiseeff-906-c-historical-conflict-"));
+    const storage = createLocalObjectStore(directory);
+    cleanups.push(async () => { await db.close(); await database.drop(); await rm(directory, { recursive: true, force: true }); });
+    await seedParameterDashboardFixture(db);
+    const organizationId = PARAMETER_DASHBOARD_FIXTURE.organizationId;
+    const projectId = PARAMETER_DASHBOARD_FIXTURE.projectIds.aurora;
+    const adminId = PARAMETER_DASHBOARD_FIXTURE.activeUserId;
+    const legacyAdmin = makeTestAuthContext({ userId: adminId, organizationId,
+      permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
+      roles: [{ roleId: "admin", projectId: null }] });
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('c906-legacy-admin',$1,$2,null,'admin')",
+      [adminId, organizationId]);
+    await installConfigurationSourceFixture(db, legacyAdmin, {
+      subjectId: "csub_906_c_legacy", schemaId: "wiseeff.906.c.legacy"
     });
-    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
-    const path = `/api/v1/projects/${PROJECT}/parameter-file-conflicts`;
+    const set = await createConfigSet(db, legacyAdmin, { projectId, name: "Historical conflict" });
+    const uploaded = await uploadProjectParameterFile(db, storage, legacyAdmin, {
+      projectId, fileName: "settings.json", bytes: Buffer.from('{"settings":{"limit":36.5}}\n')
+    });
+    await addConfigSetFile(db, legacyAdmin, { configSetId: set.id, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Published Catalog fixture unavailable");
+    await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, legacyAdmin, catalog, {
+      projectId, configSetId: set.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+      configurationSchemaId: "wiseeff.906.c.legacy", rootPointer: "",
+      mappings: [{ definitionId: DEF, pointer: "/settings/limit" }],
+      invocation: createUserInvocation(legacyAdmin), requestId: "c906-historical-source",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    }));
+    const uiDraft = (await db.query<{ id: string; project_parameter_value_id: string }>(
+      "select id,project_parameter_value_id from parameter_drafts where id='dashboard-fixture-draft-1'"
+    )).rows[0]!;
+    const legacyValue = (await db.query<{ parameter_definition_id: string }>(
+      "select parameter_definition_id from project_parameter_values where id=$1", [uiDraft.project_parameter_value_id]
+    )).rows[0]!;
+    await seedUser(db, { id: "c906-historical-sync", organizationId });
+    await db.query(`insert into parameter_drafts(id,organization_id,project_id,project_parameter_value_id,user_id,
+      target_value,reason,origin,origin_file_version_id) values
+      ('legacy-file-c906',$1,$2,$3,'c906-historical-sync','50','old sync','file_sync',$4)`,
+    [organizationId, projectId, uiDraft.project_parameter_value_id, uploaded.version.id]);
+    const conflict = await insertFileSyncConflict(db, {
+      id: "legacy-conflict-c906", organizationId, projectId,
+      projectParameterValueId: uiDraft.project_parameter_value_id, parameterDefinitionId: legacyValue.parameter_definition_id,
+      fileVersionId: uploaded.version.id, fileDraftId: "legacy-file-c906", uiDraftId: uiDraft.id,
+      fileValue: "50", uiDraftValue: "200"
+    });
+    const router = createRouter();
+    registerParameterFileRoutes(router, { db, objectStore: storage, getCurrentAuthContext: () => legacyAdmin });
+    const server = createHttpServer(router);
+    const before = await captureConfigurationSourceState(db, { organizationId, projectId });
+    const path = `/api/v1/projects/${projectId}/parameter-file-conflicts`;
     const preview = await requestJson<{ eligible: unknown[]; ineligible: Array<{ reason: string; conflict: { id: string } }> }>(
-      f.route(), `${path}/bulk-preview`, {
+      server, `${path}/bulk-preview`, {
         method: "POST", body: JSON.stringify({ resolution: "file", conflictIds: [conflict.id] }) });
     expect(preview.status).toBe(200);
     expect(preview.body.eligible).toEqual([]);
     expect(preview.body.ineligible).toMatchObject([{ reason: "canonical_source", conflict: { id: conflict.id } }]);
-    const resolve = await requestJson(f.route(), `${path}/bulk-resolve`, {
+    const resolve = await requestJson(server, `${path}/bulk-resolve`, {
       method: "POST", body: JSON.stringify({ resolution: "file", conflictIds: [conflict.id] }) });
     expect(resolve.status).toBe(200);
-    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
-    expect((await f.db.query("select id from parameter_file_sync_conflicts where id=$1", [conflict.id])).rows).toHaveLength(1);
-    expect((await f.db.query("select id from parameter_drafts where id in ('legacy-file-c906','legacy-ui-c906')")).rows).toHaveLength(2);
+    expect(await captureConfigurationSourceState(db, { organizationId, projectId })).toEqual(before);
+    expect((await db.query("select id from parameter_file_sync_conflicts where id=$1", [conflict.id])).rows).toHaveLength(1);
+    expect((await db.query("select id from parameter_drafts where id in ('legacy-file-c906','dashboard-fixture-draft-1')")).rows).toHaveLength(2);
   }, 120_000);
 });
