@@ -13,13 +13,16 @@ import { createLocalObjectStore } from "../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { captureConfigurationSourceState, installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
+import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
 import { uploadProjectParameterFile } from "./service";
-import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadProjectValueById } from "../parameter-bindings/values/repositories";
-import { asValueClient } from "../parameter-bindings/catalogProjectValueSync";
+import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import { parseDtsValue } from "../dts";
+import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { createCandidate } from "./candidateService";
 import { registerParameterFileRoutes } from "./routes";
 import { createCanonicalValueDraft, listCanonicalValueDraftsForReviewer } from "../parameter-bindings/drafts/service";
@@ -32,6 +35,7 @@ import {
 
 const ORG = "org-906-conflict";
 const PROJECT = "project-906-conflict";
+const DTS_PROJECT = "project-906-conflict-dts";
 const ADMIN = "user-906-conflict-admin";
 const AUTHOR = "user-906-conflict-author";
 const REVIEWER = "user-906-conflict-reviewer";
@@ -45,6 +49,9 @@ const author = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG,
 const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
+const dtsReviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
+  permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+  roles: [{ roleId: "software-committer", projectId: DTS_PROJECT }] });
 const foreign = makeTestAuthContext({ userId: "foreign-admin", organizationId: "foreign-org",
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }] });
@@ -429,5 +436,96 @@ describe("#906 selected canonical file/UI conflict source transaction", () => {
     await expect(approve(f, pending.requestId)).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await state(f)).toEqual(drifted);
     expect(drifted.source.requests.find((request) => request.id === pending.requestId)?.status).toBe("pending");
+  }, 120_000);
+});
+
+describe("#906 selected DTS conflict target", () => {
+  it("applies one reviewed file value and preserves the other candidate value", async () => {
+    const database = await createEphemeralTestDatabase("issue906-dts-conflict-decision");
+    const db = createPostgresDatabase(database.url);
+    const directory = await mkdtemp(join(tmpdir(), "wiseeff-906-dts-conflict-"));
+    const storage = createLocalObjectStore(directory);
+    cleanups.push(async () => { await db.close(); await database.drop(); await rm(directory, { recursive: true, force: true }); });
+    await db.query("insert into organizations(id,name) values ($1,'#906 DTS conflict')", [ORG]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'admin','Admin',true),($3,$2,'reviewer','Reviewer',true)",
+      [ADMIN, ORG, REVIEWER]);
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'DTS conflict','D906','initialized')",
+      [DTS_PROJECT, ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('dts-conflict-admin',$1,$2,null,'admin'),('dts-conflict-reviewer',$3,$2,$4,'software-committer')",
+      [ADMIN, ORG, REVIEWER, DTS_PROJECT]);
+    await installDriverSourceFixture(db, admin, {
+      subjectId: "csub_acme_power", compatible: "acme,power",
+      businessName: "#906 DTS conflict", driverName: "Acme power",
+      idempotencyKey: "906-dts-conflict-registration", reason: "Issue 906 conflict choice"
+    });
+    const set = await createConfigSet(db, admin, { projectId: DTS_PROJECT, name: "DTS conflict" });
+    const source = `/dts-v1/;\n/ {\n  charger: device@0 {\n    compatible = "acme,power";\n    iin_max = <36>;\n  };\n  backup: device@1 {\n    compatible = "acme,power";\n    iin_max = <36>;\n  };\n};\n`;
+    const uploaded = await uploadProjectParameterFile(db, storage, admin, {
+      projectId: DTS_PROJECT, fileName: "board.dts", bytes: Buffer.from(source)
+    });
+    await addConfigSetFile(db, admin, {
+      configSetId: set.id, fileId: uploaded.file.id, role: "base", sortOrder: 0
+    });
+    const manifest: ConfigRevisionManifest = {
+      organizationId: ORG, projectId: DTS_PROJECT, configSetId: set.id,
+      entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
+      members: [{ fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+        fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: source }]
+    };
+    const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Published Catalog fixture unavailable");
+    await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
+      organizationId: ORG, projectId: DTS_PROJECT,
+      configSetId: set.id, configRevisionId: revision.id
+    }));
+    expect(await listCatalogBindingRowsForProject(db, admin, { projectId: DTS_PROJECT })).toHaveLength(2);
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: DTS_PROJECT });
+    const candidate = await createCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT, fileId: uploaded.file.id, fileName: "board.dts",
+      bytes: Buffer.from(source.replace("iin_max = <36>", "iin_max = <50>")
+        .replace("iin_max = <36>", "iin_max = <60>"))
+    });
+    const preview = await previewCanonicalCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: candidate.id
+    });
+    expect(preview.bindings).toHaveLength(2);
+    const selected = preview.bindings?.find((binding) => binding.afterText === "<50>");
+    if (!selected) throw new Error("Selected DTS target was not proved");
+    const uiDraft = await createCanonicalValueDraft(db, admin, {
+      projectId: DTS_PROJECT, bindingId: selected.bindingId,
+      targetValue: parseDtsValue("iin_max", "<99>").value,
+      reason: "UI value", baseRevisionId: selected.configRevisionId,
+      baseCurrentValueId: selected.baseCurrentValueId
+    }, { objectStore: storage, invocation: createUserInvocation(admin),
+      requestId: "906-dts-conflict-ui-draft", refusalSink: createTrustedRefusalAuditSink(db) });
+    const choice = await prepareCanonicalConflictDecision(db, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: candidate.id,
+      selectedBindingId: selected.bindingId, selectedDraftId: uiDraft.id, choice: "file"
+    });
+    expect(choice).toMatchObject({ action: "set", targetText: "<50>", baseVersionId: uploaded.version.id });
+    const submitted = await submitCanonicalConflictDecision(db, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: candidate.id,
+      selectedBindingId: selected.bindingId, selectedDraftId: uiDraft.id,
+      choice: "file", expectedDecisionProofDigest: choice.decisionProofDigest,
+      reason: "review selected DTS file value", assignedToUserId: REVIEWER,
+      requestId: "906-dts-conflict-file-submit", refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    expect(submitted.status).toBe("pending");
+    expect((await reviewCanonicalValueChange(db, dtsReviewer,
+      { projectId: DTS_PROJECT, requestId: submitted.requestId, decision: "approve" },
+      { objectStore: storage, snapshot: catalog, invocation: createUserInvocation(dtsReviewer),
+        traceId: "906-dts-conflict-review", refusalSink: createTrustedRefusalAuditSink(db) })).status).toBe("approved");
+    const current = (await db.query<{ storage_key: string }>(`select version.storage_key
+      from project_parameter_files file join project_parameter_file_versions version on version.id=file.current_version_id
+      where file.id=$1`, [uploaded.file.id])).rows[0]!;
+    const applied = (await storage.get(current.storage_key)).toString();
+    expect(applied).toContain("iin_max = <50>");
+    expect(applied).toContain("iin_max = <36>");
+    expect(applied).not.toContain("iin_max = <60>");
+    const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: DTS_PROJECT });
+    expect(after.values.length).toBe(before.values.length + 2);
+    expect(after.pins.length).toBe(before.pins.length + 2);
+    expect(after.history.length).toBe(before.history.length + 2);
   }, 120_000);
 });

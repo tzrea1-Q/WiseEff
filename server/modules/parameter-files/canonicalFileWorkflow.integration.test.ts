@@ -26,15 +26,12 @@ import {
   getCanonicalSourceWorkflow,
   freezeCanonicalCandidateBatchSnapshotInTransaction,
   prepareCanonicalCandidateBatchInTransaction,
-  prepareCanonicalConflictDecision,
   previewCanonicalCandidate,
   rollbackCanonicalSource,
-  submitCanonicalCandidate,
-  submitCanonicalConflictDecision
+  submitCanonicalCandidate
 } from "./canonicalFileWorkflow";
 import { reviewCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
 import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
-import { parseDtsValue } from "../dts";
 import { submitCanonicalBatchValueChange } from "../parameter-bindings/drafts/batchChangeService";
 import { commitCanonicalSourceBatchRevision } from "./canonicalSourceBatchCommit";
 import { readCanonicalBatchSourceDiff } from "./canonicalSourceDiff";
@@ -1150,54 +1147,5 @@ describe("#906 canonical DTS candidate workflow", () => {
       refusalSink: createTrustedRefusalAuditSink(db)
     });
     expect(replay).toMatchObject({ requestId: submitted.requestId, status: "approved", replayed: true });
-  }, 120_000);
-
-  it("reviews one selected DTS file value while the other candidate change stays unapplied", async () => {
-    const currentFile = (await db.query<{ current_version_id: string }>(
-      "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!;
-    const currentVersion = (await db.query<{ storage_key: string }>(
-      "select storage_key from project_parameter_file_versions where id=$1", [currentFile.current_version_id])).rows[0]!;
-    const before = (await storage.get(currentVersion.storage_key)).toString();
-    expect(before).toContain("iin_max = <77>");
-    expect(before).toContain("iin_max = <36>");
-    const candidate = await createCandidate(db, storage, admin, {
-      projectId: DTS_PROJECT, fileId, fileName: "board.dts",
-      bytes: Buffer.from(before.replace("iin_max = <77>", "iin_max = <50>").replace("iin_max = <36>", "iin_max = <60>"))
-    });
-    const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: DTS_PROJECT, candidateId: candidate.id });
-    const selected = preview.bindings?.find((binding) => binding.afterText === "<50>");
-    if (!selected) throw new Error("Selected DTS Binding was not proved");
-    await createCanonicalValueDraft(db, admin, {
-      projectId: DTS_PROJECT, bindingId: selected.bindingId,
-      targetValue: parseDtsValue("iin_max", "<99>").value,
-      reason: "UI draft differs from file", baseRevisionId: selected.configRevisionId,
-      baseCurrentValueId: selected.baseCurrentValueId
-    }, { objectStore: storage, invocation: createUserInvocation(admin),
-      requestId: "906-dts-conflict-ui-draft", refusalSink: createTrustedRefusalAuditSink(db) });
-    const drafts = await db.query<{ id: string }>(`select id from project_parameter_value_drafts
-      where organization_id=$1 and project_id=$2 and binding_id=$3 and user_id=$4`,
-      [ORG, DTS_PROJECT, selected.bindingId, ADMIN]);
-    expect(drafts.rows).toHaveLength(1);
-    const choice = await prepareCanonicalConflictDecision(db, storage, admin, {
-      projectId: DTS_PROJECT, candidateId: candidate.id,
-      selectedBindingId: selected.bindingId, selectedDraftId: drafts.rows[0]!.id, choice: "file"
-    });
-    expect(choice).toMatchObject({ action: "set", targetText: "<50>", baseVersionId: currentFile.current_version_id });
-    const submitted = await submitCanonicalConflictDecision(db, storage, admin, {
-      projectId: DTS_PROJECT, candidateId: candidate.id,
-      selectedBindingId: selected.bindingId, selectedDraftId: drafts.rows[0]!.id,
-      choice: "file", expectedDecisionProofDigest: choice.decisionProofDigest,
-      reason: "review selected DTS file value", assignedToUserId: REVIEWER,
-      requestId: "906-dts-conflict-file-submit", refusalSink: createTrustedRefusalAuditSink(db)
-    });
-    expect(submitted.status).toBe("pending");
-    expect((await review(db, dtsReviewer, DTS_PROJECT, submitted.requestId, storage)).status).toBe("approved");
-    const latest = (await db.query<{ storage_key: string }>(`select version.storage_key
-      from project_parameter_files file join project_parameter_file_versions version on version.id=file.current_version_id
-      where file.id=$1`, [fileId])).rows[0]!;
-    const applied = (await storage.get(latest.storage_key)).toString();
-    expect(applied).toContain("iin_max = <50>");
-    expect(applied).toContain("iin_max = <36>");
-    expect(applied).not.toContain("iin_max = <60>");
   }, 120_000);
 });
