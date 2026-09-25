@@ -1,6 +1,6 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
@@ -11,7 +11,9 @@ import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { asAuditTx } from "../audit/auditedWrite";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import { captureConfigurationSourceState, installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
@@ -24,6 +26,7 @@ import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { parseDtsValue } from "../dts";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { createCandidate } from "./candidateService";
+import { linkParameterFileCandidateToCanonicalWorkflow } from "./candidateRepository";
 import { registerParameterFileRoutes } from "./routes";
 import { createCanonicalValueDraft, listCanonicalValueDraftsForReviewer } from "../parameter-bindings/drafts/service";
 import { reviewCanonicalValueChange, submitCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
@@ -155,7 +158,118 @@ async function storedFiles(directory: string) {
     .filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
 }
 
+async function storedObjects(directory: string) {
+  const entries = (await readdir(directory, { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile());
+  return Promise.all(entries.map(async (entry) => ({
+    key: relative(directory, join(entry.parentPath, entry.name)),
+    bytes: (await readFile(join(entry.parentPath, entry.name))).toString("base64")
+  }))).then((objects) => objects.sort((a, b) => a.key.localeCompare(b.key)));
+}
+
+async function pendingConflictWithoutDecisionReceipt(f: Fixture) {
+  const decision = await prepareCanonicalConflictDecision(f.db, f.storage, admin, {
+    projectId: PROJECT, candidateId: f.candidate.id, selectedBindingId: f.bindingId,
+    selectedDraftId: f.uiDraft.id, choice: "file"
+  });
+  const draft = await createCanonicalValueDraft(f.db, admin, {
+    projectId: PROJECT, bindingId: f.bindingId,
+    sourceTarget: { format: "json", sourceText: decision.targetText! },
+    reason: "review selected file", baseRevisionId: decision.selectedRevisionId,
+    baseCurrentValueId: decision.selectedBaseValueId
+  }, { objectStore: f.storage, invocation: createUserInvocation(admin),
+    requestId: "906-conflict-missing-receipt-draft", refusalSink: createTrustedRefusalAuditSink(f.db) });
+  const request = await submitCanonicalValueChange(f.db, admin, {
+    projectId: PROJECT, draftId: draft.id, assignedToUserId: REVIEWER,
+    invocation: createUserInvocation(admin), requestId: "906-conflict-missing-receipt-submit",
+    refusalSink: createTrustedRefusalAuditSink(f.db)
+  });
+  const linked = await linkParameterFileCandidateToCanonicalWorkflow(f.db, {
+    organizationId: ORG, projectId: PROJECT, candidateId: f.candidate.id,
+    link: {
+      kind: "canonical-source", fingerprint: decision.decisionProofDigest,
+      bindingId: f.bindingId, sourcePinId: decision.selectedSourcePinId,
+      preparedCandidateId: draft.candidateId!, draftId: draft.id, requestId: request.id,
+      status: request.status,
+      conflictDecision: {
+        choice: "file", selectedDraftId: f.uiDraft.id,
+        selectedDraftCandidateId: decision.selectedDraftCandidateId,
+        selectedDraftCandidateDigest: decision.selectedDraftCandidateDigest,
+        sourceProofToken: decision.sourceProofToken,
+        sourceCandidateDigest: decision.sourceCandidateDigest,
+        decisionProofDigest: decision.decisionProofDigest
+      }
+    }
+  });
+  expect(linked?.impact?.canonicalSourceWorkflow?.requestId).toBe(request.id);
+  expect(linked?.impact?.canonicalSourceWorkflow?.conflictDecision?.decisionProofDigest)
+    .toBe(decision.decisionProofDigest);
+  return request.id;
+}
+
 describe("#906 selected canonical file/UI conflict source transaction", () => {
+  it("rejects a pending linked conflict with no decision audit receipt", async () => {
+    const f = await fixture();
+    const requestId = await pendingConflictWithoutDecisionReceipt(f);
+    const receipts = await f.db.query(`select metadata from audit_events where target_id=$1 and action='value-change-submitted'`, [requestId]);
+    expect(receipts.rows).toEqual([]);
+    const before = await state(f);
+    const objects = await storedObjects(f.directory);
+    await expect(approve(f, requestId)).rejects.toMatchObject({
+      code: "CONFLICT", details: { reason: "conflict-decision-stale" }
+    });
+    expect(await state(f)).toEqual(before);
+    expect(await storedObjects(f.directory)).toEqual(objects);
+    expect((await state(f)).source.requests.find((request) => request.id === requestId)?.status).toBe("pending");
+  }, 120_000);
+
+  it("rejects a linked conflict with an unrecognizable decision receipt", async () => {
+    const f = await fixture();
+    const requestId = await pendingConflictWithoutDecisionReceipt(f);
+    await f.db.transaction((tx) => writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(admin), {
+      action: "value-change-submitted", organizationId: ORG, projectId: PROJECT,
+      targetType: "project-parameter-value-change-request", targetId: requestId,
+      metadata: { requestId, sourceCandidateId: f.candidate.id, choice: "file", selectedDraftId: f.uiDraft.id }
+    }, "906-conflict-incomplete-decision-receipt"));
+    const receipts = await f.db.query<{ metadata: Record<string, unknown> }>(
+      "select metadata from audit_events where target_id=$1 and action='value-change-submitted'", [requestId]);
+    expect(receipts.rows).toHaveLength(1);
+    expect(receipts.rows.some((row) => row.metadata.sourceCandidateId === f.candidate.id
+      && !Object.hasOwn(row.metadata, "decisionProofDigest"))).toBe(true);
+    const before = await state(f);
+    const objects = await storedObjects(f.directory);
+    await expect(approve(f, requestId)).rejects.toMatchObject({
+      code: "CONFLICT", details: { reason: "conflict-decision-stale" }
+    });
+    expect(await state(f)).toEqual(before);
+    expect(await storedObjects(f.directory)).toEqual(objects);
+    expect((await state(f)).source.requests.find((request) => request.id === requestId)?.status).toBe("pending");
+  }, 120_000);
+
+  it("rejects a conflict when its retained decision link disagrees with the audited proof", async () => {
+    const f = await fixture();
+    const decision = await prepareCanonicalConflictDecision(f.db, f.storage, admin, {
+      projectId: PROJECT, candidateId: f.candidate.id, selectedBindingId: f.bindingId,
+      selectedDraftId: f.uiDraft.id, choice: "file"
+    });
+    const pending = await submitCanonicalConflictDecision(f.db, f.storage, admin, {
+      projectId: PROJECT, candidateId: f.candidate.id, selectedBindingId: f.bindingId,
+      selectedDraftId: f.uiDraft.id, choice: "file", expectedDecisionProofDigest: decision.decisionProofDigest,
+      reason: "selected file", assignedToUserId: REVIEWER, requestId: "906-conflict-proof-mismatch",
+      refusalSink: createTrustedRefusalAuditSink(f.db)
+    });
+    await f.db.query(`update project_parameter_file_candidates
+      set impact=jsonb_set(impact, '{canonicalSourceWorkflow,fingerprint}', '"wrong-proof"'::jsonb)
+      where id=$1`, [f.candidate.id]);
+    const before = await state(f);
+    const objects = await storedObjects(f.directory);
+    await expect(approve(f, pending.requestId)).rejects.toMatchObject({
+      code: "CONFLICT", details: { reason: "conflict-decision-stale" }
+    });
+    expect(await state(f)).toEqual(before);
+    expect(await storedObjects(f.directory)).toEqual(objects);
+    expect((await state(f)).source.requests.find((request) => request.id === pending.requestId)?.status).toBe("pending");
+  }, 120_000);
   it("reproduces the canonical-only 409, then applies one file target with complete cohort repin and rollback", async () => {
     const f = await fixture();
     const preview = await previewCanonicalCandidate(f.db, f.storage, admin, { projectId: PROJECT, candidateId: f.candidate.id });
@@ -380,6 +494,13 @@ describe("#906 selected canonical file/UI conflict source transaction", () => {
       invocation: createUserInvocation(admin), requestId: "906-conflict-sibling-submit",
       refusalSink: createTrustedRefusalAuditSink(f.db)
     });
+    const ordinaryReceipt = await f.db.query(`select id from audit_events where target_id=$1
+      and action='value-change-submitted' and metadata ? 'decisionProofDigest'`, [sibling.id]);
+    const ordinaryLink = await f.db.query(`select id from project_parameter_file_candidates
+      where impact->'canonicalSourceWorkflow'->>'requestId'=$1
+        and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null`, [sibling.id]);
+    expect(ordinaryReceipt.rows).toEqual([]);
+    expect(ordinaryLink.rows).toEqual([]);
     expect((await approve(f, sibling.id)).status).toBe("approved");
     const afterRepin = await state(f);
     await expect(submitCanonicalConflictDecision(f.db, f.storage, admin, {
@@ -405,12 +526,18 @@ describe("#906 selected canonical file/UI conflict source transaction", () => {
     });
     const impact = (await f.db.query<{ impact: unknown }>(
       "select impact from project_parameter_file_candidates where id=$1", [f.candidate.id])).rows[0]!.impact;
+    const decisionReceipts = await f.db.query(`select id from audit_events where target_id=$1
+      and action='value-change-submitted' and metadata ? 'decisionProofDigest'`, [pending.requestId]);
+    expect(decisionReceipts.rows).toHaveLength(1);
     await f.db.query("update project_parameter_file_candidates set impact=impact-'canonicalSourceWorkflow' where id=$1", [f.candidate.id]);
     const lostLink = await state(f);
+    const objects = await storedObjects(f.directory);
     await expect(approve(f, pending.requestId)).rejects.toMatchObject({
       code: "CONFLICT", details: { reason: "conflict-decision-stale" }
     });
     expect(await state(f)).toEqual(lostLink);
+    expect(await storedObjects(f.directory)).toEqual(objects);
+    expect((await state(f)).source.requests.find((request) => request.id === pending.requestId)?.status).toBe("pending");
     await f.db.query("update project_parameter_file_candidates set impact=$2::jsonb where id=$1",
       [f.candidate.id, JSON.stringify(impact)]);
     const current = (await state(f)).source.bindings.find((row) => row.id === f.otherBindingId)!;

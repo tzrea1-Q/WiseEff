@@ -1589,23 +1589,27 @@ export async function recheckCanonicalConflictDecisionForReview(
   auth: AuthContext,
   input: { projectId: string; requestId: string; preparedCandidateId: string; bindingId: string; sourcePinId: string }
 ): Promise<void> {
+  const links = await db.query<{ id: string }>(`select id from project_parameter_file_candidates
+    where organization_id=$1 and project_id=$2
+      and impact->'canonicalSourceWorkflow'->>'requestId'=$3
+      and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null
+    for update`, [auth.organization.id, input.projectId, input.requestId]);
   const receipts = await db.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
     where organization_id=$1 and project_id=$2 and target_id=$3
       and action='value-change-submitted' and metadata ? 'decisionProofDigest'`,
     [auth.organization.id, input.projectId, input.requestId]);
-  if (!receipts.rows.length) return;
+  if (!links.rows.length && !receipts.rows.length) return;
+  if (!receipts.rows.length) throw new ApiError("CONFLICT", "Conflict decision audit receipt is missing.", { reason: "conflict-decision-stale" });
   if (receipts.rows.length !== 1) throw new ApiError("CONFLICT", "Conflict decision has multiple audit receipts.");
   const receipt = receipts.rows[0]!.metadata;
   if (typeof receipt.sourceCandidateId !== "string" || typeof receipt.decisionProofDigest !== "string") {
     throw new ApiError("CONFLICT", "Conflict decision audit receipt is incomplete.");
   }
-  const links = await db.query<{ id: string }>(`select id from project_parameter_file_candidates
-    where id=$4 and organization_id=$1 and project_id=$2
-      and impact->'canonicalSourceWorkflow'->>'requestId'=$3
-      and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null
-    for update`, [auth.organization.id, input.projectId, input.requestId, receipt.sourceCandidateId]);
   if (!links.rows.length) throw new ApiError("CONFLICT", "Conflict decision lost its uploaded candidate link.", { reason: "conflict-decision-stale" });
   if (links.rows.length !== 1) throw new ApiError("CONFLICT", "Conflict decision has multiple source receipts.");
+  if (links.rows[0]!.id !== receipt.sourceCandidateId) {
+    throw new ApiError("CONFLICT", "Conflict decision receipt disagrees with its uploaded candidate link.", { reason: "conflict-decision-stale" });
+  }
   const candidate = await getParameterFileCandidateById(db, {
     organizationId: auth.organization.id, projectId: input.projectId, candidateId: links.rows[0]!.id
   });
