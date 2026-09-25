@@ -80,6 +80,16 @@ const conflictServiceOwnerC940Config: RelocationConfig = {
   requireStableByteOrder: true,
 };
 
+const conflictServiceOwnerB948Config: RelocationConfig = {
+  recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-a-b948-conflict-service-owner-successor.json",
+  recordSha256: "615ddb3b17cd801f9eba5afcd539b3031292c95221b2f4827463c23f4c0447bd",
+  files: [{ file: "server/modules/parameter-files/conflictService.ts", pairs: 2 }],
+  totalPairs: 2,
+  rejectAllowanceGrowth: true,
+  requireStableStructuralAnchor: true,
+  requireStableByteOrder: true,
+};
+
 type Inventory = {
   schemaVersion: 1;
   sourcePullRequest: 910;
@@ -196,10 +206,22 @@ export async function applyReviewedIssue853DRelocation(
     { ...additionalFixedConfig, activeFiles: additionalFixedConfig.files
       .map(({ file }) => file).filter((file) => file !== "server/modules/parameter-files/conflictService.ts") },
   );
+  const previousConflictServiceOwner = await verifyHistoricalRelocationProof(
+    repoRoot, fixture, allowances, conflictServiceOwnerC940Config, {
+      commit: "bc9c2d1f324d39498205913ec5c9a38f680a2d8b",
+      tree: "4911c47756295437d8dc132526c88506965f8996",
+    },
+  );
+  const currentOwnerRecord = JSON.parse((await readFile(resolve(repoRoot, conflictServiceOwnerB948Config.recordPath))).toString("utf8")) as {
+    files: Array<{ pairs: Array<{ old: { id: string } }> }>;
+  };
+  requireD(previousConflictServiceOwner.pairs.map((pair) => pair.old.id).sort().join("\0")
+    === currentOwnerRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)).sort().join("\0"),
+  "C940 owner source identities survive the B948 successor");
   const conflictServiceOwner = await runReviewedRelocationRecord(
     repoRoot, fixture, allowances, additional.violations,
     [...prior, ...exact.relocations, ...fixed.relocations, ...conflictService.relocations,
-      ...additional.relocations], conflictServiceOwnerC940Config,
+      ...additional.relocations], conflictServiceOwnerB948Config,
   );
   return {
     violations: conflictServiceOwner.violations,

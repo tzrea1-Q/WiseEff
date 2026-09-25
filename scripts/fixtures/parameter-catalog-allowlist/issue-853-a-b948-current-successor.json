@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "priorAHead": "bc9c2d1f324d39498205913ec5c9a38f680a2d8b",
+  "dHead": "783c1545d7cbe07a6bb26cc8df1d5c07dd380b81",
+  "cHead": "f8879b054c2a410ff6a42a000569161e7f89f0c9",
+  "bHead": "f44f03a2b881ae11e90b9022edd647d5c0f4c46e",
+  "aMergeHead": "0304913bc74afd51877523436475e7ad75ebfc6d",
+  "blobs": {
+    "server/modules/parameter-bindings/catalogProjectValueRoutes.ts": {
+      "before": "6378ac1d1bf7356cd1c8a67258c39975adb76a1f",
+      "after": "0094555b49aeed7e43c2d422bcbe6fd25a5e15c9"
+    },
+    "server/modules/parameter-files/conflictService.ts": {
+      "before": "01f41a174ffd054934018c1c137918eea4d5cfd7",
+      "after": "d9e579715135e71889ea3c12d06c666645720c41"
+    },
+    "server/modules/parameter-files/canonicalConflictHttp.integration.test.ts": {
+      "before": null,
+      "after": "cfb77ac60c52d1856f058fad3663a0e6290bd691"
+    }
+  },
+  "movedUnallowlisted": [
+    {
+      "oldId": "S12-FIL:legacy-parameter-spec-identifier:fa34eea6b38bc692:e52a44955c1e5e75",
+      "newId": "S12-FIL:legacy-parameter-spec-identifier:fa34eea6b38bc692:7b88c154ba06f09b",
+      "file": "server/modules/parameter-files/conflictService.ts",
+      "oldByteStart": 2701,
+      "oldByteEnd": 2716,
+      "newByteStart": 2701,
+      "newByteEnd": 2716,
+      "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+    }
+  ],
+  "newUnallowlisted": [
+    {
+      "id": "S12-FIL:legacy-catalog-sql-write:8cadc432e7cb8c7b:725ec50795941e96",
+      "file": "server/modules/parameter-files/canonicalConflictHttp.integration.test.ts",
+      "rule": "legacy-catalog-sql-write",
+      "line": 455,
+      "byteStart": 32883,
+      "byteEnd": 33104,
+      "sliceSha256": "d5fbd9653e8d4db907cdf8b9e4bd729647c731b795a83f9851429070ce6a0362"
+    }
+  ]
+}
