@@ -1046,6 +1046,19 @@ export const catalogValueChangeRequestListResponseSchema = catalogObject({
 export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   id: z.string(), projectId: z.string(), candidateId: z.string(),
   batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), cohortCount: z.number().int().positive(),
+  draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  draftImpact: z.array(catalogObject({
+    ordinal: z.number().int().nonnegative(), bindingId: z.string(),
+    role: closedEnum(["target", "sibling"]), decision: closedEnum(["file", "re-pin"]),
+    baseCurrentValueId: z.string(), sourcePinId: z.string(), configRevisionId: z.string(),
+    drafts: z.array(catalogObject({
+      draftId: z.string(), authorUserId: z.string().nullable(), reason: z.string(),
+      action: closedEnum(["set", "delete"]), targetValue: z.unknown(),
+      baseCurrentValueId: z.string(), sourcePinId: z.string().nullable(), configRevisionId: z.string(),
+      currentlyStale: z.boolean(), expectedEffect: z.literal("preserved-stale"),
+      frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/)
+    }))
+  })).nullable(),
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]), reason: z.string(),
   submitterUserId: z.string().nullable(), assignedToUserId: z.string().nullable(),
   reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
@@ -1151,7 +1164,9 @@ export const catalogSubmitMemberRemovalRequestSchema = catalogObject({
 export const catalogSubmitBatchValueChangeRequestSchema = catalogObject({
   candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
   reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
-  selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional()
+  selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
+  targetDecisions: z.array(catalogObject({ bindingId: z.string().min(1),
+    choice: closedEnum(["file", "draft"]), draftId: z.string().min(1).optional() })).optional()
 });
 export const catalogReviewMemberRemovalRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
@@ -1162,6 +1177,7 @@ export const catalogReviewValueChangeRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
   note: z.string().nullable().optional(),
   batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
 });
 

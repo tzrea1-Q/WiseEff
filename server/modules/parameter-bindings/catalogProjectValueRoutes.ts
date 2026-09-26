@@ -42,6 +42,7 @@ import {
   createCanonicalValueDraft,
   approveCanonicalBatchValueChange,
   getCanonicalBatchValueChangeForReviewer,
+  getCanonicalBatchValueChangeForAuth,
   listCanonicalBatchValueChangesForAuth,
   listCanonicalValueChangesForAuth,
   listCanonicalValueDraftsForUser,
@@ -915,7 +916,9 @@ export function registerCatalogProjectValueConsumerRoutes(
     const body = parseWithSchema(z.object({
       candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
       reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
-      selectedDrafts: z.array(z.object({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional()
+      selectedDrafts: z.array(z.object({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
+      targetDecisions: z.array(z.object({ bindingId: z.string().min(1),
+        choice: z.enum(["file", "draft"]), draftId: z.string().min(1).optional() })).optional()
     }), request.body ?? {});
     if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical batch submit requires root database.");
     const item = await submitCanonicalBatchValueChange(db, options.objectStore, auth, {
@@ -982,7 +985,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
-    const item = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
+    const item = await getCanonicalBatchValueChangeForAuth(db, auth, params);
     if (!item) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
     return { status: 200, body: { item } };
   });
@@ -997,7 +1000,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
     if (kind === "batch") {
       const item = await db.transaction(async (tx) => {
-        const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, params);
+        const frozen = await getCanonicalBatchValueChangeForAuth(tx, auth, params);
         if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
         if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
         const source = await readCanonicalBatchSourceDiff(tx, options.objectStore, auth, params);
@@ -1067,6 +1070,7 @@ export function registerCatalogProjectValueConsumerRoutes(
           decision: z.enum(["approve", "reject"]),
           note: z.string().nullable().optional(),
           batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
           memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
         }),
         request.body ?? {}
@@ -1101,7 +1105,8 @@ export function registerCatalogProjectValueConsumerRoutes(
         }
         if (body.decision === "reject") {
           const item = await rejectCanonicalBatchValueChange(db, auth, {
-            ...params, batchProofDigest: body.batchProofDigest, note: body.note ?? null,
+            ...params, batchProofDigest: body.batchProofDigest,
+            draftImpactDigest: body.draftImpactDigest, note: body.note ?? null,
             invocation: createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           });
@@ -1115,7 +1120,8 @@ export function registerCatalogProjectValueConsumerRoutes(
         const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => ({
           result: await approveCanonicalBatchValueChange(tx, options.objectStore!, auth, batchSnapshot, {
             projectId: params.projectId, requestId: params.requestId,
-            batchProofDigest: body.batchProofDigest!, note: body.note ?? null,
+            batchProofDigest: body.batchProofDigest!, draftImpactDigest: body.draftImpactDigest,
+            note: body.note ?? null,
             invocation: createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           }),
