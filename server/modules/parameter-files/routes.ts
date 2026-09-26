@@ -3,6 +3,7 @@ import {
   canonicalBatchRollbackPrepareRequestSchema,
   canonicalBatchRollbackSubmitRequestSchema
 } from "../contracts/dtoSchemas/canonicalBatchRollback";
+import { canonicalManualSyncPrepareRequestSchema } from "../contracts/dtoSchemas/canonicalManualSync";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
@@ -74,6 +75,7 @@ import { configSetRoleSchema } from "./schemas";
 import {
   getCanonicalSourceWorkflow,
   prepareCanonicalBatchRollbackCandidate,
+  prepareCanonicalManualSyncBatchCandidate,
   prepareCanonicalConflictDecision,
   previewCanonicalCandidate,
   rollbackCanonicalSource,
@@ -1114,6 +1116,23 @@ export function registerParameterFileRoutes(
       "Invalid canonical batch rollback preparation payload.");
     const item = await prepareCanonicalBatchRollbackCandidate(db, requireObjectStore(options.objectStore), auth, {
       projectId: params.projectId, fileId: params.fileId, ...body, requestId: request.requestId
+    });
+    return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-manual-sync/prepare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const body = parseWithSchema(canonicalManualSyncPrepareRequestSchema, request.body,
+      "Invalid canonical manual sync preparation payload.");
+    const item = await prepareCanonicalManualSyncBatchCandidate(db, requireObjectStore(options.objectStore), auth, {
+      projectId: params.projectId, fileId: params.fileId,
+      bytes: decodeContentBase64(body.contentBase64),
+      expectedCurrentVersionId: body.expectedCurrentVersionId,
+      expectedWorkflowProofToken: body.expectedWorkflowProofToken,
+      requestId: request.requestId
     });
     return { status: 201, body: { item } };
   });

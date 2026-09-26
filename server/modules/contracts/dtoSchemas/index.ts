@@ -9,12 +9,14 @@ import {
 } from "./parameterCatalog";
 import { canonicalConflictDtoSchemaCatalog } from "./canonicalConflict";
 import { canonicalBatchRollbackDtoSchemaCatalog } from "./canonicalBatchRollback";
+import { canonicalManualSyncDtoSchemaCatalog } from "./canonicalManualSync";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...coreDtoSchemaCatalog,
   ...parameterCatalogDtoSchemaCatalog,
   ...canonicalConflictDtoSchemaCatalog,
-  ...canonicalBatchRollbackDtoSchemaCatalog
+  ...canonicalBatchRollbackDtoSchemaCatalog,
+  ...canonicalManualSyncDtoSchemaCatalog
 };
 
 export const dtoSchemaCoveredRouteIds = [
@@ -38,3 +40,4 @@ export * from "./agent";
 export * from "./parameterCatalog";
 export * from "./canonicalConflict";
 export * from "./canonicalBatchRollback";
+export * from "./canonicalManualSync";

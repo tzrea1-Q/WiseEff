@@ -18,6 +18,7 @@ import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import { createCanonicalBatchRollbackClient } from "@/infrastructure/http/canonicalBatchRollbackClient";
+import { createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 import type { PrototypeState } from "@/domain/prototype/types";
 import {
   buildParameterAdminProjectsFromState,
@@ -96,6 +97,7 @@ export function ProjectsOperationsPanel({
   const canAdmin = canPerform(migrateLegacyRoleId(state.activeRoleId), "admin.access");
   const adminClient = useMemo(() => createParameterAdminClient(), []);
   const batchRollbackClient = useMemo(() => isApiMode ? createCanonicalBatchRollbackClient() : undefined, [isApiMode]);
+  const manualSyncClient = useMemo(() => isApiMode ? createCanonicalManualSyncClient() : undefined, [isApiMode]);
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
 
   const fileRepository = useMemo(
@@ -360,6 +362,7 @@ export function ProjectsOperationsPanel({
           dtsRepository={dtsRepo}
           fileRepository={fileRepository}
           batchRollbackClient={batchRollbackClient}
+          manualSyncClient={manualSyncClient}
           memberRemovalRepository={parameterCatalogRepository}
           apiMode={isApiMode}
           listAuditEvents={(params) => auditQuery.listAuditEvents(params)}

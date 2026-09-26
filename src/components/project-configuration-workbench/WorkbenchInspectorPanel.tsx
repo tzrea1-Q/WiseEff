@@ -124,6 +124,7 @@ export type WorkbenchInspectorPanelProps = {
   onRequestRemoveMember: (member: DtsConfigSetMemberFile) => void;
   canRequestReviewedMemberRemoval?: boolean;
   onSyncFile: () => void;
+  onOpenManualSync?: () => void;
   sourceWorkflow: ParameterFileSourceWorkflow | null;
   sourceWorkflowLoading: boolean;
   sourceWorkflowError: string;
@@ -218,6 +219,7 @@ export function WorkbenchInspectorPanel({
   onRequestRemoveMember,
   canRequestReviewedMemberRemoval = false,
   onSyncFile,
+  onOpenManualSync,
   sourceWorkflow,
   sourceWorkflowLoading,
   sourceWorkflowError,
@@ -818,6 +820,12 @@ export function WorkbenchInspectorPanel({
                         ? "来源一致性校验"
                         : "手动同步"}
                   </button>
+                  {sourceWorkflow?.canonical && sourceWorkflow.bindingCount >= 2 && onOpenManualSync ? <button
+                    className="button subtle" type="button"
+                    disabled={pendingAction !== null || sourceWorkflowLoading || Boolean(sourceWorkflowError)
+                      || !sourceWorkflow.proofToken || !selectedMember.currentVersionId}
+                    onClick={onOpenManualSync}
+                  >上传来源并预览批量候选</button> : null}
                   <button
                     className="button subtle"
                     type="button"
