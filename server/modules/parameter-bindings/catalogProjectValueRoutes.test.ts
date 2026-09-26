@@ -97,6 +97,7 @@ vi.mock("./drafts", async (importOriginal) => {
     listCanonicalValueChangesForAuth: vi.fn(),
     approveCanonicalBatchValueChange: vi.fn(),
     getCanonicalBatchValueChangeForReviewer: vi.fn(),
+    getCanonicalBatchValueChangeForAuth: vi.fn(),
     reviewCanonicalValueChange: vi.fn(),
     submitCanonicalValueChange: vi.fn(),
     withdrawCanonicalValueChange: vi.fn()
@@ -1050,11 +1051,11 @@ describe("canonical value change request routes", () => {
     expect(drafts.reviewCanonicalValueChange).not.toHaveBeenCalled();
   });
 
-  it("returns the complete ordered batch only through the reviewer-scoped read", async () => {
+  it("returns the complete ordered batch through the authorized submitter or reviewer read", async () => {
     const db = makeDb();
     const batch = { id: "pvcr-batch", batchProofDigest: "a".repeat(64), status: "pending",
       targets: [{ ordinal: 0, bindingId: "binding-a" }, { ordinal: 1, bindingId: "binding-b" }] };
-    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue(batch as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue(batch as never);
 
     const response = await requestJson<{ item: typeof batch }>(
       makeServer({ db }), "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-batch/batch"
@@ -1062,7 +1063,7 @@ describe("canonical value change request routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.item).toEqual(batch);
-    expect(drafts.getCanonicalBatchValueChangeForReviewer).toHaveBeenCalledWith(
+    expect(drafts.getCanonicalBatchValueChangeForAuth).toHaveBeenCalledWith(
       db, expect.anything(), { projectId: "project-1", requestId: "pvcr-batch" }
     );
   });
@@ -1076,7 +1077,7 @@ describe("canonical value change request routes", () => {
         { ordinal: 1, bindingId: "binding-b", sourcePinId: "pin-b", action: "set" }
       ] };
     vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
-    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue({
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue({
       id: "pvcr-batch", candidateId: "candidate-batch", batchProofDigest: proof, targets: diff.targets
     } as never);
     vi.mocked(sourceDiff.readCanonicalBatchSourceDiff).mockResolvedValue(diff as never);
@@ -1234,14 +1235,14 @@ describe("canonical request tracking access", () => {
   it("checks batch reviewer visibility before reporting missing source storage", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
-    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue(null);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue(null);
     const path = "/api/v2/projects/project-1/parameter-value-change-requests/batch-request/source-diff";
     expect((await requestJson(makeServer({ db, withoutObjectStore: true }), path)).status).toBe(404);
-    expect(drafts.getCanonicalBatchValueChangeForReviewer).toHaveBeenCalledWith(
+    expect(drafts.getCanonicalBatchValueChangeForAuth).toHaveBeenCalledWith(
       db, expect.anything(), { projectId: "project-1", requestId: "batch-request" }
     );
 
-    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue({ id: "batch-request" } as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue({ id: "batch-request" } as never);
     expect((await requestJson(makeServer({ db, withoutObjectStore: true }), path)).status).toBe(500);
   });
 });

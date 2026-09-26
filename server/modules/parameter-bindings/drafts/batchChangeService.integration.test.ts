@@ -132,7 +132,9 @@ describe("#906 C frozen multi-target request", () => {
     const submit = () => submitCanonicalBatchValueChange(db, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id,
       expectedProofToken, reason: "one human review for both targets",
-      assignedToUserId: REVIEWER, invocation: createUserInvocation(admin),
+      assignedToUserId: REVIEWER,
+      targetDecisions: bindings.map((binding) => ({ bindingId: binding.id, choice: "file" as const })),
+      invocation: createUserInvocation(admin),
       requestId: "c906-submit", refusalSink: createTrustedRefusalAuditSink(db)
     });
     await expect(submit()).rejects.toMatchObject({ code: "CONFLICT" });
@@ -195,6 +197,16 @@ describe("#906 C frozen multi-target request", () => {
         code: "23514", constraint: "project_parameter_value_change_requests_kind_ck"
       });
     }
+    for (const [field, id] of [["batch_draft_impact", "pvcr_906_bad_impact"],
+      ["batch_draft_impact_digest", "pvcr_906_bad_impact_digest"]] as const) {
+      await expect(db.query(`insert into public.project_parameter_value_change_requests
+        select (jsonb_populate_record(null::public.project_parameter_value_change_requests,
+          to_jsonb(request) || jsonb_build_object('id', $2::text, 'status', 'rejected', $3::text, null))).*
+          from public.project_parameter_value_change_requests request where request.id=$1`,
+      [frozen.id, id, field])).rejects.toMatchObject({
+        code: "23514", constraint: "project_parameter_value_change_requests_draft_impact_ck"
+      });
+    }
 
     await expect(db.query(`delete from public.project_parameter_value_change_targets where request_id=$1`, [frozen.id]))
       .rejects.toMatchObject({ code: "55000" });
@@ -227,6 +239,7 @@ describe("#906 C frozen multi-target request", () => {
     const request = await submitCanonicalBatchValueChange(db, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id, expectedProofToken: proof.proofToken,
       reason: "Approve both current source targets together", assignedToUserId: REVIEWER,
+      targetDecisions: bindings.map((binding) => ({ bindingId: binding.id, choice: "file" as const })),
       invocation: createUserInvocation(admin), requestId: "c906-real-batch-submit",
       refusalSink: createTrustedRefusalAuditSink(db)
     });
@@ -236,6 +249,7 @@ describe("#906 C frozen multi-target request", () => {
     const approve = (auth = reviewer, batchProofDigest = proof.batchProofDigest) => db.transaction((tx) =>
       approveCanonicalBatchValueChange(tx, storage, auth, catalog, {
         projectId: PROJECT, requestId: request.id, batchProofDigest,
+        draftImpactDigest: request.draftImpactDigest ?? undefined,
         invocation: createUserInvocation(auth), traceId: "c906-real-batch-review",
         refusalSink: createTrustedRefusalAuditSink(db)
       }));

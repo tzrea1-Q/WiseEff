@@ -1,5 +1,5 @@
 /** #906 C owner: freeze one source candidate into one ordered request. */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { asAuditTx } from "../../audit/auditedWrite";
 import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
@@ -15,7 +15,8 @@ import { canAdminParameters, canEditParameters, canReviewParameters, canReviewPa
 import { getProjectById } from "../../projects/repository";
 import { lockUserById } from "../../users/repository";
 import { hasCurrentCanonicalReviewRole, hasEligibleWorkflowAssignee } from "../../parameters/reviewWorkflowRepository";
-import { freezeCanonicalCandidateBatchSnapshotInTransaction } from "../../parameter-files/canonicalFileWorkflow";
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, recheckCanonicalCandidateBatchForReviewInTransaction,
+  type CanonicalSourceBatchPrepareDto } from "../../parameter-files/canonicalFileWorkflow";
 import { commitCanonicalSourceBatchRevision } from "../../parameter-files/canonicalSourceBatchCommit";
 import { parseJsonSource } from "../../parameter-files/jsonSource";
 import { parseDtsValue } from "../../dts";
@@ -26,6 +27,8 @@ export type CanonicalBatchChangeRequestDto = {
   projectId: string;
   candidateId: string;
   batchProofDigest: string;
+  draftImpactDigest: string | null;
+  draftImpact: BatchDraftImpact[] | null;
   cohortCount: number;
   status: "pending" | "approved" | "rejected" | "withdrawn";
   reason: string;
@@ -60,8 +63,92 @@ export type CanonicalBatchChangeRequestDto = {
   }>;
 };
 
+type BatchDraftImpact = {
+  ordinal: number;
+  bindingId: string;
+  role: "target" | "sibling";
+  decision: "file" | "re-pin";
+  baseCurrentValueId: string;
+  sourcePinId: string;
+  configRevisionId: string;
+  drafts: Array<{
+    draftId: string;
+    authorUserId: string | null;
+    reason: string;
+    action: "set" | "delete";
+    targetValue: ContractJsonValue;
+    baseCurrentValueId: string;
+    sourcePinId: string | null;
+    configRevisionId: string;
+    currentlyStale: boolean;
+    expectedEffect: "preserved-stale";
+    frozenFingerprint: string;
+  }>;
+};
+
+function digestImpact(impact: BatchDraftImpact[]): string {
+  return createHash("sha256").update(serializeContract(impact as ContractJsonValue)).digest("hex");
+}
+
+/** Called only after D has locked the exact source cohort in this transaction. */
+async function captureBatchDraftImpact(
+  tx: Database, auth: AuthContext, projectId: string, proof: CanonicalSourceBatchPrepareDto
+): Promise<BatchDraftImpact[]> {
+  const bindingIds = proof.cohort.map((entry) => entry.bindingId);
+  if (new Set(bindingIds).size !== bindingIds.length || bindingIds.length < proof.targets.length) {
+    throw new ApiError("CONFLICT", "Batch cohort has duplicate or missing Bindings.");
+  }
+  const baseRows = await tx.query<{
+    binding_id: string; current_value_id: string; source_pin_id: string; config_revision_id: string;
+  }>(`select binding.id as binding_id,binding.current_value_id,
+            pin.id as source_pin_id,value.config_revision_id
+       from parameter_catalog.project_parameter_bindings binding
+       join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+       join parameter_catalog.project_value_source_pins pin
+         on pin.project_value_id=value.id and pin.binding_id=binding.id
+      where binding.organization_id=$1 and binding.project_id=$2
+        and binding.id=any($3::text[])`, [auth.organization.id, projectId, bindingIds]);
+  const bases = new Map(baseRows.rows.map((row) => [row.binding_id, row]));
+  if (bases.size !== bindingIds.length) throw new ApiError("CONFLICT", "Batch cohort base is incomplete.");
+  const drafts = await tx.query<{ snapshot: Record<string, unknown> }>(`
+    select to_jsonb(draft) as snapshot
+      from public.project_parameter_value_drafts draft
+     where draft.organization_id=$1 and draft.project_id=$2
+       and draft.binding_id=any($3::text[])
+     order by draft.binding_id,draft.id for update`, [auth.organization.id, projectId, bindingIds]);
+  const targetIds = new Set(proof.targets.map((target) => target.bindingId));
+  return proof.cohort.map((entry, ordinal) => {
+    const base = bases.get(entry.bindingId);
+    if (!base || base.current_value_id !== entry.oldValueId || base.source_pin_id !== entry.sourcePinId) {
+      throw new ApiError("CONFLICT", "Batch cohort base changed during draft inspection.");
+    }
+    return {
+      ordinal, bindingId: entry.bindingId,
+      role: targetIds.has(entry.bindingId) ? "target" as const : "sibling" as const,
+      decision: targetIds.has(entry.bindingId) ? "file" as const : "re-pin" as const,
+      baseCurrentValueId: base.current_value_id, sourcePinId: base.source_pin_id,
+      configRevisionId: base.config_revision_id,
+      drafts: drafts.rows.filter(({ snapshot }) => snapshot.binding_id === entry.bindingId).map(({ snapshot }) => ({
+        draftId: String(snapshot.id), authorUserId: snapshot.user_id === null ? null : String(snapshot.user_id),
+        reason: String(snapshot.reason), action: snapshot.action as "set" | "delete",
+        targetValue: snapshot.target_value as ContractJsonValue,
+        baseCurrentValueId: String(snapshot.base_current_value_id),
+        sourcePinId: snapshot.source_pin_id === null ? null : String(snapshot.source_pin_id),
+        configRevisionId: String(snapshot.config_revision_id),
+        currentlyStale: snapshot.base_current_value_id !== base.current_value_id
+          || snapshot.source_pin_id !== base.source_pin_id
+          || snapshot.config_revision_id !== base.config_revision_id,
+        expectedEffect: "preserved-stale" as const,
+        frozenFingerprint: createHash("sha256")
+          .update(serializeContract(snapshot as ContractJsonValue)).digest("hex")
+      }))
+    };
+  });
+}
+
 type BatchRow = {
   id: string; project_id: string; candidate_id: string; batch_proof_digest: string;
+  batch_draft_impact: unknown; batch_draft_impact_digest: string | null;
   batch_cohort_count: number;
   status: CanonicalBatchChangeRequestDto["status"]; reason: string;
   submitter_user_id: string | null; assigned_to_user_id: string | null;
@@ -92,6 +179,9 @@ async function loadBatchRequest(db: Database, organizationId: string, projectId:
     projectId: request.project_id,
     candidateId: request.candidate_id,
     batchProofDigest: request.batch_proof_digest,
+    draftImpactDigest: request.batch_draft_impact_digest,
+    draftImpact: Array.isArray(request.batch_draft_impact)
+      ? request.batch_draft_impact as BatchDraftImpact[] : null,
     cohortCount: request.batch_cohort_count,
     status: request.status,
     reason: request.reason,
@@ -138,6 +228,7 @@ export async function submitCanonicalBatchValueChange(
     reason: string;
     assignedToUserId: string;
     selectedDrafts?: Array<{ bindingId: string; draftId: string }>;
+    targetDecisions?: Array<{ bindingId: string; choice: "file" | "draft"; draftId?: string }>;
     invocation: TrustedInvocationContext;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
@@ -166,6 +257,11 @@ export async function submitCanonicalBatchValueChange(
     throw new ApiError("VALIDATION_FAILED", "A batch change requires a reason and a separate assigned reviewer.");
   }
   if (!objectStore) throw new ApiError("INTERNAL_ERROR", "Canonical batch submit requires source object storage.");
+  if (input.selectedDrafts?.length) {
+    throw new ApiError("CONFLICT", "Legacy selectedDrafts cannot prove a whole-cohort decision.", {
+      reason: "canonical-batch-target-decision-required"
+    });
+  }
 
   return db.transaction(async (tx) => {
     // The single-target submitter takes the reviewer row before source locks.
@@ -188,8 +284,13 @@ export async function submitCanonicalBatchValueChange(
     const candidate = (await tx.query<{
       base_digest: string; proposed_digest: string; diff_digest: string;
       frozen_member_manifest: unknown[]; frozen_binding_manifest: unknown[];
+      impact: { canonicalBatchRollback?: {
+        historicalVersionId?: string; historicalDigest?: string; historicalSizeBytes?: number;
+        expectedCurrentVersionId?: string; expectedWorkflowProofToken?: string;
+        candidateProofToken?: string; batchProofDigest?: string;
+      } } | null;
     }>(`select base_digest, proposed_digest, diff_digest,
-              frozen_member_manifest, frozen_binding_manifest
+              frozen_member_manifest, frozen_binding_manifest, impact
          from public.project_parameter_file_candidates
         where id=$1 and organization_id=$2 and project_id=$3 for update`,
       [input.candidateId, auth.organization.id, input.projectId])).rows[0];
@@ -202,17 +303,47 @@ export async function submitCanonicalBatchValueChange(
       || serializeContract(candidate.frozen_binding_manifest as ContractJsonValue) !== serializeContract(proof.cohort)) {
       throw new ApiError("CONFLICT", "Candidate snapshot disagrees with the locked batch proof.");
     }
-    const selected = new Map<string, string>();
-    for (const item of input.selectedDrafts ?? []) {
-      if (selected.has(item.bindingId) || !item.draftId) {
-        throw new ApiError("VALIDATION_FAILED", "Selected drafts must identify distinct Binding targets.");
-      }
-      selected.set(item.bindingId, item.draftId);
+    const rollback = candidate.impact?.canonicalBatchRollback;
+    let reviewedHistoricalFileChoice = false;
+    if (rollback?.historicalVersionId && rollback.historicalDigest === proof.proposedDigest
+      && rollback.expectedCurrentVersionId === proof.baseVersionId
+      && rollback.expectedWorkflowProofToken === proof.cohortProofToken
+      && rollback.candidateProofToken === proof.proofToken
+      && rollback.batchProofDigest === proof.batchProofDigest) {
+      const historical = (await tx.query<{ file_id: string; checksum: string; size_bytes: number }>(`
+        select file_id,checksum,size_bytes::float8 as size_bytes from public.project_parameter_file_versions
+         where id=$1`, [rollback.historicalVersionId])).rows[0];
+      reviewedHistoricalFileChoice = Boolean(historical && historical.file_id === proof.fileId
+        && historical.checksum.replace(/^sha256:/, "") === proof.proposedDigest
+        && historical.size_bytes === rollback.historicalSizeBytes);
     }
     const cohort = new Map(proof.cohort.map((entry) => [entry.bindingId, entry]));
     const targetIds = proof.targets.map((target) => target.bindingId);
-    if (new Set(targetIds).size !== targetIds.length || [...selected.keys()].some((id) => !targetIds.includes(id))) {
-      throw new ApiError("CONFLICT", "Batch proof or selected drafts contain an unexpected Binding.");
+    if (new Set(targetIds).size !== targetIds.length) {
+      throw new ApiError("CONFLICT", "Batch proof contains a duplicate Binding.");
+    }
+    const impact = await captureBatchDraftImpact(tx, auth, input.projectId, proof);
+    const impactDigest = digestImpact(impact);
+    const decisions = new Map<string, { choice: "file" | "draft"; draftId?: string }>();
+    for (const decision of input.targetDecisions ?? []) {
+      if (decisions.has(decision.bindingId) || !targetIds.includes(decision.bindingId)) {
+        throw new ApiError("VALIDATION_FAILED", "Batch decisions must identify distinct changed targets.");
+      }
+      decisions.set(decision.bindingId, decision);
+    }
+    for (const target of impact.filter((item) => item.role === "target")) {
+      const decision = decisions.get(target.bindingId);
+      if (decision?.choice === "draft") {
+        throw new ApiError("CONFLICT", "A mixed draft and file batch needs a whole-cohort composition proof.", {
+          reason: "canonical-batch-draft-composition-unavailable"
+        });
+      }
+      if (decision?.draftId || (target.drafts.some((draft) => !draft.currentlyStale)
+        && decision?.choice !== "file" && !reviewedHistoricalFileChoice)) {
+        throw new ApiError("CONFLICT", "A changed target with drafts needs an explicit file decision.", {
+          reason: "canonical-batch-target-decision-required", bindingId: target.bindingId
+        });
+      }
     }
     const pending = await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
       where candidate_id=$1 and organization_id=$2 and project_id=$3 and status='pending' for update`,
@@ -222,7 +353,8 @@ export async function submitCanonicalBatchValueChange(
       if (prior && prior.submitterUserId === auth.user.id && prior.assignedToUserId === input.assignedToUserId
         && prior.reason === reason && prior.batchProofDigest === proof.batchProofDigest
         && prior.sourceProofToken === proof.proofToken && prior.targets.length === proof.targets.length
-        && prior.targets.every((target) => (selected.get(target.bindingId) ?? null) === target.draftId)) return prior;
+        && prior.draftImpactDigest === impactDigest
+        && prior.targets.every((target) => target.draftId === null)) return prior;
       throw new ApiError("CONFLICT", "Candidate already has a pending review request.");
     }
     const bases = await tx.query<{
@@ -249,16 +381,17 @@ export async function submitCanonicalBatchValueChange(
       candidate_base_digest, candidate_proposed_digest, candidate_diff_digest,
       candidate_member_manifest, candidate_binding_manifest, batch_proof_digest,
       batch_target_count, batch_source_proof_token, batch_cohort_proof_token,
-      batch_file_id, batch_base_version_id, batch_config_set_id, batch_cohort_count
+      batch_file_id, batch_base_version_id, batch_config_set_id, batch_cohort_count,
+      batch_draft_impact, batch_draft_impact_digest
     ) values ($1,$2,$3,'batch',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,
-              $13,$14,$15,$16,$17,$18,$19,$20)`, [
+              $13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22)`, [
       requestId, auth.organization.id, input.projectId, reason, auth.user.id,
       input.assignedToUserId, proof.candidateId, candidate.base_digest,
       candidate.proposed_digest, candidate.diff_digest,
       JSON.stringify(candidate.frozen_member_manifest), JSON.stringify(candidate.frozen_binding_manifest),
       proof.batchProofDigest, proof.targets.length, proof.proofToken,
       proof.cohortProofToken, proof.fileId, proof.baseVersionId, proof.configSetId,
-      proof.cohort.length
+      proof.cohort.length, JSON.stringify(impact), impactDigest
     ]);
 
     for (const [ordinal, target] of proof.targets.entries()) {
@@ -288,28 +421,6 @@ export async function submitCanonicalBatchValueChange(
         : proof.format === "dts"
           ? parseDtsValue(target.locator.propertyName as string, target.targetText!).value
           : { kind: "json-source", value: parseJsonSource(target.targetText ?? "") };
-      const selectedDraftId = selected.get(target.bindingId) ?? null;
-      if (selectedDraftId) {
-        const draft = (await tx.query<{
-          id: string; user_id: string | null; source_pin_id: string; base_current_value_id: string;
-          config_revision_id: string; candidate_id: string; action: string; target_value: unknown;
-        }>(`select * from public.project_parameter_value_drafts
-              where id=$1 and organization_id=$2 and project_id=$3 and binding_id=$4 for update`,
-          [selectedDraftId, auth.organization.id, input.projectId, target.bindingId])).rows[0];
-        if (!draft || draft.user_id !== auth.user.id
-          || draft.source_pin_id !== target.sourcePinId
-          || draft.base_current_value_id !== target.baseCurrentValueId
-          || draft.config_revision_id !== target.configRevisionId
-          || draft.candidate_id !== proof.candidateId || draft.action !== target.action
-          || serializeContract(draft.target_value as ContractJsonValue) !== serializeContract(targetValue as ContractJsonValue)) {
-          throw new ApiError("CONFLICT", "Selected draft disagrees with the frozen candidate target.");
-        }
-        const open = await tx.query(`select request.id from public.project_parameter_value_change_requests request
-          left join public.project_parameter_value_change_targets other on other.request_id=request.id
-          where request.status='pending' and (request.draft_id=$1 or other.draft_id=$1)
-          limit 1`, [selectedDraftId]);
-        if (open.rows.length) throw new ApiError("CONFLICT", "Selected draft already has a pending request.");
-      }
       await tx.query(`insert into public.project_parameter_value_change_targets (
         id, request_id, organization_id, project_id, ordinal, draft_id, binding_id,
         definition_id, definition_revision_id, catalog_release_id,
@@ -317,7 +428,7 @@ export async function submitCanonicalBatchValueChange(
         action, target_value, target_text, base_digest, proposed_digest
       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19)`, [
         `pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId,
-        ordinal, selectedDraftId, target.bindingId, base.definition_id,
+        ordinal, null, target.bindingId, base.definition_id,
         base.effective_revision_id, base.catalog_release_id, base.current_value_id,
         base.config_revision_id, base.source_ref, base.source_pin_id,
         target.action, JSON.stringify(targetValue), target.targetText ?? null,
@@ -330,7 +441,8 @@ export async function submitCanonicalBatchValueChange(
       action: "value-change-submitted", organizationId: auth.organization.id,
       projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: requestId,
       metadata: { requestId, requestKind: "batch", candidateId: proof.candidateId,
-        batchProofDigest: proof.batchProofDigest, targetCount: proof.targets.length }
+        batchProofDigest: proof.batchProofDigest, draftImpactDigest: impactDigest,
+        targetCount: proof.targets.length, affectedDraftCount: impact.reduce((count, item) => count + item.drafts.length, 0) }
     }, input.requestId);
     return frozen;
   });
@@ -377,6 +489,19 @@ export async function getCanonicalBatchValueChangeForReviewer(
   });
 }
 
+/** The submitter may inspect only their own frozen request; review remains assigned-only. */
+export async function getCanonicalBatchValueChangeForAuth(
+  db: Database, auth: AuthContext, input: { projectId: string; requestId: string }
+): Promise<CanonicalBatchChangeRequestDto | null> {
+  if (auth.user.isActive && canViewParameters(auth) && canAdminParameters(auth)
+    && canEditParameters(auth, input.projectId)
+    && await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
+    const frozen = await loadBatchRequest(db, auth.organization.id, input.projectId, input.requestId);
+    if (frozen?.submitterUserId === auth.user.id) return frozen;
+  }
+  return getCanonicalBatchValueChangeForReviewer(db, auth, input);
+}
+
 export async function listCanonicalBatchValueChangesForAuth(
   db: Database, auth: AuthContext,
   input: { projectId: string; status?: CanonicalBatchChangeRequestDto["status"]; mine?: boolean }
@@ -403,7 +528,7 @@ export async function listCanonicalBatchValueChangesForAuth(
 
 export async function rejectCanonicalBatchValueChange(
   db: Database, auth: AuthContext,
-  input: { projectId: string; requestId: string; batchProofDigest: string; note?: string | null;
+  input: { projectId: string; requestId: string; batchProofDigest: string; draftImpactDigest?: string; note?: string | null;
     invocation: TrustedInvocationContext; traceId: string; refusalSink: TrustedRefusalAuditSink }
 ): Promise<CanonicalBatchChangeRequestDto> {
   return db.transaction(async (tx) => {
@@ -414,6 +539,11 @@ export async function rejectCanonicalBatchValueChange(
     if (visible.batchProofDigest !== input.batchProofDigest) {
       throw new ApiError("CONFLICT", "Canonical batch review proof disagrees with the frozen request.", {
         reason: "canonical-batch-proof-mismatch"
+      });
+    }
+    if (input.draftImpactDigest && visible.draftImpactDigest !== input.draftImpactDigest) {
+      throw new ApiError("CONFLICT", "Canonical batch draft impact proof disagrees with the frozen request.", {
+        reason: "canonical-batch-draft-impact-mismatch"
       });
     }
     const locked = (await tx.query<BatchRow>(`select * from public.project_parameter_value_change_requests
@@ -495,21 +625,58 @@ export async function approveCanonicalBatchValueChange(
     projectId: string;
     requestId: string;
     batchProofDigest: string;
+    draftImpactDigest?: string;
     invocation: TrustedInvocationContext;
     traceId: string;
     refusalSink: TrustedRefusalAuditSink;
     note?: string | null;
   }
 ): Promise<CanonicalBatchChangeRequestDto> {
-  const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, input, {
+  const visible = await getCanonicalBatchValueChangeForReviewer(tx, auth, input, {
     invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink
   });
+  if (!visible) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+  // Serialize only retries of this request before the source lock and status read.
+  await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+    `${auth.organization.id}:${input.projectId}:batch-review:${input.requestId}`
+  ]);
+  const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, input);
   if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
   if (!/^[0-9a-f]{64}$/.test(input.batchProofDigest)
     || frozen.batchProofDigest !== input.batchProofDigest) {
     throw new ApiError("CONFLICT", "Canonical batch review proof disagrees with the frozen request.", {
       reason: "canonical-batch-proof-mismatch"
     });
+  }
+  if (frozen.status === "pending" && (!frozen.draftImpact || !frozen.draftImpactDigest)) {
+    throw new ApiError("CONFLICT", "Canonical batch has no valid frozen draft impact.", {
+      reason: "canonical-batch-draft-impact-missing"
+    });
+  }
+  if (frozen.draftImpact && digestImpact(frozen.draftImpact) !== frozen.draftImpactDigest) {
+    throw new ApiError("CONFLICT", "Canonical batch has no valid frozen draft impact.", {
+      reason: "canonical-batch-draft-impact-missing"
+    });
+  }
+  if (input.draftImpactDigest && input.draftImpactDigest !== frozen.draftImpactDigest) {
+    throw new ApiError("CONFLICT", "Canonical batch draft impact proof disagrees with the frozen request.", {
+      reason: "canonical-batch-draft-impact-mismatch"
+    });
+  }
+  if (frozen.status === "pending") {
+    const proof = await recheckCanonicalCandidateBatchForReviewInTransaction(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: frozen.candidateId,
+      expectedProofToken: frozen.sourceProofToken
+    });
+    if (proof.batchProofDigest !== frozen.batchProofDigest || proof.cohort.length !== frozen.cohortCount) {
+      throw new ApiError("CONFLICT", "Canonical batch source proof changed before draft recheck.");
+    }
+    const currentImpact = await captureBatchDraftImpact(tx, auth, input.projectId, proof);
+    if (digestImpact(currentImpact) !== frozen.draftImpactDigest) {
+      throw new ApiError("CONFLICT", "Canonical batch draft impact changed after submission.", {
+        reason: "canonical-batch-draft-impact-stale"
+      });
+    }
   }
   const applied = await commitCanonicalSourceBatchRevision(tx, objectStore, auth, snapshot, {
     projectId: input.projectId, requestId: input.requestId,

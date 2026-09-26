@@ -6477,7 +6477,7 @@
     "/api/v2/projects/{projectId}/parameter-value-change-requests/batches": {
       "post": {
         "operationId": "parameterTopology.submitProjectValueBatchChangeRequest",
-        "summary": "Freeze and submit one canonical JSON batch request for a separate assigned software reviewer",
+        "summary": "Freeze and submit one canonical JSON or DTS batch request and its full cohort draft impact for a separate assigned software reviewer",
         "tags": [
           "parameters"
         ],
@@ -6722,7 +6722,7 @@
     "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/batch": {
       "get": {
         "operationId": "parameterTopology.getProjectValueBatchChangeRequest",
-        "summary": "Read one frozen canonical batch request with its ordered targets for software review",
+        "summary": "Read one frozen canonical batch request, ordered cohort draft impact and targets for its submitter or assigned reviewer",
         "tags": [
           "parameters"
         ],
@@ -21405,6 +21405,129 @@
               "cohortCount": {
                 "type": "number"
               },
+              "draftImpactDigest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "draftImpact": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ordinal": {
+                      "type": "number"
+                    },
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "target",
+                        "sibling"
+                      ]
+                    },
+                    "decision": {
+                      "type": "string",
+                      "enum": [
+                        "file",
+                        "re-pin"
+                      ]
+                    },
+                    "baseCurrentValueId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "drafts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "draftId": {
+                            "type": "string"
+                          },
+                          "authorUserId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "set",
+                              "delete"
+                            ]
+                          },
+                          "targetValue": {},
+                          "baseCurrentValueId": {
+                            "type": "string"
+                          },
+                          "sourcePinId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "configRevisionId": {
+                            "type": "string"
+                          },
+                          "currentlyStale": {
+                            "type": "boolean"
+                          },
+                          "expectedEffect": {
+                            "type": "string",
+                            "enum": [
+                              "preserved-stale"
+                            ]
+                          },
+                          "frozenFingerprint": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "draftId",
+                          "authorUserId",
+                          "reason",
+                          "action",
+                          "targetValue",
+                          "baseCurrentValueId",
+                          "sourcePinId",
+                          "configRevisionId",
+                          "currentlyStale",
+                          "expectedEffect",
+                          "frozenFingerprint"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "ordinal",
+                    "bindingId",
+                    "role",
+                    "decision",
+                    "baseCurrentValueId",
+                    "sourcePinId",
+                    "configRevisionId",
+                    "drafts"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -21572,6 +21695,8 @@
               "candidateId",
               "batchProofDigest",
               "cohortCount",
+              "draftImpactDigest",
+              "draftImpact",
               "status",
               "reason",
               "submitterUserId",
@@ -21629,6 +21754,32 @@
               ],
               "additionalProperties": false
             }
+          },
+          "targetDecisions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bindingId": {
+                  "type": "string"
+                },
+                "choice": {
+                  "type": "string",
+                  "enum": [
+                    "file",
+                    "draft"
+                  ]
+                },
+                "draftId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bindingId",
+                "choice"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -21662,6 +21813,129 @@
                 },
                 "cohortCount": {
                   "type": "number"
+                },
+                "draftImpactDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "draftImpact": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ordinal": {
+                        "type": "number"
+                      },
+                      "bindingId": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "target",
+                          "sibling"
+                        ]
+                      },
+                      "decision": {
+                        "type": "string",
+                        "enum": [
+                          "file",
+                          "re-pin"
+                        ]
+                      },
+                      "baseCurrentValueId": {
+                        "type": "string"
+                      },
+                      "sourcePinId": {
+                        "type": "string"
+                      },
+                      "configRevisionId": {
+                        "type": "string"
+                      },
+                      "drafts": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "draftId": {
+                              "type": "string"
+                            },
+                            "authorUserId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "set",
+                                "delete"
+                              ]
+                            },
+                            "targetValue": {},
+                            "baseCurrentValueId": {
+                              "type": "string"
+                            },
+                            "sourcePinId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "configRevisionId": {
+                              "type": "string"
+                            },
+                            "currentlyStale": {
+                              "type": "boolean"
+                            },
+                            "expectedEffect": {
+                              "type": "string",
+                              "enum": [
+                                "preserved-stale"
+                              ]
+                            },
+                            "frozenFingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "draftId",
+                            "authorUserId",
+                            "reason",
+                            "action",
+                            "targetValue",
+                            "baseCurrentValueId",
+                            "sourcePinId",
+                            "configRevisionId",
+                            "currentlyStale",
+                            "expectedEffect",
+                            "frozenFingerprint"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "ordinal",
+                      "bindingId",
+                      "role",
+                      "decision",
+                      "baseCurrentValueId",
+                      "sourcePinId",
+                      "configRevisionId",
+                      "drafts"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "status": {
                   "type": "string",
@@ -21830,6 +22104,8 @@
                 "candidateId",
                 "batchProofDigest",
                 "cohortCount",
+                "draftImpactDigest",
+                "draftImpact",
                 "status",
                 "reason",
                 "submitterUserId",
@@ -21872,6 +22148,9 @@
             ]
           },
           "batchProofDigest": {
+            "type": "string"
+          },
+          "draftImpactDigest": {
             "type": "string"
           },
           "memberProofDigest": {
@@ -22079,6 +22358,129 @@
                   "cohortCount": {
                     "type": "number"
                   },
+                  "draftImpactDigest": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "draftImpact": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ordinal": {
+                          "type": "number"
+                        },
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "target",
+                            "sibling"
+                          ]
+                        },
+                        "decision": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "re-pin"
+                          ]
+                        },
+                        "baseCurrentValueId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "configRevisionId": {
+                          "type": "string"
+                        },
+                        "drafts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "draftId": {
+                                "type": "string"
+                              },
+                              "authorUserId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "action": {
+                                "type": "string",
+                                "enum": [
+                                  "set",
+                                  "delete"
+                                ]
+                              },
+                              "targetValue": {},
+                              "baseCurrentValueId": {
+                                "type": "string"
+                              },
+                              "sourcePinId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "configRevisionId": {
+                                "type": "string"
+                              },
+                              "currentlyStale": {
+                                "type": "boolean"
+                              },
+                              "expectedEffect": {
+                                "type": "string",
+                                "enum": [
+                                  "preserved-stale"
+                                ]
+                              },
+                              "frozenFingerprint": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "draftId",
+                              "authorUserId",
+                              "reason",
+                              "action",
+                              "targetValue",
+                              "baseCurrentValueId",
+                              "sourcePinId",
+                              "configRevisionId",
+                              "currentlyStale",
+                              "expectedEffect",
+                              "frozenFingerprint"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "ordinal",
+                        "bindingId",
+                        "role",
+                        "decision",
+                        "baseCurrentValueId",
+                        "sourcePinId",
+                        "configRevisionId",
+                        "drafts"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "status": {
                     "type": "string",
                     "enum": [
@@ -22246,6 +22648,8 @@
                   "candidateId",
                   "batchProofDigest",
                   "cohortCount",
+                  "draftImpactDigest",
+                  "draftImpact",
                   "status",
                   "reason",
                   "submitterUserId",
@@ -22711,6 +23115,129 @@
                   "cohortCount": {
                     "type": "number"
                   },
+                  "draftImpactDigest": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "draftImpact": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ordinal": {
+                          "type": "number"
+                        },
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "target",
+                            "sibling"
+                          ]
+                        },
+                        "decision": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "re-pin"
+                          ]
+                        },
+                        "baseCurrentValueId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "configRevisionId": {
+                          "type": "string"
+                        },
+                        "drafts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "draftId": {
+                                "type": "string"
+                              },
+                              "authorUserId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "action": {
+                                "type": "string",
+                                "enum": [
+                                  "set",
+                                  "delete"
+                                ]
+                              },
+                              "targetValue": {},
+                              "baseCurrentValueId": {
+                                "type": "string"
+                              },
+                              "sourcePinId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "configRevisionId": {
+                                "type": "string"
+                              },
+                              "currentlyStale": {
+                                "type": "boolean"
+                              },
+                              "expectedEffect": {
+                                "type": "string",
+                                "enum": [
+                                  "preserved-stale"
+                                ]
+                              },
+                              "frozenFingerprint": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "draftId",
+                              "authorUserId",
+                              "reason",
+                              "action",
+                              "targetValue",
+                              "baseCurrentValueId",
+                              "sourcePinId",
+                              "configRevisionId",
+                              "currentlyStale",
+                              "expectedEffect",
+                              "frozenFingerprint"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "ordinal",
+                        "bindingId",
+                        "role",
+                        "decision",
+                        "baseCurrentValueId",
+                        "sourcePinId",
+                        "configRevisionId",
+                        "drafts"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "status": {
                     "type": "string",
                     "enum": [
@@ -22878,6 +23405,8 @@
                   "candidateId",
                   "batchProofDigest",
                   "cohortCount",
+                  "draftImpactDigest",
+                  "draftImpact",
                   "status",
                   "reason",
                   "submitterUserId",
