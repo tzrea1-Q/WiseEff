@@ -636,7 +636,8 @@ describe("#906 canonical historical batch rollback HTTP", () => {
       `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
         method: "POST", headers: { "X-Request-Id": `906-http-${format}-newer-submit` },
         body: JSON.stringify({ candidateId: candidate.id, expectedProofToken: preview.proofToken,
-          assignedToUserId: REVIEWER, reason: "Advance whole source" })
+          assignedToUserId: REVIEWER, reason: "Advance whole source",
+          targetDecisions: preview.bindings?.map(({ bindingId }) => ({ bindingId, choice: "file" })) })
       });
     expect(newer.status, JSON.stringify(newer.body)).toBe(201);
     expect((await requestJson(route(f, reviewer),
