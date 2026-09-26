@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  canonicalBatchRollbackPrepareRequestSchema,
+  canonicalBatchRollbackSubmitRequestSchema
+} from "../contracts/dtoSchemas/canonicalBatchRollback";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
@@ -69,10 +73,12 @@ import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./ty
 import { configSetRoleSchema } from "./schemas";
 import {
   getCanonicalSourceWorkflow,
+  prepareCanonicalBatchRollbackCandidate,
   prepareCanonicalConflictDecision,
   previewCanonicalCandidate,
   rollbackCanonicalSource,
   submitCanonicalConflictDecision,
+  submitCanonicalBatchRollback,
   submitCanonicalCandidate,
   syncCanonicalSource
 } from "./canonicalFileWorkflow";
@@ -1097,5 +1103,32 @@ export function registerParameterFileRoutes(
       refusalSink: requireSubmissionRefusalSink()
     });
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/prepare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const body = parseWithSchema(canonicalBatchRollbackPrepareRequestSchema, request.body,
+      "Invalid canonical batch rollback preparation payload.");
+    const item = await prepareCanonicalBatchRollbackCandidate(db, requireObjectStore(options.objectStore), auth, {
+      projectId: params.projectId, fileId: params.fileId, ...body, requestId: request.requestId
+    });
+    return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/submit", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const body = parseWithSchema(canonicalBatchRollbackSubmitRequestSchema, request.body,
+      "Invalid canonical batch rollback submission payload.");
+    const item = await submitCanonicalBatchRollback(db, requireObjectStore(options.objectStore), auth, {
+      projectId: params.projectId, fileId: params.fileId, ...body, requestId: request.requestId,
+      refusalSink: requireSubmissionRefusalSink()
+    });
+    return { status: 201, body: { item } };
   });
 }
