@@ -174,6 +174,17 @@ const c949D950CurrentSuccessor = JSON.parse(await readFile(
   currentUnallowlistedCount: number;
   currentUnallowlistedIdsSha256: string;
 };
+const d956CurrentSuccessor = JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-d956-current-successor.json`, "utf8",
+)) as {
+  schemaVersion: number;
+  priorAHead: string;
+  dHead: string;
+  changedBlobs: Record<string, { before: string | null; after: string }>;
+  addedSourceSlice: { file: string; byteStart: number; byteEnd: number; sha256: string };
+  currentUnallowlistedIdsSha256: string;
+  changedFileObservedIds: string[];
+};
 
 const originalRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${exactRelocationRecordPath}`, "utf8"),
@@ -1253,7 +1264,9 @@ describe("parameter catalog boundary checker", () => {
         }
         expect(execFileSync("git", ["rev-parse", `${c949D950CurrentSuccessor.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
         const current = await readFile(`${process.cwd()}/${file}`);
-        expect(createHash("sha1").update(`blob ${current.length}\0`).update(current).digest("hex")).toBe(blobs.after);
+        expect(createHash("sha1").update(`blob ${current.length}\0`).update(current).digest("hex")).toBe(
+          d956CurrentSuccessor.changedBlobs[file]?.after ?? blobs.after,
+        );
       }
       expect(c949D950CurrentSuccessor.priorUnallowlistedCount).toBe(174);
       expect(createHash("sha256").update(b948UnallowlistedIds.join("\n")).digest("hex")).toBe(c949D950CurrentSuccessor.priorUnallowlistedIdsSha256);
@@ -1265,6 +1278,36 @@ describe("parameter catalog boundary checker", () => {
       expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual(b948UnallowlistedIds.filter((id) => id !== newB948.id));
       expect(report.unallowlisted).toHaveLength(c949D950CurrentSuccessor.currentUnallowlistedCount);
       expect(createHash("sha256").update(report.unallowlisted.map((entry) => entry.id).sort().join("\n")).digest("hex")).toBe(c949D950CurrentSuccessor.currentUnallowlistedIdsSha256);
+      expect(d956CurrentSuccessor.schemaVersion).toBe(1);
+      expect(d956CurrentSuccessor.priorAHead).toBe("7281914caedf4b63a89ad34250964feccf1b3fb8");
+      expect(d956CurrentSuccessor.dHead).toBe("83d74582d9792df2784d917ec507d0ff23e7ae96");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", d956CurrentSuccessor.priorAHead, d956CurrentSuccessor.dHead], { encoding: "utf8" })).toBe("");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", d956CurrentSuccessor.dHead, "HEAD"], { encoding: "utf8" })).toBe("");
+      expect(execFileSync("git", ["diff", "--name-only", d956CurrentSuccessor.priorAHead, d956CurrentSuccessor.dHead], { encoding: "utf8" }).trim().split("\n").sort()).toEqual(Object.keys(d956CurrentSuccessor.changedBlobs).sort());
+      for (const [file, blobs] of Object.entries(d956CurrentSuccessor.changedBlobs)) {
+        if (blobs.before === null) {
+          expect(execFileSync("git", ["ls-tree", d956CurrentSuccessor.priorAHead, "--", file], { encoding: "utf8" })).toBe("");
+        } else {
+          expect(execFileSync("git", ["rev-parse", `${d956CurrentSuccessor.priorAHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        }
+        expect(execFileSync("git", ["rev-parse", `${d956CurrentSuccessor.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        const current = await readFile(`${process.cwd()}/${file}`);
+        expect(createHash("sha1").update(`blob ${current.length}\0`).update(current).digest("hex")).toBe(blobs.after);
+      }
+      const { file: d956File, byteStart, byteEnd, sha256 } = d956CurrentSuccessor.addedSourceSlice;
+      const priorD956Bytes = execFileSync("git", ["cat-file", "blob", d956CurrentSuccessor.changedBlobs[d956File]!.before!]);
+      const currentD956Bytes = await readFile(`${process.cwd()}/${d956File}`);
+      const addedSlice = currentD956Bytes.subarray(byteStart, byteEnd);
+      expect(createHash("sha256").update(addedSlice).digest("hex")).toBe(sha256);
+      expect(addedSlice.toString("utf8")).toContain("export async function prepareCanonicalManualSyncBatchCandidate(");
+      expect(priorD956Bytes.includes(addedSlice)).toBe(false);
+      const retainedTail = "export async function syncCanonicalSource(";
+      expect(currentD956Bytes.subarray(currentD956Bytes.indexOf(retainedTail))).toEqual(
+        priorD956Bytes.subarray(priorD956Bytes.indexOf(retainedTail)),
+      );
+      expect(createHash("sha256").update(report.unallowlisted.map((entry) => entry.id).sort().join("\n")).digest("hex")).toBe(d956CurrentSuccessor.currentUnallowlistedIdsSha256);
+      expect(d956CurrentSuccessor.changedFileObservedIds).toEqual([]);
+      expect(report.violations.filter((entry) => Object.keys(d956CurrentSuccessor.changedBlobs).includes(entry.file)).map((entry) => entry.id)).toEqual(d956CurrentSuccessor.changedFileObservedIds);
       for (const entry of c940CurrentSuccessor.moved) {
         expect(jointUnallowlistedRecord.currentUnallowlistedIds).toContain(entry.oldId);
         expect(entry.oldId.split(":").slice(0, 3)).toEqual(entry.newId.split(":").slice(0, 3));

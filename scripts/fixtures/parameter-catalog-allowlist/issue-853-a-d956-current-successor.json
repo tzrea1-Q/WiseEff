@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "priorAHead": "7281914caedf4b63a89ad34250964feccf1b3fb8",
+  "dHead": "83d74582d9792df2784d917ec507d0ff23e7ae96",
+  "changedBlobs": {
+    "server/modules/parameter-files/canonicalFileWorkflow.ts": {
+      "before": "46c527510e7cda40b449f119f171cc4f2df38bfb",
+      "after": "efed77c6325eb69815589d9ce8d440d8a714cacd"
+    },
+    "server/modules/parameter-files/canonicalManualSync.integration.test.ts": {
+      "before": "1309dfd414aeb83c8b147dc18ba4e00378b98582",
+      "after": "835fe7ba43734db177c1695ca23d83475bf846c3"
+    }
+  },
+  "addedSourceSlice": {
+    "file": "server/modules/parameter-files/canonicalFileWorkflow.ts",
+    "byteStart": 100189,
+    "byteEnd": 105229,
+    "sha256": "0e30d6b6a13d855f753e8018bb4f665e98725c65fe63ac0841f2147e04152079"
+  },
+  "currentUnallowlistedIdsSha256": "e4d61c03087651a29cf8b039db4d302c54df73fefc51412ce118bff5579d9a40",
+  "changedFileObservedIds": []
+}
