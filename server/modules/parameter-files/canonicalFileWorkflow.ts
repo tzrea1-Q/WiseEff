@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
-import type { Database, Queryable } from "../../shared/database/client";
+import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { asAuditTx } from "../audit/auditedWrite";
+import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
@@ -52,6 +54,7 @@ import {
   getProjectParameterFileConfigSetId
 } from "./repository";
 import { createCandidate } from "./candidateService";
+import { lockUserById } from "../users/repository";
 import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./types";
 
 export type CanonicalSourceWorkflowDto = {
@@ -1285,6 +1288,666 @@ export async function submitCanonicalCandidate(
   ).catch((error) => rethrowSourceTransactionError(error));
 }
 
+export type CanonicalConflictChoice = "file" | "draft";
+
+export type CanonicalConflictDecisionDto = Readonly<{
+  candidateId: string;
+  selectedBindingId: string;
+  selectedDraftId: string;
+  choice: CanonicalConflictChoice;
+  fileId: string;
+  baseVersionId: string;
+  configSetId: string;
+  sourceProofToken: string;
+  cohortProofToken: string;
+  sourceCandidateDigest: string;
+  selectedDraftCandidateId: string;
+  selectedDraftCandidateDigest: string;
+  selectedDraftProof: string;
+  selectedSourcePinId: string;
+  selectedBaseValueId: string;
+  selectedRevisionId: string;
+  members: readonly CanonicalSourceBatchMemberDto[];
+  cohort: readonly CanonicalSourceBatchCohortDto[];
+  action: SourceAction;
+  targetText?: string;
+  decisionProofDigest: string;
+}>;
+
+/** Read-only selection proof. The caller must submit this exact digest under source locks. */
+export async function prepareCanonicalConflictDecision(
+  db: Queryable,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; selectedBindingId: string; selectedDraftId: string; choice: CanonicalConflictChoice }
+): Promise<CanonicalConflictDecisionDto> {
+  if (input.choice !== "file" && input.choice !== "draft") {
+    throw new ApiError("VALIDATION_FAILED", "A file or draft choice is required.");
+  }
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  const source = await inspectCandidate(db, objectStore, auth, input);
+  const sourceChanges = source.changes ?? (source.change ? [source.change] : []);
+  const fileChange = sourceChanges.find((change) => change.binding.bindingId === input.selectedBindingId);
+  if (!fileChange || !source.proofToken || !source.workflow.proofToken || !source.candidate.fileId
+    || !source.candidate.baseVersionId || !source.candidate.checksum || !source.workflow.configSetId
+    || source.candidate.status !== "ready") {
+    throw new ApiError("CONFLICT", "File candidate has no exact selected canonical target.", {
+      reason: source.reason ?? "source-proof-stale"
+    });
+  }
+  const selected = (await db.query<{
+    id: string; binding_id: string; source_pin_id: string | null; base_current_value_id: string;
+    config_revision_id: string; candidate_id: string | null; candidate_base_digest: string | null;
+    candidate_proposed_digest: string | null; candidate_diff_digest: string | null;
+    candidate_member_manifest: unknown; candidate_binding_manifest: unknown;
+    action: SourceAction; target_value: unknown; user_id: string | null;
+  }>(`select id,binding_id,source_pin_id,base_current_value_id,config_revision_id,
+            candidate_id,candidate_base_digest,candidate_proposed_digest,candidate_diff_digest,
+            action,target_value,user_id,candidate_member_manifest,candidate_binding_manifest
+       from project_parameter_value_drafts
+      where id=$1 and organization_id=$2 and project_id=$3 and binding_id=$4`,
+    [input.selectedDraftId, auth.organization.id, input.projectId, input.selectedBindingId])).rows[0];
+  if (!selected || selected.source_pin_id !== fileChange.pin.sourcePinId
+    || selected.base_current_value_id !== fileChange.pin.projectValueId
+    || selected.config_revision_id !== fileChange.pin.configRevisionId
+    || !selected.candidate_id || !selected.candidate_base_digest || !selected.candidate_proposed_digest
+    || !selected.candidate_diff_digest) {
+    throw new ApiError("CONFLICT", "Selected canonical draft no longer matches the source base.", {
+      reason: "selected-draft-stale"
+    });
+  }
+  const prepared = await inspectCandidate(db, objectStore, auth, {
+    projectId: input.projectId, candidateId: selected.candidate_id
+  });
+  if (!prepared.change || prepared.change.binding.bindingId !== input.selectedBindingId
+    || prepared.candidate.status !== "ready"
+    || prepared.change.pin.sourcePinId !== selected.source_pin_id
+    || prepared.change.action !== selected.action
+    || prepared.change.baseDigest !== selected.candidate_base_digest
+    || prepared.change.proposedDigest !== selected.candidate_proposed_digest
+    || prepared.candidate.checksum !== selected.candidate_proposed_digest
+    || proofDigest(selected.target_value) !== proofDigest(selected.action === "delete" ? ""
+      : prepared.change.format === "json"
+        ? { kind: "json-source", value: parseJsonSource(prepared.change.targetText!) }
+        : prepared.change.targetValue)) {
+    throw new ApiError("CONFLICT", "Selected canonical draft lost its exact prepared bytes.", {
+      reason: "selected-draft-stale"
+    });
+  }
+  const chosen = input.choice === "file" ? fileChange : prepared.change;
+  const sourceSnapshot = await loadCanonicalSourceSnapshot(db, objectStore, {
+    organizationId: auth.organization.id, projectId: input.projectId,
+    bindingId: input.selectedBindingId, projectValueId: fileChange.pin.projectValueId
+  });
+  const cohort = await loadSourceBindingCohortReadOnly(db, {
+    organizationId: auth.organization.id, projectId: input.projectId,
+    configSetId: source.workflow.configSetId
+  });
+  if (cohort.some((entry) => !entry.sourcePinId || !entry.oldValueId || !entry.locator || !entry.valueDigest)) {
+    throw new ApiError("CONFLICT", "Canonical conflict source cohort is incomplete.", { reason: "source-pin-missing" });
+  }
+  const members = sourceSnapshot.manifest.members.map((member) => ({
+    ...member, configSetId: source.workflow.configSetId!,
+    isCandidateFile: member.fileId === source.candidate.fileId
+  })).sort((left, right) => left.fileId.localeCompare(right.fileId));
+  if (proofDigest(selected.candidate_member_manifest) !== proofDigest(members)
+    || proofDigest(selected.candidate_binding_manifest) !== proofDigest(cohort)) {
+    throw new ApiError("CONFLICT", "Selected draft source manifests are stale.", { reason: "selected-draft-stale" });
+  }
+  const draftArtifact = (await db.query<{
+    base_digest: string | null; proposed_digest: string | null; diff_digest: string | null;
+    frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
+  }>(`select base_digest,proposed_digest,diff_digest,frozen_member_manifest,frozen_binding_manifest
+      from project_parameter_file_candidates
+      where id=$1 and organization_id=$2 and project_id=$3`,
+    [selected.candidate_id, auth.organization.id, input.projectId])).rows[0];
+  if (!draftArtifact || draftArtifact.base_digest !== selected.candidate_base_digest
+    || draftArtifact.proposed_digest !== selected.candidate_proposed_digest
+    || draftArtifact.diff_digest !== selected.candidate_diff_digest
+    || proofDigest(draftArtifact.frozen_member_manifest) !== proofDigest(members)
+    || proofDigest(draftArtifact.frozen_binding_manifest) !== proofDigest(cohort)) {
+    throw new ApiError("CONFLICT", "Selected draft candidate proof is stale.", { reason: "selected-draft-stale" });
+  }
+  for (const entry of cohort) {
+    const sibling = await loadCanonicalSourceSnapshot(db, objectStore, {
+      organizationId: auth.organization.id, projectId: input.projectId,
+      bindingId: entry.bindingId, projectValueId: entry.oldValueId
+    });
+    if (sibling.manifest.configRevisionId !== fileChange.pin.configRevisionId
+      || proofDigest(sibling.manifest.members) !== proofDigest(sourceSnapshot.manifest.members)) {
+      throw new ApiError("CONFLICT", "Canonical conflict source cohort spans different revisions or members.", {
+        reason: "source-cohort-stale"
+      });
+    }
+  }
+  const frozen = {
+    candidateId: source.candidate.id,
+    selectedBindingId: input.selectedBindingId,
+    selectedDraftId: selected.id,
+    choice: input.choice,
+    fileId: source.candidate.fileId,
+    baseVersionId: source.candidate.baseVersionId,
+    configSetId: source.workflow.configSetId,
+    sourceProofToken: source.proofToken,
+    cohortProofToken: source.workflow.proofToken,
+    sourceCandidateDigest: source.candidate.checksum,
+    selectedDraftCandidateId: selected.candidate_id,
+    selectedDraftCandidateDigest: selected.candidate_proposed_digest,
+    selectedSourcePinId: fileChange.pin.sourcePinId,
+    selectedBaseValueId: fileChange.pin.projectValueId,
+    selectedRevisionId: fileChange.pin.configRevisionId,
+    members,
+    cohort,
+    action: chosen.action,
+    ...(chosen.targetText === undefined ? {} : { targetText: chosen.targetText }),
+    selectedDraftProof: proofDigest({
+      authorUserId: selected.user_id, action: selected.action, targetValue: selected.target_value,
+      candidateId: selected.candidate_id, candidateDiffDigest: selected.candidate_diff_digest
+    })
+  };
+  return { ...frozen, decisionProofDigest: proofDigest(frozen) };
+}
+
+/** D-owned source transaction seam for C's future conflict request route. */
+export async function submitCanonicalConflictDecision(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; selectedBindingId: string; selectedDraftId: string;
+    choice: CanonicalConflictChoice; expectedDecisionProofDigest: string; reason: string;
+    assignedToUserId: string; requestId: string; refusalSink: TrustedRefusalAuditSink }
+): Promise<CanonicalSourceSubmitDto> {
+  if (input.choice !== "file" && input.choice !== "draft") {
+    throw new ApiError("VALIDATION_FAILED", "A file or draft choice is required.");
+  }
+  if (!input.reason.trim() || !input.assignedToUserId.trim()) {
+    throw new ApiError("VALIDATION_FAILED", "A reason and assigned reviewer are required.");
+  }
+  return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
+    // Match the existing request owner's reviewer-before-source lock order.
+    await lockUserById(tx, { organizationId: auth.organization.id, userId: input.assignedToUserId });
+    const candidate = await getParameterFileCandidateByIdForUpdate(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+    });
+    if (!candidate) throw new ApiError("NOT_FOUND", "File candidate was not found.");
+    const existing = candidate.impact?.canonicalSourceWorkflow;
+    if (existing) {
+      if (existing.conflictDecision?.decisionProofDigest !== input.expectedDecisionProofDigest
+        || existing.conflictDecision.choice !== input.choice
+        || existing.conflictDecision.selectedDraftId !== input.selectedDraftId
+        || existing.bindingId !== input.selectedBindingId) {
+        throw new ApiError("CONFLICT", "Candidate has a different canonical decision.", { reason: "conflict-decision-replay-mismatch" });
+      }
+      const request = await loadRequestForWorkflowLink(tx, auth, candidate);
+      if (!request) throw new ApiError("CONFLICT", "Conflict decision receipt is unavailable.");
+      return { requestId: request.id, status: request.status, replayed: true };
+    }
+    const decision = await prepareCanonicalConflictDecision(tx, objectStore, auth, input);
+    if (decision.decisionProofDigest !== input.expectedDecisionProofDigest) {
+      throw new ApiError("CONFLICT", "Canonical conflict decision proof is stale.", { reason: "source-proof-stale" });
+    }
+    const first = await loadOwnedProjectValueSourcePin(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId,
+      bindingId: input.selectedBindingId, projectValueId: decision.selectedBaseValueId
+    });
+    if (!first) throw new ApiError("CONFLICT", "Selected source pin disappeared.");
+    await lockCanonicalSourceScope(tx, first, decision.configSetId);
+    const locked = await prepareCanonicalConflictDecision(tx, objectStore, auth, input);
+    if (locked.decisionProofDigest !== input.expectedDecisionProofDigest) {
+      throw new ApiError("CONFLICT", "Canonical conflict decision proof changed under source locks.", { reason: "source-proof-stale" });
+    }
+    const source = input.choice === "file"
+      ? await inspectCandidate(tx, objectStore, auth, input)
+      : await inspectCandidate(tx, objectStore, auth, { projectId: input.projectId, candidateId: decision.selectedDraftCandidateId });
+    const chosen = (source.changes ?? (source.change ? [source.change] : []))
+      .find((change) => change.binding.bindingId === input.selectedBindingId);
+    if (!chosen || chosen.action !== decision.action || chosen.targetText !== decision.targetText) {
+      throw new ApiError("CONFLICT", "Selected target changed after source proof.", { reason: "source-proof-stale" });
+    }
+    const rows = await findExistingDraft(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, bindingId: input.selectedBindingId,
+      sourcePinId: chosen.pin.sourcePinId, baseValueId: chosen.pin.projectValueId,
+      configRevisionId: chosen.pin.configRevisionId, baseDigest: chosen.baseDigest,
+      proposedDigest: chosen.proposedDigest, action: chosen.action
+    });
+    if (rows.some((row) => row.user_id === auth.user.id && row.id !== input.selectedDraftId)) {
+      throw new ApiError("CONFLICT", "Submitting would overwrite another unselected draft.", { reason: "unselected-draft-would-change" });
+    }
+    if (rows.some((row) => row.id === input.selectedDraftId && row.pending_request_id)) {
+      throw new ApiError("CONFLICT", "Selected draft already has a pending review.", { reason: "selected-draft-pending" });
+    }
+    const draft = await createCanonicalValueDraft(tx, auth, {
+      projectId: input.projectId, bindingId: input.selectedBindingId,
+      action: chosen.action,
+      ...(chosen.action === "set" && chosen.format === "json"
+        ? { sourceTarget: { format: "json" as const, sourceText: chosen.targetText! } }
+        : {}),
+      ...(chosen.action === "set" && chosen.format === "dts" ? { targetValue: chosen.targetValue! } : {}),
+      reason: input.reason.trim(), baseRevisionId: decision.selectedRevisionId,
+      baseCurrentValueId: decision.selectedBaseValueId
+    }, {
+      objectStore: attempt.objectStore, invocation: createUserInvocation(auth),
+      requestId: input.requestId, refusalSink: input.refusalSink
+    });
+    const prepared = await inspectCandidate(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: draft.candidateId!
+    });
+    if (!prepared.change || prepared.change.binding.bindingId !== input.selectedBindingId
+      || prepared.change.action !== decision.action || prepared.change.targetText !== decision.targetText
+      || prepared.workflow.proofToken !== decision.cohortProofToken) {
+      throw new ApiError("CONFLICT", "Derived request would apply more than the selected target.", { reason: "selected-target-proof-failed" });
+    }
+    const { submitCanonicalValueChange } = await import("../parameter-bindings/drafts/changeService");
+    const request = await submitCanonicalValueChange(tx, auth, {
+      projectId: input.projectId, draftId: draft.id, assignedToUserId: input.assignedToUserId,
+      invocation: createUserInvocation(auth), requestId: input.requestId,
+      refusalSink: input.refusalSink
+    });
+    const linked = await linkParameterFileCandidateToCanonicalWorkflow(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId,
+      link: {
+        kind: "canonical-source", fingerprint: decision.decisionProofDigest,
+        bindingId: input.selectedBindingId, sourcePinId: decision.selectedSourcePinId,
+        preparedCandidateId: draft.candidateId!, draftId: draft.id, requestId: request.id,
+        status: request.status,
+        conflictDecision: {
+          choice: input.choice, selectedDraftId: input.selectedDraftId,
+          selectedDraftCandidateId: decision.selectedDraftCandidateId,
+          selectedDraftCandidateDigest: decision.selectedDraftCandidateDigest,
+          sourceProofToken: decision.sourceProofToken,
+          sourceCandidateDigest: decision.sourceCandidateDigest,
+          decisionProofDigest: decision.decisionProofDigest
+        }
+      }
+    });
+    if (!linked) throw new ApiError("CONFLICT", "Conflict decision link was not retained.");
+    await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
+      action: "value-change-submitted",
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      targetType: "project-parameter-value-change-request",
+      targetId: request.id,
+      metadata: {
+        requestId: request.id, choice: input.choice,
+        selectedBindingId: input.selectedBindingId,
+        selectedDraftId: input.selectedDraftId,
+        sourceCandidateId: input.candidateId,
+        preparedCandidateId: draft.candidateId,
+        decisionProofDigest: decision.decisionProofDigest
+      }
+    }, input.requestId);
+    return { requestId: request.id, status: request.status, replayed: false };
+  }).catch((error) => rethrowSourceTransactionError(error));
+}
+
+/** Recheck the uploaded file and selected draft artifacts before an approved conflict decision applies. */
+export async function recheckCanonicalConflictDecisionForReview(
+  db: Queryable,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; requestId: string; preparedCandidateId: string; bindingId: string; sourcePinId: string }
+): Promise<void> {
+  const links = await db.query<{ id: string }>(`select id from project_parameter_file_candidates
+    where organization_id=$1 and project_id=$2
+      and impact->'canonicalSourceWorkflow'->>'requestId'=$3
+      and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null
+    for update`, [auth.organization.id, input.projectId, input.requestId]);
+  const receipts = await db.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+    where organization_id=$1 and project_id=$2 and target_id=$3
+      and action='value-change-submitted' and metadata ? 'decisionProofDigest'`,
+    [auth.organization.id, input.projectId, input.requestId]);
+  if (!links.rows.length && !receipts.rows.length) return;
+  if (!receipts.rows.length) throw new ApiError("CONFLICT", "Conflict decision audit receipt is missing.", { reason: "conflict-decision-stale" });
+  if (receipts.rows.length !== 1) throw new ApiError("CONFLICT", "Conflict decision has multiple audit receipts.");
+  const receipt = receipts.rows[0]!.metadata;
+  if (typeof receipt.sourceCandidateId !== "string" || typeof receipt.decisionProofDigest !== "string") {
+    throw new ApiError("CONFLICT", "Conflict decision audit receipt is incomplete.");
+  }
+  if (!links.rows.length) throw new ApiError("CONFLICT", "Conflict decision lost its uploaded candidate link.", { reason: "conflict-decision-stale" });
+  if (links.rows.length !== 1) throw new ApiError("CONFLICT", "Conflict decision has multiple source receipts.");
+  if (links.rows[0]!.id !== receipt.sourceCandidateId) {
+    throw new ApiError("CONFLICT", "Conflict decision receipt disagrees with its uploaded candidate link.", { reason: "conflict-decision-stale" });
+  }
+  const candidate = await getParameterFileCandidateById(db, {
+    organizationId: auth.organization.id, projectId: input.projectId, candidateId: links.rows[0]!.id
+  });
+  const link = candidate?.impact?.canonicalSourceWorkflow;
+  const decision = link?.conflictDecision;
+  if (!candidate || !link || !decision || link.preparedCandidateId !== input.preparedCandidateId
+    || link.bindingId !== input.bindingId || link.sourcePinId !== input.sourcePinId
+    || link.fingerprint !== decision.decisionProofDigest
+    || decision.decisionProofDigest !== receipt.decisionProofDigest
+    || decision.choice !== receipt.choice
+    || decision.selectedDraftId !== receipt.selectedDraftId
+    || link.preparedCandidateId !== receipt.preparedCandidateId
+    || candidate.status !== "ready") {
+    throw new ApiError("CONFLICT", "Conflict decision receipt disagrees with the pending request.", { reason: "conflict-decision-stale" });
+  }
+  const inspection = await inspectCandidate(db, objectStore, auth, {
+    projectId: input.projectId, candidateId: candidate.id
+  });
+  const changed = inspection.changes ?? (inspection.change ? [inspection.change] : []);
+  if (inspection.proofToken !== decision.sourceProofToken
+    || candidate.checksum !== decision.sourceCandidateDigest
+    || !changed.some((change) => change.binding.bindingId === input.bindingId
+      && change.pin.sourcePinId === input.sourcePinId)) {
+    throw new ApiError("CONFLICT", "Uploaded conflict source changed after review submission.", { reason: "conflict-decision-stale" });
+  }
+  const draftCandidate = await getParameterFileCandidateById(db, {
+    organizationId: auth.organization.id, projectId: input.projectId,
+    candidateId: decision.selectedDraftCandidateId
+  });
+  if (!draftCandidate?.storageKey || draftCandidate.checksum !== decision.selectedDraftCandidateDigest) {
+    throw new ApiError("CONFLICT", "Selected draft source artifact is unavailable.", { reason: "selected-draft-stale" });
+  }
+  const draftBytes = await getBoundedObject(objectStore, draftCandidate.storageKey);
+  if (digest(draftBytes) !== decision.selectedDraftCandidateDigest
+    || draftCandidate.sizeBytes !== draftBytes.length) {
+    throw new ApiError("CONFLICT", "Selected draft source bytes changed after submission.", { reason: "selected-draft-stale" });
+  }
+}
+
+export type CanonicalBatchRollbackPrepareDto = CanonicalSourceBatchPrepareDto & Readonly<{
+  historicalVersionId: string;
+  historicalDigest: string;
+  historicalSizeBytes: number;
+  expectedCurrentVersionId: string;
+  expectedWorkflowProofToken: string;
+  replayed: boolean;
+}>;
+
+export type CanonicalBatchRollbackSubmitDto = Readonly<{
+  candidateId: string;
+  requestId: string;
+  status: "pending" | "approved";
+  batchProofDigest: string;
+  replayed: boolean;
+}>;
+
+async function historicalRollbackBytes(
+  db: Queryable, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; fileId: string; versionId: string }
+) {
+  const file = await getProjectParameterFileById(db, { organizationId: auth.organization.id, fileId: input.fileId });
+  if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
+  const version = await getFileVersionById(db, { versionId: input.versionId });
+  if (!version || version.fileId !== file.id) throw new ApiError("NOT_FOUND", "Historical source version was not found.");
+  const bytes = await getBoundedObject(objectStore, version.storageKey);
+  const checksum = digest(bytes);
+  if (version.checksum.replace(/^sha256:/, "") !== checksum || version.sizeBytes !== bytes.length) {
+    throw new ApiError("CONFLICT", "Historical source object disagrees with its version metadata.", {
+      reason: "historical-version-stale"
+    });
+  }
+  return { file, version, bytes, checksum };
+}
+
+/** D-owned candidate preparation; writes a candidate, object and audit, never a review request or Value. */
+export async function prepareCanonicalBatchRollbackCandidate(
+  db: Database, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; fileId: string; versionId: string; expectedCurrentVersionId: string;
+    expectedWorkflowProofToken: string; requestId: string }
+): Promise<CanonicalBatchRollbackPrepareDto> {
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  if (!input.requestId.trim()) throw new ApiError("VALIDATION_FAILED", "A preparation request ID is required.");
+  return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
+    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `${auth.organization.id}:${input.projectId}:batch-rollback:${input.requestId}`
+    ]);
+    const { file, bytes, checksum } = await historicalRollbackBytes(tx, objectStore, auth, input);
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: file.id });
+    if (!workflow.canonical || workflow.proofToken !== input.expectedWorkflowProofToken) {
+      throw new ApiError("CONFLICT", "Canonical source proof changed after rollback selection.", { reason: "source-proof-stale" });
+    }
+    if (file.currentVersionId !== input.expectedCurrentVersionId || file.currentVersionId === input.versionId) {
+      throw new ApiError("CONFLICT", "Historical rollback file version is stale.", { reason: "stale-base" });
+    }
+    // ponytail: file-scoped scan is enough here; add an indexed preparation key if volume grows.
+    const prior = (await listParameterFileCandidates(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, fileId: file.id, includeAbandoned: true
+    })).find((candidate) => candidate.impact.canonicalBatchRollback?.prepareRequestId === input.requestId);
+    if (prior && (prior.impact.canonicalBatchRollback?.historicalVersionId !== input.versionId
+      || prior.impact.canonicalBatchRollback.expectedCurrentVersionId !== input.expectedCurrentVersionId
+      || prior.impact.canonicalBatchRollback.expectedWorkflowProofToken !== input.expectedWorkflowProofToken
+      || prior.impact.canonicalBatchRollback.historicalDigest !== checksum || prior.status !== "ready")) {
+      throw new ApiError("CONFLICT", "Rollback preparation request was reused for a different source.", {
+        reason: "rollback-replay-mismatch"
+      });
+    }
+    const candidate = prior ?? await createCandidate(tx, attempt.objectStore, auth, {
+      projectId: input.projectId, fileId: file.id, fileName: file.fileName, bytes
+    }, { invocation: createUserInvocation(auth), requestId: input.requestId });
+    const inspection = await inspectCandidate(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id
+    });
+    if (!inspection.proofToken || !inspection.changes || inspection.changes.length < 2) {
+      throw new ApiError("CONFLICT", "Historical version has no exact multi-Binding source proof.", {
+        reason: inspection.reason ?? "canonical-batch-writer-unavailable"
+      });
+    }
+    const proof = await prepareCanonicalCandidateBatchInTransaction(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: inspection.proofToken
+    });
+    if (proof.fileId !== file.id || proof.baseVersionId !== input.expectedCurrentVersionId
+      || proof.cohortProofToken !== input.expectedWorkflowProofToken || proof.proposedDigest !== checksum
+      || proof.targets.length < 2) {
+      throw new ApiError("CONFLICT", "Historical rollback proof changed under source locks.", { reason: "source-proof-stale" });
+    }
+    if (prior && (prior.impact.canonicalBatchRollback?.historicalSizeBytes !== bytes.length
+      || prior.impact.canonicalBatchRollback.candidateProofToken !== proof.proofToken
+      || prior.impact.canonicalBatchRollback.batchProofDigest !== proof.batchProofDigest)) {
+      throw new ApiError("CONFLICT", "Prepared rollback no longer matches its frozen batch proof.", {
+        reason: "rollback-replay-mismatch"
+      });
+    }
+    if (!prior) {
+      await tx.query(`update project_parameter_file_candidates
+        set impact=jsonb_set(coalesce(impact,'{}'::jsonb),'{canonicalBatchRollback}',$4::jsonb,true)
+        where id=$1 and organization_id=$2 and project_id=$3`, [candidate.id, auth.organization.id,
+        input.projectId, JSON.stringify({ prepareRequestId: input.requestId,
+          historicalVersionId: input.versionId, historicalDigest: checksum, historicalSizeBytes: bytes.length,
+          expectedCurrentVersionId: input.expectedCurrentVersionId,
+          expectedWorkflowProofToken: input.expectedWorkflowProofToken,
+          candidateProofToken: proof.proofToken, batchProofDigest: proof.batchProofDigest })]);
+    }
+    return { ...proof, historicalVersionId: input.versionId, historicalDigest: checksum,
+      historicalSizeBytes: bytes.length, expectedCurrentVersionId: input.expectedCurrentVersionId,
+      expectedWorkflowProofToken: input.expectedWorkflowProofToken, replayed: Boolean(prior) };
+  }).catch((error) => rethrowSourceTransactionError(error));
+}
+
+/** D-owned transaction; C's existing batch request is frozen inside the same outer transaction. */
+export async function submitCanonicalBatchRollback(
+  db: Database, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; fileId: string; versionId: string; candidateId: string;
+    expectedCurrentVersionId: string; expectedWorkflowProofToken: string;
+    expectedCandidateProofToken: string; expectedBatchProofDigest: string;
+    reason: string; assignedToUserId: string; requestId: string; refusalSink: TrustedRefusalAuditSink }
+): Promise<CanonicalBatchRollbackSubmitDto> {
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  const reason = input.reason.trim();
+  if (!reason) throw new ApiError("VALIDATION_FAILED", "A rollback reason is required.");
+  return withCanonicalSourceAttemptTransaction<CanonicalBatchRollbackSubmitDto>(db, objectStore, async (tx) => {
+    const { file, bytes, checksum } = await historicalRollbackBytes(tx, objectStore, auth, input);
+    // Match C's reviewer-before-source lock order; C's nested submit reuses this row lock.
+    if (!await lockUserById(tx, { organizationId: auth.organization.id, userId: input.assignedToUserId })) {
+      throw new ApiError("VALIDATION_FAILED", "The assigned reviewer was not found.");
+    }
+    const candidate = await getParameterFileCandidateById(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+    });
+    const origin = candidate?.impact.canonicalBatchRollback;
+    if (!candidate || !origin || candidate.fileId !== file.id || candidate.baseVersionId !== input.expectedCurrentVersionId
+      || origin.historicalVersionId !== input.versionId || origin.historicalDigest !== checksum
+      || origin.historicalSizeBytes !== bytes.length || origin.expectedCurrentVersionId !== input.expectedCurrentVersionId
+      || origin.expectedWorkflowProofToken !== input.expectedWorkflowProofToken
+      || origin.candidateProofToken !== input.expectedCandidateProofToken
+      || origin.batchProofDigest !== input.expectedBatchProofDigest
+      || !candidate.storageKey || candidate.checksum?.replace(/^sha256:/, "") !== checksum) {
+      throw new ApiError("CONFLICT", "Rollback candidate disagrees with the exact historical proof.", {
+        reason: "historical-version-stale"
+      });
+    }
+    const candidateBytes = await getBoundedObject(objectStore, candidate.storageKey);
+    if (!candidateBytes.equals(bytes) || candidate.sizeBytes !== bytes.length) {
+      throw new ApiError("CONFLICT", "Rollback candidate bytes no longer match the historical version.", {
+        reason: "historical-version-stale"
+      });
+    }
+    const prior = (await tx.query<{ id: string; status: string; reason: string; submitter_user_id: string;
+      assigned_to_user_id: string; batch_proof_digest: string; batch_source_proof_token: string;
+      batch_cohort_proof_token: string; batch_base_version_id: string; batch_target_count: number;
+      applied_audit_ref: string | null }>(
+      `select id,status,reason,submitter_user_id,assigned_to_user_id,batch_proof_digest,
+        batch_source_proof_token,batch_cohort_proof_token,batch_base_version_id,batch_target_count,applied_audit_ref
+       from project_parameter_value_change_requests where organization_id=$1 and project_id=$2
+         and candidate_id=$3 and request_kind='batch' and status in ('pending','approved')`,
+      [auth.organization.id, input.projectId, candidate.id])).rows;
+    if (prior.length > 1) throw new ApiError("CONFLICT", "Rollback candidate has multiple active review requests.");
+    if (prior.length) {
+      const request = prior[0]!;
+      const receipts = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+        where organization_id=$1 and project_id=$2 and target_id=$3 and action='value-change-submitted'
+          and metadata ? 'canonicalRollbackVersionId'`, [auth.organization.id, input.projectId, request.id]);
+      if (request.reason !== reason || request.submitter_user_id !== auth.user.id
+        || request.assigned_to_user_id !== input.assignedToUserId
+        || request.batch_proof_digest !== input.expectedBatchProofDigest
+        || request.batch_source_proof_token !== input.expectedCandidateProofToken
+        || request.batch_cohort_proof_token !== input.expectedWorkflowProofToken
+        || request.batch_base_version_id !== input.expectedCurrentVersionId
+        || receipts.rows.length !== 1 || receipts.rows[0]!.metadata.canonicalRollbackVersionId !== input.versionId
+        || receipts.rows[0]!.metadata.historicalDigest !== checksum
+        || receipts.rows[0]!.metadata.historicalSizeBytes !== bytes.length
+        || receipts.rows[0]!.metadata.candidateId !== candidate.id
+        || receipts.rows[0]!.metadata.batchProofDigest !== input.expectedBatchProofDigest
+        || receipts.rows[0]!.metadata.candidateProofToken !== input.expectedCandidateProofToken
+        || receipts.rows[0]!.metadata.baseVersionId !== input.expectedCurrentVersionId
+        || receipts.rows[0]!.metadata.workflowProofToken !== input.expectedWorkflowProofToken) {
+        throw new ApiError("CONFLICT", "Rollback retry disagrees with the reviewed request.", {
+          reason: "rollback-replay-mismatch"
+        });
+      }
+      if (request.status === "approved") {
+        const applied = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+          where id=$1 and organization_id=$2 and project_id=$3 and target_id=$4 and action='value-change-applied'`,
+          [request.applied_audit_ref, auth.organization.id, input.projectId, request.id]);
+        const complete = await tx.query<{ total: number; applied: number }>(`select count(*)::int as total,
+          count(*) filter (where applied_value_id is not null and applied_history_event_id is not null
+            and applied_source_pin_id is not null and applied_file_version_id is not null)::int as applied
+          from project_parameter_value_change_targets where request_id=$1 and organization_id=$2 and project_id=$3`,
+          [request.id, auth.organization.id, input.projectId]);
+        if (applied.rows.length !== 1 || applied.rows[0]!.metadata.batchProofDigest !== input.expectedBatchProofDigest
+          || complete.rows[0]?.total !== request.batch_target_count
+          || complete.rows[0]?.applied !== request.batch_target_count || candidate.status !== "active") {
+          throw new ApiError("CONFLICT", "Approved rollback lacks a complete source receipt.");
+        }
+        return { candidateId: candidate.id, requestId: request.id, status: "approved",
+          batchProofDigest: input.expectedBatchProofDigest, replayed: true };
+      }
+    }
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: file.id });
+    if (!workflow.canonical || workflow.proofToken !== input.expectedWorkflowProofToken
+      || file.currentVersionId !== input.expectedCurrentVersionId || candidate.status !== "ready") {
+      throw new ApiError("CONFLICT", "Canonical rollback source changed before submission.", { reason: "source-proof-stale" });
+    }
+    const proof = await prepareCanonicalCandidateBatchInTransaction(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: input.expectedCandidateProofToken
+    });
+    if (proof.batchProofDigest !== input.expectedBatchProofDigest || proof.proposedDigest !== checksum
+      || proof.targets.length < 2 || proof.baseVersionId !== input.expectedCurrentVersionId) {
+      throw new ApiError("CONFLICT", "Rollback target order or cohort changed.", { reason: "source-proof-stale" });
+    }
+    if (prior.length) {
+      const locked = await tx.query<{ status: string }>(`select status from project_parameter_value_change_requests
+        where id=$1 and organization_id=$2 and project_id=$3 for update`,
+        [prior[0]!.id, auth.organization.id, input.projectId]);
+      if (locked.rows[0]?.status !== "pending") {
+        throw new ApiError("CONFLICT", "Rollback request changed during retry.", { reason: "source-proof-stale" });
+      }
+      return { candidateId: candidate.id, requestId: prior[0]!.id,
+        status: "pending", batchProofDigest: proof.batchProofDigest, replayed: true };
+    }
+    const { submitCanonicalBatchValueChange } = await import("../parameter-bindings/drafts/batchChangeService");
+    const request = await submitCanonicalBatchValueChange(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: proof.proofToken,
+      reason, assignedToUserId: input.assignedToUserId, invocation: createUserInvocation(auth),
+      requestId: input.requestId, refusalSink: input.refusalSink
+    });
+    if (request.status !== "pending" || request.batchProofDigest !== proof.batchProofDigest
+      || request.targets.length !== proof.targets.length) {
+      throw new ApiError("CONFLICT", "Batch review request lost its exact rollback proof.");
+    }
+    const submittedReceipts = await tx.query<{ trace_id: string; metadata: Record<string, unknown> }>(
+      `select trace_id,metadata from audit_events where organization_id=$1 and project_id=$2
+        and target_id=$3 and action='value-change-submitted' and metadata->>'requestKind'='batch'`,
+      [auth.organization.id, input.projectId, request.id]);
+    if (submittedReceipts.rows.length !== 1 || submittedReceipts.rows[0]!.trace_id !== input.requestId) {
+      throw new ApiError("CONFLICT", "Another submission already owns this batch request.", {
+        reason: "rollback-replay-mismatch"
+      });
+    }
+    await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
+      action: "value-change-submitted", organizationId: auth.organization.id, projectId: input.projectId,
+      targetType: "project-parameter-value-change-request", targetId: request.id,
+      metadata: { requestId: request.id, candidateId: candidate.id, canonicalRollbackVersionId: input.versionId,
+        historicalDigest: checksum, historicalSizeBytes: bytes.length, batchProofDigest: proof.batchProofDigest,
+        candidateProofToken: proof.proofToken, baseVersionId: input.expectedCurrentVersionId,
+        workflowProofToken: input.expectedWorkflowProofToken }
+    }, input.requestId);
+    return { candidateId: candidate.id, requestId: request.id, status: "pending",
+      batchProofDigest: proof.batchProofDigest, replayed: false };
+  }).catch((error) => rethrowSourceTransactionError(error));
+}
+
+/** Approval side of D's historical byte proof; ordinary batch requests remain unchanged. */
+export async function recheckCanonicalBatchRollbackForReview(
+  tx: Database, objectStore: ObjectStore, auth: AuthContext,
+  input: { projectId: string; requestId: string; candidateId: string; fileId: string;
+    baseVersionId: string; candidateProofToken: string; workflowProofToken: string;
+    batchProofDigest: string; candidateBytes: Buffer }
+): Promise<void> {
+  const candidate = await getParameterFileCandidateById(tx, {
+    organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
+  });
+  const origin = candidate?.impact.canonicalBatchRollback;
+  const receipts = await tx.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+    where organization_id=$1 and project_id=$2 and target_id=$3 and action='value-change-submitted'
+      and metadata ? 'canonicalRollbackVersionId'`, [auth.organization.id, input.projectId, input.requestId]);
+  if (!origin && !receipts.rows.length) return;
+  if (!origin || receipts.rows.length !== 1) {
+    throw new ApiError("CONFLICT", "Batch rollback lost its historical source receipt.");
+  }
+  const receipt = receipts.rows[0]!.metadata;
+  const historical = await historicalRollbackBytes(tx, objectStore, auth, {
+    projectId: input.projectId, fileId: input.fileId, versionId: origin.historicalVersionId
+  });
+  if (origin.expectedCurrentVersionId !== input.baseVersionId
+    || origin.expectedWorkflowProofToken !== input.workflowProofToken
+    || origin.candidateProofToken !== input.candidateProofToken
+    || origin.batchProofDigest !== input.batchProofDigest
+    || origin.historicalDigest !== historical.checksum
+    || origin.historicalSizeBytes !== historical.bytes.length
+    || !historical.bytes.equals(input.candidateBytes)
+    || receipt.canonicalRollbackVersionId !== origin.historicalVersionId
+    || receipt.historicalDigest !== origin.historicalDigest
+    || receipt.historicalSizeBytes !== origin.historicalSizeBytes
+    || receipt.candidateId !== input.candidateId
+    || receipt.batchProofDigest !== input.batchProofDigest
+    || receipt.candidateProofToken !== input.candidateProofToken
+    || receipt.baseVersionId !== input.baseVersionId
+    || receipt.workflowProofToken !== input.workflowProofToken) {
+    throw new ApiError("CONFLICT", "Batch rollback historical source proof changed after review submission.", {
+      reason: "historical-version-stale"
+    });
+  }
+}
+
 export async function rollbackCanonicalSource(
   db: Database,
   objectStore: ObjectStore,
@@ -1396,55 +2059,148 @@ export async function rollbackCanonicalSource(
   }).catch((error) => rethrowSourceTransactionError(error));
 }
 
+/** Prepare exact uploaded bytes for C's existing batch request; no Value or review request is written. */
+export async function prepareCanonicalManualSyncBatchCandidate(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; fileId: string; bytes: Buffer; expectedCurrentVersionId: string;
+    expectedWorkflowProofToken: string; requestId: string }
+): Promise<CanonicalSourceBatchPrepareDto & { replayed: boolean }> {
+  if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Manual sync preparation requires a root database transaction.");
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  const requestId = input.requestId.trim();
+  if (!requestId) throw new ApiError("VALIDATION_FAILED", "A preparation request ID is required.");
+  return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
+    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `${auth.organization.id}:${input.projectId}:manual-sync:${requestId}`
+    ]);
+    await syncCanonicalSource(tx, objectStore, auth, {
+      projectId: input.projectId, fileId: input.fileId, versionId: input.expectedCurrentVersionId
+    });
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: input.fileId });
+    const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
+    if (!workflow.canonical || !workflow.proofToken || !file || file.projectId !== input.projectId) {
+      throw new ApiError("CONFLICT", "Manual sync requires an owned canonical source.", { reason: "file-is-not-canonical" });
+    }
+    if (file.currentVersionId !== input.expectedCurrentVersionId) {
+      throw new ApiError("CONFLICT", "Manual sync file version changed.", { reason: "stale-base" });
+    }
+    if (workflow.proofToken !== input.expectedWorkflowProofToken) {
+      throw new ApiError("CONFLICT", "Manual sync source proof changed.", { reason: "source-proof-stale" });
+    }
+    const prior = (await tx.query<{ id: string }>(`select candidate.id from audit_events audit
+      join project_parameter_file_candidates candidate on candidate.id=audit.target_id
+        and candidate.organization_id=audit.organization_id and candidate.project_id=audit.project_id
+      where audit.organization_id=$1 and audit.project_id=$2 and audit.trace_id=$3
+        and audit.action='create' and audit.kind='parameter-file-candidate-create'
+        and audit.target_type='project-parameter-file-candidate'
+        and candidate.file_id=$4 order by candidate.id`,
+    [auth.organization.id, input.projectId, requestId, input.fileId])).rows;
+    if (prior.length > 1) throw new ApiError("CONFLICT", "Manual sync preparation request is ambiguous.");
+    let candidate = prior[0] && await getParameterFileCandidateById(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, candidateId: prior[0].id
+    });
+    if (candidate && (candidate.status !== "ready" || candidate.createdByUserId !== auth.user.id
+      || candidate.baseVersionId !== input.expectedCurrentVersionId || candidate.sizeBytes !== input.bytes.length
+      || candidate.checksum?.replace(/^sha256:/, "") !== digest(input.bytes)
+      || !candidate.storageKey || !(await getBoundedObject(objectStore, candidate.storageKey)).equals(input.bytes))) {
+      throw new ApiError("CONFLICT", "Manual sync preparation request disagrees with its candidate.", {
+        reason: "candidate-snapshot-stale"
+      });
+    }
+    if (!candidate) {
+      const sourceStore: ObjectStore = {
+        ...attempt.objectStore,
+        put: (upload) => attempt.objectStore.put({ ...upload,
+          fileName: file.format === "json" ? "source.json" : "source.dts" })
+      };
+      candidate = await createCandidate(tx, sourceStore, auth, {
+        projectId: input.projectId, fileId: input.fileId, fileName: file.fileName, bytes: input.bytes
+      }, { invocation: createUserInvocation(auth), requestId });
+    }
+    const preview = await previewCanonicalCandidate(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id
+    });
+    if (!preview.proofToken) throw new ApiError("CONFLICT", "Manual sync candidate has no exact source proof.", {
+      reason: preview.reason ?? "source-proof-missing"
+    });
+    const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: preview.proofToken
+    });
+    if (proof.cohortProofToken !== input.expectedWorkflowProofToken
+      || proof.baseVersionId !== input.expectedCurrentVersionId) {
+      throw new ApiError("CONFLICT", "Manual sync batch proof changed.", { reason: "source-proof-stale" });
+    }
+    return { ...proof, replayed: Boolean(prior.length) };
+  }).catch((error) => rethrowSourceTransactionError(error));
+}
+
 export async function syncCanonicalSource(
-  db: Queryable,
+  db: Database,
   objectStore: ObjectStore,
   auth: AuthContext,
   input: { projectId: string; fileId: string; versionId: string }
 ) {
-  const workflow = await fileWorkflow(db, auth, { projectId: input.projectId, fileId: input.fileId });
-  if (!workflow.canonical || !workflow.configSetId) return null;
-  const file = await getProjectParameterFileById(db, { organizationId: auth.organization.id, fileId: input.fileId });
-  if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
-  if (file.currentVersionId !== input.versionId) throw new ApiError("CONFLICT", "Canonical manual sync only accepts the current pinned version.", { reason: "stale-base" });
-  const bindings = await loadSourceBindingCohortReadOnly(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    configSetId: workflow.configSetId
-  });
-  const first = bindings.find((binding) => binding.sourcePinId && binding.oldValueId);
-  if (first?.sourcePinId && first.oldValueId) {
-    const pin = await loadOwnedProjectValueSourcePin(db, {
+  return db.transaction(async (tx) => {
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: input.fileId });
+    if (!workflow.canonical || !workflow.configSetId) return null;
+    const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
+    if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
+    if (file.currentVersionId !== input.versionId) throw new ApiError("CONFLICT", "Canonical manual sync only accepts the current pinned version.", { reason: "stale-base" });
+    const bindings = await loadSourceBindingCohortReadOnly(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
-      bindingId: first.bindingId,
-      projectValueId: first.oldValueId
+      configSetId: workflow.configSetId
     });
-    if (!pin || !pin.configRevisionId.trim()) throw new ApiError("CONFLICT", "Canonical source has no exact config revision.", { reason: "source-config-revision-required" });
-    const source = await loadExactSourceRevisionForProof(db, objectStore, {
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      configSetId: workflow.configSetId,
-      configRevisionId: pin.configRevisionId,
-      fileId: pin.fileId,
-      fileVersionId: pin.fileVersionId
-    });
-    const current = await db.query<{ id: string; current_version_id: string | null; config_set_role: string | null; config_set_sort_order: number; format: string }>(
-      `select id,current_version_id,config_set_role,config_set_sort_order,format
-         from project_parameter_files where config_set_id=$1 order by id`,
-      [workflow.configSetId]
-    );
-    if (current.rows.length !== source.members.length || current.rows.some((member) => !source.members.some((pinned) => canonicalSourceMemberMatchesCurrentFile({ fileId: pinned.fileId, fileVersionId: pinned.fileVersionId, role: pinned.role, sortOrder: pinned.sortOrder, format: pinned.format }, member)))) {
-      throw new ApiError("CONFLICT", "Canonical source members are out of sync; use a reviewed source candidate.", { reason: "source-membership-drift" });
+    const first = bindings.find((binding) => binding.sourcePinId && binding.oldValueId);
+    if (!first) throw new ApiError("CONFLICT", "Canonical source cohort has no active owned pin to validate.", { reason: "source-pin-missing" });
+    if (first?.sourcePinId && first.oldValueId) {
+      const pin = await loadOwnedProjectValueSourcePin(tx, {
+        organizationId: auth.organization.id, projectId: input.projectId,
+        bindingId: first.bindingId, projectValueId: first.oldValueId
+      });
+      if (!pin || !pin.configRevisionId.trim()) throw new ApiError("CONFLICT", "Canonical source has no exact config revision.", { reason: "source-config-revision-required" });
+      await lockCanonicalSourceScope(tx, pin, workflow.configSetId);
+      const cohort = await loadCanonicalSourceCohort(tx, {
+        organizationId: auth.organization.id, projectId: input.projectId, configSetId: workflow.configSetId
+      });
+      if (JSON.stringify(cohort) !== JSON.stringify(bindings)) throw new ApiError("CONFLICT", "Canonical source cohort changed during validation.", { reason: "source-proof-busy" });
+      const source = await loadExactSourceRevisionForProof(tx, objectStore, {
+        organizationId: auth.organization.id, projectId: input.projectId,
+        configSetId: workflow.configSetId, configRevisionId: pin.configRevisionId,
+        fileId: pin.fileId, fileVersionId: pin.fileVersionId
+      });
+      for (const binding of cohort) {
+        const currentPin = await loadOwnedProjectValueSourcePin(tx, {
+          organizationId: auth.organization.id, projectId: input.projectId,
+          bindingId: binding.bindingId, projectValueId: binding.oldValueId
+        });
+        if (!currentPin || currentPin.sourcePinId !== binding.sourcePinId
+          || currentPin.configRevisionId !== pin.configRevisionId
+          || !source.members.some((member) => member.fileId === currentPin.fileId && member.fileVersionId === currentPin.fileVersionId)) {
+          throw new ApiError("CONFLICT", "Canonical source cohort has inconsistent revision members.", { reason: "source-membership-drift" });
+        }
+      }
+      const current = await tx.query<{ id: string; current_version_id: string | null; config_set_role: string | null; config_set_sort_order: number; format: string }>(
+        `select id,current_version_id,config_set_role,config_set_sort_order,format
+           from project_parameter_files where config_set_id=$1 order by id`,
+        [workflow.configSetId]
+      );
+      if (current.rows.length !== source.members.length || current.rows.some((member) => !source.members.some((pinned) => canonicalSourceMemberMatchesCurrentFile({ fileId: pinned.fileId, fileVersionId: pinned.fileVersionId, role: pinned.role, sortOrder: pinned.sortOrder, format: pinned.format }, member)))) {
+        throw new ApiError("CONFLICT", "Canonical source members are out of sync; use a reviewed source candidate.", { reason: "source-membership-drift" });
+      }
     }
-  }
-  return {
-    draftsCreated: 0,
-    unchanged: bindings.filter((binding) => binding.sourcePinId).length,
-    unmatched: 0,
-    skipped: false,
-    identityFallbackUses: 0,
-    sourceWorkflow: "canonical" as const,
-    message: "Canonical source is consistent; no legacy synchronization was run."
-  };
+    return {
+      draftsCreated: 0,
+      unchanged: bindings.length,
+      unmatched: 0,
+      skipped: false,
+      identityFallbackUses: 0,
+      sourceWorkflow: "canonical" as const,
+      message: "Canonical source is consistent; no legacy synchronization was run."
+    };
+  }).catch((error) => rethrowSourceTransactionError(error));
 }

@@ -6,6 +6,14 @@ import type {
   CatalogProjectValueDraftRemovedResponse,
   CatalogValueChangeRequestListResponse,
   CatalogValueChangeRequestResponse,
+  CatalogBatchValueChangeRequestResponse,
+  CatalogBatchValueChangeRequestListResponse,
+  CatalogSubmitBatchValueChangeRequest,
+  CatalogValueChangeReviewResponse,
+  CatalogMemberRemovalRequestResponse,
+  CatalogMemberRemovalRequestListResponse,
+  CatalogSubmitMemberRemovalRequest,
+  CatalogReviewMemberRemovalRequest,
   CatalogValueChangeSourceDiffResponse,
   CatalogCreateReplacementRequest,
   CatalogCreatePublicationCandidateRequest,
@@ -141,21 +149,62 @@ export interface ParameterCatalogRepository {
     projectId: string,
     query?: { status?: string; mine?: boolean }
   ): Promise<CatalogValueChangeRequestListResponse>;
+  submitProjectValueBatchChangeRequest?(
+    projectId: string,
+    body: CatalogSubmitBatchValueChangeRequest,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogBatchValueChangeRequestResponse>;
+  listProjectValueBatchChangeRequests?(
+    projectId: string,
+    query?: { status?: string; mine?: boolean }
+  ): Promise<CatalogBatchValueChangeRequestListResponse>;
+  getProjectValueBatchChangeRequest?(
+    projectId: string,
+    requestId: string
+  ): Promise<CatalogBatchValueChangeRequestResponse>;
+  submitMemberRemovalRequest?(
+    projectId: string,
+    body: CatalogSubmitMemberRemovalRequest,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogMemberRemovalRequestResponse>;
+  listMemberRemovalRequests?(
+    projectId: string,
+    query?: { status?: string; mine?: boolean }
+  ): Promise<CatalogMemberRemovalRequestListResponse>;
+  getMemberRemovalRequest?(
+    projectId: string,
+    requestId: string
+  ): Promise<CatalogMemberRemovalRequestResponse>;
+  reviewMemberRemovalRequest?(
+    projectId: string,
+    requestId: string,
+    body: CatalogReviewMemberRemovalRequest,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogMemberRemovalRequestResponse>;
+  withdrawMemberRemovalRequest?(
+    projectId: string,
+    requestId: string,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogMemberRemovalRequestResponse>;
   reviewProjectValueChangeRequest?(
     projectId: string,
     requestId: string,
-    body: { decision: "approve" | "reject"; note?: string | null },
+    body: { decision: "approve" | "reject"; note?: string | null; batchProofDigest?: string },
     context: CatalogPublicationWriteContext & { idempotencyKey: string }
-  ): Promise<CatalogValueChangeRequestResponse>;
+  ): Promise<CatalogValueChangeReviewResponse>;
   withdrawProjectValueChangeRequest?(
     projectId: string,
     requestId: string,
     context: CatalogPublicationWriteContext & { idempotencyKey: string }
-  ): Promise<CatalogValueChangeRequestResponse>;
+  ): Promise<{ item: CatalogValueChangeRequestResponse["item"] | CatalogBatchValueChangeRequestResponse["item"] | CatalogMemberRemovalRequestResponse["item"] }>;
   getProjectValueChangeSourceDiff?(
     projectId: string,
     requestId: string
   ): Promise<CatalogValueChangeSourceDiffResponse>;
+  getProjectValueConflictDecision?(
+    projectId: string,
+    requestId: string
+  ): Promise<import("@/infrastructure/http/parameterCatalogDtos").CatalogSourceConflictDecisionResponse>;
   getCanonicalBindingChangeHistory?(
     projectId: string,
     bindingId: string,

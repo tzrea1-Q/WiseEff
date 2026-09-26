@@ -12,18 +12,20 @@ import { CatalogSubjectId, DefinitionRevisionId, ParameterBindingId, ParameterDe
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
 import { canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
-import { asValueClient } from "../parameter-bindings/catalogProjectValueSync";
-import { appendProjectValue } from "../parameter-bindings/values";
+import { asValueClient, dtsValueToPayload, listObservedProperties, rawTextToPayload } from "../parameter-bindings/catalogProjectValueSync";
+import { appendProjectValue, type ProjectValuePayload } from "../parameter-bindings/values";
 import { deriveHistoryEventId, loadBindingById, loadProjectValueById } from "../parameter-bindings/values/repositories";
 import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNumber } from "../parameter-topology/repository";
-import { loadCanonicalSourceSnapshot, recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
-import { assertDeletedAnchorsRemainAbsent } from "./canonicalSourceCommit";
-import { recheckCanonicalCandidateBatchForReviewInTransaction } from "./canonicalFileWorkflow";
+import { assertPinnedCanonicalSensitiveNodeWriteAllowed, loadCanonicalSourceSnapshot, readPinnedDtsSourceBatchChanges, recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, validatePinnedDtsSourceChange, type CanonicalSourceSecurityContext } from "./canonicalSource";
+import { assertDeletedAnchorsRemainAbsent, loadFinalDtsDeleteProof } from "./canonicalSourceCommit";
+import { recheckCanonicalBatchRollbackForReview, recheckCanonicalCandidateBatchForReviewInTransaction } from "./canonicalFileWorkflow";
 import { deleteJsonSourceMember, MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "./jsonSource";
 import { insertFileVersion } from "./repository";
 import { rethrowSourceTransactionError } from "./sourceVersion";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import type { ParsedIndex } from "./types";
+import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
+import type { DtsValue } from "../dts/types";
 
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const same = (left: unknown, right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
@@ -120,7 +122,6 @@ export async function commitCanonicalSourceBatchRevision(
       projectId: input.projectId, candidateId: initial.candidate_id,
       expectedProofToken: initial.batch_source_proof_token
     });
-    if (proof.format !== "json") conflict("DTS batch source commit is not available.");
     const request = (await tx.query<Request>(`select * from public.project_parameter_value_change_requests
       where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch' for update`,
       [input.requestId, auth.organization.id, input.projectId])).rows[0];
@@ -168,7 +169,14 @@ export async function commitCanonicalSourceBatchRevision(
     const bytes = await getBounded(candidate.storage_key, MAX_PARAMETER_SOURCE_BYTES);
     if (bytes.length !== candidate.size_bytes || digest(bytes) !== proof.proposedDigest
       || digest(bytes) !== candidate.checksum.replace(/^sha256:/, "")) conflict("Batch candidate bytes failed integrity verification.");
-    parseJsonSource(bytes);
+    await recheckCanonicalBatchRollbackForReview(tx, storage, auth, {
+      projectId: input.projectId, requestId: request.id, candidateId: candidate.id, fileId: proof.fileId,
+      baseVersionId: proof.baseVersionId, candidateProofToken: proof.proofToken,
+      workflowProofToken: proof.cohortProofToken, batchProofDigest: proof.batchProofDigest,
+      candidateBytes: bytes
+    });
+    if (proof.format === "json") parseJsonSource(bytes);
+    const after = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     const first = proof.cohort[0];
     if (!first) conflict("Batch has no source cohort.");
     const base = await loadCanonicalSourceSnapshot(tx, storage, {
@@ -179,6 +187,30 @@ export async function commitCanonicalSourceBatchRevision(
     const sourceIndex = manifest.members.findIndex((member) => member.fileId === proof.fileId && member.fileVersionId === proof.baseVersionId);
     if (sourceIndex < 0 || manifest.configSetId !== proof.configSetId
       || digest(base.files[sourceIndex]!.content) !== proof.baseDigest) conflict("Batch base source no longer matches its exact member.");
+    const dtsTargets = new Map<string, { action: "set" | "delete"; rawText?: string; value?: DtsValue }>();
+    if (proof.format === "dts") {
+      const pinned = [];
+      for (const target of targets) {
+        const source = await loadCanonicalSourceSnapshot(tx, storage, {
+          organizationId: auth.organization.id, projectId: input.projectId,
+          bindingId: target.binding_id, projectValueId: target.base_current_value_id
+        });
+        if (source.manifest.sourcePinId !== target.source_pin_id
+          || source.manifest.fileId !== proof.fileId || source.manifest.fileVersionId !== proof.baseVersionId
+          || source.manifest.format !== "dts") conflict("DTS batch target lost its exact source pin.");
+        await assertPinnedCanonicalSensitiveNodeWriteAllowed(tx, auth, source.manifest, security);
+        pinned.push(source.manifest);
+      }
+      const changes = await readPinnedDtsSourceBatchChanges(tx, pinned, base.files[sourceIndex]!.content, after);
+      if (changes.size !== targets.length) conflict("DTS batch candidate changed an incomplete target set.");
+      for (const target of targets) {
+        const change = changes.get(target.source_pin_id);
+        if (!change || change.action !== target.action || (change.rawText ?? null) !== target.target_text
+          || (target.action === "set" ? !change.value || !same(change.value, target.target_value)
+            : !same(target.target_value, ""))) conflict("Reviewed DTS batch target differs from candidate bytes.");
+        dtsTargets.set(target.binding_id, change);
+      }
+    }
     const attribution = trustedDomainAttribution(invocation);
     const version = await insertFileVersion(tx, {
       id: randomUUID(), fileId: proof.fileId, versionNumber: 0,
@@ -186,24 +218,41 @@ export async function commitCanonicalSourceBatchRevision(
       sizeBytes: bytes.length, parsedIndex: candidate.parsed_index,
       origin: "writeback", attribution
     });
-    const after = bytes.toString("utf8");
     const members = manifest.members.map((member, index) => ({
       fileId: member.fileId, fileVersionId: member.fileId === proof.fileId ? version.id : member.fileVersionId,
       fileName: base.files[index]!.name, sourceName: member.sourceName,
       format: member.format, role: member.role as ConfigRevisionMemberRole, sortOrder: member.sortOrder,
       content: member.fileId === proof.fileId ? after : base.files[index]!.content
     }));
-    const revisionId = randomUUID();
-    await insertConfigRevision(tx, {
-      id: revisionId, organizationId: auth.organization.id, projectId: input.projectId,
-      configSetId: proof.configSetId, revisionNumber: await nextConfigRevisionNumber(tx, proof.configSetId),
-      status: "resolved", attribution
-    });
-    await insertConfigRevisionMembers(tx, revisionId, members);
+    let revisionId: string;
+    if (members.some((member) => member.format === "dts")) {
+      const previous = (await tx.query<{ entry_file: string; include_search_paths: string[]; overlay_order: string[] }>(
+        "select entry_file,include_search_paths,overlay_order from dts_config_revisions where id=$1",
+        [manifest.configRevisionId])).rows[0];
+      if (!previous?.entry_file) conflict("DTS batch source has no complete entry manifest.");
+      const revision = await ingestConfigRevisionInTransaction(tx, {
+        organizationId: auth.organization.id, projectId: input.projectId, configSetId: proof.configSetId,
+        entryFile: previous.entry_file, includeSearchPaths: previous.include_search_paths,
+        overlayOrder: previous.overlay_order, members
+      }, auth, { createdByUserId: attribution.userId, domain: attribution },
+      { sourceCommit: { baseConfigRevisionId: manifest.configRevisionId } });
+      if (revision.status !== "resolved") conflict("Reviewed DTS batch revision has unresolved source identity.");
+      revisionId = revision.id;
+    } else {
+      revisionId = randomUUID();
+      await insertConfigRevision(tx, {
+        id: revisionId, organizationId: auth.organization.id, projectId: input.projectId,
+        configSetId: proof.configSetId, revisionNumber: await nextConfigRevisionNumber(tx, proof.configSetId),
+        status: "resolved", attribution
+      });
+      await insertConfigRevisionMembers(tx, revisionId, members);
+    }
     await assertDeletedAnchorsRemainAbsent(tx, {
       configSetId: proof.configSetId, revisionId, manifest, baseFiles: base.files,
       candidateFileId: proof.fileId, candidateAfter: after
     });
+    const observed = members.some((member) => member.format === "dts")
+      ? await listObservedProperties(asValueClient(tx), revisionId) : [];
     const auditRef = randomUUID();
     const targetByBinding = new Map(targets.map((target) => [target.binding_id, target]));
     const results: AppliedResult[] = [];
@@ -232,28 +281,57 @@ export async function commitCanonicalSourceBatchRevision(
         || !same(pin.members, manifest.members)) conflict("Batch sibling source provenance changed.");
       const target = targetByBinding.get(entry.bindingId);
       const memberIndex = manifest.members.findIndex((member) => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId);
-      if (memberIndex < 0 || pin.format !== "json" || pin.rootPointer === null
-        || pin.locator.kind !== "json-pointer" || typeof pin.locator.pointer !== "string") conflict("Batch JSON locator is invalid.");
-      const pointer = pin.locator.pointer as string;
-      const rootPointer = pin.rootPointer as string;
+      if (memberIndex < 0 || pin.format !== manifest.members[memberIndex]!.format)
+        conflict("Batch source locator is outside its frozen member.");
       const beforeMember = base.files[memberIndex]!.content;
       const deleted = target?.action === "delete";
-      const payload = { kind: "json" as const,
-        value: readJsonSourceValue(deleted ? beforeMember : pin.fileId === proof.fileId ? after : beforeMember,
-          pointer, rootPointer) as ContractJsonValue };
-      if (target && !deleted) {
-        const desired = target.target_value as { kind?: string; value?: unknown };
-        if (desired?.kind !== "json-source" || !same(desired.value, payload.value)) conflict("Reviewed batch target differs from candidate bytes.");
-      } else if (!target && (old.value_kind !== payload.kind || !same(old.value, payload.value))) {
-        conflict("Batch candidate changed a sibling business value.");
-      }
+      let payload: ProjectValuePayload;
       let locator: Record<string, unknown> = pin.locator;
-      if (deleted) {
-        const deletion = deleteJsonSourceMember(beforeMember, pointer, rootPointer);
-        if (pin.fileId !== proof.fileId) conflict("Batch deletion is outside the candidate file.");
-        proveJsonSourceMemberAbsent(after, pointer, rootPointer);
-        locator = { kind: "json-delete", ...deletionProof(deletion.proof), fileVersionId: version.id };
+      if (pin.format === "json") {
+        if (pin.rootPointer === null || pin.locator.kind !== "json-pointer"
+          || typeof pin.locator.pointer !== "string") conflict("Batch JSON locator is invalid.");
+        const pointer = pin.locator.pointer;
+        const rootPointer = pin.rootPointer;
+        payload = { kind: "json", value: readJsonSourceValue(deleted ? beforeMember
+          : pin.fileId === proof.fileId ? after : beforeMember, pointer, rootPointer) as ContractJsonValue };
+        if (target && !deleted) {
+          const desired = target.target_value as { kind?: string; value?: unknown };
+          if (desired?.kind !== "json-source" || !same(desired.value, payload.value)) conflict("Reviewed batch target differs from candidate bytes.");
+        }
+        if (deleted) {
+          const deletion = deleteJsonSourceMember(beforeMember, pointer, rootPointer);
+          if (pin.fileId !== proof.fileId) conflict("Batch deletion is outside the candidate file.");
+          proveJsonSourceMemberAbsent(after, pointer, rootPointer);
+          locator = { kind: "json-delete", ...deletionProof(deletion.proof), fileVersionId: version.id };
+        }
+      } else {
+        if (pin.locator.kind !== "dts-property" || !pin.logicalNodeId
+          || typeof pin.locator.propertyName !== "string") conflict("Batch DTS locator is invalid.");
+        const propertyName = pin.locator.propertyName;
+        if (deleted) {
+          if (pin.fileId !== proof.fileId || !dtsTargets.has(entry.bindingId)) conflict("DTS batch deletion is outside its target file.");
+          const effect = await loadFinalDtsDeleteProof(tx, {
+            configRevisionId: revisionId, logicalNodeId: pin.logicalNodeId,
+            fileVersionId: version.id, propertyName
+          });
+          payload = dtsValueToPayload(await validatePinnedDtsSourceChange(tx, pin, beforeMember, beforeMember));
+          locator = { kind: "dts-delete", nodeOccurrenceId: effect.node_occurrence_id,
+            fileVersionId: version.id, propertyName };
+        } else {
+          const matches = observed.filter((property) => property.logicalNodeId === pin.logicalNodeId
+            && property.fileId === pin.fileId && property.propertyKey === propertyName);
+          if (matches.length !== 1) conflict("DTS batch property disappeared or has ambiguous source ownership.");
+          const property = matches[0]!;
+          payload = rawTextToPayload(property.propertyKey, property.rawText);
+          locator = { kind: "dts-property", propertyOccurrenceId: property.propertyOccurrenceId,
+            nodeOccurrenceId: property.nodeOccurrenceId, fileVersionId: property.fileVersionId,
+            propertyName: property.propertyKey };
+          if (target && !same(dtsValueToPayload(target.target_value as DtsValue), payload))
+            conflict("Reviewed DTS batch value differs from the ingested property.");
+        }
       }
+      if (!target && (old.value_kind !== payload.kind || !same(old.value, payload.value)))
+        conflict("Batch candidate changed a sibling business value.");
       const appended = await appendProjectValue(asValueClient(tx), {
         snapshot,
         binding: {
@@ -275,19 +353,29 @@ export async function commitCanonicalSourceBatchRevision(
       const pinId = randomUUID();
       const fileVersionId = pin.fileId === proof.fileId ? version.id : pin.fileVersionId;
       const deleteProof = deleted ? {
-        kind: "json-delete-v1", scannerVersion: "json-span-v1", ...deletionProof(locator),
+        kind: pin.format === "dts" ? "dts-delete-v1" : "json-delete-v1",
+        scannerVersion: pin.format === "dts" ? "dts-cst-v1" : "json-span-v1",
+        ...(pin.format === "dts" ? { nodeOccurrenceId: locator.nodeOccurrenceId,
+          propertyName: locator.propertyName } : deletionProof(locator)),
         beforeValueDigest: sourceDigest(old.value_digest),
         beforeSourceDigest: sourceDigest(manifest.members[memberIndex]!.checksum),
         afterSourceDigest: sourceDigest(candidate.checksum)
       } : null;
+      const locatorDigest = deleted && pin.format === "dts"
+        ? (await tx.query<{ digest: string }>(
+          "select parameter_catalog.canonical_dts_delete_locator_digest($1::jsonb) as digest",
+          [JSON.stringify(locator)])).rows[0]?.digest
+        : `sha256:${digest(serializeContract(locator as ContractJsonValue))}`;
+      if (!locatorDigest) conflict("DTS batch deletion locator digest is unavailable.");
       await tx.query(`insert into parameter_catalog.project_value_source_pins
         (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,
          config_revision_id,file_id,file_version_id,format,locator,locator_digest,property_occurrence_id,
          value_state,base_source_pin_id,delete_request_id,delete_proof)
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'json',$11::jsonb,$12,null,$13,$14,$15,$16::jsonb)`,
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18::jsonb)`,
       [pinId, valueId, entry.bindingId, entry.definitionId, auth.organization.id, input.projectId,
         entry.sourceOccurrenceId, revisionId, pin.fileId, fileVersionId,
-        JSON.stringify(locator), `sha256:${digest(serializeContract(locator as ContractJsonValue))}`,
+        pin.format, JSON.stringify(locator), locatorDigest,
+        pin.format === "dts" && !deleted ? locator.propertyOccurrenceId : null,
         deleted ? "deleted" : "present", deleted ? pin.sourcePinId : null,
         deleted ? request.id : null, deleted ? JSON.stringify(deleteProof) : null]);
       const historyEventId = deriveHistoryEventId({

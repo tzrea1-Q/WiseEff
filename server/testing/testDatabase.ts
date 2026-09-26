@@ -27,6 +27,8 @@ loadDotenvFiles(projectRoot);
 const TEMPLATE_BUILD_LOCK = 4_201_659;
 const TEMPLATE_LOCK_WAIT_MS = 120_000;
 const TEMPLATE_LOCK_POLL_MS = 50;
+const DATABASE_DISCONNECT_WAIT_MS = 5_000;
+const DATABASE_DISCONNECT_POLL_MS = 25;
 
 const TEMPLATE_PREFIX = "wiseeff_test_tpl_";
 const WORKER_PREFIX = "wiseeff_test_wk_";
@@ -131,9 +133,10 @@ async function dropStaleTestDatabases(admin: pg.Client, keepFingerprint: string)
        and datname not like '%${keepFingerprint}%'`
   );
   for (const row of rows.rows) {
-    await admin
-      .query(`drop database if exists ${row.datname} with (force)`)
-      .catch(() => undefined);
+    const active = await admin.query("select 1 from pg_stat_activity where datname = $1 limit 1", [row.datname]);
+    if (active.rowCount) continue;
+    // Stale cleanup is best-effort; a late connection makes the plain DROP fail safely.
+    await admin.query(`drop database if exists ${pg.escapeIdentifier(row.datname)}`).catch(() => undefined);
   }
 }
 
@@ -146,7 +149,7 @@ async function ensureTemplateDatabase(admin: pg.Client, fingerprint: string): Pr
   // Build under a temporary name, then rename, so an interrupted build can never be
   // mistaken for a complete template. Caller holds the template build lock.
   const buildName = `wiseeff_test_tplbuild_${process.pid}`;
-  await admin.query(`drop database if exists ${buildName} with (force)`);
+  await dropTestDatabase(admin, buildName);
   await admin.query(`create database ${buildName}`);
 
   const buildClient = new pg.Client({ connectionString: connectionStringFor(buildName) });
@@ -239,14 +242,18 @@ export async function teardownTestDatabaseRun(): Promise<void> {
   const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
   await admin.connect();
   try {
+    const failures: unknown[] = [];
     const rows = await admin.query<{ datname: string }>(
-      `select datname from pg_database where datname like '${WORKER_PREFIX}%' and datname like '%_${token}_%'`
+      `select datname from pg_database where datname like '${WORKER_PREFIX}%' and datname like '%_${token}_%' order by datname`
     );
     for (const row of rows.rows) {
-      await admin
-        .query(`drop database if exists ${row.datname} with (force)`)
-        .catch(() => undefined);
+      try {
+        await dropTestDatabase(admin, row.datname);
+      } catch (error) {
+        failures.push(error);
+      }
     }
+    if (failures.length) throw new AggregateError(failures, `Failed to drop ${failures.length} run test database(s)`);
   } finally {
     await admin.end().catch(() => undefined);
   }
@@ -276,11 +283,43 @@ async function cloneTemplateDatabase(name: string): Promise<void> {
   }
 }
 
+export async function dropTestDatabase(admin: pg.Client, name: string): Promise<void> {
+  const deadline = Date.now() + DATABASE_DISCONNECT_WAIT_MS;
+  let lastDropError: unknown;
+  const readConnections = () => admin.query<{
+    pid: number;
+    state: string | null;
+    application_name: string;
+    wait_event_type: string | null;
+  }>(
+    `select pid, state, application_name, wait_event_type
+       from pg_stat_activity where datname = $1 order by pid`,
+    [name]
+  );
+  while (true) {
+    const connections = await readConnections();
+    if (connections.rows.length === 0 && !(lastDropError && Date.now() >= deadline)) {
+      try {
+        await admin.query(`drop database if exists ${pg.escapeIdentifier(name)}`);
+        return;
+      } catch (error) {
+        if ((error as { code?: string }).code !== "55006") throw error;
+        lastDropError = error;
+      }
+    }
+    if (Date.now() >= deadline) {
+      const blockers = lastDropError ? await readConnections() : connections;
+      throw new Error(`Timed out waiting to drop test database ${name}; connections: ${JSON.stringify(blockers.rows)}`, { cause: lastDropError });
+    }
+    await new Promise((resolve) => setTimeout(resolve, DATABASE_DISCONNECT_POLL_MS));
+  }
+}
+
 async function dropDatabase(name: string): Promise<void> {
   const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
   await admin.connect();
   try {
-    await admin.query(`drop database if exists ${name} with (force)`);
+    await dropTestDatabase(admin, name);
   } finally {
     await admin.end().catch(() => undefined);
   }
@@ -333,8 +372,8 @@ export async function createEphemeralTestDatabase(label: string): Promise<Epheme
     url: connectionStringFor(name),
     drop: async () => {
       if (dropped) return;
-      dropped = true;
       await dropDatabase(name);
+      dropped = true;
     }
   };
 }
@@ -378,8 +417,8 @@ export async function createManagedInstanceTestDatabase(label: string): Promise<
     url: connectionStringFor(name),
     drop: async () => {
       if (dropped) return;
-      dropped = true;
       await dropDatabase(name);
+      dropped = true;
     }
   };
 }

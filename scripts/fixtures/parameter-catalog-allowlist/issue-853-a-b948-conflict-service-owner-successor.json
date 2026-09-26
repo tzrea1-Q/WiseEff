@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/parameter-files/conflictService.ts",
+      "sourceBlobOid": "cd01ad6c5c70b6fe152415e12ebf3a9211133ef6",
+      "destinationBlobOid": "d9e579715135e71889ea3c12d06c666645720c41",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:46a4dd8af441804d:d7396c6c74c09547",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-FIL",
+            "line": 28,
+            "column": 3,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "cd01ad6c5c70b6fe152415e12ebf3a9211133ef6",
+            "byteStart": 1075,
+            "byteEnd": 1090,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:46a4dd8af441804d:b233d9988fb71e2e",
+            "family": "S12-FIL",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "line": 29,
+            "column": 3,
+            "byteStart": 1141,
+            "byteEnd": 1156,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d9e579715135e71889ea3c12d06c666645720c41"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:00efb15850559a22:225705861a2fe93a",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-FIL",
+            "line": 69,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "cd01ad6c5c70b6fe152415e12ebf3a9211133ef6",
+            "byteStart": 2612,
+            "byteEnd": 2627,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:00efb15850559a22:258f5caebb28e25e",
+            "family": "S12-FIL",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "line": 70,
+            "column": 7,
+            "byteStart": 2678,
+            "byteEnd": 2693,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d9e579715135e71889ea3c12d06c666645720c41"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        }
+      ]
+    }
+  ]
+}

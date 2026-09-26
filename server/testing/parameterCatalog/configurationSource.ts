@@ -127,3 +127,34 @@ export async function seedMixedRevisionCohortProbe(
     [valueId,input.bindingId,input.organizationId,input.projectId,input.projectValueId]);
   await tx.query("set constraints all immediate");
 }
+
+/** Move one genuine DTS pin to a newly ingested revision inside a rollback-only mixed-cohort probe. */
+export async function seedDtsMixedRevisionCohortProbe(
+  tx: Queryable,
+  input: {
+    organizationId: string; projectId: string; bindingId: string; projectValueId: string;
+    previousPinId: string; configRevisionId: string; propertyOccurrenceId: string;
+    locator: Record<string, unknown>;
+  },
+) {
+  const valueId = randomUUID();
+  await tx.query(`insert into parameter_catalog.project_parameter_values
+    (id,binding_id,definition_id,definition_revision_id,source_ref,config_revision_id,value_digest,value_kind,value)
+    select $1,binding_id,definition_id,definition_revision_id,source_ref,$2,value_digest,value_kind,value
+    from parameter_catalog.project_parameter_values where id=$3 and binding_id=$4`,
+  [valueId,input.configRevisionId,input.projectValueId,input.bindingId]);
+  await tx.query(`insert into parameter_catalog.project_value_source_pins
+    (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,
+     config_revision_id,file_id,file_version_id,format,property_occurrence_id,locator,locator_digest)
+    select $1,$2,binding_id,definition_id,organization_id,project_id,source_occurrence_id,
+      $3,file_id,file_version_id,format,$4,$5::jsonb,
+      parameter_catalog.canonical_dts_parameter_locator_digest($5::jsonb)
+    from parameter_catalog.project_value_source_pins
+    where id=$6 and organization_id=$7 and project_id=$8 and binding_id=$9 and project_value_id=$10 and format='dts'`,
+  [randomUUID(),valueId,input.configRevisionId,input.propertyOccurrenceId,JSON.stringify(input.locator),
+    input.previousPinId,input.organizationId,input.projectId,input.bindingId,input.projectValueId]);
+  await tx.query(`update parameter_catalog.project_parameter_bindings set current_value_id=$1
+    where id=$2 and organization_id=$3 and project_id=$4 and current_value_id=$5`,
+  [valueId,input.bindingId,input.organizationId,input.projectId,input.projectValueId]);
+  await tx.query("set constraints all immediate");
+}

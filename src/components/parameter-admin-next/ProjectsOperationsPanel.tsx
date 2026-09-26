@@ -3,6 +3,7 @@ import type { AppAction } from "@/application/state/appState";
 import { canPerform } from "@/app/permissions";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import { resolveAuditQuery } from "@/application/parameters/auditQueryRuntime";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
@@ -16,6 +17,8 @@ import { ProjectReviewRolesPanel } from "./ProjectReviewRolesPanel";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
+import { createCanonicalBatchRollbackClient } from "@/infrastructure/http/canonicalBatchRollbackClient";
+import { createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 import type { PrototypeState } from "@/domain/prototype/types";
 import {
   buildParameterAdminProjectsFromState,
@@ -63,6 +66,7 @@ export type ProjectsOperationsPanelProps = {
   runtimeMode?: WiseEffRuntimeMode;
   onNewProject?: () => void;
   parameterFileRepository?: ParameterFileRepository;
+  parameterCatalogRepository?: ParameterCatalogRepository;
   dtsStructuredRepository?: DtsStructuredRepository;
   /** @deprecated Flag retired; workbench is always on. Prop kept for call-site compat. */
   configurationWorkbenchEnabled?: boolean;
@@ -82,6 +86,7 @@ export function ProjectsOperationsPanel({
   runtimeMode = "mock",
   onNewProject,
   parameterFileRepository,
+  parameterCatalogRepository,
   dtsStructuredRepository
 }: ProjectsOperationsPanelProps) {
   const { dispatch: adminDispatch, application } = useParameterAdmin();
@@ -91,6 +96,8 @@ export function ProjectsOperationsPanel({
   const isApiMode = runtimeMode === "api";
   const canAdmin = canPerform(migrateLegacyRoleId(state.activeRoleId), "admin.access");
   const adminClient = useMemo(() => createParameterAdminClient(), []);
+  const batchRollbackClient = useMemo(() => isApiMode ? createCanonicalBatchRollbackClient() : undefined, [isApiMode]);
+  const manualSyncClient = useMemo(() => isApiMode ? createCanonicalManualSyncClient() : undefined, [isApiMode]);
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
 
   const fileRepository = useMemo(
@@ -354,6 +361,10 @@ export function ProjectsOperationsPanel({
           onNavigate={onNavigate}
           dtsRepository={dtsRepo}
           fileRepository={fileRepository}
+          batchRollbackClient={batchRollbackClient}
+          manualSyncClient={manualSyncClient}
+          memberRemovalRepository={parameterCatalogRepository}
+          apiMode={isApiMode}
           listAuditEvents={(params) => auditQuery.listAuditEvents(params)}
           currentUserId={state.currentUserId}
           canEdit

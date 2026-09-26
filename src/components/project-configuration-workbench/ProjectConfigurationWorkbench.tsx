@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   DtsReleaseReadinessIssue,
+  DtsConfigSetMemberFile,
   DtsSearchHit,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
+import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/CanonicalBatchSubmitDialog";
 import type {
   ParameterFileRepository,
   ParameterFileSourceWorkflow,
@@ -23,6 +27,9 @@ import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
 import { WorkbenchCandidateActivateDialog } from "./WorkbenchCandidateActivateDialog";
 import { WorkbenchCandidateSourceReviewDialog } from "./WorkbenchCandidateSourceReviewDialog";
 import { WorkbenchSourceRollbackDialog } from "./WorkbenchSourceRollbackDialog";
+import { WorkbenchCanonicalManualSyncDialog } from "./WorkbenchCanonicalManualSyncDialog";
+import type { createCanonicalBatchRollbackClient } from "@/infrastructure/http/canonicalBatchRollbackClient";
+import type { createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 import { WorkbenchShellChrome } from "./WorkbenchShellChrome";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import type { StructuredValueChange } from "@/components/parameters/StructuredValueEditor";
@@ -88,6 +95,8 @@ export type ProjectConfigurationWorkbenchProps = {
   onNavigate: (path: string) => void;
   dtsRepository: DtsStructuredRepository;
   fileRepository: ParameterFileRepository;
+  batchRollbackClient?: ReturnType<typeof createCanonicalBatchRollbackClient>;
+  manualSyncClient?: ReturnType<typeof createCanonicalManualSyncClient>;
   /** When false, typed editors stay readable but write/submit stay locked. Defaults to true for tests. */
   canEdit?: boolean;
   /** When false, regulator/thermal critical nodes stay readable but write stays locked. Defaults to true. */
@@ -98,6 +107,8 @@ export type ProjectConfigurationWorkbenchProps = {
   listAuditEvents: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
   /** Authenticated user for draft scoping. Defaults to "local-user" for back-compat tests. */
   currentUserId?: string;
+  memberRemovalRepository?: ParameterCatalogRepository;
+  apiMode?: boolean;
   /** Optional org override; prefer selectedConfigSet.organizationId at runtime. */
   organizationId?: string;
   /** Injectable storage for recoverable session drafts (tests / non-DOM). */
@@ -118,16 +129,22 @@ export function ProjectConfigurationWorkbench({
   onNavigate,
   dtsRepository,
   fileRepository,
+  batchRollbackClient,
+  manualSyncClient,
   canEdit = true,
   canEditCritical = true,
   canAdmin = true,
   listAuditEvents,
   currentUserId = "local-user",
+  memberRemovalRepository,
+  apiMode = false,
   organizationId,
   draftStorage,
   topologyRepository
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
+  const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
+  const [manualSyncTarget, setManualSyncTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
   const {
     session: workspaceLoadSession,
@@ -188,6 +205,9 @@ export function ProjectConfigurationWorkbench({
   const [sourceWorkflowLoading, setSourceWorkflowLoading] = useState(false);
   const [sourceWorkflowReloadToken, setSourceWorkflowReloadToken] = useState(0);
   const [rollbackReviewVersion, setRollbackReviewVersion] = useState<ProjectParameterFileVersion | null>(null);
+  const [rollbackBatchContext, setRollbackBatchContext] = useState<{
+    fileId: string; currentVersionId: string; workflowProofToken: string
+  } | null>(null);
   const [rollbackReviewPending, setRollbackReviewPending] = useState(false);
   const [rollbackReviewError, setRollbackReviewError] = useState("");
   const {
@@ -578,6 +598,9 @@ export function ProjectConfigurationWorkbench({
     !sourceWorkflowSetError;
   const sourceWorkflowSetLoading =
     sourceWorkflowLoading || filesLoading || membersListLoading;
+  const canRequestReviewedMemberRemoval = apiMode && selectedMembers.length >= 2
+    && selectedMembers.every((member) => member.format === "json"
+      && sourceWorkflowsByFileId[member.fileId]?.canonical === true);
   useEffect(() => {
     if (
       canvasMode !== "working" &&
@@ -837,6 +860,16 @@ export function ProjectConfigurationWorkbench({
           return;
         }
         setRollbackReviewError("");
+        if (sourceWorkflow.bindingCount >= 2) {
+          if (!batchRollbackClient || !selectedMember.currentVersionId) {
+            showToast("多目标历史回滚接口或当前版本不可用，已阻止提交。");
+            return;
+          }
+          setRollbackBatchContext({ fileId, currentVersionId: selectedMember.currentVersionId,
+            workflowProofToken: sourceWorkflow.proofToken });
+        } else {
+          setRollbackBatchContext(null);
+        }
         setRollbackReviewVersion(version);
         return;
       }
@@ -865,6 +898,7 @@ export function ProjectConfigurationWorkbench({
     },
     [
       canAdmin,
+      batchRollbackClient,
       fileRepository,
       notifyMutation,
       project.id,
@@ -977,6 +1011,7 @@ export function ProjectConfigurationWorkbench({
     memberRole,
     memberSortOrder,
     syncEvidence,
+    canonicalSyncCheck,
     exportEvidence,
     setMemberFileId,
     setMemberRole,
@@ -1068,9 +1103,18 @@ export function ProjectConfigurationWorkbench({
   });
 
   const [sourceReviewDialogOpen, setSourceReviewDialogOpen] = useState(false);
+  const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && activeCandidate?.status === "ready"
+    && sourcePreview?.kind === "canonical" && sourcePreview.candidateId === activeCandidate.id
+    && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && sourcePreview.proofToken
+    && sourcePreview.bindings && sourcePreview.bindings.length >= 2
+    && sourcePreview.bindings.every((binding) => binding.bindingId && binding.sourcePinId
+      && (binding.action === "delete" || binding.afterText !== undefined))
+    && new Set(sourcePreview.bindings.map((binding) => binding.bindingId)).size === sourcePreview.bindings.length
+    && !sourcePreview.request && !sourcePreviewLoading && !sourcePreviewError
+    && memberRemovalRepository?.submitProjectValueBatchChangeRequest);
   const handleOpenSourceReview = useCallback(() => {
-    if (canSubmitSourceReview) setSourceReviewDialogOpen(true);
-  }, [canSubmitSourceReview]);
+    if (canSubmitSourceReview || canSubmitBatchReview) setSourceReviewDialogOpen(true);
+  }, [canSubmitSourceReview, canSubmitBatchReview]);
   const handleConfirmSourceReview = useCallback(
     async (reason: string) => {
       try {
@@ -1546,7 +1590,10 @@ export function ProjectConfigurationWorkbench({
             sourceWorkflowSetError={sourceWorkflowSetError}
             selectedMembers={selectedMembers}
             selectedMember={selectedMember ?? null}
-            onSelectMember={selectMember}
+            onSelectMember={(fileId) => {
+              setManualSyncTarget(null);
+              selectMember(fileId);
+            }}
             structureLoading={structureLoading}
             structureError={structureError}
             onStructureRetry={() => workspaceLoadSession.retryStructure()}
@@ -1637,10 +1684,14 @@ export function ProjectConfigurationWorkbench({
               onExitBaselineCompare={exitBaselineCompare}
               onSelectBaselineCompareMember={selectBaselineCompareMember}
               activeCandidate={activeCandidate}
+              projectId={project.id}
+              currentUserId={currentUserId}
+              onConflictSubmitted={(requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)}
               sourcePreview={sourcePreview}
               sourcePreviewLoading={sourcePreviewLoading}
               sourcePreviewError={sourcePreviewError}
               canSubmitSourceReview={canSubmitSourceReview}
+              canSubmitBatchReview={canSubmitBatchReview}
               submittingSourceReview={submittingSourceReview}
               sourceReviewError={sourceReviewError}
               sourceReviewResult={sourceReviewResult}
@@ -1674,8 +1725,16 @@ export function ProjectConfigurationWorkbench({
                   addMemberToConfigSet(memberFileId, memberRole, memberSortOrder)
                 )
               }
-              onRequestRemoveMember={requestRemoveMember}
+              onRequestRemoveMember={(member) => {
+                if (canRequestReviewedMemberRemoval && member.format === "json") setMemberRemovalTarget(member);
+                else requestRemoveMember(member);
+              }}
+              canRequestReviewedMemberRemoval={canRequestReviewedMemberRemoval}
               onSyncFile={() => void runAction("sync-file", syncSelectedFile)}
+              onOpenManualSync={manualSyncClient && apiMode && canAdmin && sourceWorkflow?.canonical
+                && sourceWorkflow.bindingCount >= 2 && sourceWorkflow.proofToken
+                && selectedMember?.currentVersionId
+                ? () => setManualSyncTarget(selectedMember) : undefined}
               sourceWorkflow={sourceWorkflow}
               sourceWorkflowLoading={sourceWorkflowLoading}
               sourceWorkflowError={sourceWorkflowError}
@@ -1737,7 +1796,7 @@ export function ProjectConfigurationWorkbench({
       />
 
       <WorkbenchCandidateSourceReviewDialog
-        open={sourceReviewDialogOpen}
+        open={sourceReviewDialogOpen && !canSubmitBatchReview}
         activeCandidate={activeCandidate}
         sourcePreview={sourcePreview}
         submitting={submittingSourceReview}
@@ -1747,24 +1806,63 @@ export function ProjectConfigurationWorkbench({
         }}
         onConfirm={(reason) => void handleConfirmSourceReview(reason)}
       />
+      {sourceReviewDialogOpen && canSubmitBatchReview && sourcePreview && activeCandidate ? (
+        <CanonicalBatchSubmitDialog projectId={project.id} currentUserId={currentUserId}
+          candidate={activeCandidate} preview={sourcePreview} repository={memberRemovalRepository}
+          onDismiss={() => setSourceReviewDialogOpen(false)}
+          onSubmitted={(requestId) => {
+            setSourceReviewDialogOpen(false);
+            setSourceWorkflowReloadToken((value) => value + 1);
+            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+          }} />
+      ) : null}
 
-      <WorkbenchSourceRollbackDialog
+      {rollbackReviewVersion ? <WorkbenchSourceRollbackDialog
+        key={`${rollbackReviewVersion.id}:${rollbackBatchContext?.fileId ?? "single"}`}
         open={Boolean(rollbackReviewVersion)}
         version={rollbackReviewVersion}
-        currentVersionId={selectedMember?.currentVersionId}
+        currentVersionId={rollbackBatchContext?.currentVersionId ?? selectedMember?.currentVersionId}
         pending={rollbackReviewPending}
         error={rollbackReviewError}
         onCancel={() => {
           if (!rollbackReviewPending) setRollbackReviewVersion(null);
         }}
         onConfirm={(reason) => void handleConfirmSourceRollback(reason)}
-      />
+        batch={rollbackBatchContext && batchRollbackClient ? {
+          projectId: project.id, fileId: rollbackBatchContext.fileId, currentUserId,
+          workflowProofToken: rollbackBatchContext.workflowProofToken, client: batchRollbackClient,
+          onSubmitted: (requestId) => {
+            setRollbackReviewVersion(null);
+            setSourceWorkflowReloadToken((value) => value + 1);
+            setVersionsReloadToken((value) => value + 1);
+            notifyMutation("多目标历史回滚审核已提交；审核通过前当前 Value、来源 pin 和活跃文件版本不变。");
+            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+          }
+        } : undefined}
+      /> : null}
+
+      {manualSyncTarget && manualSyncClient && sourceWorkflow?.canonical
+        && selectedMember?.fileId === manualSyncTarget.fileId && selectedMember.currentVersionId
+        && sourceWorkflow.proofToken ? <WorkbenchCanonicalManualSyncDialog
+          key={`${manualSyncTarget.fileId}:${selectedMember.currentVersionId}:${sourceWorkflow.proofToken}`}
+          context={{ projectId: project.id, fileId: manualSyncTarget.fileId,
+            fileName: manualSyncTarget.fileName, format: manualSyncTarget.format,
+            currentVersionId: selectedMember.currentVersionId,
+            workflowProofToken: sourceWorkflow.proofToken, currentUserId,
+            client: manualSyncClient,
+            onSubmitted: (requestId) => {
+              setManualSyncTarget(null);
+              setSourceWorkflowReloadToken((value) => value + 1);
+              setVersionsReloadToken((value) => value + 1);
+              onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+            } }} onDismiss={() => setManualSyncTarget(null)} /> : null}
 
       <WorkbenchTaskDock
         tasksOpen={tasksOpen}
         onTasksOpenChange={setTasksOpen}
         sessionDraftRows={sessionDraftRows}
         syncEvidence={syncEvidence}
+        canonicalSyncCheck={canonicalSyncCheck}
         exportEvidence={exportEvidence}
         syncConflicts={syncConflicts}
         releaseReadiness={releaseReadiness}
@@ -1808,6 +1906,20 @@ export function ProjectConfigurationWorkbench({
         onReadinessRetry={() => setReadinessRetry((value) => value + 1)}
       />
 
+      {memberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog
+        projectId={project.id}
+        configSetId={selectedConfigSet.id}
+        configSetName={selectedConfigSet.name}
+        member={memberRemovalTarget}
+        members={selectedMembers}
+        currentUserId={currentUserId}
+        repository={memberRemovalRepository}
+        onDismiss={() => setMemberRemovalTarget(null)}
+        onSubmitted={(requestId) => {
+          setMemberRemovalTarget(null);
+          onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&memberRequest=${encodeURIComponent(requestId)}`);
+        }}
+      /> : null}
       <WorkbenchBaselineDialogs
         createOpen={createBaselineOpen}
         releaseOpen={releaseBaselineOpen}

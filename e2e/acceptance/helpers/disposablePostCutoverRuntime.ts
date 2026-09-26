@@ -78,6 +78,7 @@ export type DisposableDatabaseIdentity = {
 export type DisposablePostCutoverRuntime = {
   databaseUrl: string;
   databaseName: string;
+  objectStoreRoot: string;
   migrationRunId: string;
   markerPurpose: string;
   apiUrl: string;
@@ -965,6 +966,7 @@ export async function startDisposablePostCutoverRuntime(
     return {
       databaseUrl,
       databaseName,
+      objectStoreRoot,
       migrationRunId,
       markerPurpose: purpose,
       apiUrl,

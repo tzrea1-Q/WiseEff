@@ -51,12 +51,30 @@ export function createApiParameterCatalogRepository(
       client.submitProjectValueDraft(projectId, draftId, body, context),
     listProjectValueChangeRequests: (projectId, query) =>
       client.listProjectValueChangeRequests(projectId, query),
+    submitProjectValueBatchChangeRequest: (projectId, body, context) =>
+      client.submitProjectValueBatchChangeRequest(projectId, body, context),
+    listProjectValueBatchChangeRequests: (projectId, query) =>
+      client.listProjectValueBatchChangeRequests(projectId, query),
+    getProjectValueBatchChangeRequest: (projectId, requestId) =>
+      client.getProjectValueBatchChangeRequest(projectId, requestId),
+    submitMemberRemovalRequest: (projectId, body, context) =>
+      client.submitMemberRemovalRequest(projectId, body, context),
+    listMemberRemovalRequests: (projectId, query) =>
+      client.listMemberRemovalRequests(projectId, query),
+    getMemberRemovalRequest: (projectId, requestId) =>
+      client.getMemberRemovalRequest(projectId, requestId),
+    reviewMemberRemovalRequest: (projectId, requestId, body, context) =>
+      client.reviewMemberRemovalRequest(projectId, requestId, body, context),
+    withdrawMemberRemovalRequest: (projectId, requestId, context) =>
+      client.withdrawMemberRemovalRequest(projectId, requestId, context),
     reviewProjectValueChangeRequest: (projectId, requestId, body, context) =>
       client.reviewProjectValueChangeRequest(projectId, requestId, body, context),
     withdrawProjectValueChangeRequest: (projectId, requestId, context) =>
       client.withdrawProjectValueChangeRequest(projectId, requestId, context),
     getProjectValueChangeSourceDiff: (projectId, requestId) =>
       client.getProjectValueChangeSourceDiff(projectId, requestId),
+    getProjectValueConflictDecision: (projectId, requestId) =>
+      client.getProjectValueConflictDecision(projectId, requestId),
     getCanonicalBindingChangeHistory: (projectId, bindingId, limit) =>
       client.getCanonicalBindingChangeHistory(projectId, bindingId, limit),
     getCanonicalBindingExport: (projectId, bindingId, projectValueId) =>

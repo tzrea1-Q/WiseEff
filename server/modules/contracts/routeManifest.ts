@@ -233,6 +233,20 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterFiles.listCanonicalSourceConflicts",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflicts",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.submitCanonicalSourceConflict",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflict-submit",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
     id: "parameters.getParameterFileCandidateContent",
     method: "GET",
     path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content",
@@ -645,6 +659,41 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterTopology.submitProjectValueBatchChangeRequest",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/batches",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.listProjectValueBatchChangeRequests",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/batches",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.submitMemberRemovalRequest",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/member-removals",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.listMemberRemovalRequests",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/member-removals",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.getMemberRemovalRequest",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/member-removal",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.getProjectValueBatchChangeRequest",
     method: "GET",
     path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/batch",
@@ -669,6 +718,13 @@ export const routeManifest = [
     id: "parameterTopology.getProjectValueChangeRequestSourceDiff",
     method: "GET",
     path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/source-diff",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.getCanonicalSourceConflictDecision",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/conflict-decision",
     module: "parameters",
     stability: "mvp"
   },
@@ -1172,6 +1228,27 @@ export const routeManifest = [
     id: "parameterFiles.rollbackCanonicalSource",
     method: "POST",
     path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-rollback",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.prepareCanonicalBatchRollback",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/prepare",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.prepareCanonicalManualSync",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-manual-sync/prepare",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.submitCanonicalBatchRollback",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/submit",
     module: "parameter-files",
     stability: "mvp"
   },

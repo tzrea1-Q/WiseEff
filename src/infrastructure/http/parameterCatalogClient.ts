@@ -2,6 +2,7 @@ import type { ZodTypeAny, z } from "zod";
 
 import {
   bindingDraftResponseSchema,
+  canonicalSourceConflictDecisionResponseSchema,
   bindingCompareListResponseSchema,
   bindingHistoryListResponseSchema,
   catalogBindingExportResponseSchema,
@@ -65,8 +66,17 @@ import {
   projectValueDraftRemovedResponseSchema,
   catalogSubmitValueChangeRequestSchema,
   catalogReviewValueChangeRequestSchema,
+  catalogBatchValueChangeRequestResponseSchema,
+  catalogBatchValueChangeRequestListResponseSchema,
+  catalogSubmitBatchValueChangeRequestSchema,
+  catalogValueChangeReviewResponseSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
+  catalogValueChangeWithdrawalResponseSchema,
+  catalogMemberRemovalRequestResponseSchema,
+  catalogMemberRemovalRequestListResponseSchema,
+  catalogSubmitMemberRemovalRequestSchema,
+  catalogReviewMemberRemovalRequestSchema,
   catalogValueChangeSourceDiffResponseSchema,
   catalogBindingChangeHistoryListResponseSchema,
   type CatalogApiFailureReason,
@@ -668,17 +678,89 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogValueChangeRequestListResponseSchema,
         "ProjectValueChangeRequestListResponse"
       ),
+    submitProjectValueBatchChangeRequest: (
+      projectId: string,
+      body: z.infer<typeof catalogSubmitBatchValueChangeRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches`,
+      catalogBatchValueChangeRequestResponseSchema,
+      "ProjectValueBatchChangeRequestResponse",
+      { body: catalogSubmitBatchValueChangeRequestSchema.parse(body), context }
+    ),
+    listProjectValueBatchChangeRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
+        catalogBatchValueChangeRequestListResponseSchema,
+        "ProjectValueBatchChangeRequestListResponse"
+      ),
+    getProjectValueBatchChangeRequest: (projectId: string, requestId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/batch`,
+        catalogBatchValueChangeRequestResponseSchema,
+        "ProjectValueBatchChangeRequestResponse"
+      ),
+    submitMemberRemovalRequest: (
+      projectId: string,
+      body: z.infer<typeof catalogSubmitMemberRemovalRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/member-removals`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { body: catalogSubmitMemberRemovalRequestSchema.parse(body), context }
+    ),
+    listMemberRemovalRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/member-removals${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
+        catalogMemberRemovalRequestListResponseSchema,
+        "MemberRemovalRequestListResponse"
+      ),
+    getMemberRemovalRequest: (projectId: string, requestId: string) => request(
+      "GET",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/member-removal`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse"
+    ),
+    reviewMemberRemovalRequest: (
+      projectId: string,
+      requestId: string,
+      body: z.infer<typeof catalogReviewMemberRemovalRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { body: catalogReviewMemberRemovalRequestSchema.parse(body), context }
+    ),
+    withdrawMemberRemovalRequest: (
+      projectId: string,
+      requestId: string,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/withdraw`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { context }
+    ),
     reviewProjectValueChangeRequest: (
       projectId: string,
       requestId: string,
-      body: { decision: "approve" | "reject"; note?: string | null },
+      body: { decision: "approve" | "reject"; note?: string | null; batchProofDigest?: string },
       context: CatalogWriteContext
     ) =>
       request(
         "POST",
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`,
-        catalogValueChangeRequestResponseSchema,
-        "ProjectValueChangeRequestResponse",
+        catalogValueChangeReviewResponseSchema,
+        "ProjectValueChangeReviewResponse",
         { body: catalogReviewValueChangeRequestSchema.parse(body), context }
       ),
     getProjectValueChangeSourceDiff: (projectId: string, requestId: string) =>
@@ -688,6 +770,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogValueChangeSourceDiffResponseSchema,
         "CatalogValueChangeSourceDiffResponse"
       ),
+    getProjectValueConflictDecision: (projectId: string, requestId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/conflict-decision`,
+        canonicalSourceConflictDecisionResponseSchema,
+        "CanonicalSourceConflictDecisionResponse"
+      ),
     withdrawProjectValueChangeRequest: (
       projectId: string,
       requestId: string,
@@ -696,8 +785,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       request(
         "POST",
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/withdraw`,
-        catalogValueChangeRequestResponseSchema,
-        "ProjectValueChangeRequestResponse",
+        catalogValueChangeWithdrawalResponseSchema,
+        "ProjectValueChangeWithdrawalResponse",
         { context }
       ),
     getCanonicalBindingChangeHistory: (projectId: string, bindingId: string, limit?: number) =>

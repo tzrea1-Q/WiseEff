@@ -92,6 +92,7 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
   const [memberRole, setMemberRole] = useState<ConfigSetRole>("base");
   const [memberSortOrder, setMemberSortOrder] = useState(0);
   const [syncEvidence, setSyncEvidence] = useState("");
+  const [canonicalSyncCheck, setCanonicalSyncCheck] = useState(false);
   const [exportEvidence, setExportEvidence] = useState("");
 
   useEffect(() => {
@@ -275,8 +276,13 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
       { fileId: selectedMember.fileId, fileName: selectedMember.fileName },
       fileRepository
     );
-    if (!result.ok) return;
+    if (!result.ok) {
+      setSyncEvidence("");
+      setCanonicalSyncCheck(false);
+      return;
+    }
     setSyncEvidence(result.evidence);
+    setCanonicalSyncCheck(result.summary.sourceWorkflow === "canonical");
     setTasksOpen(true);
     workspaceLoadSession.setProjectFiles(result.files);
     conflictLocateFacade.setOpenConflicts(result.conflicts);
@@ -349,6 +355,7 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
     memberRole,
     memberSortOrder,
     syncEvidence,
+    canonicalSyncCheck,
     exportEvidence,
     setMemberFileId,
     setMemberRole,

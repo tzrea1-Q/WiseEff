@@ -85,7 +85,7 @@ const issue913T14SuccessorRecords = await Promise.all([
 }));
 const issue913StaleSuccessorRecord = JSON.parse(
   await readFile(`${process.cwd()}/${issue913StaleSuccessorRelocationRecordPath}`, "utf8"),
-) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+) as { files: Array<{ pairs: Array<{ old: { id: string }; new: unknown }> }> };
 const issue853SuccessorRecords = await Promise.all([
   "issue-853-c-debug-routes-successor.json",
   "issue-853-c-debug-catalog-split-successor.json",
@@ -108,6 +108,82 @@ const currentUnallowlistedRecord = JSON.parse(
   ownerBlobs: Record<string, string>;
   baseUnallowlistedIds: string[];
   ownerAddedUnallowlistedIds: string[];
+};
+
+const jointUnallowlistedRecord = JSON.parse(
+  await readFile(`${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-906-joint-current-unallowlisted.json`, "utf8"),
+) as {
+  schemaVersion: number;
+  baseHead: string;
+  priorOwnerHead: string;
+  ownerHead: string;
+  dHead: string;
+  bChangedBlobs: Record<string, { before: string; after: string }>;
+  oldBlobs: Record<string, string>;
+  currentBlobs: Record<string, string>;
+  retired: Array<{ oldId: string; file: string; oldRule: string; oldLine: number; oldByteStart: number; oldByteEnd: number; oldSliceSha256: string }>;
+  moved: Array<{ oldId: string; newId: string; file: string; oldRule: string; oldLine: number; oldByteStart: number; oldByteEnd: number; oldSliceSha256: string }>;
+  currentUnallowlistedIds: string[];
+};
+const c940CurrentSuccessor = JSON.parse(
+  await readFile(`${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-c940-current-successor.json`, "utf8"),
+) as {
+  schemaVersion: number;
+  priorHead: string;
+  cHead: string;
+  dHead: string;
+  blobs: Record<string, { before: string; after: string }>;
+  moved: Array<{ oldId: string; newId: string; file: string; oldByteStart: number; oldByteEnd: number; sliceSha256: string }>;
+};
+const c940FixedSuccessors = await Promise.all([
+  "issue-853-c-940-conflict-service-successor.json",
+  "issue-853-c-940-conflict-service-owner-successor.json",
+].map(async (name) => JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/${name}`, "utf8",
+)) as { files: Array<{ pairs: Array<{ old: { id: string }; new: { id: string } }> }> }));
+const b948FixedSuccessor = JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-b948-conflict-service-owner-successor.json`, "utf8",
+)) as { files: Array<{ pairs: Array<{ old: { id: string }; new: { id: string } }> }> };
+const b948CurrentSuccessor = JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-b948-current-successor.json`, "utf8",
+)) as {
+  schemaVersion: number;
+  priorAHead: string;
+  dHead: string;
+  cHead: string;
+  bHead: string;
+  aMergeHead: string;
+  blobs: Record<string, { before: string | null; after: string }>;
+  movedUnallowlisted: Array<{ oldId: string; newId: string; file: string; oldByteStart: number; oldByteEnd: number; newByteStart: number; newByteEnd: number; sliceSha256: string }>;
+  newUnallowlisted: Array<{ id: string; file: string; rule: string; line: number; byteStart: number; byteEnd: number; sliceSha256: string }>;
+};
+const c949D950CurrentSuccessor = JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-c949-d950-current-successor.json`, "utf8",
+)) as {
+  schemaVersion: number;
+  priorAHead: string;
+  cHead: string;
+  dHead: string;
+  cMergeHead: string;
+  dMergeHead: string;
+  cChangedBlob: { file: string; before: string; after: string };
+  dChangedBlobs: Record<string, { before: string | null; after: string }>;
+  priorUnallowlistedCount: number;
+  priorUnallowlistedIdsSha256: string;
+  retired: { id: string; file: string; rule: string; line: number; byteStart: number; byteEnd: number; sliceSha256: string };
+  currentUnallowlistedCount: number;
+  currentUnallowlistedIdsSha256: string;
+};
+const d956CurrentSuccessor = JSON.parse(await readFile(
+  `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-d956-current-successor.json`, "utf8",
+)) as {
+  schemaVersion: number;
+  priorAHead: string;
+  dHead: string;
+  changedBlobs: Record<string, { before: string | null; after: string }>;
+  addedSourceSlice: { file: string; byteStart: number; byteEnd: number; sha256: string };
+  currentUnallowlistedIdsSha256: string;
+  changedFileObservedIds: string[];
 };
 
 const originalRelocationRecord = JSON.parse(
@@ -992,7 +1068,12 @@ describe("parameter catalog boundary checker", () => {
       const staleSuccessorIds = new Set(issue913StaleSuccessorRecord.files.flatMap((file) =>
         file.pairs.map((pair) => pair.old.id)));
       expect(staleSuccessorIds.size).toBe(issue913StaleSuccessorPairCount);
-      expect(report.relocations.filter((entry) => staleSuccessorIds.has(entry.id))).toHaveLength(issue913StaleSuccessorPairCount);
+      const staleSuccessors = report.relocations.filter((entry) => staleSuccessorIds.has(entry.id));
+      expect(staleSuccessors).toHaveLength(issue913StaleSuccessorPairCount);
+      expect(new Set(staleSuccessors.map((entry) => entry.observed.id)).size).toBe(63);
+      for (const pair of issue913StaleSuccessorRecord.files.flatMap((file) => file.pairs)) {
+        expect(staleSuccessors.find((entry) => entry.id === pair.old.id)?.observed).toEqual(pair.new);
+      }
       expect(issue913StaleRetiredSourceIds).toHaveLength(17);
       expect(issue913StaleRetiredSourceIds.every((id) =>
         !report.relocations.some((entry) => entry.id === id)
@@ -1051,26 +1132,252 @@ describe("parameter catalog boundary checker", () => {
         ...currentUnallowlistedRecord.baseUnallowlistedIds,
         ...currentUnallowlistedRecord.ownerAddedUnallowlistedIds,
       ]).size).toBe(200);
-      expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual([
+      const previousIds = [
         ...currentUnallowlistedRecord.baseUnallowlistedIds,
         ...currentUnallowlistedRecord.ownerAddedUnallowlistedIds,
-      ].sort());
-      const ownerAddedIds = new Set(currentUnallowlistedRecord.ownerAddedUnallowlistedIds);
+      ].sort();
+      expect(jointUnallowlistedRecord.schemaVersion).toBe(1);
+      expect(jointUnallowlistedRecord.baseHead).toBe("f73abe902926625d49ba4a402df067c2df8f54ee");
+      expect(jointUnallowlistedRecord.priorOwnerHead).toBe("443a7149df6689a6fd9fd9692558d5827cc2525d");
+      expect(jointUnallowlistedRecord.ownerHead).toBe("6aa8a6655fe273c1f690d5309ce678d2ecd9a911");
+      expect(jointUnallowlistedRecord.dHead).toBe("200b90a95c53c41fe4c3a9545b17ba8b5a8164b7");
+      expect(execFileSync("git", ["cat-file", "-t", jointUnallowlistedRecord.ownerHead], { encoding: "utf8" }).trim()).toBe("commit");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", jointUnallowlistedRecord.priorOwnerHead, jointUnallowlistedRecord.ownerHead], { encoding: "utf8" })).toBe("");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", jointUnallowlistedRecord.ownerHead, "HEAD"], { encoding: "utf8" })).toBe("");
+      expect(execFileSync("git", ["diff", "--name-only", jointUnallowlistedRecord.priorOwnerHead, jointUnallowlistedRecord.ownerHead], { encoding: "utf8" }).trim().split("\n").sort()).toEqual(
+        Object.keys(jointUnallowlistedRecord.bChangedBlobs).sort(),
+      );
+      for (const [file, blobs] of Object.entries(jointUnallowlistedRecord.bChangedBlobs)) {
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.priorOwnerHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.ownerHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        expect(execFileSync("git", ["rev-parse", `${b948CurrentSuccessor.priorAHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+      }
+      expect(jointUnallowlistedRecord.retired).toHaveLength(27);
+      expect(jointUnallowlistedRecord.moved).toHaveLength(11);
+      expect(jointUnallowlistedRecord.currentUnallowlistedIds).toHaveLength(173);
+      expect(c940CurrentSuccessor.schemaVersion).toBe(1);
+      expect(c940CurrentSuccessor.priorHead).toBe("a51ba55c955cb0852819bc49d95ea26404093b73");
+      expect(c940CurrentSuccessor.cHead).toBe("5f8a05f8bfbc9374c64a8b147653170894db2a1b");
+      expect(c940CurrentSuccessor.dHead).toBe("fbec1bd5134fc0256205f6fcfb40d0ccf6fa48f5");
+      for (const sha of [c940CurrentSuccessor.priorHead, c940CurrentSuccessor.cHead, c940CurrentSuccessor.dHead]) {
+        expect(execFileSync("git", ["merge-base", "--is-ancestor", sha, "HEAD"], { encoding: "utf8" })).toBe("");
+      }
+      expect(Object.keys(c940CurrentSuccessor.blobs).sort()).toEqual([
+        "server/modules/parameter-files/conflictService.test.ts",
+        "server/modules/parameter-files/conflictService.ts",
+      ]);
+      const previousBytes = new Map<string, Buffer>();
+      for (const [file, blobs] of Object.entries(c940CurrentSuccessor.blobs)) {
+        expect(execFileSync("git", ["rev-parse", `${c940CurrentSuccessor.priorHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        expect(execFileSync("git", ["rev-parse", `${c940CurrentSuccessor.cHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        expect(execFileSync("git", ["rev-parse", `${c940CurrentSuccessor.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        const current = await readFile(`${process.cwd()}/${file}`);
+        const currentBlob = file === "server/modules/parameter-files/conflictService.ts"
+          ? b948CurrentSuccessor.blobs[file]!.after : blobs.after;
+        expect(createHash("sha1").update(`blob ${current.length}\0`).update(current).digest("hex")).toBe(currentBlob);
+        previousBytes.set(file, execFileSync("git", ["cat-file", "blob", blobs.before]));
+      }
+      expect(c940CurrentSuccessor.moved).toHaveLength(3);
+      const oldMoved = new Set(c940CurrentSuccessor.moved.map((entry) => entry.oldId));
+      const newMoved = new Set(c940CurrentSuccessor.moved.map((entry) => entry.newId));
+      expect(oldMoved.size).toBe(3);
+      expect(newMoved.size).toBe(3);
+      const priorAUnallowlisted = [
+        ...jointUnallowlistedRecord.currentUnallowlistedIds.filter((id) => !oldMoved.has(id)), ...newMoved,
+      ];
+      expect(priorAUnallowlisted).toHaveLength(173);
+      expect(b948CurrentSuccessor.schemaVersion).toBe(1);
+      expect(b948CurrentSuccessor.priorAHead).toBe("bc9c2d1f324d39498205913ec5c9a38f680a2d8b");
+      expect(b948CurrentSuccessor.dHead).toBe("783c1545d7cbe07a6bb26cc8df1d5c07dd380b81");
+      expect(b948CurrentSuccessor.cHead).toBe("f8879b054c2a410ff6a42a000569161e7f89f0c9");
+      expect(b948CurrentSuccessor.bHead).toBe("f44f03a2b881ae11e90b9022edd647d5c0f4c46e");
+      expect(b948CurrentSuccessor.aMergeHead).toBe("0304913bc74afd51877523436475e7ad75ebfc6d");
+      for (const [ancestor, descendant] of [
+        [b948CurrentSuccessor.priorAHead, b948CurrentSuccessor.dHead],
+        [b948CurrentSuccessor.dHead, b948CurrentSuccessor.cHead],
+        [b948CurrentSuccessor.cHead, b948CurrentSuccessor.bHead],
+        [b948CurrentSuccessor.bHead, b948CurrentSuccessor.aMergeHead],
+        [b948CurrentSuccessor.aMergeHead, "HEAD"],
+      ]) {
+        expect(execFileSync("git", ["merge-base", "--is-ancestor", ancestor!, descendant!], { encoding: "utf8" })).toBe("");
+      }
+      expect(b948CurrentSuccessor.movedUnallowlisted).toHaveLength(1);
+      expect(b948CurrentSuccessor.newUnallowlisted).toHaveLength(1);
+      const movedB948 = b948CurrentSuccessor.movedUnallowlisted[0]!;
+      const newB948 = b948CurrentSuccessor.newUnallowlisted[0]!;
+      expect(priorAUnallowlisted).toContain(movedB948.oldId);
+      expect(priorAUnallowlisted).not.toContain(newB948.id);
+      const b948UnallowlistedIds = [
+        ...priorAUnallowlisted.filter((id) => id !== movedB948.oldId),
+        movedB948.newId, newB948.id,
+      ].sort();
+      expect(b948UnallowlistedIds).toHaveLength(174);
+      expect(new Set(b948UnallowlistedIds).size).toBe(174);
+      for (const [file, blobs] of Object.entries(b948CurrentSuccessor.blobs)) {
+        if (blobs.before === null) {
+          expect(execFileSync("git", ["ls-tree", b948CurrentSuccessor.priorAHead, "--", file], { encoding: "utf8" })).toBe("");
+        } else {
+          expect(execFileSync("git", ["rev-parse", `${b948CurrentSuccessor.priorAHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        }
+        for (const sha of [b948CurrentSuccessor.cHead, b948CurrentSuccessor.bHead, b948CurrentSuccessor.aMergeHead]) {
+          expect(execFileSync("git", ["rev-parse", `${sha}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        }
+      }
+      const priorABytes = execFileSync("git", ["show", `${b948CurrentSuccessor.priorAHead}:${movedB948.file}`]);
+      const currentB948Bytes = await readFile(`${process.cwd()}/${movedB948.file}`);
+      const oldB948Slice = priorABytes.subarray(movedB948.oldByteStart, movedB948.oldByteEnd);
+      expect(createHash("sha256").update(oldB948Slice).digest("hex")).toBe(movedB948.sliceSha256);
+      expect(currentB948Bytes.subarray(movedB948.newByteStart, movedB948.newByteEnd)).toEqual(oldB948Slice);
+      const observedMoved = report.unallowlisted.find((entry) => entry.id === movedB948.newId);
+      expect(observedMoved?.file).toBe(movedB948.file);
+      expect(observedMoved?.byteStart).toBe(movedB948.newByteStart);
+      expect(observedMoved?.byteEnd).toBe(movedB948.newByteEnd);
+      expect(c949D950CurrentSuccessor.schemaVersion).toBe(1);
+      expect(c949D950CurrentSuccessor.priorAHead).toBe("9cb26cd44fafda3094431bb9787d7f9bde090932");
+      expect(c949D950CurrentSuccessor.cHead).toBe("a9217f5dba30c8933bfab2a6d272cc3c522be59b");
+      expect(c949D950CurrentSuccessor.dHead).toBe("aac4619864170ad1169ced71b7560d06a5eeb0c3");
+      expect(c949D950CurrentSuccessor.cMergeHead).toBe("faae06371117ac6cdec40c8350c4bf8b8ea69e49");
+      expect(c949D950CurrentSuccessor.dMergeHead).toBe("1c1f1caf04bd9226a231bc8e07faba88776b7848");
+      for (const [ancestor, descendant] of [
+        [c949D950CurrentSuccessor.priorAHead, c949D950CurrentSuccessor.cHead],
+        [c949D950CurrentSuccessor.priorAHead, c949D950CurrentSuccessor.dHead],
+        [c949D950CurrentSuccessor.cHead, c949D950CurrentSuccessor.cMergeHead],
+        [c949D950CurrentSuccessor.cMergeHead, c949D950CurrentSuccessor.dMergeHead],
+        [c949D950CurrentSuccessor.dHead, c949D950CurrentSuccessor.dMergeHead],
+        [c949D950CurrentSuccessor.dMergeHead, "HEAD"],
+      ]) {
+        expect(execFileSync("git", ["merge-base", "--is-ancestor", ancestor!, descendant!], { encoding: "utf8" })).toBe("");
+      }
+      const cFile = c949D950CurrentSuccessor.cChangedBlob;
+      expect(execFileSync("git", ["diff", "--name-only", c949D950CurrentSuccessor.priorAHead, c949D950CurrentSuccessor.cHead], { encoding: "utf8" }).trim()).toBe(cFile.file);
+      expect(execFileSync("git", ["rev-parse", `${c949D950CurrentSuccessor.priorAHead}:${cFile.file}`], { encoding: "utf8" }).trim()).toBe(cFile.before);
+      expect(execFileSync("git", ["rev-parse", `${c949D950CurrentSuccessor.cHead}:${cFile.file}`], { encoding: "utf8" }).trim()).toBe(cFile.after);
+      expect(execFileSync("git", ["rev-parse", `${c949D950CurrentSuccessor.dHead}:${cFile.file}`], { encoding: "utf8" }).trim()).toBe(cFile.before);
+      const currentCBytes = await readFile(`${process.cwd()}/${cFile.file}`);
+      expect(createHash("sha1").update(`blob ${currentCBytes.length}\0`).update(currentCBytes).digest("hex")).toBe(cFile.after);
+      expect(execFileSync("git", ["diff", "--name-only", c949D950CurrentSuccessor.priorAHead, c949D950CurrentSuccessor.dHead], { encoding: "utf8" }).trim().split("\n").sort()).toEqual(Object.keys(c949D950CurrentSuccessor.dChangedBlobs).sort());
+      for (const [file, blobs] of Object.entries(c949D950CurrentSuccessor.dChangedBlobs)) {
+        if (blobs.before === null) {
+          expect(execFileSync("git", ["ls-tree", c949D950CurrentSuccessor.priorAHead, "--", file], { encoding: "utf8" })).toBe("");
+        } else {
+          expect(execFileSync("git", ["rev-parse", `${c949D950CurrentSuccessor.priorAHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        }
+        expect(execFileSync("git", ["rev-parse", `${c949D950CurrentSuccessor.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        const current = await readFile(`${process.cwd()}/${file}`);
+        expect(createHash("sha1").update(`blob ${current.length}\0`).update(current).digest("hex")).toBe(
+          d956CurrentSuccessor.changedBlobs[file]?.after ?? blobs.after,
+        );
+      }
+      expect(c949D950CurrentSuccessor.priorUnallowlistedCount).toBe(174);
+      expect(createHash("sha256").update(b948UnallowlistedIds.join("\n")).digest("hex")).toBe(c949D950CurrentSuccessor.priorUnallowlistedIdsSha256);
+      expect(c949D950CurrentSuccessor.retired).toEqual(newB948);
+      const oldCBytes = execFileSync("git", ["show", `${c949D950CurrentSuccessor.priorAHead}:${cFile.file}`]);
+      const oldCSlice = oldCBytes.subarray(newB948.byteStart, newB948.byteEnd);
+      expect(createHash("sha256").update(oldCSlice).digest("hex")).toBe(newB948.sliceSha256);
+      expect(currentCBytes.includes(oldCSlice)).toBe(false);
+      expect(report.unallowlisted.map((entry) => entry.id).sort()).toEqual(b948UnallowlistedIds.filter((id) => id !== newB948.id));
+      expect(report.unallowlisted).toHaveLength(c949D950CurrentSuccessor.currentUnallowlistedCount);
+      expect(createHash("sha256").update(report.unallowlisted.map((entry) => entry.id).sort().join("\n")).digest("hex")).toBe(c949D950CurrentSuccessor.currentUnallowlistedIdsSha256);
+      expect(d956CurrentSuccessor.schemaVersion).toBe(1);
+      expect(d956CurrentSuccessor.priorAHead).toBe("7281914caedf4b63a89ad34250964feccf1b3fb8");
+      expect(d956CurrentSuccessor.dHead).toBe("83d74582d9792df2784d917ec507d0ff23e7ae96");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", d956CurrentSuccessor.priorAHead, d956CurrentSuccessor.dHead], { encoding: "utf8" })).toBe("");
+      expect(execFileSync("git", ["merge-base", "--is-ancestor", d956CurrentSuccessor.dHead, "HEAD"], { encoding: "utf8" })).toBe("");
+      expect(execFileSync("git", ["diff", "--name-only", d956CurrentSuccessor.priorAHead, d956CurrentSuccessor.dHead], { encoding: "utf8" }).trim().split("\n").sort()).toEqual(Object.keys(d956CurrentSuccessor.changedBlobs).sort());
+      for (const [file, blobs] of Object.entries(d956CurrentSuccessor.changedBlobs)) {
+        if (blobs.before === null) {
+          expect(execFileSync("git", ["ls-tree", d956CurrentSuccessor.priorAHead, "--", file], { encoding: "utf8" })).toBe("");
+        } else {
+          expect(execFileSync("git", ["rev-parse", `${d956CurrentSuccessor.priorAHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.before);
+        }
+        expect(execFileSync("git", ["rev-parse", `${d956CurrentSuccessor.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blobs.after);
+        const current = await readFile(`${process.cwd()}/${file}`);
+        expect(createHash("sha1").update(`blob ${current.length}\0`).update(current).digest("hex")).toBe(blobs.after);
+      }
+      const { file: d956File, byteStart, byteEnd, sha256 } = d956CurrentSuccessor.addedSourceSlice;
+      const priorD956Bytes = execFileSync("git", ["cat-file", "blob", d956CurrentSuccessor.changedBlobs[d956File]!.before!]);
+      const currentD956Bytes = await readFile(`${process.cwd()}/${d956File}`);
+      const addedSlice = currentD956Bytes.subarray(byteStart, byteEnd);
+      expect(createHash("sha256").update(addedSlice).digest("hex")).toBe(sha256);
+      expect(addedSlice.toString("utf8")).toContain("export async function prepareCanonicalManualSyncBatchCandidate(");
+      expect(priorD956Bytes.includes(addedSlice)).toBe(false);
+      const retainedTail = "export async function syncCanonicalSource(";
+      expect(currentD956Bytes.subarray(currentD956Bytes.indexOf(retainedTail))).toEqual(
+        priorD956Bytes.subarray(priorD956Bytes.indexOf(retainedTail)),
+      );
+      expect(createHash("sha256").update(report.unallowlisted.map((entry) => entry.id).sort().join("\n")).digest("hex")).toBe(d956CurrentSuccessor.currentUnallowlistedIdsSha256);
+      expect(d956CurrentSuccessor.changedFileObservedIds).toEqual([]);
+      expect(report.violations.filter((entry) => Object.keys(d956CurrentSuccessor.changedBlobs).includes(entry.file)).map((entry) => entry.id)).toEqual(d956CurrentSuccessor.changedFileObservedIds);
+      for (const entry of c940CurrentSuccessor.moved) {
+        expect(jointUnallowlistedRecord.currentUnallowlistedIds).toContain(entry.oldId);
+        expect(entry.oldId.split(":").slice(0, 3)).toEqual(entry.newId.split(":").slice(0, 3));
+        const oldSlice = previousBytes.get(entry.file)!.subarray(entry.oldByteStart, entry.oldByteEnd);
+        const observedId = entry.newId === movedB948.oldId ? movedB948.newId : entry.newId;
+        const observed = report.unallowlisted.find((violation) => violation.id === observedId);
+        expect(observed?.file).toBe(entry.file);
+        expect(createHash("sha256").update(oldSlice).digest("hex")).toBe(entry.sliceSha256);
+        const currentBytes = await readFile(`${process.cwd()}/${entry.file}`);
+        expect(currentBytes.subarray(observed!.byteStart, observed!.byteEnd)).toEqual(oldSlice);
+        expect(createHash("sha256").update([
+          "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          c940CurrentSuccessor.blobs[entry.file]!.before,
+          String(entry.oldByteStart), String(entry.oldByteEnd), observed!.token, observed!.evidence,
+          entry.file, observed!.family, observed!.rule,
+        ].join("\0")).digest("hex").slice(0, 16)).toBe(entry.oldId.split(":")[3]);
+      }
+      const fixedSuccessorPairs = c940FixedSuccessors.flatMap((record) => record.files.flatMap((file) => file.pairs));
+      expect(fixedSuccessorPairs).toHaveLength(5);
+      const b948FixedPairs = b948FixedSuccessor.files.flatMap((file) => file.pairs);
+      expect(b948FixedPairs).toHaveLength(2);
+      const b948FixedByOldId = new Map(b948FixedPairs.map((pair) => [pair.old.id, pair.new.id]));
+      for (const pair of fixedSuccessorPairs) {
+        expect(report.relocations.find((entry) => entry.id === pair.old.id)?.observed.id).toBe(
+          b948FixedByOldId.get(pair.old.id) ?? pair.new.id,
+        );
+      }
+      expect(previousIds.filter((id) => !jointUnallowlistedRecord.currentUnallowlistedIds.includes(id))).toEqual(
+        [...jointUnallowlistedRecord.retired, ...jointUnallowlistedRecord.moved].map((entry) => entry.oldId).sort(),
+      );
+      expect(jointUnallowlistedRecord.currentUnallowlistedIds.filter((id) => !previousIds.includes(id))).toEqual(
+        jointUnallowlistedRecord.moved.map((entry) => entry.newId).sort(),
+      );
       expect(Object.keys(currentUnallowlistedRecord.ownerBlobs).sort()).toEqual([
         "server/modules/parameter-files/canonicalMemberRemoval.integration.test.ts",
         "server/modules/parameter-files/canonicalMemberRemoval.ts",
       ]);
-      for (const entry of report.unallowlisted.filter((item) => ownerAddedIds.has(item.id))) {
-        expect(entry.trustedBlobOid).toBe(currentUnallowlistedRecord.ownerBlobs[entry.file]);
-      }
       for (const [file, blob] of Object.entries(currentUnallowlistedRecord.ownerBlobs)) {
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.baseHead}:${file}`], { encoding: "utf8" }).trim()).toBe(blob);
+      }
+      const oldSources = new Map<string, Buffer>();
+      const newSources = new Map<string, Buffer>();
+      for (const [file, oldBlob] of Object.entries(jointUnallowlistedRecord.oldBlobs)) {
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.baseHead}:${file}`], { encoding: "utf8" }).trim()).toBe(oldBlob);
+        expect(execFileSync("git", ["rev-parse", `${jointUnallowlistedRecord.dHead}:${file}`], { encoding: "utf8" }).trim()).toBe(jointUnallowlistedRecord.currentBlobs[file]);
+        oldSources.set(file, execFileSync("git", ["cat-file", "blob", oldBlob]));
         const source = await readFile(`${process.cwd()}/${file}`);
-        expect(createHash("sha1").update(`blob ${source.length}\0`).update(source).digest("hex")).toBe(blob);
+        expect(createHash("sha1").update(`blob ${source.length}\0`).update(source).digest("hex")).toBe(jointUnallowlistedRecord.currentBlobs[file]);
+        newSources.set(file, source);
+      }
+      for (const entry of [...jointUnallowlistedRecord.retired, ...jointUnallowlistedRecord.moved]) {
+        expect(entry.oldId.split(":")[1]).toBe(entry.oldRule);
+        const oldSlice = oldSources.get(entry.file)!.subarray(entry.oldByteStart, entry.oldByteEnd);
+        expect(createHash("sha256").update(oldSlice).digest("hex")).toBe(entry.oldSliceSha256);
+        if ("newId" in entry) {
+          expect(entry.newId.split(":").slice(0, 3)).toEqual(entry.oldId.split(":").slice(0, 3));
+          const observed = report.unallowlisted.find((item) => item.id === entry.newId);
+          expect(observed).toBeDefined();
+          expect(observed!.file).toBe(entry.file);
+          expect(observed!.rule).toBe(entry.oldRule);
+          expect(observed!.line).toBe(entry.oldLine + 1);
+          expect(newSources.get(entry.file)!.subarray(observed!.byteStart, observed!.byteEnd)).toEqual(oldSlice);
+        } else {
+          expect(newSources.get(entry.file)!.includes(oldSlice)).toBe(false);
+        }
       }
       expect(report.summary).toEqual({
-        violations: 3_591,
+        violations: 3_564,
         allowlisted: 3_391,
-        unallowlisted: 200,
+        unallowlisted: 173,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,

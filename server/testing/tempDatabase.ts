@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createDatabase, type Database } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
-import { createSerializedTestQueryable } from "./testDatabase";
+import { createSerializedTestQueryable, dropTestDatabase } from "./testDatabase";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 
@@ -87,7 +87,7 @@ export async function withTempDatabase<T>(
   } finally {
     await client.end().catch(() => undefined);
     await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
+      await dropTestDatabase(admin, dbName);
     });
   }
 }

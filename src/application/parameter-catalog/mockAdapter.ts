@@ -570,6 +570,38 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       assertReadyForRead(store);
       return emptyCatalogCollection("no-review-work");
     },
+    async submitProjectValueBatchChangeRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async listProjectValueBatchChangeRequests() {
+      assertReadyForRead(store);
+      return emptyCatalogCollection("no-review-work");
+    },
+    async getProjectValueBatchChangeRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async submitMemberRemovalRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async listMemberRemovalRequests() {
+      assertReadyForRead(store);
+      return emptyCatalogCollection("no-review-work");
+    },
+    async getMemberRemovalRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async reviewMemberRemovalRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async withdrawMemberRemovalRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
     async reviewProjectValueChangeRequest() {
       assertReadyForRead(store);
       throw catalogApiFailure("unsupported-catalog-capability");
@@ -579,6 +611,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       throw catalogApiFailure("unsupported-catalog-capability");
     },
     async getProjectValueChangeSourceDiff() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async getProjectValueConflictDecision() {
       assertReadyForRead(store);
       throw catalogApiFailure("unsupported-catalog-capability");
     },

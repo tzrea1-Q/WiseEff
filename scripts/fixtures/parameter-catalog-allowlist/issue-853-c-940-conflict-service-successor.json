@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/parameter-files/conflictService.test.ts",
+      "sourceBlobOid": "71e519e43d3eca786a575b76c0322c06b2eb94f9",
+      "destinationBlobOid": "660c62ef3cb910d8f4f59f5030775652e96d9d0e",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-FIL:legacy-catalog-sql-write:38833878bf097059:3deec73a7bf42506",
+            "rule": "legacy-catalog-sql-write",
+            "file": "server/modules/parameter-files/conflictService.test.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-FIL",
+            "line": 59,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "71e519e43d3eca786a575b76c0322c06b2eb94f9",
+            "byteStart": 2157,
+            "byteEnd": 2689,
+            "token": "write:parameter_definitions",
+            "evidence": "write parameter_definitions: insert into parameter_definitions ( id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk ) values ('pd-1', 'org-1', 'temp_max', 'max temperature', 'battery max t…"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-catalog-sql-write:38833878bf097059:5361d3d273a21c3b",
+            "family": "S12-FIL",
+            "rule": "legacy-catalog-sql-write",
+            "file": "server/modules/parameter-files/conflictService.test.ts",
+            "line": 60,
+            "column": 7,
+            "byteStart": 2233,
+            "byteEnd": 2765,
+            "token": "write:parameter_definitions",
+            "evidence": "write parameter_definitions: insert into parameter_definitions ( id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk ) values ('pd-1', 'org-1', 'temp_max', 'max temperature', 'battery max t…",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "660c62ef3cb910d8f4f59f5030775652e96d9d0e"
+          },
+          "sliceSha256": "56bd1a17bd73c08cec63ddf37ee76634f4a6f42f4a9bdcae3f2041e90bb757bc"
+        },
+        {
+          "old": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:6233ad7439d9f40d:fb0f8b7c3b8af270",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.test.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-FIL",
+            "line": 165,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "71e519e43d3eca786a575b76c0322c06b2eb94f9",
+            "byteStart": 5993,
+            "byteEnd": 6010,
+            "token": "parameter_spec_id",
+            "evidence": "parameter_spec_id"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:6233ad7439d9f40d:b2bbd8b46eba0caf",
+            "family": "S12-FIL",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.test.ts",
+            "line": 167,
+            "column": 7,
+            "byteStart": 6095,
+            "byteEnd": 6112,
+            "token": "parameter_spec_id",
+            "evidence": "parameter_spec_id",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "660c62ef3cb910d8f4f59f5030775652e96d9d0e"
+          },
+          "sliceSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed"
+        },
+        {
+          "old": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:efbfe37959a7445e:a54d9d55d44a66ec",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.test.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-FIL",
+            "line": 225,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "71e519e43d3eca786a575b76c0322c06b2eb94f9",
+            "byteStart": 8017,
+            "byteEnd": 8034,
+            "token": "parameter_spec_id",
+            "evidence": "parameter_spec_id"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:efbfe37959a7445e:3d8a040bfc864af8",
+            "family": "S12-FIL",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.test.ts",
+            "line": 254,
+            "column": 7,
+            "byteStart": 10370,
+            "byteEnd": 10387,
+            "token": "parameter_spec_id",
+            "evidence": "parameter_spec_id",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "660c62ef3cb910d8f4f59f5030775652e96d9d0e"
+          },
+          "sliceSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed"
+        }
+      ]
+    }
+  ]
+}

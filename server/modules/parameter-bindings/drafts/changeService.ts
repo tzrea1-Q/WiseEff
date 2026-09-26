@@ -172,16 +172,34 @@ async function requireOwnedProject(db: Database, auth: AuthContext, projectId: s
   }
 }
 
-async function assertSingleRequestReview(db: Database, auth: AuthContext, projectId: string, requestId: string) {
-  const kind = (await db.query<{ request_kind: string }>(
-    `select request_kind from public.project_parameter_value_change_requests
-      where id=$1 and organization_id=$2 and project_id=$3`,
+export async function assertSingleRequestReview(
+  db: Database, auth: AuthContext, projectId: string, requestId: string, reviewer = false
+) {
+  const request = (await db.query<{ request_kind: string; assigned_to_user_id: string | null;
+    has_conflict_decision: boolean }>(
+    `select request_kind,assigned_to_user_id,
+       (exists (select 1 from audit_events receipt
+                 where receipt.organization_id=request.organization_id
+                   and receipt.project_id=request.project_id and receipt.target_id=request.id
+                   and receipt.action='value-change-submitted'
+                   and receipt.metadata ? 'decisionProofDigest')
+        or exists (select 1 from project_parameter_file_candidates candidate
+                    where candidate.organization_id=request.organization_id
+                      and candidate.project_id=request.project_id
+                      and candidate.impact->'canonicalSourceWorkflow'->>'requestId'=request.id
+                      and candidate.impact->'canonicalSourceWorkflow'->'conflictDecision' is not null))
+         as has_conflict_decision
+       from public.project_parameter_value_change_requests request
+      where request.id=$1 and request.organization_id=$2 and request.project_id=$3`,
     [requestId, auth.organization.id, projectId]
-  )).rows[0]?.request_kind;
-  if (kind === "batch") {
+  )).rows[0];
+  if (request?.request_kind === "batch") {
     throw new ApiError("CONFLICT", "The batch source commit proof is not available for review.", {
       reason: "canonical-batch-source-commit-unavailable"
     });
+  }
+  if (reviewer && request?.has_conflict_decision && request.assigned_to_user_id !== auth.user.id) {
+    throw new ApiError("NOT_FOUND", "Parameter change request was not found.");
   }
 }
 
@@ -511,7 +529,7 @@ export async function reviewCanonicalValueChange(
   if (input.decision === "approve") {
     return db.transaction(async (tx) => {
       await requireCurrentReviewRole(tx);
-      await assertSingleRequestReview(tx, auth, input.projectId, input.requestId);
+      await assertSingleRequestReview(tx, auth, input.projectId, input.requestId, true);
       // Keep the source-commit lock order: source cohort/files are locked before
       // the request row. The owner rechecks the request under its request lock.
       const visibleRequest = await getCanonicalValueChangeRequest(tx, {
@@ -564,7 +582,7 @@ export async function reviewCanonicalValueChange(
 
   return db.transaction(async (tx) => {
     await requireCurrentReviewRole(tx);
-    await assertSingleRequestReview(tx, auth, input.projectId, input.requestId);
+    await assertSingleRequestReview(tx, auth, input.projectId, input.requestId, true);
     const request = await getCanonicalValueChangeRequestForUpdate(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,

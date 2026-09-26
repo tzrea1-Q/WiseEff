@@ -1907,6 +1907,124 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-conflicts": {
+      "get": {
+        "operationId": "parameterFiles.listCanonicalSourceConflicts",
+        "summary": "Find exact canonical file/UI draft choices for a staged source candidate",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceConflictListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-conflict-submit": {
+      "post": {
+        "operationId": "parameterFiles.submitCanonicalSourceConflict",
+        "summary": "Freeze one selected canonical source conflict for human review",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalSourceConflictSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceConflictSubmitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/content": {
       "get": {
         "operationId": "parameters.getParameterFileCandidateContent",
@@ -6356,6 +6474,251 @@
         }
       }
     },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests/batches": {
+      "post": {
+        "operationId": "parameterTopology.submitProjectValueBatchChangeRequest",
+        "summary": "Freeze and submit one canonical JSON batch request for a separate assigned software reviewer",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitProjectValueBatchChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueBatchChangeRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "parameterTopology.listProjectValueBatchChangeRequests",
+        "summary": "List canonical batch requests assigned to the reviewer or submitted by the caller",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueBatchChangeRequestListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests/member-removals": {
+      "post": {
+        "operationId": "parameterTopology.submitMemberRemovalRequest",
+        "summary": "Freeze one canonical JSON source member removal for a separate human reviewer",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitMemberRemovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRemovalRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "parameterTopology.listMemberRemovalRequests",
+        "summary": "List visible canonical member removal requests",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRemovalRequestListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/member-removal": {
+      "get": {
+        "operationId": "parameterTopology.getMemberRemovalRequest",
+        "summary": "Read one frozen canonical member removal proof for its submitter or assigned reviewer",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRemovalRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/batch": {
       "get": {
         "operationId": "parameterTopology.getProjectValueBatchChangeRequest",
@@ -6410,7 +6773,7 @@
     "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/review": {
       "post": {
         "operationId": "parameterTopology.reviewProjectValueChangeRequest",
-        "summary": "Review one canonical value request; batch approval requires its frozen proof digest",
+        "summary": "Review one canonical value, batch, or member removal request with its frozen proof",
         "tags": [
           "parameters"
         ],
@@ -6502,7 +6865,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectValueChangeRequestResponse"
+                  "$ref": "#/components/schemas/ProjectValueChangeWithdrawalResponse"
                 }
               }
             }
@@ -6557,6 +6920,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ValueChangeSourceDiffResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/conflict-decision": {
+      "get": {
+        "operationId": "parameterTopology.getCanonicalSourceConflictDecision",
+        "summary": "Read the frozen choice and verified source diff of one visible conflict request",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalSourceConflictDecisionResponse"
                 }
               }
             }
@@ -15352,6 +15769,225 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/parameter-files/{fileId}/source-batch-rollback/prepare": {
+      "post": {
+        "operationId": "parameterFiles.prepareCanonicalBatchRollback",
+        "summary": "Prepare exact ordered JSON or DTS historical batch rollback proof",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "required": false,
+            "description": "Reuse this stable key to replay the same preparation.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalBatchRollbackPrepareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalBatchRollbackPrepareResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/parameter-files/{fileId}/source-manual-sync/prepare": {
+      "post": {
+        "operationId": "parameterFiles.prepareCanonicalManualSync",
+        "summary": "Prepare exact uploaded JSON or DTS bytes for one canonical batch review request",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "required": false,
+            "description": "Reuse this stable key only for the same preparation bytes and source proof.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalManualSyncPrepareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalManualSyncPrepareResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/parameter-files/{fileId}/source-batch-rollback/submit": {
+      "post": {
+        "operationId": "parameterFiles.submitCanonicalBatchRollback",
+        "summary": "Freeze one historical multi-Binding rollback for assigned human review",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "required": false,
+            "description": "Reuse this stable key to replay the same review request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalBatchRollbackSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalBatchRollbackSubmitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameter-import/parse-dts": {
       "post": {
         "operationId": "parameters.parseDtsImport",
@@ -20212,6 +20848,542 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectValueChangeRequestListResponse"
       },
+      "SubmitMemberRemovalRequest": {
+        "type": "object",
+        "properties": {
+          "configSetId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "assignedToUserId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "configSetId",
+          "fileId",
+          "reason",
+          "assignedToUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SubmitMemberRemovalRequest"
+      },
+      "MemberRemovalRequestResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "fileVersionId": {
+                "type": "string"
+              },
+              "proofDigest": {
+                "type": "string"
+              },
+              "frozenProof": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "canonical-member-removal"
+                    ]
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "configSetId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  },
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "members": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "format": {
+                          "type": "string",
+                          "enum": [
+                            "json"
+                          ]
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "checksum": {
+                          "type": "string"
+                        },
+                        "sizeBytes": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "fileId",
+                        "fileVersionId",
+                        "sourceName",
+                        "format",
+                        "role",
+                        "sortOrder",
+                        "checksum",
+                        "sizeBytes"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "cohort": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "oldValueId": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "sourceOccurrenceId": {
+                          "type": "string"
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "effectiveRevisionId": {
+                          "type": "string"
+                        },
+                        "catalogReleaseId": {
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "locator": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        },
+                        "valueDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "bindingId",
+                        "oldValueId",
+                        "sourcePinId",
+                        "sourceOccurrenceId",
+                        "definitionId",
+                        "effectiveRevisionId",
+                        "catalogReleaseId",
+                        "fileId",
+                        "fileVersionId",
+                        "locator",
+                        "valueDigest"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "proofDigest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "organizationId",
+                  "projectId",
+                  "configSetId",
+                  "fileId",
+                  "fileVersionId",
+                  "configRevisionId",
+                  "members",
+                  "cohort",
+                  "proofDigest"
+                ],
+                "additionalProperties": false
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "submitterUserId": {
+                "type": "string"
+              },
+              "assignedToUserId": {
+                "type": "string"
+              },
+              "reviewerUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerNote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "appliedSourceResult": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "tombstoneId": {
+                    "type": "string"
+                  },
+                  "successorConfigRevisionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tombstoneId",
+                  "successorConfigRevisionId"
+                ],
+                "additionalProperties": false
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "configSetId",
+              "fileId",
+              "fileVersionId",
+              "proofDigest",
+              "frozenProof",
+              "status",
+              "reason",
+              "submitterUserId",
+              "assignedToUserId",
+              "reviewerUserId",
+              "reviewerNote",
+              "appliedSourceResult",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "MemberRemovalRequestResponse"
+      },
+      "MemberRemovalRequestListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": "string"
+                },
+                "fileId": {
+                  "type": "string"
+                },
+                "fileVersionId": {
+                  "type": "string"
+                },
+                "proofDigest": {
+                  "type": "string"
+                },
+                "frozenProof": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "canonical-member-removal"
+                      ]
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "configSetId": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "fileId": {
+                            "type": "string"
+                          },
+                          "fileVersionId": {
+                            "type": "string"
+                          },
+                          "sourceName": {
+                            "type": "string"
+                          },
+                          "format": {
+                            "type": "string",
+                            "enum": [
+                              "json"
+                            ]
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "sortOrder": {
+                            "type": "number"
+                          },
+                          "checksum": {
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "fileId",
+                          "fileVersionId",
+                          "sourceName",
+                          "format",
+                          "role",
+                          "sortOrder",
+                          "checksum",
+                          "sizeBytes"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "cohort": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bindingId": {
+                            "type": "string"
+                          },
+                          "oldValueId": {
+                            "type": "string"
+                          },
+                          "sourcePinId": {
+                            "type": "string"
+                          },
+                          "sourceOccurrenceId": {
+                            "type": "string"
+                          },
+                          "definitionId": {
+                            "type": "string"
+                          },
+                          "effectiveRevisionId": {
+                            "type": "string"
+                          },
+                          "catalogReleaseId": {
+                            "type": "string"
+                          },
+                          "fileId": {
+                            "type": "string"
+                          },
+                          "fileVersionId": {
+                            "type": "string"
+                          },
+                          "locator": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          },
+                          "valueDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "bindingId",
+                          "oldValueId",
+                          "sourcePinId",
+                          "sourceOccurrenceId",
+                          "definitionId",
+                          "effectiveRevisionId",
+                          "catalogReleaseId",
+                          "fileId",
+                          "fileVersionId",
+                          "locator",
+                          "valueDigest"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "proofDigest": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "organizationId",
+                    "projectId",
+                    "configSetId",
+                    "fileId",
+                    "fileVersionId",
+                    "configRevisionId",
+                    "members",
+                    "cohort",
+                    "proofDigest"
+                  ],
+                  "additionalProperties": false
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "withdrawn"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "submitterUserId": {
+                  "type": "string"
+                },
+                "assignedToUserId": {
+                  "type": "string"
+                },
+                "reviewerUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerNote": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "appliedSourceResult": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "tombstoneId": {
+                      "type": "string"
+                    },
+                    "successorConfigRevisionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tombstoneId",
+                    "successorConfigRevisionId"
+                  ],
+                  "additionalProperties": false
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "projectId",
+                "configSetId",
+                "fileId",
+                "fileVersionId",
+                "proofDigest",
+                "frozenProof",
+                "status",
+                "reason",
+                "submitterUserId",
+                "assignedToUserId",
+                "reviewerUserId",
+                "reviewerNote",
+                "appliedSourceResult",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "MemberRemovalRequestListResponse"
+      },
       "ProjectValueBatchChangeRequestResponse": {
         "type": "object",
         "properties": {
@@ -20424,6 +21596,265 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectValueBatchChangeRequestResponse"
       },
+      "SubmitProjectValueBatchChangeRequest": {
+        "type": "object",
+        "properties": {
+          "candidateId": {
+            "type": "string"
+          },
+          "expectedProofToken": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "assignedToUserId": {
+            "type": "string"
+          },
+          "selectedDrafts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bindingId": {
+                  "type": "string"
+                },
+                "draftId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bindingId",
+                "draftId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "candidateId",
+          "expectedProofToken",
+          "reason",
+          "assignedToUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SubmitProjectValueBatchChangeRequest"
+      },
+      "ProjectValueBatchChangeRequestListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": "string"
+                },
+                "batchProofDigest": {
+                  "type": "string"
+                },
+                "cohortCount": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "withdrawn"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "submitterUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "assignedToUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerNote": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sourceProofToken": {
+                  "type": "string"
+                },
+                "cohortProofToken": {
+                  "type": "string"
+                },
+                "fileId": {
+                  "type": "string"
+                },
+                "baseVersionId": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": "string"
+                },
+                "appliedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "appliedAuditRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "targets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ordinal": {
+                        "type": "number"
+                      },
+                      "draftId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "bindingId": {
+                        "type": "string"
+                      },
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "definitionRevisionId": {
+                        "type": "string"
+                      },
+                      "catalogReleaseId": {
+                        "type": "string"
+                      },
+                      "baseCurrentValueId": {
+                        "type": "string"
+                      },
+                      "configRevisionId": {
+                        "type": "string"
+                      },
+                      "sourceRef": {
+                        "type": "string"
+                      },
+                      "sourcePinId": {
+                        "type": "string"
+                      },
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "set",
+                          "delete"
+                        ]
+                      },
+                      "targetText": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "appliedValueId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "appliedHistoryEventId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "appliedSourcePinId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "appliedFileVersionId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "ordinal",
+                      "draftId",
+                      "bindingId",
+                      "definitionId",
+                      "definitionRevisionId",
+                      "catalogReleaseId",
+                      "baseCurrentValueId",
+                      "configRevisionId",
+                      "sourceRef",
+                      "sourcePinId",
+                      "action",
+                      "targetText",
+                      "appliedValueId",
+                      "appliedHistoryEventId",
+                      "appliedSourcePinId",
+                      "appliedFileVersionId"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "projectId",
+                "candidateId",
+                "batchProofDigest",
+                "cohortCount",
+                "status",
+                "reason",
+                "submitterUserId",
+                "assignedToUserId",
+                "reviewerUserId",
+                "reviewerNote",
+                "sourceProofToken",
+                "cohortProofToken",
+                "fileId",
+                "baseVersionId",
+                "configSetId",
+                "appliedAt",
+                "appliedAuditRef",
+                "targets"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectValueBatchChangeRequestListResponse"
+      },
       "ReviewProjectValueChangeRequest": {
         "type": "object",
         "properties": {
@@ -20441,6 +21872,9 @@
             ]
           },
           "batchProofDigest": {
+            "type": "string"
+          },
+          "memberProofDigest": {
             "type": "string"
           }
         },
@@ -20828,6 +22262,250 @@
                   "targets"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "configSetId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  },
+                  "proofDigest": {
+                    "type": "string"
+                  },
+                  "frozenProof": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "canonical-member-removal"
+                        ]
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "configSetId": {
+                        "type": "string"
+                      },
+                      "fileId": {
+                        "type": "string"
+                      },
+                      "fileVersionId": {
+                        "type": "string"
+                      },
+                      "configRevisionId": {
+                        "type": "string"
+                      },
+                      "members": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "fileId": {
+                              "type": "string"
+                            },
+                            "fileVersionId": {
+                              "type": "string"
+                            },
+                            "sourceName": {
+                              "type": "string"
+                            },
+                            "format": {
+                              "type": "string",
+                              "enum": [
+                                "json"
+                              ]
+                            },
+                            "role": {
+                              "type": "string"
+                            },
+                            "sortOrder": {
+                              "type": "number"
+                            },
+                            "checksum": {
+                              "type": "string"
+                            },
+                            "sizeBytes": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "fileId",
+                            "fileVersionId",
+                            "sourceName",
+                            "format",
+                            "role",
+                            "sortOrder",
+                            "checksum",
+                            "sizeBytes"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "cohort": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "bindingId": {
+                              "type": "string"
+                            },
+                            "oldValueId": {
+                              "type": "string"
+                            },
+                            "sourcePinId": {
+                              "type": "string"
+                            },
+                            "sourceOccurrenceId": {
+                              "type": "string"
+                            },
+                            "definitionId": {
+                              "type": "string"
+                            },
+                            "effectiveRevisionId": {
+                              "type": "string"
+                            },
+                            "catalogReleaseId": {
+                              "type": "string"
+                            },
+                            "fileId": {
+                              "type": "string"
+                            },
+                            "fileVersionId": {
+                              "type": "string"
+                            },
+                            "locator": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            },
+                            "valueDigest": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "bindingId",
+                            "oldValueId",
+                            "sourcePinId",
+                            "sourceOccurrenceId",
+                            "definitionId",
+                            "effectiveRevisionId",
+                            "catalogReleaseId",
+                            "fileId",
+                            "fileVersionId",
+                            "locator",
+                            "valueDigest"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "proofDigest": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "organizationId",
+                      "projectId",
+                      "configSetId",
+                      "fileId",
+                      "fileVersionId",
+                      "configRevisionId",
+                      "members",
+                      "cohort",
+                      "proofDigest"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "withdrawn"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "submitterUserId": {
+                    "type": "string"
+                  },
+                  "assignedToUserId": {
+                    "type": "string"
+                  },
+                  "reviewerUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "appliedSourceResult": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "tombstoneId": {
+                        "type": "string"
+                      },
+                      "successorConfigRevisionId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tombstoneId",
+                      "successorConfigRevisionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "projectId",
+                  "configSetId",
+                  "fileId",
+                  "fileVersionId",
+                  "proofDigest",
+                  "frozenProof",
+                  "status",
+                  "reason",
+                  "submitterUserId",
+                  "assignedToUserId",
+                  "reviewerUserId",
+                  "reviewerNote",
+                  "appliedSourceResult",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
               }
             ]
           }
@@ -20837,6 +22515,638 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectValueChangeReviewResponse"
+      },
+      "ProjectValueChangeWithdrawalResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "draftId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "bindingId": {
+                    "type": "string"
+                  },
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "effectiveRevisionId": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "withdrawn"
+                    ]
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "set",
+                      "delete"
+                    ]
+                  },
+                  "targetValue": {
+                    "type": "string"
+                  },
+                  "sourceFormat": {
+                    "type": "string",
+                    "enum": [
+                      "dts",
+                      "json"
+                    ]
+                  },
+                  "sourceTarget": {
+                    "type": "object",
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "enum": [
+                          "json"
+                        ]
+                      },
+                      "sourceText": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "sourceText"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "baseRevisionId": {
+                    "type": "string"
+                  },
+                  "baseCurrentValueId": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "submitterUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "appliedValueId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "applyOutcome": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "committed",
+                      "replayed"
+                    ]
+                  },
+                  "sourcePinId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "candidateId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "appliedSourceResult": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "projectId",
+                  "draftId",
+                  "bindingId",
+                  "definitionId",
+                  "effectiveRevisionId",
+                  "status",
+                  "action",
+                  "targetValue",
+                  "sourceFormat",
+                  "baseRevisionId",
+                  "baseCurrentValueId",
+                  "reason",
+                  "submitterUserId",
+                  "assignedToUserId",
+                  "reviewerUserId",
+                  "reviewerNote",
+                  "appliedValueId",
+                  "applyOutcome",
+                  "sourcePinId",
+                  "candidateId",
+                  "appliedSourceResult",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "candidateId": {
+                    "type": "string"
+                  },
+                  "batchProofDigest": {
+                    "type": "string"
+                  },
+                  "cohortCount": {
+                    "type": "number"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "withdrawn"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "submitterUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sourceProofToken": {
+                    "type": "string"
+                  },
+                  "cohortProofToken": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "baseVersionId": {
+                    "type": "string"
+                  },
+                  "configSetId": {
+                    "type": "string"
+                  },
+                  "appliedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "appliedAuditRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "targets": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ordinal": {
+                          "type": "number"
+                        },
+                        "draftId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "definitionRevisionId": {
+                          "type": "string"
+                        },
+                        "catalogReleaseId": {
+                          "type": "string"
+                        },
+                        "baseCurrentValueId": {
+                          "type": "string"
+                        },
+                        "configRevisionId": {
+                          "type": "string"
+                        },
+                        "sourceRef": {
+                          "type": "string"
+                        },
+                        "sourcePinId": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string",
+                          "enum": [
+                            "set",
+                            "delete"
+                          ]
+                        },
+                        "targetText": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "appliedValueId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "appliedHistoryEventId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "appliedSourcePinId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "appliedFileVersionId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ordinal",
+                        "draftId",
+                        "bindingId",
+                        "definitionId",
+                        "definitionRevisionId",
+                        "catalogReleaseId",
+                        "baseCurrentValueId",
+                        "configRevisionId",
+                        "sourceRef",
+                        "sourcePinId",
+                        "action",
+                        "targetText",
+                        "appliedValueId",
+                        "appliedHistoryEventId",
+                        "appliedSourcePinId",
+                        "appliedFileVersionId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "projectId",
+                  "candidateId",
+                  "batchProofDigest",
+                  "cohortCount",
+                  "status",
+                  "reason",
+                  "submitterUserId",
+                  "assignedToUserId",
+                  "reviewerUserId",
+                  "reviewerNote",
+                  "sourceProofToken",
+                  "cohortProofToken",
+                  "fileId",
+                  "baseVersionId",
+                  "configSetId",
+                  "appliedAt",
+                  "appliedAuditRef",
+                  "targets"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "configSetId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  },
+                  "proofDigest": {
+                    "type": "string"
+                  },
+                  "frozenProof": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "canonical-member-removal"
+                        ]
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "configSetId": {
+                        "type": "string"
+                      },
+                      "fileId": {
+                        "type": "string"
+                      },
+                      "fileVersionId": {
+                        "type": "string"
+                      },
+                      "configRevisionId": {
+                        "type": "string"
+                      },
+                      "members": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "fileId": {
+                              "type": "string"
+                            },
+                            "fileVersionId": {
+                              "type": "string"
+                            },
+                            "sourceName": {
+                              "type": "string"
+                            },
+                            "format": {
+                              "type": "string",
+                              "enum": [
+                                "json"
+                              ]
+                            },
+                            "role": {
+                              "type": "string"
+                            },
+                            "sortOrder": {
+                              "type": "number"
+                            },
+                            "checksum": {
+                              "type": "string"
+                            },
+                            "sizeBytes": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "fileId",
+                            "fileVersionId",
+                            "sourceName",
+                            "format",
+                            "role",
+                            "sortOrder",
+                            "checksum",
+                            "sizeBytes"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "cohort": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "bindingId": {
+                              "type": "string"
+                            },
+                            "oldValueId": {
+                              "type": "string"
+                            },
+                            "sourcePinId": {
+                              "type": "string"
+                            },
+                            "sourceOccurrenceId": {
+                              "type": "string"
+                            },
+                            "definitionId": {
+                              "type": "string"
+                            },
+                            "effectiveRevisionId": {
+                              "type": "string"
+                            },
+                            "catalogReleaseId": {
+                              "type": "string"
+                            },
+                            "fileId": {
+                              "type": "string"
+                            },
+                            "fileVersionId": {
+                              "type": "string"
+                            },
+                            "locator": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            },
+                            "valueDigest": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "bindingId",
+                            "oldValueId",
+                            "sourcePinId",
+                            "sourceOccurrenceId",
+                            "definitionId",
+                            "effectiveRevisionId",
+                            "catalogReleaseId",
+                            "fileId",
+                            "fileVersionId",
+                            "locator",
+                            "valueDigest"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "proofDigest": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "organizationId",
+                      "projectId",
+                      "configSetId",
+                      "fileId",
+                      "fileVersionId",
+                      "configRevisionId",
+                      "members",
+                      "cohort",
+                      "proofDigest"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "withdrawn"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "submitterUserId": {
+                    "type": "string"
+                  },
+                  "assignedToUserId": {
+                    "type": "string"
+                  },
+                  "reviewerUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "appliedSourceResult": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "tombstoneId": {
+                        "type": "string"
+                      },
+                      "successorConfigRevisionId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tombstoneId",
+                      "successorConfigRevisionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "projectId",
+                  "configSetId",
+                  "fileId",
+                  "fileVersionId",
+                  "proofDigest",
+                  "frozenProof",
+                  "status",
+                  "reason",
+                  "submitterUserId",
+                  "assignedToUserId",
+                  "reviewerUserId",
+                  "reviewerNote",
+                  "appliedSourceResult",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectValueChangeWithdrawalResponse"
       },
       "ValueChangeSourceDiffResponse": {
         "type": "object",
@@ -20977,7 +23287,8 @@
                   "format": {
                     "type": "string",
                     "enum": [
-                      "json"
+                      "json",
+                      "dts"
                     ]
                   },
                   "sourceName": {
@@ -26044,6 +28355,711 @@
         "type": "object",
         "x-wiseeff-schema": "CanonicalSourceCandidatePreviewResponse"
       },
+      "CanonicalSourceConflictListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "selectedBindingId": {
+                  "type": "string"
+                },
+                "selectedDraftId": {
+                  "type": "string"
+                },
+                "authorUserId": {
+                  "type": "string"
+                },
+                "choices": {
+                  "type": "object",
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "properties": {
+                        "candidateId": {
+                          "type": "string"
+                        },
+                        "selectedBindingId": {
+                          "type": "string"
+                        },
+                        "selectedDraftId": {
+                          "type": "string"
+                        },
+                        "choice": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "draft"
+                          ]
+                        },
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "baseVersionId": {
+                          "type": "string"
+                        },
+                        "configSetId": {
+                          "type": "string"
+                        },
+                        "sourceProofToken": {
+                          "type": "string"
+                        },
+                        "cohortProofToken": {
+                          "type": "string"
+                        },
+                        "sourceCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateId": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftProof": {
+                          "type": "string"
+                        },
+                        "selectedSourcePinId": {
+                          "type": "string"
+                        },
+                        "selectedBaseValueId": {
+                          "type": "string"
+                        },
+                        "selectedRevisionId": {
+                          "type": "string"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "memberId": {
+                                "type": "string"
+                              },
+                              "fileId": {
+                                "type": "string"
+                              },
+                              "fileVersionId": {
+                                "type": "string"
+                              },
+                              "sourceName": {
+                                "type": "string"
+                              },
+                              "format": {
+                                "type": "string",
+                                "enum": [
+                                  "json",
+                                  "dts"
+                                ]
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "sortOrder": {
+                                "type": "number"
+                              },
+                              "checksum": {
+                                "type": "string"
+                              },
+                              "sizeBytes": {
+                                "type": "number"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              },
+                              "isCandidateFile": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "memberId",
+                              "fileId",
+                              "fileVersionId",
+                              "sourceName",
+                              "format",
+                              "role",
+                              "sortOrder",
+                              "checksum",
+                              "sizeBytes",
+                              "configSetId",
+                              "isCandidateFile"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "cohort": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bindingId": {
+                                "type": "string"
+                              },
+                              "oldValueId": {
+                                "type": "string"
+                              },
+                              "sourcePinId": {
+                                "type": "string"
+                              },
+                              "sourceOccurrenceId": {
+                                "type": "string"
+                              },
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "effectiveRevisionId": {
+                                "type": "string"
+                              },
+                              "catalogReleaseId": {
+                                "type": "string"
+                              },
+                              "locator": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              },
+                              "valueKind": {
+                                "type": "string"
+                              },
+                              "valueDigest": {
+                                "type": "string"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "bindingId",
+                              "oldValueId",
+                              "sourcePinId",
+                              "sourceOccurrenceId",
+                              "definitionId",
+                              "effectiveRevisionId",
+                              "catalogReleaseId",
+                              "locator",
+                              "valueKind",
+                              "valueDigest",
+                              "configSetId"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "action": {
+                          "type": "string",
+                          "enum": [
+                            "set",
+                            "delete"
+                          ]
+                        },
+                        "targetText": {
+                          "type": "string"
+                        },
+                        "decisionProofDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "candidateId",
+                        "selectedBindingId",
+                        "selectedDraftId",
+                        "choice",
+                        "fileId",
+                        "baseVersionId",
+                        "configSetId",
+                        "sourceProofToken",
+                        "cohortProofToken",
+                        "sourceCandidateDigest",
+                        "selectedDraftCandidateId",
+                        "selectedDraftCandidateDigest",
+                        "selectedDraftProof",
+                        "selectedSourcePinId",
+                        "selectedBaseValueId",
+                        "selectedRevisionId",
+                        "members",
+                        "cohort",
+                        "action",
+                        "decisionProofDigest"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "draft": {
+                      "type": "object",
+                      "properties": {
+                        "candidateId": {
+                          "type": "string"
+                        },
+                        "selectedBindingId": {
+                          "type": "string"
+                        },
+                        "selectedDraftId": {
+                          "type": "string"
+                        },
+                        "choice": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "draft"
+                          ]
+                        },
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "baseVersionId": {
+                          "type": "string"
+                        },
+                        "configSetId": {
+                          "type": "string"
+                        },
+                        "sourceProofToken": {
+                          "type": "string"
+                        },
+                        "cohortProofToken": {
+                          "type": "string"
+                        },
+                        "sourceCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateId": {
+                          "type": "string"
+                        },
+                        "selectedDraftCandidateDigest": {
+                          "type": "string"
+                        },
+                        "selectedDraftProof": {
+                          "type": "string"
+                        },
+                        "selectedSourcePinId": {
+                          "type": "string"
+                        },
+                        "selectedBaseValueId": {
+                          "type": "string"
+                        },
+                        "selectedRevisionId": {
+                          "type": "string"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "memberId": {
+                                "type": "string"
+                              },
+                              "fileId": {
+                                "type": "string"
+                              },
+                              "fileVersionId": {
+                                "type": "string"
+                              },
+                              "sourceName": {
+                                "type": "string"
+                              },
+                              "format": {
+                                "type": "string",
+                                "enum": [
+                                  "json",
+                                  "dts"
+                                ]
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "sortOrder": {
+                                "type": "number"
+                              },
+                              "checksum": {
+                                "type": "string"
+                              },
+                              "sizeBytes": {
+                                "type": "number"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              },
+                              "isCandidateFile": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "memberId",
+                              "fileId",
+                              "fileVersionId",
+                              "sourceName",
+                              "format",
+                              "role",
+                              "sortOrder",
+                              "checksum",
+                              "sizeBytes",
+                              "configSetId",
+                              "isCandidateFile"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "cohort": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bindingId": {
+                                "type": "string"
+                              },
+                              "oldValueId": {
+                                "type": "string"
+                              },
+                              "sourcePinId": {
+                                "type": "string"
+                              },
+                              "sourceOccurrenceId": {
+                                "type": "string"
+                              },
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "effectiveRevisionId": {
+                                "type": "string"
+                              },
+                              "catalogReleaseId": {
+                                "type": "string"
+                              },
+                              "locator": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              },
+                              "valueKind": {
+                                "type": "string"
+                              },
+                              "valueDigest": {
+                                "type": "string"
+                              },
+                              "configSetId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "bindingId",
+                              "oldValueId",
+                              "sourcePinId",
+                              "sourceOccurrenceId",
+                              "definitionId",
+                              "effectiveRevisionId",
+                              "catalogReleaseId",
+                              "locator",
+                              "valueKind",
+                              "valueDigest",
+                              "configSetId"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "action": {
+                          "type": "string",
+                          "enum": [
+                            "set",
+                            "delete"
+                          ]
+                        },
+                        "targetText": {
+                          "type": "string"
+                        },
+                        "decisionProofDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "candidateId",
+                        "selectedBindingId",
+                        "selectedDraftId",
+                        "choice",
+                        "fileId",
+                        "baseVersionId",
+                        "configSetId",
+                        "sourceProofToken",
+                        "cohortProofToken",
+                        "sourceCandidateDigest",
+                        "selectedDraftCandidateId",
+                        "selectedDraftCandidateDigest",
+                        "selectedDraftProof",
+                        "selectedSourcePinId",
+                        "selectedBaseValueId",
+                        "selectedRevisionId",
+                        "members",
+                        "cohort",
+                        "action",
+                        "decisionProofDigest"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "file",
+                    "draft"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "selectedBindingId",
+                "selectedDraftId",
+                "authorUserId",
+                "choices"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "ineligible": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "selectedBindingId": {
+                  "type": "string"
+                },
+                "selectedDraftId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "selectedBindingId",
+                "selectedDraftId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items",
+          "ineligible"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictListResponse"
+      },
+      "CanonicalSourceConflictSubmitRequest": {
+        "type": "object",
+        "properties": {
+          "selectedBindingId": {
+            "type": "string"
+          },
+          "selectedDraftId": {
+            "type": "string"
+          },
+          "choice": {
+            "type": "string",
+            "enum": [
+              "file",
+              "draft"
+            ]
+          },
+          "expectedDecisionProofDigest": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "assignedToUserId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selectedBindingId",
+          "selectedDraftId",
+          "choice",
+          "expectedDecisionProofDigest",
+          "reason",
+          "assignedToUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictSubmitRequest"
+      },
+      "CanonicalSourceConflictSubmitResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              },
+              "replayed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "requestId",
+              "status",
+              "replayed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictSubmitResponse"
+      },
+      "CanonicalSourceConflictDecisionResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "request": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "bindingId": {
+                    "type": "string"
+                  },
+                  "targetValue": {
+                    "type": "string"
+                  },
+                  "sourceFormat": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "dts"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "withdrawn"
+                    ]
+                  },
+                  "assignedToUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "submitterUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "bindingId",
+                  "targetValue",
+                  "sourceFormat",
+                  "status",
+                  "assignedToUserId",
+                  "submitterUserId"
+                ],
+                "additionalProperties": true
+              },
+              "sourceCandidateId": {
+                "type": "string"
+              },
+              "selectedBindingId": {
+                "type": "string"
+              },
+              "selectedDraftId": {
+                "type": "string"
+              },
+              "choice": {
+                "type": "string",
+                "enum": [
+                  "file",
+                  "draft"
+                ]
+              },
+              "decisionProofDigest": {
+                "type": "string"
+              },
+              "sourceDiff": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "bindingId": {
+                    "type": "string"
+                  },
+                  "candidateId": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "dts"
+                    ]
+                  },
+                  "sourcePinId": {
+                    "type": "string"
+                  },
+                  "baseDigest": {
+                    "type": "string"
+                  },
+                  "proposedDigest": {
+                    "type": "string"
+                  },
+                  "diffDigest": {
+                    "type": "string"
+                  },
+                  "before": {
+                    "type": "string"
+                  },
+                  "after": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "bindingId",
+                  "candidateId",
+                  "format",
+                  "sourcePinId",
+                  "baseDigest",
+                  "proposedDigest",
+                  "diffDigest",
+                  "before",
+                  "after"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "request",
+              "sourceCandidateId",
+              "selectedBindingId",
+              "selectedDraftId",
+              "choice",
+              "decisionProofDigest",
+              "sourceDiff"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalSourceConflictDecisionResponse"
+      },
       "CanonicalSourceSubmitRequest": {
         "type": "object",
         "x-wiseeff-schema": "CanonicalSourceSubmitRequest"
@@ -26055,6 +29071,673 @@
       "CanonicalSourceRollbackRequest": {
         "type": "object",
         "x-wiseeff-schema": "CanonicalSourceRollbackRequest"
+      },
+      "CanonicalBatchRollbackPrepareRequest": {
+        "type": "object",
+        "properties": {
+          "versionId": {
+            "type": "string"
+          },
+          "expectedCurrentVersionId": {
+            "type": "string"
+          },
+          "expectedWorkflowProofToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "versionId",
+          "expectedCurrentVersionId",
+          "expectedWorkflowProofToken"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalBatchRollbackPrepareRequest"
+      },
+      "CanonicalBatchRollbackPrepareResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canonical-source-batch"
+                ]
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "dts"
+                ]
+              },
+              "baseVersionId": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "baseDigest": {
+                "type": "string"
+              },
+              "proposedDigest": {
+                "type": "string"
+              },
+              "cohortProofToken": {
+                "type": "string"
+              },
+              "proofToken": {
+                "type": "string"
+              },
+              "batchProofDigest": {
+                "type": "string"
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "memberId": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "json",
+                        "dts"
+                      ]
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "configSetId": {
+                      "type": "string"
+                    },
+                    "isCandidateFile": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "memberId",
+                    "fileId",
+                    "fileVersionId",
+                    "sourceName",
+                    "format",
+                    "role",
+                    "sortOrder",
+                    "checksum",
+                    "sizeBytes",
+                    "configSetId",
+                    "isCandidateFile"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "cohort": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "oldValueId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    },
+                    "sourceOccurrenceId": {
+                      "type": "string"
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "effectiveRevisionId": {
+                      "type": "string"
+                    },
+                    "catalogReleaseId": {
+                      "type": "string"
+                    },
+                    "locator": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "valueKind": {
+                      "type": "string"
+                    },
+                    "valueDigest": {
+                      "type": "string"
+                    },
+                    "configSetId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "bindingId",
+                    "oldValueId",
+                    "sourcePinId",
+                    "sourceOccurrenceId",
+                    "definitionId",
+                    "effectiveRevisionId",
+                    "catalogReleaseId",
+                    "locator",
+                    "valueKind",
+                    "valueDigest",
+                    "configSetId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "baseCurrentValueId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    },
+                    "locator": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "baseDigest": {
+                      "type": "string"
+                    },
+                    "proposedDigest": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "set",
+                        "delete"
+                      ]
+                    },
+                    "beforeText": {
+                      "type": "string"
+                    },
+                    "afterText": {
+                      "type": "string"
+                    },
+                    "targetText": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "bindingId",
+                    "definitionId",
+                    "baseCurrentValueId",
+                    "configRevisionId",
+                    "sourcePinId",
+                    "locator",
+                    "baseDigest",
+                    "proposedDigest",
+                    "action",
+                    "beforeText"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "historicalVersionId": {
+                "type": "string"
+              },
+              "historicalDigest": {
+                "type": "string"
+              },
+              "historicalSizeBytes": {
+                "type": "number"
+              },
+              "expectedCurrentVersionId": {
+                "type": "string"
+              },
+              "expectedWorkflowProofToken": {
+                "type": "string"
+              },
+              "replayed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "organizationId",
+              "projectId",
+              "candidateId",
+              "fileId",
+              "format",
+              "baseVersionId",
+              "configSetId",
+              "baseDigest",
+              "proposedDigest",
+              "cohortProofToken",
+              "proofToken",
+              "batchProofDigest",
+              "members",
+              "cohort",
+              "targets",
+              "historicalVersionId",
+              "historicalDigest",
+              "historicalSizeBytes",
+              "expectedCurrentVersionId",
+              "expectedWorkflowProofToken",
+              "replayed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalBatchRollbackPrepareResponse"
+      },
+      "CanonicalManualSyncPrepareRequest": {
+        "type": "object",
+        "properties": {
+          "contentBase64": {
+            "type": "string"
+          },
+          "expectedCurrentVersionId": {
+            "type": "string"
+          },
+          "expectedWorkflowProofToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contentBase64",
+          "expectedCurrentVersionId",
+          "expectedWorkflowProofToken"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalManualSyncPrepareRequest"
+      },
+      "CanonicalManualSyncPrepareResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canonical-source-batch"
+                ]
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "dts"
+                ]
+              },
+              "baseVersionId": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "baseDigest": {
+                "type": "string"
+              },
+              "proposedDigest": {
+                "type": "string"
+              },
+              "cohortProofToken": {
+                "type": "string"
+              },
+              "proofToken": {
+                "type": "string"
+              },
+              "batchProofDigest": {
+                "type": "string"
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "memberId": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "json",
+                        "dts"
+                      ]
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "configSetId": {
+                      "type": "string"
+                    },
+                    "isCandidateFile": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "memberId",
+                    "fileId",
+                    "fileVersionId",
+                    "sourceName",
+                    "format",
+                    "role",
+                    "sortOrder",
+                    "checksum",
+                    "sizeBytes",
+                    "configSetId",
+                    "isCandidateFile"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "cohort": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "oldValueId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    },
+                    "sourceOccurrenceId": {
+                      "type": "string"
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "effectiveRevisionId": {
+                      "type": "string"
+                    },
+                    "catalogReleaseId": {
+                      "type": "string"
+                    },
+                    "locator": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "valueKind": {
+                      "type": "string"
+                    },
+                    "valueDigest": {
+                      "type": "string"
+                    },
+                    "configSetId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "bindingId",
+                    "oldValueId",
+                    "sourcePinId",
+                    "sourceOccurrenceId",
+                    "definitionId",
+                    "effectiveRevisionId",
+                    "catalogReleaseId",
+                    "locator",
+                    "valueKind",
+                    "valueDigest",
+                    "configSetId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "baseCurrentValueId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "sourcePinId": {
+                      "type": "string"
+                    },
+                    "locator": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "baseDigest": {
+                      "type": "string"
+                    },
+                    "proposedDigest": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "set",
+                        "delete"
+                      ]
+                    },
+                    "beforeText": {
+                      "type": "string"
+                    },
+                    "afterText": {
+                      "type": "string"
+                    },
+                    "targetText": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "bindingId",
+                    "definitionId",
+                    "baseCurrentValueId",
+                    "configRevisionId",
+                    "sourcePinId",
+                    "locator",
+                    "baseDigest",
+                    "proposedDigest",
+                    "action",
+                    "beforeText"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "replayed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "organizationId",
+              "projectId",
+              "candidateId",
+              "fileId",
+              "format",
+              "baseVersionId",
+              "configSetId",
+              "baseDigest",
+              "proposedDigest",
+              "cohortProofToken",
+              "proofToken",
+              "batchProofDigest",
+              "members",
+              "cohort",
+              "targets",
+              "replayed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalManualSyncPrepareResponse"
+      },
+      "CanonicalBatchRollbackSubmitRequest": {
+        "type": "object",
+        "properties": {
+          "versionId": {
+            "type": "string"
+          },
+          "expectedCurrentVersionId": {
+            "type": "string"
+          },
+          "expectedWorkflowProofToken": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "expectedCandidateProofToken": {
+            "type": "string"
+          },
+          "expectedBatchProofDigest": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "assignedToUserId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "versionId",
+          "expectedCurrentVersionId",
+          "expectedWorkflowProofToken",
+          "candidateId",
+          "expectedCandidateProofToken",
+          "expectedBatchProofDigest",
+          "reason",
+          "assignedToUserId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalBatchRollbackSubmitRequest"
+      },
+      "CanonicalBatchRollbackSubmitResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "candidateId": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved"
+                ]
+              },
+              "batchProofDigest": {
+                "type": "string"
+              },
+              "replayed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "candidateId",
+              "requestId",
+              "status",
+              "batchProofDigest",
+              "replayed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CanonicalBatchRollbackSubmitResponse"
       },
       "ProjectDeleteResponse": {
         "type": "object",
