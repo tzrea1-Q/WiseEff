@@ -9,6 +9,7 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
+import { CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES, createWiseEffServer } from "../../app";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -200,6 +201,35 @@ describe("#906 canonical manual sync HTTP preparation", () => {
     decision: "approve" | "reject", auth = reviewer) => requestJson<{ item: { status: string } }>(
       route(f, auth), `${reviewPath(submitted.id)}/review`, { method: "POST",
         body: JSON.stringify({ decision, batchProofDigest: submitted.batchProofDigest }) });
+
+  it("bounds production manual sync uploads before route writes", async () => {
+    const f = await fixture("json", false);
+    const headers = { "X-WiseEff-User": ADMIN, "X-Request-Id": "906-manual-transport" };
+    const normal = await requestJson<{ item: Prepared }>(
+      createWiseEffServer({ db: f.db, objectStore: f.storage }), path(f), {
+        method: "POST", headers, body: JSON.stringify(body(f, Buffer.from(f.before)))
+      });
+    expect(normal.status, JSON.stringify(normal.body)).toBe(201);
+    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeObjects = await objects(f.directory);
+    const emptyBody = JSON.stringify({ ...body(f, Buffer.from(f.before)), contentBase64: "" });
+    const oversizedBody = JSON.stringify({ ...body(f, Buffer.from(f.before)),
+      contentBase64: "A".repeat(CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES - Buffer.byteLength(emptyBody) + 1) });
+    expect(Buffer.byteLength(oversizedBody)).toBe(CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES + 1);
+    for (const [index, targetPath] of [path(f), `${path(f)}/`].entries()) {
+      const oversized = await requestJson<{ error: { code: string; details: { maxBytes: number } } }>(
+        createWiseEffServer({ db: f.db, objectStore: f.storage }), targetPath, {
+          method: "POST", headers: { ...headers, "X-Request-Id": `906-manual-transport-oversized-${index}`,
+            Connection: "close" },
+          body: oversizedBody
+        });
+      expect(oversized.status).toBe(413);
+      expect(oversized.body.error).toMatchObject({ code: "PAYLOAD_TOO_LARGE",
+        details: { maxBytes: CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES } });
+    }
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objects(f.directory)).toEqual(beforeObjects);
+  }, 120_000);
 
   it.each(["json", "dts"] as const)("prepares and reviews one %s two-Binding manual sync", async (format) => {
     const f = await fixture(format, false);
