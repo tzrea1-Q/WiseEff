@@ -27,7 +27,9 @@ import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
 import { WorkbenchCandidateActivateDialog } from "./WorkbenchCandidateActivateDialog";
 import { WorkbenchCandidateSourceReviewDialog } from "./WorkbenchCandidateSourceReviewDialog";
 import { WorkbenchSourceRollbackDialog } from "./WorkbenchSourceRollbackDialog";
+import { WorkbenchCanonicalManualSyncDialog } from "./WorkbenchCanonicalManualSyncDialog";
 import type { createCanonicalBatchRollbackClient } from "@/infrastructure/http/canonicalBatchRollbackClient";
+import type { createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 import { WorkbenchShellChrome } from "./WorkbenchShellChrome";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import type { StructuredValueChange } from "@/components/parameters/StructuredValueEditor";
@@ -94,6 +96,7 @@ export type ProjectConfigurationWorkbenchProps = {
   dtsRepository: DtsStructuredRepository;
   fileRepository: ParameterFileRepository;
   batchRollbackClient?: ReturnType<typeof createCanonicalBatchRollbackClient>;
+  manualSyncClient?: ReturnType<typeof createCanonicalManualSyncClient>;
   /** When false, typed editors stay readable but write/submit stay locked. Defaults to true for tests. */
   canEdit?: boolean;
   /** When false, regulator/thermal critical nodes stay readable but write stays locked. Defaults to true. */
@@ -127,6 +130,7 @@ export function ProjectConfigurationWorkbench({
   dtsRepository,
   fileRepository,
   batchRollbackClient,
+  manualSyncClient,
   canEdit = true,
   canEditCritical = true,
   canAdmin = true,
@@ -140,6 +144,7 @@ export function ProjectConfigurationWorkbench({
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
+  const [manualSyncTarget, setManualSyncTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
   const {
     session: workspaceLoadSession,
@@ -1585,7 +1590,10 @@ export function ProjectConfigurationWorkbench({
             sourceWorkflowSetError={sourceWorkflowSetError}
             selectedMembers={selectedMembers}
             selectedMember={selectedMember ?? null}
-            onSelectMember={selectMember}
+            onSelectMember={(fileId) => {
+              setManualSyncTarget(null);
+              selectMember(fileId);
+            }}
             structureLoading={structureLoading}
             structureError={structureError}
             onStructureRetry={() => workspaceLoadSession.retryStructure()}
@@ -1723,6 +1731,10 @@ export function ProjectConfigurationWorkbench({
               }}
               canRequestReviewedMemberRemoval={canRequestReviewedMemberRemoval}
               onSyncFile={() => void runAction("sync-file", syncSelectedFile)}
+              onOpenManualSync={manualSyncClient && apiMode && canAdmin && sourceWorkflow?.canonical
+                && sourceWorkflow.bindingCount >= 2 && sourceWorkflow.proofToken
+                && selectedMember?.currentVersionId
+                ? () => setManualSyncTarget(selectedMember) : undefined}
               sourceWorkflow={sourceWorkflow}
               sourceWorkflowLoading={sourceWorkflowLoading}
               sourceWorkflowError={sourceWorkflowError}
@@ -1828,6 +1840,22 @@ export function ProjectConfigurationWorkbench({
           }
         } : undefined}
       /> : null}
+
+      {manualSyncTarget && manualSyncClient && sourceWorkflow?.canonical
+        && selectedMember?.fileId === manualSyncTarget.fileId && selectedMember.currentVersionId
+        && sourceWorkflow.proofToken ? <WorkbenchCanonicalManualSyncDialog
+          key={`${manualSyncTarget.fileId}:${selectedMember.currentVersionId}:${sourceWorkflow.proofToken}`}
+          context={{ projectId: project.id, fileId: manualSyncTarget.fileId,
+            fileName: manualSyncTarget.fileName, format: manualSyncTarget.format,
+            currentVersionId: selectedMember.currentVersionId,
+            workflowProofToken: sourceWorkflow.proofToken, currentUserId,
+            client: manualSyncClient,
+            onSubmitted: (requestId) => {
+              setManualSyncTarget(null);
+              setSourceWorkflowReloadToken((value) => value + 1);
+              setVersionsReloadToken((value) => value + 1);
+              onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+            } }} onDismiss={() => setManualSyncTarget(null)} /> : null}
 
       <WorkbenchTaskDock
         tasksOpen={tasksOpen}
