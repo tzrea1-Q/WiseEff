@@ -15,9 +15,11 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { parseDtsValue } from "../dts";
 import { installConfigurationSourceFixture, captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
-import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog,
+  readCanonicalBindingChangeHistory, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { loadLegacyBindingIdentity } from "../parameter-bindings/binding/migrationAdapter";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { loadProjectValueById } from "../parameter-bindings/values/repositories";
 import { submitCanonicalBatchValueChange, approveCanonicalBatchValueChange } from "../parameter-bindings/drafts/batchChangeService";
 import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
@@ -277,6 +279,36 @@ describe("#906 canonical historical batch rollback HTTP", () => {
         bindingId: member.bindingId, projectValueId: binding.currentValueId });
     }));
     expect(pins.every((pin) => pin?.fileVersionId === versionId)).toBe(true);
+    const appliedDetail = await requestJson<{ item: { appliedAuditRef: string;
+      targets: Array<{ ordinal: number; bindingId: string; appliedValueId: string;
+        appliedSourcePinId: string; appliedHistoryEventId: string; appliedFileVersionId: string }> } }>(
+      route(f, reviewer), `${reviewPath(submitted.requestId)}/batch`);
+    expect(appliedDetail.status).toBe(200);
+    expect(appliedDetail.body.item.targets).toHaveLength(2);
+    const values = [];
+    for (const [ordinal, target] of appliedDetail.body.item.targets.entries()) {
+      expect(target.ordinal).toBe(ordinal);
+      expect(target.bindingId).toBe(prepared.targets[ordinal]!.bindingId);
+      expect(target.appliedValueId).toBe(after.bindings.find((row) => row.id === target.bindingId)!.currentValueId);
+      const value = await loadProjectValueById(asValueClient(f.db), target.appliedValueId);
+      const pin = pins[ordinal]!;
+      expect(value).not.toBeNull();
+      expect(pin?.sourcePinId).toBe(target.appliedSourcePinId);
+      expect(pin?.projectValueId).toBe(target.appliedValueId);
+      expect(pin?.configRevisionId).toBe(value?.config_revision_id);
+      expect(target.appliedFileVersionId).toBe(versionId);
+      const history = await readCanonicalBindingChangeHistory(getRootPostgresPool(f.db)!, {
+        organizationId: ORG, projectId: PROJECT, bindingId: target.bindingId
+      });
+      expect(history?.find((event) => event.id === target.appliedHistoryEventId))
+        .toMatchObject({ newCurrentValueId: target.appliedValueId,
+          successAuditRef: appliedDetail.body.item.appliedAuditRef });
+      values.push(value!.value);
+    }
+    expect(values.sort()).toEqual(format === "json" ? [36.5, 48] : [36, 36]);
+    expect((await f.db.query<{ count: number }>(`select count(*)::int as count from audit_events
+      where organization_id=$1 and project_id=$2 and action='value-change-applied'
+      and metadata->>'requestId'=$3`, [ORG, PROJECT, submitted.requestId])).rows[0]!.count).toBe(1);
     const key = (await f.db.query<{ storage_key: string }>(
       "select storage_key from project_parameter_file_versions where id=$1", [versionId])).rows[0]!.storage_key;
     expect((await f.storage.get(key)).toString()).toBe(f.before);
