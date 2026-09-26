@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 
 import type { QueryResult } from "../shared/database/client";
+import { withTempDatabase } from "./tempDatabase";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
   createSerializedTestQueryable,
+  dropTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "./testDatabase";
@@ -100,6 +102,123 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
       );
       expect(leaked.rows).toEqual([]);
     } finally {
+      await ephemeral.drop();
+    }
+  });
+
+  it("waits for a closing client before dropping its ephemeral database", async () => {
+    const ephemeral = await createEphemeralTestDatabase("closing");
+    const client = new pg.Client({ connectionString: ephemeral.url });
+    const errors: string[] = [];
+    client.on("error", (error) => errors.push((error as Error & { code?: string }).code ?? error.message));
+    await client.connect();
+    const close = new Promise<void>((resolve, reject) => {
+      setTimeout(() => void client.end().then(resolve, reject), 200);
+    });
+
+    try {
+      await ephemeral.drop();
+      await close;
+      expect(errors).toEqual([]);
+    } finally {
+      await close;
+      await ephemeral.drop();
+    }
+  });
+
+  it("waits for a closing client in the temporary database helper", async () => {
+    const errors: string[] = [];
+    let close: Promise<void> | undefined;
+    await withTempDatabase({ prefix: "cleanup_race", migrate: false }, async ({ connectionString }) => {
+      const client = new pg.Client({ connectionString });
+      client.on("error", (error) => errors.push((error as Error & { code?: string }).code ?? error.message));
+      await client.connect();
+      close = new Promise<void>((resolve, reject) => {
+        setTimeout(() => void client.end().then(resolve, reject), 200);
+      });
+    });
+    await close;
+    expect(errors).toEqual([]);
+  });
+
+  it("reports the blocking connection and permits a later safe drop", async () => {
+    const ephemeral = await createEphemeralTestDatabase("timeout");
+    const client = new pg.Client({ connectionString: ephemeral.url });
+    await client.connect();
+    const pid = (await client.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid;
+    try {
+      await expect(ephemeral.drop()).rejects.toThrow(new RegExp(`Timed out waiting to drop test database .*${pid}`));
+      expect((await client.query("select 1")).rowCount).toBe(1);
+    } finally {
+      await client.end();
+      await ephemeral.drop();
+    }
+  });
+
+  it("reports a connection that arrives between observation and drop", async () => {
+    const ephemeral = await createEphemeralTestDatabase("lateconn");
+    const name = new URL(ephemeral.url).pathname.slice(1);
+    const adminUrl = new URL(ephemeral.url);
+    adminUrl.pathname = "/postgres";
+    const admin = new pg.Client({ connectionString: adminUrl.toString() });
+    const late = new pg.Client({ connectionString: ephemeral.url });
+    await admin.connect();
+    let injected = false;
+    let latePid = 0;
+    let close: Promise<void> | undefined;
+    const gatedAdmin = {
+      query: async <Row,>(text: string, values?: unknown[]) => {
+        if (text.startsWith("drop database") && !injected) {
+          injected = true;
+          await late.connect();
+          latePid = (await late.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid;
+          close = new Promise<void>((resolve, reject) => {
+            setTimeout(() => void late.end().then(resolve, reject), 6_000);
+          });
+        }
+        return admin.query<Row>(text, values);
+      }
+    } as pg.Client;
+    try {
+      const dropError = await dropTestDatabase(gatedAdmin, name).then(() => null, (error: Error) => error);
+      expect(dropError?.message).toMatch(new RegExp(`Timed out waiting to drop test database .*${latePid}`));
+      expect(injected).toBe(true);
+    } finally {
+      await close;
+      await admin.end();
+      await ephemeral.drop();
+    }
+  });
+
+  it("retries a transient late connection within the cleanup deadline", async () => {
+    const ephemeral = await createEphemeralTestDatabase("lateclose");
+    const name = new URL(ephemeral.url).pathname.slice(1);
+    const adminUrl = new URL(ephemeral.url);
+    adminUrl.pathname = "/postgres";
+    const admin = new pg.Client({ connectionString: adminUrl.toString() });
+    const late = new pg.Client({ connectionString: ephemeral.url });
+    await admin.connect();
+    let injected = false;
+    let close: Promise<void> | undefined;
+    const gatedAdmin = {
+      query: async <Row,>(text: string, values?: unknown[]) => {
+        if (text.startsWith("drop database") && !injected) {
+          injected = true;
+          await late.connect();
+          close = new Promise<void>((resolve, reject) => {
+            setTimeout(() => void late.end().then(resolve, reject), 200);
+          });
+          throw Object.assign(new Error("database is being accessed by other users"), { code: "55006" });
+        }
+        return admin.query<Row>(text, values);
+      }
+    } as pg.Client;
+    try {
+      await dropTestDatabase(gatedAdmin, name);
+      expect(injected).toBe(true);
+    } finally {
+      await close;
+      await admin.end();
       await ephemeral.drop();
     }
   });
