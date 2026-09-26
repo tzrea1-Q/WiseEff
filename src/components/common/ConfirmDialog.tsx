@@ -3,6 +3,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 
 export type ConfirmDialogProps = {
   open: boolean;
+  className?: string;
   title: string;
   /** State the blast radius here, not just the action name. */
   description: ReactNode;
@@ -10,6 +11,7 @@ export type ConfirmDialogProps = {
   cancelLabel?: string;
   tone?: "primary" | "danger";
   pending?: boolean;
+  confirmDisabled?: boolean;
   pendingLabel?: string;
   /**
    * An extra risk the user must tick before confirming, used when a validation gate
@@ -29,12 +31,14 @@ export type ConfirmDialogProps = {
  */
 export function ConfirmDialog({
   open,
+  className,
   title,
   description,
   confirmLabel,
   cancelLabel = "取消",
   tone = "primary",
   pending = false,
+  confirmDisabled = false,
   pendingLabel,
   acknowledgement,
   extra,
@@ -56,7 +60,7 @@ export function ConfirmDialog({
     <ModalDialog
       open={open}
       onDismiss={pending ? undefined : onCancel}
-      className="confirm-dialog governance-confirm-dialog"
+      className={`confirm-dialog governance-confirm-dialog${className ? ` ${className}` : ""}`}
       backdropClassName="param-admin-modal-backdrop"
       describedBy
     >
@@ -92,7 +96,7 @@ export function ConfirmDialog({
             <button
               className={`button ${tone}`}
               type="button"
-              disabled={pending || blocked}
+              disabled={pending || blocked || confirmDisabled}
               onClick={onConfirm}
             >
               {pending ? (pendingLabel ?? "处理中…") : confirmLabel}
