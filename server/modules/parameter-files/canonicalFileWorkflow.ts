@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { Database, Queryable } from "../../shared/database/client";
+import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -2056,6 +2056,85 @@ export async function rollbackCanonicalSource(
         refusalSink: input.refusalSink
       }, attempt);
     }
+  }).catch((error) => rethrowSourceTransactionError(error));
+}
+
+/** Prepare exact uploaded bytes for C's existing batch request; no Value or review request is written. */
+export async function prepareCanonicalManualSyncBatchCandidate(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; fileId: string; bytes: Buffer; expectedCurrentVersionId: string;
+    expectedWorkflowProofToken: string; requestId: string }
+): Promise<CanonicalSourceBatchPrepareDto & { replayed: boolean }> {
+  if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Manual sync preparation requires a root database transaction.");
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  const requestId = input.requestId.trim();
+  if (!requestId) throw new ApiError("VALIDATION_FAILED", "A preparation request ID is required.");
+  return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
+    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `${auth.organization.id}:${input.projectId}:manual-sync:${requestId}`
+    ]);
+    await syncCanonicalSource(tx, objectStore, auth, {
+      projectId: input.projectId, fileId: input.fileId, versionId: input.expectedCurrentVersionId
+    });
+    const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: input.fileId });
+    const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
+    if (!workflow.canonical || !workflow.proofToken || !file || file.projectId !== input.projectId) {
+      throw new ApiError("CONFLICT", "Manual sync requires an owned canonical source.", { reason: "file-is-not-canonical" });
+    }
+    if (file.currentVersionId !== input.expectedCurrentVersionId) {
+      throw new ApiError("CONFLICT", "Manual sync file version changed.", { reason: "stale-base" });
+    }
+    if (workflow.proofToken !== input.expectedWorkflowProofToken) {
+      throw new ApiError("CONFLICT", "Manual sync source proof changed.", { reason: "source-proof-stale" });
+    }
+    const prior = (await tx.query<{ id: string }>(`select candidate.id from audit_events audit
+      join project_parameter_file_candidates candidate on candidate.id=audit.target_id
+        and candidate.organization_id=audit.organization_id and candidate.project_id=audit.project_id
+      where audit.organization_id=$1 and audit.project_id=$2 and audit.trace_id=$3
+        and audit.action='create' and audit.kind='parameter-file-candidate-create'
+        and audit.target_type='project-parameter-file-candidate'
+        and candidate.file_id=$4 order by candidate.id`,
+    [auth.organization.id, input.projectId, requestId, input.fileId])).rows;
+    if (prior.length > 1) throw new ApiError("CONFLICT", "Manual sync preparation request is ambiguous.");
+    let candidate = prior[0] && await getParameterFileCandidateById(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, candidateId: prior[0].id
+    });
+    if (candidate && (candidate.status !== "ready" || candidate.createdByUserId !== auth.user.id
+      || candidate.baseVersionId !== input.expectedCurrentVersionId || candidate.sizeBytes !== input.bytes.length
+      || candidate.checksum?.replace(/^sha256:/, "") !== digest(input.bytes)
+      || !candidate.storageKey || !(await getBoundedObject(objectStore, candidate.storageKey)).equals(input.bytes))) {
+      throw new ApiError("CONFLICT", "Manual sync preparation request disagrees with its candidate.", {
+        reason: "candidate-snapshot-stale"
+      });
+    }
+    if (!candidate) {
+      const sourceStore: ObjectStore = {
+        ...attempt.objectStore,
+        put: (upload) => attempt.objectStore.put({ ...upload,
+          fileName: file.format === "json" ? "source.json" : "source.dts" })
+      };
+      candidate = await createCandidate(tx, sourceStore, auth, {
+        projectId: input.projectId, fileId: input.fileId, fileName: file.fileName, bytes: input.bytes
+      }, { invocation: createUserInvocation(auth), requestId });
+    }
+    const preview = await previewCanonicalCandidate(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id
+    });
+    if (!preview.proofToken) throw new ApiError("CONFLICT", "Manual sync candidate has no exact source proof.", {
+      reason: preview.reason ?? "source-proof-missing"
+    });
+    const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, objectStore, auth, {
+      projectId: input.projectId, candidateId: candidate.id, expectedProofToken: preview.proofToken
+    });
+    if (proof.cohortProofToken !== input.expectedWorkflowProofToken
+      || proof.baseVersionId !== input.expectedCurrentVersionId) {
+      throw new ApiError("CONFLICT", "Manual sync batch proof changed.", { reason: "source-proof-stale" });
+    }
+    return { ...proof, replayed: Boolean(prior.length) };
   }).catch((error) => rethrowSourceTransactionError(error));
 }
 
