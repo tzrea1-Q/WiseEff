@@ -1864,6 +1864,28 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "CanonicalSourceSubmissionResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.prepareCanonicalBatchRollback": {
+    summary: "Prepare exact ordered JSON or DTS historical batch rollback proof",
+    tags: ["parameter-files"],
+    requestParameters: [{ name: "X-Request-Id", in: "header",
+      description: "Reuse this stable key to replay the same preparation." }],
+    requestBody: "CanonicalBatchRollbackPrepareRequest",
+    responseBody: "CanonicalBatchRollbackPrepareResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.submitCanonicalBatchRollback": {
+    summary: "Freeze one historical multi-Binding rollback for assigned human review",
+    tags: ["parameter-files"],
+    requestParameters: [{ name: "X-Request-Id", in: "header",
+      description: "Reuse this stable key to replay the same review request." }],
+    requestBody: "CanonicalBatchRollbackSubmitRequest",
+    responseBody: "CanonicalBatchRollbackSubmitResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
 
   "parameters.deleteAdminProject": {
     summary: "Delete a project and its parameter-management data (cascade)",

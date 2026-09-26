@@ -27,6 +27,7 @@ import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
 import { WorkbenchCandidateActivateDialog } from "./WorkbenchCandidateActivateDialog";
 import { WorkbenchCandidateSourceReviewDialog } from "./WorkbenchCandidateSourceReviewDialog";
 import { WorkbenchSourceRollbackDialog } from "./WorkbenchSourceRollbackDialog";
+import type { createCanonicalBatchRollbackClient } from "@/infrastructure/http/canonicalBatchRollbackClient";
 import { WorkbenchShellChrome } from "./WorkbenchShellChrome";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import type { StructuredValueChange } from "@/components/parameters/StructuredValueEditor";
@@ -92,6 +93,7 @@ export type ProjectConfigurationWorkbenchProps = {
   onNavigate: (path: string) => void;
   dtsRepository: DtsStructuredRepository;
   fileRepository: ParameterFileRepository;
+  batchRollbackClient?: ReturnType<typeof createCanonicalBatchRollbackClient>;
   /** When false, typed editors stay readable but write/submit stay locked. Defaults to true for tests. */
   canEdit?: boolean;
   /** When false, regulator/thermal critical nodes stay readable but write stays locked. Defaults to true. */
@@ -124,6 +126,7 @@ export function ProjectConfigurationWorkbench({
   onNavigate,
   dtsRepository,
   fileRepository,
+  batchRollbackClient,
   canEdit = true,
   canEditCritical = true,
   canAdmin = true,
@@ -197,6 +200,9 @@ export function ProjectConfigurationWorkbench({
   const [sourceWorkflowLoading, setSourceWorkflowLoading] = useState(false);
   const [sourceWorkflowReloadToken, setSourceWorkflowReloadToken] = useState(0);
   const [rollbackReviewVersion, setRollbackReviewVersion] = useState<ProjectParameterFileVersion | null>(null);
+  const [rollbackBatchContext, setRollbackBatchContext] = useState<{
+    fileId: string; currentVersionId: string; workflowProofToken: string
+  } | null>(null);
   const [rollbackReviewPending, setRollbackReviewPending] = useState(false);
   const [rollbackReviewError, setRollbackReviewError] = useState("");
   const {
@@ -849,6 +855,16 @@ export function ProjectConfigurationWorkbench({
           return;
         }
         setRollbackReviewError("");
+        if (sourceWorkflow.bindingCount >= 2) {
+          if (!batchRollbackClient || !selectedMember.currentVersionId) {
+            showToast("多目标历史回滚接口或当前版本不可用，已阻止提交。");
+            return;
+          }
+          setRollbackBatchContext({ fileId, currentVersionId: selectedMember.currentVersionId,
+            workflowProofToken: sourceWorkflow.proofToken });
+        } else {
+          setRollbackBatchContext(null);
+        }
         setRollbackReviewVersion(version);
         return;
       }
@@ -877,6 +893,7 @@ export function ProjectConfigurationWorkbench({
     },
     [
       canAdmin,
+      batchRollbackClient,
       fileRepository,
       notifyMutation,
       project.id,
@@ -1788,17 +1805,29 @@ export function ProjectConfigurationWorkbench({
           }} />
       ) : null}
 
-      <WorkbenchSourceRollbackDialog
+      {rollbackReviewVersion ? <WorkbenchSourceRollbackDialog
+        key={`${rollbackReviewVersion.id}:${rollbackBatchContext?.fileId ?? "single"}`}
         open={Boolean(rollbackReviewVersion)}
         version={rollbackReviewVersion}
-        currentVersionId={selectedMember?.currentVersionId}
+        currentVersionId={rollbackBatchContext?.currentVersionId ?? selectedMember?.currentVersionId}
         pending={rollbackReviewPending}
         error={rollbackReviewError}
         onCancel={() => {
           if (!rollbackReviewPending) setRollbackReviewVersion(null);
         }}
         onConfirm={(reason) => void handleConfirmSourceRollback(reason)}
-      />
+        batch={rollbackBatchContext && batchRollbackClient ? {
+          projectId: project.id, fileId: rollbackBatchContext.fileId, currentUserId,
+          workflowProofToken: rollbackBatchContext.workflowProofToken, client: batchRollbackClient,
+          onSubmitted: (requestId) => {
+            setRollbackReviewVersion(null);
+            setSourceWorkflowReloadToken((value) => value + 1);
+            setVersionsReloadToken((value) => value + 1);
+            notifyMutation("多目标历史回滚审核已提交；审核通过前当前 Value、来源 pin 和活跃文件版本不变。");
+            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+          }
+        } : undefined}
+      /> : null}
 
       <WorkbenchTaskDock
         tasksOpen={tasksOpen}

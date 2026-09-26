@@ -1231,6 +1231,20 @@ export const routeManifest = [
     module: "parameter-files",
     stability: "mvp"
   },
+  {
+    id: "parameterFiles.prepareCanonicalBatchRollback",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/prepare",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.submitCanonicalBatchRollback",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/submit",
+    module: "parameter-files",
+    stability: "mvp"
+  },
 
   { id: "parameters.deleteAdminProject", method: "DELETE", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
   { id: "parameters.parseDtsImport", method: "POST", path: "/api/v1/parameter-import/parse-dts", module: "parameters", stability: "mvp" },
