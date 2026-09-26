@@ -85,7 +85,7 @@ const issue913T14SuccessorRecords = await Promise.all([
 }));
 const issue913StaleSuccessorRecord = JSON.parse(
   await readFile(`${process.cwd()}/${issue913StaleSuccessorRelocationRecordPath}`, "utf8"),
-) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+) as { files: Array<{ pairs: Array<{ old: { id: string }; new: unknown }> }> };
 const issue853SuccessorRecords = await Promise.all([
   "issue-853-c-debug-routes-successor.json",
   "issue-853-c-debug-catalog-split-successor.json",
@@ -1057,7 +1057,12 @@ describe("parameter catalog boundary checker", () => {
       const staleSuccessorIds = new Set(issue913StaleSuccessorRecord.files.flatMap((file) =>
         file.pairs.map((pair) => pair.old.id)));
       expect(staleSuccessorIds.size).toBe(issue913StaleSuccessorPairCount);
-      expect(report.relocations.filter((entry) => staleSuccessorIds.has(entry.id))).toHaveLength(issue913StaleSuccessorPairCount);
+      const staleSuccessors = report.relocations.filter((entry) => staleSuccessorIds.has(entry.id));
+      expect(staleSuccessors).toHaveLength(issue913StaleSuccessorPairCount);
+      expect(new Set(staleSuccessors.map((entry) => entry.observed.id)).size).toBe(63);
+      for (const pair of issue913StaleSuccessorRecord.files.flatMap((file) => file.pairs)) {
+        expect(staleSuccessors.find((entry) => entry.id === pair.old.id)?.observed).toEqual(pair.new);
+      }
       expect(issue913StaleRetiredSourceIds).toHaveLength(17);
       expect(issue913StaleRetiredSourceIds.every((id) =>
         !report.relocations.some((entry) => entry.id === id)

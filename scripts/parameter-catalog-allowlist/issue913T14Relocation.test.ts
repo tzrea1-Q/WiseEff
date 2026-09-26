@@ -6,7 +6,6 @@ import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  checkParameterCatalogBoundaries,
   scanParameterCatalogBoundaries,
 } from "../check-parameter-catalog-boundaries";
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
@@ -234,25 +233,16 @@ describe("Issue #913 T1.4 successor relocation", () => {
     ).rejects.toThrow("destination whole-file blob");
   });
 
-  it("activates the exact 63 stale successors and retires only the named 17 sources", async () => {
+  it("partitions the exact 63 stale successors and named 17 retirements", async () => {
     const record = JSON.parse(
       await readFile(join(repoRoot, issue913StaleSuccessorRelocationRecordPath), "utf8"),
     ) as RuntimeTopologyRelocationRecord;
     const successorSourceIds = record.files.flatMap((section) => section.pairs.map((pair) => pair.old.id));
     const historicalSourceIds = [...successorSourceIds, ...issue913StaleRetiredSourceIds];
-    const sourceIds = new Set(successorSourceIds);
-    const report = await checkParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha);
-    const active = report.relocations.filter((entry) => sourceIds.has(entry.id));
 
     expect(issue913StaleSuccessorPairCount).toBe(63);
-    expect(active).toHaveLength(63);
     expect(new Set(successorSourceIds).size).toBe(63);
-    expect(new Set(active.map((entry) => entry.observed.id)).size).toBe(63);
-    expect(issue913StaleRetiredSourceIds.every((id) => !report.relocations.some((entry) => entry.id === id))).toBe(true);
     expect(issue913StaleRetiredSourceIds.every((id) => !allowances.some((entry) => entry.id === id))).toBe(true);
-    for (const pair of record.files.flatMap((section) => section.pairs)) {
-      expect(active.find((entry) => entry.id === pair.old.id)?.observed).toEqual(pair.new);
-    }
     // The fixed record and partition prove #913 history; the owner-path test owns current inventory.
     validateIssue913StaleHistoricalPartition(historicalSourceIds, successorSourceIds);
   });
