@@ -1239,6 +1239,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterFiles.prepareCanonicalManualSync",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-manual-sync/prepare",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
     id: "parameterFiles.submitCanonicalBatchRollback",
     method: "POST",
     path: "/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/submit",

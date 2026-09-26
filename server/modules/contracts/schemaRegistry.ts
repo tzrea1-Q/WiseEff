@@ -1875,6 +1875,17 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
       "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.prepareCanonicalManualSync": {
+    summary: "Prepare exact uploaded JSON or DTS bytes for one canonical batch review request",
+    tags: ["parameter-files"],
+    requestParameters: [{ name: "X-Request-Id", in: "header",
+      description: "Reuse this stable key only for the same preparation bytes and source proof." }],
+    requestBody: "CanonicalManualSyncPrepareRequest",
+    responseBody: "CanonicalManualSyncPrepareResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.submitCanonicalBatchRollback": {
     summary: "Freeze one historical multi-Binding rollback for assigned human review",
     tags: ["parameter-files"],
