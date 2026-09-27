@@ -112,6 +112,19 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     return createHttpServer(router);
   }
 
+  async function expectedConflicts(candidateId: string, bindingId: string,
+    choice: "file" | "draft", selectedDraftId?: string) {
+    const conflicts = await requestJson<{ items: Array<{ selectedBindingId: string; selectedDraftId: string;
+      choices: { file: { decisionProofDigest: string }; draft: { decisionProofDigest: string } } }> }>(
+      route(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`);
+    expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+    return conflicts.body.items.filter((item) => item.selectedBindingId === bindingId).map((item) => ({
+      draftId: item.selectedDraftId,
+      decisionProofDigest: item.choices[choice === "draft" && item.selectedDraftId === selectedDraftId
+        ? "draft" : "file"].decisionProofDigest
+    }));
+  }
+
   async function draft(bindingId: string, value = 88) {
     const base = (await db.query<{ current_value_id: string; config_revision_id: string }>(`
       select binding.current_value_id,value.config_revision_id
@@ -150,9 +163,13 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     const first = prepared.targets.find((target) => target.targetText === "<50>")!;
     const body = { candidateId: prepared.candidateId, expectedProofToken: prepared.proofToken,
       reason: "Mixed DTS review", assignedToUserId: REVIEWER,
-      targetDecisions: prepared.targets.map((target) => target.bindingId === first.bindingId
-        ? { bindingId: target.bindingId, choice: "draft", draftId: selectedId }
-        : { bindingId: target.bindingId, choice: "file" }) };
+      targetDecisions: await Promise.all(prepared.targets.map(async (target) => target.bindingId === first.bindingId
+        ? { bindingId: target.bindingId, choice: "draft", draftId: selectedId,
+          expectedConflictProofs: await expectedConflicts(prepared.candidateId,
+            target.bindingId, "draft", selectedId) }
+        : { bindingId: target.bindingId, choice: "file",
+          expectedConflictProofs: await expectedConflicts(prepared.candidateId,
+            target.bindingId, "file") })) };
     return { body, response: await requestJson<{ item: { id: string; candidateId: string;
       batchProofDigest: string; draftImpactDigest: string; decisionProofDigest: string;
       uploadCandidateId: string; draftImpact: Array<{ role: string; decision: string;
@@ -168,6 +185,47 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     decision: "approve", batchProofDigest: item.batchProofDigest,
     draftImpactDigest: item.draftImpactDigest, decisionProofDigest: item.decisionProofDigest
   });
+
+  it("rejects DTS draft and file choices after the author changes a previewed draft", async () => {
+    const prepared = await prepare();
+    const first = prepared.targets.find((target) => target.targetText === "<50>")!;
+    const selected = await draft(first.bindingId);
+    const draftProof = await expectedConflicts(prepared.candidateId, first.bindingId, "draft", selected.id);
+    const fileProof = await expectedConflicts(prepared.candidateId, first.bindingId, "file");
+    expect(draftProof).toHaveLength(1);
+    expect(fileProof).toHaveLength(1);
+    const baseRevisionId = (await db.query<{ config_revision_id: string }>(`
+      select value.config_revision_id from parameter_catalog.project_parameter_bindings binding
+        join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+       where binding.id=$1`, [first.bindingId])).rows[0]!.config_revision_id;
+    const changed = await requestJson<{ item: { draftId: string } }>(route(author),
+      `/api/v2/projects/${PROJECT}/parameter-bindings/${first.bindingId}/drafts`, {
+        method: "POST", body: JSON.stringify({ baseRevisionId,
+          targetValue: parseDtsValue("iin_max", "<89>").value, reason: "Author revised DTS choice" })
+      });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(201);
+    expect(changed.body.item.draftId).toBe(selected.id);
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectBefore = await objects(directory);
+    for (const choice of ["draft", "file"] as const) {
+      const response = await requestJson(route(),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+          method: "POST", body: JSON.stringify({ candidateId: prepared.candidateId,
+            expectedProofToken: prepared.proofToken, reason: "Previewed DTS choice",
+            assignedToUserId: REVIEWER,
+            targetDecisions: prepared.targets.map((target) => target.bindingId === first.bindingId
+              ? { bindingId: target.bindingId, choice,
+                ...(choice === "draft" ? { draftId: selected.id } : {}),
+                expectedConflictProofs: choice === "draft" ? draftProof : fileProof }
+              : { bindingId: target.bindingId, choice: "file" })
+          })
+        });
+      expect(response).toMatchObject({ status: 409, body: { error: {
+        details: { reason: "canonical-batch-conflict-proof-stale" } } } });
+      expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+      expect(await objects(directory)).toEqual(objectBefore);
+    }
+  }, 120_000);
 
   it("reviews 50/60/30 upload as 88/60/30 with one request and one atomic cohort", async () => {
     const prepared = await prepare();
@@ -359,9 +417,10 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
         method: "POST", body: JSON.stringify({ candidateId: newer.candidateId,
           expectedProofToken: newer.proofToken, assignedToUserId: REVIEWER,
-          reason: "Advance the canonical source", targetDecisions: newer.targets.map((target) => ({
-            bindingId: target.bindingId, choice: "file"
-          })) })
+          reason: "Advance the canonical source", targetDecisions: await Promise.all(newer.targets.map(async (target) => ({
+            bindingId: target.bindingId, choice: "file",
+            expectedConflictProofs: await expectedConflicts(newer.candidateId, target.bindingId, "file")
+          }))) })
       });
     expect(successor.status, JSON.stringify(successor.body)).toBe(201);
     const advanced = await requestJson(route(reviewer), `${path(successor.body.item.id)}/review`, {

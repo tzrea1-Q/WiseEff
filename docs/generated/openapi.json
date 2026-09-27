@@ -22143,6 +22143,25 @@
                 },
                 "draftId": {
                   "type": "string"
+                },
+                "expectedConflictProofs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "draftId": {
+                        "type": "string"
+                      },
+                      "decisionProofDigest": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "draftId",
+                      "decisionProofDigest"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [

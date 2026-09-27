@@ -921,7 +921,9 @@ export function registerCatalogProjectValueConsumerRoutes(
       reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
       selectedDrafts: z.array(z.object({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
       targetDecisions: z.array(z.object({ bindingId: z.string().min(1),
-        choice: z.enum(["file", "draft"]), draftId: z.string().min(1).optional() })).optional()
+        choice: z.enum(["file", "draft"]), draftId: z.string().min(1).optional(),
+        expectedConflictProofs: z.array(z.object({ draftId: z.string().min(1),
+          decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/) })).optional() })).optional()
     }), request.body ?? {});
     if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical batch submit requires root database.");
     const item = await submitCanonicalBatchValueChange(db, options.objectStore, auth, {

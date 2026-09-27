@@ -1204,7 +1204,9 @@ export const catalogSubmitBatchValueChangeRequestSchema = catalogObject({
   reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
   selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
   targetDecisions: z.array(catalogObject({ bindingId: z.string().min(1),
-    choice: closedEnum(["file", "draft"]), draftId: z.string().min(1).optional() })).optional()
+    choice: closedEnum(["file", "draft"]), draftId: z.string().min(1).optional(),
+    expectedConflictProofs: z.array(catalogObject({ draftId: z.string().min(1),
+      decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/) })).optional() })).optional()
 });
 export const catalogReviewMemberRemovalRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),

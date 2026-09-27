@@ -21,7 +21,8 @@ import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, 
 import { loadLegacyBindingIdentity } from "../binding/migrationAdapter";
 import { createConfigSet, addConfigSetFile } from "../../parameter-files/configSetService";
 import { createCandidate } from "../../parameter-files/candidateService";
-import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, prepareCanonicalConflictDecision,
+  previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
 import { createCanonicalValueDraft } from "./service";
@@ -217,6 +218,10 @@ describe("#906 C canonical DTS batch HTTP review", () => {
     });
     expect(unsupported).toMatchObject({ status: 409, body: { error: {
       details: { reason: "canonical-batch-target-decision-required" } } } });
+    const previewFileChoice = await prepareCanonicalConflictDecision(db, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, selectedBindingId: target!,
+      selectedDraftId, choice: "file"
+    });
     const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
       draftImpactDigest: string; uploadCandidateId: string | null; compositionProof: unknown;
       decisionProofDigest: string | null;
@@ -224,7 +229,9 @@ describe("#906 C canonical DTS batch HTTP review", () => {
       draftImpact: Array<{ bindingId: string; role: string; drafts: unknown[] }> } }>(route(),
       submitPath, {
         method: "POST", body: JSON.stringify({ ...body,
-          targetDecisions: [{ bindingId: target, choice: "file" }] })
+          targetDecisions: [{ bindingId: target, choice: "file", expectedConflictProofs: [{
+            draftId: selectedDraftId, decisionProofDigest: previewFileChoice.decisionProofDigest
+          }] }] })
       });
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
     catalogBatchValueChangeRequestResponseSchema.parse(submitted.body);

@@ -114,6 +114,84 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     return createHttpServer(router);
   }
 
+  async function expectedConflicts(candidateId: string, bindingId: string,
+    choice: "file" | "draft", selectedDraftId?: string) {
+    const conflicts = await requestJson<{ items: Array<{ selectedBindingId: string; selectedDraftId: string;
+      choices: { file: { decisionProofDigest: string }; draft: { decisionProofDigest: string } } }> }>(
+      route(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`);
+    expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+    return conflicts.body.items.filter((item) => item.selectedBindingId === bindingId).map((item) => ({
+      draftId: item.selectedDraftId,
+      decisionProofDigest: item.choices[choice === "draft" && item.selectedDraftId === selectedDraftId
+        ? "draft" : "file"].decisionProofDigest
+    }));
+  }
+
+  it("rejects a batch choice when the selected draft changed after conflict preview", async () => {
+    const workflow = await requestJson<{ item: { proofToken: string } }>(route(),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-workflow`);
+    const version = (await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!.current_version_id;
+    const prepared = await requestJson<{ item: { candidateId: string; proofToken: string;
+      targets: Array<{ bindingId: string; targetText: string }> } }>(route(),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-manual-sync/prepare`, {
+        method: "POST", headers: { "X-Request-Id": "c906-preview-change-prepare" },
+        body: JSON.stringify({
+          contentBase64: Buffer.from('{"first":{"limit":50},"second":{"limit":60},"third":{"limit":30}}\n').toString("base64"),
+          expectedCurrentVersionId: version, expectedWorkflowProofToken: workflow.body.item.proofToken
+        })
+      });
+    expect(prepared.status).toBe(201);
+    const selectedTarget = prepared.body.item.targets.find((target) => target.targetText === "50")!;
+    const selected = await draft(selectedTarget.bindingId);
+    const conflicts = await requestJson<{ items: Array<{ selectedDraftId: string;
+      choices: { file: { decisionProofDigest: string };
+        draft: { targetText: string; selectedDraftProof: string; decisionProofDigest: string } } }> }>(
+      route(), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.body.item.candidateId}/source-conflicts`);
+    expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+    const previewed = conflicts.body.items.find((item) => item.selectedDraftId === selected.id)!;
+    expect(previewed.choices.draft.targetText).toBe("88");
+    const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
+    const submittedWith = (choice: "draft" | "file", proofs?: Array<{ draftId: string;
+      decisionProofDigest: string }>) => requestJson(route(), path, { method: "POST", body: JSON.stringify({
+      candidateId: prepared.body.item.candidateId, expectedProofToken: prepared.body.item.proofToken,
+      reason: "Approve previewed choice", assignedToUserId: REVIEWER,
+      targetDecisions: prepared.body.item.targets.map((target) => target.bindingId === selectedTarget.bindingId
+        ? { bindingId: target.bindingId, choice,
+          ...(choice === "draft" ? { draftId: selected.id } : {}),
+          ...(proofs === undefined ? {} : { expectedConflictProofs: proofs }) }
+        : { bindingId: target.bindingId, choice: "file" })
+    }) });
+    const missingProof = await submittedWith("draft");
+    expect(missingProof).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "canonical-batch-conflict-proof-stale" } } } });
+    const baseRevisionId = (await db.query<{ config_revision_id: string }>(`
+      select value.config_revision_id from parameter_catalog.project_parameter_bindings binding
+        join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+       where binding.id=$1`, [selectedTarget.bindingId])).rows[0]!.config_revision_id;
+    const changed = await requestJson<{ item: { draftId: string } }>(route(author),
+      `/api/v2/projects/${PROJECT}/parameter-bindings/${selectedTarget.bindingId}/drafts`, {
+        method: "POST", body: JSON.stringify({ baseRevisionId,
+          sourceTarget: { format: "json", sourceText: "89" }, reason: "Author revised the choice" })
+      });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(201);
+    expect(changed.body.item.draftId).toBe(selected.id);
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectsBefore = await objectBytes(storageDirectory);
+    for (const [choice, digest] of [["draft", previewed.choices.draft.decisionProofDigest],
+      ["file", conflicts.body.items.find((item) => item.selectedDraftId === selected.id)!.choices.file.decisionProofDigest]
+    ] as const) {
+      const response = await submittedWith(choice, [{ draftId: selected.id, decisionProofDigest: digest }]);
+      expect(response).toMatchObject({ status: 409, body: { error: {
+        details: { reason: "canonical-batch-conflict-proof-stale" } } } });
+    }
+    expect((await db.query<{ count: number }>(`select count(*)::int as count
+      from project_parameter_value_change_requests where organization_id=$1 and project_id=$2`,
+    [ORG, PROJECT])).rows[0]!.count).toBe(0);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objectBytes(storageDirectory)).toEqual(objectsBefore);
+  }, 120_000);
+
   it("submits one mixed JSON request through prepare and batch HTTP", async () => {
     const workflow = await requestJson<{ item: { proofToken: string } }>(route(),
       `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-workflow`);
@@ -139,9 +217,13 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     const submitBody = {
       candidateId: prepared.body.item.candidateId, expectedProofToken: prepared.body.item.proofToken,
       reason: "One mixed decision", assignedToUserId: REVIEWER,
-      targetDecisions: prepared.body.item.targets.map((target) => target.bindingId === first.bindingId
-        ? { bindingId: target.bindingId, choice: "draft", draftId: selected.id }
-        : { bindingId: target.bindingId, choice: "file" })
+      targetDecisions: await Promise.all(prepared.body.item.targets.map(async (target) => target.bindingId === first.bindingId
+        ? { bindingId: target.bindingId, choice: "draft", draftId: selected.id,
+          expectedConflictProofs: await expectedConflicts(prepared.body.item.candidateId,
+            target.bindingId, "draft", selected.id) }
+        : { bindingId: target.bindingId, choice: "file",
+          expectedConflictProofs: await expectedConflicts(prepared.body.item.candidateId,
+            target.bindingId, "file") }))
     };
     const submitted = await requestJson<{ item: { id: string; status: string; batchProofDigest: string;
       draftImpactDigest: string; decisionProofDigest: string; candidateId: string;
@@ -252,10 +334,12 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     }) })).status).toBe(409);
     expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
     expect(await objectBytes(storageDirectory)).toEqual(objectBefore);
-    const targetDecisions = prepared.body.item.targets.map((target) => ({
+    const targetDecisions = await Promise.all(prepared.body.item.targets.map(async (target) => ({
       bindingId: target.bindingId, choice: target.bindingId === first.bindingId ? "draft" : "file",
-      ...(target.bindingId === first.bindingId ? { draftId: selected.id } : {})
-    }));
+      ...(target.bindingId === first.bindingId ? { draftId: selected.id } : {}),
+      expectedConflictProofs: await expectedConflicts(prepared.body.item.candidateId, target.bindingId,
+        target.bindingId === first.bindingId ? "draft" : "file", selected.id)
+    })));
     const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
       draftImpactDigest: string; decisionProofDigest: string } }>(route(), path, {
         method: "POST", headers: { "X-Request-Id": "c906-mixed-json-negative-submit" },
@@ -303,6 +387,40 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     expect(preview.bindings).toHaveLength(2);
     return { item, preview };
   }
+
+  it("requires a preview proof for every competing draft on an explicit file target", async () => {
+    const { item, preview } = await candidate();
+    const target = preview.bindings![0]!.bindingId;
+    const first = await draft(target);
+    const second = await draft(target, secondAuthor, 89);
+    const proofs = await expectedConflicts(item.id, target, "file");
+    expect(proofs.map((entry) => entry.draftId).sort()).toEqual([first.id, second.id].sort());
+    const body = { candidateId: item.id, expectedProofToken: preview.proofToken,
+      reason: "Choose the file after reviewing both drafts", assignedToUserId: REVIEWER,
+      targetDecisions: [{ bindingId: target, choice: "file", expectedConflictProofs: proofs.slice(0, 1) }] };
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectsBefore = await objectBytes(storageDirectory);
+    const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
+    const incomplete = await requestJson(route(), path, { method: "POST", body: JSON.stringify(body) });
+    expect(incomplete).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "canonical-batch-conflict-proof-stale" } } } });
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objectBytes(storageDirectory)).toEqual(objectsBefore);
+    const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
+      draftImpactDigest: string } }>(route(), path, { method: "POST", body: JSON.stringify({
+        ...body, targetDecisions: [{ bindingId: target, choice: "file", expectedConflictProofs: proofs }]
+      }) });
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    const approved = await requestJson(route(reviewer),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}/review`, {
+        method: "POST", body: JSON.stringify({ decision: "approve",
+          batchProofDigest: submitted.body.item.batchProofDigest,
+          draftImpactDigest: submitted.body.item.draftImpactDigest })
+      });
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect((await db.query<{ id: string }>(`select id from project_parameter_value_drafts
+      where id=any($1::text[]) order by id`, [[first.id, second.id]])).rows).toHaveLength(2);
+  }, 120_000);
 
   it("hides omission and incomplete draft decisions, then approves explicit file values with full impact", async () => {
     const { item, preview } = await candidate();
@@ -352,7 +470,8 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       draftImpact: Array<{ bindingId: string; role: string;
         decision: string; drafts: Array<{ draftId: string; expectedEffect: string }> }> } }>(route(), submitPath,
       { method: "POST", body: JSON.stringify({ ...body,
-        targetDecisions: [{ bindingId: target, choice: "file" }] }) });
+        targetDecisions: [{ bindingId: target, choice: "file",
+          expectedConflictProofs: await expectedConflicts(item.id, target, "file") }] }) });
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
     catalogBatchValueChangeRequestResponseSchema.parse(submitted.body);
     expect(submitted.body.item).toMatchObject({ uploadCandidateId: null,
@@ -433,7 +552,8 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
       draftImpactDigest: string } }>(route(), submitPath, { method: "POST", body: JSON.stringify({
       candidateId: item.id, expectedProofToken: preview.proofToken, reason: "File-only baseline",
-      assignedToUserId: REVIEWER, targetDecisions: [{ bindingId: target, choice: "file" }]
+      assignedToUserId: REVIEWER, targetDecisions: [{ bindingId: target, choice: "file",
+        expectedConflictProofs: await expectedConflicts(item.id, target, "file") }]
     }) });
     expect(submitted.status).toBe(201);
     const originalPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}`;
@@ -555,7 +675,8 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
         method: "POST", body: JSON.stringify({ candidateId: item.id,
           expectedProofToken: preview.proofToken, reason: "Freeze target draft",
-          assignedToUserId: REVIEWER, targetDecisions: [{ bindingId: target, choice: "file" }] })
+          assignedToUserId: REVIEWER, targetDecisions: [{ bindingId: target, choice: "file",
+            expectedConflictProofs: await expectedConflicts(item.id, target, "file") }] })
       });
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
     const changed = await draft(target, author, 89);
@@ -586,7 +707,8 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
         method: "POST", body: JSON.stringify({ candidateId: item.id,
           expectedProofToken: preview.proofToken, reason: "Atomic three Binding review",
           assignedToUserId: REVIEWER,
-          targetDecisions: [{ bindingId: target, choice: "file" }] })
+          targetDecisions: [{ bindingId: target, choice: "file",
+            expectedConflictProofs: await expectedConflicts(item.id, target, "file") }] })
       });
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
     const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}/review`;
@@ -623,11 +745,12 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     await draft(target);
     await draft(sibling);
     const submitPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
-    const submit = (candidateId: string, expectedProofToken: string) =>
+    const submit = async (candidateId: string, expectedProofToken: string) =>
       requestJson<{ item: { id: string; batchProofDigest: string; draftImpactDigest: string } }>(route(),
         submitPath, { method: "POST", body: JSON.stringify({ candidateId, expectedProofToken,
           reason: "Source drift ordering", assignedToUserId: REVIEWER,
-          targetDecisions: [{ bindingId: target, choice: "file" }] }) });
+          targetDecisions: [{ bindingId: target, choice: "file",
+            expectedConflictProofs: await expectedConflicts(candidateId, target, "file") }] }) });
     const first = await submit(older.item.id, older.preview.proofToken!);
     expect(first.status, JSON.stringify(first.body)).toBe(201);
     const newer = await createCandidate(db, storage, admin, { projectId: PROJECT, fileId,

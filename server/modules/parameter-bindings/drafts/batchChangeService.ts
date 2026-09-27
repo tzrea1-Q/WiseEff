@@ -15,7 +15,8 @@ import { canAdminParameters, canEditParameters, canReviewParameters, canReviewPa
 import { getProjectById } from "../../projects/repository";
 import { lockUserById } from "../../users/repository";
 import { hasCurrentCanonicalReviewRole, hasEligibleWorkflowAssignee } from "../../parameters/reviewWorkflowRepository";
-import { freezeCanonicalCandidateBatchSnapshotInTransaction, recheckCanonicalCandidateBatchForReviewInTransaction,
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, prepareCanonicalConflictDecision,
+  recheckCanonicalCandidateBatchForReviewInTransaction,
   type CanonicalSourceBatchPrepareDto } from "../../parameter-files/canonicalFileWorkflow";
 import { commitCanonicalSourceBatchRevision } from "../../parameter-files/canonicalSourceBatchCommit";
 import { parseJsonSource } from "../../parameter-files/jsonSource";
@@ -134,6 +135,11 @@ export type CanonicalBatchTargetDecision = Readonly<{
   bindingId: string;
   choice: "file" | "draft";
   draftId?: string;
+}>;
+
+type CanonicalBatchTargetDecisionInput = CanonicalBatchTargetDecision & Readonly<{
+  /** One source-conflicts choice digest for each current competing draft on this target. */
+  expectedConflictProofs?: readonly Readonly<{ draftId: string; decisionProofDigest: string }>[];
 }>;
 
 /** C computes draftImpactDigest under the source lock; D carries it into its proof. */
@@ -365,7 +371,7 @@ export async function submitCanonicalBatchValueChange(
     reason: string;
     assignedToUserId: string;
     selectedDrafts?: Array<{ bindingId: string; draftId: string }>;
-    targetDecisions?: Array<{ bindingId: string; choice: "file" | "draft"; draftId?: string }>;
+    targetDecisions?: CanonicalBatchTargetDecisionInput[];
     invocation: TrustedInvocationContext;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
@@ -424,6 +430,14 @@ export async function submitCanonicalBatchValueChange(
       if (prior?.compositionProof && prior.uploadCandidateId === input.candidateId
         && prior.submitterUserId === auth.user.id && prior.assignedToUserId === input.assignedToUserId
         && prior.reason === reason && prior.compositionProof.uploadObject.proofToken === input.expectedProofToken
+        && prior.draftImpact?.filter((target) => target.role === "target").every((target) => {
+          const expected = input.targetDecisions?.find((decision) => decision.bindingId === target.bindingId)
+            ?.expectedConflictProofs ?? [];
+          const previewed = target.drafts.filter((draft) => !draft.currentlyStale);
+          return expected.length === previewed.length
+            && new Set(expected.map((entry) => entry.draftId)).size === expected.length
+            && expected.every((entry) => previewed.some((draft) => draft.draftId === entry.draftId));
+        })
         && prior.compositionProof.targetDecisions.length === input.targetDecisions?.length
         && prior.compositionProof.targetDecisions.every((decision, ordinal) =>
           decision.bindingId === input.targetDecisions?.[ordinal]?.bindingId
@@ -485,7 +499,7 @@ export async function submitCanonicalBatchValueChange(
     if (new Set(targetIds).size !== targetIds.length) {
       throw new ApiError("CONFLICT", "Batch proof contains a duplicate Binding.");
     }
-    const decisions = new Map<string, CanonicalBatchTargetDecision>();
+    const decisions = new Map<string, CanonicalBatchTargetDecisionInput>();
     for (const decision of input.targetDecisions ?? []) {
       if (decisions.has(decision.bindingId) || !targetIds.includes(decision.bindingId)) {
         throw new ApiError("VALIDATION_FAILED", "Batch decisions must identify distinct changed targets.");
@@ -498,8 +512,12 @@ export async function submitCanonicalBatchValueChange(
         reason: "canonical-batch-target-decision-required"
       });
     }
-    const orderedDecisions = proof.targets.map((target) =>
-      decisions.get(target.bindingId) ?? { bindingId: target.bindingId, choice: "file" as const });
+    const orderedDecisions: CanonicalBatchTargetDecision[] = proof.targets.map((target) => {
+      const decision = decisions.get(target.bindingId);
+      return decision ? { bindingId: target.bindingId, choice: decision.choice,
+        ...(decision.draftId === undefined ? {} : { draftId: decision.draftId }) }
+        : { bindingId: target.bindingId, choice: "file" };
+    });
     const { draftImpact: impact, draftImpactDigest: impactDigest } =
       await captureCanonicalBatchDraftImpactInTransaction(tx, auth, input.projectId, proof, orderedDecisions);
     for (const target of impact.filter((item) => item.role === "target")) {
@@ -509,6 +527,29 @@ export async function submitCanonicalBatchValueChange(
         throw new ApiError("CONFLICT", "A changed target with drafts needs an explicit file decision.", {
           reason: "canonical-batch-target-decision-required", bindingId: target.bindingId
         });
+      }
+      const currentDrafts = target.drafts.filter((draft) => !draft.currentlyStale);
+      const expected = decision?.expectedConflictProofs ?? [];
+      if (expected.length !== currentDrafts.length
+        || new Set(expected.map((entry) => entry.draftId)).size !== expected.length
+        || expected.some((entry) => !currentDrafts.some((draft) => draft.draftId === entry.draftId))) {
+        throw new ApiError("CONFLICT", "Batch conflict selection differs from the preview.", {
+          reason: "canonical-batch-conflict-proof-stale", bindingId: target.bindingId
+        });
+      }
+      for (const draft of currentDrafts) {
+        const selectedChoice = decision?.choice === "draft" && decision.draftId === draft.draftId
+          ? "draft" : "file";
+        const current = await prepareCanonicalConflictDecision(tx, attempt.objectStore, auth, {
+          projectId: input.projectId, candidateId: input.candidateId,
+          selectedBindingId: target.bindingId, selectedDraftId: draft.draftId, choice: selectedChoice
+        });
+        if (expected.find((entry) => entry.draftId === draft.draftId)?.decisionProofDigest
+          !== current.decisionProofDigest) {
+          throw new ApiError("CONFLICT", "Batch conflict selection differs from the preview.", {
+            reason: "canonical-batch-conflict-proof-stale", bindingId: target.bindingId
+          });
+        }
       }
     }
     let compositionProof: CanonicalBatchDraftCompositionProof | null = null;

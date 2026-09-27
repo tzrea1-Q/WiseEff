@@ -17,7 +17,8 @@ import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createConfigSet, addConfigSetFile } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { createCandidate } from "../../parameter-files/candidateService";
-import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, prepareCanonicalConflictDecision,
+  previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
 import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
 import { loadPublishedCatalog } from "../catalogProjectValueSync";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
@@ -127,13 +128,20 @@ describe("#906 C frozen multi-target request", () => {
     const preview = await previewCanonicalCandidate(db, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id
     });
+    const fileChoice = await prepareCanonicalConflictDecision(db, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, selectedBindingId: bindings[0]!.id,
+      selectedDraftId: olderDraft.id, choice: "file"
+    });
     expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-writer-unavailable" });
     let expectedProofToken = "stale-proof";
     const submit = () => submitCanonicalBatchValueChange(db, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id,
       expectedProofToken, reason: "one human review for both targets",
       assignedToUserId: REVIEWER,
-      targetDecisions: bindings.map((binding) => ({ bindingId: binding.id, choice: "file" as const })),
+      targetDecisions: bindings.map((binding) => ({ bindingId: binding.id, choice: "file" as const,
+        ...(binding.id === bindings[0]!.id ? { expectedConflictProofs: [{
+          draftId: olderDraft.id, decisionProofDigest: fileChoice.decisionProofDigest
+        }] } : {}) })),
       invocation: createUserInvocation(admin),
       requestId: "c906-submit", refusalSink: createTrustedRefusalAuditSink(db)
     });
@@ -236,10 +244,20 @@ describe("#906 C frozen multi-target request", () => {
     const proof = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
     }));
+    const competingDraft = (await db.query<{ id: string }>(`
+      select id from project_parameter_value_drafts where organization_id=$1 and project_id=$2
+        and binding_id=$3`, [ORG, PROJECT, bindings[0]!.id])).rows[0]!;
+    const fileChoice = await prepareCanonicalConflictDecision(db, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, selectedBindingId: bindings[0]!.id,
+      selectedDraftId: competingDraft.id, choice: "file"
+    });
     const request = await submitCanonicalBatchValueChange(db, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id, expectedProofToken: proof.proofToken,
       reason: "Approve both current source targets together", assignedToUserId: REVIEWER,
-      targetDecisions: bindings.map((binding) => ({ bindingId: binding.id, choice: "file" as const })),
+      targetDecisions: bindings.map((binding) => ({ bindingId: binding.id, choice: "file" as const,
+        ...(binding.id === bindings[0]!.id ? { expectedConflictProofs: [{
+          draftId: competingDraft.id, decisionProofDigest: fileChoice.decisionProofDigest
+        }] } : {}) })),
       invocation: createUserInvocation(admin), requestId: "c906-real-batch-submit",
       refusalSink: createTrustedRefusalAuditSink(db)
     });
