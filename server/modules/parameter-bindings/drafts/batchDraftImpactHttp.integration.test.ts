@@ -16,6 +16,7 @@ import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createConfigSet, addConfigSetFile } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { createCandidate } from "../../parameter-files/candidateService";
+import { registerParameterFileRoutes } from "../../parameter-files/routes";
 import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
 import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
 import { loadPublishedCatalog } from "../catalogProjectValueSync";
@@ -104,11 +105,179 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
 
   function route(auth = admin) {
     const router = createRouter();
+    registerParameterFileRoutes(router, {
+      db, objectStore: storage, getCurrentAuthContext: () => auth
+    });
     registerCatalogProjectValueConsumerRoutes(router, {
       db, objectStore: storage, getCurrentAuthContext: () => auth
     });
     return createHttpServer(router);
   }
+
+  it("submits one mixed JSON request through prepare and batch HTTP", async () => {
+    const workflow = await requestJson<{ item: { proofToken: string } }>(route(),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-workflow`);
+    expect(workflow.status).toBe(200);
+    const version = (await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!.current_version_id;
+    const prepared = await requestJson<{ item: { candidateId: string; proofToken: string;
+      targets: Array<{ bindingId: string; targetText: string }> } }>(route(),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-manual-sync/prepare`, {
+        method: "POST", headers: { "X-Request-Id": "c906-mixed-json-prepare" },
+        body: JSON.stringify({
+          contentBase64: Buffer.from('{"first":{"limit":50},"second":{"limit":60},"third":{"limit":30}}\n').toString("base64"),
+          expectedCurrentVersionId: version, expectedWorkflowProofToken: workflow.body.item.proofToken
+        })
+      });
+    expect(prepared.status, JSON.stringify(prepared.body)).toBe(201);
+    const first = prepared.body.item.targets.find((target) => target.targetText === "50")!;
+    const selected = await draft(first.bindingId);
+    const second = prepared.body.item.targets.find((target) => target.targetText === "60")!;
+    const unselected = await draft(second.bindingId, secondAuthor, 77);
+    const sibling = bindings.find((id) => !prepared.body.item.targets.some((target) => target.bindingId === id))!;
+    const siblingDraft = await draft(sibling, secondAuthor, 99);
+    const submitBody = {
+      candidateId: prepared.body.item.candidateId, expectedProofToken: prepared.body.item.proofToken,
+      reason: "One mixed decision", assignedToUserId: REVIEWER,
+      targetDecisions: prepared.body.item.targets.map((target) => target.bindingId === first.bindingId
+        ? { bindingId: target.bindingId, choice: "draft", draftId: selected.id }
+        : { bindingId: target.bindingId, choice: "file" })
+    };
+    const submitted = await requestJson<{ item: { id: string; status: string; batchProofDigest: string;
+      draftImpactDigest: string; decisionProofDigest: string; candidateId: string;
+      targets: Array<{ bindingId: string; decision: string; draftId: string | null }> } }>(route(),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+        method: "POST", headers: { "X-Request-Id": "c906-mixed-json-submit" },
+        body: JSON.stringify(submitBody)
+      });
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    catalogBatchValueChangeRequestResponseSchema.parse(submitted.body);
+    const request = submitted.body.item;
+    expect(request.targets.map((target) => [target.bindingId, target.decision, target.draftId]))
+      .toEqual(prepared.body.item.targets.map((target) => [target.bindingId,
+        target.bindingId === first.bindingId ? "draft" : "file",
+        target.bindingId === first.bindingId ? selected.id : null]));
+    expect(request.candidateId).not.toBe(prepared.body.item.candidateId);
+    const replay = await requestJson<{ item: { id: string } }>(route(),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+        method: "POST", headers: { "X-Request-Id": "c906-mixed-json-submit" },
+        body: JSON.stringify(submitBody)
+      });
+    expect(replay.status, JSON.stringify(replay.body)).toBe(201);
+    expect(replay.body.item.id).toBe(request.id);
+    const queue = await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches?status=pending`);
+    expect(queue.body.items.map((item) => item.id)).toContain(request.id);
+    const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${request.id}`;
+    const detail = await requestJson<{ item: { draftImpact: Array<{ bindingId: string;
+      role: string; decision: string; selectedDraftId?: string;
+      drafts: Array<{ draftId: string }> }> } }>(route(reviewer), `${path}/batch`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.item.draftImpact).toHaveLength(3);
+    expect(detail.body.item.draftImpact.find((entry) => entry.bindingId === first.bindingId))
+      .toMatchObject({ role: "target", decision: "draft", selectedDraftId: selected.id });
+    expect(detail.body.item.draftImpact.find((entry) => entry.role === "sibling"))
+      .toMatchObject({ decision: "re-pin", drafts: [{ draftId: siblingDraft.id }] });
+    expect(detail.body.item.draftImpact.some((entry) =>
+      entry.drafts.some((entry) => entry.draftId === unselected.id))).toBe(true);
+    const diff = await requestJson<{ item: { uploadAfter: string; after: string;
+      targets: Array<{ decision: string; draftId: string | null }> } }>(route(reviewer), `${path}/source-diff`);
+    expect(diff.status, JSON.stringify(diff.body)).toBe(200);
+    expect(diff.body.item.uploadAfter).toContain('"limit":50');
+    expect(diff.body.item.after).toContain('"limit":88');
+    expect(diff.body.item.after).toContain('"limit":60');
+    expect(diff.body.item.after).toContain('"limit":30');
+    expect(diff.body.item.targets.map((target) => [target.decision, target.draftId]))
+      .toEqual(request.targets.map((target) => [target.decision, target.draftId]));
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const approvalBody = { decision: "approve", batchProofDigest: request.batchProofDigest,
+      draftImpactDigest: request.draftImpactDigest, decisionProofDigest: request.decisionProofDigest };
+    const approved = await requestJson(route(reviewer), `${path}/review`, {
+      method: "POST", body: JSON.stringify(approvalBody)
+    });
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect(approved.body).toMatchObject({ item: { status: "approved" } });
+    const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    expect(after.values).toHaveLength(before.values.length + 3);
+    expect(after.pins).toHaveLength(before.pins.length + 3);
+    expect(after.history).toHaveLength(before.history.length + 3);
+    expect(after.versions).toHaveLength(before.versions.length + 1);
+    expect(after.audits).toHaveLength(before.audits.length + 1);
+    expect(after.drafts).toEqual(before.drafts);
+    const values = (await db.query<{ value: unknown }>(`
+      select value.value from parameter_catalog.project_parameter_bindings binding
+        join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+       where binding.organization_id=$1 and binding.project_id=$2`, [ORG, PROJECT])).rows;
+    expect(values.map((entry) => entry.value).sort((a, b) => Number(a) - Number(b)))
+      .toEqual([30, 60, 88]);
+    expect((await requestJson(route(reviewer), `${path}/review`, {
+      method: "POST", body: JSON.stringify(approvalBody)
+    })).body).toEqual(approved.body);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(after);
+  }, 120_000);
+
+  it("rejects omitted or wrong mixed decisions and a newly inserted sibling draft", async () => {
+    const workflow = await requestJson<{ item: { proofToken: string } }>(route(),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-workflow`);
+    expect(workflow.status).toBe(200);
+    const version = (await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!.current_version_id;
+    const prepared = await requestJson<{ item: { candidateId: string; proofToken: string;
+      targets: Array<{ bindingId: string; targetText: string }> } }>(route(),
+      `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-manual-sync/prepare`, {
+        method: "POST", headers: { "X-Request-Id": "c906-mixed-json-negative-prepare" },
+        body: JSON.stringify({
+          contentBase64: Buffer.from('{"first":{"limit":50},"second":{"limit":60},"third":{"limit":30}}\n').toString("base64"),
+          expectedCurrentVersionId: version, expectedWorkflowProofToken: workflow.body.item.proofToken
+        })
+      });
+    expect(prepared.status).toBe(201);
+    const first = prepared.body.item.targets.find((target) => target.targetText === "50")!;
+    const selected = await draft(first.bindingId);
+    const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
+    const base = { candidateId: prepared.body.item.candidateId,
+      expectedProofToken: prepared.body.item.proofToken,
+      reason: "Mixed JSON negative", assignedToUserId: REVIEWER };
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectBefore = await objectBytes(storageDirectory);
+    expect((await requestJson(route(), path, { method: "POST", body: JSON.stringify(base) })).status).toBe(409);
+    expect((await requestJson(route(), path, { method: "POST", body: JSON.stringify({ ...base,
+      targetDecisions: [{ bindingId: first.bindingId, choice: "draft", draftId: selected.id }]
+    }) })).status).toBe(409);
+    expect((await requestJson(route(), path, { method: "POST", body: JSON.stringify({ ...base,
+      expectedProofToken: "wrong-proof", targetDecisions: prepared.body.item.targets.map((target) => ({
+        bindingId: target.bindingId, choice: target.bindingId === first.bindingId ? "draft" : "file",
+        ...(target.bindingId === first.bindingId ? { draftId: selected.id } : {})
+      }))
+    }) })).status).toBe(409);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objectBytes(storageDirectory)).toEqual(objectBefore);
+    const targetDecisions = prepared.body.item.targets.map((target) => ({
+      bindingId: target.bindingId, choice: target.bindingId === first.bindingId ? "draft" : "file",
+      ...(target.bindingId === first.bindingId ? { draftId: selected.id } : {})
+    }));
+    const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
+      draftImpactDigest: string; decisionProofDigest: string } }>(route(), path, {
+        method: "POST", headers: { "X-Request-Id": "c906-mixed-json-negative-submit" },
+        body: JSON.stringify({ ...base, targetDecisions })
+      });
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    const sibling = bindings.find((id) => !prepared.body.item.targets.some((target) => target.bindingId === id))!;
+    await draft(sibling, secondAuthor, 99);
+    const drifted = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const driftObjects = await objectBytes(storageDirectory);
+    const review = await requestJson(route(reviewer),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}/review`, {
+        method: "POST", body: JSON.stringify({ decision: "approve",
+          batchProofDigest: submitted.body.item.batchProofDigest,
+          draftImpactDigest: submitted.body.item.draftImpactDigest,
+          decisionProofDigest: submitted.body.item.decisionProofDigest })
+      });
+    expect(review).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "canonical-batch-draft-impact-stale" } } } });
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(drifted);
+    expect(await objectBytes(storageDirectory)).toEqual(driftObjects);
+  }, 120_000);
 
   async function draft(bindingId: string, user = author, value = 88) {
     const base = (await db.query<{ current_value_id: string; config_revision_id: string }>(`
@@ -135,7 +304,7 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     return { item, preview };
   }
 
-  it("hides omission and unsupported draft composition, then approves explicit file values with full impact", async () => {
+  it("hides omission and incomplete draft decisions, then approves explicit file values with full impact", async () => {
     const { item, preview } = await candidate();
     const target = preview.bindings![0]!.bindingId;
     const sibling = bindings.find((id) => !preview.bindings!.some((entry) => entry.bindingId === id))!;
@@ -171,7 +340,7 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       ...body, targetDecisions: [{ bindingId: target, choice: "draft", draftId: firstDraft.id }]
     }) });
     expect(unsupported).toMatchObject({ status: 409, body: { error: {
-      details: { reason: "canonical-batch-draft-composition-unavailable" } } } });
+      details: { reason: "canonical-batch-target-decision-required" } } } });
     expect((await db.query<{ count: number }>(`select count(*)::int as count
       from project_parameter_value_change_requests where candidate_id=$1`, [item.id])).rows[0]!.count).toBe(0);
     expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeRejected);

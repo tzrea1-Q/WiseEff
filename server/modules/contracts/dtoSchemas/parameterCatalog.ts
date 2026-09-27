@@ -1071,6 +1071,19 @@ export const catalogBatchCompositionProofSchema = catalogObject({
         candidateSizeBytes: z.number().int().nonnegative() }).nullable()
     })).min(2)
 });
+const catalogBatchDraftImpactSchema = z.array(catalogObject({
+  ordinal: z.number().int().nonnegative(), bindingId: z.string(),
+  role: closedEnum(["target", "sibling"]), decision: closedEnum(["file", "draft", "re-pin"]),
+  selectedDraftId: z.string().optional(),
+  baseCurrentValueId: z.string(), sourcePinId: z.string(), configRevisionId: z.string(),
+  drafts: z.array(catalogObject({
+    draftId: z.string(), authorUserId: z.string().nullable(), reason: z.string(),
+    action: closedEnum(["set", "delete"]), targetValue: z.unknown(),
+    baseCurrentValueId: z.string(), sourcePinId: z.string().nullable(), configRevisionId: z.string(),
+    currentlyStale: z.boolean(), expectedEffect: z.literal("preserved-stale"),
+    frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/)
+  }))
+}));
 export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   id: z.string(), projectId: z.string(), candidateId: z.string(),
   batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), cohortCount: z.number().int().positive(),
@@ -1078,19 +1091,7 @@ export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   uploadCandidateId: z.string().nullable(),
   decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
   compositionProof: catalogBatchCompositionProofSchema.nullable(),
-  draftImpact: z.array(catalogObject({
-    ordinal: z.number().int().nonnegative(), bindingId: z.string(),
-    role: closedEnum(["target", "sibling"]), decision: closedEnum(["file", "draft", "re-pin"]),
-    selectedDraftId: z.string().optional(),
-    baseCurrentValueId: z.string(), sourcePinId: z.string(), configRevisionId: z.string(),
-    drafts: z.array(catalogObject({
-      draftId: z.string(), authorUserId: z.string().nullable(), reason: z.string(),
-      action: closedEnum(["set", "delete"]), targetValue: z.unknown(),
-      baseCurrentValueId: z.string(), sourcePinId: z.string().nullable(), configRevisionId: z.string(),
-      currentlyStale: z.boolean(), expectedEffect: z.literal("preserved-stale"),
-      frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/)
-    }))
-  })).nullable(),
+  draftImpact: catalogBatchDraftImpactSchema.nullable(),
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]), reason: z.string(),
   submitterUserId: z.string().nullable(), assignedToUserId: z.string().nullable(),
   reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
@@ -1170,6 +1171,8 @@ const catalogBatchValueChangeSourceDiffSchema = catalogObject({
   batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), format: closedEnum(["json", "dts"]),
   sourceName: z.string(), baseDigest: z.string(), proposedDigest: z.string(), diffDigest: z.string(),
   before: z.string(), after: z.string(), bindings: z.array(catalogValueChangeSourceBindingSchema),
+  uploadAfter: z.string().nullable().optional(),
+  draftImpact: catalogBatchDraftImpactSchema.nullable().optional(),
   targets: z.array(catalogObject({
     ordinal: z.number().int().nonnegative(), bindingId: z.string(), sourcePinId: z.string(),
     action: closedEnum(["set", "delete"]), beforeText: z.string(), afterText: z.string().optional(),

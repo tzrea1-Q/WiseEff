@@ -23,6 +23,8 @@ import { parseDtsValue } from "../../dts";
 import { catalogBatchCompositionProofSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
 import { withCanonicalSourceAttemptTransaction } from "../../parameter-files/canonicalSourceAttemptTransaction";
+import { prepareCanonicalBatchDraftCompositionInTransaction,
+  recheckCanonicalBatchDraftCompositionForReviewInTransaction } from "../../parameter-files/canonicalBatchDraftComposition";
 
 /** D must return this whole-cohort proof under the source lock before C may insert a mixed request. */
 export type CanonicalBatchDraftCompositionProof = Readonly<{
@@ -407,10 +409,34 @@ export async function submitCanonicalBatchValueChange(
       userId: input.assignedToUserId, roleId: "software-committer"
     })) throw new ApiError("VALIDATION_FAILED", "The selected software reviewer is no longer eligible.");
 
-    const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, attempt.objectStore, auth, {
+    // One upload candidate can have only one pending review. Serialize retries
+    // before D may create a second composed object for that same upload.
+    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `${auth.organization.id}:${input.projectId}:batch-upload:${input.candidateId}`
+    ]);
+    const priorRows = await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
+      where organization_id=$1 and project_id=$2 and status='pending'
+        and (candidate_id=$3 or batch_upload_candidate_id=$3) for update`,
+    [auth.organization.id, input.projectId, input.candidateId]);
+    const wantsDraft = input.targetDecisions?.some((decision) => decision.choice === "draft") ?? false;
+    if (wantsDraft && priorRows.rows.length) {
+      const prior = await loadBatchRequest(tx, auth.organization.id, input.projectId, priorRows.rows[0]!.id);
+      if (prior?.compositionProof && prior.uploadCandidateId === input.candidateId
+        && prior.submitterUserId === auth.user.id && prior.assignedToUserId === input.assignedToUserId
+        && prior.reason === reason && prior.compositionProof.uploadObject.proofToken === input.expectedProofToken
+        && prior.compositionProof.targetDecisions.length === input.targetDecisions?.length
+        && prior.compositionProof.targetDecisions.every((decision, ordinal) =>
+          decision.bindingId === input.targetDecisions?.[ordinal]?.bindingId
+          && decision.choice === input.targetDecisions[ordinal]?.choice
+          && (decision.draft?.id ?? undefined) === input.targetDecisions[ordinal]?.draftId)) return prior;
+      throw new ApiError("CONFLICT", "Upload candidate already has a pending review request.");
+    }
+
+    const uploadProof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, attempt.objectStore, auth, {
       projectId: input.projectId, candidateId: input.candidateId,
       expectedProofToken: input.expectedProofToken
     });
+    let proof = uploadProof;
     if (proof.organizationId !== auth.organization.id || proof.projectId !== input.projectId
       || proof.candidateId !== input.candidateId || (proof.format !== "json" && proof.format !== "dts")
       || proof.targets.length < 2 || !/^[0-9a-f]{64}$/.test(proof.batchProofDigest)) {
@@ -418,13 +444,15 @@ export async function submitCanonicalBatchValueChange(
     }
     const candidate = (await tx.query<{
       base_digest: string; proposed_digest: string; diff_digest: string;
+      storage_key: string; checksum: string; size_bytes: number;
       frozen_member_manifest: unknown[]; frozen_binding_manifest: unknown[];
       impact: { canonicalBatchRollback?: {
         historicalVersionId?: string; historicalDigest?: string; historicalSizeBytes?: number;
         expectedCurrentVersionId?: string; expectedWorkflowProofToken?: string;
         candidateProofToken?: string; batchProofDigest?: string;
       } } | null;
-    }>(`select base_digest, proposed_digest, diff_digest,
+    }>(`select base_digest, proposed_digest, diff_digest, storage_key, checksum,
+              size_bytes::float8 as size_bytes,
               frozen_member_manifest, frozen_binding_manifest, impact
          from public.project_parameter_file_candidates
         where id=$1 and organization_id=$2 and project_id=$3 for update`,
@@ -464,11 +492,10 @@ export async function submitCanonicalBatchValueChange(
       }
       decisions.set(decision.bindingId, decision);
     }
-    // D's whole-batch composer is not installed. Do not materialize a mixed
-    // object or request until that composer can prove the entire ordered cohort.
-    if ([...decisions.values()].some((decision) => decision.choice === "draft")) {
-      throw new ApiError("CONFLICT", "A mixed draft and file batch needs a whole-cohort composition proof.", {
-        reason: "canonical-batch-draft-composition-unavailable"
+    if (wantsDraft && (input.targetDecisions?.length !== proof.targets.length
+      || input.targetDecisions.some((decision, ordinal) => decision.bindingId !== proof.targets[ordinal]?.bindingId))) {
+      throw new ApiError("CONFLICT", "Mixed batch decisions must include every target in source order.", {
+        reason: "canonical-batch-target-decision-required"
       });
     }
     const orderedDecisions = proof.targets.map((target) =>
@@ -477,12 +504,100 @@ export async function submitCanonicalBatchValueChange(
       await captureCanonicalBatchDraftImpactInTransaction(tx, auth, input.projectId, proof, orderedDecisions);
     for (const target of impact.filter((item) => item.role === "target")) {
       const decision = decisions.get(target.bindingId);
-      if (decision?.draftId || (target.drafts.some((draft) => !draft.currentlyStale)
-        && decision?.choice !== "file" && !reviewedHistoricalFileChoice)) {
+      if ((decision?.choice !== "draft" && decision?.draftId) || (target.drafts.some((draft) => !draft.currentlyStale)
+        && decision?.choice !== "file" && decision?.choice !== "draft" && !reviewedHistoricalFileChoice)) {
         throw new ApiError("CONFLICT", "A changed target with drafts needs an explicit file decision.", {
           reason: "canonical-batch-target-decision-required", bindingId: target.bindingId
         });
       }
+    }
+    let compositionProof: CanonicalBatchDraftCompositionProof | null = null;
+    let frozenCandidate = candidate;
+    if (wantsDraft) {
+      const prepared = await prepareCanonicalBatchDraftCompositionInTransaction(tx, attempt.objectStore, auth, {
+        projectId: input.projectId, uploadCandidateId: uploadProof.candidateId,
+        expectedUploadProofToken: uploadProof.proofToken, targetDecisions: orderedDecisions,
+        draftImpactDigest: impactDigest, requestId: input.requestId
+      });
+      const facts = prepared.compositionProof;
+      const composed = prepared.candidate;
+      if (facts.kind !== "canonical-batch-draft-composition"
+        || facts.organizationId !== auth.organization.id || facts.projectId !== input.projectId
+        || facts.format !== uploadProof.format || facts.fileId !== uploadProof.fileId
+        || facts.baseVersionId !== uploadProof.baseVersionId
+        || facts.configSetId !== uploadProof.configSetId
+        || facts.cohortProofToken !== uploadProof.cohortProofToken
+        || facts.uploadCandidateId !== uploadProof.candidateId || facts.composedCandidateId !== composed.candidateId
+        || facts.uploadObject.proofToken !== uploadProof.proofToken
+        || facts.uploadObject.storageKey !== candidate.storage_key
+        || facts.uploadObject.sha256 !== uploadProof.proposedDigest
+        || facts.uploadObject.sha256 !== candidate.checksum.replace(/^sha256:/, "")
+        || facts.uploadObject.sizeBytes !== candidate.size_bytes
+        || facts.composedObject.proofToken !== composed.proofToken
+        || facts.composedObject.sha256 !== composed.proposedDigest
+        || facts.batchProofDigest !== composed.batchProofDigest
+        || facts.draftImpactDigest !== impactDigest
+        || composed.fileId !== uploadProof.fileId || composed.baseVersionId !== uploadProof.baseVersionId
+        || composed.configSetId !== uploadProof.configSetId || composed.format !== uploadProof.format
+        || composed.cohortProofToken !== uploadProof.cohortProofToken
+        || serializeContract(composed.members) !== serializeContract(uploadProof.members)
+        || serializeContract(composed.cohort) !== serializeContract(uploadProof.cohort)
+        || serializeContract(facts.members) !== serializeContract(uploadProof.members)
+        || serializeContract(facts.cohort) !== serializeContract(uploadProof.cohort)
+        || facts.targetDecisions.length !== uploadProof.targets.length
+        || facts.targetDecisions.some((choice, ordinal) => {
+          const original = uploadProof.targets[ordinal];
+          const final = composed.targets[ordinal];
+          const expected = orderedDecisions[ordinal];
+          const selected = impact.find((entry) => entry.bindingId === choice.bindingId)?.drafts
+            .find((entry) => entry.draftId === choice.draft?.id);
+          return !original || !final || !expected || choice.ordinal !== ordinal
+            || choice.bindingId !== original.bindingId || choice.bindingId !== final.bindingId
+            || choice.choice !== expected.choice || (choice.draft?.id ?? undefined) !== expected.draftId
+            || choice.action !== final.action || choice.targetText !== (final.targetText ?? null)
+            || (choice.choice === "file" && (choice.action !== original.action
+              || choice.targetText !== (original.targetText ?? null)
+              || serializeContract(choice.targetValue) !== serializeContract((
+                original.action === "delete" ? "" : uploadProof.format === "dts"
+                  ? parseDtsValue(original.locator.propertyName as string, original.targetText!).value
+                  : { kind: "json-source", value: parseJsonSource(original.targetText ?? "") }) as ContractJsonValue)))
+            || serializeContract(choice.locator) !== serializeContract(original.locator)
+            || serializeContract(choice.locator) !== serializeContract(final.locator)
+            || (choice.choice === "file" && choice.draft !== null)
+            || (choice.choice === "draft" && (!choice.draft || !selected
+              || choice.draft.authorUserId !== selected.authorUserId
+              || choice.draft.frozenFingerprint !== selected.frozenFingerprint
+              || choice.draft.baseCurrentValueId !== selected.baseCurrentValueId
+              || choice.draft.sourcePinId !== selected.sourcePinId
+              || choice.draft.configRevisionId !== selected.configRevisionId
+              || serializeContract(choice.targetValue) !== serializeContract(selected.targetValue)));
+        })) {
+        throw new ApiError("CONFLICT", "Composed batch disagrees with the frozen upload and decisions.", {
+          reason: "canonical-batch-proof-mismatch"
+        });
+      }
+      proof = composed;
+      compositionProof = { ...facts,
+        decisionProofDigest: digestCanonicalBatchDraftCompositionProof(facts) };
+      const finalCandidate = (await tx.query<typeof candidate>(`select base_digest, proposed_digest,
+        diff_digest, storage_key, checksum, size_bytes::float8 as size_bytes,
+        frozen_member_manifest, frozen_binding_manifest, impact
+        from public.project_parameter_file_candidates
+        where id=$1 and organization_id=$2 and project_id=$3 for update`,
+      [proof.candidateId, auth.organization.id, input.projectId])).rows[0];
+      if (!finalCandidate || finalCandidate.storage_key !== facts.composedObject.storageKey
+        || finalCandidate.checksum.replace(/^sha256:/, "") !== facts.composedObject.sha256
+        || finalCandidate.size_bytes !== facts.composedObject.sizeBytes
+        || finalCandidate.base_digest !== proof.baseDigest
+        || finalCandidate.proposed_digest !== proof.proposedDigest
+        || finalCandidate.diff_digest !== proof.batchProofDigest
+        || serializeContract(finalCandidate.frozen_member_manifest as ContractJsonValue) !== serializeContract(proof.members)
+        || serializeContract(finalCandidate.frozen_binding_manifest as ContractJsonValue) !== serializeContract(proof.cohort)) {
+        throw new ApiError("CONFLICT", "Composed candidate snapshot disagrees with the frozen proof.", {
+          reason: "canonical-batch-proof-mismatch"
+        });
+      }
+      frozenCandidate = finalCandidate;
     }
     const pending = await tx.query<{ id: string }>(`select id from public.project_parameter_value_change_requests
       where candidate_id=$1 and organization_id=$2 and project_id=$3 and status='pending' for update`,
@@ -493,7 +608,7 @@ export async function submitCanonicalBatchValueChange(
         && prior.reason === reason && prior.batchProofDigest === proof.batchProofDigest
         && prior.sourceProofToken === proof.proofToken && prior.targets.length === proof.targets.length
         && prior.draftImpactDigest === impactDigest
-        && prior.targets.every((target) => target.draftId === null)) return prior;
+        && prior.targets.every((target) => target.draftId === null) && !compositionProof) return prior;
       throw new ApiError("CONFLICT", "Candidate already has a pending review request.");
     }
     const bases = await tx.query<{
@@ -521,16 +636,20 @@ export async function submitCanonicalBatchValueChange(
       candidate_member_manifest, candidate_binding_manifest, batch_proof_digest,
       batch_target_count, batch_source_proof_token, batch_cohort_proof_token,
       batch_file_id, batch_base_version_id, batch_config_set_id, batch_cohort_count,
-      batch_draft_impact, batch_draft_impact_digest
+      batch_draft_impact, batch_draft_impact_digest,
+      batch_upload_candidate_id, batch_composition_proof, batch_decision_proof_digest
     ) values ($1,$2,$3,'batch',$4,'pending',$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,
-              $13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22)`, [
+              $13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22,$23,$24::jsonb,$25)`, [
       requestId, auth.organization.id, input.projectId, reason, auth.user.id,
-      input.assignedToUserId, proof.candidateId, candidate.base_digest,
-      candidate.proposed_digest, candidate.diff_digest,
-      JSON.stringify(candidate.frozen_member_manifest), JSON.stringify(candidate.frozen_binding_manifest),
+      input.assignedToUserId, proof.candidateId, frozenCandidate.base_digest,
+      frozenCandidate.proposed_digest, frozenCandidate.diff_digest,
+      JSON.stringify(frozenCandidate.frozen_member_manifest), JSON.stringify(frozenCandidate.frozen_binding_manifest),
       proof.batchProofDigest, proof.targets.length, proof.proofToken,
       proof.cohortProofToken, proof.fileId, proof.baseVersionId, proof.configSetId,
-      proof.cohort.length, JSON.stringify(impact), impactDigest
+      proof.cohort.length, JSON.stringify(impact), impactDigest,
+      compositionProof ? uploadProof.candidateId : null,
+      compositionProof ? JSON.stringify(compositionProof) : null,
+      compositionProof?.decisionProofDigest ?? null
     ]);
 
     for (const [ordinal, target] of proof.targets.entries()) {
@@ -556,10 +675,10 @@ export async function submitCanonicalBatchValueChange(
         || (target.action === "delete" && target.targetText !== undefined))) {
         throw new ApiError("CONFLICT", "DTS batch target has no exact property locator.");
       }
-      const targetValue = target.action === "delete" ? ""
+      const targetValue = compositionProof?.targetDecisions[ordinal]?.targetValue ?? (target.action === "delete" ? ""
         : proof.format === "dts"
           ? parseDtsValue(target.locator.propertyName as string, target.targetText!).value
-          : { kind: "json-source", value: parseJsonSource(target.targetText ?? "") };
+          : { kind: "json-source", value: parseJsonSource(target.targetText ?? "") });
       await tx.query(`insert into public.project_parameter_value_change_targets (
         id, request_id, organization_id, project_id, ordinal, draft_id, binding_id,
         definition_id, definition_revision_id, catalog_release_id,
@@ -567,7 +686,8 @@ export async function submitCanonicalBatchValueChange(
         action, target_value, target_text, base_digest, proposed_digest
       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19)`, [
         `pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId,
-        ordinal, null, target.bindingId, base.definition_id,
+        ordinal, compositionProof?.targetDecisions[ordinal]?.draft?.id ?? null,
+        target.bindingId, base.definition_id,
         base.effective_revision_id, base.catalog_release_id, base.current_value_id,
         base.config_revision_id, base.source_ref, base.source_pin_id,
         target.action, JSON.stringify(targetValue), target.targetText ?? null,
@@ -581,6 +701,8 @@ export async function submitCanonicalBatchValueChange(
       projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: requestId,
       metadata: { requestId, requestKind: "batch", candidateId: proof.candidateId,
         batchProofDigest: proof.batchProofDigest, draftImpactDigest: impactDigest,
+        ...(compositionProof ? { uploadCandidateId: uploadProof.candidateId,
+          decisionProofDigest: compositionProof.decisionProofDigest } : {}),
         targetCount: proof.targets.length, affectedDraftCount: impact.reduce((count, item) => count + item.drafts.length, 0) }
     }, input.requestId);
     return frozen;
@@ -817,10 +939,10 @@ export async function approveCanonicalBatchValueChange(
       });
     }
   }
-  // The D whole-batch composition writer does not exist yet. An old or manually
-  // inserted mixed row must never fall through to the file-only atomic writer.
-  if (frozen.status === "pending" && (frozen.compositionProof || frozen.uploadCandidateId
-    || frozen.decisionProofDigest || frozen.targets.some((target) => target.draftId !== null))) {
+  // A partial or legacy draft row cannot fall through to the file-only writer.
+  if (frozen.status === "pending" && !frozen.compositionProof
+    && (frozen.uploadCandidateId || frozen.decisionProofDigest
+      || frozen.targets.some((target) => target.draftId !== null))) {
     throw new ApiError("CONFLICT", "A mixed draft and file batch needs a whole-cohort composition proof.", {
       reason: "canonical-batch-draft-composition-unavailable"
     });
@@ -830,16 +952,21 @@ export async function approveCanonicalBatchValueChange(
       reason: "canonical-batch-draft-impact-missing"
     });
   }
-  if (input.draftImpactDigest && input.draftImpactDigest !== frozen.draftImpactDigest) {
+  if ((frozen.compositionProof && !input.draftImpactDigest)
+    || (input.draftImpactDigest && input.draftImpactDigest !== frozen.draftImpactDigest)) {
     throw new ApiError("CONFLICT", "Canonical batch draft impact proof disagrees with the frozen request.", {
       reason: "canonical-batch-draft-impact-mismatch"
     });
   }
   if (frozen.status === "pending") {
-    const proof = await recheckCanonicalCandidateBatchForReviewInTransaction(tx, objectStore, auth, {
-      projectId: input.projectId, candidateId: frozen.candidateId,
-      expectedProofToken: frozen.sourceProofToken
-    });
+    const proof = frozen.compositionProof
+      ? await recheckCanonicalBatchDraftCompositionForReviewInTransaction(tx, objectStore, auth, {
+        projectId: input.projectId, compositionProof: frozen.compositionProof
+      })
+      : await recheckCanonicalCandidateBatchForReviewInTransaction(tx, objectStore, auth, {
+        projectId: input.projectId, candidateId: frozen.candidateId,
+        expectedProofToken: frozen.sourceProofToken
+      });
     if (proof.batchProofDigest !== frozen.batchProofDigest || proof.cohort.length !== frozen.cohortCount) {
       throw new ApiError("CONFLICT", "Canonical batch source proof changed before draft recheck.");
     }

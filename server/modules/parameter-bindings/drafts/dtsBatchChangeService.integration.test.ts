@@ -216,7 +216,7 @@ describe("#906 C canonical DTS batch HTTP review", () => {
         targetDecisions: [{ bindingId: target, choice: "draft", draftId: "unsupported-mixed-draft" }] })
     });
     expect(unsupported).toMatchObject({ status: 409, body: { error: {
-      details: { reason: "canonical-batch-draft-composition-unavailable" } } } });
+      details: { reason: "canonical-batch-target-decision-required" } } } });
     const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
       draftImpactDigest: string; uploadCandidateId: string | null; compositionProof: unknown;
       decisionProofDigest: string | null;
