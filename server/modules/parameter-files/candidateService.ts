@@ -118,12 +118,14 @@ async function assertNoCanonicalWorkflowMutation(
 ) {
   const linkedRequestId = candidate.impact?.canonicalSourceWorkflow?.requestId;
   const result = await db.query<{ id: string; status: string }>(
-    `select id
+    `select id, status
        from project_parameter_value_change_requests
       where organization_id = $1
         and project_id = $2
         and status not in ('rejected', 'withdrawn')
-        and (candidate_id = $3 or ($4::text is not null and id = $4))
+        and (candidate_id = $3 or batch_upload_candidate_id = $3
+          or ($4::text is not null and id = $4))
+      order by (status <> 'pending')
       limit 1`,
     [organizationId, projectId, candidate.id, linkedRequestId ?? null]
   );

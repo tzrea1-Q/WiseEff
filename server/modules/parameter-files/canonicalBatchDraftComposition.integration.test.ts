@@ -9,12 +9,18 @@ import { captureConfigurationSourceState, installConfigurationSourceFixture } fr
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import type { Database } from "../../shared/database/client";
+import { createRouter } from "../../shared/http/router";
+import { createHttpServer } from "../../shared/http/server";
+import { requestJson } from "../../test/testClient";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
 import { uploadProjectParameterFile } from "./service";
-import { createCandidate } from "./candidateService";
+import { abandonCandidate, createCandidate, recomputeCandidateImpact } from "./candidateService";
+import { registerParameterFileRoutes } from "./routes";
+import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { previewCanonicalCandidate, freezeCanonicalCandidateBatchSnapshotInTransaction } from "./canonicalFileWorkflow";
 import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptTransaction";
 import { commitCanonicalSourceBatchRevision } from "./canonicalSourceBatchCommit";
@@ -51,6 +57,9 @@ const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
 const author = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit"],
   roles: [{ roleId: "software-user", projectId: PROJECT }] });
+const foreignAdmin = makeTestAuthContext({ userId: "foreign-guard-admin", organizationId: "foreign-guard-org",
+  permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
+  roles: [{ roleId: "admin", projectId: null }] });
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 const cleanups: Array<() => Promise<void>> = [];
@@ -143,6 +152,166 @@ async function fixture(format: "json" | "dts") {
   return { format, db, storage, directory, upload, preview, draft, first, frozen, targetDecisions, impact,
     fileId: uploaded.file.id };
 }
+
+function route(f: Fixture, auth = admin) {
+  const router = createRouter();
+  const options = { db: f.db, objectStore: f.storage, getCurrentAuthContext: () => auth };
+  registerParameterFileRoutes(router, options);
+  registerCatalogProjectValueConsumerRoutes(router, options);
+  return createHttpServer(router);
+}
+
+describe("#906 pending mixed request protects both source candidates over HTTP", () => {
+  for (const format of ["json", "dts"] as const) {
+    for (const action of ["recompute", "abandon"] as const) {
+      it(`${format} rejects ${action} of the uploaded candidate and still approves the whole cohort`, async () => {
+        const f = await fixture(format);
+        const submitted = await requestJson<{ item: { id: string; status: string; candidateId: string;
+          batchProofDigest: string; draftImpactDigest: string; decisionProofDigest: string } }>(route(f),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+            method: "POST", headers: { "X-Request-Id": `d906-guard-${format}-${action}` },
+            body: JSON.stringify({ candidateId: f.upload.id, expectedProofToken: f.preview.proofToken,
+              reason: "Protect both mixed source candidates", assignedToUserId: REVIEWER,
+              targetDecisions: f.targetDecisions })
+          });
+        expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+        const request = submitted.body.item;
+        const requestPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${request.id}`;
+        const rows = (await f.db.query<{ status: string; candidate_id: string; batch_upload_candidate_id: string }>(
+          `select status,candidate_id,batch_upload_candidate_id from project_parameter_value_change_requests where id=$1`,
+          [request.id])).rows;
+        expect(rows).toEqual([{ status: "pending", candidate_id: request.candidateId,
+          batch_upload_candidate_id: f.upload.id }]);
+        const sourceBefore = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+        const objectBefore = await objectBytes(f.directory);
+        const candidateBefore = (await f.db.query<{ upload: unknown; composed: unknown }>(
+          `select (select to_jsonb(candidate) from project_parameter_file_candidates candidate where id=$1) as upload,
+                  (select to_jsonb(candidate) from project_parameter_file_candidates candidate where id=$2) as composed`,
+          [f.upload.id, request.candidateId])).rows[0]!;
+        for (const candidateId of [f.upload.id, request.candidateId]) {
+          const foreign = await requestJson(route(f, foreignAdmin),
+            `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/${action}`, { method: "POST" });
+          expect(foreign.status).toBe(404);
+        }
+        const composed = await requestJson(route(f),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${request.candidateId}/${action}`, { method: "POST" });
+        expect(composed).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "canonical-source-review-pending" } } } });
+        const mutation = await requestJson(route(f),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/${action}`, { method: "POST" });
+        const retry = await requestJson(route(f),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/${action}`, { method: "POST" });
+        const candidateAfter = (await f.db.query<{ upload: unknown; composed: unknown }>(
+          `select (select to_jsonb(candidate) from project_parameter_file_candidates candidate where id=$1) as upload,
+                  (select to_jsonb(candidate) from project_parameter_file_candidates candidate where id=$2) as composed`,
+          [f.upload.id, request.candidateId])).rows[0]!;
+        const pending = (await f.db.query<{ status: string }>(
+          "select status from project_parameter_value_change_requests where id=$1", [request.id])).rows[0]!.status;
+        expect(pending).toBe("pending");
+        expect(candidateAfter).toEqual(candidateBefore);
+        expect(await objectBytes(f.directory)).toEqual(objectBefore);
+        expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT }))
+          .toEqual(sourceBefore);
+        const diff = await requestJson(route(f, reviewer), `${requestPath}/source-diff`);
+        const review = await requestJson(route(f, reviewer), `${requestPath}/review`, {
+          method: "POST", body: JSON.stringify({ decision: "approve",
+            batchProofDigest: request.batchProofDigest, draftImpactDigest: request.draftImpactDigest,
+            decisionProofDigest: request.decisionProofDigest })
+        });
+        expect(mutation).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "canonical-source-review-pending" } } } });
+        expect(retry).toEqual(mutation);
+        expect(diff.status).toBe(200);
+        expect(review).toMatchObject({ status: 200, body: { item: { status: "approved" } } });
+        const sourceAfter = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+        expect(sourceAfter.values).toHaveLength(sourceBefore.values.length + 3);
+        expect(sourceAfter.pins).toHaveLength(sourceBefore.pins.length + 3);
+        expect(sourceAfter.history).toHaveLength(sourceBefore.history.length + 3);
+        expect(sourceAfter.versions).toHaveLength(sourceBefore.versions.length + 1);
+        const linked = await requestJson(route(f),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/${action}`, { method: "POST" });
+        expect(linked).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "canonical-source-review-linked" } } } });
+      }, 120_000);
+    }
+  }
+});
+
+describe("#906 candidate guard keeps terminal and unlinked candidates mutable", () => {
+  for (const format of ["json", "dts"] as const) {
+    it(`${format} still permits an unlinked candidate to recompute and abandon`, async () => {
+      const f = await fixture(format);
+      expect((await requestJson(route(f),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/recompute`,
+        { method: "POST" })).status).toBe(200);
+      expect((await requestJson(route(f),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/abandon`,
+        { method: "POST" })).status).toBe(200);
+    }, 120_000);
+
+    for (const status of ["rejected", "withdrawn"] as const) {
+      it(`${format} permits recompute and abandon after ${status}`, async () => {
+        const f = await fixture(format);
+        const submitted = await requestJson<{ item: { id: string } }>(route(f),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+            method: "POST", headers: { "X-Request-Id": `d906-terminal-${format}-${status}` },
+            body: JSON.stringify({ candidateId: f.upload.id, expectedProofToken: f.preview.proofToken,
+              reason: "Terminal request guard", assignedToUserId: REVIEWER,
+              targetDecisions: f.targetDecisions })
+          });
+        expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+        await f.db.query("update project_parameter_value_change_requests set status=$1 where id=$2",
+          [status, submitted.body.item.id]);
+        expect((await requestJson(route(f),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/recompute`,
+          { method: "POST" })).status).toBe(200);
+        expect((await requestJson(route(f),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/abandon`,
+          { method: "POST" })).status).toBe(200);
+      }, 120_000);
+    }
+
+    it(`${format} rechecks the request link after taking the candidate lock`, async () => {
+      const f = await fixture(format);
+      const submitted = await requestJson<{ item: { id: string } }>(route(f),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+          method: "POST", headers: { "X-Request-Id": `d906-lock-${format}` },
+          body: JSON.stringify({ candidateId: f.upload.id, expectedProofToken: f.preview.proofToken,
+            reason: "Candidate lock guard", assignedToUserId: REVIEWER,
+            targetDecisions: f.targetDecisions })
+        });
+      expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+      await f.db.query("update project_parameter_value_change_requests set status='withdrawn' where id=$1",
+        [submitted.body.item.id]);
+      const before = await objectBytes(f.directory);
+      const candidateBefore = (await f.db.query<{ snapshot: unknown }>(
+        "select to_jsonb(candidate) as snapshot from project_parameter_file_candidates candidate where id=$1",
+        [f.upload.id])).rows[0]!.snapshot;
+      const raced: Database = { query: f.db.query,
+        transaction: async (run) => {
+          await f.db.query("update project_parameter_value_change_requests set status='pending' where id=$1",
+            [submitted.body.item.id]);
+          return f.db.transaction(run);
+        } };
+      for (const action of ["recompute", "abandon"] as const) {
+        await f.db.query("update project_parameter_value_change_requests set status='withdrawn' where id=$1",
+          [submitted.body.item.id]);
+        await expect(action === "recompute"
+          ? recomputeCandidateImpact(raced, f.storage, admin, { projectId: PROJECT, candidateId: f.upload.id })
+          : abandonCandidate(raced, admin, { projectId: PROJECT, candidateId: f.upload.id }))
+          .rejects.toMatchObject({ code: "CONFLICT",
+            details: { reason: "canonical-source-review-pending" } });
+        expect((await f.db.query<{ status: string }>(
+          "select status from project_parameter_value_change_requests where id=$1",
+          [submitted.body.item.id])).rows[0]!.status).toBe("pending");
+        expect((await f.db.query<{ snapshot: unknown }>(
+          "select to_jsonb(candidate) as snapshot from project_parameter_file_candidates candidate where id=$1",
+          [f.upload.id])).rows[0]!.snapshot).toEqual(candidateBefore);
+        expect(await objectBytes(f.directory)).toEqual(before);
+      }
+    }, 120_000);
+  }
+});
 
 describe("#906 D whole-cohort draft and file composition", () => {
   for (const format of ["json", "dts"] as const) {
