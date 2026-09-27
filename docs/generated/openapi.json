@@ -21793,6 +21793,9 @@
                         "re-pin"
                       ]
                     },
+                    "selectedDraftId": {
+                      "type": "string"
+                    },
                     "baseCurrentValueId": {
                       "type": "string"
                     },
@@ -22569,6 +22572,9 @@
                           "draft",
                           "re-pin"
                         ]
+                      },
+                      "selectedDraftId": {
+                        "type": "string"
                       },
                       "baseCurrentValueId": {
                         "type": "string"
@@ -23484,6 +23490,9 @@
                             "draft",
                             "re-pin"
                           ]
+                        },
+                        "selectedDraftId": {
+                          "type": "string"
                         },
                         "baseCurrentValueId": {
                           "type": "string"
@@ -24609,6 +24618,9 @@
                             "draft",
                             "re-pin"
                           ]
+                        },
+                        "selectedDraftId": {
+                          "type": "string"
                         },
                         "baseCurrentValueId": {
                           "type": "string"

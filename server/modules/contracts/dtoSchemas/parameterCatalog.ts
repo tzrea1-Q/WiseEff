@@ -1081,6 +1081,7 @@ export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   draftImpact: z.array(catalogObject({
     ordinal: z.number().int().nonnegative(), bindingId: z.string(),
     role: closedEnum(["target", "sibling"]), decision: closedEnum(["file", "draft", "re-pin"]),
+    selectedDraftId: z.string().optional(),
     baseCurrentValueId: z.string(), sourcePinId: z.string(), configRevisionId: z.string(),
     drafts: z.array(catalogObject({
       draftId: z.string(), authorUserId: z.string().nullable(), reason: z.string(),

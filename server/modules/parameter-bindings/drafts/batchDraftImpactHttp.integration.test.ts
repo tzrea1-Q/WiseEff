@@ -16,12 +16,13 @@ import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createConfigSet, addConfigSetFile } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { createCandidate } from "../../parameter-files/candidateService";
-import { previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
 import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
 import { loadPublishedCatalog } from "../catalogProjectValueSync";
 import { loadLegacyBindingIdentity } from "../binding/migrationAdapter";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
 import { createCanonicalValueDraft, removeCanonicalValueDraft } from "./service";
+import { captureCanonicalBatchDraftImpactInTransaction } from "./batchChangeService";
 import { catalogBatchValueChangeRequestResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 
 const ORG = "org-906-c-impact-json";
@@ -140,6 +141,24 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     const sibling = bindings.find((id) => !preview.bindings!.some((entry) => entry.bindingId === id))!;
     const firstDraft = await draft(target);
     const siblingDraft = await draft(sibling);
+    const captureFor = (choice: "file" | "draft") => db.transaction(async (tx) => {
+      const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+        projectId: PROJECT, candidateId: item.id, expectedProofToken: preview.proofToken
+      });
+      return captureCanonicalBatchDraftImpactInTransaction(tx, admin, PROJECT, proof,
+        proof.targets.map((entry) => entry.bindingId === target
+          ? { bindingId: entry.bindingId, choice, ...(choice === "draft" ? { draftId: firstDraft.id } : {}) }
+          : { bindingId: entry.bindingId, choice: "file" as const }));
+    });
+    const draftChoice = await captureFor("draft");
+    const fileChoice = await captureFor("file");
+    expect(draftChoice.draftImpact.find((entry) => entry.bindingId === target))
+      .toMatchObject({ role: "target", decision: "draft", selectedDraftId: firstDraft.id });
+    expect(draftChoice.draftImpact.find((entry) => entry.bindingId === sibling))
+      .toMatchObject({ role: "sibling", decision: "re-pin" });
+    expect(draftChoice.draftImpact.filter((entry) => entry.role === "target").map((entry) => entry.decision))
+      .toEqual(["draft", "file"]);
+    expect(draftChoice.draftImpactDigest).not.toBe(fileChoice.draftImpactDigest);
     const body = { candidateId: item.id, expectedProofToken: preview.proofToken,
       reason: "One cohort review", assignedToUserId: REVIEWER };
     const submitPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;

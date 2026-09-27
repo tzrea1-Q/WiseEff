@@ -21,10 +21,11 @@ import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, 
 import { loadLegacyBindingIdentity } from "../binding/migrationAdapter";
 import { createConfigSet, addConfigSetFile } from "../../parameter-files/configSetService";
 import { createCandidate } from "../../parameter-files/candidateService";
-import { previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
 import { createCanonicalValueDraft } from "./service";
+import { captureCanonicalBatchDraftImpactInTransaction } from "./batchChangeService";
 import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 
 const ORG = "org-906-c-dts-batch";
@@ -164,6 +165,7 @@ describe("#906 C canonical DTS batch HTTP review", () => {
     const sibling = bindingIds.find((id) => !preview.bindings?.some((change) => change.bindingId === id));
     expect(target).toBeTruthy();
     expect(sibling).toBeTruthy();
+    let selectedDraftId = "";
     for (const bindingId of [target!, sibling!]) {
       const pin = (await db.query<{ config_revision_id: string; project_value_id: string }>(`
         select pin.config_revision_id,pin.project_value_id
@@ -171,13 +173,30 @@ describe("#906 C canonical DTS batch HTTP review", () => {
           join parameter_catalog.project_parameter_bindings binding
             on binding.id=pin.binding_id and binding.current_value_id=pin.project_value_id
          where pin.binding_id=$1`, [bindingId])).rows[0]!;
-      await createCanonicalValueDraft(db, otherReviewer, {
+      const created = await createCanonicalValueDraft(db, otherReviewer, {
         projectId: PROJECT, bindingId, targetValue: parseDtsValue("iin_max", "<88>").value,
         reason: "Competing author draft", baseRevisionId: pin.config_revision_id,
         baseCurrentValueId: pin.project_value_id
       }, { objectStore: storage, invocation: createUserInvocation(otherReviewer),
         requestId: `c906-draft-${bindingId}`, refusalSink: createTrustedRefusalAuditSink(db) });
+      if (bindingId === target) selectedDraftId = created.id;
     }
+    const captureFor = (choice: "file" | "draft") => db.transaction(async (tx) => {
+      const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+        projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken
+      });
+      return captureCanonicalBatchDraftImpactInTransaction(tx, admin, PROJECT, proof,
+        proof.targets.map((entry) => entry.bindingId === target
+          ? { bindingId: entry.bindingId, choice, ...(choice === "draft" ? { draftId: selectedDraftId } : {}) }
+          : { bindingId: entry.bindingId, choice: "file" as const }));
+    });
+    const draftChoice = await captureFor("draft");
+    const fileChoice = await captureFor("file");
+    expect(draftChoice.draftImpact.find((entry) => entry.bindingId === target))
+      .toMatchObject({ role: "target", decision: "draft", selectedDraftId });
+    expect(draftChoice.draftImpact.find((entry) => entry.bindingId === sibling))
+      .toMatchObject({ role: "sibling", decision: "re-pin" });
+    expect(draftChoice.draftImpactDigest).not.toBe(fileChoice.draftImpactDigest);
     const submitPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
     const body = { candidateId: candidate.id, expectedProofToken: preview.proofToken,
       reason: "Review competing drafts", assignedToUserId: REVIEWER };

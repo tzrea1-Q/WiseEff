@@ -22,6 +22,7 @@ import { parseJsonSource } from "../../parameter-files/jsonSource";
 import { parseDtsValue } from "../../dts";
 import { catalogBatchCompositionProofSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
+import { withCanonicalSourceAttemptTransaction } from "../../parameter-files/canonicalSourceAttemptTransaction";
 
 /** D must return this whole-cohort proof under the source lock before C may insert a mixed request. */
 export type CanonicalBatchDraftCompositionProof = Readonly<{
@@ -104,6 +105,7 @@ type BatchDraftImpact = {
   bindingId: string;
   role: "target" | "sibling";
   decision: "file" | "draft" | "re-pin";
+  selectedDraftId?: string;
   baseCurrentValueId: string;
   sourcePinId: string;
   configRevisionId: string;
@@ -126,10 +128,36 @@ function digestImpact(impact: BatchDraftImpact[]): string {
   return createHash("sha256").update(serializeContract(impact as ContractJsonValue)).digest("hex");
 }
 
+export type CanonicalBatchTargetDecision = Readonly<{
+  bindingId: string;
+  choice: "file" | "draft";
+  draftId?: string;
+}>;
+
+/** C computes draftImpactDigest under the source lock; D carries it into its proof. */
+export type CanonicalBatchDraftCompositionPrepareInput = Readonly<{
+  projectId: string;
+  uploadCandidateId: string;
+  expectedUploadProofToken: string;
+  targetDecisions: readonly CanonicalBatchTargetDecision[];
+  draftImpactDigest: string;
+  requestId: string;
+}>;
+
 /** Called only after D has locked the exact source cohort in this transaction. */
-async function captureBatchDraftImpact(
-  tx: Database, auth: AuthContext, projectId: string, proof: CanonicalSourceBatchPrepareDto
-): Promise<BatchDraftImpact[]> {
+export async function captureCanonicalBatchDraftImpactInTransaction(
+  tx: Database, auth: AuthContext, projectId: string, proof: CanonicalSourceBatchPrepareDto,
+  targetDecisions: readonly CanonicalBatchTargetDecision[]
+): Promise<{ draftImpact: BatchDraftImpact[]; draftImpactDigest: string }> {
+  if (new Set(proof.targets.map((target) => target.bindingId)).size !== proof.targets.length
+    || targetDecisions.length !== proof.targets.length || targetDecisions.some((decision, ordinal) =>
+    decision.bindingId !== proof.targets[ordinal]?.bindingId
+    || (decision.choice !== "file" && decision.choice !== "draft")
+    || (decision.choice === "draft" ? !decision.draftId?.trim() : decision.draftId !== undefined))) {
+    throw new ApiError("CONFLICT", "Batch draft decisions must match every changed target in source order.", {
+      reason: "canonical-batch-proof-mismatch"
+    });
+  }
   const bindingIds = proof.cohort.map((entry) => entry.bindingId);
   if (new Set(bindingIds).size !== bindingIds.length || bindingIds.length < proof.targets.length) {
     throw new ApiError("CONFLICT", "Batch cohort has duplicate or missing Bindings.");
@@ -152,34 +180,44 @@ async function captureBatchDraftImpact(
      where draft.organization_id=$1 and draft.project_id=$2
        and draft.binding_id=any($3::text[])
      order by draft.binding_id,draft.id for update`, [auth.organization.id, projectId, bindingIds]);
-  const targetIds = new Set(proof.targets.map((target) => target.bindingId));
-  return proof.cohort.map((entry, ordinal) => {
+  const decisionsByBinding = new Map(targetDecisions.map((decision) => [decision.bindingId, decision]));
+  const draftImpact = proof.cohort.map((entry, ordinal) => {
     const base = bases.get(entry.bindingId);
     if (!base || base.current_value_id !== entry.oldValueId || base.source_pin_id !== entry.sourcePinId) {
       throw new ApiError("CONFLICT", "Batch cohort base changed during draft inspection.");
     }
+    const decision = decisionsByBinding.get(entry.bindingId);
+    const entryDrafts = drafts.rows.filter(({ snapshot }) => snapshot.binding_id === entry.bindingId).map(({ snapshot }) => ({
+      draftId: String(snapshot.id), authorUserId: snapshot.user_id === null ? null : String(snapshot.user_id),
+      reason: String(snapshot.reason), action: snapshot.action as "set" | "delete",
+      targetValue: snapshot.target_value as ContractJsonValue,
+      baseCurrentValueId: String(snapshot.base_current_value_id),
+      sourcePinId: snapshot.source_pin_id === null ? null : String(snapshot.source_pin_id),
+      configRevisionId: String(snapshot.config_revision_id),
+      currentlyStale: snapshot.base_current_value_id !== base.current_value_id
+        || snapshot.source_pin_id !== base.source_pin_id
+        || snapshot.config_revision_id !== base.config_revision_id,
+      expectedEffect: "preserved-stale" as const,
+      frozenFingerprint: createHash("sha256")
+        .update(serializeContract(snapshot as ContractJsonValue)).digest("hex")
+    }));
+    if (decision?.choice === "draft" && !entryDrafts.some((draft) =>
+      draft.draftId === decision.draftId && !draft.currentlyStale)) {
+      throw new ApiError("CONFLICT", "Selected batch draft is missing or no longer based on the source tip.", {
+        reason: "canonical-batch-draft-impact-stale", bindingId: entry.bindingId
+      });
+    }
     return {
       ordinal, bindingId: entry.bindingId,
-      role: targetIds.has(entry.bindingId) ? "target" as const : "sibling" as const,
-      decision: targetIds.has(entry.bindingId) ? "file" as const : "re-pin" as const,
+      role: decision ? "target" as const : "sibling" as const,
+      decision: decision?.choice ?? "re-pin" as const,
+      ...(decision?.choice === "draft" ? { selectedDraftId: decision.draftId } : {}),
       baseCurrentValueId: base.current_value_id, sourcePinId: base.source_pin_id,
       configRevisionId: base.config_revision_id,
-      drafts: drafts.rows.filter(({ snapshot }) => snapshot.binding_id === entry.bindingId).map(({ snapshot }) => ({
-        draftId: String(snapshot.id), authorUserId: snapshot.user_id === null ? null : String(snapshot.user_id),
-        reason: String(snapshot.reason), action: snapshot.action as "set" | "delete",
-        targetValue: snapshot.target_value as ContractJsonValue,
-        baseCurrentValueId: String(snapshot.base_current_value_id),
-        sourcePinId: snapshot.source_pin_id === null ? null : String(snapshot.source_pin_id),
-        configRevisionId: String(snapshot.config_revision_id),
-        currentlyStale: snapshot.base_current_value_id !== base.current_value_id
-          || snapshot.source_pin_id !== base.source_pin_id
-          || snapshot.config_revision_id !== base.config_revision_id,
-        expectedEffect: "preserved-stale" as const,
-        frozenFingerprint: createHash("sha256")
-          .update(serializeContract(snapshot as ContractJsonValue)).digest("hex")
-      }))
+      drafts: entryDrafts
     };
   });
+  return { draftImpact, draftImpactDigest: digestImpact(draftImpact) };
 }
 
 type BatchRow = {
@@ -244,6 +282,7 @@ async function loadBatchRequest(db: Database, organizationId: string, projectId:
         || decision.targetValue === undefined
         || serializeContract(decision.targetValue) !== serializeContract(target.target_value)
         || impact?.role !== "target" || impact.decision !== decision.choice
+        || impact.selectedDraftId !== (decision.draft?.id ?? undefined)
         || (decision.choice === "file" && (decision.draft !== null || target.frozen_draft_id !== null))
         || (decision.choice === "draft" && (!selected || !decision.draft
           || target.frozen_draft_id !== decision.draft.id
@@ -359,7 +398,7 @@ export async function submitCanonicalBatchValueChange(
     });
   }
 
-  return db.transaction(async (tx) => {
+  return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
     // The single-target submitter takes the reviewer row before source locks.
     // Keep that order to avoid a reviewer/source lock cycle.
     const locked = await lockUserById(tx, { organizationId: auth.organization.id, userId: input.assignedToUserId });
@@ -368,7 +407,7 @@ export async function submitCanonicalBatchValueChange(
       userId: input.assignedToUserId, roleId: "software-committer"
     })) throw new ApiError("VALIDATION_FAILED", "The selected software reviewer is no longer eligible.");
 
-    const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, objectStore, auth, {
+    const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, attempt.objectStore, auth, {
       projectId: input.projectId, candidateId: input.candidateId,
       expectedProofToken: input.expectedProofToken
     });
@@ -418,22 +457,26 @@ export async function submitCanonicalBatchValueChange(
     if (new Set(targetIds).size !== targetIds.length) {
       throw new ApiError("CONFLICT", "Batch proof contains a duplicate Binding.");
     }
-    const impact = await captureBatchDraftImpact(tx, auth, input.projectId, proof);
-    const impactDigest = digestImpact(impact);
-    const decisions = new Map<string, { choice: "file" | "draft"; draftId?: string }>();
+    const decisions = new Map<string, CanonicalBatchTargetDecision>();
     for (const decision of input.targetDecisions ?? []) {
       if (decisions.has(decision.bindingId) || !targetIds.includes(decision.bindingId)) {
         throw new ApiError("VALIDATION_FAILED", "Batch decisions must identify distinct changed targets.");
       }
       decisions.set(decision.bindingId, decision);
     }
+    // D's whole-batch composer is not installed. Do not materialize a mixed
+    // object or request until that composer can prove the entire ordered cohort.
+    if ([...decisions.values()].some((decision) => decision.choice === "draft")) {
+      throw new ApiError("CONFLICT", "A mixed draft and file batch needs a whole-cohort composition proof.", {
+        reason: "canonical-batch-draft-composition-unavailable"
+      });
+    }
+    const orderedDecisions = proof.targets.map((target) =>
+      decisions.get(target.bindingId) ?? { bindingId: target.bindingId, choice: "file" as const });
+    const { draftImpact: impact, draftImpactDigest: impactDigest } =
+      await captureCanonicalBatchDraftImpactInTransaction(tx, auth, input.projectId, proof, orderedDecisions);
     for (const target of impact.filter((item) => item.role === "target")) {
       const decision = decisions.get(target.bindingId);
-      if (decision?.choice === "draft") {
-        throw new ApiError("CONFLICT", "A mixed draft and file batch needs a whole-cohort composition proof.", {
-          reason: "canonical-batch-draft-composition-unavailable"
-        });
-      }
       if (decision?.draftId || (target.drafts.some((draft) => !draft.currentlyStale)
         && decision?.choice !== "file" && !reviewedHistoricalFileChoice)) {
         throw new ApiError("CONFLICT", "A changed target with drafts needs an explicit file decision.", {
@@ -800,8 +843,24 @@ export async function approveCanonicalBatchValueChange(
     if (proof.batchProofDigest !== frozen.batchProofDigest || proof.cohort.length !== frozen.cohortCount) {
       throw new ApiError("CONFLICT", "Canonical batch source proof changed before draft recheck.");
     }
-    const currentImpact = await captureBatchDraftImpact(tx, auth, input.projectId, proof);
-    if (digestImpact(currentImpact) !== frozen.draftImpactDigest) {
+    const targetDecisions = proof.targets.map((target, ordinal) => {
+      const frozenTarget = frozen.targets[ordinal];
+      if (!frozenTarget || frozenTarget.ordinal !== ordinal || frozenTarget.bindingId !== target.bindingId
+        || frozenTarget.decision === "unverified-draft") {
+        throw new ApiError("CONFLICT", "Canonical batch target order changed after submission.", {
+          reason: "canonical-batch-proof-mismatch"
+        });
+      }
+      return { bindingId: target.bindingId, choice: frozenTarget.decision,
+        ...(frozenTarget.decision === "draft" ? { draftId: frozenTarget.draftId ?? undefined } : {}) };
+    });
+    const current = await captureCanonicalBatchDraftImpactInTransaction(
+      tx, auth, input.projectId, proof, targetDecisions);
+    if (current.draftImpactDigest !== frozen.draftImpactDigest
+      || current.draftImpact.length !== frozen.draftImpact!.length
+      || current.draftImpact.some((entry, ordinal) =>
+        serializeContract(entry as ContractJsonValue)
+          !== serializeContract(frozen.draftImpact![ordinal] as ContractJsonValue))) {
       throw new ApiError("CONFLICT", "Canonical batch draft impact changed after submission.", {
         reason: "canonical-batch-draft-impact-stale"
       });
