@@ -348,6 +348,28 @@ export async function createCandidate(
   input: CreateCandidateInput,
   context: CandidateCreationContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
+  return createCandidateInScope(db, objectStore, auth, input, context, false);
+}
+
+/** Caller holds the outer source transaction and owns its attempt object store. */
+export async function createCandidateInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: CreateCandidateInput,
+  context: CandidateCreationContext = {}
+): Promise<ProjectParameterFileCandidateDto> {
+  return createCandidateInScope(tx, objectStore, auth, input, context, true);
+}
+
+async function createCandidateInScope(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: CreateCandidateInput,
+  context: CandidateCreationContext,
+  callerOwnsTransaction: boolean
+): Promise<ProjectParameterFileCandidateDto> {
   const trustedContext = normalizeCandidateCreationContext(auth, context, "parameter file candidate creation");
   requireCandidateAdmin(auth);
 
@@ -428,7 +450,7 @@ export async function createCandidate(
     bytes: input.bytes
   });
 
-  return db.transaction(async (tx) => {
+  const persist = async (tx: Database) => {
     const uploading = await insertParameterFileCandidate(tx, {
       id: candidateId,
       organizationId: auth.organization.id,
@@ -531,7 +553,8 @@ export async function createCandidate(
       trustedContext
     );
     return updated;
-  });
+  };
+  return callerOwnsTransaction ? persist(db) : db.transaction(persist);
 }
 
 export async function getCandidate(

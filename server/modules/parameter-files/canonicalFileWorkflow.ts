@@ -808,6 +808,16 @@ export async function previewCanonicalCandidate(
   return previewFromInspection(inspection, candidateRequest ? { id: candidateRequest.id, status: candidateRequest.status } : null);
 }
 
+/** Inspect a newly composed candidate inside the caller's source-locked transaction. */
+export async function previewCanonicalCandidateInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string }
+): Promise<CanonicalSourcePreviewDto> {
+  return previewFromInspection(await inspectCandidate(tx, objectStore, auth, input), null);
+}
+
 /** Caller-owned transaction; the returned proof is trusted only while these locks are held. */
 export async function prepareCanonicalCandidateBatchInTransaction(
   tx: Database,
@@ -1327,6 +1337,32 @@ export async function prepareCanonicalConflictDecision(
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
   }
+  return prepareCanonicalConflictDecisionLocked(db, objectStore, auth, input);
+}
+
+/** Reuse the exact selected-draft proof under the reviewer's source lock. */
+export async function recheckCanonicalConflictDecisionForReviewInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; selectedBindingId: string; selectedDraftId: string; choice: CanonicalConflictChoice }
+): Promise<CanonicalConflictDecisionDto> {
+  if (!canReviewParameters(auth) || !canEditParameters(auth, input.projectId)
+    || !canReviewParameterStage(auth, input.projectId, "software_review")
+    || !await hasCurrentCanonicalReviewRole(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+    })) {
+    throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
+  }
+  return prepareCanonicalConflictDecisionLocked(tx, objectStore, auth, input);
+}
+
+async function prepareCanonicalConflictDecisionLocked(
+  db: Queryable,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; selectedBindingId: string; selectedDraftId: string; choice: CanonicalConflictChoice }
+): Promise<CanonicalConflictDecisionDto> {
   const source = await inspectCandidate(db, objectStore, auth, input);
   const sourceChanges = source.changes ?? (source.change ? [source.change] : []);
   const fileChange = sourceChanges.find((change) => change.binding.bindingId === input.selectedBindingId);

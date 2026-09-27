@@ -26,6 +26,9 @@ import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import type { ParsedIndex } from "./types";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import type { DtsValue } from "../dts/types";
+import type { CanonicalBatchDraftCompositionProof } from "../parameter-bindings/drafts/batchChangeService";
+import { catalogBatchCompositionProofSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import { recheckCanonicalBatchDraftCompositionForReviewInTransaction } from "./canonicalBatchDraftComposition";
 
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const same = (left: unknown, right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
@@ -39,9 +42,12 @@ type Request = {
   batch_cohort_proof_token: string; candidate_base_digest: string; candidate_proposed_digest: string;
   candidate_diff_digest: string; candidate_member_manifest: unknown; candidate_binding_manifest: unknown;
   applied_source_result: unknown; applied_audit_ref: string | null;
+  batch_upload_candidate_id: string | null; batch_composition_proof: unknown;
+  batch_decision_proof_digest: string | null;
 };
 type Target = {
   id: string; ordinal: number; binding_id: string; definition_id: string;
+  draft_id: string | null; frozen_draft_id: string | null;
   definition_revision_id: string; catalog_release_id: string; base_current_value_id: string;
   config_revision_id: string; source_ref: string; source_pin_id: string;
   action: "set" | "delete"; target_value: unknown; target_text: string | null;
@@ -118,10 +124,26 @@ export async function commitCanonicalSourceBatchRevision(
       return { requestId: initial.id, status: "approved", batchProofDigest: initial.batch_proof_digest };
     }
     if (initial.status !== "pending") conflict("A pending canonical batch request is required.");
-    const proof = await recheckCanonicalCandidateBatchForReviewInTransaction(tx, storage, auth, {
-      projectId: input.projectId, candidateId: initial.candidate_id,
-      expectedProofToken: initial.batch_source_proof_token
-    });
+    const mixed = initial.batch_composition_proof !== null
+      || initial.batch_upload_candidate_id !== null || initial.batch_decision_proof_digest !== null;
+    const parsed = mixed ? catalogBatchCompositionProofSchema.safeParse(initial.batch_composition_proof) : null;
+    if (mixed && (!parsed?.success || !initial.batch_upload_candidate_id
+      || !initial.batch_decision_proof_digest)) conflict("Mixed batch has no complete composition proof.");
+    const composition = parsed?.success ? parsed.data as CanonicalBatchDraftCompositionProof : null;
+    if (composition && (composition.uploadCandidateId !== initial.batch_upload_candidate_id
+      || composition.composedCandidateId !== initial.candidate_id
+      || composition.decisionProofDigest !== initial.batch_decision_proof_digest
+      || composition.batchProofDigest !== initial.batch_proof_digest)) {
+      conflict("Mixed batch composition disagrees with its frozen request.");
+    }
+    const proof = composition
+      ? await recheckCanonicalBatchDraftCompositionForReviewInTransaction(tx, storage, auth, {
+        projectId: input.projectId, compositionProof: composition
+      })
+      : await recheckCanonicalCandidateBatchForReviewInTransaction(tx, storage, auth, {
+        projectId: input.projectId, candidateId: initial.candidate_id,
+        expectedProofToken: initial.batch_source_proof_token
+      });
     const request = (await tx.query<Request>(`select * from public.project_parameter_value_change_requests
       where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch' for update`,
       [input.requestId, auth.organization.id, input.projectId])).rows[0];
@@ -141,6 +163,9 @@ export async function commitCanonicalSourceBatchRevision(
     const targets = (await tx.query<Target>(`select * from public.project_parameter_value_change_targets
       where request_id=$1 and organization_id=$2 and project_id=$3 order by ordinal for update`,
       [request.id, auth.organization.id, input.projectId])).rows;
+    if (!composition && targets.some((target) => target.draft_id !== null || target.frozen_draft_id !== null)) {
+      conflict("Unproved draft target cannot reach the batch source writer.");
+    }
     if (targets.length !== proof.targets.length || targets.some((target, ordinal) => {
       const frozen = proof.targets[ordinal];
       return !frozen || target.ordinal !== ordinal || target.binding_id !== frozen.bindingId
@@ -149,7 +174,11 @@ export async function commitCanonicalSourceBatchRevision(
         || target.config_revision_id !== frozen.configRevisionId
         || target.source_pin_id !== frozen.sourcePinId
         || target.action !== frozen.action || target.target_text !== (frozen.targetText ?? null)
-        || target.base_digest !== proof.baseDigest || target.proposed_digest !== proof.proposedDigest;
+        || target.base_digest !== proof.baseDigest || target.proposed_digest !== proof.proposedDigest
+        || (composition ? target.frozen_draft_id !== (composition.targetDecisions[ordinal]?.draft?.id ?? null)
+          || target.draft_id !== (composition.targetDecisions[ordinal]?.draft?.id ?? null)
+          || !same(target.target_value, composition.targetDecisions[ordinal]?.targetValue)
+          : false);
     })) conflict("Batch targets no longer match the locked source proof.");
     const candidate = (await tx.query<{
       id: string; status: string; storage_key: string; checksum: string; size_bytes: number;
