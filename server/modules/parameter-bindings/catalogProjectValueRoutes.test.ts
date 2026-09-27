@@ -1076,9 +1076,11 @@ describe("canonical value change request routes", () => {
         { ordinal: 0, bindingId: "binding-a", sourcePinId: "pin-a", action: "set" },
         { ordinal: 1, bindingId: "binding-b", sourcePinId: "pin-b", action: "set" }
       ] };
+    const frozenTargets = diff.targets.map((target) => ({ ...target, draftId: null, decision: "file" }));
     vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
     vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue({
-      id: "pvcr-batch", candidateId: "candidate-batch", batchProofDigest: proof, targets: diff.targets
+      id: "pvcr-batch", candidateId: "candidate-batch", batchProofDigest: proof,
+      uploadCandidateId: null, decisionProofDigest: null, targets: frozenTargets
     } as never);
     vi.mocked(sourceDiff.readCanonicalBatchSourceDiff).mockResolvedValue(diff as never);
 
@@ -1088,7 +1090,8 @@ describe("canonical value change request routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.item).toEqual(diff);
+    expect(response.body.item).toEqual({ ...diff, uploadCandidateId: null,
+      decisionProofDigest: null, targets: frozenTargets });
     expect(sourceDiff.readCanonicalBatchSourceDiff).toHaveBeenCalledWith(
       db, expect.anything(), expect.anything(), { projectId: "project-1", requestId: "pvcr-batch" }
     );

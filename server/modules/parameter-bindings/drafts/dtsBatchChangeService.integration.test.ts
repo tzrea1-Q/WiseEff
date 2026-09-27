@@ -199,12 +199,19 @@ describe("#906 C canonical DTS batch HTTP review", () => {
     expect(unsupported).toMatchObject({ status: 409, body: { error: {
       details: { reason: "canonical-batch-draft-composition-unavailable" } } } });
     const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
-      draftImpactDigest: string; draftImpact: Array<{ bindingId: string; role: string; drafts: unknown[] }> } }>(route(),
+      draftImpactDigest: string; uploadCandidateId: string | null; compositionProof: unknown;
+      decisionProofDigest: string | null;
+      targets: Array<{ bindingId: string; decision: string; targetValue: unknown }>;
+      draftImpact: Array<{ bindingId: string; role: string; drafts: unknown[] }> } }>(route(),
       submitPath, {
         method: "POST", body: JSON.stringify({ ...body,
           targetDecisions: [{ bindingId: target, choice: "file" }] })
       });
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    catalogBatchValueChangeRequestResponseSchema.parse(submitted.body);
+    expect(submitted.body.item).toMatchObject({ uploadCandidateId: null,
+      compositionProof: null, decisionProofDigest: null });
+    expect(submitted.body.item.targets.map((entry) => entry.decision)).toEqual(["file", "file"]);
     expect(submitted.body.item.draftImpact).toHaveLength(3);
     expect(submitted.body.item.draftImpact.find((item) => item.bindingId === target)?.drafts).toHaveLength(1);
     expect(submitted.body.item.draftImpact.find((item) => item.bindingId === sibling)?.drafts).toHaveLength(1);
@@ -212,8 +219,12 @@ describe("#906 C canonical DTS batch HTTP review", () => {
     const detail = await requestJson<{ item: typeof submitted.body.item }>(route(reviewer), `${path}/batch`);
     expect(detail.status).toBe(200);
     expect(detail.body.item.draftImpactDigest).toBe(submitted.body.item.draftImpactDigest);
-    const diff = await requestJson(route(reviewer), `${path}/source-diff`);
+    const diff = await requestJson<{ item: { targets: Array<{ decision: string; draftId: string | null }>;
+      uploadCandidateId: string | null; decisionProofDigest: string | null } }>(route(reviewer), `${path}/source-diff`);
     expect(diff.status).toBe(200);
+    expect(diff.body.item.targets.map((entry) => [entry.decision, entry.draftId]))
+      .toEqual([["file", null], ["file", null]]);
+    expect(diff.body.item.uploadCandidateId).toBeNull();
     const reviewBody = { decision: "approve", batchProofDigest: submitted.body.item.batchProofDigest,
       draftImpactDigest: submitted.body.item.draftImpactDigest };
     const beforeApproval = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });

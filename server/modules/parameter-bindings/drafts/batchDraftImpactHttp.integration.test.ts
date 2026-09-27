@@ -21,7 +21,7 @@ import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJson
 import { loadPublishedCatalog } from "../catalogProjectValueSync";
 import { loadLegacyBindingIdentity } from "../binding/migrationAdapter";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
-import { createCanonicalValueDraft } from "./service";
+import { createCanonicalValueDraft, removeCanonicalValueDraft } from "./service";
 import { catalogBatchValueChangeRequestResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 
 const ORG = "org-906-c-impact-json";
@@ -143,6 +143,8 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     const body = { candidateId: item.id, expectedProofToken: preview.proofToken,
       reason: "One cohort review", assignedToUserId: REVIEWER };
     const submitPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
+    const beforeRejected = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectsBeforeRejected = await objectBytes(storageDirectory);
     const omitted = await requestJson(route(), submitPath, { method: "POST", body: JSON.stringify(body) });
     expect(omitted).toMatchObject({ status: 409, body: { error: {
       details: { reason: "canonical-batch-target-decision-required" } } } });
@@ -153,13 +155,21 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       details: { reason: "canonical-batch-draft-composition-unavailable" } } } });
     expect((await db.query<{ count: number }>(`select count(*)::int as count
       from project_parameter_value_change_requests where candidate_id=$1`, [item.id])).rows[0]!.count).toBe(0);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeRejected);
+    expect(await objectBytes(storageDirectory)).toEqual(objectsBeforeRejected);
     const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
-      draftImpactDigest: string; draftImpact: Array<{ bindingId: string; role: string;
+      draftImpactDigest: string; uploadCandidateId: string | null;
+      compositionProof: unknown; decisionProofDigest: string | null;
+      targets: Array<{ bindingId: string; decision: string; targetValue: unknown }>;
+      draftImpact: Array<{ bindingId: string; role: string;
         decision: string; drafts: Array<{ draftId: string; expectedEffect: string }> }> } }>(route(), submitPath,
       { method: "POST", body: JSON.stringify({ ...body,
         targetDecisions: [{ bindingId: target, choice: "file" }] }) });
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
     catalogBatchValueChangeRequestResponseSchema.parse(submitted.body);
+    expect(submitted.body.item).toMatchObject({ uploadCandidateId: null,
+      compositionProof: null, decisionProofDigest: null });
+    expect(submitted.body.item.targets.map((entry) => entry.decision)).toEqual(["file", "file"]);
     expect(submitted.body.item.draftImpact).toHaveLength(3);
     expect(submitted.body.item.draftImpact.find((entry) => entry.bindingId === target)?.drafts)
       .toEqual([expect.objectContaining({ draftId: firstDraft.id, expectedEffect: "preserved-stale" })]);
@@ -170,11 +180,16 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     expect((await requestJson(route(reviewer), `${path}/batch`)).status).toBe(200);
     expect((await requestJson(route(admin), `${path}/batch`)).status).toBe(200);
     expect((await requestJson(route(author), `${path}/batch`)).status).toBe(404);
-    const diff = await requestJson<{ item: { bindings: unknown[]; targets: Array<{ ordinal: number }> } }>(
+    const diff = await requestJson<{ item: { bindings: unknown[]; uploadCandidateId: string | null;
+      decisionProofDigest: string | null;
+      targets: Array<{ ordinal: number; decision: string; draftId: string | null }> } }>(
       route(reviewer), `${path}/source-diff`);
     expect(diff.status).toBe(200);
     expect(diff.body.item.bindings).toHaveLength(3);
     expect(diff.body.item.targets.map((entry) => entry.ordinal)).toEqual([0, 1]);
+    expect(diff.body.item.targets.map((entry) => [entry.decision, entry.draftId]))
+      .toEqual([["file", null], ["file", null]]);
+    expect(diff.body.item.uploadCandidateId).toBeNull();
     const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
     const draftRowsBefore = (await db.query<{ snapshot: unknown }>(`
       select to_jsonb(draft) as snapshot from project_parameter_value_drafts draft
@@ -220,6 +235,100 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     expect(drafts.map((row) => row.id).sort()).toEqual([firstDraft.id, siblingDraft.id].sort());
     expect(drafts.every((row) => row.base_current_value_id !== row.current_value_id)).toBe(true);
     expect(drafts.every((row) => JSON.stringify(row.target_value).includes("88"))).toBe(true);
+  }, 120_000);
+
+  it("keeps an older pending draft target without composition proof out of the file writer", async () => {
+    const { item, preview } = await candidate();
+    const target = preview.bindings![0]!.bindingId;
+    const competing = await draft(target);
+    const submitPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
+    const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
+      draftImpactDigest: string } }>(route(), submitPath, { method: "POST", body: JSON.stringify({
+      candidateId: item.id, expectedProofToken: preview.proofToken, reason: "File-only baseline",
+      assignedToUserId: REVIEWER, targetDecisions: [{ bindingId: target, choice: "file" }]
+    }) });
+    expect(submitted.status).toBe(201);
+    const originalPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}`;
+    expect((await requestJson(route(), `${originalPath}/withdraw`, { method: "POST" })).status).toBe(200);
+    const oldId = "pvcr_906_older_mixed_without_proof";
+    await db.transaction(async (tx) => {
+      await tx.query(`insert into public.project_parameter_value_change_requests
+        select (jsonb_populate_record(null::public.project_parameter_value_change_requests,
+          to_jsonb(request) || jsonb_build_object('id',$2::text,'status','pending',
+            'reviewer_user_id',null))).*
+          from public.project_parameter_value_change_requests request where request.id=$1`,
+      [submitted.body.item.id, oldId]);
+      await tx.query(`insert into public.project_parameter_value_change_targets
+        select (jsonb_populate_record(null::public.project_parameter_value_change_targets,
+          to_jsonb(target) || jsonb_build_object('id',target.id || '_old','request_id',$2::text,
+            'draft_id',case when target.binding_id=$3 then $4::text else null end))).*
+          from public.project_parameter_value_change_targets target where target.request_id=$1`,
+      [submitted.body.item.id, oldId, target, competing.id]);
+    });
+    const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${oldId}`;
+    const detail = await requestJson<{ item: { compositionProof: unknown;
+      targets: Array<{ bindingId: string; decision: string; draftId: string | null;
+        targetValue: unknown; targetText: string | null }> } }>(route(reviewer), `${path}/batch`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.item.compositionProof).toBeNull();
+    expect(detail.body.item.targets.find((entry) => entry.bindingId === target))
+      .toMatchObject({ decision: "unverified-draft", draftId: competing.id,
+        targetValue: null, targetText: null });
+    expect(await requestJson(route(reviewer), `${path}/source-diff`)).toMatchObject({
+      status: 409, body: { error: { details: {
+        reason: "canonical-batch-draft-composition-unavailable" } } }
+    });
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectsBefore = await objectBytes(storageDirectory);
+    const refused = await requestJson(route(reviewer), `${path}/review`, { method: "POST", body: JSON.stringify({
+      decision: "approve", batchProofDigest: submitted.body.item.batchProofDigest,
+      draftImpactDigest: submitted.body.item.draftImpactDigest
+    }) });
+    expect(refused).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "canonical-batch-draft-composition-unavailable" } } } });
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objectBytes(storageDirectory)).toEqual(objectsBefore);
+    await removeCanonicalValueDraft(db, author, { projectId: PROJECT, draftId: competing.id });
+    const afterDraftDeletion = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectsAfterDraftDeletion = await objectBytes(storageDirectory);
+    const deletedDraftDetail = await requestJson<{ item: {
+      targets: Array<{ bindingId: string; decision: string; draftId: string | null;
+        targetValue: unknown; targetText: string | null }> } }>(route(reviewer), `${path}/batch`);
+    expect(deletedDraftDetail.status).toBe(200);
+    expect(deletedDraftDetail.body.item.targets.find((entry) => entry.bindingId === target))
+      .toMatchObject({ decision: "unverified-draft", draftId: competing.id,
+        targetValue: null, targetText: null });
+    expect(await requestJson(route(reviewer), `${path}/source-diff`)).toMatchObject({
+      status: 409, body: { error: { details: {
+        reason: "canonical-batch-draft-composition-unavailable" } } }
+    });
+    expect(await requestJson(route(reviewer), `${path}/review`, { method: "POST", body: JSON.stringify({
+      decision: "approve", batchProofDigest: submitted.body.item.batchProofDigest,
+      draftImpactDigest: submitted.body.item.draftImpactDigest
+    }) })).toMatchObject({ status: 409 });
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT }))
+      .toEqual(afterDraftDeletion);
+    expect(await objectBytes(storageDirectory)).toEqual(objectsAfterDraftDeletion);
+    await expect(db.query(`insert into public.project_parameter_value_change_requests
+      select (jsonb_populate_record(null::public.project_parameter_value_change_requests,
+        to_jsonb(request) || jsonb_build_object('id','pvcr_906_partial_composition',
+          'status','rejected','batch_upload_candidate_id',$2::text))).*
+        from public.project_parameter_value_change_requests request where request.id=$1`,
+    [submitted.body.item.id, item.id])).rejects.toMatchObject({
+      code: "23514", constraint: "project_parameter_value_change_requests_composition_ck"
+    });
+    await expect(db.query(`insert into public.project_parameter_value_change_requests
+      select (jsonb_populate_record(null::public.project_parameter_value_change_requests,
+        to_jsonb(request) || jsonb_build_object('id','pvcr_906_incomplete_composition',
+          'status','rejected','batch_upload_candidate_id',$2::text,
+          'batch_composition_proof','{}'::jsonb,'batch_decision_proof_digest',$3::text))).*
+        from public.project_parameter_value_change_requests request where request.id=$1`,
+    [submitted.body.item.id, item.id, "0".repeat(64)])).rejects.toMatchObject({
+      code: "23514", constraint: "project_parameter_value_change_requests_composition_ck"
+    });
+    await expect(db.query(`update public.project_parameter_value_change_requests
+      set batch_upload_candidate_id=$2 where id=$1`, [oldId, item.id]))
+      .rejects.toMatchObject({ code: "55000" });
   }, 120_000);
 
   it("rejects a newly inserted sibling draft under source locks without any partial apply", async () => {

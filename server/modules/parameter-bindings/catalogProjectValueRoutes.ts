@@ -1002,6 +1002,11 @@ export function registerCatalogProjectValueConsumerRoutes(
       const item = await db.transaction(async (tx) => {
         const frozen = await getCanonicalBatchValueChangeForAuth(tx, auth, params);
         if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+        if (frozen.compositionProof || frozen.targets.some((target) => target.draftId !== null)) {
+          throw new ApiError("CONFLICT", "Mixed draft and file source diff needs a whole-batch composition proof.", {
+            reason: "canonical-batch-draft-composition-unavailable"
+          });
+        }
         if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
         const source = await readCanonicalBatchSourceDiff(tx, options.objectStore, auth, params);
         if (source.requestId !== frozen.id || source.candidateId !== frozen.candidateId
@@ -1016,7 +1021,15 @@ export function registerCatalogProjectValueConsumerRoutes(
             reason: "canonical-batch-proof-mismatch"
           });
         }
-        return source;
+        return {
+          ...source,
+          uploadCandidateId: frozen.uploadCandidateId,
+          decisionProofDigest: frozen.decisionProofDigest,
+          targets: source.targets.map((target, ordinal) => ({
+            ...target, decision: frozen.targets[ordinal]!.decision,
+            draftId: frozen.targets[ordinal]!.draftId
+          }))
+        };
       });
       return { status: 200, body: { item } };
     }
@@ -1071,6 +1084,7 @@ export function registerCatalogProjectValueConsumerRoutes(
           note: z.string().nullable().optional(),
           batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
           draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
           memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
         }),
         request.body ?? {}
@@ -1106,7 +1120,8 @@ export function registerCatalogProjectValueConsumerRoutes(
         if (body.decision === "reject") {
           const item = await rejectCanonicalBatchValueChange(db, auth, {
             ...params, batchProofDigest: body.batchProofDigest,
-            draftImpactDigest: body.draftImpactDigest, note: body.note ?? null,
+            draftImpactDigest: body.draftImpactDigest,
+            decisionProofDigest: body.decisionProofDigest, note: body.note ?? null,
             invocation: createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           });
@@ -1121,6 +1136,7 @@ export function registerCatalogProjectValueConsumerRoutes(
           result: await approveCanonicalBatchValueChange(tx, options.objectStore!, auth, batchSnapshot, {
             projectId: params.projectId, requestId: params.requestId,
             batchProofDigest: body.batchProofDigest!, draftImpactDigest: body.draftImpactDigest,
+            decisionProofDigest: body.decisionProofDigest,
             note: body.note ?? null,
             invocation: createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
