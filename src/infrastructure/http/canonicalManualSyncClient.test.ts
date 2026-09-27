@@ -52,7 +52,10 @@ describe("canonical manual sync HTTP client", () => {
     expect((await client.prepare("project/1", "file/1", input, "prepare-key")).targets).toHaveLength(2);
     expect((await client.submit("project/1", { candidateId: "candidate", expectedProofToken: "candidate-proof",
       reason: "review", assignedToUserId: "reviewer", targetDecisions: ["a", "b"].map((bindingId) => ({
-        bindingId, choice: "file" as const
+        bindingId, choice: "file" as const,
+        ...(bindingId === "a" ? { expectedConflictProofs: [
+          { draftId: "draft-a", decisionProofDigest: digest }
+        ] } : {})
       })) }, "submit-key")).id).toBe("request");
     expect(raw.mock.calls.map(([path, init]) => ({ path, requestId: init.headers["X-Request-Id"],
       body: JSON.parse(init.body) }))).toEqual([
@@ -61,7 +64,10 @@ describe("canonical manual sync HTTP client", () => {
       { path: "/api/v2/projects/project%2F1/parameter-value-change-requests/batches",
         requestId: "submit-key", body: { candidateId: "candidate", expectedProofToken: "candidate-proof",
           reason: "review", assignedToUserId: "reviewer",
-          targetDecisions: ["a", "b"].map((bindingId) => ({ bindingId, choice: "file" })) } }
+          targetDecisions: ["a", "b"].map((bindingId) => ({ bindingId, choice: "file",
+            ...(bindingId === "a" ? { expectedConflictProofs: [
+              { draftId: "draft-a", decisionProofDigest: digest }
+            ] } : {}) })) } }
     ]);
   });
 });

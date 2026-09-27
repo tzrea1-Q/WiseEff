@@ -1,5 +1,6 @@
 import {
   canonicalManualSyncPrepareResponseSchema,
+  catalogSubmitBatchValueChangeRequestSchema,
   catalogBatchValueChangeRequestResponseSchema
 } from "@wiseeff/dto-schemas";
 import type { z } from "zod";
@@ -7,6 +8,9 @@ import { createDefaultApiClient } from "./defaultApiClient";
 
 export type ManualSyncPreparation = z.infer<typeof canonicalManualSyncPrepareResponseSchema>["item"];
 export type ManualSyncSubmission = z.infer<typeof catalogBatchValueChangeRequestResponseSchema>["item"];
+type ManualSyncBatchBody = z.infer<typeof catalogSubmitBatchValueChangeRequestSchema> & {
+  targetDecisions: NonNullable<z.infer<typeof catalogSubmitBatchValueChangeRequestSchema>["targetDecisions"]>;
+};
 
 export function createCanonicalManualSyncClient(client = createDefaultApiClient()) {
   const post = async (path: string, body: unknown, requestId: string) =>
@@ -24,13 +28,10 @@ export function createCanonicalManualSyncClient(client = createDefaultApiClient(
         body, requestId
       )).item;
     },
-    async submit(projectId: string, body: {
-      candidateId: string; expectedProofToken: string; reason: string; assignedToUserId: string;
-      targetDecisions: Array<{ bindingId: string; choice: "file" | "draft"; draftId?: string }>
-    }, requestId: string): Promise<ManualSyncSubmission> {
+    async submit(projectId: string, body: ManualSyncBatchBody, requestId: string): Promise<ManualSyncSubmission> {
       return catalogBatchValueChangeRequestResponseSchema.parse(await post(
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches`,
-        body, requestId
+        catalogSubmitBatchValueChangeRequestSchema.parse(body), requestId
       )).item;
     }
   };

@@ -26,7 +26,9 @@ function uploadFile(dialog: HTMLElement, size = 8) {
   fireEvent.change(within(dialog).getByLabelText(/选择来源文件/), { target: { files: [file] } });
 }
 
-function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = new Error("connection lost")) {
+function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = new Error("connection lost"),
+  sourceState?: { currentVersionId: string | null; workflowProofToken: string | null;
+    loading: boolean; error: string; canonical: boolean | null }, unproven = false) {
   const prepare = vi.fn().mockRejectedValueOnce(prepareFailure).mockResolvedValue(prepared);
   const submit = vi.fn().mockRejectedValueOnce(new Error("connection lost"))
     .mockResolvedValue({ id: "request", projectId: "project", candidateId: "candidate",
@@ -43,14 +45,15 @@ function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = n
         targetText: target.afterText, decision: "file", draftId: null
       })) });
   const onSubmitted = vi.fn();
-  render(<WorkbenchCanonicalManualSyncDialog context={{ ...context, currentUserId: "author",
+  const view = render(<WorkbenchCanonicalManualSyncDialog context={{ ...context, currentUserId: "author",
     client: { prepare, submit } as never,
-    conflictClient: { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items: [], ineligible: [] }) } as never,
+    conflictClient: { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items: [], ineligible: unproven
+      ? [{ selectedBindingId: "a", selectedDraftId: "unproven", reason: "source-proof-stale" }] : [] }) } as never,
     governanceClient: { getProjectWorkflowRoleBindings: vi.fn().mockResolvedValue({ bindings: [
       { isActive: true, userId: "author", name: "Author", roles: ["software-committer"] },
       { isActive: true, userId: "reviewer", name: "Reviewer", roles: ["software-committer"] }
-    ] }) } as never, onSubmitted }} onDismiss={vi.fn()} />);
-  return { prepare, submit, onSubmitted };
+    ] }) } as never, onSubmitted }} sourceState={sourceState} onDismiss={vi.fn()} />);
+  return { prepare, submit, onSubmitted, rerender: view.rerender };
 }
 
 describe("canonical manual sync dialog", () => {
@@ -67,6 +70,8 @@ describe("canonical manual sync dialog", () => {
         file: { candidateId: "candidate", sourceProofToken: "candidate-proof",
           selectedBindingId: "a", selectedDraftId: "draft-88", targetText: "50", choice: "file",
           action: "set", fileId: "file", baseVersionId: "current", configSetId: "set",
+          selectedDraftProof: digest, selectedDraftCandidateId: "draft-candidate",
+          selectedDraftCandidateDigest: `sha256:${"e".repeat(64)}`, decisionProofDigest: "1".repeat(64),
           cohortProofToken: "workflow", sourceCandidateDigest: upload.proposedDigest,
           selectedSourcePinId: "pin-a", selectedBaseValueId: "old-a", selectedRevisionId: "revision",
           members: upload.members, cohort: upload.cohort },
@@ -74,6 +79,8 @@ describe("canonical manual sync dialog", () => {
           selectedBindingId: "a", selectedDraftId: "draft-88",
           ...(draftAction === "set" ? { targetText: "88" } : {}), action: draftAction,
           choice: "draft", fileId: "file", baseVersionId: "current", configSetId: "set",
+          selectedDraftProof: digest, selectedDraftCandidateId: "draft-candidate",
+          decisionProofDigest: "2".repeat(64),
           cohortProofToken: "workflow", sourceCandidateDigest: upload.proposedDigest,
           selectedSourcePinId: "pin-a", selectedBaseValueId: "old-a", selectedRevisionId: "revision",
           selectedDraftCandidateDigest: `sha256:${"e".repeat(64)}`,
@@ -89,7 +96,22 @@ describe("canonical manual sync dialog", () => {
         configRevisionId: "revision", candidateSha256: "e".repeat(64) },
         action: draftAction, targetText: draftAction === "set" ? "88" : null },
         { ordinal: 1, bindingId: "b", choice: "file", draft: null, action: "set", targetText: "60" }] };
-    if (stalePreview) conflict.choices.draft.selectedDraftCandidateDigest = `sha256:${"f".repeat(64)}`;
+    if (stalePreview) {
+      conflict.choices.file.selectedDraftCandidateDigest = `sha256:${"f".repeat(64)}`;
+      conflict.choices.draft.selectedDraftCandidateDigest = `sha256:${"f".repeat(64)}`;
+    }
+    const second = structuredClone(conflict);
+    second.selectedDraftId = "draft-99";
+    second.authorUserId = "second-author";
+    second.choices.file.selectedDraftId = "draft-99";
+    second.choices.draft.selectedDraftId = "draft-99";
+    second.choices.file.selectedDraftCandidateId = "draft-candidate-99";
+    second.choices.draft.selectedDraftCandidateId = "draft-candidate-99";
+    second.choices.file.selectedDraftCandidateDigest = `sha256:${"9".repeat(64)}`;
+    second.choices.draft.selectedDraftCandidateDigest = `sha256:${"9".repeat(64)}`;
+    second.choices.file.decisionProofDigest = "3".repeat(64);
+    second.choices.draft.decisionProofDigest = "4".repeat(64);
+    second.choices.draft.targetText = "99";
     const prepare = vi.fn().mockResolvedValue(upload);
     const submit = vi.fn().mockResolvedValue({ id: "mixed-request", projectId: "project", candidateId: "composed",
       uploadCandidateId: "candidate", compositionProof: composition, decisionProofDigest: "c".repeat(64),
@@ -109,7 +131,7 @@ describe("canonical manual sync dialog", () => {
     const onSubmitted = vi.fn();
     render(<WorkbenchCanonicalManualSyncDialog context={{ ...context, format, currentUserId: "author",
       client: { prepare, submit } as never,
-      conflictClient: { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items: [conflict], ineligible: [] }) } as never,
+      conflictClient: { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items: [conflict, second], ineligible: [] }) } as never,
       governanceClient: { getProjectWorkflowRoleBindings: vi.fn().mockResolvedValue({ bindings: [
         { isActive: true, userId: "reviewer", name: "Reviewer", roles: ["software-committer"] }
       ] }) } as never, onSubmitted }} onDismiss={vi.fn()} />);
@@ -131,7 +153,10 @@ describe("canonical manual sync dialog", () => {
       await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("mixed-request"));
     }
     expect(submit.mock.calls[0]![1].targetDecisions).toEqual([
-      { bindingId: "a", choice: "draft", draftId: "draft-88" },
+      { bindingId: "a", choice: "draft", draftId: "draft-88", expectedConflictProofs: [
+        { draftId: "draft-88", decisionProofDigest: "2".repeat(64) },
+        { draftId: "draft-99", decisionProofDigest: "3".repeat(64) }
+      ] },
       { bindingId: "b", choice: "file" }
     ]);
     expect(prepare.mock.calls[0]![3]).not.toBe(submit.mock.calls[0]![2]);
@@ -153,6 +178,58 @@ describe("canonical manual sync dialog", () => {
     expect(prepare.mock.calls[1]).toEqual(prepare.mock.calls[0]);
     expect(submit.mock.calls[1]).toEqual(submit.mock.calls[0]);
     expect(prepare.mock.calls[0][3]).not.toBe(submit.mock.calls[0][2]);
+  });
+
+  it("keeps the upload and choice across a source refresh, then blocks an old proof", async () => {
+    const stable = { currentVersionId: "current", workflowProofToken: "workflow",
+      loading: false, error: "", canonical: true };
+    const { prepare, submit, rerender } = show(proof, new Error("connection lost"), stable);
+    const dialog = screen.getByRole("dialog");
+    uploadFile(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    await within(dialog).findByText(/可用同一请求重试/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
+    await within(dialog).findByRole("list", { name: "手动同步完整有序目标" });
+    fireEvent.click(within(dialog).getAllByRole("radio", { name: /采用文件值/ })[0]!);
+    fireEvent.click(within(dialog).getAllByRole("radio", { name: /采用文件值/ })[1]!);
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "sync" } });
+    const currentContext = { ...context, currentUserId: "author", client: { prepare, submit } as never,
+      conflictClient: { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items: [], ineligible: [] }) } as never,
+      governanceClient: { getProjectWorkflowRoleBindings: vi.fn().mockResolvedValue({ bindings: [
+        { isActive: true, userId: "reviewer", name: "Reviewer", roles: ["software-committer"] }
+      ] }) } as never, onSubmitted: vi.fn() };
+    // Rerender the same dialog instance as the workbench refreshes its workflow proof.
+    rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
+      sourceState={{ ...stable, loading: true, workflowProofToken: null }} onDismiss={vi.fn()} />);
+    expect(within(dialog).getByText(/已选择：source.json/)).toBeVisible();
+    expect(within(dialog).getAllByRole("radio", { name: /采用文件值/ })[0]).toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+    rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
+      sourceState={stable} onDismiss={vi.fn()} />);
+    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeEnabled();
+    rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
+      sourceState={{ ...stable, currentVersionId: "new-version" }} onDismiss={vi.fn()} />);
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("旧候选不能继续提交");
+    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+    rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
+      sourceState={stable} onDismiss={vi.fn()} />);
+    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeEnabled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("blocks submission when a current competing draft has no choice proof", async () => {
+    const { submit } = show(proof, new Error("connection lost"), undefined, true);
+    const dialog = screen.getByRole("dialog");
+    uploadFile(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    await within(dialog).findByText(/可用同一请求重试/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
+    await within(dialog).findByRole("list", { name: "手动同步完整有序目标" });
+    for (const radio of within(dialog).getAllByRole("radio", { name: /采用文件值/ })) fireEvent.click(radio);
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "sync" } });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("未取得可验证的选择证明");
+    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("rejects oversized files and incomplete or reordered target proofs", async () => {
