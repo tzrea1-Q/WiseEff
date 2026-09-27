@@ -17,12 +17,13 @@ export const S2_SCH_0137_FINGERPRINT =
 export const S2_SCH_CONTRACT_FINGERPRINT =
   "7bc944915eabc1689a9976332864bae3bc602fd9c407e91ed826340dbe0f69e1";
 
-/**
- * Current schema through 0171, including DTS batch target admission in
- * assert_batch_value_request. Historical S2-SCH pins are unchanged.
- */
-export const S2_SCH_LIVE_FINGERPRINT =
+/** 0171 historical live pin, before the forward batch draft/composition migrations. */
+export const S2_SCH_0171_FINGERPRINT =
   "40db30e5fecec0de3a34e6ca34db8aaf51e70c3c57fe7154dd78b2e1f827df59";
+
+/** Current schema through 0175; measured on fresh and upgraded PostgreSQL/pgvector. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "ac999511b88c9755c83eb7853f41e9eb80ae089e68f49753b885078695e7b5da";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

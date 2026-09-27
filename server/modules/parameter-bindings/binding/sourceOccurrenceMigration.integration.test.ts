@@ -501,6 +501,10 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           "0169_reviewed_source_member_cohort.sql",
           "0170_restore_subject_placement_definer.sql",
           "0171_canonical_dts_batch_target_contract.sql",
+          "0172_canonical_batch_draft_impact.sql",
+          "0173_canonical_batch_draft_impact_pair.sql",
+          "0174_canonical_batch_composition_proof.sql",
+          "0175_canonical_batch_frozen_draft_choice.sql",
         ]);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
@@ -591,6 +595,10 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         "0169_reviewed_source_member_cohort.sql",
         "0170_restore_subject_placement_definer.sql",
         "0171_canonical_dts_batch_target_contract.sql",
+        "0172_canonical_batch_draft_impact.sql",
+        "0173_canonical_batch_draft_impact_pair.sql",
+        "0174_canonical_batch_composition_proof.sql",
+        "0175_canonical_batch_frozen_draft_choice.sql",
       ]);
 
       const rows = await db.query<{

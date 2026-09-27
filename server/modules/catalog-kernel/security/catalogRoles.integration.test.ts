@@ -16,6 +16,11 @@ import {
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 import { migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
+import {
+  S2_SCH_0171_FINGERPRINT,
+  S2_SCH_LIVE_FINGERPRINT,
+  readCanonicalSchemaFingerprint,
+} from "../../../testing/parameterCatalog";
 import type { Database } from "../../../shared/database/client";
 import {
   BINDING_CUTOVER_RELATIONS,
@@ -1349,6 +1354,101 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 });
 
 describe("0138 Catalog role migration paths", () => {
+  it("0172-0175 receipts, frozen proof guards and writer ACL match the live schema", async () => {
+    await withTempDatabase({ prefix: "pcat_rbac_0175" }, async ({ connectionString }) => {
+      const admin = new pg.Client({ connectionString });
+      await admin.connect();
+      try {
+        const expectedChecksums = {
+          "0172_canonical_batch_draft_impact.sql": "6a40b58507c134884adff408c416bcae4249adcf008eb93bee8f901a7c649a53",
+          "0173_canonical_batch_draft_impact_pair.sql": "26924e1a0ef7e4f94cc47bd6cce6a79f0727e400109bee5685e38b6e362fedfb",
+          "0174_canonical_batch_composition_proof.sql": "505922550af2a450b44619ebe90c0f7caf0a7da8cd1d08b62217402fc97d2613",
+          "0175_canonical_batch_frozen_draft_choice.sql": "4286bd3da43f9812ce1fca56fa142d55f9afd4ba71b6876e47f823157c9ff2c2",
+        };
+        const receipts = await admin.query<{ name: string; checksum: string }>(
+          "select name, checksum from schema_migrations order by name",
+        );
+        const files = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
+        expect(receipts.rows.map(({ name }) => name)).toEqual(files);
+        expect(receipts.rows).toHaveLength(173);
+        for (const { name, checksum } of receipts.rows) {
+          expect(checksum).toBe(createHash("sha256")
+            .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
+        }
+        expect(Object.fromEntries(receipts.rows.filter(({ name }) => name in expectedChecksums)
+          .map(({ name, checksum }) => [name, checksum]))).toEqual(expectedChecksums);
+
+        const guards = await admin.query<{
+          proname: string; owner: string; security_definer: boolean; settings: string[];
+          public_execute: boolean; synchronizer_execute: boolean; writer_execute: boolean;
+        }>(`
+          select p.proname, pg_catalog.pg_get_userbyid(p.proowner) as owner,
+            p.prosecdef as security_definer, p.proconfig as settings,
+            pg_catalog.has_function_privilege('public', p.oid, 'execute') as public_execute,
+            pg_catalog.has_function_privilege('catalog_synchronizer_role', p.oid, 'execute') as synchronizer_execute,
+            pg_catalog.has_function_privilege('parameter_governance_writer_role', p.oid, 'execute') as writer_execute
+          from pg_catalog.pg_proc p
+          join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'parameter_catalog'
+            and p.proname = any($1::text[]) order by p.proname
+        `, [["freeze_batch_target_draft_id", "protect_batch_composition_proof", "protect_batch_draft_impact"]]);
+        expect(guards.rows.map(({ proname }) => proname)).toEqual([
+          "freeze_batch_target_draft_id", "protect_batch_composition_proof", "protect_batch_draft_impact",
+        ]);
+        for (const guard of guards.rows) {
+          expect(guard).toEqual({
+            proname: guard.proname, owner: CATALOG_MIGRATION_OWNER, security_definer: true,
+            settings: ["search_path=pg_catalog, parameter_catalog"], public_execute: false,
+            synchronizer_execute: false, writer_execute: false,
+          });
+          assertSqlstate42501(await captureRoleStatementError(
+            admin, PARAMETER_GOVERNANCE_WRITER_ROLE, `select parameter_catalog.${guard.proname}()`,
+          ), p02Gate());
+        }
+
+        const constraints = await admin.query<{ conname: string; convalidated: boolean; definition: string }>(`
+          select c.conname, c.convalidated, pg_catalog.pg_get_constraintdef(c.oid, true) as definition
+          from pg_catalog.pg_constraint c
+          where c.conname = any($1::text[]) order by c.conname
+        `, [[
+          "project_parameter_value_change_requests_composition_ck",
+          "project_parameter_value_change_requests_draft_impact_ck",
+          "project_parameter_value_change_requests_upload_candidate_fk",
+          "project_parameter_value_change_targets_frozen_draft_ck",
+        ]]);
+        expect(constraints.rows).toHaveLength(4);
+        expect(constraints.rows.every(({ convalidated }) => convalidated)).toBe(true);
+        const definitions = Object.fromEntries(constraints.rows.map(({ conname, definition }) => [conname, definition]));
+        expect(definitions.project_parameter_value_change_requests_draft_impact_ck)
+          .toContain("batch_draft_impact_digest IS NOT NULL");
+        expect(definitions.project_parameter_value_change_requests_composition_ck)
+          .toContain("jsonb_array_length(batch_composition_proof -> 'targetDecisions'::text) = batch_target_count");
+        expect(definitions.project_parameter_value_change_requests_upload_candidate_fk)
+          .toContain("ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED");
+        expect(definitions.project_parameter_value_change_targets_frozen_draft_ck)
+          .toContain("draft_id = frozen_draft_id");
+
+        const triggers = await admin.query<{ tgname: string; tgenabled: string }>(`
+          select tgname, tgenabled from pg_catalog.pg_trigger
+          where tgname = any($1::text[]) order by tgname
+        `, [[
+          "project_parameter_value_change_request_composition_immutable",
+          "project_parameter_value_change_request_draft_impact_immutable",
+          "project_parameter_value_change_target_draft_choice",
+          "project_parameter_value_change_target_immutable",
+        ]]);
+        expect(triggers.rows).toEqual([
+          { tgname: "project_parameter_value_change_request_composition_immutable", tgenabled: "O" },
+          { tgname: "project_parameter_value_change_request_draft_impact_immutable", tgenabled: "O" },
+          { tgname: "project_parameter_value_change_target_draft_choice", tgenabled: "O" },
+          { tgname: "project_parameter_value_change_target_immutable", tgenabled: "O" },
+        ]);
+      } finally {
+        await admin.end();
+      }
+    });
+  }, 120_000);
+
   it("0170 upgrades a populated 0169 database without granting Catalog reads or direct guard execution", async () => {
     await withTempDatabase(
       { prefix: "pcat_rbac_0170_upgrade", migrate: false },
@@ -1376,15 +1476,26 @@ describe("0138 Catalog role migration paths", () => {
           })).toEqual([
             "0170_restore_subject_placement_definer.sql",
           ]);
-          expect(await applyMigrations(db, migrationsDir)).toEqual([
+          const successorMigrations = [
             "0171_canonical_dts_batch_target_contract.sql",
-          ]);
+            "0172_canonical_batch_draft_impact.sql",
+            "0173_canonical_batch_draft_impact_pair.sql",
+            "0174_canonical_batch_composition_proof.sql",
+            "0175_canonical_batch_frozen_draft_choice.sql",
+          ];
+          expect(await applyMigrations(db, migrationsDir)).toEqual(successorMigrations);
           expect(await applyMigrations(db, migrationsDir)).toEqual([]);
-          const receipt = await admin.query<{ name: string }>(`
-            select name from schema_migrations
-            where name = '0170_restore_subject_placement_definer.sql'
+          const receipts = await admin.query<{ name: string; checksum: string }>(`
+            select name, checksum from schema_migrations
+            where name >= '0170_restore_subject_placement_definer.sql' order by name
           `);
-          expect(receipt.rows).toEqual([{ name: "0170_restore_subject_placement_definer.sql" }]);
+          expect(receipts.rows.map(({ name }) => name)).toEqual([
+            "0170_restore_subject_placement_definer.sql", ...successorMigrations,
+          ]);
+          for (const { name, checksum } of receipts.rows) {
+            expect(checksum).toBe(createHash("sha256")
+              .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
+          }
           const preserved = await admin.query<{ id: string }>(
             "select id from parameter_catalog.subject_placements where id = $1",
             [prior.placementId],
@@ -1559,7 +1670,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0170 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0175 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1569,7 +1680,7 @@ describe("0138 Catalog role migration paths", () => {
 
     await withTempDatabase(
       { prefix: "pcat_rbac_upgrade", migrate: false },
-      async ({ db }) => {
+      async ({ db, connectionString }) => {
         await applyMigrations(db, migrationsDir, { through: FLOOR_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: SCHEMA_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: ROLES_MIGRATION });
@@ -1650,6 +1761,17 @@ describe("0138 Catalog role migration paths", () => {
         await applyMigrations(db, migrationsDir, {
           through: "0170_restore_subject_placement_definer.sql",
         });
+        await applyMigrations(db, migrationsDir, {
+          through: "0171_canonical_dts_batch_target_contract.sql",
+        });
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0171_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir)).toEqual([
+          "0172_canonical_batch_draft_impact.sql",
+          "0173_canonical_batch_draft_impact_pair.sql",
+          "0174_canonical_batch_composition_proof.sql",
+          "0175_canonical_batch_frozen_draft_choice.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
         upgrade = await aclFingerprint(db);
       },
     );
