@@ -3,6 +3,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
+import { createCanonicalConflictClient, type CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
 import type { ManualSyncPreparation, createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
@@ -12,6 +13,7 @@ type ManualSyncContext = {
   currentVersionId: string; workflowProofToken: string; currentUserId: string;
   client: ReturnType<typeof createCanonicalManualSyncClient>;
   governanceClient?: ReturnType<typeof createUserGovernanceClient>;
+  conflictClient?: ReturnType<typeof createCanonicalConflictClient>;
   onSubmitted: (requestId: string) => void;
 };
 
@@ -41,6 +43,28 @@ export function manualSyncProofReady(proof: ManualSyncPreparation,
     });
 }
 
+function manualSyncConflictReady(proof: ManualSyncPreparation, item: CanonicalSourceConflictList["items"][number]): boolean {
+  const target = proof.targets.find((entry) => entry.bindingId === item.selectedBindingId);
+  if (!target) return false;
+  const file = item.choices.file;
+  const draft = item.choices.draft;
+  return file.choice === "file" && draft.choice === "draft"
+    && file.action === target.action && file.targetText === target.afterText
+    && [file, draft].every((choice) => choice.candidateId === proof.candidateId
+      && choice.selectedBindingId === item.selectedBindingId
+      && choice.selectedDraftId === item.selectedDraftId
+      && choice.fileId === proof.fileId && choice.baseVersionId === proof.baseVersionId
+      && choice.configSetId === proof.configSetId
+      && choice.sourceProofToken === proof.proofToken
+      && choice.cohortProofToken === proof.cohortProofToken
+      && choice.sourceCandidateDigest === proof.proposedDigest
+      && choice.selectedSourcePinId === target.sourcePinId
+      && choice.selectedBaseValueId === target.baseCurrentValueId
+      && choice.selectedRevisionId === target.configRevisionId
+      && JSON.stringify(choice.members) === JSON.stringify(proof.members)
+      && JSON.stringify(choice.cohort) === JSON.stringify(proof.cohort));
+}
+
 async function encodeFile(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
@@ -55,6 +79,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [prepared, setPrepared] = useState<ManualSyncPreparation | null>(null);
+  const [conflicts, setConflicts] = useState<CanonicalSourceConflictList | null>(null);
+  const [decisions, setDecisions] = useState<Record<string, { choice: "file" | "draft"; draftId?: string }>>({});
   const [reviewers, setReviewers] = useState<Array<{ userId: string; name: string }>>([]);
   const [reviewerId, setReviewerId] = useState("");
   const [reason, setReason] = useState("");
@@ -68,6 +94,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
   const prepareBody = useRef<Parameters<ManualSyncContext["client"]["prepare"]>[2] | null>(null);
   const submitBody = useRef<Parameters<ManualSyncContext["client"]["submit"]>[1] | null>(null);
   const governance = useMemo(() => context.governanceClient ?? createUserGovernanceClient(), [context.governanceClient]);
+  const conflictClient = useMemo(() => context.conflictClient ?? createCanonicalConflictClient(), [context.conflictClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +113,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
   const chooseFile = (chosen: File | null) => {
     setFile(chosen);
     setPrepared(null);
+    setConflicts(null);
+    setDecisions({});
     setReason("");
     setError("");
     setConflicted(false);
@@ -116,6 +145,12 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
         setConflicted(true);
         throw new Error("候选目标、顺序或来源证明不完整；已阻止提交，请刷新工作台重新选择文件。");
       }
+      const discovered = await conflictClient.listCandidateSourceConflicts(context.projectId, proof.candidateId);
+      if (discovered.items.some((item) => !manualSyncConflictReady(proof, item))) {
+        setConflicted(true);
+        throw new Error("冲突选项与原上传候选证明不一致；请刷新来源后重试。");
+      }
+      setConflicts(discovered);
       setPrepared(proof);
     } catch (cause) {
       if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") setConflicted(true);
@@ -130,11 +165,14 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
   };
 
   const submit = async () => {
-    if (!prepared || !manualSyncProofReady(prepared, context) || !reviewerId || !reason.trim()
+    if (!prepared || !conflicts || !manualSyncProofReady(prepared, context) || !reviewerId || !reason.trim()
+      || prepared.targets.some((target) => !decisions[target.bindingId])
       || busy || conflicted || loadingReviewers) return;
+    const targetDecisions = prepared.targets.map((target) => ({ bindingId: target.bindingId,
+      ...decisions[target.bindingId]! }));
     const body = submitBody.current ?? {
       candidateId: prepared.candidateId, expectedProofToken: prepared.proofToken,
-      reason: reason.trim(), assignedToUserId: reviewerId
+      reason: reason.trim(), assignedToUserId: reviewerId, targetDecisions
     };
     submitBody.current = body;
     setSubmitAttempted(true);
@@ -142,10 +180,53 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
     setError("");
     try {
       const result = await context.client.submit(context.projectId, body, submitRequestId.current);
-      if (result.status !== "pending" || result.candidateId !== prepared.candidateId
-        || result.batchProofDigest !== prepared.batchProofDigest
+      const mixed = body.targetDecisions.some((decision) => decision.choice === "draft");
+      const composition = result.compositionProof;
+      const selectedDraftsMatch = composition?.targetDecisions.every((decision) => {
+        if (!decision.draft) return true;
+        const preview = conflicts.items.find((item) => item.selectedBindingId === decision.bindingId
+          && item.selectedDraftId === decision.draft?.id);
+        return Boolean(preview && decision.draft.authorUserId === preview.authorUserId
+          && decision.draft.baseCurrentValueId === preview.choices.draft.selectedBaseValueId
+          && decision.draft.sourcePinId === preview.choices.draft.selectedSourcePinId
+          && decision.draft.configRevisionId === preview.choices.draft.selectedRevisionId
+          && decision.draft.candidateSha256 === preview.choices.draft.selectedDraftCandidateDigest.replace(/^sha256:/, ""));
+      });
+      if (result.status !== "pending"
+        || (mixed ? !composition || result.candidateId === prepared.candidateId
+          || result.uploadCandidateId !== prepared.candidateId
+          || result.candidateId !== composition.composedCandidateId
+          || composition.uploadCandidateId !== prepared.candidateId
+          || composition.uploadObject.proofToken !== prepared.proofToken
+          || composition.composedObject.proofToken !== result.sourceProofToken
+          || composition.cohortProofToken !== prepared.cohortProofToken
+          || composition.batchProofDigest !== result.batchProofDigest
+          || composition.draftImpactDigest !== result.draftImpactDigest
+          || composition.decisionProofDigest !== result.decisionProofDigest
+          || JSON.stringify(composition.members) !== JSON.stringify(prepared.members)
+          || JSON.stringify(composition.cohort) !== JSON.stringify(prepared.cohort)
+          || !selectedDraftsMatch
+          || composition.targetDecisions.length !== body.targetDecisions.length
+          || composition.targetDecisions.some((decision, index) => decision.ordinal !== index
+            || decision.bindingId !== body.targetDecisions[index]?.bindingId
+            || decision.choice !== body.targetDecisions[index]?.choice
+            || (decision.draft?.id ?? undefined) !== body.targetDecisions[index]?.draftId)
+          : result.candidateId !== prepared.candidateId || result.uploadCandidateId !== null
+            || composition !== null || result.decisionProofDigest !== null
+            || result.batchProofDigest !== prepared.batchProofDigest
+            || result.sourceProofToken !== prepared.proofToken)
+        || !result.draftImpact || !/^[0-9a-f]{64}$/.test(result.draftImpactDigest ?? "")
+        || result.draftImpact.length !== prepared.cohort.length
+        || result.draftImpact.some((entry, index) => {
+          const member = prepared.cohort[index];
+          const decision = body.targetDecisions.find((item) => item.bindingId === entry.bindingId);
+          return !member || entry.ordinal !== index || entry.bindingId !== member.bindingId
+            || entry.baseCurrentValueId !== member.oldValueId || entry.sourcePinId !== member.sourcePinId
+            || (decision ? entry.role !== "target" || entry.decision !== decision.choice
+              || entry.selectedDraftId !== decision.draftId
+              : entry.role !== "sibling" || entry.decision !== "re-pin" || entry.selectedDraftId !== undefined);
+        })
         || result.cohortCount !== prepared.cohort.length
-        || result.sourceProofToken !== prepared.proofToken
         || result.cohortProofToken !== prepared.cohortProofToken
         || result.fileId !== context.fileId || result.baseVersionId !== context.currentVersionId
         || result.configSetId !== prepared.configSetId
@@ -154,9 +235,14 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
         || result.targets.length !== prepared.targets.length
         || result.targets.some((target, index) => target.ordinal !== index
           || target.bindingId !== prepared.targets[index]?.bindingId
-          || target.action !== prepared.targets[index]?.action
+          || target.action !== (composition
+            ? composition.targetDecisions[index]?.action : prepared.targets[index]?.action)
           || target.sourcePinId !== prepared.targets[index]?.sourcePinId
-          || target.targetText !== (prepared.targets[index]?.action === "delete" ? null : prepared.targets[index]?.afterText))) {
+          || target.decision !== body.targetDecisions[index]?.choice
+          || target.draftId !== (body.targetDecisions[index]?.draftId ?? null)
+          || target.targetText !== (composition
+            ? composition.targetDecisions[index]?.targetText
+            : prepared.targets[index]?.action === "delete" ? null : prepared.targets[index]?.afterText))) {
         setConflicted(true);
         throw new Error("服务端冻结请求与预览目标或证明不一致；请从提交记录核对。");
       }
@@ -169,7 +255,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
     } finally { setBusy(false); }
   };
 
-  return <ModalDialog open className="submission-dialog canonical-batch-submit-dialog" onDismiss={busy ? undefined : onDismiss} describedBy>
+  return <ModalDialog open className="submission-dialog canonical-batch-submit-dialog canonical-manual-sync-dialog" onDismiss={busy ? undefined : onDismiss} describedBy>
     {({ titleId, descriptionId }) => <>
       <h2 id={titleId}>上传 {context.format.toUpperCase()} 来源并准备批量审核</h2>
       <p id={descriptionId}>选择「{context.fileName}」的新内容；本文件须产生至少两个可验证目标。准备候选及提交待审请求不会改写当前 Value、来源 pin 或活跃文件版本；另一名审核人批准后才一次应用全部目标。</p>
@@ -182,10 +268,32 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
         <p>候选 ID：<code>{prepared.candidateId}</code>；格式：{prepared.format.toUpperCase()}；完整有序目标 {prepared.targets.length} 项；来源 cohort {prepared.cohort.length} 项。</p>
         <p>候选证明：<code>{prepared.proofToken}</code>；批量证明摘要：<code>{prepared.batchProofDigest}</code></p>
         {prepared.baseDigest === prepared.proposedDigest ? <p role="status">上传文件与当前版本内容相同；如只需核查来源，可使用“来源一致性校验”。</p> : null}
-        <ol aria-label="手动同步完整有序目标">{prepared.targets.map((target, index) => <li key={target.bindingId}>
-          目标 {index + 1}：{target.action === "delete" ? "删除" : "设置"} · Binding <code>{target.bindingId}</code> · 来源 pin <code>{target.sourcePinId}</code>
-          <div>基线 <code>{target.beforeText}</code> → {target.action === "delete" ? "删除（无替换值）" : <code>{target.afterText}</code>}</div>
-        </li>)}</ol>
+        <ol aria-label="手动同步完整有序目标">{prepared.targets.map((target, index) => {
+          const options = conflicts?.items.filter((item) => item.selectedBindingId === target.bindingId) ?? [];
+          return <li key={target.bindingId}>
+            目标 {index + 1}：{target.action === "delete" ? "删除" : "设置"} · Binding <code>{target.bindingId}</code> · 来源 pin <code>{target.sourcePinId}</code>
+            <div>基线 <code>{target.beforeText}</code> → 上传文件值 {target.action === "delete" ? "删除" : <code>{target.afterText}</code>}</div>
+            <fieldset disabled={busy || submitAttempted}>
+              <legend>目标 {index + 1} 的最终选择</legend>
+              <label><input type="radio" name={`decision-${target.bindingId}`}
+                checked={decisions[target.bindingId]?.choice === "file"}
+                onChange={() => setDecisions((current) => ({ ...current, [target.bindingId]: { choice: "file" } }))} />
+                采用文件值{options.length ? "（已有竞争草稿，须明确选择）" : ""}</label>
+              {options.map((item) => <label key={item.selectedDraftId}>
+                <input type="radio" name={`decision-${target.bindingId}`}
+                  checked={decisions[target.bindingId]?.choice === "draft"
+                    && decisions[target.bindingId]?.draftId === item.selectedDraftId}
+                  onChange={() => setDecisions((current) => ({ ...current, [target.bindingId]: {
+                    choice: "draft", draftId: item.selectedDraftId
+                  } }))} />
+                采用界面草稿 <code>{item.selectedDraftId}</code>（作者 <code>{item.authorUserId}</code>；值 {item.choices.draft.action === "delete"
+                  ? "删除" : <code>{item.choices.draft.targetText}</code>}）</label>)}
+            </fieldset>
+            {conflicts?.ineligible.filter((item) => item.selectedBindingId === target.bindingId).map((item) =>
+              <p role="status" key={item.selectedDraftId}>草稿 <code>{item.selectedDraftId}</code> 当前不可选（{item.reason}）。</p>)}
+          </li>;
+        })}</ol>
+        <p role="note">其他 Binding 的草稿不会被选中；审核详情会展示其预计过期效果。</p>
         <label>修改原因<textarea value={reason} disabled={busy || submitAttempted}
           onChange={(event) => setReason(event.target.value)} /></label>
         <label>指定软件审核人<select value={reviewerId} disabled={busy || loadingReviewers || submitAttempted}
@@ -200,7 +308,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
         <button type="button" disabled={busy} onClick={onDismiss}>取消</button>
         {!prepared ? <button type="button" disabled={!file || busy || conflicted || file.size === 0 || file.size > MAX_SOURCE_BYTES}
           onClick={() => void prepare()}>{busy ? "准备中…" : prepareBody.current ? "重试准备" : "预览有序目标与证明"}</button>
-          : <button type="button" disabled={busy || conflicted || loadingReviewers || !reviewerId || !reason.trim()}
+          : <button type="button" disabled={busy || conflicted || loadingReviewers || !reviewerId || !reason.trim()
+            || prepared.targets.some((target) => !decisions[target.bindingId])}
             onClick={() => void submit()}>{busy ? "提交中…" : `一次提交全部 ${prepared.targets.length} 项审核`}</button>}
       </div>
     </>}

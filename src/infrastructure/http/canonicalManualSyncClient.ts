@@ -25,7 +25,8 @@ export function createCanonicalManualSyncClient(client = createDefaultApiClient(
       )).item;
     },
     async submit(projectId: string, body: {
-      candidateId: string; expectedProofToken: string; reason: string; assignedToUserId: string
+      candidateId: string; expectedProofToken: string; reason: string; assignedToUserId: string;
+      targetDecisions: Array<{ bindingId: string; choice: "file" | "draft"; draftId?: string }>
     }, requestId: string): Promise<ManualSyncSubmission> {
       return catalogBatchValueChangeRequestResponseSchema.parse(await post(
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches`,

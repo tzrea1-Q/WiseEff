@@ -753,7 +753,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     reviewProjectValueChangeRequest: (
       projectId: string,
       requestId: string,
-      body: { decision: "approve" | "reject"; note?: string | null; batchProofDigest?: string },
+      body: { decision: "approve" | "reject"; note?: string | null; batchProofDigest?: string;
+        draftImpactDigest?: string; decisionProofDigest?: string },
       context: CatalogWriteContext
     ) =>
       request(

@@ -6,7 +6,7 @@ import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewP
 
 const proof = "a".repeat(64);
 const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
-  ordinal, draftId: null, bindingId, definitionId: "same-definition",
+  ordinal, draftId: null, decision: "file" as const, bindingId, definitionId: "same-definition",
   definitionRevisionId: "definition-revision", catalogReleaseId: "release-1",
   baseCurrentValueId: `base-${ordinal}`, configRevisionId: `revision-${ordinal}`,
   sourceRef: `source-${ordinal}`, sourcePinId: `pin-${ordinal}`,
@@ -14,9 +14,18 @@ const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
   appliedValueId: null, appliedHistoryEventId: null,
   appliedSourcePinId: null, appliedFileVersionId: null
 }));
+const impact = targets.map((target) => ({ ordinal: target.ordinal, bindingId: target.bindingId,
+  role: "target" as const, decision: "file" as const, baseCurrentValueId: target.baseCurrentValueId,
+  sourcePinId: target.sourcePinId, configRevisionId: target.configRevisionId, drafts: [] }));
+const siblingImpact = { ordinal: 2, bindingId: "binding-unchanged", role: "sibling" as const,
+  decision: "re-pin" as const, baseCurrentValueId: "base-unchanged", sourcePinId: "pin-unchanged",
+  configRevisionId: "revision-unchanged", drafts: [] };
+const siblingBinding = { bindingId: "binding-unchanged", oldValueId: "base-unchanged", sourcePinId: "pin-unchanged" };
 const batch = {
   id: "batch-1", projectId: "project-1", candidateId: "candidate-1",
   batchProofDigest: proof, cohortCount: 2, status: "pending" as const,
+  draftImpactDigest: "d".repeat(64), draftImpact: impact, uploadCandidateId: null,
+  decisionProofDigest: null, compositionProof: null,
   reason: "两项校准", submitterUserId: "author-1", assignedToUserId: "reviewer-1",
   reviewerUserId: null, reviewerNote: null, sourceProofToken: "source-proof",
   cohortProofToken: "cohort-proof", fileId: "file-1", baseVersionId: "version-1",
@@ -27,10 +36,12 @@ const diff = {
   batchProofDigest: proof, format: "json" as const, sourceName: "config.json",
   baseDigest: "before-digest", proposedDigest: "after-digest", diffDigest: proof,
   before: '{"a":36.5,"b":48}', after: '{"a":50,"b":60}',
-  bindings: [{ bindingId: "binding-a" }, { bindingId: "binding-b" }],
+  bindings: targets.map((target) => ({ bindingId: target.bindingId,
+    oldValueId: target.baseCurrentValueId, sourcePinId: target.sourcePinId })),
   targets: targets.map((target, ordinal) => ({
     ordinal, bindingId: target.bindingId, sourcePinId: target.sourcePinId,
-    action: target.action, beforeText: ordinal === 0 ? "36.5" : "48",
+    action: target.action, decision: "file" as const, draftId: null,
+    beforeText: ordinal === 0 ? "36.5" : "48",
     afterText: target.targetText
   }))
 };
@@ -50,11 +61,86 @@ function repository(source = diff) {
 }
 
 describe("canonical batch reviewer", () => {
+  it.each(["json", "dts"] as const)("reviews a composed %s upload, draft choice, and sibling re-pin with all digests", async (format) => {
+    const mixedDigest = "b".repeat(64);
+    const decisionDigest = "c".repeat(64);
+    const impactDigest = "d".repeat(64);
+    const cohort = ["binding-a", "binding-b", "binding-sibling"].map((bindingId, index) => ({
+      bindingId, oldValueId: `base-${index}`, sourcePinId: `pin-${index}`,
+      sourceOccurrenceId: `occ-${index}`, definitionId: "same-definition",
+      effectiveRevisionId: "definition-revision", catalogReleaseId: "release-1",
+      locator: { pointer: `/${bindingId}` }, valueKind: "number", valueDigest: "value-digest",
+      configSetId: "set-1"
+    }));
+    const impact = cohort.map((entry, index) => ({ ordinal: index, bindingId: entry.bindingId,
+      baseCurrentValueId: entry.oldValueId, sourcePinId: entry.sourcePinId,
+      configRevisionId: `revision-${index}`,
+      role: index === 2 ? "sibling" : "target", decision: index === 0 ? "draft" : index === 1 ? "file" : "re-pin",
+      ...(index === 0 ? { selectedDraftId: "draft-88" } : {}),
+      drafts: index === 0 ? [{ draftId: "draft-88", authorUserId: "other-author", currentlyStale: false,
+        expectedEffect: "preserved-stale" }] : index === 2 ? [{ draftId: "sibling-draft", authorUserId: "third-author",
+        currentlyStale: false, expectedEffect: "preserved-stale" }] : []
+    }));
+    const chosenTargets = targets.map((target, index) => ({ ...target,
+      targetText: index === 0 ? "88" : "60", decision: index === 0 ? "draft" as const : "file" as const,
+      draftId: index === 0 ? "draft-88" : null
+    }));
+    const compositionProof = { uploadCandidateId: "original-upload", composedCandidateId: "composed-candidate",
+      projectId: "project-1", fileId: "file-1", baseVersionId: "version-1",
+      configSetId: "set-1", format, cohortProofToken: "cohort-proof",
+      batchProofDigest: mixedDigest, draftImpactDigest: impactDigest, decisionProofDigest: decisionDigest,
+      cohort, targetDecisions: chosenTargets.map((target, ordinal) => ({ ordinal,
+        bindingId: target.bindingId, choice: target.decision, action: target.action,
+        targetText: target.targetText, draft: ordinal === 0 ? { id: "draft-88" } : null })) };
+    const request = { ...batch, candidateId: "composed-candidate", uploadCandidateId: "original-upload",
+      batchProofDigest: mixedDigest, draftImpactDigest: impactDigest, decisionProofDigest: decisionDigest,
+      draftImpact: impact, compositionProof, cohortCount: 3, targets: chosenTargets };
+    const source = { ...diff, format, candidateId: "composed-candidate", uploadCandidateId: "original-upload",
+      decisionProofDigest: decisionDigest, batchProofDigest: mixedDigest, diffDigest: mixedDigest,
+      uploadAfter: "50 / 60 / 30", after: "88 / 60 / 30", draftImpact: impact, bindings: cohort,
+      targets: chosenTargets.map((target, ordinal) => ({ ordinal, bindingId: target.bindingId,
+        sourcePinId: target.sourcePinId, action: target.action, decision: target.decision,
+        draftId: target.draftId, beforeText: String(10 + ordinal * 10), afterText: target.targetText })) };
+    const repo = repository(source);
+    vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValue({ item: request } as never);
+    const view = render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
+      currentUserId="reviewer-1" initialRequestId={request.id} />);
+    const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
+    expect(await within(detail).findByLabelText("批量原上传来源")).toHaveTextContent("50 / 60 / 30");
+    expect(within(detail).getByLabelText("批量固定源变更后")).toHaveTextContent("88 / 60 / 30");
+    expect(within(detail).getAllByText("other-author")).toHaveLength(2);
+    expect(within(detail).getByText(/兄弟 Binding · 结构性 re-pin/)).toBeVisible();
+    const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
+    expect(approve).toBeEnabled();
+    fireEvent.click(approve);
+    await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
+      "project-1", request.id, { decision: "approve", batchProofDigest: mixedDigest,
+        draftImpactDigest: impactDigest, decisionProofDigest: decisionDigest }, expect.any(Object)
+    ));
+    view.unmount();
+    for (const incomplete of [
+      { ...request, compositionProof: { ...compositionProof,
+        targetDecisions: [...compositionProof.targetDecisions].reverse() } },
+      { ...request, draftImpact: impact.slice(0, 2) },
+      { ...request, decisionProofDigest: null },
+      { ...request, draftImpactDigest: null }
+    ]) {
+      const rejected = repository(source);
+      vi.mocked(rejected.getProjectValueBatchChangeRequest!).mockResolvedValue({ item: incomplete } as never);
+      const mounted = render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={rejected}
+        currentUserId="reviewer-1" initialRequestId={request.id} />);
+      const blocked = await screen.findByRole("article", { name: "批量源文件请求详情" });
+      await expect(within(blocked).findByRole("alert")).resolves.toHaveTextContent("不一致");
+      expect(within(blocked).getByRole("button", { name: "批准全部 2 项" })).toBeDisabled();
+      expect(rejected.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+      mounted.unmount();
+    }
+  });
   it("shows a DTS request with its full surviving Binding cohort and approves one frozen digest", async () => {
     const repo = repository({ ...diff, format: "dts", sourceName: "config.dts",
-      bindings: [...diff.bindings, { bindingId: "binding-unchanged" }] });
+      bindings: [...diff.bindings, siblingBinding] });
     vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValue({
-      item: { ...batch, cohortCount: 3 }
+      item: { ...batch, cohortCount: 3, draftImpact: [...impact, siblingImpact] }
     } as never);
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
       currentUserId="reviewer-1" initialRequestId={batch.id} />);
@@ -65,7 +151,8 @@ describe("canonical batch reviewer", () => {
     expect(approve).toBeEnabled();
     fireEvent.click(approve);
     await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
-      "project-1", batch.id, { decision: "approve", batchProofDigest: proof }, expect.any(Object)
+      "project-1", batch.id, { decision: "approve", batchProofDigest: proof,
+        draftImpactDigest: "d".repeat(64) }, expect.any(Object)
     ));
     expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
   });
@@ -87,9 +174,9 @@ describe("canonical batch reviewer", () => {
     ["wrong proof", diff.targets, "b".repeat(64)]
   ])("blocks DTS approval for %s", async (_reason, sourceTargets, sourceProof) => {
     const repo = repository({ ...diff, format: "dts", batchProofDigest: sourceProof,
-      bindings: [...diff.bindings, { bindingId: "binding-unchanged" }], targets: sourceTargets });
+      bindings: [...diff.bindings, siblingBinding], targets: sourceTargets });
     vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValue({
-      item: { ...batch, cohortCount: 3 }
+      item: { ...batch, cohortCount: 3, draftImpact: [...impact, siblingImpact] }
     } as never);
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
       currentUserId="reviewer-1" initialRequestId={batch.id} />);
@@ -122,7 +209,8 @@ describe("canonical batch reviewer", () => {
     expect(approve).toBeEnabled();
     fireEvent.click(approve);
     await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
-      "project-1", batch.id, { decision: "approve", batchProofDigest: proof },
+      "project-1", batch.id, { decision: "approve", batchProofDigest: proof,
+        draftImpactDigest: "d".repeat(64) },
       expect.objectContaining({ catalogReleaseId: "release-1", idempotencyKey: expect.any(String) })
     ));
     await waitFor(() => expect(screen.getByText("value-0")).toBeVisible());
@@ -217,7 +305,8 @@ describe("canonical batch reviewer", () => {
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
     fireEvent.click(within(detail).getByRole("button", { name: "驳回全部 2 项" }));
     await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
-      "project-1", batch.id, { decision: "reject", batchProofDigest: proof }, expect.any(Object)
+      "project-1", batch.id, { decision: "reject", batchProofDigest: proof,
+        draftImpactDigest: "d".repeat(64) }, expect.any(Object)
     ));
     await waitFor(() => expect(detail).toHaveTextContent("已驳回"));
     expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);

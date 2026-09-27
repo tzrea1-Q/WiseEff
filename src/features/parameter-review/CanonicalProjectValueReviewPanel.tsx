@@ -77,14 +77,67 @@ function matchesFrozenConflict(request: CanonicalRequest, diff: SourceDiff | nul
 
 function matchesFrozenBatch(request: BatchRequest, diff: BatchSourceDiff): boolean {
   const seen = new Set<string>();
+  if (!request.draftImpact || !/^[0-9a-f]{64}$/.test(request.draftImpactDigest ?? "")
+    || request.draftImpact.length !== request.cohortCount
+    || request.draftImpact.some((entry, index) => {
+      const binding = diff.bindings[index];
+      const target = request.targets.find((row) => row.bindingId === entry.bindingId);
+      return !binding || entry.ordinal !== index || entry.bindingId !== binding.bindingId
+        || entry.baseCurrentValueId !== binding.oldValueId || entry.sourcePinId !== binding.sourcePinId
+        || (target ? entry.role !== "target" || entry.decision !== target.decision
+          || entry.selectedDraftId !== (target.draftId ?? undefined)
+          : entry.role !== "sibling" || entry.decision !== "re-pin" || entry.selectedDraftId !== undefined);
+    })) return false;
+  const composition = request.compositionProof;
+  const hasComposition = Boolean(request.uploadCandidateId || request.decisionProofDigest || composition);
+  if (hasComposition && (!composition || !request.uploadCandidateId || !request.decisionProofDigest
+    || !request.draftImpactDigest || !request.draftImpact || !diff.draftImpact
+    || !/^[0-9a-f]{64}$/.test(request.draftImpactDigest)
+    || !/^[0-9a-f]{64}$/.test(request.decisionProofDigest)
+    || diff.uploadCandidateId !== request.uploadCandidateId
+    || diff.decisionProofDigest !== request.decisionProofDigest || !diff.uploadAfter
+    || composition.projectId !== request.projectId || composition.fileId !== request.fileId
+    || composition.baseVersionId !== request.baseVersionId
+    || composition.configSetId !== request.configSetId || composition.format !== diff.format
+    || composition.cohortProofToken !== request.cohortProofToken
+    || composition.uploadCandidateId !== request.uploadCandidateId
+    || composition.composedCandidateId !== request.candidateId
+    || composition.batchProofDigest !== request.batchProofDigest
+    || composition.draftImpactDigest !== request.draftImpactDigest
+    || composition.decisionProofDigest !== request.decisionProofDigest
+    || composition.cohort.length !== request.cohortCount
+    || composition.targetDecisions.length !== request.targets.length
+    || JSON.stringify(diff.draftImpact) !== JSON.stringify(request.draftImpact)
+    || composition.cohort.some((entry, index) => {
+      const binding = diff.bindings[index];
+      return !binding || binding.bindingId !== entry.bindingId
+        || binding.oldValueId !== entry.oldValueId || binding.sourcePinId !== entry.sourcePinId
+        || binding.sourceOccurrenceId !== entry.sourceOccurrenceId
+        || binding.definitionId !== entry.definitionId
+        || binding.effectiveRevisionId !== entry.effectiveRevisionId
+        || binding.catalogReleaseId !== entry.catalogReleaseId
+        || binding.valueDigest !== entry.valueDigest
+        || binding.configSetId !== entry.configSetId
+        || JSON.stringify(binding.locator) !== JSON.stringify(entry.locator);
+    }))) return false;
+  if (!hasComposition && (diff.uploadCandidateId || diff.decisionProofDigest || composition)) return false;
   return diff.requestId === request.id && diff.candidateId === request.candidateId
     && diff.batchProofDigest === request.batchProofDigest && diff.diffDigest === request.batchProofDigest
     && diff.bindings.length === request.cohortCount && diff.targets.length === request.targets.length
+    && (!diff.draftImpact || JSON.stringify(diff.draftImpact) === JSON.stringify(request.draftImpact))
     && request.targets.every((target, index) => {
       const source = diff.targets[index];
       if (!source || target.ordinal !== index || source.ordinal !== index || seen.has(target.bindingId)
         || source.bindingId !== target.bindingId || source.sourcePinId !== target.sourcePinId
-        || source.action !== target.action) return false;
+        || source.action !== target.action || source.decision !== target.decision
+        || source.draftId !== target.draftId) return false;
+      if (composition) {
+        const chosen = composition.targetDecisions[index];
+        if (!chosen || chosen.ordinal !== index || chosen.bindingId !== target.bindingId
+          || chosen.choice !== target.decision || chosen.action !== target.action
+          || chosen.targetText !== target.targetText
+          || (chosen.draft?.id ?? null) !== target.draftId) return false;
+      }
       seen.add(target.bindingId);
       return target.action === "delete"
         ? target.targetText === null && source.afterText === undefined
@@ -456,7 +509,9 @@ export function CanonicalProjectValueReviewPanel({
       const catalogReleaseId = catalog.item?.catalogReleaseId;
       if (!catalogReleaseId) throw new Error("当前 catalog release 不可用，已阻止审核。");
       await reviewProjectValueChangeRequest(projectId, requestId,
-        { decision, batchProofDigest: batchRequest.batchProofDigest },
+        { decision, batchProofDigest: batchRequest.batchProofDigest,
+          ...(batchRequest.draftImpactDigest ? { draftImpactDigest: batchRequest.draftImpactDigest } : {}),
+          ...(batchRequest.decisionProofDigest ? { decisionProofDigest: batchRequest.decisionProofDigest } : {}) },
         { catalogReleaseId, idempotencyKey: idempotencyKey() });
       if (!isCurrentScope()) return;
       const refreshed = (await canonicalRepository.getProjectValueBatchChangeRequest(projectId, requestId)).item;
@@ -710,9 +765,12 @@ export function CanonicalProjectValueReviewPanel({
                 <div><dt>请求 ID</dt><dd><code>{batchRequest.id}</code></dd></div>
                 <div><dt>状态</dt><dd>{canonicalStatusLabels[batchRequest.status]}</dd></div>
                 <div><dt>候选文件</dt><dd><code>{batchRequest.candidateId}</code></dd></div>
+                {batchRequest.uploadCandidateId ? <div><dt>原上传候选</dt><dd><code>{batchRequest.uploadCandidateId}</code></dd></div> : null}
                 <div><dt>基线文件版本</dt><dd><code>{batchRequest.baseVersionId}</code></dd></div>
                 <div><dt>配置集</dt><dd><code>{batchRequest.configSetId}</code></dd></div>
                 <div><dt>批量证明摘要</dt><dd><code>{batchRequest.batchProofDigest}</code></dd></div>
+                {batchRequest.draftImpactDigest ? <div><dt>草稿影响摘要</dt><dd><code>{batchRequest.draftImpactDigest}</code></dd></div> : null}
+                {batchRequest.decisionProofDigest ? <div><dt>组合决策摘要</dt><dd><code>{batchRequest.decisionProofDigest}</code></dd></div> : null}
                 {batchDiff ? <div><dt>来源格式</dt><dd>{batchDiff.format.toUpperCase()}</dd></div> : null}
                 <div><dt>修改原因</dt><dd>{batchRequest.reason}</dd></div>
                 <div><dt>提交人 ID</dt><dd><code>{batchRequest.submitterUserId ?? "—"}</code></dd></div>
@@ -742,6 +800,9 @@ export function CanonicalProjectValueReviewPanel({
                         <div><dt>基线修订</dt><dd><code>{target.configRevisionId}</code></dd></div>
                         <div><dt>来源 pin</dt><dd><code>{target.sourcePinId}</code></dd></div>
                         <div><dt>来源引用</dt><dd><code>{target.sourceRef}</code></dd></div>
+                        <div><dt>最终选择</dt><dd>{target.decision === "draft" ? "界面草稿值" : target.decision === "file" ? "文件值" : "未验证的草稿"}</dd></div>
+                        {target.draftId ? <div><dt>选中草稿</dt><dd><code>{target.draftId}</code>（作者 <code>{batchRequest.draftImpact?.find((entry) =>
+                          entry.bindingId === target.bindingId)?.drafts.find((draft) => draft.draftId === target.draftId)?.authorUserId ?? "未知"}</code>）</dd></div> : null}
                         <div><dt>目标</dt><dd>{target.action === "delete" ? "删除（无替换值）" : <pre>{target.targetText}</pre>}</dd></div>
                         {target.appliedValueId ? <div><dt>已应用值</dt><dd><code>{target.appliedValueId}</code></dd></div> : null}
                       </dl>
@@ -755,6 +816,19 @@ export function CanonicalProjectValueReviewPanel({
                   );
                 })}
               </ol>
+              {batchRequest.draftImpact ? <section aria-label="完整草稿影响">
+                <h4>完整 cohort 与草稿预计效果</h4>
+                <ol>{batchRequest.draftImpact.map((entry) => <li key={entry.bindingId}>
+                  <strong>{entry.role === "sibling" ? "兄弟 Binding · 结构性 re-pin" : "变更目标"}</strong> <code>{entry.bindingId}</code> · {entry.decision}
+                  {entry.drafts.length ? <ul>{entry.drafts.map((draft) => <li key={draft.draftId}>
+                    草稿 <code>{draft.draftId}</code> · 作者 <code>{draft.authorUserId ?? "未知"}</code>
+                    {entry.selectedDraftId === draft.draftId ? " · 本次选中" : " · 未选中，保留并预计过期"}
+                    {draft.currentlyStale ? "（当前已过期）" : ""}
+                    <div>动作：{draft.action === "delete" ? "删除" : "设置"}；原因：{draft.reason}；预计效果：保留并过期</div>
+                    <pre>{typeof draft.targetValue === "string" ? draft.targetValue : JSON.stringify(draft.targetValue)}</pre>
+                  </li>)}</ul> : " · 无竞争草稿"}
+                </li>)}</ol>
+              </section> : null}
               {batchProofReady && batchDiff ? (
                 <section aria-label="批量固定源差异" className="canonical-project-value-review__diff">
                   <dl>
@@ -763,6 +837,7 @@ export function CanonicalProjectValueReviewPanel({
                     <div><dt>候选校验摘要</dt><dd><code>{batchDiff.proposedDigest}</code></dd></div>
                   </dl>
                   <div><h4>变更前</h4><pre tabIndex={0} aria-label="批量固定源变更前" className="canonical-project-value-review__diff-text">{batchDiff.before}</pre></div>
+                  {batchDiff.uploadAfter ? <div><h4>原上传候选</h4><pre tabIndex={0} aria-label="批量原上传来源" className="canonical-project-value-review__diff-text">{batchDiff.uploadAfter}</pre></div> : null}
                   <div><h4>变更后</h4><pre tabIndex={0} aria-label="批量固定源变更后" className="canonical-project-value-review__diff-text">{batchDiff.after}</pre></div>
                 </section>
               ) : null}

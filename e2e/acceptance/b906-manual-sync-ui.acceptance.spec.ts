@@ -151,6 +151,9 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       expect(await Promise.all(prepared.targets.map((target) =>
         loadLegacyBindingIdentity(getRootPostgresPool(db)!, target.bindingId)))).toEqual([null, null]);
       await expect(dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem")).toHaveCount(2);
+      for (const target of await dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem").all()) {
+        await target.getByRole("radio", { name: /采用文件值/ }).check();
+      }
       await expect(dialog).toContainText(format.toUpperCase());
       await expect(dialog).toContainText("审核人批准后才一次应用全部目标");
       await page.keyboard.press("Tab");
