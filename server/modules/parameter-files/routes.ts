@@ -931,8 +931,10 @@ export function registerParameterFileRoutes(
       ? [{ bindingId: preview.bindingId, sourcePinId: preview.sourcePinId,
         baseCurrentValueId: preview.baseCurrentValueId, configRevisionId: preview.configRevisionId }]
       : []);
-    if (preview.kind !== "canonical" || preview.request || bindings.length === 0) {
-      return { status: 200, body: { items: [], ineligible: [] } };
+    const receipt = preview.request ? { request: preview.request } : {};
+    if (preview.kind !== "canonical" || bindings.length === 0
+      || preview.request?.status === "pending" || preview.request?.status === "approved") {
+      return { status: 200, body: { ...receipt, items: [], ineligible: [] } };
     }
     const rows = await db.query<{ id: string; binding_id: string; user_id: string;
       source_pin_id: string; base_current_value_id: string; config_revision_id: string;
@@ -979,7 +981,7 @@ export function registerParameterFileRoutes(
           reason: typeof error.details?.reason === "string" ? error.details.reason : "source-proof-stale" });
       }
     }
-    return { status: 200, body: { items, ineligible } };
+    return { status: 200, body: { ...receipt, items, ineligible } };
   });
 
   router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflict-submit", async (request) => {

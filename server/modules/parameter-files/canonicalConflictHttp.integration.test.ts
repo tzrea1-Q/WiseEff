@@ -219,6 +219,13 @@ describe("#906 C canonical conflict HTTP", () => {
     canonicalSourceConflictSubmitResponseSchema.parse(submitted.body);
     expect(submitted.body.item).toMatchObject({ status: "pending", replayed: false });
     const requestId = submitted.body.item.requestId;
+    expect((await requestJson<{ item: { request?: { id: string; status: string } } }>(
+      f.route(), `${path}/source-preview`)).body.item.request)
+      .toEqual({ id: requestId, status: "pending" });
+    const linkedConflicts = await requestJson(f.route(), `${path}/source-conflicts`);
+    canonicalSourceConflictListResponseSchema.parse(linkedConflicts.body);
+    expect(linkedConflicts.body).toMatchObject({ request: { id: requestId, status: "pending" },
+      items: [], ineligible: [] });
     const receipts = await f.db.query<{ metadata: { decisionProofDigest: string; choice: string } }>(
       `select metadata from audit_events where organization_id=$1 and project_id=$2 and target_id=$3
          and action='value-change-submitted' and metadata ? 'decisionProofDigest'`, [ORG, PROJECT, requestId]);

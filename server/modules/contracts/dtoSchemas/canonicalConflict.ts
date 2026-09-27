@@ -39,6 +39,7 @@ export const canonicalSourceConflictDecisionProofSchema = z.object({
 });
 
 export const canonicalSourceConflictListResponseSchema = z.object({
+  request: z.object({ id, status: z.enum(["pending", "approved", "rejected", "withdrawn"]) }).optional(),
   items: z.array(z.object({
     selectedBindingId: id, selectedDraftId: id, authorUserId: id,
     choices: z.object({

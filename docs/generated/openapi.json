@@ -30549,6 +30549,28 @@
       "CanonicalSourceConflictListResponse": {
         "type": "object",
         "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "status"
+            ],
+            "additionalProperties": false
+          },
           "items": {
             "type": "array",
             "items": {

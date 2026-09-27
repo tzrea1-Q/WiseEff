@@ -154,6 +154,21 @@ export async function getCanonicalValueChangeRequest(
   return result.rows[0] ? hydrateRequest(db, result.rows[0]) : null;
 }
 
+/** Candidate previews need only the receipt; review details retain their own visibility checks. */
+export async function getCanonicalCandidateRequestReceipt(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; candidateId: string; linkedRequestId?: string }
+): Promise<Pick<CanonicalValueChangeRequestRow, "id" | "status"> | null> {
+  const result = await db.query<Pick<CanonicalValueChangeRequestRow, "id" | "status">>(`
+    select id,status from public.project_parameter_value_change_requests
+     where organization_id=$1 and project_id=$2 and request_kind in ('single','batch')
+       and (candidate_id=$3 or batch_upload_candidate_id=$3 or id=$4)
+     order by case status when 'pending' then 0 when 'approved' then 1 else 2 end,
+       created_at desc,id desc limit 1`,
+  [input.organizationId, input.projectId, input.candidateId, input.linkedRequestId ?? null]);
+  return result.rows[0] ?? null;
+}
+
 /** Serializes concurrent reviews of the same request. */
 export async function getCanonicalValueChangeRequestForUpdate(
   db: Queryable,

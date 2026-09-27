@@ -18,7 +18,7 @@ import {
   type CanonicalValueDraftDto
 } from "../parameter-bindings/drafts/service";
 import type { CanonicalChangeRequestStatus, CanonicalValueChangeRequestRow } from "../parameter-bindings/drafts/changeRepository";
-import { getCanonicalValueChangeRequest } from "../parameter-bindings/drafts/changeRepository";
+import { getCanonicalCandidateRequestReceipt, getCanonicalValueChangeRequest } from "../parameter-bindings/drafts/changeRepository";
 import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin, discoverDeletedSourceRevisionPins } from "../parameter-bindings/values";
 import type { CanonicalSourceBindingPin, CanonicalValueSourcePin } from "../parameter-bindings/values";
 import {
@@ -800,13 +800,13 @@ export async function previewCanonicalCandidate(
   input: { projectId: string; candidateId: string }
 ): Promise<CanonicalSourcePreviewDto> {
   const inspection = await db.transaction((tx) => inspectCandidate(tx, objectStore, auth, input));
-  const linked = await loadRequestForWorkflowLink(db, auth, inspection.candidate);
-  const candidateRequest = linked ?? await loadRequestForCandidate(db, {
+  const receipt = await getCanonicalCandidateRequestReceipt(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
-    candidateId: input.candidateId
+    candidateId: input.candidateId,
+    linkedRequestId: inspection.candidate.impact?.canonicalSourceWorkflow?.requestId
   });
-  return previewFromInspection(inspection, candidateRequest ? { id: candidateRequest.id, status: candidateRequest.status } : null);
+  return previewFromInspection(inspection, receipt);
 }
 
 /** Inspect a newly composed candidate inside the caller's source-locked transaction. */
