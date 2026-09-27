@@ -144,7 +144,9 @@ export function ProjectConfigurationWorkbench({
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
-  const [manualSyncTarget, setManualSyncTarget] = useState<DtsConfigSetMemberFile | null>(null);
+  const [manualSyncTarget, setManualSyncTarget] = useState<{
+    member: DtsConfigSetMemberFile; currentVersionId: string; workflowProofToken: string
+  } | null>(null);
   const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
   const {
     session: workspaceLoadSession,
@@ -1734,7 +1736,9 @@ export function ProjectConfigurationWorkbench({
               onOpenManualSync={manualSyncClient && apiMode && canAdmin && sourceWorkflow?.canonical
                 && sourceWorkflow.bindingCount >= 2 && sourceWorkflow.proofToken
                 && selectedMember?.currentVersionId
-                ? () => setManualSyncTarget(selectedMember) : undefined}
+                ? () => setManualSyncTarget({ member: selectedMember,
+                  currentVersionId: selectedMember.currentVersionId!,
+                  workflowProofToken: sourceWorkflow.proofToken! }) : undefined}
               sourceWorkflow={sourceWorkflow}
               sourceWorkflowLoading={sourceWorkflowLoading}
               sourceWorkflowError={sourceWorkflowError}
@@ -1841,21 +1845,24 @@ export function ProjectConfigurationWorkbench({
         } : undefined}
       /> : null}
 
-      {manualSyncTarget && manualSyncClient && sourceWorkflow?.canonical
-        && selectedMember?.fileId === manualSyncTarget.fileId && selectedMember.currentVersionId
-        && sourceWorkflow.proofToken ? <WorkbenchCanonicalManualSyncDialog
-          key={`${manualSyncTarget.fileId}:${selectedMember.currentVersionId}:${sourceWorkflow.proofToken}`}
-          context={{ projectId: project.id, fileId: manualSyncTarget.fileId,
-            fileName: manualSyncTarget.fileName, format: manualSyncTarget.format,
-            currentVersionId: selectedMember.currentVersionId,
-            workflowProofToken: sourceWorkflow.proofToken, currentUserId,
+      {manualSyncTarget && manualSyncClient ? <WorkbenchCanonicalManualSyncDialog
+          context={{ projectId: project.id, fileId: manualSyncTarget.member.fileId,
+            fileName: manualSyncTarget.member.fileName, format: manualSyncTarget.member.format,
+            currentVersionId: manualSyncTarget.currentVersionId,
+            workflowProofToken: manualSyncTarget.workflowProofToken, currentUserId,
             client: manualSyncClient,
             onSubmitted: (requestId) => {
               setManualSyncTarget(null);
               setSourceWorkflowReloadToken((value) => value + 1);
               setVersionsReloadToken((value) => value + 1);
               onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
-            } }} onDismiss={() => setManualSyncTarget(null)} /> : null}
+            } }} sourceState={{
+            currentVersionId: selectedMembers.find((member) => member.fileId === manualSyncTarget.member.fileId)?.currentVersionId ?? null,
+            workflowProofToken: sourceWorkflowsByFileId[manualSyncTarget.member.fileId]?.proofToken ?? null,
+            loading: sourceWorkflowSetLoading,
+            error: sourceWorkflowErrorsByFileId[manualSyncTarget.member.fileId] || membersError || "",
+            canonical: sourceWorkflowsByFileId[manualSyncTarget.member.fileId]?.canonical ?? null
+          }} onDismiss={() => setManualSyncTarget(null)} /> : null}
 
       <WorkbenchTaskDock
         tasksOpen={tasksOpen}

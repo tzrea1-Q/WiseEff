@@ -50,7 +50,11 @@ function manualSyncConflictReady(proof: ManualSyncPreparation, item: CanonicalSo
   const draft = item.choices.draft;
   return file.choice === "file" && draft.choice === "draft"
     && file.action === target.action && file.targetText === target.afterText
+    && file.selectedDraftProof === draft.selectedDraftProof
+    && file.selectedDraftCandidateId === draft.selectedDraftCandidateId
+    && file.selectedDraftCandidateDigest === draft.selectedDraftCandidateDigest
     && [file, draft].every((choice) => choice.candidateId === proof.candidateId
+      && /^[0-9a-f]{64}$/.test(choice.decisionProofDigest)
       && choice.selectedBindingId === item.selectedBindingId
       && choice.selectedDraftId === item.selectedDraftId
       && choice.fileId === proof.fileId && choice.baseVersionId === proof.baseVersionId
@@ -74,8 +78,11 @@ async function encodeFile(file: File): Promise<string> {
   return btoa(binary);
 }
 
-export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
-  context: ManualSyncContext; onDismiss: () => void;
+export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDismiss }: {
+  context: ManualSyncContext;
+  sourceState?: { currentVersionId: string | null; workflowProofToken: string | null;
+    loading: boolean; error: string; canonical: boolean | null };
+  onDismiss: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [prepared, setPrepared] = useState<ManualSyncPreparation | null>(null);
@@ -95,6 +102,26 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
   const submitBody = useRef<Parameters<ManualSyncContext["client"]["submit"]>[1] | null>(null);
   const governance = useMemo(() => context.governanceClient ?? createUserGovernanceClient(), [context.governanceClient]);
   const conflictClient = useMemo(() => context.conflictClient ?? createCanonicalConflictClient(), [context.conflictClient]);
+  const sourceChanged = Boolean(sourceState && !sourceState.loading && (
+    sourceState.canonical === false
+    || (sourceState.currentVersionId && sourceState.currentVersionId !== context.currentVersionId)
+    || (sourceState.workflowProofToken && sourceState.workflowProofToken !== context.workflowProofToken)
+  ));
+  const sourceReady = !sourceState || Boolean(!sourceState.loading && !sourceState.error
+    && sourceState.canonical && sourceState.currentVersionId === context.currentVersionId
+    && sourceState.workflowProofToken === context.workflowProofToken);
+  const unprovenConflicts = conflicts?.ineligible.filter((item) => item.reason !== "selected-draft-stale"
+    && prepared?.targets.some((target) => target.bindingId === item.selectedBindingId)) ?? [];
+
+  const resetSubmit = () => {
+    submitRequestId.current = crypto.randomUUID();
+    submitBody.current = null;
+  };
+
+  const chooseDecision = (bindingId: string, choice: "file" | "draft", draftId?: string) => {
+    resetSubmit();
+    setDecisions((current) => ({ ...current, [bindingId]: { choice, ...(draftId ? { draftId } : {}) } }));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -120,13 +147,12 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
     setConflicted(false);
     setSubmitAttempted(false);
     prepareRequestId.current = crypto.randomUUID();
-    submitRequestId.current = crypto.randomUUID();
+    resetSubmit();
     prepareBody.current = null;
-    submitBody.current = null;
   };
 
   const prepare = async () => {
-    if (!file || busy || conflicted) return;
+    if (!file || busy || conflicted || !sourceReady) return;
     if (file.size === 0 || file.size > MAX_SOURCE_BYTES) {
       setError("源文件必须非空且不超过 2 MiB；请重新选择文件。");
       return;
@@ -150,6 +176,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
         setConflicted(true);
         throw new Error("冲突选项与原上传候选证明不一致；请刷新来源后重试。");
       }
+      resetSubmit();
+      setDecisions({});
       setConflicts(discovered);
       setPrepared(proof);
     } catch (cause) {
@@ -167,9 +195,17 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
   const submit = async () => {
     if (!prepared || !conflicts || !manualSyncProofReady(prepared, context) || !reviewerId || !reason.trim()
       || prepared.targets.some((target) => !decisions[target.bindingId])
-      || busy || conflicted || loadingReviewers) return;
-    const targetDecisions = prepared.targets.map((target) => ({ bindingId: target.bindingId,
-      ...decisions[target.bindingId]! }));
+      || busy || conflicted || loadingReviewers || !sourceReady || unprovenConflicts.length) return;
+    const targetDecisions = prepared.targets.map((target) => {
+      const decision = decisions[target.bindingId]!;
+      const options = conflicts.items.filter((item) => item.selectedBindingId === target.bindingId);
+      return { bindingId: target.bindingId, ...decision,
+        ...(options.length ? { expectedConflictProofs: options.map((item) => ({
+          draftId: item.selectedDraftId,
+          decisionProofDigest: decision.choice === "draft" && decision.draftId === item.selectedDraftId
+            ? item.choices.draft.decisionProofDigest : item.choices.file.decisionProofDigest
+        })) } : {}) };
+    });
     const body = submitBody.current ?? {
       candidateId: prepared.candidateId, expectedProofToken: prepared.proofToken,
       reason: reason.trim(), assignedToUserId: reviewerId, targetDecisions
@@ -250,7 +286,9 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
     } catch (cause) {
       if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") setConflicted(true);
       setError(cause instanceof WiseEffApiError && cause.code === "CONFLICT"
-        ? `来源已漂移或请求冲突（409）；请刷新工作台重新准备。${presentError(cause, "")}`
+        ? cause.details.reason === "canonical-batch-conflict-proof-stale"
+          ? "竞争草稿或选择证明已变化（409），本次未创建待审请求。请关闭弹窗、刷新来源后重新预览选择。"
+          : `来源已漂移或请求冲突（409）；请刷新工作台重新准备。${presentError(cause, "")}`
         : presentError(cause, "提交审核失败；可用同一请求重试。"));
     } finally { setBusy(false); }
   };
@@ -259,6 +297,11 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
     {({ titleId, descriptionId }) => <>
       <h2 id={titleId}>上传 {context.format.toUpperCase()} 来源并准备批量审核</h2>
       <p id={descriptionId}>选择「{context.fileName}」的新内容；本文件须产生至少两个可验证目标。准备候选及提交待审请求不会改写当前 Value、来源 pin 或活跃文件版本；另一名审核人批准后才一次应用全部目标。</p>
+      {sourceState?.loading ? <p role="status">正在重新核对文件版本与来源证明；已暂时阻止提交，上传和选择会保留。</p> : null}
+      {sourceState?.error ? <p role="alert">当前来源核对失败，已阻止提交：{sourceState.error}。请关闭弹窗并刷新工作台。</p> : null}
+      {sourceChanged ? <p role="alert">文件版本或来源证明已变化，旧候选不能继续提交；请关闭弹窗、刷新工作台后重新预览。</p> : null}
+      {sourceState && !sourceState.loading && !sourceState.error && !sourceChanged
+        && !sourceReady ? <p role="alert">当前来源暂不可核对，已阻止提交；请刷新工作台。</p> : null}
       <label>选择来源文件（不超过 2 MiB）<input type="file" accept={context.format === "json" ? ".json,application/json" : ".dts,text/plain"}
         disabled={busy || submitAttempted} onChange={(event) => chooseFile(event.target.files?.[0] ?? null)} /></label>
       {file ? <p>已选择：{file.name}（{file.size} 字节）；目标文件：{context.fileName}</p> : null}
@@ -277,15 +320,13 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
               <legend>目标 {index + 1} 的最终选择</legend>
               <label><input type="radio" name={`decision-${target.bindingId}`}
                 checked={decisions[target.bindingId]?.choice === "file"}
-                onChange={() => setDecisions((current) => ({ ...current, [target.bindingId]: { choice: "file" } }))} />
+                onChange={() => chooseDecision(target.bindingId, "file")} />
                 采用文件值{options.length ? "（已有竞争草稿，须明确选择）" : ""}</label>
               {options.map((item) => <label key={item.selectedDraftId}>
                 <input type="radio" name={`decision-${target.bindingId}`}
                   checked={decisions[target.bindingId]?.choice === "draft"
                     && decisions[target.bindingId]?.draftId === item.selectedDraftId}
-                  onChange={() => setDecisions((current) => ({ ...current, [target.bindingId]: {
-                    choice: "draft", draftId: item.selectedDraftId
-                  } }))} />
+                  onChange={() => chooseDecision(target.bindingId, "draft", item.selectedDraftId)} />
                 采用界面草稿 <code>{item.selectedDraftId}</code>（作者 <code>{item.authorUserId}</code>；值 {item.choices.draft.action === "delete"
                   ? "删除" : <code>{item.choices.draft.targetText}</code>}）</label>)}
             </fieldset>
@@ -294,10 +335,11 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
           </li>;
         })}</ol>
         <p role="note">其他 Binding 的草稿不会被选中；审核详情会展示其预计过期效果。</p>
+        {unprovenConflicts.length ? <p role="alert">目标中有竞争草稿未取得可验证的选择证明；请刷新来源并重新预览，当前不能提交审核。</p> : null}
         <label>修改原因<textarea value={reason} disabled={busy || submitAttempted}
-          onChange={(event) => setReason(event.target.value)} /></label>
+          onChange={(event) => { resetSubmit(); setReason(event.target.value); }} /></label>
         <label>指定软件审核人<select value={reviewerId} disabled={busy || loadingReviewers || submitAttempted}
-          onChange={(event) => setReviewerId(event.target.value)}>
+          onChange={(event) => { resetSubmit(); setReviewerId(event.target.value); }}>
           {reviewers.length ? reviewers.map((reviewer) => <option key={reviewer.userId} value={reviewer.userId}>{reviewer.name}（{reviewer.userId}）</option>)
             : <option value="">没有可用的另一名软件审核人</option>}
         </select></label>
@@ -306,9 +348,10 @@ export function WorkbenchCanonicalManualSyncDialog({ context, onDismiss }: {
       {error ? <p role="alert">{error}</p> : null}
       <div className="dialog-actions">
         <button type="button" disabled={busy} onClick={onDismiss}>取消</button>
-        {!prepared ? <button type="button" disabled={!file || busy || conflicted || file.size === 0 || file.size > MAX_SOURCE_BYTES}
+        {!prepared ? <button type="button" disabled={!file || busy || conflicted || !sourceReady || file.size === 0 || file.size > MAX_SOURCE_BYTES}
           onClick={() => void prepare()}>{busy ? "准备中…" : prepareBody.current ? "重试准备" : "预览有序目标与证明"}</button>
-          : <button type="button" disabled={busy || conflicted || loadingReviewers || !reviewerId || !reason.trim()
+          : <button type="button" disabled={busy || conflicted || !sourceReady || unprovenConflicts.length > 0
+            || loadingReviewers || !reviewerId || !reason.trim()
             || prepared.targets.some((target) => !decisions[target.bindingId])}
             onClick={() => void submit()}>{busy ? "提交中…" : `一次提交全部 ${prepared.targets.length} 项审核`}</button>}
       </div>
