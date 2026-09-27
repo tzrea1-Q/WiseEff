@@ -391,11 +391,11 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     for (const candidateId of [prepared.candidateId, item.candidateId]) {
       const preview = await requestJson<{ item: { request?: { id: string; status: string } } }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
-      expect(preview.body.item.request).toEqual({ id: item.id, status: "pending" });
+      expect(preview.body.item.request).toEqual({ id: item.id, status: "pending", kind: "batch" });
       const conflicts = await requestJson<{ request?: { id: string; status: string };
         items: unknown[]; ineligible: unknown[] }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`);
-      expect(conflicts.body).toMatchObject({ request: { id: item.id, status: "pending" },
+      expect(conflicts.body).toMatchObject({ request: { id: item.id, status: "pending", kind: "batch" },
         items: [], ineligible: [] });
     }
     expect(item.targets.map((target) => [target.bindingId, target.decision, target.draftId]))
@@ -450,7 +450,10 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     for (const candidateId of [prepared.candidateId, item.candidateId]) {
       const preview = await requestJson<{ item: { request?: { id: string; status: string } } }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
-      expect(preview.body.item.request).toEqual({ id: item.id, status: "approved" });
+      expect(preview.body.item.request).toEqual({ id: item.id, status: "approved", kind: "batch" });
+      expect((await requestJson(route(),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`)).body)
+        .toMatchObject({ request: preview.body.item.request, items: [] });
     }
     const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
     expect(after.values).toHaveLength(beforeReview.values.length + 3);

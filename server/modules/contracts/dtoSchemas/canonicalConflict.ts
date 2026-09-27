@@ -3,6 +3,16 @@ import { z } from "zod";
 const id = z.string().min(1);
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const choice = z.enum(["file", "draft"]);
+const candidateRequestReceiptSchema = z.object({
+  id, status: z.enum(["pending", "approved", "rejected", "withdrawn"]),
+  kind: z.enum(["single", "batch"])
+});
+
+export const canonicalSourceCandidatePreviewResponseSchema = z.object({
+  item: z.object({ kind: z.enum(["legacy", "canonical"]), canSubmit: z.boolean(),
+    candidateId: id, format: z.enum(["json", "dts"]),
+    request: candidateRequestReceiptSchema.optional() }).passthrough()
+});
 
 export const canonicalSourceConflictSubmitRequestSchema = z.object({
   selectedBindingId: id,
@@ -39,7 +49,7 @@ export const canonicalSourceConflictDecisionProofSchema = z.object({
 });
 
 export const canonicalSourceConflictListResponseSchema = z.object({
-  request: z.object({ id, status: z.enum(["pending", "approved", "rejected", "withdrawn"]) }).optional(),
+  request: candidateRequestReceiptSchema.optional(),
   items: z.array(z.object({
     selectedBindingId: id, selectedDraftId: id, authorUserId: id,
     choices: z.object({
@@ -71,6 +81,7 @@ export const canonicalSourceConflictDecisionResponseSchema = z.object({
 
 export const canonicalConflictDtoSchemaCatalog = {
   CanonicalSourceConflictSubmitRequest: canonicalSourceConflictSubmitRequestSchema,
+  CanonicalSourceCandidatePreviewResponse: canonicalSourceCandidatePreviewResponseSchema,
   CanonicalSourceConflictListResponse: canonicalSourceConflictListResponseSchema,
   CanonicalSourceConflictSubmitResponse: canonicalSourceConflictSubmitResponseSchema,
   CanonicalSourceConflictDecisionResponse: canonicalSourceConflictDecisionResponseSchema

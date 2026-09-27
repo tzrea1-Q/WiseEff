@@ -17,7 +17,8 @@ import {
   createCanonicalValueDraft,
   type CanonicalValueDraftDto
 } from "../parameter-bindings/drafts/service";
-import type { CanonicalChangeRequestStatus, CanonicalValueChangeRequestRow } from "../parameter-bindings/drafts/changeRepository";
+import type { CanonicalCandidateRequestReceipt, CanonicalChangeRequestStatus,
+  CanonicalValueChangeRequestRow } from "../parameter-bindings/drafts/changeRepository";
 import { getCanonicalCandidateRequestReceipt, getCanonicalValueChangeRequest } from "../parameter-bindings/drafts/changeRepository";
 import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin, discoverDeletedSourceRevisionPins } from "../parameter-bindings/values";
 import type { CanonicalSourceBindingPin, CanonicalValueSourcePin } from "../parameter-bindings/values";
@@ -102,7 +103,7 @@ export type CanonicalSourcePreviewDto = {
   before?: string;
   after?: string;
   bindings?: CanonicalSourcePreviewBindingDto[];
-  request?: { id: string; status: CanonicalChangeRequestStatus };
+  request?: CanonicalCandidateRequestReceipt;
 };
 
 export type CanonicalSourceBatchMemberDto = Readonly<{
@@ -206,7 +207,6 @@ type SourceInspection = {
   reason?: string;
 };
 
-type RequestStatus = { id: string; status: CanonicalChangeRequestStatus };
 type RequestRecord = Pick<CanonicalValueChangeRequestRow, "id" | "status" | "candidate_id" | "draft_id">;
 
 function digest(bytes: Buffer) {
@@ -735,7 +735,8 @@ function previewBinding(change: SourceChange): CanonicalSourcePreviewBindingDto 
   };
 }
 
-function previewFromInspection(inspection: SourceInspection, request?: RequestStatus | null): CanonicalSourcePreviewDto {
+function previewFromInspection(inspection: SourceInspection,
+  request?: CanonicalCandidateRequestReceipt | null): CanonicalSourcePreviewDto {
   const change = inspection.change;
   const candidate = inspection.candidate;
   const common = {

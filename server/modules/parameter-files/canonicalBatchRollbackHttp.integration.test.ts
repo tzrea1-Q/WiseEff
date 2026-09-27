@@ -279,9 +279,9 @@ describe("#906 canonical manual sync HTTP preparation", () => {
     const submitted = submittedResponse.body.item;
     expect(submitted).toMatchObject({ status: "pending", batchProofDigest: response.body.item.batchProofDigest });
     const candidatePath = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${response.body.item.candidateId}`;
-    expect((await requestJson<{ item: { request?: { id: string; status: string } } }>(route(f),
+    expect((await requestJson<{ item: { request?: { id: string; status: string; kind: string } } }>(route(f),
       `${candidatePath}/source-preview`)).body.item.request)
-      .toEqual({ id: submitted.id, status: "pending" });
+      .toEqual({ id: submitted.id, status: "pending", kind: "batch" });
     expect((await requestJson(route(f, foreign), `${candidatePath}/source-preview`)).status).toBe(404);
     expect((await requestJson(route(f, foreign), `${candidatePath}/source-conflicts`)).status).toBe(404);
     expect((await requestJson(route(f, otherReviewer), `${reviewPath(submitted.id)}/batch`)).status).toBe(404);
@@ -306,12 +306,12 @@ describe("#906 canonical manual sync HTTP preparation", () => {
     expect(diff.body.item.targets.map((target) => target.ordinal)).toEqual([0, 1]);
     expect((await reviewManual(f, submitted, "approve", otherReviewer)).status).toBe(404);
     expect((await reviewManual(f, submitted, "approve")).status).toBe(200);
-    expect((await requestJson<{ item: { request?: { id: string; status: string } } }>(route(f),
+    expect((await requestJson<{ item: { request?: { id: string; status: string; kind: string } } }>(route(f),
       `${candidatePath}/source-preview`)).body.item.request)
-      .toEqual({ id: submitted.id, status: "approved" });
+      .toEqual({ id: submitted.id, status: "approved", kind: "batch" });
     expect((await requestJson<{ request?: { id: string; status: string };
       items: unknown[] }>(route(f), `${candidatePath}/source-conflicts`)).body)
-      .toMatchObject({ request: { id: submitted.id, status: "approved" }, items: [] });
+      .toMatchObject({ request: { id: submitted.id, status: "approved", kind: "batch" }, items: [] });
     const committed = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     expect(committed.values).toHaveLength(after.values.length + 2);
     expect(committed.pins).toHaveLength(after.pins.length + 2);
@@ -379,10 +379,14 @@ describe("#906 canonical manual sync HTTP preparation", () => {
     expect(await objects(f.directory)).toEqual(beforeObjects);
   }, 120_000);
 
-  it.each(["reject", "withdraw"] as const)("keeps a prepared JSON source unchanged after %s", async (decision) => {
-    const f = await fixture("json", false);
-    const prepared = (await prepareManual(f, `906-json-${decision}-prepare`)).body.item;
-    const submitted = (await submitManual(f, prepared, `906-json-${decision}-submit`)).body.item;
+  it.each([["json", "reject"], ["json", "withdraw"], ["dts", "reject"], ["dts", "withdraw"]] as const)(
+    "keeps a prepared %s source without competing drafts unchanged after %s", async (format, decision) => {
+    const f = await fixture(format, false);
+    const prepared = (await prepareManual(f, `906-${format}-${decision}-prepare`)).body.item;
+    const candidatePath = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}`;
+    expect((await requestJson<{ items: unknown[] }>(route(f), `${candidatePath}/source-conflicts`)).body.items)
+      .toEqual([]);
+    const submitted = (await submitManual(f, prepared, `906-${format}-${decision}-submit`)).body.item;
     const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     const response = decision === "reject"
       ? await reviewManual(f, submitted, "reject")
@@ -390,13 +394,14 @@ describe("#906 canonical manual sync HTTP preparation", () => {
         method: "POST" });
     expect(response.status).toBe(200);
     expect(response.body.item.status).toBe(decision === "reject" ? "rejected" : "withdrawn");
-    const candidatePath = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}`;
-    const preview = await requestJson<{ item: { request?: { id: string; status: string } } }>(route(f),
+    const preview = await requestJson<{ item: { request?: { id: string; status: string; kind: string } } }>(route(f),
       `${candidatePath}/source-preview`);
-    expect(preview.body.item.request).toEqual({ id: submitted.id, status: response.body.item.status });
-    const conflicts = await requestJson<{ request?: { id: string; status: string };
+    expect(preview.body.item.request).toEqual({ id: submitted.id, status: response.body.item.status,
+      kind: "batch" });
+    const conflicts = await requestJson<{ request?: { id: string; status: string; kind: string };
       items: unknown[] }>(route(f), `${candidatePath}/source-conflicts`);
     expect(conflicts.body.request).toEqual(preview.body.item.request);
+    expect(conflicts.body.items).toEqual([]);
     const after = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     expect(after.bindings).toEqual(before.bindings);
     expect(after.values).toEqual(before.values);
@@ -526,10 +531,10 @@ describe("#906 canonical historical batch rollback HTTP", () => {
     const rollbackCandidatePath = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}`;
     expect((await requestJson<{ item: { request?: { id: string; status: string } } }>(route(f),
       `${rollbackCandidatePath}/source-preview`)).body.item.request)
-      .toEqual({ id: submitted.requestId, status: "pending" });
+      .toEqual({ id: submitted.requestId, status: "pending", kind: "batch" });
     expect((await requestJson<{ request?: { id: string; status: string };
       items: unknown[] }>(route(f), `${rollbackCandidatePath}/source-conflicts`)).body)
-      .toMatchObject({ request: { id: submitted.requestId, status: "pending" }, items: [] });
+      .toMatchObject({ request: { id: submitted.requestId, status: "pending", kind: "batch" }, items: [] });
     const beforeReplay = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     const objectsBeforeReplay = await objects(f.directory);
     expect((await submit(f, prepared, `906-http-${format}-submit`)).body.item)
@@ -621,7 +626,7 @@ describe("#906 canonical historical batch rollback HTTP", () => {
       .toMatchObject({ requestId: submitted.requestId, status: "approved", replayed: true });
     expect((await requestJson<{ item: { request?: { id: string; status: string } } }>(route(f),
       `${rollbackCandidatePath}/source-preview`)).body.item.request)
-      .toEqual({ id: submitted.requestId, status: "approved" });
+      .toEqual({ id: submitted.requestId, status: "approved", kind: "batch" });
     expect(await Promise.all(prepared.targets.map((target) =>
       loadLegacyBindingIdentity(getRootPostgresPool(f.db)!, target.bindingId)))).toEqual([null, null]);
   }, 120_000);
@@ -671,7 +676,7 @@ describe("#906 canonical historical batch rollback HTTP", () => {
     const candidatePath = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}`;
     const rejectedPreview = await requestJson<{ item: { request?: { id: string; status: string } } }>(
       route(f), `${candidatePath}/source-preview`);
-    expect(rejectedPreview.body.item.request).toEqual({ id: submitted.requestId, status: "rejected" });
+    expect(rejectedPreview.body.item.request).toEqual({ id: submitted.requestId, status: "rejected", kind: "batch" });
     const rejectedConflicts = await requestJson<{ request?: { id: string; status: string };
       items: unknown[] }>(route(f), `${candidatePath}/source-conflicts`);
     expect(rejectedConflicts.body.request).toEqual(rejectedPreview.body.item.request);
@@ -686,13 +691,13 @@ describe("#906 canonical historical batch rollback HTTP", () => {
     expect(next.requestId).not.toBe(submitted.requestId);
     expect((await requestJson<{ item: { request?: { id: string; status: string } } }>(route(f),
       `${candidatePath}/source-preview`)).body.item.request)
-      .toEqual({ id: next.requestId, status: "pending" });
+      .toEqual({ id: next.requestId, status: "pending", kind: "batch" });
     const withdraw = () => requestJson<{ item: { status: string } }>(route(f),
       `${reviewPath(next.requestId)}/withdraw`, { method: "POST" });
     expect((await withdraw()).body.item.status).toBe("withdrawn");
     expect((await requestJson<{ item: { request?: { id: string; status: string } } }>(route(f),
       `${candidatePath}/source-preview`)).body.item.request)
-      .toEqual({ id: next.requestId, status: "withdrawn" });
+      .toEqual({ id: next.requestId, status: "withdrawn", kind: "batch" });
     expect((await withdraw()).body.item.status).toBe("withdrawn");
     const withdrawn = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     expect(withdrawn.values).toEqual(pending.values);

@@ -30544,6 +30544,74 @@
       },
       "CanonicalSourceCandidatePreviewResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "legacy",
+                  "canonical"
+                ]
+              },
+              "canSubmit": {
+                "type": "boolean"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "dts"
+                ]
+              },
+              "request": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "withdrawn"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "single",
+                      "batch"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "status",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "canSubmit",
+              "candidateId",
+              "format"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "CanonicalSourceCandidatePreviewResponse"
       },
       "CanonicalSourceConflictListResponse": {
@@ -30563,11 +30631,19 @@
                   "rejected",
                   "withdrawn"
                 ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "single",
+                  "batch"
+                ]
               }
             },
             "required": [
               "id",
-              "status"
+              "status",
+              "kind"
             ],
             "additionalProperties": false
           },

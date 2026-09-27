@@ -932,11 +932,8 @@ export function registerParameterFileRoutes(
         baseCurrentValueId: preview.baseCurrentValueId, configRevisionId: preview.configRevisionId }]
       : []);
     const receipt = preview.request ? { request: preview.request } : {};
-    const terminalBatch = preview.request && ["rejected", "withdrawn"].includes(preview.request.status)
-      && (await db.query<{ id: string }>(`
-        select id from public.project_parameter_value_change_requests
-         where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch'`,
-      [preview.request.id, auth.organization.id, params.projectId])).rows.length === 1;
+    const terminalBatch = preview.request?.kind === "batch"
+      && ["rejected", "withdrawn"].includes(preview.request.status);
     if (preview.kind !== "canonical" || bindings.length === 0
       || (preview.request && !terminalBatch)) {
       return { status: 200, body: { ...receipt, items: [], ineligible: [] } };

@@ -155,12 +155,16 @@ export async function getCanonicalValueChangeRequest(
 }
 
 /** Candidate previews need only the receipt; review details retain their own visibility checks. */
+export type CanonicalCandidateRequestReceipt = Pick<CanonicalValueChangeRequestRow, "id" | "status"> & {
+  kind: CanonicalValueChangeRequestRow["request_kind"];
+};
+
 export async function getCanonicalCandidateRequestReceipt(
   db: Queryable,
   input: { organizationId: string; projectId: string; candidateId: string; linkedRequestId?: string }
-): Promise<Pick<CanonicalValueChangeRequestRow, "id" | "status"> | null> {
-  const result = await db.query<Pick<CanonicalValueChangeRequestRow, "id" | "status">>(`
-    select id,status from public.project_parameter_value_change_requests
+): Promise<CanonicalCandidateRequestReceipt | null> {
+  const result = await db.query<CanonicalCandidateRequestReceipt>(`
+    select id,status,request_kind as kind from public.project_parameter_value_change_requests
      where organization_id=$1 and project_id=$2 and request_kind in ('single','batch')
        and (candidate_id=$3 or batch_upload_candidate_id=$3 or id=$4)
      order by case status when 'pending' then 0 when 'approved' then 1 else 2 end,

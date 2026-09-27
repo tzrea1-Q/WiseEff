@@ -244,12 +244,12 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       const preview = await requestJson<{ item: { request?: { id: string; status: string } } }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
       expect(preview.status).toBe(200);
-      expect(preview.body.item.request).toEqual({ id: request.id, status: "pending" });
+      expect(preview.body.item.request).toEqual({ id: request.id, status: "pending", kind: "batch" });
       const conflicts = await requestJson<{ request?: { id: string; status: string }; items: unknown[];
         ineligible: unknown[] }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`);
       expect(conflicts.status).toBe(200);
-      expect(conflicts.body).toMatchObject({ request: { id: request.id, status: "pending" },
+      expect(conflicts.body).toMatchObject({ request: { id: request.id, status: "pending", kind: "batch" },
         items: [], ineligible: [] });
     }
     const beforeReplay = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
@@ -323,7 +323,10 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     for (const candidateId of [prepared.body.item.candidateId, request.candidateId]) {
       const preview = await requestJson<{ item: { request?: { id: string; status: string } } }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
-      expect(preview.body.item.request).toEqual({ id: request.id, status: "approved" });
+      expect(preview.body.item.request).toEqual({ id: request.id, status: "approved", kind: "batch" });
+      expect((await requestJson(route(),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`)).body)
+        .toMatchObject({ request: preview.body.item.request, items: [] });
     }
     const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
     expect(after.values).toHaveLength(before.values.length + 3);
