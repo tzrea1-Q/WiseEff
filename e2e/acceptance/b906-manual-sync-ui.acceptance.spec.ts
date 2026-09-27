@@ -30,8 +30,8 @@ type Format = "json" | "dts";
 for (const { format, outcomeKind } of [
   { format: "json", outcomeKind: "approve" }, { format: "dts", outcomeKind: "approve" },
   { format: "json", outcomeKind: "reject" }, { format: "dts", outcomeKind: "withdraw" },
-  { format: "json", outcomeKind: "drift" }
-] as Array<{ format: Format; outcomeKind: "approve" | "reject" | "withdraw" | "drift" }>) {
+  { format: "json", outcomeKind: "drift" }, { format: "json", outcomeKind: "refresh" }
+] as Array<{ format: Format; outcomeKind: "approve" | "reject" | "withdraw" | "drift" | "refresh" }>) {
 test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, async ({ page, request }, testInfo) => {
   test.setTimeout(420_000);
   let runtime: DisposablePostCutoverRuntime | undefined;
@@ -41,7 +41,8 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("response", (response) => {
-    if (/source-manual-sync|parameter-value-change-requests/.test(response.url())) {
+    if (/source-manual-sync|parameter-value-change-requests/.test(response.url())
+      || (outcomeKind === "refresh" && /source-workflow/.test(response.url()))) {
       network.push(`${response.request().method()} ${response.status()} ${new URL(response.url()).pathname}`);
     }
   });
@@ -73,6 +74,14 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       });
       expect(createSet.status(), await createSet.text()).toBe(201);
       const setId = (await createSet.json()).item.id as string;
+      let alternateSetId = "";
+      if (outcomeKind === "refresh") {
+        const alternate = await request.post(api("/api/v1/projects/aurora/config-sets"), {
+          headers: adminHeaders, data: { name: "B #906 background refresh trigger" }
+        });
+        expect(alternate.status(), await alternate.text()).toBe(201);
+        alternateSetId = (await alternate.json()).item.id as string;
+      }
       const fileName = `b906-manual.${format}`;
       const upload = await request.post(api("/api/v1/projects/aurora/parameter-files"), {
         headers: adminHeaders, data: { fileName, contentBase64: Buffer.from(before[format]).toString("base64") }
@@ -145,7 +154,8 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         const unchangedRequest = network.find((item) => item.includes("POST 409") && item.endsWith("/source-manual-sync/prepare"));
         expect(unchangedRequest).toBeDefined();
       }
-      const prepared = (await preparation.json()).item as { candidateId: string; batchProofDigest: string; targets: Array<{ bindingId: string }> };
+      const prepared = (await preparation.json()).item as { candidateId: string; batchProofDigest: string;
+        cohortProofToken: string; targets: Array<{ bindingId: string }> };
       expect(prepared.targets).toHaveLength(2);
       expect(prepared.targets.every((target) => bindings.some((binding) => binding.id === target.bindingId))).toBe(true);
       expect(await Promise.all(prepared.targets.map((target) =>
@@ -166,6 +176,70 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       expect(afterPrepare.pins).toEqual(baseline.pins);
       expect(afterPrepare.history).toEqual(baseline.history);
       expect(afterPrepare.versions).toEqual(baseline.versions);
+      if (outcomeKind === "refresh") {
+        const advancedText = after.json.replace("50", "70").replace("60", "80");
+        const advancedCandidate = await request.post(api("/api/v1/projects/aurora/parameter-file-candidates"), {
+          headers: adminHeaders, data: { fileId, fileName, contentBase64: Buffer.from(advancedText).toString("base64") }
+        });
+        expect(advancedCandidate.status(), await advancedCandidate.text()).toBe(201);
+        const advancedId = (await advancedCandidate.json()).item.id as string;
+        const advancedPreview = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${advancedId}/source-preview`), {
+          headers: adminHeaders
+        });
+        expect(advancedPreview.status(), await advancedPreview.text()).toBe(200);
+        const advancedProof = (await advancedPreview.json()).item as { proofToken: string };
+        const advancedSubmit = await request.post(api("/api/v2/projects/aurora/parameter-value-change-requests/batches"), {
+          headers: { ...adminHeaders, "X-Request-Id": "b906-manual-background-refresh" },
+          data: { candidateId: advancedId, expectedProofToken: advancedProof.proofToken,
+            reason: "advance source while manual sync dialog stays open", assignedToUserId: acceptanceCast.sunMei.userId }
+        });
+        expect(advancedSubmit.status(), await advancedSubmit.text()).toBe(201);
+        const advancedRequest = (await advancedSubmit.json()).item as { id: string; batchProofDigest: string };
+        const advancedReview = await request.post(api(`/api/v2/projects/aurora/parameter-value-change-requests/${advancedRequest.id}/review`), {
+          headers: reviewerHeaders, data: { decision: "approve", batchProofDigest: advancedRequest.batchProofDigest }
+        });
+        expect(advancedReview.status(), await advancedReview.text()).toBe(200);
+        const newVersionId = (await db.query<{ current_version_id: string }>(
+          "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!.current_version_id;
+        expect(newVersionId).not.toBe(activeVersion);
+        const switchSet = async (id: string) => page.evaluate((configSetId) => {
+          const next = new URL(window.location.href);
+          next.searchParams.set("configSet", configSetId);
+          history.pushState(null, "", next);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }, id);
+        await switchSet(alternateSetId);
+        await expect(dialog).toBeVisible();
+        let releaseRefresh!: () => void;
+        const gate = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+        await page.route(`**/parameter-files/${fileId}/source-workflow`, async (route) => {
+          await gate;
+          await route.continue();
+        });
+        const refreshed = page.waitForResponse((response) => response.url().endsWith(`/parameter-files/${fileId}/source-workflow`)
+          && response.status() === 200);
+        await switchSet(setId);
+        await expect(dialog.getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+        expect(await dialog.getByLabel(/选择来源文件/).evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe(fileName);
+        await expect(dialog.getByRole("radio", { name: /采用文件值/ }).first()).toBeChecked();
+        releaseRefresh();
+        const refreshedResponse = await refreshed;
+        expect((await refreshedResponse.json()).item.proofToken).not.toBe(prepared.cohortProofToken);
+        await expect(dialog.getByRole("alert")).toContainText("文件版本或来源证明已变化");
+        await expect(dialog.getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+        expect(await dialog.getByLabel(/选择来源文件/).evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe(fileName);
+        await expect(dialog.getByRole("radio", { name: /采用文件值/ }).first()).toBeChecked();
+        expect(network.filter((entry) => entry.endsWith("/parameter-value-change-requests/batches"))).toHaveLength(0);
+        await dialog.getByRole("alert").scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath("b906-json-manual-background-refresh-alert-1440x900.png") });
+        await dialog.getByRole("radio", { name: /采用文件值/ }).first().scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath("b906-json-manual-background-refresh-1440x900.png") });
+        await testInfo.attach("b906-json-manual-background-refresh-network", { body: JSON.stringify(network, null, 2),
+          contentType: "application/json" });
+        expect(pageErrors).toEqual([]);
+        outcome = "success";
+        return;
+      }
       await dialog.getByRole("textbox", { name: "修改原因" }).fill(`upload ${format} source`);
       const submitResponse = page.waitForResponse((response) => response.url().endsWith("/parameter-value-change-requests/batches")
         && response.request().method() === "POST");

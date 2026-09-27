@@ -33,7 +33,10 @@ describe("canonical batch rollback HTTP client", () => {
     expect((await client.prepare("project/1", "file/1", input, "prepare-key")).targets).toHaveLength(2);
     expect((await client.submit("project/1", "file/1", {
       ...input, candidateId: "candidate", expectedCandidateProofToken: "candidate-proof",
-      expectedBatchProofDigest: digest, reason: "restore", assignedToUserId: "reviewer"
+      expectedBatchProofDigest: digest, reason: "restore", assignedToUserId: "reviewer",
+      targetDecisions: [{ bindingId: "a", choice: "file", expectedConflictProofs: [
+        { draftId: "draft-88", decisionProofDigest: digest }
+      ] }, { bindingId: "b", choice: "file", expectedConflictProofs: [] }]
     }, "submit-key")).requestId).toBe("request");
     expect(raw.mock.calls.map(([path, init]) => ({ path, method: init.method,
       requestId: init.headers["X-Request-Id"], body: JSON.parse(init.body) }))).toEqual([
@@ -42,7 +45,10 @@ describe("canonical batch rollback HTTP client", () => {
       { path: "/api/v1/projects/project%2F1/parameter-files/file%2F1/source-batch-rollback/submit",
         method: "POST", requestId: "submit-key", body: {
           ...input, candidateId: "candidate", expectedCandidateProofToken: "candidate-proof",
-          expectedBatchProofDigest: digest, reason: "restore", assignedToUserId: "reviewer"
+          expectedBatchProofDigest: digest, reason: "restore", assignedToUserId: "reviewer",
+          targetDecisions: [{ bindingId: "a", choice: "file", expectedConflictProofs: [
+            { draftId: "draft-88", decisionProofDigest: digest }
+          ] }, { bindingId: "b", choice: "file", expectedConflictProofs: [] }]
         } }
     ]);
   });

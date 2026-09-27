@@ -3,7 +3,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
-import { createCanonicalConflictClient, type CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
+import { canonicalBatchConflictReady, createCanonicalConflictClient, type CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
 import type { ManualSyncPreparation, createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
@@ -41,32 +41,6 @@ export function manualSyncProofReady(proof: ManualSyncPreparation,
         && (target.action === "delete" ? target.afterText === undefined
           : target.afterText !== undefined && (target.targetText === undefined || target.targetText === target.afterText));
     });
-}
-
-function manualSyncConflictReady(proof: ManualSyncPreparation, item: CanonicalSourceConflictList["items"][number]): boolean {
-  const target = proof.targets.find((entry) => entry.bindingId === item.selectedBindingId);
-  if (!target) return false;
-  const file = item.choices.file;
-  const draft = item.choices.draft;
-  return file.choice === "file" && draft.choice === "draft"
-    && file.action === target.action && file.targetText === target.afterText
-    && file.selectedDraftProof === draft.selectedDraftProof
-    && file.selectedDraftCandidateId === draft.selectedDraftCandidateId
-    && file.selectedDraftCandidateDigest === draft.selectedDraftCandidateDigest
-    && [file, draft].every((choice) => choice.candidateId === proof.candidateId
-      && /^[0-9a-f]{64}$/.test(choice.decisionProofDigest)
-      && choice.selectedBindingId === item.selectedBindingId
-      && choice.selectedDraftId === item.selectedDraftId
-      && choice.fileId === proof.fileId && choice.baseVersionId === proof.baseVersionId
-      && choice.configSetId === proof.configSetId
-      && choice.sourceProofToken === proof.proofToken
-      && choice.cohortProofToken === proof.cohortProofToken
-      && choice.sourceCandidateDigest === proof.proposedDigest
-      && choice.selectedSourcePinId === target.sourcePinId
-      && choice.selectedBaseValueId === target.baseCurrentValueId
-      && choice.selectedRevisionId === target.configRevisionId
-      && JSON.stringify(choice.members) === JSON.stringify(proof.members)
-      && JSON.stringify(choice.cohort) === JSON.stringify(proof.cohort));
 }
 
 async function encodeFile(file: File): Promise<string> {
@@ -172,7 +146,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
         throw new Error("候选目标、顺序或来源证明不完整；已阻止提交，请刷新工作台重新选择文件。");
       }
       const discovered = await conflictClient.listCandidateSourceConflicts(context.projectId, proof.candidateId);
-      if (discovered.items.some((item) => !manualSyncConflictReady(proof, item))) {
+      if (discovered.items.some((item) => !canonicalBatchConflictReady(proof, item))) {
         setConflicted(true);
         throw new Error("冲突选项与原上传候选证明不一致；请刷新来源后重试。");
       }
