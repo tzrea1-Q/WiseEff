@@ -324,6 +324,11 @@ describe("#906 C canonical conflict HTTP", () => {
       : await requestJson<{ item: { status: string } }>(f.route(), `${requestPath}/withdraw`, { method: "POST" });
     expect(result.status).toBe(200);
     expect(result.body.item.status).toBe(decision === "reject" ? "rejected" : "withdrawn");
+    const terminalConflicts = await requestJson<{ request?: { id: string; status: string };
+      items: unknown[]; ineligible: unknown[] }>(f.route(), `${path}/source-conflicts`);
+    expect(terminalConflicts.body).toMatchObject({
+      request: { id: requestId, status: result.body.item.status }, items: [], ineligible: []
+    });
     const after = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     expect(after.bindings).toEqual(before.bindings);
     expect(after.values).toEqual(before.values);
