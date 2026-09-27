@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import { createHttpServer } from "../../../shared/http/server";
 import { requestJson } from "../../../test/testClient";
 import { catalogBatchValueChangeRequestResponseSchema, catalogValueChangeSourceDiffResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { installDriverSourceFixture } from "../../../testing/parameterCatalog/driverSource";
+import { captureConfigurationSourceState } from "../../../testing/parameterCatalog/configurationSource";
 import { createLocalObjectStore } from "../../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import { createUserInvocation } from "../../auth/trustedInvocation";
@@ -20,10 +21,12 @@ import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, 
 import { loadLegacyBindingIdentity } from "../binding/migrationAdapter";
 import { createConfigSet, addConfigSetFile } from "../../parameter-files/configSetService";
 import { createCandidate } from "../../parameter-files/candidateService";
-import { previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
+import { freezeCanonicalCandidateBatchSnapshotInTransaction, prepareCanonicalConflictDecision,
+  previewCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
 import { createCanonicalValueDraft } from "./service";
+import { captureCanonicalBatchDraftImpactInTransaction } from "./batchChangeService";
 import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 
 const ORG = "org-906-c-dts-batch";
@@ -41,6 +44,14 @@ const reviewer = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
 const otherReviewer = makeTestAuthContext({ userId: OTHER_REVIEWER, organizationId: ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review"],
   roles: [{ roleId: "software-committer", projectId: PROJECT }] });
+
+async function objectBytes(directory: string) {
+  const names = (await readdir(directory, { recursive: true })).sort();
+  return Promise.all(names.map(async (name) => {
+    const path = join(directory, name);
+    return [name, (await stat(path)).isFile() ? (await readFile(path)).toString("base64") : null];
+  }));
+}
 
 describe("#906 C canonical DTS batch HTTP review", () => {
   let lane: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
@@ -144,6 +155,172 @@ describe("#906 C canonical DTS batch HTTP review", () => {
     requestJson<{ item: { status: string } }>(route(auth), `${path}/review`, {
       method: "POST", body: JSON.stringify({ decision, batchProofDigest: digest })
     });
+
+  it("requires an explicit file decision and freezes changed-target and sibling drafts", async () => {
+    const candidateBytes = twoSets("<77>");
+    const candidate = await createCandidate(db, storage, admin, {
+      projectId: PROJECT, fileId, fileName: "board.dts", bytes: candidateBytes
+    });
+    const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: PROJECT, candidateId: candidate.id });
+    const target = preview.bindings?.[0]?.bindingId;
+    const sibling = bindingIds.find((id) => !preview.bindings?.some((change) => change.bindingId === id));
+    expect(target).toBeTruthy();
+    expect(sibling).toBeTruthy();
+    let selectedDraftId = "";
+    for (const bindingId of [target!, sibling!]) {
+      const pin = (await db.query<{ config_revision_id: string; project_value_id: string }>(`
+        select pin.config_revision_id,pin.project_value_id
+          from parameter_catalog.project_value_source_pins pin
+          join parameter_catalog.project_parameter_bindings binding
+            on binding.id=pin.binding_id and binding.current_value_id=pin.project_value_id
+         where pin.binding_id=$1`, [bindingId])).rows[0]!;
+      const created = await createCanonicalValueDraft(db, otherReviewer, {
+        projectId: PROJECT, bindingId, targetValue: parseDtsValue("iin_max", "<88>").value,
+        reason: "Competing author draft", baseRevisionId: pin.config_revision_id,
+        baseCurrentValueId: pin.project_value_id
+      }, { objectStore: storage, invocation: createUserInvocation(otherReviewer),
+        requestId: `c906-draft-${bindingId}`, refusalSink: createTrustedRefusalAuditSink(db) });
+      if (bindingId === target) selectedDraftId = created.id;
+    }
+    const captureFor = (choice: "file" | "draft") => db.transaction(async (tx) => {
+      const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+        projectId: PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken
+      });
+      return captureCanonicalBatchDraftImpactInTransaction(tx, admin, PROJECT, proof,
+        proof.targets.map((entry) => entry.bindingId === target
+          ? { bindingId: entry.bindingId, choice, ...(choice === "draft" ? { draftId: selectedDraftId } : {}) }
+          : { bindingId: entry.bindingId, choice: "file" as const }));
+    });
+    const draftChoice = await captureFor("draft");
+    const fileChoice = await captureFor("file");
+    expect(draftChoice.draftImpact.find((entry) => entry.bindingId === target))
+      .toMatchObject({ role: "target", decision: "draft", selectedDraftId });
+    expect(draftChoice.draftImpact.find((entry) => entry.bindingId === sibling))
+      .toMatchObject({ role: "sibling", decision: "re-pin" });
+    expect(draftChoice.draftImpactDigest).not.toBe(fileChoice.draftImpactDigest);
+    const submitPath = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`;
+    const body = { candidateId: candidate.id, expectedProofToken: preview.proofToken,
+      reason: "Review competing drafts", assignedToUserId: REVIEWER };
+    const beforeOmission = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectsBeforeOmission = await objectBytes(storageDirectory);
+    const omitted = await requestJson(route(), submitPath, {
+      method: "POST", body: JSON.stringify(body)
+    });
+    expect(omitted.status).toBe(409);
+    expect(omitted.body).toMatchObject({ error: { details: { reason: "canonical-batch-target-decision-required" } } });
+    expect((await db.query<{ count: number }>(`select count(*)::int as count
+      from project_parameter_value_change_requests where candidate_id=$1`, [candidate.id])).rows[0]!.count).toBe(0);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeOmission);
+    expect(await objectBytes(storageDirectory)).toEqual(objectsBeforeOmission);
+    const unsupported = await requestJson(route(), submitPath, {
+      method: "POST", body: JSON.stringify({ ...body,
+        targetDecisions: [{ bindingId: target, choice: "draft", draftId: "unsupported-mixed-draft" }] })
+    });
+    expect(unsupported).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "canonical-batch-target-decision-required" } } } });
+    const previewFileChoice = await prepareCanonicalConflictDecision(db, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id, selectedBindingId: target!,
+      selectedDraftId, choice: "file"
+    });
+    const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
+      draftImpactDigest: string; uploadCandidateId: string | null; compositionProof: unknown;
+      decisionProofDigest: string | null;
+      targets: Array<{ bindingId: string; decision: string; targetValue: unknown }>;
+      draftImpact: Array<{ bindingId: string; role: string; drafts: unknown[] }> } }>(route(),
+      submitPath, {
+        method: "POST", body: JSON.stringify({ ...body,
+          targetDecisions: [{ bindingId: target, choice: "file", expectedConflictProofs: [{
+            draftId: selectedDraftId, decisionProofDigest: previewFileChoice.decisionProofDigest
+          }] }] })
+      });
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    catalogBatchValueChangeRequestResponseSchema.parse(submitted.body);
+    expect(submitted.body.item).toMatchObject({ uploadCandidateId: null,
+      compositionProof: null, decisionProofDigest: null });
+    expect(submitted.body.item.targets.map((entry) => entry.decision)).toEqual(["file", "file"]);
+    expect(submitted.body.item.draftImpact).toHaveLength(3);
+    expect(submitted.body.item.draftImpact.find((item) => item.bindingId === target)?.drafts).toHaveLength(1);
+    expect(submitted.body.item.draftImpact.find((item) => item.bindingId === sibling)?.drafts).toHaveLength(1);
+    const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}`;
+    const detail = await requestJson<{ item: typeof submitted.body.item }>(route(reviewer), `${path}/batch`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.item.draftImpactDigest).toBe(submitted.body.item.draftImpactDigest);
+    const diff = await requestJson<{ item: { targets: Array<{ decision: string; draftId: string | null }>;
+      uploadCandidateId: string | null; decisionProofDigest: string | null } }>(route(reviewer), `${path}/source-diff`);
+    expect(diff.status).toBe(200);
+    expect(diff.body.item.targets.map((entry) => [entry.decision, entry.draftId]))
+      .toEqual([["file", null], ["file", null]]);
+    expect(diff.body.item.uploadCandidateId).toBeNull();
+    const reviewBody = { decision: "approve", batchProofDigest: submitted.body.item.batchProofDigest,
+      draftImpactDigest: submitted.body.item.draftImpactDigest };
+    const beforeApproval = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const draftRowsBefore = (await db.query<{ snapshot: unknown }>(`
+      select to_jsonb(draft) as snapshot from project_parameter_value_drafts draft
+       where draft.organization_id=$1 and draft.project_id=$2 order by draft.id`, [ORG, PROJECT])).rows;
+    const approved = await requestJson<{ item: { status: string } }>(route(reviewer), `${path}/review`, {
+      method: "POST", body: JSON.stringify(reviewBody)
+    });
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    const afterApproval = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    expect(afterApproval.values).toHaveLength(beforeApproval.values.length + 3);
+    expect(afterApproval.pins).toHaveLength(beforeApproval.pins.length + 3);
+    expect(afterApproval.history).toHaveLength(beforeApproval.history.length + 3);
+    expect(afterApproval.versions).toHaveLength(beforeApproval.versions.length + 1);
+    expect(afterApproval.drafts).toEqual(beforeApproval.drafts);
+    expect((await db.query<{ snapshot: unknown }>(`
+      select to_jsonb(draft) as snapshot from project_parameter_value_drafts draft
+       where draft.organization_id=$1 and draft.project_id=$2 order by draft.id`, [ORG, PROJECT])).rows)
+      .toEqual(draftRowsBefore);
+    const draftRows = await db.query<{ id: string; base_current_value_id: string; current_value_id: string }>(`
+      select draft.id,draft.base_current_value_id,binding.current_value_id
+        from public.project_parameter_value_drafts draft
+        join parameter_catalog.project_parameter_bindings binding on binding.id=draft.binding_id
+       where draft.organization_id=$1 and draft.project_id=$2 order by draft.id`, [ORG, PROJECT]);
+    expect(draftRows.rows).toHaveLength(2);
+    expect(draftRows.rows.every((row) => row.base_current_value_id !== row.current_value_id)).toBe(true);
+  }, 120_000);
+
+  it("rejects a new DTS target draft after submission with the whole cohort unchanged", async () => {
+    const candidate = await createCandidate(db, storage, admin, {
+      projectId: PROJECT, fileId, fileName: "board.dts", bytes: twoSets("<79>")
+    });
+    const preview = await previewCanonicalCandidate(db, storage, admin, {
+      projectId: PROJECT, candidateId: candidate.id
+    });
+    const target = preview.bindings![0]!.bindingId;
+    const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
+      draftImpactDigest: string } }>(route(),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+        method: "POST", body: JSON.stringify({ candidateId: candidate.id,
+          expectedProofToken: preview.proofToken, reason: "Freeze DTS cohort",
+          assignedToUserId: REVIEWER })
+      });
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    const base = (await db.query<{ config_revision_id: string; project_value_id: string }>(`
+      select pin.config_revision_id,pin.project_value_id
+        from parameter_catalog.project_value_source_pins pin
+        join parameter_catalog.project_parameter_bindings binding
+          on binding.id=pin.binding_id and binding.current_value_id=pin.project_value_id
+       where pin.binding_id=$1`, [target])).rows[0]!;
+    await createCanonicalValueDraft(db, otherReviewer, {
+      projectId: PROJECT, bindingId: target, targetValue: parseDtsValue("iin_max", "<88>").value,
+      reason: "New DTS draft after freeze", baseRevisionId: base.config_revision_id,
+      baseCurrentValueId: base.project_value_id
+    }, { objectStore: storage, invocation: createUserInvocation(otherReviewer),
+      requestId: "c906-late-dts-draft", refusalSink: createTrustedRefusalAuditSink(db) });
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objects = await objectBytes(storageDirectory);
+    const review = await requestJson(route(reviewer),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}/review`, {
+        method: "POST", body: JSON.stringify({ decision: "approve",
+          batchProofDigest: submitted.body.item.batchProofDigest,
+          draftImpactDigest: submitted.body.item.draftImpactDigest })
+      });
+    expect(review).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "canonical-batch-draft-impact-stale" } } } });
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objectBytes(storageDirectory)).toEqual(objects);
+  }, 120_000);
 
   it("submits two canonical-only DTS Binding targets as one HTTP request", async () => {
     const bytes = Buffer.from(source.replace("iin_max = <36>", "iin_max = <77>").replace("iin_max = <36>", "iin_max = <77>"));

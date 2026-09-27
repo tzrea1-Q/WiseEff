@@ -155,7 +155,8 @@ async function fixture(format: Format, withOtherDraft = true) {
   }, { objectStore: storage, invocation: createUserInvocation(otherReviewer),
     requestId: `906-${format}-other-author-draft`, refusalSink: createTrustedRefusalAuditSink(db) });
   return { db, storage, directory, fileId: uploaded.file.id, fileName, baseVersionId: uploaded.version.id,
-    activeVersionId, workflowProofToken: workflow.proofToken, before, after, candidateId: candidate.id };
+    activeVersionId, workflowProofToken: workflow.proofToken, before, after, candidateId: candidate.id,
+    conflictProofs: new Map<string, Awaited<ReturnType<typeof fileDecisions>>>() };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -179,6 +180,18 @@ const prepareBody = (f: Fixture) => ({
   versionId: f.baseVersionId, expectedCurrentVersionId: f.activeVersionId,
   expectedWorkflowProofToken: f.workflowProofToken
 });
+
+async function fileDecisions(f: Fixture, prepared: Pick<Prepared, "candidateId" | "targets">) {
+  const conflicts = await requestJson<{ items: Array<{ selectedBindingId: string; selectedDraftId: string;
+    choices: { file: { decisionProofDigest: string } } }>; ineligible: unknown[] }>(
+    route(f), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-conflicts`);
+  expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+  expect(conflicts.body.ineligible).toEqual([]);
+  return prepared.targets.map((target) => ({ bindingId: target.bindingId, choice: "file" as const,
+    expectedConflictProofs: conflicts.body.items.filter((item) => item.selectedBindingId === target.bindingId)
+      .map((item) => ({ draftId: item.selectedDraftId,
+        decisionProofDigest: item.choices.file.decisionProofDigest })) }));
+}
 
 describe("#906 canonical manual sync HTTP preparation", () => {
   const path = (f: Fixture) => `/api/v1/projects/${PROJECT}/parameter-files/${f.fileId}/source-manual-sync/prepare`;
@@ -422,14 +435,19 @@ const submitBody = (f: Fixture, prepared: Prepared) => ({
   ...prepareBody(f), candidateId: prepared.candidateId,
   expectedCandidateProofToken: prepared.proofToken,
   expectedBatchProofDigest: prepared.batchProofDigest,
+  targetDecisions: f.conflictProofs.get(prepared.candidateId),
   assignedToUserId: REVIEWER, reason: "Restore exact historical cohort"
 });
 
 async function prepare(f: Fixture, key: string, storage = f.storage) {
-  return requestJson<{ item: Prepared; error?: { code: string; details?: { reason: string } } }>(
+  const response = await requestJson<{ item: Prepared; error?: { code: string; details?: { reason: string } } }>(
     route(f, admin, storage), `${basePath(f)}/prepare`, {
       method: "POST", headers: { "X-Request-Id": key }, body: JSON.stringify(prepareBody(f))
     });
+  if (response.status === 201 && !f.conflictProofs.has(response.body.item.candidateId)) {
+    f.conflictProofs.set(response.body.item.candidateId, await fileDecisions(f, response.body.item));
+  }
+  return response;
 }
 
 async function submit(f: Fixture, prepared: Prepared, key: string, storage = f.storage,
@@ -461,6 +479,11 @@ describe("#906 canonical historical batch rollback HTTP", () => {
     expect(prepared.cohort).toHaveLength(2);
     expect(prepared.targets.map((target) => target.bindingId))
       .toEqual([...prepared.targets.map((target) => target.bindingId)].sort());
+    const conflicts = await requestJson<{ items: Array<{ selectedBindingId: string;
+      selectedDraftId: string; choices: { file: { decisionProofDigest: string } } }>; ineligible: unknown[] }>(
+      route(f), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-conflicts`);
+    expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+    expect(conflicts.body.items).toHaveLength(1);
     expect((await prepare(f, `906-http-${format}-prepare`)).body.item)
       .toMatchObject({ candidateId: prepared.candidateId, replayed: true });
     const afterPrepare = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
@@ -468,6 +491,12 @@ describe("#906 canonical historical batch rollback HTTP", () => {
     expect(afterPrepare.pins).toEqual(before.pins);
     expect(afterPrepare.history).toEqual(before.history);
     expect(afterPrepare.versions).toEqual(before.versions);
+    const missingChoice = await submit(f, prepared, `906-http-${format}-missing-choice`, f.storage,
+      { targetDecisions: undefined });
+    expect(missingChoice).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "canonical-batch-conflict-proof-stale" } } } });
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT }))
+      .toEqual(afterPrepare);
     const submittedResponse = await submit(f, prepared, `906-http-${format}-submit`);
     expect(submittedResponse.status, JSON.stringify(submittedResponse.body)).toBe(201);
     canonicalBatchRollbackSubmitResponseSchema.parse(submittedResponse.body);
@@ -636,7 +665,9 @@ describe("#906 canonical historical batch rollback HTTP", () => {
       `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
         method: "POST", headers: { "X-Request-Id": `906-http-${format}-newer-submit` },
         body: JSON.stringify({ candidateId: candidate.id, expectedProofToken: preview.proofToken,
-          assignedToUserId: REVIEWER, reason: "Advance whole source" })
+          assignedToUserId: REVIEWER, reason: "Advance whole source",
+          targetDecisions: await fileDecisions(f, { candidateId: candidate.id,
+            targets: preview.bindings!.map(({ bindingId }) => ({ bindingId })) }) })
       });
     expect(newer.status, JSON.stringify(newer.body)).toBe(201);
     expect((await requestJson(route(f, reviewer),

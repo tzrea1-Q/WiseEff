@@ -27,12 +27,18 @@ describe("canonical manual sync HTTP client", () => {
       .mockResolvedValueOnce({ json: async () => ({ item: {
         id: "request", projectId: "project/1", candidateId: "candidate", status: "pending",
         batchProofDigest: digest, cohortCount: 2, reason: "review",
+        draftImpactDigest: digest, draftImpact: ["a", "b"].map((bindingId, ordinal) => ({
+          ordinal, bindingId, role: "target", decision: "file",
+          baseCurrentValueId: `old-${bindingId}`, sourcePinId: `pin-${bindingId}`,
+          configRevisionId: "revision", drafts: []
+        })), uploadCandidateId: null,
+        decisionProofDigest: null, compositionProof: null,
         submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
         reviewerNote: null, sourceProofToken: "candidate-proof", cohortProofToken: "workflow",
         fileId: "file/1", baseVersionId: "current", configSetId: "set",
         appliedAt: null, appliedAuditRef: null,
         targets: ["a", "b"].map((bindingId, ordinal) => ({
-          ordinal, draftId: null, bindingId, definitionId: "definition",
+          ordinal, draftId: null, decision: "file", bindingId, definitionId: "definition",
           definitionRevisionId: "revision", catalogReleaseId: "release",
           baseCurrentValueId: `old-${bindingId}`, configRevisionId: "revision",
           sourceRef: `/${bindingId}`, sourcePinId: `pin-${bindingId}`, action: "set",
@@ -45,14 +51,17 @@ describe("canonical manual sync HTTP client", () => {
       expectedWorkflowProofToken: "workflow" };
     expect((await client.prepare("project/1", "file/1", input, "prepare-key")).targets).toHaveLength(2);
     expect((await client.submit("project/1", { candidateId: "candidate", expectedProofToken: "candidate-proof",
-      reason: "review", assignedToUserId: "reviewer" }, "submit-key")).id).toBe("request");
+      reason: "review", assignedToUserId: "reviewer", targetDecisions: ["a", "b"].map((bindingId) => ({
+        bindingId, choice: "file" as const
+      })) }, "submit-key")).id).toBe("request");
     expect(raw.mock.calls.map(([path, init]) => ({ path, requestId: init.headers["X-Request-Id"],
       body: JSON.parse(init.body) }))).toEqual([
       { path: "/api/v1/projects/project%2F1/parameter-files/file%2F1/source-manual-sync/prepare",
         requestId: "prepare-key", body: input },
       { path: "/api/v2/projects/project%2F1/parameter-value-change-requests/batches",
         requestId: "submit-key", body: { candidateId: "candidate", expectedProofToken: "candidate-proof",
-          reason: "review", assignedToUserId: "reviewer" } }
+          reason: "review", assignedToUserId: "reviewer",
+          targetDecisions: ["a", "b"].map((bindingId) => ({ bindingId, choice: "file" })) } }
     ]);
   });
 });

@@ -4,7 +4,7 @@
  * fingerprints. Registers the Hosted page-loop paths first so they win.
  */
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
@@ -20,6 +20,9 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { readCanonicalBatchSourceDiff, readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff";
+import { getParameterFileCandidateById } from "../parameter-files/candidateRepository";
+import { MAX_PARAMETER_SOURCE_BYTES } from "../parameter-files/jsonSource";
+import { digestCanonicalBatchDraftCompositionProof } from "./drafts/batchChangeService";
 import { getCanonicalMemberRemovalForAuth, listCanonicalMemberRemovalsForAuth,
   reviewCanonicalMemberRemoval, submitCanonicalMemberRemoval,
   withdrawCanonicalMemberRemoval } from "./drafts/memberRemovalChangeService";
@@ -42,6 +45,7 @@ import {
   createCanonicalValueDraft,
   approveCanonicalBatchValueChange,
   getCanonicalBatchValueChangeForReviewer,
+  getCanonicalBatchValueChangeForAuth,
   listCanonicalBatchValueChangesForAuth,
   listCanonicalValueChangesForAuth,
   listCanonicalValueDraftsForUser,
@@ -915,7 +919,11 @@ export function registerCatalogProjectValueConsumerRoutes(
     const body = parseWithSchema(z.object({
       candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
       reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
-      selectedDrafts: z.array(z.object({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional()
+      selectedDrafts: z.array(z.object({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
+      targetDecisions: z.array(z.object({ bindingId: z.string().min(1),
+        choice: z.enum(["file", "draft"]), draftId: z.string().min(1).optional(),
+        expectedConflictProofs: z.array(z.object({ draftId: z.string().min(1),
+          decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/) })).optional() })).optional()
     }), request.body ?? {});
     if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical batch submit requires root database.");
     const item = await submitCanonicalBatchValueChange(db, options.objectStore, auth, {
@@ -982,7 +990,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
-    const item = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
+    const item = await getCanonicalBatchValueChangeForAuth(db, auth, params);
     if (!item) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
     return { status: 200, body: { item } };
   });
@@ -997,10 +1005,44 @@ export function registerCatalogProjectValueConsumerRoutes(
       [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
     if (kind === "batch") {
       const item = await db.transaction(async (tx) => {
-        const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, params);
+        const frozen = await getCanonicalBatchValueChangeForAuth(tx, auth, params);
         if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+        if (!frozen.compositionProof && (frozen.uploadCandidateId || frozen.decisionProofDigest
+          || frozen.targets.some((target) => target.draftId !== null))) {
+          throw new ApiError("CONFLICT", "Mixed draft and file source diff needs a whole-batch composition proof.", {
+            reason: "canonical-batch-draft-composition-unavailable"
+          });
+        }
         if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
         const source = await readCanonicalBatchSourceDiff(tx, options.objectStore, auth, params);
+        let uploadAfter: string | null = null;
+        if (frozen.compositionProof) {
+          const { decisionProofDigest, ...facts } = frozen.compositionProof;
+          const upload = await getParameterFileCandidateById(tx, {
+            organizationId: auth.organization.id, projectId: params.projectId,
+            candidateId: frozen.compositionProof.uploadCandidateId
+          });
+          const object = frozen.compositionProof.uploadObject;
+          if (decisionProofDigest !== frozen.decisionProofDigest
+            || digestCanonicalBatchDraftCompositionProof(facts) !== decisionProofDigest
+            || !upload?.storageKey || upload.storageKey !== object.storageKey
+            || upload.checksum?.replace(/^sha256:/, "") !== object.sha256
+            || upload.sizeBytes !== object.sizeBytes || upload.fileId !== frozen.fileId
+            || upload.baseVersionId !== frozen.baseVersionId || upload.format !== source.format
+            || !options.objectStore.getBounded) {
+            throw new ApiError("CONFLICT", "Frozen original upload proof is incomplete.", {
+              reason: "canonical-batch-proof-mismatch"
+            });
+          }
+          const bytes = await options.objectStore.getBounded(object.storageKey, MAX_PARAMETER_SOURCE_BYTES);
+          if (bytes.length !== object.sizeBytes
+            || createHash("sha256").update(bytes).digest("hex") !== object.sha256) {
+            throw new ApiError("CONFLICT", "Original upload bytes changed after submission.", {
+              reason: "canonical-batch-object-drift"
+            });
+          }
+          uploadAfter = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+        }
         if (source.requestId !== frozen.id || source.candidateId !== frozen.candidateId
           || source.batchProofDigest !== frozen.batchProofDigest
           || source.targets.length !== frozen.targets.length
@@ -1013,7 +1055,16 @@ export function registerCatalogProjectValueConsumerRoutes(
             reason: "canonical-batch-proof-mismatch"
           });
         }
-        return source;
+        return {
+          ...source,
+          uploadCandidateId: frozen.uploadCandidateId,
+          decisionProofDigest: frozen.decisionProofDigest,
+          ...(frozen.compositionProof ? { uploadAfter, draftImpact: frozen.draftImpact } : {}),
+          targets: source.targets.map((target, ordinal) => ({
+            ...target, decision: frozen.targets[ordinal]!.decision,
+            draftId: frozen.targets[ordinal]!.draftId
+          }))
+        };
       });
       return { status: 200, body: { item } };
     }
@@ -1067,6 +1118,8 @@ export function registerCatalogProjectValueConsumerRoutes(
           decision: z.enum(["approve", "reject"]),
           note: z.string().nullable().optional(),
           batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
           memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
         }),
         request.body ?? {}
@@ -1101,7 +1154,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         }
         if (body.decision === "reject") {
           const item = await rejectCanonicalBatchValueChange(db, auth, {
-            ...params, batchProofDigest: body.batchProofDigest, note: body.note ?? null,
+            ...params, batchProofDigest: body.batchProofDigest,
+            draftImpactDigest: body.draftImpactDigest,
+            decisionProofDigest: body.decisionProofDigest, note: body.note ?? null,
             invocation: createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           });
@@ -1115,7 +1170,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => ({
           result: await approveCanonicalBatchValueChange(tx, options.objectStore!, auth, batchSnapshot, {
             projectId: params.projectId, requestId: params.requestId,
-            batchProofDigest: body.batchProofDigest!, note: body.note ?? null,
+            batchProofDigest: body.batchProofDigest!, draftImpactDigest: body.draftImpactDigest,
+            decisionProofDigest: body.decisionProofDigest,
+            note: body.note ?? null,
             invocation: createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           }),

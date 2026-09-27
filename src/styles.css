@@ -10592,6 +10592,17 @@ td small {
   padding-left: var(--space-6);
 }
 
+.canonical-manual-sync-dialog fieldset {
+  margin-block: var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+}
+
+.canonical-manual-sync-dialog fieldset label {
+  display: block;
+  margin-block: var(--space-2);
+}
+
 .submission-dialog-head {
   display: flex;
   align-items: flex-start;

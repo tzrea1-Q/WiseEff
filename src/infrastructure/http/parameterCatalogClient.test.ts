@@ -403,7 +403,7 @@ describe("parameter catalog client contract", () => {
   it.each(["json", "dts"] as const)("parses one ordered %s batch and sends its proof to the existing review route", async (format) => {
     const proof = "a".repeat(64);
     const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
-      ordinal, draftId: null, bindingId, definitionId: "definition-1",
+      ordinal, draftId: null, decision: "file", bindingId, definitionId: "definition-1",
       definitionRevisionId: "revision-1", catalogReleaseId: "release-1",
       baseCurrentValueId: `old-${ordinal}`, configRevisionId: `config-${ordinal}`,
       sourceRef: `source-${ordinal}`, sourcePinId: `pin-${ordinal}`,
@@ -413,6 +413,12 @@ describe("parameter catalog client contract", () => {
     const batch = { item: {
       id: "batch-1", projectId: "project-1", candidateId: "candidate-1",
       batchProofDigest: proof, cohortCount: 2, status: "pending", reason: "calibrate",
+      draftImpactDigest: proof, draftImpact: targets.map((target) => ({
+        ordinal: target.ordinal, bindingId: target.bindingId, role: "target", decision: "file",
+        baseCurrentValueId: target.baseCurrentValueId, sourcePinId: target.sourcePinId,
+        configRevisionId: target.configRevisionId, drafts: []
+      })), uploadCandidateId: null,
+      decisionProofDigest: null, compositionProof: null,
       submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
       reviewerNote: null, sourceProofToken: "source-proof", cohortProofToken: "cohort-proof",
       fileId: "file-1", baseVersionId: "version-1", configSetId: "set-1",
@@ -420,6 +426,7 @@ describe("parameter catalog client contract", () => {
     } };
     const diff = { item: {
       kind: "batch", requestId: "batch-1", candidateId: "candidate-1",
+      uploadCandidateId: null, decisionProofDigest: null,
       batchProofDigest: proof, format, sourceName: `config.${format}`,
       baseDigest: "old-digest", proposedDigest: "new-digest", diffDigest: proof,
       before: '{"a":1}', after: '{"a":2}',
@@ -431,7 +438,8 @@ describe("parameter catalog client contract", () => {
         valueKind: "json", valueDigest: "value-digest", configSetId: "set-1"
       })),
       targets: targets.map((target) => ({ ordinal: target.ordinal, bindingId: target.bindingId,
-        sourcePinId: target.sourcePinId, action: target.action, beforeText: "1", afterText: target.targetText }))
+        sourcePinId: target.sourcePinId, action: target.action, beforeText: "1", afterText: target.targetText,
+        decision: "file", draftId: null }))
     } };
     const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       const path = String(url);

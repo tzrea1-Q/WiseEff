@@ -13,6 +13,7 @@ import {
   subjectLifecycles
 } from "../../parameter-catalog-contract/index";
 import { itemEnvelopeSchema } from "./envelopes";
+import { canonicalBatchRollbackPrepareResponseSchema } from "./canonicalBatchRollback";
 import { bindingCompareEntryDtoSchema, bindingHistoryEntryDtoSchema } from "../../parameter-topology/schemas";
 
 export const pcatApiGates = [
@@ -1043,9 +1044,54 @@ export const catalogValueChangeRequestResponseSchema = itemEnvelopeSchema(
 export const catalogValueChangeRequestListResponseSchema = catalogObject({
   items: z.array(catalogValueChangeRequestDtoSchema)
 });
+export const catalogBatchCompositionProofSchema = catalogObject({
+    kind: z.literal("canonical-batch-draft-composition"),
+    organizationId: z.string(), projectId: z.string(), format: closedEnum(["json", "dts"]),
+    fileId: z.string(), baseVersionId: z.string(), configSetId: z.string(),
+    cohortProofToken: z.string(),
+    uploadCandidateId: z.string(), composedCandidateId: z.string(),
+    uploadObject: catalogObject({ storageKey: z.string(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      sizeBytes: z.number().int().nonnegative(), proofToken: z.string() }),
+    composedObject: catalogObject({ storageKey: z.string(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      sizeBytes: z.number().int().nonnegative(), proofToken: z.string() }),
+    batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    members: canonicalBatchRollbackPrepareResponseSchema.shape.item.shape.members,
+    cohort: canonicalBatchRollbackPrepareResponseSchema.shape.item.shape.cohort,
+    targetDecisions: z.array(catalogObject({
+      ordinal: z.number().int().nonnegative(), bindingId: z.string(),
+      choice: closedEnum(["file", "draft"]),
+      action: closedEnum(["set", "delete"]), locator: z.record(z.string(), z.unknown()),
+      targetValue: z.unknown(), targetText: z.string().nullable(),
+      draft: catalogObject({ id: z.string(), authorUserId: z.string().nullable(),
+        frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/), baseCurrentValueId: z.string(),
+        sourcePinId: z.string().nullable(), configRevisionId: z.string(),
+        candidateStorageKey: z.string(), candidateSha256: z.string().regex(/^[0-9a-f]{64}$/),
+        candidateSizeBytes: z.number().int().nonnegative() }).nullable()
+    })).min(2)
+});
+const catalogBatchDraftImpactSchema = z.array(catalogObject({
+  ordinal: z.number().int().nonnegative(), bindingId: z.string(),
+  role: closedEnum(["target", "sibling"]), decision: closedEnum(["file", "draft", "re-pin"]),
+  selectedDraftId: z.string().optional(),
+  baseCurrentValueId: z.string(), sourcePinId: z.string(), configRevisionId: z.string(),
+  drafts: z.array(catalogObject({
+    draftId: z.string(), authorUserId: z.string().nullable(), reason: z.string(),
+    action: closedEnum(["set", "delete"]), targetValue: z.unknown(),
+    baseCurrentValueId: z.string(), sourcePinId: z.string().nullable(), configRevisionId: z.string(),
+    currentlyStale: z.boolean(), expectedEffect: z.literal("preserved-stale"),
+    frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/)
+  }))
+}));
 export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   id: z.string(), projectId: z.string(), candidateId: z.string(),
   batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), cohortCount: z.number().int().positive(),
+  draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  uploadCandidateId: z.string().nullable(),
+  decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  compositionProof: catalogBatchCompositionProofSchema.nullable(),
+  draftImpact: catalogBatchDraftImpactSchema.nullable(),
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]), reason: z.string(),
   submitterUserId: z.string().nullable(), assignedToUserId: z.string().nullable(),
   reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
@@ -1054,10 +1100,11 @@ export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   appliedAt: z.string().nullable(), appliedAuditRef: z.string().nullable(),
   targets: z.array(catalogObject({
     ordinal: z.number().int().nonnegative(), draftId: z.string().nullable(),
+    decision: closedEnum(["file", "draft", "unverified-draft"]),
     bindingId: z.string(), definitionId: z.string(), definitionRevisionId: z.string(),
     catalogReleaseId: z.string(), baseCurrentValueId: z.string(),
     configRevisionId: z.string(), sourceRef: z.string(), sourcePinId: z.string(),
-    action: closedEnum(["set", "delete"]), targetText: z.string().nullable(),
+    action: closedEnum(["set", "delete"]), targetValue: z.unknown(), targetText: z.string().nullable(),
     appliedValueId: z.string().nullable(), appliedHistoryEventId: z.string().nullable(),
     appliedSourcePinId: z.string().nullable(), appliedFileVersionId: z.string().nullable()
   })).min(2)
@@ -1120,12 +1167,16 @@ const catalogSingleValueChangeSourceDiffSchema = catalogObject({
 });
 const catalogBatchValueChangeSourceDiffSchema = catalogObject({
   kind: z.literal("batch"), requestId: z.string(), candidateId: z.string(),
+  uploadCandidateId: z.string().nullable(), decisionProofDigest: z.string().nullable(),
   batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), format: closedEnum(["json", "dts"]),
   sourceName: z.string(), baseDigest: z.string(), proposedDigest: z.string(), diffDigest: z.string(),
   before: z.string(), after: z.string(), bindings: z.array(catalogValueChangeSourceBindingSchema),
+  uploadAfter: z.string().nullable().optional(),
+  draftImpact: catalogBatchDraftImpactSchema.nullable().optional(),
   targets: z.array(catalogObject({
     ordinal: z.number().int().nonnegative(), bindingId: z.string(), sourcePinId: z.string(),
-    action: closedEnum(["set", "delete"]), beforeText: z.string(), afterText: z.string().optional()
+    action: closedEnum(["set", "delete"]), beforeText: z.string(), afterText: z.string().optional(),
+    decision: closedEnum(["file", "draft"]), draftId: z.string().nullable()
   })).min(2)
 });
 export const catalogValueChangeSourceDiffResponseSchema = itemEnvelopeSchema(z.union([
@@ -1151,7 +1202,11 @@ export const catalogSubmitMemberRemovalRequestSchema = catalogObject({
 export const catalogSubmitBatchValueChangeRequestSchema = catalogObject({
   candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
   reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
-  selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional()
+  selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
+  targetDecisions: z.array(catalogObject({ bindingId: z.string().min(1),
+    choice: closedEnum(["file", "draft"]), draftId: z.string().min(1).optional(),
+    expectedConflictProofs: z.array(catalogObject({ draftId: z.string().min(1),
+      decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/) })).optional() })).optional()
 });
 export const catalogReviewMemberRemovalRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
@@ -1162,6 +1217,8 @@ export const catalogReviewValueChangeRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
   note: z.string().nullable().optional(),
   batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
 });
 

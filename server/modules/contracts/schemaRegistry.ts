@@ -971,7 +971,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "parameterTopology.getProjectValueBatchChangeRequest": {
-    summary: "Read one frozen canonical batch request with its ordered targets for software review",
+    summary: "Read one frozen canonical batch request, ordered cohort draft impact and targets for its submitter or assigned reviewer",
     tags: ["parameters"],
     responseBody: "ProjectValueBatchChangeRequestResponse",
     additionalResponses: {
@@ -980,7 +980,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     }
   },
   "parameterTopology.submitProjectValueBatchChangeRequest": {
-    summary: "Freeze and submit one canonical JSON batch request for a separate assigned software reviewer",
+    summary: "Freeze and submit one canonical JSON or DTS batch request and its full cohort draft impact for a separate assigned software reviewer",
     tags: ["parameters"],
     requestBody: "SubmitProjectValueBatchChangeRequest",
     responseBody: "ProjectValueBatchChangeRequestResponse",
