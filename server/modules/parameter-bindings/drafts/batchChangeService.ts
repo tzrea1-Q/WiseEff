@@ -228,6 +228,25 @@ export async function captureCanonicalBatchDraftImpactInTransaction(
   return { draftImpact, draftImpactDigest: digestImpact(draftImpact) };
 }
 
+async function refusePendingSingleDraftReviews(
+  tx: Database, auth: AuthContext, projectId: string, impact: BatchDraftImpact[]
+): Promise<void> {
+  const current = impact.filter((entry) => entry.role === "target")
+    .flatMap((entry) => entry.drafts.filter((draft) => !draft.currentlyStale).map((draft) => draft.draftId));
+  if (current.length === 0) return;
+  const pending = await tx.query<{ draft_id: string }>(`
+    select request.draft_id from public.project_parameter_value_change_requests request
+     where request.organization_id=$1 and request.project_id=$2 and request.status='pending'
+       and request.draft_id=any($3::text[]) order by request.draft_id limit 1`,
+  [auth.organization.id, projectId, current]);
+  if (pending.rows.length) {
+    throw new ApiError("CONFLICT", "A batch target draft already has a pending review.", {
+      reason: "selected-draft-pending",
+      bindingId: impact.find((entry) => entry.drafts.some((draft) => draft.draftId === pending.rows[0]!.draft_id))?.bindingId
+    });
+  }
+}
+
 type BatchRow = {
   id: string; project_id: string; candidate_id: string; batch_proof_digest: string;
   batch_draft_impact: unknown; batch_draft_impact_digest: string | null;
@@ -520,6 +539,7 @@ export async function submitCanonicalBatchValueChange(
     });
     const { draftImpact: impact, draftImpactDigest: impactDigest } =
       await captureCanonicalBatchDraftImpactInTransaction(tx, auth, input.projectId, proof, orderedDecisions);
+    await refusePendingSingleDraftReviews(tx, auth, input.projectId, impact);
     for (const target of impact.filter((item) => item.role === "target")) {
       const decision = decisions.get(target.bindingId);
       if ((decision?.choice !== "draft" && decision?.draftId) || (target.drafts.some((draft) => !draft.currentlyStale)
@@ -1024,6 +1044,7 @@ export async function approveCanonicalBatchValueChange(
     });
     const current = await captureCanonicalBatchDraftImpactInTransaction(
       tx, auth, input.projectId, proof, targetDecisions);
+    await refusePendingSingleDraftReviews(tx, auth, input.projectId, current.draftImpact);
     if (current.draftImpactDigest !== frozen.draftImpactDigest
       || current.draftImpact.length !== frozen.draftImpact!.length
       || current.draftImpact.some((entry, ordinal) =>
