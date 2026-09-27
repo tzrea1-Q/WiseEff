@@ -941,11 +941,7 @@ export function registerParameterFileRoutes(
               draft.base_current_value_id,draft.config_revision_id,draft.candidate_id,
               exists (select 1 from project_parameter_value_change_requests request
                        where request.organization_id=draft.organization_id and request.project_id=draft.project_id
-                         and request.status='pending'
-                         and (request.draft_id=draft.id or exists (
-                           select 1 from project_parameter_value_change_targets target
-                            where target.request_id=request.id and target.draft_id=draft.id
-                         ))) as has_pending_request
+                         and request.draft_id=draft.id and request.status='pending') as has_pending_request
          from project_parameter_value_drafts draft
         where draft.organization_id=$1 and draft.project_id=$2 and draft.binding_id=any($3::text[])
         order by draft.binding_id,draft.id`,

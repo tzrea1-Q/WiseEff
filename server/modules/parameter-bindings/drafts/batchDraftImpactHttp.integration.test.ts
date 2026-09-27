@@ -235,13 +235,6 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
     catalogBatchValueChangeRequestResponseSchema.parse(submitted.body);
     const request = submitted.body.item;
-    const pendingSelection = await requestJson<{ ineligible: Array<{ selectedDraftId: string;
-      reason: string }> }>(route(),
-      `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.body.item.candidateId}/source-conflicts`);
-    expect(pendingSelection.status).toBe(200);
-    expect(pendingSelection.body.ineligible).toContainEqual({
-      selectedBindingId: first.bindingId, selectedDraftId: selected.id, reason: "selected-draft-pending"
-    });
     expect(request.targets.map((target) => [target.bindingId, target.decision, target.draftId]))
       .toEqual(prepared.body.item.targets.map((target) => [target.bindingId,
         target.bindingId === first.bindingId ? "draft" : "file",

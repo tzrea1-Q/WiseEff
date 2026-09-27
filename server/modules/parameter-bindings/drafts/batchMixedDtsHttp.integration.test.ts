@@ -386,13 +386,6 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     expect(submitted.response.status, JSON.stringify(submitted.response.body)).toBe(201);
     catalogBatchValueChangeRequestResponseSchema.parse(submitted.response.body);
     const item = submitted.response.body.item;
-    const pendingSelection = await requestJson<{ ineligible: Array<{ selectedDraftId: string;
-      reason: string }> }>(route(),
-      `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-conflicts`);
-    expect(pendingSelection.status).toBe(200);
-    expect(pendingSelection.body.ineligible).toContainEqual({
-      selectedBindingId: first.bindingId, selectedDraftId: selected.id, reason: "selected-draft-pending"
-    });
     expect(item.uploadCandidateId).toBe(prepared.candidateId);
     expect(item.candidateId).not.toBe(prepared.candidateId);
     expect(item.targets.map((target) => [target.bindingId, target.decision, target.draftId]))
@@ -557,24 +550,7 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     expect({ ...afterLostRole, audits: beforeLostRole.audits }).toEqual(beforeLostRole);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('c906-mix-reviewer-restored',$1,$2,$3,'software-committer')",
       [REVIEWER, ORG, PROJECT]);
-    const blocked = await prepare(BASE.replace("<10>", "<11>").replace("<20>", "<61>"),
-      "c906-mixed-http-dts-pending-target-prepare");
-    const pendingBefore = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
-    const pendingObjects = await objects(directory);
-    const blockedSubmit = await requestJson(route(),
-      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
-        method: "POST", body: JSON.stringify({ candidateId: blocked.candidateId,
-          expectedProofToken: blocked.proofToken, assignedToUserId: REVIEWER,
-          reason: "Cannot reuse a pending draft", targetDecisions: await Promise.all(blocked.targets.map(async (target) => ({
-            bindingId: target.bindingId, choice: "file",
-            expectedConflictProofs: await expectedConflicts(blocked.candidateId, target.bindingId, "file")
-          }))) })
-      });
-    expect(blockedSubmit).toMatchObject({ status: 409, body: { error: {
-      details: { reason: "selected-draft-pending" } } } });
-    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(pendingBefore);
-    expect(await objects(directory)).toEqual(pendingObjects);
-    const newer = await prepare(BASE.replace("<20>", "<61>").replace("<30>", "<31>"),
+    const newer = await prepare(BASE.replace("<10>", "<11>").replace("<20>", "<61>"),
       "c906-mixed-http-dts-newer-prepare");
     const successor = await requestJson<{ item: { id: string; batchProofDigest: string;
       draftImpactDigest: string } }>(route(),
