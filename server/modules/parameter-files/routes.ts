@@ -935,14 +935,19 @@ export function registerParameterFileRoutes(
       return { status: 200, body: { items: [], ineligible: [] } };
     }
     const rows = await db.query<{ id: string; binding_id: string; user_id: string;
-      source_pin_id: string; base_current_value_id: string; config_revision_id: string }>(
+      source_pin_id: string; base_current_value_id: string; config_revision_id: string;
+      candidate_id: string | null; has_pending_request: boolean }>(
       `select draft.id,draft.binding_id,draft.user_id,draft.source_pin_id,
-              draft.base_current_value_id,draft.config_revision_id
+              draft.base_current_value_id,draft.config_revision_id,draft.candidate_id,
+              exists (select 1 from project_parameter_value_change_requests request
+                       where request.organization_id=draft.organization_id and request.project_id=draft.project_id
+                         and request.status='pending'
+                         and (request.draft_id=draft.id or exists (
+                           select 1 from project_parameter_value_change_targets target
+                            where target.request_id=request.id and target.draft_id=draft.id
+                         ))) as has_pending_request
          from project_parameter_value_drafts draft
         where draft.organization_id=$1 and draft.project_id=$2 and draft.binding_id=any($3::text[])
-          and draft.candidate_id is not null
-          and not exists (select 1 from project_parameter_value_change_requests request
-                           where request.draft_id=draft.id and request.status='pending')
         order by draft.binding_id,draft.id`,
       [auth.organization.id, params.projectId, bindings.map((binding) => binding.bindingId)]
     );
@@ -956,6 +961,11 @@ export function registerParameterFileRoutes(
         || binding.configRevisionId !== draft.config_revision_id) {
         ineligible.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
           reason: "selected-draft-stale" });
+        continue;
+      }
+      if (draft.has_pending_request || !draft.candidate_id) {
+        ineligible.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          reason: draft.has_pending_request ? "selected-draft-pending" : "selected-draft-source-proof-missing" });
         continue;
       }
       try {
