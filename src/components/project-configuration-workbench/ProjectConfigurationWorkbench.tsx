@@ -10,6 +10,7 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
 import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/CanonicalBatchSubmitDialog";
+import { permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
 import type {
   ParameterFileRepository,
   ParameterFileSourceWorkflow,
@@ -1112,7 +1113,7 @@ export function ProjectConfigurationWorkbench({
     && sourcePreview.bindings.every((binding) => binding.bindingId && binding.sourcePinId
       && (binding.action === "delete" || binding.afterText !== undefined))
     && new Set(sourcePreview.bindings.map((binding) => binding.bindingId)).size === sourcePreview.bindings.length
-    && !sourcePreview.request && !sourcePreviewLoading && !sourcePreviewError
+    && permitsFreshBatchRequest(sourcePreview.request) && !sourcePreviewLoading && !sourcePreviewError
     && memberRemovalRepository?.submitProjectValueBatchChangeRequest);
   const handleOpenSourceReview = useCallback(() => {
     if (canSubmitSourceReview || canSubmitBatchReview) setSourceReviewDialogOpen(true);
@@ -1698,9 +1699,12 @@ export function ProjectConfigurationWorkbench({
               sourceReviewError={sourceReviewError}
               sourceReviewResult={sourceReviewResult}
               onSubmitSourceReview={handleOpenSourceReview}
-              onOpenReview={() =>
-                onNavigate(`/parameter-review?projectId=${encodeURIComponent(project.id)}`)
-              }
+              onOpenReview={() => {
+                const requestId = sourcePreview?.request?.id ?? sourceReviewResult?.requestId;
+                onNavigate(requestId
+                  ? `/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`
+                  : `/parameter-review?projectId=${encodeURIComponent(project.id)}`);
+              }}
               canRecompute={canRecompute}
               canActivate={canActivate && legacySourceWorkflowConfirmed}
               canAbandon={canAbandon}
@@ -1813,6 +1817,7 @@ export function ProjectConfigurationWorkbench({
       {sourceReviewDialogOpen && canSubmitBatchReview && sourcePreview && activeCandidate ? (
         <CanonicalBatchSubmitDialog projectId={project.id} currentUserId={currentUserId}
           candidate={activeCandidate} preview={sourcePreview} repository={memberRemovalRepository}
+          fileRepository={fileRepository}
           onDismiss={() => setSourceReviewDialogOpen(false)}
           onSubmitted={(requestId) => {
             setSourceReviewDialogOpen(false);
@@ -1841,7 +1846,8 @@ export function ProjectConfigurationWorkbench({
             setVersionsReloadToken((value) => value + 1);
             notifyMutation("多目标历史回滚审核已提交；审核通过前当前 Value、来源 pin 和活跃文件版本不变。");
             onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
-          }
+          },
+          onOpenExisting: (requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)
         } : undefined}
       /> : null}
 
@@ -1851,6 +1857,7 @@ export function ProjectConfigurationWorkbench({
             currentVersionId: manualSyncTarget.currentVersionId,
             workflowProofToken: manualSyncTarget.workflowProofToken, currentUserId,
             client: manualSyncClient,
+            onOpenExisting: (requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`),
             onSubmitted: (requestId) => {
               setManualSyncTarget(null);
               setSourceWorkflowReloadToken((value) => value + 1);

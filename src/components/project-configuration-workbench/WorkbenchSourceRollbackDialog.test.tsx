@@ -44,6 +44,32 @@ function show(prepared: BatchRollbackPreparation = proof, failFirstPrepare = fal
 }
 
 describe("historical multi-target rollback dialog", () => {
+  it.each(["pending", "approved", "rejected", "withdrawn"] as const)(
+    "honors a %s single receipt even when rollback has two targets", async (status) => {
+      const { submit } = show(proof, false, { request: { id: "single-review", status, kind: "single" },
+        items: [], ineligible: [] });
+      const dialog = screen.getByRole("dialog");
+      expect(await within(dialog).findByText(/单目标审核请求|单目标请求/)).toBeVisible();
+      fireEvent.change(within(dialog).getByRole("textbox", { name: "来源回滚原因" }),
+        { target: { value: "rollback" } });
+      expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeDisabled();
+      expect(submit).not.toHaveBeenCalled();
+    }
+  );
+
+  it("reuses fresh proof after a withdrawn batch receipt with no conflicts", async () => {
+    const { submit } = show(proof, false, { request: { id: "old-batch", status: "withdrawn", kind: "batch" },
+      items: [], ineligible: [] });
+    const dialog = screen.getByRole("dialog");
+    expect(await within(dialog).findByText(/须重新获取来源和冲突证明/)).toBeVisible();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "来源回滚原因" }),
+      { target: { value: "rollback again" } });
+    expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交审核" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]![2].targetDecisions).toHaveLength(2);
+  });
+
   it("shows the ordered DTS proof and reuses exact step keys on retry", async () => {
     const { prepare, submit, onSubmitted } = show();
     const dialog = screen.getByRole("dialog", { name: "提交多目标历史回滚审核" });
