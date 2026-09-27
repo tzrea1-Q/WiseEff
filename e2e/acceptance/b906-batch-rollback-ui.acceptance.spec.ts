@@ -1,4 +1,5 @@
 import "./helpers/loadAcceptanceEnvironment";
+import { readdir } from "node:fs/promises";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
 import { makeTestAuthContext } from "../../server/testing/authContext";
@@ -10,8 +11,13 @@ import { createUserInvocation } from "../../server/modules/auth/trustedInvocatio
 import { registerCanonicalJsonSource } from "../../server/modules/parameter-files/canonicalJsonSource";
 import { previewCanonicalCandidate } from "../../server/modules/parameter-files/canonicalFileWorkflow";
 import { submitCanonicalBatchValueChange, approveCanonicalBatchValueChange } from "../../server/modules/parameter-bindings/drafts/batchChangeService";
-import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../../server/modules/parameter-bindings/catalogProjectValueSync";
+import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, readCanonicalBindingChangeHistory,
+  syncPublishedCatalogProjectValuesInTransaction } from "../../server/modules/parameter-bindings/catalogProjectValueSync";
+import { createCanonicalValueDraft } from "../../server/modules/parameter-bindings/drafts/service";
 import { loadLegacyBindingIdentity } from "../../server/modules/parameter-bindings/binding/migrationAdapter";
+import { loadOwnedProjectValueSourcePin } from "../../server/modules/parameter-bindings/values";
+import { loadProjectValueById } from "../../server/modules/parameter-bindings/values/repositories";
+import { parseDtsValue } from "../../server/modules/dts";
 import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../../server/modules/parameter-topology/types";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
@@ -27,12 +33,15 @@ const after = { json: '{ "settings": { "limit": 50 }, "other": { "limit": 60 } }
   dts: before.dts.replace("iin_max = <36>", "iin_max = <50>").replace("iin_max = <36>", "iin_max = <60>") };
 type Format = "json" | "dts";
 
-for (const { format, outcomeKind } of [
-  { format: "json", outcomeKind: "approve" }, { format: "dts", outcomeKind: "approve" },
-  { format: "json", outcomeKind: "reject" }, { format: "dts", outcomeKind: "withdraw" },
-  { format: "json", outcomeKind: "drift" }
-] as Array<{ format: Format; outcomeKind: "approve" | "reject" | "withdraw" | "drift" }>) {
-test(`#906 B ${format} historical two-Binding rollback ${outcomeKind} through the pages`, async ({ page, request }, testInfo) => {
+for (const { format, outcomeKind, withDraft } of [
+  { format: "json", outcomeKind: "approve", withDraft: false }, { format: "dts", outcomeKind: "approve", withDraft: false },
+  { format: "json", outcomeKind: "reject", withDraft: false }, { format: "dts", outcomeKind: "withdraw", withDraft: false },
+  { format: "json", outcomeKind: "drift", withDraft: false },
+  { format: "json", outcomeKind: "approve", withDraft: true }, { format: "dts", outcomeKind: "approve", withDraft: true },
+  { format: "json", outcomeKind: "stale", withDraft: true }, { format: "dts", outcomeKind: "stale", withDraft: true },
+  { format: "json", outcomeKind: "reject", withDraft: true }, { format: "dts", outcomeKind: "withdraw", withDraft: true }
+] as Array<{ format: Format; outcomeKind: "approve" | "reject" | "withdraw" | "drift" | "stale"; withDraft: boolean }>) {
+test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft ? " with competing drafts" : ""} through the pages`, async ({ page, request }, testInfo) => {
   test.setTimeout(420_000);
   let runtime: DisposablePostCutoverRuntime | undefined;
   let restore: RestoreDisposablePostCutoverRuntime | undefined;
@@ -41,13 +50,14 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind} through th
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("response", (response) => {
-    if (/source-batch-rollback|parameter-value-change-requests/.test(response.url())) {
+    if (/source-batch-rollback|source-conflicts|parameter-value-change-requests/.test(response.url())) {
       network.push(`${response.request().method()} ${response.status()} ${new URL(response.url()).pathname}`);
     }
   });
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
-      label: `b906_rollback_${format}`, markerPurpose: `b906-rollback-${format}`
+      label: `b906_rollback_${format}_${outcomeKind}${withDraft ? "_draft" : ""}`,
+      markerPurpose: `b906-rollback-${format}-${outcomeKind}${withDraft ? "-draft" : ""}`
     });
     runtime = started.runtime;
     restore = started.restore;
@@ -129,6 +139,30 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind} through th
         invocation: createUserInvocation(reviewer), traceId: `b906-${format}-history-review`,
         refusalSink: createTrustedRefusalAuditSink(db)
       }))).status).toBe("approved");
+      const competingBindingId = preview.bindings![0]!.bindingId;
+      const draftIds: string[] = [];
+      let competingBaseRevisionId = "";
+      if (withDraft) {
+        const currentBindings = await listCatalogBindingRowsForProject(db, admin, { projectId: "aurora" });
+        const currentValueId = currentBindings.find((binding) => binding.id === competingBindingId)!.currentValueId;
+        competingBaseRevisionId = (await db.query<{ config_revision_id: string }>(
+          "select config_revision_id from parameter_catalog.project_parameter_values where id=$1",
+          [currentValueId])).rows[0]!.config_revision_id;
+        for (const [index, value] of [88, 99].entries()) {
+          const author = makeTestAuthContext({ userId: index ? acceptanceCast.sunMei.userId : acceptanceCast.liuMin.userId,
+            organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit"],
+            roles: [{ roleId: "software-user", projectId: "aurora" }] });
+          const draft = await createCanonicalValueDraft(db, author, {
+            projectId: "aurora", bindingId: competingBindingId,
+            ...(format === "json" ? { sourceTarget: { format: "json" as const, sourceText: String(value) } }
+              : { targetValue: parseDtsValue("iin_max", `<${value}>`).value }),
+            reason: "Other author rollback competition", baseRevisionId: competingBaseRevisionId,
+            baseCurrentValueId: currentValueId
+          }, { objectStore: storage, invocation: createUserInvocation(author),
+            requestId: `b906-rollback-competing-${value}`, refusalSink: createTrustedRefusalAuditSink(db) });
+          draftIds.push(draft.id);
+        }
+      }
       const baseline = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
       const activeVersion = (await db.query<{ current_version_id: string }>(
         "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!.current_version_id;
@@ -139,11 +173,31 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind} through th
       await page.getByRole("button", { name: "检查器", exact: true }).click();
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector.getByLabel("不可变版本历史")).toBeVisible();
+      const preparing = page.waitForResponse((response) => response.url().endsWith("/source-batch-rollback/prepare"));
+      const discovering = page.waitForResponse((response) => response.url().endsWith("/source-conflicts"));
       await inspector.getByRole("button", { name: `将版本 ${uploaded.version.versionNumber} 恢复为当前` }).click();
       const dialog = page.getByRole("dialog", { name: "提交多目标历史回滚审核" });
-      await expect(dialog.getByRole("list", { name: "历史回滚完整有序目标" }).getByRole("listitem")).toHaveCount(2);
+      const preparation = await preparing;
+      expect(preparation.status(), await preparation.text()).toBe(201);
+      const prepared = (await preparation.json()).item as { candidateId: string; targets: Array<{ bindingId: string }> };
+      const discoveredResponse = await discovering;
+      expect(discoveredResponse.status(), await discoveredResponse.text()).toBe(200);
+      const discovered = await discoveredResponse.json() as { items: Array<{ selectedBindingId: string;
+        selectedDraftId: string; choices: { file: { decisionProofDigest: string } } }>; ineligible: unknown[] };
+      expect(discovered.ineligible).toEqual([]);
+      expect(discovered.items.filter((item) => item.selectedBindingId === competingBindingId))
+        .toHaveLength(withDraft ? 2 : 0);
+      await expect(dialog.getByRole("list", { name: "历史回滚完整有序目标" }).locator(":scope > li")).toHaveCount(2);
       await expect(dialog).toContainText(format.toUpperCase());
       await expect(dialog).toContainText("审核通过前不会改变当前 Value、来源 pin 和活跃文件版本");
+      if (withDraft) {
+        for (const draftId of draftIds) await expect(dialog).toContainText(draftId);
+        await expect(dialog.getByRole("button", { name: "提交审核" })).toBeDisabled();
+        const confirm = dialog.getByRole("checkbox", { name: /确认此目标采用历史文件值/ });
+        await confirm.focus();
+        await page.keyboard.press("Space");
+        await expect(confirm).toBeChecked();
+      } else await expect(dialog.getByRole("checkbox")).toHaveCount(0);
       await page.keyboard.press("Tab");
       expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
       if (outcomeKind === "approve") await page.screenshot({
@@ -155,9 +209,53 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind} through th
       expect(afterPrepare.history).toEqual(baseline.history);
       expect(afterPrepare.versions).toEqual(baseline.versions);
       await dialog.getByRole("textbox", { name: "来源回滚原因" }).fill(`restore ${format} history`);
+      if (outcomeKind === "stale") {
+        const changed = await request.post(api(`/api/v2/projects/aurora/parameter-bindings/${competingBindingId}/drafts`), {
+          headers: authHeadersForRole("software-user"), data: { baseRevisionId: competingBaseRevisionId,
+            reason: "Same author revised 88 to 89",
+            ...(format === "json" ? { sourceTarget: { format: "json", sourceText: "89" } }
+              : { targetValue: parseDtsValue("iin_max", "<89>").value }) }
+        });
+        expect(changed.status(), await changed.text()).toBe(201);
+        expect((await changed.json()).item.draftId).toBe(draftIds[0]);
+      }
+      const beforeSubmit = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
+      const objectsBeforeSubmit = (await readdir(runtime.objectStoreRoot, { recursive: true })).sort();
+      const candidatesBeforeSubmit = (await db.query<{ count: string }>(
+        "select count(*)::text as count from project_parameter_file_candidates where project_id=$1",
+        ["aurora"])).rows[0]!.count;
       const submitResponse = page.waitForResponse((response) => response.url().endsWith("/source-batch-rollback/submit"));
       await dialog.getByRole("button", { name: "提交审核" }).click();
       const submitted = await submitResponse;
+      expect(submitted.request().postDataJSON().targetDecisions).toEqual(prepared.targets.map((target) => ({
+        bindingId: target.bindingId, choice: "file", expectedConflictProofs: discovered.items
+          .filter((item) => item.selectedBindingId === target.bindingId)
+          .map((item) => ({ draftId: item.selectedDraftId,
+            decisionProofDigest: item.choices.file.decisionProofDigest }))
+      })));
+      if (outcomeKind === "stale") {
+        expect(submitted.status(), await submitted.text()).toBe(409);
+        expect((await submitted.json()).error.details.reason).toBe("canonical-batch-conflict-proof-stale");
+        await expect(dialog.getByRole("alert")).toContainText("竞争草稿或历史文件选择证明已变化");
+        expect(await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" }))
+          .toEqual(beforeSubmit);
+        expect((await readdir(runtime.objectStoreRoot, { recursive: true })).sort()).toEqual(objectsBeforeSubmit);
+        expect((await db.query<{ count: string }>(
+          "select count(*)::text as count from project_parameter_file_candidates where project_id=$1",
+          ["aurora"])).rows[0]!.count).toBe(candidatesBeforeSubmit);
+        expect((await db.query<{ count: string }>(
+          "select count(*)::text as count from project_parameter_value_change_requests where project_id=$1 and status='pending'",
+          ["aurora"])).rows[0]!.count).toBe("0");
+        await page.screenshot({ path: testInfo.outputPath(`b906-${format}-rollback-stale-409-1440x900.png`) });
+        await testInfo.attach(`b906-${format}-rollback-stale-network`, { body: JSON.stringify(network, null, 2),
+          contentType: "application/json" });
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        await expect(inspector.getByRole("button", { name: `将版本 ${uploaded.version.versionNumber} 恢复为当前` })).toBeFocused();
+        expect(pageErrors).toEqual([]);
+        outcome = "success";
+        return;
+      }
       expect(submitted.status(), await submitted.text()).toBe(201);
       const receipt = (await submitted.json()).item as { requestId: string; candidateId: string; batchProofDigest: string };
       expect(receipt.batchProofDigest).toMatch(/^[0-9a-f]{64}$/);
@@ -239,10 +337,26 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind} through th
         .toContainText(outcomeKind === "drift" ? "待审核" : outcomeKind === "reject" ? "已驳回" : "已批准");
       const applied = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
       if (outcomeKind === "approve") {
-        expect(applied.values).not.toEqual(baseline.values);
-        expect(applied.pins).not.toEqual(baseline.pins);
-        expect(applied.history).not.toEqual(baseline.history);
-        expect(applied.versions).not.toEqual(baseline.versions);
+        expect(applied.values).toHaveLength(baseline.values.length + 2);
+        expect(applied.pins).toHaveLength(baseline.pins.length + 2);
+        expect(applied.history).toHaveLength(baseline.history.length + 2);
+        expect(applied.versions).toHaveLength(baseline.versions.length + 1);
+        expect(applied.drafts).toEqual(baseline.drafts);
+        const appliedVersionId = applied.files.find((file) => file.id === fileId)!.currentVersionId!;
+        const values = [];
+        for (const target of prepared.targets) {
+          const currentValueId = applied.bindings.find((binding) => binding.id === target.bindingId)!.currentValueId;
+          const value = await loadProjectValueById(asValueClient(db), currentValueId);
+          const pin = await loadOwnedProjectValueSourcePin(db, { organizationId: "org-chargelab",
+            projectId: "aurora", bindingId: target.bindingId, projectValueId: currentValueId });
+          expect(pin?.fileVersionId).toBe(appliedVersionId);
+          expect(pin?.configRevisionId).toBe(value?.config_revision_id);
+          const events = await readCanonicalBindingChangeHistory(getRootPostgresPool(db)!, {
+            organizationId: "org-chargelab", projectId: "aurora", bindingId: target.bindingId });
+          expect(events?.some((event) => event.newCurrentValueId === currentValueId)).toBe(true);
+          values.push(value?.value);
+        }
+        expect(values.sort()).toEqual(format === "json" ? [36.5, 48] : [36, 36]);
       } else {
         expect(applied.values).toEqual(drifted?.values ?? baseline.values);
         expect(applied.pins).toEqual(drifted?.pins ?? baseline.pins);
