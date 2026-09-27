@@ -144,16 +144,31 @@ async function fixture(format: "json" | "dts") {
     baseCurrentValueId: first!.baseCurrentValueId
   }, { objectStore: storage, invocation: createUserInvocation(author),
     requestId: `d906-compose-draft-${format}`, refusalSink: createTrustedRefusalAuditSink(db) });
-  const targetDecisions = frozen.targets.map((target) => target.bindingId === first!.bindingId
-    ? { bindingId: target.bindingId, choice: "draft" as const, draftId: draft.id }
+  const conflicts = await requestJson<{ items: Array<{ selectedBindingId: string; selectedDraftId: string;
+    choices: { file: { decisionProofDigest: string }; draft: { decisionProofDigest: string } } }>;
+    ineligible: unknown[] }>(route({ db, storage }),
+    `/api/v1/projects/${PROJECT}/parameter-file-candidates/${upload.id}/source-conflicts`);
+  expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+  expect(conflicts.body.ineligible).toEqual([]);
+  expect(conflicts.body.items).toHaveLength(1);
+  const selected = conflicts.body.items[0]!;
+  expect(selected).toMatchObject({ selectedBindingId: first!.bindingId, selectedDraftId: draft.id });
+  const decisions = (choice: "draft" | "file") => frozen.targets.map((target) => target.bindingId === first!.bindingId
+    ? { bindingId: target.bindingId, choice,
+      ...(choice === "draft" ? { draftId: draft.id } : {}),
+      expectedConflictProofs: [{ draftId: draft.id,
+        decisionProofDigest: selected.choices[choice].decisionProofDigest }] }
     : { bindingId: target.bindingId, choice: "file" as const });
+  const targetDecisions = decisions("draft");
+  const fileDecisions = decisions("file");
   const impact = await db.transaction((tx) => captureCanonicalBatchDraftImpactInTransaction(
     tx, admin, PROJECT, frozen, targetDecisions));
-  return { format, db, storage, directory, upload, preview, draft, first, frozen, targetDecisions, impact,
+  return { format, db, storage, directory, upload, preview, draft, first, frozen, targetDecisions,
+    fileDecisions, impact,
     fileId: uploaded.file.id };
 }
 
-function route(f: Fixture, auth = admin) {
+function route(f: Pick<Fixture, "db" | "storage">, auth = admin) {
   const router = createRouter();
   const options = { db: f.db, objectStore: f.storage, getCurrentAuthContext: () => auth };
   registerParameterFileRoutes(router, options);
@@ -547,7 +562,7 @@ describe("#906 D composition refusal and recovery", () => {
       const winner = await submitCanonicalBatchValueChange(f.db, f.storage, admin, {
         projectId: PROJECT, candidateId: f.upload.id, expectedProofToken: f.preview.proofToken!,
         reason: "Winning file source", assignedToUserId: REVIEWER,
-        targetDecisions: f.frozen.targets.map((target) => ({ bindingId: target.bindingId, choice: "file" })),
+        targetDecisions: f.fileDecisions,
         invocation: createUserInvocation(admin), requestId: `d906-winner-${format}`,
         refusalSink: createTrustedRefusalAuditSink(f.db)
       });
@@ -563,6 +578,34 @@ describe("#906 D composition refusal and recovery", () => {
       await expect(applyMixed(f, requestId)).rejects.toMatchObject({ code: "CONFLICT" });
       expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(afterWinner);
       expect(await objectBytes(f.directory)).toEqual(objects);
+    }, 120_000);
+
+    it(`${format} rejects a previewed choice after the author revises the same draft ID`, async () => {
+      const f = await fixture(format);
+      const changed = await requestJson<{ item: { draftId: string } }>(route(f, author),
+        `/api/v2/projects/${PROJECT}/parameter-bindings/${f.first!.bindingId}/drafts`, {
+          method: "POST", body: JSON.stringify({ baseRevisionId: f.first!.configRevisionId,
+            ...(format === "json" ? { sourceTarget: { format: "json", sourceText: "89" } }
+              : { targetValue: parseDtsValue("iin_max", "<89>").value }),
+            reason: "Author revised the previewed choice" })
+        });
+      expect(changed.status, JSON.stringify(changed.body)).toBe(201);
+      expect(changed.body.item.draftId).toBe(f.draft.id);
+      const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+      const objects = await objectBytes(f.directory);
+      for (const targetDecisions of [f.targetDecisions, f.fileDecisions]) {
+        const response = await requestJson(route(f),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+            method: "POST", body: JSON.stringify({ candidateId: f.upload.id,
+              expectedProofToken: f.preview.proofToken, assignedToUserId: REVIEWER,
+              reason: "Previewed batch choice", targetDecisions })
+          });
+        expect(response).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "canonical-batch-conflict-proof-stale" } } } });
+        expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT }))
+          .toEqual(before);
+        expect(await objectBytes(f.directory)).toEqual(objects);
+      }
     }, 120_000);
   }
 });

@@ -31868,6 +31868,48 @@
           "expectedBatchProofDigest": {
             "type": "string"
           },
+          "targetDecisions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bindingId": {
+                  "type": "string"
+                },
+                "choice": {
+                  "type": "string",
+                  "enum": [
+                    "file"
+                  ]
+                },
+                "expectedConflictProofs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "draftId": {
+                        "type": "string"
+                      },
+                      "decisionProofDigest": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "draftId",
+                      "decisionProofDigest"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "bindingId",
+                "choice",
+                "expectedConflictProofs"
+              ],
+              "additionalProperties": false
+            }
+          },
           "reason": {
             "type": "string"
           },

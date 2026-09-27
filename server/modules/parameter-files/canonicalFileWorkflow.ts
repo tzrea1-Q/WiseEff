@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -1802,6 +1803,8 @@ export async function submitCanonicalBatchRollback(
   input: { projectId: string; fileId: string; versionId: string; candidateId: string;
     expectedCurrentVersionId: string; expectedWorkflowProofToken: string;
     expectedCandidateProofToken: string; expectedBatchProofDigest: string;
+    targetDecisions?: { bindingId: string; choice: "file";
+      expectedConflictProofs: { draftId: string; decisionProofDigest: string }[] }[];
     reason: string; assignedToUserId: string; requestId: string; refusalSink: TrustedRefusalAuditSink }
 ): Promise<CanonicalBatchRollbackSubmitDto> {
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
@@ -1864,7 +1867,8 @@ export async function submitCanonicalBatchRollback(
         || receipts.rows[0]!.metadata.batchProofDigest !== input.expectedBatchProofDigest
         || receipts.rows[0]!.metadata.candidateProofToken !== input.expectedCandidateProofToken
         || receipts.rows[0]!.metadata.baseVersionId !== input.expectedCurrentVersionId
-        || receipts.rows[0]!.metadata.workflowProofToken !== input.expectedWorkflowProofToken) {
+        || receipts.rows[0]!.metadata.workflowProofToken !== input.expectedWorkflowProofToken
+        || !isDeepStrictEqual(receipts.rows[0]!.metadata.rollbackTargetDecisions, input.targetDecisions)) {
         throw new ApiError("CONFLICT", "Rollback retry disagrees with the reviewed request.", {
           reason: "rollback-replay-mismatch"
         });
@@ -1899,6 +1903,13 @@ export async function submitCanonicalBatchRollback(
       || proof.targets.length < 2 || proof.baseVersionId !== input.expectedCurrentVersionId) {
       throw new ApiError("CONFLICT", "Rollback target order or cohort changed.", { reason: "source-proof-stale" });
     }
+    if (input.targetDecisions && (input.targetDecisions.length !== proof.targets.length
+      || input.targetDecisions.some((decision, ordinal) =>
+        decision.bindingId !== proof.targets[ordinal]?.bindingId))) {
+      throw new ApiError("CONFLICT", "Rollback decisions must cover the historical targets in source order.", {
+        reason: "source-proof-stale"
+      });
+    }
     if (prior.length) {
       const locked = await tx.query<{ status: string }>(`select status from project_parameter_value_change_requests
         where id=$1 and organization_id=$2 and project_id=$3 for update`,
@@ -1913,7 +1924,7 @@ export async function submitCanonicalBatchRollback(
     const request = await submitCanonicalBatchValueChange(tx, objectStore, auth, {
       projectId: input.projectId, candidateId: candidate.id, expectedProofToken: proof.proofToken,
       reason, assignedToUserId: input.assignedToUserId, invocation: createUserInvocation(auth),
-      requestId: input.requestId, refusalSink: input.refusalSink
+      requestId: input.requestId, refusalSink: input.refusalSink, targetDecisions: input.targetDecisions
     });
     if (request.status !== "pending" || request.batchProofDigest !== proof.batchProofDigest
       || request.targets.length !== proof.targets.length) {
@@ -1934,7 +1945,7 @@ export async function submitCanonicalBatchRollback(
       metadata: { requestId: request.id, candidateId: candidate.id, canonicalRollbackVersionId: input.versionId,
         historicalDigest: checksum, historicalSizeBytes: bytes.length, batchProofDigest: proof.batchProofDigest,
         candidateProofToken: proof.proofToken, baseVersionId: input.expectedCurrentVersionId,
-        workflowProofToken: input.expectedWorkflowProofToken }
+        workflowProofToken: input.expectedWorkflowProofToken, rollbackTargetDecisions: input.targetDecisions }
     }, input.requestId);
     return { candidateId: candidate.id, requestId: request.id, status: "pending",
       batchProofDigest: proof.batchProofDigest, replayed: false };

@@ -13,6 +13,11 @@ export const canonicalBatchRollbackSubmitRequestSchema = canonicalBatchRollbackP
   candidateId: id,
   expectedCandidateProofToken: id,
   expectedBatchProofDigest: digest,
+  targetDecisions: z.array(z.object({
+    bindingId: id,
+    choice: z.literal("file"),
+    expectedConflictProofs: z.array(z.object({ draftId: id, decisionProofDigest: digest }).strict())
+  }).strict()).min(2).optional(),
   reason: z.string().trim().min(1).max(2000),
   assignedToUserId: id
 }).strict();
