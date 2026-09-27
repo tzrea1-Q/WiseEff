@@ -132,7 +132,7 @@ describe("createCandidateVersionFlow", () => {
       expectedProofToken: "proof-1",
       reason: "canonical review"
     });
-    expect(flow.sourcePreview?.request).toEqual({ id: "request-1", status: "pending" });
+    expect(flow.sourcePreview?.request).toEqual({ id: "request-1", status: "pending", kind: "single" });
     expect(flow.canActivate).toBe(false);
     expect(flow.canSubmitSourceReview).toBe(false);
     expect(flow.canAbandon).toBe(false);

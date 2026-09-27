@@ -5,6 +5,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { canonicalBatchConflictReady, createCanonicalConflictClient, type CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
 import type { ManualSyncPreparation, createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
+import { candidateReceiptMessage, permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
 
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
@@ -15,6 +16,7 @@ type ManualSyncContext = {
   governanceClient?: ReturnType<typeof createUserGovernanceClient>;
   conflictClient?: ReturnType<typeof createCanonicalConflictClient>;
   onSubmitted: (requestId: string) => void;
+  onOpenExisting?: (requestId: string) => void;
 };
 
 export function manualSyncProofReady(proof: ManualSyncPreparation,
@@ -86,6 +88,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
     && sourceState.workflowProofToken === context.workflowProofToken);
   const unprovenConflicts = conflicts?.ineligible.filter((item) => item.reason !== "selected-draft-stale"
     && prepared?.targets.some((target) => target.bindingId === item.selectedBindingId)) ?? [];
+  const receiptAllowsSubmit = Boolean(conflicts && permitsFreshBatchRequest(conflicts.request));
 
   const resetSubmit = () => {
     submitRequestId.current = crypto.randomUUID();
@@ -169,7 +172,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
   const submit = async () => {
     if (!prepared || !conflicts || !manualSyncProofReady(prepared, context) || !reviewerId || !reason.trim()
       || prepared.targets.some((target) => !decisions[target.bindingId])
-      || busy || conflicted || loadingReviewers || !sourceReady || unprovenConflicts.length) return;
+      || busy || conflicted || loadingReviewers || !sourceReady || unprovenConflicts.length
+      || !receiptAllowsSubmit) return;
     const targetDecisions = prepared.targets.map((target) => {
       const decision = decisions[target.bindingId]!;
       const options = conflicts.items.filter((item) => item.selectedBindingId === target.bindingId);
@@ -282,6 +286,9 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
       {file && (file.size === 0 || file.size > MAX_SOURCE_BYTES)
         ? <p role="alert">源文件必须非空且不超过 2 MiB；请重新选择文件。</p> : null}
       {prepared ? <>
+        {conflicts?.request ? <p role="status">{candidateReceiptMessage(conflicts.request)}</p> : null}
+        {conflicts?.request && !receiptAllowsSubmit && context.onOpenExisting ?
+          <button type="button" className="button subtle" onClick={() => context.onOpenExisting?.(conflicts.request!.id)}>查看已有审核</button> : null}
         <p>候选 ID：<code>{prepared.candidateId}</code>；格式：{prepared.format.toUpperCase()}；完整有序目标 {prepared.targets.length} 项；来源 cohort {prepared.cohort.length} 项。</p>
         <p>候选证明：<code>{prepared.proofToken}</code>；批量证明摘要：<code>{prepared.batchProofDigest}</code></p>
         {prepared.baseDigest === prepared.proposedDigest ? <p role="status">上传文件与当前版本内容相同；如只需核查来源，可使用“来源一致性校验”。</p> : null}
@@ -324,7 +331,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
         <button type="button" disabled={busy} onClick={onDismiss}>取消</button>
         {!prepared ? <button type="button" disabled={!file || busy || conflicted || !sourceReady || file.size === 0 || file.size > MAX_SOURCE_BYTES}
           onClick={() => void prepare()}>{busy ? "准备中…" : prepareBody.current ? "重试准备" : "预览有序目标与证明"}</button>
-          : <button type="button" disabled={busy || conflicted || !sourceReady || unprovenConflicts.length > 0
+          : <button type="button" disabled={busy || conflicted || !sourceReady || !receiptAllowsSubmit || unprovenConflicts.length > 0
             || loadingReviewers || !reviewerId || !reason.trim()
             || prepared.targets.some((target) => !decisions[target.bindingId])}
             onClick={() => void submit()}>{busy ? "提交中…" : `一次提交全部 ${prepared.targets.length} 项审核`}</button>}

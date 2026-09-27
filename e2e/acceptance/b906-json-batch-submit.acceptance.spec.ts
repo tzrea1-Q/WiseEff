@@ -22,7 +22,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
   const network: string[] = [];
   page.on("pageerror", (error) => browserErrors.push(error.message));
   page.on("response", (response) => {
-    if (response.url().includes("/parameter-value-change-requests")) {
+    if (/source-preview|source-conflicts|parameter-value-change-requests/.test(response.url())) {
       network.push(`${response.request().method()} ${response.status()} ${new URL(response.url()).pathname}`);
     }
   });
@@ -120,6 +120,17 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
 
       const approvedFixture = await setup("approved");
       const approved = await submitFromPage(approvedFixture, "浏览器批量批准");
+      await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${approvedFixture.setId}&file=${approvedFixture.fileId}&sourceMode=candidate&candidate=${approvedFixture.candidateId}`);
+      await dismissXiaozeHint(page);
+      const pendingInspector = page.getByRole("complementary", { name: "配置检查器" });
+      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
+      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") await inspectorToggle.click();
+      await expect(pendingInspector).toContainText(`请求 ${approved.id} · 状态 pending · 批量`);
+      await expect(pendingInspector.getByRole("button", { name: "提交 JSON 批量审核" })).toBeDisabled();
+      await page.reload();
+      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") await inspectorToggle.click();
+      await expect(pendingInspector).toContainText(`请求 ${approved.id} · 状态 pending · 批量`);
+      await expect(pendingInspector.getByRole("button", { name: "提交 JSON 批量审核" })).toBeDisabled();
       const otherReviewerHeaders = authHeadersForUser(
         acceptanceCast.chenNa.userId, acceptanceCast.chenNa.email, acceptanceCast.chenNa.name
       );
@@ -154,6 +165,11 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       await page.reload();
       await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText("已批准");
       await page.screenshot({ path: testInfo.outputPath("b906-batch-approved-1440x900.png") });
+      await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${approvedFixture.setId}&file=${approvedFixture.fileId}&sourceMode=candidate&candidate=${approvedFixture.candidateId}`);
+      await dismissXiaozeHint(page);
+      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") await inspectorToggle.click();
+      await expect(pendingInspector).toContainText(`请求 ${approved.id} · 状态 approved · 批量`);
+      await expect(pendingInspector.getByRole("button", { name: "提交 JSON 批量审核" })).toHaveCount(0);
 
       const rejectedFixture = await setup("rejected");
       const rejected = await submitFromPage(rejectedFixture, "浏览器批量驳回");
@@ -164,6 +180,13 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       await detail.getByRole("button", { name: "驳回全部 2 项" }).click();
       expect((await rejectResponse).status()).toBe(200);
       await expect(detail).toContainText("已驳回");
+      const terminalConflicts = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${rejectedFixture.candidateId}/source-conflicts`),
+        { headers: adminHeaders });
+      expect(terminalConflicts.status()).toBe(200);
+      expect(await terminalConflicts.json()).toMatchObject({ request: { id: rejected.id,
+        status: "rejected", kind: "batch" }, items: [] });
+      const resubmitted = await submitFromPage(rejectedFixture, "浏览器批量终态重提");
+      expect(resubmitted.id).not.toBe(rejected.id);
 
       const withdrawnFixture = await setup("withdrawn");
       const withdrawn = await submitFromPage(withdrawnFixture, "浏览器批量撤回");
@@ -196,7 +219,8 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       await detail.getByText(/来源或审核证明已变化/).scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath("b906-batch-stale-1440x900.png") });
       expect(browserErrors).toEqual([]);
-      expect(network.filter((entry) => entry.startsWith("POST 201") && entry.endsWith("/batches"))).toHaveLength(4);
+      expect(network.filter((entry) => entry.startsWith("POST 201") && entry.endsWith("/batches"))).toHaveLength(5);
+      expect(network.some((entry) => entry.startsWith("GET 200") && entry.endsWith(`/${rejectedFixture.candidateId}/source-conflicts`))).toBe(true);
       expect(network.some((entry) => entry.startsWith("POST 409") && entry.endsWith(`/${stale.id}/review`))).toBe(true);
       await testInfo.attach("batch-http-network.txt", { body: Buffer.from(network.join("\n")), contentType: "text/plain" });
       outcome = "success";

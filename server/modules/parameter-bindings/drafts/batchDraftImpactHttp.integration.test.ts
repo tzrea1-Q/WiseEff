@@ -240,6 +240,20 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
         target.bindingId === first.bindingId ? "draft" : "file",
         target.bindingId === first.bindingId ? selected.id : null]));
     expect(request.candidateId).not.toBe(prepared.body.item.candidateId);
+    for (const candidateId of [prepared.body.item.candidateId, request.candidateId]) {
+      const preview = await requestJson<{ item: { request?: { id: string; status: string } } }>(route(),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
+      expect(preview.status).toBe(200);
+      expect(preview.body.item.request).toEqual({ id: request.id, status: "pending", kind: "batch" });
+      const conflicts = await requestJson<{ request?: { id: string; status: string }; items: unknown[];
+        ineligible: unknown[] }>(route(),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`);
+      expect(conflicts.status).toBe(200);
+      expect(conflicts.body).toMatchObject({ request: { id: request.id, status: "pending", kind: "batch" },
+        items: [], ineligible: [] });
+    }
+    const beforeReplay = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const objectsBeforeReplay = await objectBytes(storageDirectory);
     const replay = await requestJson<{ item: { id: string } }>(route(),
       `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
         method: "POST", headers: { "X-Request-Id": "c906-mixed-json-submit" },
@@ -247,6 +261,19 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       });
     expect(replay.status, JSON.stringify(replay.body)).toBe(201);
     expect(replay.body.item.id).toBe(request.id);
+    const newTraceReplay = await requestJson<{ item: { id: string } }>(route(),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+        method: "POST", headers: { "X-Request-Id": "c906-mixed-json-submit-new-trace" },
+        body: JSON.stringify(submitBody)
+      });
+    expect(newTraceReplay.body.item.id).toBe(request.id);
+    expect((await requestJson(route(),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+        method: "POST", headers: { "X-Request-Id": "c906-mixed-json-submit" },
+        body: JSON.stringify({ ...submitBody, reason: "Different retry" })
+      })).status).toBe(409);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeReplay);
+    expect(await objectBytes(storageDirectory)).toEqual(objectsBeforeReplay);
     const queue = await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
       `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches?status=pending`);
     expect(queue.body.items.map((item) => item.id)).toContain(request.id);
@@ -293,6 +320,14 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     });
     expect(approved.status, JSON.stringify(approved.body)).toBe(200);
     expect(approved.body).toMatchObject({ item: { status: "approved" } });
+    for (const candidateId of [prepared.body.item.candidateId, request.candidateId]) {
+      const preview = await requestJson<{ item: { request?: { id: string; status: string } } }>(route(),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-preview`);
+      expect(preview.body.item.request).toEqual({ id: request.id, status: "approved", kind: "batch" });
+      expect((await requestJson(route(),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${candidateId}/source-conflicts`)).body)
+        .toMatchObject({ request: preview.body.item.request, items: [] });
+    }
     const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
     expect(after.values).toHaveLength(before.values.length + 3);
     expect(after.pins).toHaveLength(before.pins.length + 3);

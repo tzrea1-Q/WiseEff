@@ -7,6 +7,7 @@ import { createCanonicalConflictClient, type CanonicalSourceConflictList } from 
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
+import { candidateReceiptMessage } from "@/application/project-configuration/candidateRequestReceipt";
 
 type Conflict = CanonicalSourceConflictList["items"][number];
 type Choice = "file" | "draft";
@@ -79,7 +80,7 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
 
   const item = conflicts?.items.find((entry) => entry.selectedBindingId === selected?.bindingId
     && entry.selectedDraftId === selected?.draftId);
-  const ready = Boolean(allowed && selected && item && conflictProofReady(candidate, preview, item, selected.choice)
+  const ready = Boolean(allowed && !conflicts?.request && selected && item && conflictProofReady(candidate, preview, item, selected.choice)
     && reviewerId && reason.trim() && !loading && !busy);
   const submit = async () => {
     if (!ready || !selected || !item) return;
@@ -111,6 +112,7 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
     <button type="button" className="button subtle" disabled={busy} onClick={() => setReload((value) => value + 1)}>刷新冲突证明</button>
     {loading ? <p role="status">正在读取冲突与审核人…</p> : null}
     {error ? <p role="alert">{error}</p> : null}
+    {conflicts?.request ? <p role="status">{candidateReceiptMessage(conflicts.request)}</p> : null}
     {!loading && conflicts?.items.length === 0 && conflicts.ineligible.length === 0 ? <p>当前候选没有可选择的 canonical 来源冲突。</p> : null}
     {conflicts?.ineligible.map((entry) => <p role="status" key={`${entry.selectedBindingId}:${entry.selectedDraftId}`}>
       Binding <code>{entry.selectedBindingId}</code> · 草稿 <code>{entry.selectedDraftId}</code> 的来源证明不可用（{entry.reason}），请刷新来源与候选后重试。

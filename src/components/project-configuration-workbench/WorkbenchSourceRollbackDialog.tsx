@@ -8,6 +8,7 @@ import { createUserGovernanceClient } from "@/infrastructure/http/userGovernance
 import type { BatchRollbackPreparation, BatchRollbackSubmission, createCanonicalBatchRollbackClient } from "@/infrastructure/http/canonicalBatchRollbackClient";
 import { canonicalBatchConflictReady, createCanonicalConflictClient,
   type CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
+import { candidateReceiptMessage, permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
 
 type BatchRollback = {
   projectId: string;
@@ -18,6 +19,7 @@ type BatchRollback = {
   conflictClient?: ReturnType<typeof createCanonicalConflictClient>;
   governanceClient?: ReturnType<typeof createUserGovernanceClient>;
   onSubmitted: (requestId: string) => void;
+  onOpenExisting?: (requestId: string) => void;
 };
 
 export function batchRollbackProofReady(prepared: BatchRollbackPreparation,
@@ -92,6 +94,7 @@ export function WorkbenchSourceRollbackDialog({
   const governanceClient = batch?.governanceClient;
   const conflictClient = batch?.conflictClient;
   const unproven = conflicts?.ineligible.filter((item) => item.reason !== "selected-draft-stale") ?? [];
+  const receiptAllowsSubmit = Boolean(conflicts && permitsFreshBatchRequest(conflicts.request));
   const unconfirmed = prepared?.targets.some((target) => conflicts?.items.some(
     (item) => item.selectedBindingId === target.bindingId) && !confirmed[target.bindingId]) ?? false;
 
@@ -146,7 +149,7 @@ export function WorkbenchSourceRollbackDialog({
     batchWorkflowProofToken, conflictClient, governanceClient, currentVersionId, open, retry, version]);
 
   const submitBatch = async () => {
-    if (!batch || !version || !currentVersionId || !prepared || !conflicts || unproven.length || unconfirmed
+    if (!batch || !version || !currentVersionId || !prepared || !conflicts || !receiptAllowsSubmit || unproven.length || unconfirmed
       || submitting || !reviewerId || !reason.trim()
       || !batchRollbackProofReady(prepared, batch, version, currentVersionId)) return;
     const targetDecisions = prepared.targets.map((target) => ({ bindingId: target.bindingId,
@@ -199,6 +202,9 @@ export function WorkbenchSourceRollbackDialog({
           {batch ? <>
             {loading ? <p role="status">正在准备完整来源候选、竞争草稿证明并加载审核人…</p> : null}
             {prepared ? <>
+              {conflicts?.request ? <p role="status">{candidateReceiptMessage(conflicts.request)}</p> : null}
+              {conflicts?.request && !receiptAllowsSubmit && batch.onOpenExisting ?
+                <button type="button" className="button subtle" onClick={() => batch.onOpenExisting?.(conflicts.request!.id)}>查看已有审核</button> : null}
               <p>格式：{prepared.format.toUpperCase()}；候选：<code>{prepared.candidateId}</code>；完整有序目标 {prepared.targets.length} 项；来源 cohort {prepared.cohort.length} 项。</p>
               <p>批量证明摘要：<code>{prepared.batchProofDigest}</code></p>
               <ol aria-label="历史回滚完整有序目标">{prepared.targets.map((target, index) => {
@@ -248,7 +254,7 @@ export function WorkbenchSourceRollbackDialog({
       confirmLabel="提交审核"
       pendingLabel="提交中…"
       pending={pending || submitting}
-      confirmDisabled={Boolean(batch) && (loading || !prepared || !conflicts || unproven.length > 0
+      confirmDisabled={Boolean(batch) && (loading || !prepared || !conflicts || !receiptAllowsSubmit || unproven.length > 0
         || unconfirmed || !reviewerId || !trimmedReason || conflicted)}
       error={batchError || error || (!trimmedReason ? "请填写来源回滚原因。"
         : unconfirmed ? "请逐项目确认采用历史文件值。" : "")}

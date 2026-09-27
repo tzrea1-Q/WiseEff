@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import type { ManualSyncPreparation } from "@/infrastructure/http/canonicalManualSyncClient";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import type { CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
 import { WorkbenchCanonicalManualSyncDialog, manualSyncProofReady } from "./WorkbenchCanonicalManualSyncDialog";
 
 const digest = "a".repeat(64);
@@ -28,7 +29,8 @@ function uploadFile(dialog: HTMLElement, size = 8) {
 
 function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = new Error("connection lost"),
   sourceState?: { currentVersionId: string | null; workflowProofToken: string | null;
-    loading: boolean; error: string; canonical: boolean | null }, unproven = false) {
+    loading: boolean; error: string; canonical: boolean | null }, unproven = false,
+  request?: CanonicalSourceConflictList["request"]) {
   const prepare = vi.fn().mockRejectedValueOnce(prepareFailure).mockResolvedValue(prepared);
   const submit = vi.fn().mockRejectedValueOnce(new Error("connection lost"))
     .mockResolvedValue({ id: "request", projectId: "project", candidateId: "candidate",
@@ -47,7 +49,7 @@ function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = n
   const onSubmitted = vi.fn();
   const view = render(<WorkbenchCanonicalManualSyncDialog context={{ ...context, currentUserId: "author",
     client: { prepare, submit } as never,
-    conflictClient: { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items: [], ineligible: unproven
+    conflictClient: { listCandidateSourceConflicts: vi.fn().mockResolvedValue({ request, items: [], ineligible: unproven
       ? [{ selectedBindingId: "a", selectedDraftId: "unproven", reason: "source-proof-stale" }] : [] }) } as never,
     governanceClient: { getProjectWorkflowRoleBindings: vi.fn().mockResolvedValue({ bindings: [
       { isActive: true, userId: "author", name: "Author", roles: ["software-committer"] },
@@ -57,6 +59,36 @@ function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = n
 }
 
 describe("canonical manual sync dialog", () => {
+  it.each(["pending", "approved", "rejected", "withdrawn"] as const)(
+    "blocks %s single receipt despite a two-target preparation", async (status) => {
+      const { submit } = show(proof, new Error("connection lost"), undefined, false,
+        { id: "single-request", status, kind: "single" });
+      const dialog = screen.getByRole("dialog");
+      uploadFile(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+      await within(dialog).findByText(/可用同一请求重试/);
+      fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
+      expect(await within(dialog).findByText(/单目标审核请求|单目标请求/)).toBeVisible();
+      expect(within(dialog).getByRole("button", { name: /一次提交全部/ })).toBeDisabled();
+      expect(submit).not.toHaveBeenCalled();
+    }
+  );
+
+  it("accepts a rejected batch receipt with no competing drafts after preparation", async () => {
+    const { submit } = show(proof, new Error("connection lost"), undefined, false,
+      { id: "old-batch", status: "rejected", kind: "batch" });
+    const dialog = screen.getByRole("dialog");
+    uploadFile(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    await within(dialog).findByText(/可用同一请求重试/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
+    expect(await within(dialog).findByText(/须重新获取来源和冲突证明/)).toBeVisible();
+    within(dialog).getAllByRole("radio", { name: /采用文件值/ }).forEach((choice) => fireEvent.click(choice));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "retry" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /一次提交全部/ }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+  });
+
   it.each([ ["json", "set", false], ["dts", "set", false], ["json", "delete", false],
     ["dts", "delete", false], ["json", "set", true] ] as const)(
     "checks ordered mixed %s decision with draft %s, stale preview %s", async (format, draftAction, stalePreview) => {

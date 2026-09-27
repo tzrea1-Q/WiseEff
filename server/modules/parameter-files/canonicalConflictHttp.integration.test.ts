@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { seedUser } from "../../testing/fixtures";
 import { PARAMETER_DASHBOARD_FIXTURE, seedParameterDashboardFixture } from "../../testing/parameterDashboardFixture";
-import { canonicalSourceConflictDecisionResponseSchema,
+import { canonicalSourceCandidatePreviewResponseSchema, canonicalSourceConflictDecisionResponseSchema,
   canonicalSourceConflictListResponseSchema, canonicalSourceConflictSubmitResponseSchema }
   from "../contracts/dtoSchemas/canonicalConflict";
 import { makeTestAuthContext } from "../../testing/authContext";
@@ -219,6 +219,16 @@ describe("#906 C canonical conflict HTTP", () => {
     canonicalSourceConflictSubmitResponseSchema.parse(submitted.body);
     expect(submitted.body.item).toMatchObject({ status: "pending", replayed: false });
     const requestId = submitted.body.item.requestId;
+    const pendingPreview = await requestJson<{ item: { bindings: unknown[];
+      request?: { id: string; status: string; kind: string } } }>(
+      f.route(), `${path}/source-preview`);
+    canonicalSourceCandidatePreviewResponseSchema.parse(pendingPreview.body);
+    expect(pendingPreview.body.item.bindings).toHaveLength(2);
+    expect(pendingPreview.body.item.request).toEqual({ id: requestId, status: "pending", kind: "single" });
+    const linkedConflicts = await requestJson(f.route(), `${path}/source-conflicts`);
+    canonicalSourceConflictListResponseSchema.parse(linkedConflicts.body);
+    expect(linkedConflicts.body).toMatchObject({ request: { id: requestId, status: "pending", kind: "single" },
+      items: [], ineligible: [] });
     const receipts = await f.db.query<{ metadata: { decisionProofDigest: string; choice: string } }>(
       `select metadata from audit_events where organization_id=$1 and project_id=$2 and target_id=$3
          and action='value-change-submitted' and metadata ? 'decisionProofDigest'`, [ORG, PROJECT, requestId]);
@@ -254,6 +264,11 @@ describe("#906 C canonical conflict HTTP", () => {
       method: "POST", body: JSON.stringify({ decision: "approve" }) });
     expect(reviewed.status).toBe(200);
     expect(reviewed.body.item.status).toBe("approved");
+    expect((await requestJson<{ item: { request?: { id: string; status: string; kind: string } } }>(
+      f.route(), `${path}/source-preview`)).body.item.request)
+      .toEqual({ id: requestId, status: "approved", kind: "single" });
+    expect((await requestJson(f.route(), `${path}/source-conflicts`)).body)
+      .toMatchObject({ request: { id: requestId, status: "approved", kind: "single" }, items: [] });
     const after = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     const selectedBefore = before.bindings.find((binding) => binding.id === f.bindingId)!;
     const selectedAfter = after.bindings.find((binding) => binding.id === f.bindingId)!;
@@ -297,8 +312,9 @@ describe("#906 C canonical conflict HTTP", () => {
       method: "POST", body: JSON.stringify(body) })).body).toMatchObject({ item: { requestId, replayed: true } });
   }, 120_000);
 
-  it.each(["reject", "withdraw"] as const)("keeps source unchanged after %s", async (decision) => {
-    const f = await fixture("json");
+  it.each([["json", "reject"], ["json", "withdraw"], ["dts", "reject"], ["dts", "withdraw"]] as const)(
+    "keeps %s source unchanged after %s", async (format, decision) => {
+    const f = await fixture(format);
     const path = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.candidate.id}`;
     const discovered = await requestJson<{ items: Array<{ choices: { draft: { decisionProofDigest: string } } }> }>(
       f.route(), `${path}/source-conflicts`);
@@ -317,6 +333,17 @@ describe("#906 C canonical conflict HTTP", () => {
       : await requestJson<{ item: { status: string } }>(f.route(), `${requestPath}/withdraw`, { method: "POST" });
     expect(result.status).toBe(200);
     expect(result.body.item.status).toBe(decision === "reject" ? "rejected" : "withdrawn");
+    const terminalPreview = await requestJson<{ item: { bindings: unknown[];
+      request?: { id: string; status: string; kind: string } } }>(f.route(), `${path}/source-preview`);
+    expect(terminalPreview.body.item.bindings).toHaveLength(2);
+    expect(terminalPreview.body.item.request).toEqual({
+      id: requestId, status: result.body.item.status, kind: "single"
+    });
+    const terminalConflicts = await requestJson<{ request?: { id: string; status: string; kind: string };
+      items: unknown[]; ineligible: unknown[] }>(f.route(), `${path}/source-conflicts`);
+    expect(terminalConflicts.body).toMatchObject({
+      request: terminalPreview.body.item.request, items: [], ineligible: []
+    });
     const after = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
     expect(after.bindings).toEqual(before.bindings);
     expect(after.values).toEqual(before.values);

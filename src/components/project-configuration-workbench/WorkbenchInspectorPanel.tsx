@@ -22,6 +22,7 @@ import type {
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionPropertyDraft } from "@/application/project-configuration/sessionDrafts";
 import { sourceReviewReason } from "@/application/project-configuration/sourceReviewReason";
+import { candidateReceiptMessage } from "@/application/project-configuration/candidateRequestReceipt";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import {
@@ -405,7 +406,7 @@ export function WorkbenchInspectorPanel({
                   <div>
                     <dt>来源工作流</dt>
                     <dd>
-                      {sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
+                      {sourcePreview.request ? "已关联来源审核" : sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
                       {sourcePreview.reason && !(batchPreview && sourcePreview.reason === "canonical-batch-writer-unavailable")
                         ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
                     </dd>
@@ -458,20 +459,21 @@ export function WorkbenchInspectorPanel({
                           {sourcePreview.after != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.after}</pre> : null}
                         </dd>
                       </div>
-                      {sourcePreview.request || sourceReviewResult ? (
-                        <div>
-                          <dt>来源审核</dt>
-                          <dd>
-                            <span>
-                              请求 {sourcePreview.request?.id ?? sourceReviewResult?.requestId} · 状态 {sourcePreview.request?.status ?? sourceReviewResult?.status}
-                            </span>
-                            <button className="button subtle" type="button" onClick={onOpenReview}>
-                              查看审核
-                            </button>
-                          </dd>
-                        </div>
-                      ) : null}
                     </>
+                  ) : null}
+                  {sourcePreview.request || sourceReviewResult ? (
+                    <div>
+                      <dt>来源审核</dt>
+                      <dd>
+                        <span>
+                          请求 {sourcePreview.request?.id ?? sourceReviewResult?.requestId} · 状态 {sourcePreview.request?.status ?? sourceReviewResult?.status}
+                          {sourcePreview.request ? ` · ${sourcePreview.request.kind === "batch" ? "批量" : "单目标"}` : ""}
+                        </span>
+                        <button className="button subtle" type="button" onClick={onOpenReview}>
+                          查看审核
+                        </button>
+                      </dd>
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -560,9 +562,10 @@ export function WorkbenchInspectorPanel({
                     type="button"
                     disabled={!(canSubmitSourceReview || canSubmitBatchReview) || submittingSourceReview}
                     title={!(canSubmitSourceReview || canSubmitBatchReview)
-                      ? batchPreview ? sourcePreview.request
-                        ? "已有来源审核请求，请先处理或刷新状态。"
-                        : "候选状态、完整来源证明或当前权限不满足批量提交条件。"
+                      ? sourcePreview.request
+                        ? candidateReceiptMessage(sourcePreview.request)
+                        : batchPreview
+                        ? "候选状态、完整来源证明或当前权限不满足批量提交条件。"
                         : sourceReviewReason(sourcePreview.reason) : undefined}
                     onClick={onSubmitSourceReview}
                   >
@@ -580,6 +583,9 @@ export function WorkbenchInspectorPanel({
                       ? "已有待处理的来源审核，请等待审核完成后再放弃或重算候选。"
                       : "来源审核已通过，候选仍保留审核关联，不能放弃或重算。"}
                   </p>
+                ) : null}
+                {sourcePreview?.request?.status === "rejected" || sourcePreview?.request?.status === "withdrawn" ? (
+                  <p className="configuration-workbench__locked" role="note">{candidateReceiptMessage(sourcePreview.request)}</p>
                 ) : null}
               </div>
             </>
