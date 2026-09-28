@@ -1,6 +1,8 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { scanParameterCatalogBoundaries } from "../check-parameter-catalog-boundaries";
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
@@ -16,6 +18,7 @@ import {
   verifyIssue853CRemainderRetirement,
 } from "./issue853CRelocation";
 import { applyReviewedIssue913T14Relocation } from "./issue913T14Relocation";
+import { applyReviewedSeedDriverLookupRelocation, seedDriverPositionRecordPath, seedDriverQueryRecordPath } from "./seedDriverLookupRelocation";
 import type { BoundaryViolation } from "./schema";
 
 const root = process.cwd();
@@ -26,10 +29,26 @@ const loadRecord = async (name: string) => JSON.parse(await readFile(join(root, 
   files: Array<{ file: string; pairs: Array<{ old: BoundaryViolation; new: BoundaryViolation }> }>;
 };
 let discovered: BoundaryViolation[];
+const seedDriverOwnerFile = "server/modules/parameter-specs/repository.ts";
+const seedDriverPaths = [seedDriverPositionRecordPath, seedDriverQueryRecordPath];
+const temporaryRoots: string[] = [];
 
 beforeAll(async () => {
   discovered = await scanParameterCatalogBoundaries(root, fixture.trustedBaseSha);
 }, 60_000);
+afterAll(async () => { await Promise.all(temporaryRoots.map((temporaryRoot) => rm(temporaryRoot, { recursive: true, force: true }))); });
+
+async function copySeedDriverProof() {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "seed-driver-identity-"));
+  temporaryRoots.push(temporaryRoot);
+  for (const file of [...seedDriverPaths, seedDriverOwnerFile]) {
+    await mkdir(dirname(join(temporaryRoot, file)), { recursive: true });
+    await writeFile(join(temporaryRoot, file), await readFile(join(root, file)));
+  }
+  const gitDir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], { cwd: root, encoding: "utf8" }).trim();
+  await writeFile(join(temporaryRoot, ".git"), `gitdir: ${gitDir}\n`);
+  return temporaryRoot;
+}
 
 describe("Issue #853 C fixed Catalog successor and retirement", () => {
   it("proves complete old history and the separate C successor and retirement partitions", async () => {
@@ -110,5 +129,37 @@ describe("Issue #853 C fixed Catalog successor and retirement", () => {
     const changed = discovered.map((entry) => entry === route ? { ...entry, byteStart: entry.byteStart + 1 } : entry);
     await expect(applyReviewedIssue853CRouteRelocation(root, fixture, allowances, changed, []))
       .rejects.toThrow("exact destination occurrence");
+  });
+});
+
+describe("seed driver owner exact identity decision", () => {
+  it("binds 50 unchanged slices and 11 rewritten observations without adding allowances", async () => {
+    const result = await applyReviewedSeedDriverLookupRelocation(root, fixture, allowances, discovered);
+    expect(result.relocations).toHaveLength(61);
+    expect(new Set(result.relocations.flatMap((pair) => [pair.id, pair.observed.id])).size).toBe(122);
+    for (const pair of result.relocations) {
+      expect(allowances.some((entry) => entry.id === pair.id)).toBe(true);
+      expect(result.violations.find((entry) => entry.id === pair.id)).toEqual(fixture.violations.find((entry) => entry.id === pair.id));
+    }
+  });
+
+  it.each(seedDriverPaths)("rejects altered proof bytes: %s", async (file) => {
+    const temporaryRoot = await copySeedDriverProof();
+    await writeFile(join(temporaryRoot, file), `${await readFile(join(temporaryRoot, file), "utf8")} `);
+    await expect(applyReviewedSeedDriverLookupRelocation(temporaryRoot, fixture, allowances, discovered)).rejects.toThrow("reviewed record integrity");
+  });
+
+  it("rejects whole-file changes outside the approved query", async () => {
+    const temporaryRoot = await copySeedDriverProof();
+    await writeFile(join(temporaryRoot, seedDriverOwnerFile), `${await readFile(join(temporaryRoot, seedDriverOwnerFile), "utf8")}\n`);
+    await expect(applyReviewedSeedDriverLookupRelocation(temporaryRoot, fixture, allowances, discovered)).rejects.toThrow("destination whole-file blob");
+  });
+
+  it("rejects missing observations and cross-record identity reuse", async () => {
+    const result = await applyReviewedSeedDriverLookupRelocation(root, fixture, allowances, discovered);
+    const pair = result.relocations[0]!;
+    await expect(applyReviewedSeedDriverLookupRelocation(root, fixture, allowances,
+      discovered.filter((entry) => entry.id !== pair.observed.id))).rejects.toThrow();
+    await expect(applyReviewedSeedDriverLookupRelocation(root, fixture, allowances, discovered, [pair])).rejects.toThrow();
   });
 });
