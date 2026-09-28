@@ -390,12 +390,17 @@ export const catalogRegistrationDtoSchema = catalogObject({
   status: catalogRegistrationStatusSchema,
   method: catalogRegistrationMethodSchema,
   placement: catalogPlacementDtoSchema,
+  impact: catalogObject({
+    bindingCount: z.number().int().nonnegative(),
+    projectCount: z.number().int().nonnegative()
+  }).optional(),
   catalogReleaseId: z.string()
 });
 
 export const catalogRegisterSubjectRequestSchema = catalogObject({
   subjectId: z.string(),
   placement: catalogPlacementIntentSchema,
+  destinationModuleId: z.string().min(1).optional(),
   reason: z.string().optional()
 });
 
@@ -408,7 +413,8 @@ export const catalogRestoreRegistrationRequestSchema = catalogObject({
 });
 
 export const catalogUpdatePlacementRequestSchema = catalogObject({
-  placement: catalogPlacementIntentSchema
+  placement: catalogPlacementIntentSchema,
+  destinationModuleId: z.string().min(1).optional()
 });
 
 export const catalogObservationDtoSchema = catalogObject({

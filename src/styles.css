@@ -24733,6 +24733,17 @@ button.dts-topology-navigator__disclosure:focus-visible {
   min-width: 0;
 }
 
+/* Give each canonical surface the full content width so subject rows and the
+ * shared module tree keep their existing readable density. */
+.parameter-module-mapping-panel__stack--canonical {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.parameter-module-mapping-panel__stack--canonical > .parameter-canonical-subject-panel {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .parameter-module-mapping-panel__subnav {
   display: flex;
   flex-wrap: wrap;

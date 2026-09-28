@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type {
   CreateModuleMappingInput,
   CreateOrganizationDriverSchemaInput,
@@ -7,7 +8,11 @@ import type {
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterAdminApplication } from "@/application/parameters/parameterAdminApplication";
+import {
+  listAllCanonicalPages,
+} from "./CanonicalSubjectPlacementPanel";
 import {
   mapParameterSpecToLibraryRow,
   type ParameterSpecLibraryRow
@@ -24,16 +29,35 @@ import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdmin
 export async function listModuleOverlayLibrarySpecs(input: {
   catalog?: Pick<ParameterCatalogRepository, "listDefinitions"> | null;
   listSpecs: ParameterAdminApplication["listSpecs"];
+  catalogReleaseId?: string;
 }): Promise<ParameterSpecLibraryRow[]> {
   if (input.catalog) {
-    const result = await input.catalog.listDefinitions();
-    return result.items.map((definition) =>
+    const definitions = await listAllCanonicalPages(
+      (query) => input.catalog!.listDefinitions(query),
+      {
+        lifecycle: "active",
+        registration: "active",
+        limit: 50,
+        ...(input.catalogReleaseId ? { catalogReleaseId: input.catalogReleaseId } : {})
+      }
+    );
+    return definitions.map((definition) =>
       mapParameterSpecToLibraryRow({
         id: definition.id,
         propertyKey: definition.propertyKey,
         lifecycle: definition.lifecycle,
         currentVersion: definition.currentRevision.revisionNumber,
-        valueShape: definition.currentRevision.valueShape
+        valueShape: definition.currentRevision.valueShape,
+        declaredPlacement:
+          definition.registration.status === "active" &&
+          definition.registration.placement?.moduleId
+            ? {
+                moduleId: definition.registration.placement.moduleId,
+                moduleName: definition.registration.placement.displayName,
+                categoryId: null,
+                categoryName: null
+              }
+            : null
       })
     );
   }
@@ -62,12 +86,22 @@ export function OrganizationModuleGovernancePanel({
   pathname = "/parameter-admin/modules",
   search = "",
   onNavigate,
-  catalog
+  catalog,
+  governance,
+  organizationId,
+  actor = "user",
+  sessionPermissions,
+  canonicalEnabled = false
 }: {
   pathname?: string;
   search?: string;
   onNavigate?: (path: string) => void;
-  catalog?: Pick<ParameterCatalogRepository, "listDefinitions"> | null;
+  catalog?: ParameterCatalogRepository | null;
+  governance?: ParameterCatalogGovernanceRepository | null;
+  organizationId?: string;
+  actor?: CatalogActorKind;
+  sessionPermissions?: readonly string[] | null;
+  canonicalEnabled?: boolean;
 }) {
   const { application } = useParameterAdmin();
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
@@ -184,6 +218,12 @@ export function OrganizationModuleGovernancePanel({
       pathname={pathname}
       search={search}
       onNavigate={onNavigate}
+      canonicalCatalog={canonicalEnabled ? catalog ?? undefined : undefined}
+      canonicalGovernance={canonicalEnabled ? governance ?? undefined : undefined}
+      canonicalOrganizationId={canonicalEnabled ? organizationId : undefined}
+      canonicalActor={actor}
+      canonicalSessionPermissions={sessionPermissions}
+      canonicalEnabled={canonicalEnabled}
     />
   );
 }

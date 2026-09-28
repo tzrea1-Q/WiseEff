@@ -605,12 +605,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:824c43b03e040dd5",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-modules/repository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:ee0b2c3459693bc1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-modules/repository.ts",
@@ -1115,21 +1109,9 @@
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
-      "id": "S12-MOD:legacy-catalog-table-name:605c0eea941cb6bd:f9ec9ef3bd4f57e8",
-      "rule": "legacy-catalog-table-name",
-      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
-      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
-    },
-    {
       "id": "S12-MOD:legacy-catalog-table-name:7671b86b5b150ce5:7e541ff8bc9aea1d",
       "rule": "legacy-catalog-table-name",
       "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
-      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
-    },
-    {
-      "id": "S12-MOD:legacy-catalog-table-name:860a2404dfe5c6b4:8cd263657607ec3e",
-      "rule": "legacy-catalog-table-name",
-      "file": "server/modules/parameter-modules/service.test.ts",
       "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
     },
     {
@@ -1463,25 +1445,7 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:0609d6dfbd359db9:3c3da7357cffb3cf",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/subtreeCounts.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:2fb8a45d4f27a45f:3e3da5cb0e291b75",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/repository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-MOD:legacy-parameter-spec-identifier:33c338f8094620e3:f67a0ef8e151a7c8",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/repository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:3e21583dc68cea78:01831520ddad6795",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-modules/repository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
@@ -1517,24 +1481,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:0302adf87a58e40f",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/service.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:7d4a0c6f2bb42f1c",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/service.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:95f694f205d9301b",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/service.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-MOD:legacy-parameter-spec-identifier:690de4d307392740:e4c6f26a4d39e292",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-modules/repository.ts",
@@ -1544,66 +1490,6 @@
       "id": "S12-MOD:legacy-parameter-spec-identifier:7949966514ac7c22:f8865b1ce5373418",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-modules/driverRegistration.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:0d7583dd87aa8f20",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:1cba32e2c1acc16a",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:255bd52fc6b04d76",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:28f3dd1f254bae08",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:cf5aacc3dea13514",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:8edfc265a611a420:ac7c6e5c7763fdc0",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/subtreeCounts.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:9337aefc001c2026:9e2c123835d1b06c",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:9337aefc001c2026:be4de36eca41b746",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:9337aefc001c2026:fc11f688aa52ec03",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-MOD:legacy-parameter-spec-identifier:a7c30addd75f33d6:e602570fdccdecd0",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-modules/repository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {

@@ -253,11 +253,13 @@ async function resolveDestinationModuleId(
     readonly organizationId: string;
     readonly subjectKind: CatalogSubjectKind;
     readonly placement: PlacementIntent;
+    readonly destinationModuleId?: string;
   },
 ): Promise<string | null> {
   if (ports.resolveDestinationModuleId) {
     return ports.resolveDestinationModuleId(input);
   }
+  if (input.destinationModuleId !== undefined) return null;
   return scope.defaultDestinationModuleId || null;
 }
 
@@ -539,6 +541,7 @@ function placementFromResult(
 ): RegistrationRecord["placement"] {
   return {
     id: result.placementId,
+    moduleId: result.moduleId,
     displayName: result.moduleId ?? result.placementId,
     parentPlacementId: null,
   };
@@ -580,6 +583,7 @@ async function handleCreateRegistration(
     organizationId,
     subjectKind,
     placement,
+    destinationModuleId: parsed.data.destinationModuleId,
   });
   if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
   const command: RegistrationCommand = {
@@ -680,12 +684,20 @@ async function handleUpdatePlacement(
     registrationId,
   });
   if (!existing) return notFound(request.requestId);
+  const offered = ifMatchHeader(request.headers) ?? "";
+  const prefix = `${existing.placement.id}:`;
+  const token = unquoteEtag(offered);
+  const expectedPlacementVersion = token.startsWith(prefix) ? token.slice(prefix.length) : "";
+  if (!/^\d+$/.test(expectedPlacementVersion) || offered !== placementEtag(existing.placement.id, expectedPlacementVersion)) {
+    return revisionConflict(request.requestId);
+  }
   const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
   if (!subjectKind) return validationFailed(request.requestId, "subjectId");
   const destinationModuleId = await resolveDestinationModuleId(ports, scope, {
     organizationId,
     subjectKind,
     placement,
+    destinationModuleId: parsed.data.destinationModuleId,
   });
   if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
   const command: RegistrationCommand = {
@@ -694,6 +706,7 @@ async function handleUpdatePlacement(
     registrationId,
     expectedRelease: pin.pin,
     destinationModuleId,
+    expectedPlacementVersion,
     idempotencyKey,
     context,
   };
@@ -704,7 +717,7 @@ async function handleUpdatePlacement(
     body: { item: mapPlacement(placementDto) },
     requestId: request.requestId,
     catalogReleaseId: result.value.release.id,
-    etag: placementEtag(result.value.placementId),
+    etag: placementEtag(result.value.placementId, result.value.placementVersion),
   });
 }
 
@@ -740,7 +753,7 @@ async function handleGetRegistration(
   });
   if (!record) return notFound(request.requestId);
   return catalogGovernanceOk({
-    body: { item: mapRegistrationRecord(record) },
+    body: { item: mapRegistrationRecord({ ...record, impact: scope.canMutateOrganization ? record.impact : undefined }) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
     etag: registrationEtag(record),
@@ -765,7 +778,7 @@ async function handleGetPlacement(
     body: { item: mapPlacement(placement) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
-    etag: placementEtag(placement.id),
+    etag: placementEtag(placement.id, placement.version),
   });
 }
 

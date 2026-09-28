@@ -19,6 +19,8 @@ export type OverlaySpecPickerConfirm =
 export type OverlaySpecPickerDialogProps = {
   specs: readonly ParameterSpecLibraryRow[];
   loading?: boolean;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   busy?: boolean;
   excludedSpecIds?: ReadonlySet<string>;
   onBack: () => void;
@@ -32,6 +34,8 @@ export type OverlaySpecPickerDialogProps = {
 export function OverlaySpecPickerDialog({
   specs,
   loading = false,
+  loadError = null,
+  onRetryLoad,
   busy = false,
   excludedSpecIds,
   onBack,
@@ -100,6 +104,8 @@ export function OverlaySpecPickerDialog({
               specs={availableSpecs}
               selectedSpecId={selectedSpecId}
               loading={loading}
+              loadError={loadError}
+              onRetryLoad={onRetryLoad}
               onSelectSpec={setSelectedSpecId}
             />
           </div>

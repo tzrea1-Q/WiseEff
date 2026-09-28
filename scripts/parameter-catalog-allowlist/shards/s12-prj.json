@@ -296,12 +296,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-PRJ:legacy-catalog-raw-read:613007d0d70a4003:0a30c88b9f209be9",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/parameterModuleRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:11d2249984064946",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
@@ -2379,12 +2373,6 @@
     },
     {
       "id": "S12-PRJ:unresolved-boundary-expression:5869ea00b60466bc:7b560e1d871b9120",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/parameterModuleRepository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:64a8d2cbafc6a08a:347f2ea33343631c",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameters/parameterModuleRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."

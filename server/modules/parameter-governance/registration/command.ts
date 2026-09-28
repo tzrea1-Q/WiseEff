@@ -73,6 +73,8 @@ export type MovePlacementCommand = {
   readonly registrationId: SubjectRegistrationId;
   readonly expectedRelease: CatalogReleasePin;
   readonly destinationModuleId: string;
+  /** Version captured from the current Placement ETag, when supplied by HTTP. */
+  readonly expectedPlacementVersion?: string;
   readonly idempotencyKey: string;
   readonly context: TrustedInvocationContext;
 };
@@ -143,6 +145,12 @@ export const validateRegistrationCommand = (
     if (!controlFree(command.destinationModuleId)) {
       return invalid("destinationModuleId");
     }
+    if (
+      command.expectedPlacementVersion !== undefined &&
+      !controlFree(command.expectedPlacementVersion)
+    ) {
+      return invalid("expectedPlacementVersion");
+    }
     if (command.context.actorKind !== "org-admin") {
       return permissionDenied(command.context.actorKind, command.kind);
     }
@@ -193,6 +201,9 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         registrationId: command.registrationId,
         expectedRelease: release,
         destinationModuleId: command.destinationModuleId,
+        ...(command.expectedPlacementVersion !== undefined
+          ? { expectedPlacementVersion: command.expectedPlacementVersion }
+          : {}),
         context: actor,
       };
     case "retire":

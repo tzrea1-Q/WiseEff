@@ -255,6 +255,20 @@ export function ParameterAdminNextPage({
                 search={search}
                 onNavigate={onNavigate}
                 catalog={runtime?.parameterCatalogRepository}
+                governance={runtime?.parameterCatalogGovernanceRepository}
+                organizationId={catalogOrganizationId}
+                actor={catalogActorForSession({
+                  roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
+                })}
+                sessionPermissions={sessionPermissions}
+                canonicalEnabled={
+                  runtimeMode === "api" &&
+                  Boolean(
+                    runtime?.parameterCatalogRepository &&
+                      runtime.parameterCatalogGovernanceRepository &&
+                      catalogOrganizationId
+                  )
+                }
               />
             ) : null}
           </>

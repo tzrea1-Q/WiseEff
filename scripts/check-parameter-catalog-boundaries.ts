@@ -35,8 +35,8 @@ import {
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
 import { applyReviewedDebuggingTransferRelocation } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
 import { applyReviewedSourceWorkflowRelocation, applyReviewedSourceWorkflowConsumerRelocation } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
-import { applyReviewedT14FamilySuccessorRelocation } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
-import { applyReviewedT14RewrittenSliceSuccessorRelocation } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
+import { applyReviewedIssue913T14Relocation } from "./parameter-catalog-allowlist/issue913T14Relocation";
+import { applyReviewedIssue913StaleSuccessorRelocation } from "./parameter-catalog-allowlist/issue913StaleSuccessorRelocation";
 import { applyReviewedSeedDriverLookupRelocation } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 import {
   allowlistShardSchema,
@@ -390,31 +390,36 @@ export async function checkParameterCatalogBoundaries(
   const consumerRelocated = await applyReviewedSourceWorkflowConsumerRelocation(
     repoRoot, fixture, allowlist.entries, sourceWorkflowRelocated.violations, priorRelocations,
   );
-  const familyRelocated = await applyReviewedT14FamilySuccessorRelocation(
+  const t14Relocated = await applyReviewedIssue913T14Relocation(
     repoRoot,
     fixture,
     allowlist.entries,
     consumerRelocated.violations,
     [...priorRelocations, ...consumerRelocated.relocations],
   );
-  const rewrittenRelocated = await applyReviewedT14RewrittenSliceSuccessorRelocation(
+  const staleSuccessorRelocated = await applyReviewedIssue913StaleSuccessorRelocation(
     repoRoot,
     fixture,
     allowlist.entries,
-    familyRelocated.violations,
-    [...priorRelocations, ...consumerRelocated.relocations, ...familyRelocated.relocations],
+    t14Relocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations],
   );
   const seedDriverRelocated = await applyReviewedSeedDriverLookupRelocation(
-    repoRoot, fixture, allowlist.entries, rewrittenRelocated.violations,
-    [...priorRelocations, ...consumerRelocated.relocations, ...familyRelocated.relocations, ...rewrittenRelocated.relocations],
+    repoRoot, fixture, allowlist.entries, staleSuccessorRelocated.violations,
+    [
+      ...priorRelocations,
+      ...consumerRelocated.relocations,
+      ...t14Relocated.relocations,
+      ...staleSuccessorRelocated.relocations,
+    ],
   );
   return {
     ...compareBoundaryInventory(seedDriverRelocated.violations, allowlist.entries, fixture.violations),
     relocations: [
       ...priorRelocations,
       ...consumerRelocated.relocations,
-      ...familyRelocated.relocations,
-      ...rewrittenRelocated.relocations,
+      ...t14Relocated.relocations,
+      ...staleSuccessorRelocated.relocations,
       ...seedDriverRelocated.relocations,
     ],
   };
