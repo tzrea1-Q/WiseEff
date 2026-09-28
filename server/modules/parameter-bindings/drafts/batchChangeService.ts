@@ -231,18 +231,19 @@ export async function captureCanonicalBatchDraftImpactInTransaction(
 async function refusePendingSingleDraftReviews(
   tx: Database, auth: AuthContext, projectId: string, impact: BatchDraftImpact[]
 ): Promise<void> {
-  const current = impact.filter((entry) => entry.role === "target")
-    .flatMap((entry) => entry.drafts.filter((draft) => !draft.currentlyStale).map((draft) => draft.draftId));
-  if (current.length === 0) return;
-  const pending = await tx.query<{ draft_id: string }>(`
-    select request.draft_id from public.project_parameter_value_change_requests request
-     where request.organization_id=$1 and request.project_id=$2 and request.status='pending'
-       and request.draft_id=any($3::text[]) order by request.draft_id limit 1`,
-  [auth.organization.id, projectId, current]);
-  if (pending.rows.length) {
-    throw new ApiError("CONFLICT", "A batch target draft already has a pending review.", {
-      reason: "selected-draft-pending",
-      bindingId: impact.find((entry) => entry.drafts.some((draft) => draft.draftId === pending.rows[0]!.draft_id))?.bindingId
+  const pending = await tx.query<{ binding_id: string }>(`
+    select request.binding_id from public.project_parameter_value_change_requests request
+     where request.organization_id=$1 and request.project_id=$2
+       and request.request_kind='single' and request.status='pending'
+       and request.binding_id=any($3::text[])
+     order by request.binding_id,request.id limit 1`,
+  [auth.organization.id, projectId, impact.map((entry) => entry.bindingId)]);
+  const bindingId = pending.rows[0]?.binding_id;
+  if (bindingId) {
+    throw new ApiError("CONFLICT", "A Binding in this batch has a pending single review.", {
+      reason: impact.find((entry) => entry.bindingId === bindingId)?.role === "target"
+        ? "selected-draft-pending" : "cohort-draft-pending-review",
+      bindingId
     });
   }
 }

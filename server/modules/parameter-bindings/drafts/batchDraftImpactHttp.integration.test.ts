@@ -356,19 +356,15 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       method: "POST", body: JSON.stringify(approvalBody)
     })).body).toEqual(approved.body);
     expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(after);
-    const staleSubmission = await requestJson<{ item: { id: string } }>(route(secondAuthor),
+    const beforeStaleSubmit = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const beforeStaleObjects = await objectBytes(storageDirectory);
+    const staleSubmission = await requestJson(route(secondAuthor),
       `/api/v2/projects/${PROJECT}/parameter-value-drafts/${siblingDraft.id}/submit`, {
         method: "POST", body: JSON.stringify({ assignedToUserId: REVIEWER }) });
-    expect(staleSubmission.status, JSON.stringify(staleSubmission.body)).toBe(201);
-    const stalePending = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
-    const staleObjects = await objectBytes(storageDirectory);
-    const staleReview = await requestJson(route(reviewer),
-      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${staleSubmission.body.item.id}/review`, {
-        method: "POST", body: JSON.stringify({ decision: "approve" }) });
-    expect(staleReview).toMatchObject({ status: 409, body: { error: {
+    expect(staleSubmission).toMatchObject({ status: 409, body: { error: {
       details: { reason: "stale-base-value" } } } });
-    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(stalePending);
-    expect(await objectBytes(storageDirectory)).toEqual(staleObjects);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeStaleSubmit);
+    expect(await objectBytes(storageDirectory)).toEqual(beforeStaleObjects);
   }, 120_000);
 
   it("rejects omitted or wrong mixed decisions and a newly inserted sibling draft", async () => {
@@ -462,7 +458,7 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
   }
 
   it.each(["single-before-batch", "single-after-batch"])(
-    "characterizes a pending sibling JSON request: %s", async (order) => {
+    "blocks a pending sibling JSON request: %s", async (order) => {
       const workflow = await requestJson<{ item: { proofToken: string } }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-workflow`);
       const version = (await db.query<{ current_version_id: string }>(
@@ -487,12 +483,30 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       const conflicts = await requestJson<{ items: unknown[]; ineligible: unknown[] }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.body.item.candidateId}/source-conflicts`);
       expect(conflicts).toMatchObject({ status: 200, body: { items: [], ineligible: [] } });
+      const batchBody = { candidateId: prepared.body.item.candidateId,
+        expectedProofToken: prepared.body.item.proofToken,
+        reason: "Review two changed JSON values", assignedToUserId: REVIEWER };
+      if (singleBefore) {
+        const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+        const beforeObjects = await objectBytes(storageDirectory);
+        const refused = await requestJson(route(),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+            method: "POST", body: JSON.stringify(batchBody) });
+        expect(refused).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "cohort-draft-pending-review", bindingId: sibling } } } });
+        expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+        expect(await objectBytes(storageDirectory)).toEqual(beforeObjects);
+        expect((await requestJson(route(secondAuthor),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${singleBefore.body.item.id}/withdraw`,
+          { method: "POST" })).status).toBe(200);
+        const refreshed = await requestJson(route(),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.body.item.candidateId}/source-conflicts`);
+        expect(refreshed).toMatchObject({ status: 200, body: { items: [], ineligible: [] } });
+      }
       const submitted = await requestJson<{ item: { id: string; status: string; batchProofDigest: string;
         draftImpactDigest: string } }>(route(),
         `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
-          method: "POST", body: JSON.stringify({ candidateId: prepared.body.item.candidateId,
-            expectedProofToken: prepared.body.item.proofToken,
-            reason: "Review two changed JSON values", assignedToUserId: REVIEWER }) });
+          method: "POST", body: JSON.stringify(batchBody) });
       expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
       const batch = submitted.body.item;
       const detail = await requestJson<{ item: { draftImpact: Array<{ bindingId: string; role: string;
@@ -506,12 +520,24 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       const single = singleBefore ?? await submitSingle();
       expect(single.status, JSON.stringify(single.body)).toBe(201);
       expect(JSON.stringify(detail.body.item.draftImpact)).not.toContain(single.body.item.id);
-      const singleQueue = await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
-        `/api/v2/projects/${PROJECT}/parameter-value-change-requests?status=pending`);
-      expect(singleQueue.body.items.map((item) => item.id)).toContain(single.body.item.id);
+      if (!singleBefore) {
+        const blocked = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+        const blockedObjects = await objectBytes(storageDirectory);
+        const refused = await requestJson(route(reviewer),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${batch.id}/review`, {
+            method: "POST", body: JSON.stringify({ decision: "approve",
+              batchProofDigest: batch.batchProofDigest, draftImpactDigest: batch.draftImpactDigest }) });
+        expect(refused).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "cohort-draft-pending-review", bindingId: sibling } } } });
+        expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(blocked);
+        expect(await objectBytes(storageDirectory)).toEqual(blockedObjects);
+        expect((await requestJson(route(secondAuthor),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${single.body.item.id}/withdraw`,
+          { method: "POST" })).status).toBe(200);
+      }
       const pending = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
       expect(pending.requests).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: single.body.item.id, status: "pending" }),
+        expect.objectContaining({ id: single.body.item.id, status: "withdrawn" }),
         expect.objectContaining({ id: batch.id, status: "pending" })]));
       const diff = await requestJson<{ item: { bindings: unknown[] } }>(route(reviewer),
         `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${batch.id}/source-diff`);
@@ -524,11 +550,11 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       expect(approved.status, JSON.stringify(approved.body)).toBe(200);
       const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
       expect(after.requests).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: single.body.item.id, status: "pending" }),
+        expect.objectContaining({ id: single.body.item.id, status: "withdrawn" }),
         expect.objectContaining({ id: batch.id, status: "approved" })]));
       expect((await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
         `/api/v2/projects/${PROJECT}/parameter-value-change-requests?status=pending`))
-        .body.items.map((item) => item.id)).toContain(single.body.item.id);
+        .body.items.map((item) => item.id)).not.toContain(single.body.item.id);
       expect(after.values).toHaveLength(pending.values.length + 3);
       expect(after.pins).toHaveLength(pending.pins.length + 3);
       expect(after.history).toHaveLength(pending.history.length + 3);
@@ -537,7 +563,7 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       expect(after.drafts).toEqual(pending.drafts);
       expect(await listCanonicalValueDraftsForReviewer(db, reviewer, { projectId: PROJECT, bindingId: sibling }))
         .toEqual([expect.objectContaining({ draftId: oldDraft.id, stale: true,
-          pendingRequestId: single.body.item.id })]);
+          pendingRequestId: null })]);
       const current = (await db.query<{ binding_id: string; value: unknown; file_version_id: string }>(`
         select binding.id as binding_id,value.value,pin.file_version_id
           from parameter_catalog.project_parameter_bindings binding
@@ -559,8 +585,7 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       const oldReview = await requestJson(route(reviewer),
         `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${single.body.item.id}/review`, {
           method: "POST", body: JSON.stringify({ decision: "approve" }) });
-      expect(oldReview).toMatchObject({ status: 409, body: { error: {
-        details: { reason: "stale-base-value" } } } });
+      expect(oldReview).toMatchObject({ status: 409, body: { error: { code: "CONFLICT" } } });
       expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(after);
       expect(await objectBytes(storageDirectory)).toEqual(beforeOldReview);
     }, 120_000);

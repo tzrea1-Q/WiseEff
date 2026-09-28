@@ -189,7 +189,7 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
   });
 
   it.each(["single-before-batch", "single-after-batch"])(
-    "characterizes a pending sibling DTS request: %s", async (order) => {
+    "blocks a pending sibling DTS request: %s", async (order) => {
       const prepared = await prepare(UPLOAD, `c906-dts-pending-${order}-prepare`);
       const bindings = await listCatalogBindingRowsForProject(db, admin, { projectId: PROJECT });
       const sibling = bindings.find((binding) =>
@@ -203,12 +203,29 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       const conflicts = await requestJson<{ items: unknown[]; ineligible: unknown[] }>(route(),
         `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-conflicts`);
       expect(conflicts).toMatchObject({ status: 200, body: { items: [], ineligible: [] } });
+      const batchBody = { candidateId: prepared.candidateId,
+        expectedProofToken: prepared.proofToken,
+        reason: "Review two changed DTS values", assignedToUserId: REVIEWER };
+      if (singleBefore) {
+        const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+        const beforeObjects = await objects(directory);
+        const refused = await requestJson(route(),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+            method: "POST", body: JSON.stringify(batchBody) });
+        expect(refused).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "cohort-draft-pending-review", bindingId: sibling.id } } } });
+        expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+        expect(await objects(directory)).toEqual(beforeObjects);
+        expect((await requestJson(route(author), `${path(singleBefore.body.item.id)}/withdraw`,
+          { method: "POST" })).status).toBe(200);
+        const refreshed = await requestJson(route(),
+          `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-conflicts`);
+        expect(refreshed).toMatchObject({ status: 200, body: { items: [], ineligible: [] } });
+      }
       const submitted = await requestJson<{ item: { id: string; batchProofDigest: string;
         draftImpactDigest: string } }>(route(),
         `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
-          method: "POST", body: JSON.stringify({ candidateId: prepared.candidateId,
-            expectedProofToken: prepared.proofToken,
-            reason: "Review two changed DTS values", assignedToUserId: REVIEWER }) });
+          method: "POST", body: JSON.stringify(batchBody) });
       expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
       const batch = submitted.body.item;
       const detail = await requestJson<{ item: { draftImpact: Array<{ bindingId: string; role: string;
@@ -222,12 +239,28 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       const single = singleBefore ?? await submitSingle();
       expect(single.status, JSON.stringify(single.body)).toBe(201);
       expect(JSON.stringify(detail.body.item.draftImpact)).not.toContain(single.body.item.id);
-      const singleQueue = await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
-        `/api/v2/projects/${PROJECT}/parameter-value-change-requests?status=pending`);
-      expect(singleQueue.body.items.map((item) => item.id)).toContain(single.body.item.id);
+      if (!singleBefore) {
+        expect((await requestJson(route(other), `${path(batch.id)}/review`, {
+          method: "POST", body: JSON.stringify({ decision: "approve",
+            batchProofDigest: batch.batchProofDigest, draftImpactDigest: batch.draftImpactDigest }) })).status).toBe(404);
+        expect((await requestJson(route(foreign), `${path(batch.id)}/review`, {
+          method: "POST", body: JSON.stringify({ decision: "approve",
+            batchProofDigest: batch.batchProofDigest, draftImpactDigest: batch.draftImpactDigest }) })).status).toBe(404);
+        const blocked = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+        const blockedObjects = await objects(directory);
+        const refused = await requestJson(route(reviewer), `${path(batch.id)}/review`, {
+          method: "POST", body: JSON.stringify({ decision: "approve",
+            batchProofDigest: batch.batchProofDigest, draftImpactDigest: batch.draftImpactDigest }) });
+        expect(refused).toMatchObject({ status: 409, body: { error: {
+          details: { reason: "cohort-draft-pending-review", bindingId: sibling.id } } } });
+        expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(blocked);
+        expect(await objects(directory)).toEqual(blockedObjects);
+        expect((await requestJson(route(author), `${path(single.body.item.id)}/withdraw`,
+          { method: "POST" })).status).toBe(200);
+      }
       const pending = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
       expect(pending.requests).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: single.body.item.id, status: "pending" }),
+        expect.objectContaining({ id: single.body.item.id, status: "withdrawn" }),
         expect.objectContaining({ id: batch.id, status: "pending" })]));
       const diff = await requestJson<{ item: { bindings: unknown[] } }>(route(reviewer),
         `${path(batch.id)}/source-diff`);
@@ -239,11 +272,11 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       expect(approved.status, JSON.stringify(approved.body)).toBe(200);
       const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
       expect(after.requests).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: single.body.item.id, status: "pending" }),
+        expect.objectContaining({ id: single.body.item.id, status: "withdrawn" }),
         expect.objectContaining({ id: batch.id, status: "approved" })]));
       expect((await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
         `/api/v2/projects/${PROJECT}/parameter-value-change-requests?status=pending`))
-        .body.items.map((item) => item.id)).toContain(single.body.item.id);
+        .body.items.map((item) => item.id)).not.toContain(single.body.item.id);
       expect(after.values).toHaveLength(pending.values.length + 3);
       expect(after.pins).toHaveLength(pending.pins.length + 3);
       expect(after.history).toHaveLength(pending.history.length + 3);
@@ -252,7 +285,7 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       expect(after.drafts).toEqual(pending.drafts);
       expect(await listCanonicalValueDraftsForReviewer(db, reviewer, { projectId: PROJECT, bindingId: sibling.id }))
         .toEqual([expect.objectContaining({ draftId: oldDraft.id, stale: true,
-          pendingRequestId: single.body.item.id })]);
+          pendingRequestId: null })]);
       const current = (await db.query<{ value: unknown; file_version_id: string }>(`
         select value.value,pin.file_version_id
           from parameter_catalog.project_parameter_bindings binding
@@ -271,8 +304,7 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       const beforeOldReview = await objects(directory);
       const oldReview = await requestJson(route(reviewer), `${path(single.body.item.id)}/review`, {
         method: "POST", body: JSON.stringify({ decision: "approve" }) });
-      expect(oldReview).toMatchObject({ status: 409, body: { error: {
-        details: { reason: "stale-base-value" } } } });
+      expect(oldReview).toMatchObject({ status: 409, body: { error: { code: "CONFLICT" } } });
       expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(after);
       expect(await objects(directory)).toEqual(beforeOldReview);
     }, 120_000);
@@ -570,18 +602,18 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
     expect((await requestJson(route(reviewer), `${path(item.id)}/review`, {
       method: "POST", body: JSON.stringify(approval(item)) })).body).toEqual(approved.body);
     expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(after);
-    const staleSubmission = await requestJson<{ item: { id: string } }>(route(author),
+    expect((await requestJson(route(foreign),
+      `/api/v2/projects/${PROJECT}/parameter-value-drafts/${siblingDraft.id}/submit`, {
+        method: "POST", body: JSON.stringify({ assignedToUserId: REVIEWER }) })).status).toBe(404);
+    const beforeStaleSubmit = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const beforeStaleObjects = await objects(directory);
+    const staleSubmission = await requestJson(route(author),
       `/api/v2/projects/${PROJECT}/parameter-value-drafts/${siblingDraft.id}/submit`, {
         method: "POST", body: JSON.stringify({ assignedToUserId: REVIEWER }) });
-    expect(staleSubmission.status, JSON.stringify(staleSubmission.body)).toBe(201);
-    const stalePending = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
-    const staleObjects = await objects(directory);
-    const staleReview = await requestJson(route(reviewer), `${path(staleSubmission.body.item.id)}/review`, {
-      method: "POST", body: JSON.stringify({ decision: "approve" }) });
-    expect(staleReview).toMatchObject({ status: 409, body: { error: {
+    expect(staleSubmission).toMatchObject({ status: 409, body: { error: {
       details: { reason: "stale-base-value" } } } });
-    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(stalePending);
-    expect(await objects(directory)).toEqual(staleObjects);
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeStaleSubmit);
+    expect(await objects(directory)).toEqual(beforeStaleObjects);
   }, 120_000);
 
   it("rejects newly inserted drafts and object drift without partial writes", async () => {
