@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import pg from "pg";
 import {
+  CATALOG_BASELINE_READER_ROLE,
   CATALOG_MIGRATION_OWNER,
+  CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
   LEGACY_STRUCTURAL_TABLES,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
@@ -286,14 +288,43 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
     ),
   );
 
+  // Query this exact function independently: a revoked writer grant must not
+  // make it disappear from the writer-visible definer inventory above.
+  const dtsOccurrence = await db.query<{
+    owner: string; security_definer: boolean; settings: string[] | null;
+    body: string; executable_roles: string[] | null;
+  }>(`
+    select pg_catalog.pg_get_userbyid(p.proowner) as owner,
+      p.prosecdef as security_definer, p.proconfig as settings, p.prosrc as body,
+      (select array_agg(role_name order by role_name)
+       from unnest($2::text[]) as roles(role_name)
+       where pg_catalog.has_function_privilege(role_name, p.oid, 'execute')) as executable_roles
+    from pg_catalog.pg_proc p where p.oid=pg_catalog.to_regprocedure($1)
+  `, [DTS_OBSERVATION_OCCURRENCE_IDENTITY, [
+    "public", PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE,
+    CATALOG_PUBLICATION_COORDINATOR_ROLE, CATALOG_BASELINE_READER_ROLE,
+    "catalog_verification_writer_role", "catalog_verifier_role",
+  ]]);
+  const occurrence = dtsOccurrence.rows[0];
+  const validDtsOccurrence = occurrence?.owner === CATALOG_MIGRATION_OWNER
+    && occurrence.security_definer
+    && occurrence.settings?.length === 1
+    && occurrence.settings[0] === "search_path=pg_catalog, parameter_catalog"
+    && createHash("sha256").update(occurrence.body).digest("hex") === DTS_OBSERVATION_OCCURRENCE_BODY_SHA256
+    && occurrence.executable_roles?.length === 1
+    && occurrence.executable_roles[0] === PARAMETER_GOVERNANCE_WRITER_ROLE;
+
   const bypasses = probes.filter((item) => item.succeeded || item.sqlstate !== "42501");
-  const violationCount = bypasses.length + unexpectedDefiners.length;
+  const violationCount = bypasses.length + unexpectedDefiners.length + (validDtsOccurrence ? 0 : 1);
   await db.query("reset role").catch(() => undefined);
   return countedResult("PCAT-DB-P02", "PCAT-PRIV-LEGACY-WRITER-BYPASS", violationCount, {
     bypassCount: bypasses.length,
     probeCount: probes.length,
     sqlstateChecksum: checksumProbes(probes),
     sqlstates: probes.map((item) => item.sqlstate),
-    unexpectedDefiners: unexpectedDefiners.map((row) => row.proname),
+    unexpectedDefiners: [
+      ...unexpectedDefiners.map((row) => row.proname),
+      ...(!validDtsOccurrence ? [DTS_OBSERVATION_OCCURRENCE_IDENTITY] : []),
+    ],
   });
 };
