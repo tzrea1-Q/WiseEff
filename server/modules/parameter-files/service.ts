@@ -11,6 +11,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { ingestConfigRevisionInTransaction, type ConfigRevisionIngestOptions } from "../parameter-topology/ingestService";
+import { produceDtsCompatibleEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 import type {
   ConfigRevisionManifest,
   ConfigRevisionManifestMember,
@@ -18,6 +19,7 @@ import type {
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";
+import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptTransaction";
 import {
   getConfigSetById,
   getFileConfigSetMembership,
@@ -226,7 +228,7 @@ async function createParameterFileUploadAudit(
  * Isolated DTS uploads without config-set membership are skipped.
  */
 export async function maybeIngestSemanticConfigRevision(
-  db: Queryable,
+  db: Database,
   objectStore: ObjectStore,
   auth: AuthContext,
   input: {
@@ -235,6 +237,7 @@ export async function maybeIngestSemanticConfigRevision(
     frozenSource: string;
   },
   options?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
+  producerRoot?: Database,
 ): Promise<void> {
   const membership = await getFileConfigSetMembership(db, {
     organizationId: auth.organization.id,
@@ -329,7 +332,10 @@ export async function maybeIngestSemanticConfigRevision(
     members,
   };
 
-  await ingestConfigRevisionInTransaction(db, manifest, auth, undefined, options);
+  const revision = await ingestConfigRevisionInTransaction(db, manifest, auth, undefined, options);
+  if (producerRoot) {
+    await produceDtsCompatibleEvidenceInTransaction(db,producerRoot,objectStore,auth,revision.id);
+  }
 }
 
 export async function uploadProjectParameterFile(
@@ -339,6 +345,7 @@ export async function uploadProjectParameterFile(
   input: UploadProjectParameterFileInput,
   context: ParameterFileServiceContext = {},
   ingestOptions?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
+  producerRoot?: Database,
 ): Promise<{
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
@@ -362,14 +369,14 @@ export async function uploadProjectParameterFile(
   const source = normalized.bytes.toString("utf8");
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
 
-  return db.transaction(async (tx) => {
+  const runUpload = async (tx: Database, uploadStore: ObjectStore) => {
     const existing = await getProjectParameterFileByName(tx, {
       organizationId: auth.organization.id,
       projectId: normalized.projectId,
       fileName: normalized.fileName,
     });
     if (existing) await assertLegacySourceMutationAllowed(tx,existing.id);
-    const stored = await objectStore.put({
+    const stored = await uploadStore.put({
       organizationId: auth.organization.id,
       fileName: normalized.fileName,
       contentType: contentTypeForFormat(format),
@@ -402,18 +409,18 @@ export async function uploadProjectParameterFile(
     if (format === "dts" && isDtsStructuralIngestEnabled()) {
       await ingestDtsFileVersion(tx, version.id, source);
     }
-    if (format === "dts") {
-      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
-        fileId: file.id,
-        frozenVersionId: version.id,
-        frozenSource: source,
-      }, ingestOptions);
-    }
     if (version.origin === "upload") {
       await syncFileVersion(asAuditTx(tx), auth, {
         fileId: file.id,
         versionId: version.id,
       });
+    }
+    if (format === "dts") {
+      await maybeIngestSemanticConfigRevision(tx, uploadStore, auth, {
+        fileId: file.id,
+        frozenVersionId: version.id,
+        frozenSource: source,
+      }, ingestOptions, producerRoot);
     }
     await createParameterFileUploadAudit(
       asAuditTx(tx),
@@ -451,7 +458,10 @@ export async function uploadProjectParameterFile(
       version,
       ...(driverSummary ? { driverSummary } : {}),
     };
-  });
+  };
+  return producerRoot
+    ? withCanonicalSourceAttemptTransaction(db, objectStore, (tx, attempt) => runUpload(tx, attempt.objectStore))
+    : db.transaction((tx) => runUpload(tx, objectStore));
 }
 
 export function getProjectParameterFileContent(

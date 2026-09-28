@@ -21,9 +21,9 @@ export const S2_SCH_CONTRACT_FINGERPRINT =
 export const S2_SCH_0171_FINGERPRINT =
   "40db30e5fecec0de3a34e6ca34db8aaf51e70c3c57fe7154dd78b2e1f827df59";
 
-/** Current schema through 0175; measured on fresh and upgraded PostgreSQL/pgvector. */
+/** Current schema through 0176; measured on fresh and upgraded PostgreSQL/pgvector. */
 export const S2_SCH_LIVE_FINGERPRINT =
-  "ac999511b88c9755c83eb7853f41e9eb80ae089e68f49753b885078695e7b5da";
+  "6093c85dff61c592bfa48f9d19c38fa74c737418307f70062f68a17959a186ce";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

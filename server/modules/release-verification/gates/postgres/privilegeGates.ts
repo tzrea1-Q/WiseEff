@@ -204,6 +204,11 @@ const REVIEWED_TOMBSTONE_IDENTITY =
   "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)";
 const REVIEWED_TOMBSTONE_BODY_SHA256 =
   "34ac6fdf032badb57c998b3597810048b06d78e480fd8edb4c052c25d967edd5";
+// #897 / 0176: exact current DTS occurrence writer; API logins retain no Catalog table DML.
+const DTS_OBSERVATION_OCCURRENCE_IDENTITY =
+  "parameter_catalog.ensure_dts_observation_source_occurrence(text,text,text,text,text,text,text,text)";
+const DTS_OBSERVATION_OCCURRENCE_BODY_SHA256 =
+  "779e47230dcde8f668f773aa39774ed522c07fee50a7678333bee45ed1d9e4dc";
 
 export const runP02 = async (db: Database): Promise<GateResult> => {
   const probes: PrivilegeProbe[] = [];
@@ -264,6 +269,16 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
       && row.function_owner === CATALOG_MIGRATION_OWNER
       && row.settings?.length === 1
       && row.settings[0] === "search_path=pg_catalog, parameter_catalog, public"
+      && !row.public_execute
+      && !row.synchronizer_execute
+      && !row.coordinator_execute
+      && !row.reader_execute
+    ) && !(
+      row.identity === DTS_OBSERVATION_OCCURRENCE_IDENTITY
+      && createHash("sha256").update(row.body).digest("hex") === DTS_OBSERVATION_OCCURRENCE_BODY_SHA256
+      && row.function_owner === CATALOG_MIGRATION_OWNER
+      && row.settings?.length === 1
+      && row.settings[0] === "search_path=pg_catalog, parameter_catalog"
       && !row.public_execute
       && !row.synchronizer_execute
       && !row.coordinator_execute

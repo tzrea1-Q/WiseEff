@@ -724,7 +724,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         fileName: body.fileName.trim(),
         bytes: decodeContentBase64(body.contentBase64)
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      undefined,
+      db
     );
     await syncLatestPublishedValues(db, auth, params.projectId, { requestId: request.requestId });
     return {

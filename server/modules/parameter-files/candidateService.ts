@@ -820,7 +820,8 @@ export async function activateCandidate(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: ActivateCandidateInput,
-  context: CandidateServiceContext = {}
+  context: CandidateServiceContext = {},
+  producerRoot?: Database,
 ): Promise<ActivateCandidateResult> {
   const trustedContext = rejectTrustedContextForUnmigratedCandidateMutation(
     context,
@@ -1019,12 +1020,12 @@ export async function activateCandidate(
       await ingestDtsFileVersion(tx, version.id, source);
     }
     if (locked.format === "dts") {
+      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
       await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source
-      });
-      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
+      }, undefined, producerRoot);
     }
 
     const activated = await markParameterFileCandidateActive(tx, {

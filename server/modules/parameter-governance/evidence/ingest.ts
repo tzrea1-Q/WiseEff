@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import type { Queryable } from "../../../shared/database/client";
 
 import {
   CatalogReleaseId,
@@ -39,6 +40,7 @@ type ObservationRow = {
 
 type ReviewEvidenceRow = {
   id: string;
+  observation_id: string | null;
   candidate_safe_digest: string;
   reason: ReviewReason;
   r_class: LegacyRowClass | null;
@@ -139,7 +141,7 @@ const sameCanonicalJson = (left: unknown, right: unknown): boolean =>
   serializeContract(right as ContractJsonValue);
 
 const loadObservation = async (
-  client: pg.PoolClient,
+  client: Queryable,
   command: IngestEvidenceCommand,
   planned: PlannedObservation,
 ): Promise<ObservationRow | null> => {
@@ -183,11 +185,11 @@ const observationReplayKey = (
   ]);
 
 const loadReviewEvidence = async (
-  client: pg.PoolClient,
+  client: Queryable,
   id: string,
 ): Promise<ReviewEvidenceRow | null> => {
   const result = await client.query<ReviewEvidenceRow>(
-    `select id, candidate_safe_digest, reason, r_class, evidence
+    `select id, observation_id, candidate_safe_digest, reason, r_class, evidence
      from parameter_catalog.parameter_review_evidence
      where id = $1
 `,
@@ -197,12 +199,12 @@ const loadReviewEvidence = async (
 };
 
 const loadReviewEvidenceByIdentity = async (
-  client: pg.PoolClient,
+  client: Queryable,
   organizationId: string,
   sourceIdentity: string,
 ): Promise<ReviewEvidenceLookup> => {
   const result = await client.query<ReviewEvidenceRow>(
-    `select id, candidate_safe_digest, reason, r_class, evidence
+    `select id, observation_id, candidate_safe_digest, reason, r_class, evidence
      from parameter_catalog.parameter_review_evidence
      where organization_id = $1
        and evidence->>'sourceIdentity' = $2
@@ -270,9 +272,11 @@ const replayOrRefuseReviewEvidence = (
   stored: ReviewEvidenceRow,
   planned: PlannedIngest,
   command: IngestEvidenceCommand,
+  observationId: string | null = null,
 ): Result<IngestEvidenceResult, IngestEvidenceFailure> => {
   if (
     planned.kind === "review-evidence" &&
+    stored.observation_id === observationId &&
     stored.candidate_safe_digest === planned.fingerprint &&
     sameCanonicalJson(stored.evidence, planned.evidence)
   ) {
@@ -285,7 +289,7 @@ const replayOrRefuseReviewEvidence = (
 };
 
 const insertObservation = async (
-  client: pg.PoolClient,
+  client: Queryable,
   command: IngestEvidenceCommand,
   planned: PlannedIngest & { kind: "observation" },
 ): Promise<ObservationRow> => {
@@ -317,17 +321,18 @@ const insertObservation = async (
 };
 
 const insertReviewEvidence = async (
-  client: pg.PoolClient,
+  client: Queryable,
   command: IngestEvidenceCommand,
   planned: PlannedIngest & { kind: "review-evidence" },
+  observationId: string | null,
 ): Promise<ReviewEvidenceRow> => {
   const id = `prev_${randomUUID()}`;
   const inserted = await client.query<ReviewEvidenceRow>(
     `insert into parameter_catalog.parameter_review_evidence (
        id, organization_id, observation_id, reason, candidate_safe_digest,
        r_class, source_graph_ref, evidence
-     ) values ($1,$2,null,$3,$4,$5,$6,$7::jsonb)
-     returning id, candidate_safe_digest, reason, r_class, evidence`,
+     ) values ($1,$2,$8,$3,$4,$5,$6,$7::jsonb)
+     returning id, observation_id, candidate_safe_digest, reason, r_class, evidence`,
     [
       id,
       command.organizationId,
@@ -336,6 +341,7 @@ const insertReviewEvidence = async (
       planned.rClass,
       planned.sourceGraphRef,
       asJson(planned.evidence),
+      observationId,
     ],
   );
   return inserted.rows[0]!;
@@ -345,7 +351,7 @@ const resultKindFor = (planned: PlannedIngest): string =>
   planned.kind === "observation" ? "observation" : "review-evidence";
 
 const loadIdempotency = async (
-  client: pg.PoolClient,
+  client: Queryable,
   organizationId: string,
   sourceIdentity: string,
 ): Promise<IdempotencyRow | null> => {
@@ -362,7 +368,7 @@ const loadIdempotency = async (
 };
 
 const reserveIdempotency = async (
-  client: pg.PoolClient,
+  client: Queryable,
   command: IngestEvidenceCommand,
   planned: PlannedIngest,
 ): Promise<IdempotencyRow> => {
@@ -392,7 +398,7 @@ const reserveIdempotency = async (
 };
 
 const commitIdempotency = async (
-  client: pg.PoolClient,
+  client: Queryable,
   command: IngestEvidenceCommand,
   planned: PlannedIngest,
   resultRef: string,
@@ -422,7 +428,7 @@ const commitIdempotency = async (
 };
 
 const finishReplay = async (
-  client: pg.PoolClient,
+  client: Queryable,
   command: IngestEvidenceCommand,
   planned: PlannedIngest,
   replayed: Result<IngestEvidenceResult, IngestEvidenceFailure>,
@@ -439,12 +445,13 @@ const conflictAgainstStored = (
   observation: ObservationRow | null,
   review: ReviewEvidenceLookup,
   reserved: IdempotencyRow,
+  observationId: string | null,
 ): Result<IngestEvidenceResult, IngestEvidenceFailure> => {
   if (observation) {
     return replayOrConflictObservation(observation, planned, command);
   }
   if (review.status !== "absent") {
-    return replayOrRefuseReviewEvidence(review.row, planned, command);
+    return replayOrRefuseReviewEvidence(review.row, planned, command, observationId);
   }
   if (planned.kind === "observation") {
     return fingerprintConflict(
@@ -461,9 +468,10 @@ const conflictAgainstStored = (
 };
 
 const executePlannedIngest = async (
-  client: pg.PoolClient,
+  client: Queryable,
   command: IngestEvidenceCommand,
   planned: PlannedIngest,
+  observationId: string | null = null,
 ): Promise<Result<IngestEvidenceResult, IngestEvidenceFailure>> => {
   const reserved = await reserveIdempotency(client, command, planned);
   const observation =
@@ -492,7 +500,7 @@ const executePlannedIngest = async (
   }
 
   if (reserved.request_fingerprint !== planned.fingerprint) {
-    return conflictAgainstStored(command, planned, observation, review, reserved);
+    return conflictAgainstStored(command, planned, observation, review, reserved, observationId);
   }
 
   if (reserved.state === "committed" && reserved.result_ref) {
@@ -500,14 +508,14 @@ const executePlannedIngest = async (
       return replayOrConflictObservation(observation, planned, command);
     }
     if (review.status === "found") {
-      return replayOrRefuseReviewEvidence(review.row, planned, command);
+      return replayOrRefuseReviewEvidence(review.row, planned, command, observationId);
     }
     const byRef =
       reserved.result_kind === "observation"
         ? null
         : await loadReviewEvidence(client, reserved.result_ref);
     if (byRef) {
-      return replayOrRefuseReviewEvidence(byRef, planned, command);
+      return replayOrRefuseReviewEvidence(byRef, planned, command, observationId);
     }
     throw new Error("committed evidence idempotency is missing its row");
   }
@@ -525,7 +533,7 @@ const executePlannedIngest = async (
       client,
       command,
       planned,
-      replayOrRefuseReviewEvidence(review.row, planned, command),
+      replayOrRefuseReviewEvidence(review.row, planned, command, observationId),
     );
   }
 
@@ -559,7 +567,7 @@ const executePlannedIngest = async (
 
   let stored: ReviewEvidenceRow;
   try {
-    stored = await insertReviewEvidence(client, command, planned);
+    stored = await insertReviewEvidence(client, command, planned, observationId);
   } catch (error) {
     if (isUniqueViolation(error)) {
       const existing = await loadReviewEvidenceByIdentity(
@@ -572,7 +580,7 @@ const executePlannedIngest = async (
         client,
         command,
         planned,
-        replayOrRefuseReviewEvidence(existing.row, planned, command),
+        replayOrRefuseReviewEvidence(existing.row, planned, command, observationId),
       );
     }
     const mapped = mapInsertFailure(error, command);
@@ -614,6 +622,35 @@ export const ingestEvidence = async (
     client.release();
   }
 };
+
+/** Trusted source producer only: caller owns the transaction and the exact source proof. */
+export async function ingestSourceBoundEvidenceInTransaction(
+  tx: Queryable,
+  command: IngestEvidenceCommand,
+  input: { readonly kind: "observation" } | { readonly kind: "review"; readonly observationId: string; readonly projectId: string; readonly configRevisionId: string },
+): Promise<IngestEvidenceResult> {
+  const planned = planEvidenceIngest(command, { sourceObservation: input.kind === "observation" });
+  if (!planned.ok || planned.value.kind !== (input.kind === "observation" ? "observation" : "review-evidence")) {
+    throw new Error(`Trusted DTS evidence command is invalid: ${planned.ok ? "wrong-kind" : planned.error.kind}`);
+  }
+  if (input.kind === "review") {
+    const rows = (await tx.query<{ organization_id: string; project_id: string; config_revision_id: string;
+      catalog_release_id: string; matcher_revision: string }>(
+      `select organization_id,project_id,config_revision_id,catalog_release_id,matcher_revision
+         from parameter_catalog.parameter_observations where id=$1`, [input.observationId],
+    )).rows;
+    const row = rows[0];
+    if (rows.length !== 1 || !row || row.organization_id !== command.organizationId
+      || row.project_id !== input.projectId || row.config_revision_id !== input.configRevisionId
+      || row.catalog_release_id !== command.catalogReleaseId || row.matcher_revision !== command.matcherRevision) {
+      throw new Error("Trusted DTS review evidence observation does not match persisted source and pin");
+    }
+  }
+  const result = await executePlannedIngest(tx, command, planned.value,
+    input.kind === "review" ? input.observationId : null);
+  if (!result.ok) throw new Error(`Trusted DTS evidence ingest failed: ${result.error.kind}`);
+  return result.value;
+}
 
 export const createEvidenceIngest = (pool: pg.Pool): EvidenceIngest => ({
   ingest: (command) => ingestEvidence(pool, command),

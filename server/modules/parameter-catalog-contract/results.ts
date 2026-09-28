@@ -194,3 +194,8 @@ const serializeRuntimeValue = (
 
 export const serializeContract = (value: ContractJsonValue): string =>
   `${serializeRuntimeValue(value, 0, new Set())}\n`;
+
+/** Internal serializer bytes consumed by the server-owned matcher revision. */
+export const canonicalSerializationImplementation = [
+  serializationTypeError, indent, serializeRuntimeValue, serializeContract,
+].map((implementation) => implementation.toString()).join("\n");
