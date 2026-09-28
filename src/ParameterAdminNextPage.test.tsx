@@ -700,6 +700,12 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 });
 
 describe("ParameterAdminNextPage · organization module tree and driver mapping", () => {
+  it("keeps API mode unavailable when canonical dependencies are missing instead of loading legacy hints", async () => {
+    const moduleRegistry = createModuleRegistry();
+    renderPage({ moduleRegistry, path: "/parameter-admin/modules", runtimeMode: "api" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("规范目录发现服务不可用");
+    expect(moduleRegistry.getDiscoveryHints).not.toHaveBeenCalled();
+  });
   it("loads the module registry through the injected module registry port", async () => {
     const moduleRegistry = createModuleRegistry();
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });

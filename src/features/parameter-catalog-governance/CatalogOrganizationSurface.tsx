@@ -60,7 +60,7 @@ export function CatalogOrganizationSurface({
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
-  const [pendingWorkOpen, setPendingWorkOpen] = useState(false);
+  const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId));
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
   const [lifecycle, setLifecycle] = useState<{
@@ -68,6 +68,10 @@ export function CatalogOrganizationSurface({
     definition: CatalogDefinitionResponse["item"];
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
+
+  useEffect(() => {
+    if (anchor.reviewItemId) setPendingWorkOpen(true);
+  }, [anchor.reviewItemId]);
   const subjectId = anchor.subjectId ?? "";
   const [catalogSubjects, setCatalogSubjects] = useState<
     Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]

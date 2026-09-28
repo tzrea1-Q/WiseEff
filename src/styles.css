@@ -24772,6 +24772,41 @@ button.dts-topology-navigator__disclosure:focus-visible {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.canonical-driver-discovery {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.canonical-driver-discovery__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.canonical-driver-discovery__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.canonical-driver-discovery__item {
+  overflow-wrap: anywhere;
+  padding: var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+}
+
+.canonical-driver-discovery__item p { margin: var(--space-2) 0; }
+.canonical-driver-discovery__item ul { padding-left: var(--space-4); }
+.canonical-driver-discovery__item li { margin-top: var(--space-2); }
+.canonical-driver-discovery__item button { margin-left: var(--space-2); }
+
 .parameter-module-mapping-panel__subnav {
   display: flex;
   flex-wrap: wrap;
