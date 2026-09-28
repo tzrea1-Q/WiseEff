@@ -10,6 +10,7 @@ import {
   type ComparisonFamily,
   type ComparisonId,
 } from "./corpusContributionSchema";
+import { checksumComparisonCorpus } from "./corpusResultSchema";
 import { ComparisonCorpusError } from "./errors";
 import {
   FRESH_POST_SHA,
@@ -137,6 +138,63 @@ describe("aggregateComparisonCorpus adversarial refusals", () => {
       () => aggregateComparisonCorpus(preContributions, postContext),
       "PCAT-CMP-PHASE-REUSE",
     );
+  });
+
+  it.each([
+    ["wrong target kind", (item: ReturnType<typeof makeCase>) => ({
+      ...item, expectedDifference: { ...item.expectedDifference!, typedTarget: { kind: "subject-placement", id: "csub_ref-1" } },
+    })],
+    ["missing Subject", (item: ReturnType<typeof makeCase>) => ({
+      ...item, canonicalObservation: { status: "value" as const, value: { source: "no-subject" } },
+    })],
+    ["failed Subject observation", (item: ReturnType<typeof makeCase>) => ({
+      ...item, canonicalObservation: { status: "query-failure" as const,
+        code: "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE", detail: "source unavailable" },
+    })],
+    ["invalid Subject ID", (item: ReturnType<typeof makeCase>) => ({
+      ...item, canonicalObservation: { status: "value" as const, value: { subject: { id: " bad " } } },
+    })],
+    ["missing typed target", (item: ReturnType<typeof makeCase>) => ({
+      ...item, expectedDifference: { ...item.expectedDifference!, typedTarget: undefined, Archive: { id: "archive-ref" } },
+    })],
+  ])("refuses MOD D02 %s after a fresh contribution checksum", (_label, change) => {
+    const item = change(makeCase("MOD", "PCAT-CMP-D02-SUBJECT-IDENTITY", populated));
+    const mod = makeContribution("MOD", populated, { cases: [item], sourceInventoryCount: 1 });
+    const contributions = makeFamilyContributions(populated).map((entry) => entry.family === "MOD" ? mod : entry);
+    expectCode(() => aggregateComparisonCorpus(contributions, populated), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
+  });
+
+  it("rejects a rechecksummed forged MOD D02 target at the direct report entry", () => {
+    const corpus = aggregateComparisonCorpus(makeFamilyContributions(populated), populated);
+    const cases = corpus.cases.map((item) => item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+      ? { ...item, expectedDifference: { ...item.expectedDifference!, typedTarget: { kind: "catalog-subject", id: "csub_other" } } }
+      : item);
+    const unsigned = { ...corpus, cases };
+    const forged = { ...unsigned, checksum: checksumComparisonCorpus(unsigned) };
+    expect(forged.checksum).not.toBe(corpus.checksum);
+    expectCode(() => generateComparisonReport(forged), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
+  });
+
+  it.each([true, false])("rejects a forged MOD D02 exact-equivalent at the direct report entry (target retained: %s)", (retainTarget) => {
+    const corpus = aggregateComparisonCorpus(makeFamilyContributions(populated), populated);
+    const cases = corpus.cases.map((item) => item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+      ? { ...item, result: "exact-equivalent" as const,
+          expectedDifference: retainTarget ? item.expectedDifference : null }
+      : item);
+    const unsigned = { ...corpus, cases };
+    const forged = { ...unsigned, checksum: checksumComparisonCorpus(unsigned) };
+    expectCode(() => generateComparisonReport(forged), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
+  });
+
+  it("rejects a rechecksummed MOD D02 case relabeled as TOP at the direct report entry", () => {
+    const corpus = aggregateComparisonCorpus(makeFamilyContributions(populated), populated);
+    const cases = corpus.cases.map((item) => item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+      ? { ...item, family: "TOP" as const,
+          expectedDifference: { ...item.expectedDifference!, typedTarget: { kind: "catalog-subject", id: "csub_other" } } }
+      : item);
+    const unsigned = { ...corpus, cases };
+    const forged = { ...unsigned, checksum: checksumComparisonCorpus(unsigned) };
+    expectCode(() => generateComparisonReport(forged), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
   });
 
   it("fresh-phase-without-real-postgres-zero-inventory refuses nonzero fresh cases", () => {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { CatalogSubjectId } from "../../parameter-catalog-contract";
 import { corpusRefusal } from "./errors";
 
 export const COMPARISON_CONTRIBUTION_CONTRACT_VERSION = "pcat-comparison-contribution/v1";
@@ -498,6 +499,45 @@ const observationsAreEquivalent = (
   );
 };
 
+/** Bind a declared MOD D02 target to the Subject identity actually carried by its observation. */
+export const assertModD02SubjectTarget = (
+  item: ComparisonCase & { readonly family: ComparisonFamily },
+): void => {
+  const isModD02 = item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY";
+  if (!isModD02 && !item.caseId.startsWith("MOD:PCAT-CMP-D02-SUBJECT-IDENTITY:")) return;
+  if (!isModD02 || item.caseId !== `${item.family}:${item.comparisonId}:${item.protectedReference.kind}:${item.protectedReference.id}`) {
+    throw corpusRefusal("PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE", `${item.caseId} MOD D02 case identity is inconsistent`);
+  }
+  if (item.result === "exact-equivalent") {
+    if (item.expectedDifference !== null || !observationsAreEquivalent(item.legacyObservation, item.canonicalObservation)) {
+      throw corpusRefusal("PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE", `${item.caseId} exact-equivalent lacks equivalent observations`);
+    }
+    return;
+  }
+  if (item.result !== "declared-expected-difference") return;
+  const subject = item.canonicalObservation.status === "value"
+    ? item.canonicalObservation.value.subject : null;
+  if (!subject || typeof subject !== "object" || Array.isArray(subject)) {
+    throw corpusRefusal("PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE", `${item.caseId} lacks a canonical Subject`);
+  }
+  const rawSubjectId = (subject as Record<string, unknown>).id;
+  if (typeof rawSubjectId !== "string") {
+    throw corpusRefusal("PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE", `${item.caseId} has an invalid canonical Subject ID`);
+  }
+  let subjectId: CatalogSubjectId;
+  try {
+    subjectId = CatalogSubjectId(rawSubjectId);
+  } catch {
+    throw corpusRefusal("PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE", `${item.caseId} has an invalid canonical Subject ID`);
+  }
+  if (item.expectedDifference?.typedTarget?.kind !== "catalog-subject") {
+    throw corpusRefusal("PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE", `${item.caseId} typedTarget.kind must be catalog-subject`);
+  }
+  if (item.expectedDifference.typedTarget.id !== subjectId) {
+    throw corpusRefusal("PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE", `${item.caseId} typedTarget.id must equal canonical Subject ID`);
+  }
+};
+
 const assertComparisonCase = (
   value: unknown,
   contribution: ComparisonContribution,
@@ -552,7 +592,7 @@ const assertComparisonCase = (
       comparisonIdRaw,
       `cases[${index}].expectedDifference`,
     );
-    return {
+    const parsedCase: ComparisonCase = {
       caseId,
       comparisonId: comparisonIdRaw,
       protectedReference,
@@ -561,6 +601,8 @@ const assertComparisonCase = (
       result: resultRaw,
       expectedDifference,
     };
+    assertModD02SubjectTarget({ ...parsedCase, family: contribution.family });
+    return parsedCase;
   }
   if (record.expectedDifference !== null) {
     throw corpusRefusal(
