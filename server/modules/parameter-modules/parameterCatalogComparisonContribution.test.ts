@@ -25,6 +25,7 @@ import { listDismissedCompatibleIdentitiesForComparison } from "./comparisonInve
 import * as comparisonInventoryRepository from "./comparisonInventoryRepository";
 import * as moduleRepository from "./repository";
 import * as legacyCatalog from "../parameter-catalog-api/legacy";
+import * as governanceCatalog from "../parameter-catalog-api/governance";
 
 const FRESH_PRE_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const FRESH_POST_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -235,6 +236,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       const observedSpy = vi.spyOn(moduleRepository, "listObservedCompatiblesForDiscovery");
       const dismissedPageSpy = vi.spyOn(moduleRepository, "listDismissedCompatiblesForDiscovery");
       const legacyRequestSpy = vi.spyOn(legacyCatalog, "handleLegacyCatalogRequest");
+      const governanceSpy = vi.spyOn(governanceCatalog, "handleCatalogGovernance");
       const querySpy = vi.spyOn(pool!, "query");
       const after = await provideModParameterCatalogComparisonContribution(input);
       const dismissedRoute = routeManifest.find((route) => route.id === "parameterModules.restoreCompatible");
@@ -244,13 +246,17 @@ describe("provideModParameterCatalogComparisonContribution", () => {
         .map(([request]) => request)
         .filter((request) => request.path.startsWith(routePrefix));
       const inventoryQueries = querySpy.mock.calls.map(([sql]) => String(sql));
+      const canonicalOrganizations = governanceSpy.mock.calls.map(([, request]) => request.params.organizationId);
       querySpy.mockRestore();
       legacyRequestSpy.mockRestore();
+      governanceSpy.mockRestore();
       expect(observedSpy).not.toHaveBeenCalled();
       expect(dismissedPageSpy).not.toHaveBeenCalled();
       expect(dismissalRequests).toHaveLength(202);
       expect(dismissalRequests.every((request) => request.method === "DELETE")).toBe(true);
       expect(dismissalRequests.filter((request) => request.path === `${routePrefix}${encodeURIComponent("c4-vendor,device-200")}`)).toHaveLength(2);
+      expect(canonicalOrganizations).toContain("wf671-org");
+      expect(canonicalOrganizations).toContain("c4-org-2");
       observedSpy.mockRestore();
       dismissedPageSpy.mockRestore();
       assertCanonicalChecksum(after);
@@ -265,6 +271,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       expect(dismissedCases.map((item) => item.protectedReference.id)).toContain("c4-dismissed-0");
       expect(dismissedCases.map((item) => item.protectedReference.id)).toContain("c4-dismissed-other-org");
       expect(dismissedCases.every((item) => item.comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT")).toBe(true);
+      expect(dismissedCases.every((item) => item.legacyObservation.status === "value" && item.legacyObservation.value.httpStatus === 410)).toBe(true);
       expect(new Set(after.cases.map((item) => item.caseId)).size).toBe(after.cases.length);
       expect(inventoryQueries.some((sql) => sql.includes("select id, compatible") && sql.includes("where organization_id = $1"))).toBe(true);
       expect(inventoryQueries.filter((sql) => /^\s*(insert|update|delete|truncate)\b/iu.test(sql))).toEqual([]);
@@ -277,6 +284,20 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       expect(afterPost.sourceInventoryChecksum).toBe(after.sourceInventoryChecksum);
       expect(afterPost.cases.map((item) => [item.caseId, item.protectedReference, item.result]))
         .toEqual(after.cases.map((item) => [item.caseId, item.protectedReference, item.result]));
+
+      const actualLegacyRequest = legacyCatalog.handleLegacyCatalogRequest;
+      const missingLegacyRoute = vi.spyOn(legacyCatalog, "handleLegacyCatalogRequest")
+        .mockImplementation((request, options) => request.path === `${routePrefix}${encodeURIComponent("c4-vendor,device-200")}`
+          ? Promise.resolve({ status: 404, headers: {}, body: {} })
+          : actualLegacyRequest(request, options));
+      const unavailable = await provideModParameterCatalogComparisonContribution(input);
+      missingLegacyRoute.mockRestore();
+      const unavailableCases = unavailable.cases.filter((item) =>
+        item.protectedReference.id === "c4-dismissed-200" || item.protectedReference.id === "c4-dismissed-other-org");
+      expect(unavailableCases).toHaveLength(2);
+      expect(unavailableCases.every((item) => item.result === "unqueryable/protected-reference-missing")).toBe(true);
+      expect(unavailableCases.every((item) => item.legacyObservation.status === "query-failure"
+        && item.legacyObservation.detail === "legacy-dismissed-compatible-http-404")).toBe(true);
 
       const failingQuery = vi.spyOn(comparisonInventoryRepository, "listDismissedCompatibleIdentitiesForComparison")
         .mockRejectedValueOnce(new Error("c4-identity-query-unavailable"));

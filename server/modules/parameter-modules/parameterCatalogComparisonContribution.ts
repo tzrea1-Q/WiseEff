@@ -447,6 +447,13 @@ async function observeLegacyHttp(
     },
     createLegacyOptions(database, organizationId),
   );
+  if (reference.kind === "parameter-module-dismissed-compatible" && result.status !== 410) {
+    return {
+      status: "query-failure",
+      code: MOD_UNQUERYABLE_FAILURE_CODE,
+      detail: `legacy-dismissed-compatible-http-${result.status}`,
+    };
+  }
   return {
     status: "value",
     value: {
@@ -572,6 +579,9 @@ export async function provideModParameterCatalogComparisonContribution(
   const moduleRecords = await queryModInventory(input.database);
   const canonicalSubjects = await observeCanonicalSubjects(input.pool, organizationId);
   const canonicalRegistrations = await observeCanonicalRegistrations(organizationId);
+  const canonicalRegistrationsByOrganization = new Map<string, ModQueryObservation>([
+    [organizationId, canonicalRegistrations.observation],
+  ]);
 
   const inventory = sortInventory([...moduleRecords, ...canonicalRegistrations.records]);
 
@@ -607,10 +617,12 @@ export async function provideModParameterCatalogComparisonContribution(
               protectedReference,
               routeIdentity,
             );
-      const canonicalObservation =
-        comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
-          ? canonicalSubjects
-          : canonicalRegistrations.observation;
+      let canonicalObservation = canonicalSubjects;
+      if (comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT") {
+        canonicalObservation = canonicalRegistrationsByOrganization.get(legacyOrganizationId)
+          ?? (await observeCanonicalRegistrations(legacyOrganizationId)).observation;
+        canonicalRegistrationsByOrganization.set(legacyOrganizationId, canonicalObservation);
+      }
 
       const classified = classifyCase({
         comparisonId,

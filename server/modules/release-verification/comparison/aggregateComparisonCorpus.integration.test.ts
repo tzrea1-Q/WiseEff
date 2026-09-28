@@ -248,6 +248,12 @@ describe("live eleven-family comparison corpus", () => {
       expect(modAfterIgnore.sourceInventoryCount).toBe(modBeforeIgnore.sourceInventoryCount);
       expect(modAfterIgnore.sourceInventoryChecksum).toBe(modBeforeIgnore.sourceInventoryChecksum);
       expect(modAfterIgnore.cases).toEqual(modBeforeIgnore.cases);
+      const corpusWithDismissal = await aggregateLiveComparisonCorpus(modInput, providers);
+      const dismissedCase = corpusWithDismissal.cases.find((item) =>
+        item.protectedReference.id === "mod-comparison-historical-dismissal");
+      expect(dismissedCase?.result).toBe("declared-expected-difference");
+      expect(generateComparisonReport(corpusWithDismissal).gateCoverage.find((gate) =>
+        gate.comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT")?.caseCount).toBeGreaterThan(0);
       const closedQueue = await reader.list({ organizationId: "wf671-org", capturedRelease: pin, context });
       expect(closedQueue.ok && closedQueue.value.ignoredReviewItemCount).toBe(1);
       expect(closedQueue.ok && closedQueue.value.items.some((entry) => entry.id === item!.id)).toBe(false);
