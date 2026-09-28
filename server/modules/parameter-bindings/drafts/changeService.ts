@@ -51,6 +51,7 @@ import {
 import {
   deleteCanonicalValueDraft,
   getCanonicalValueDraftForUpdate,
+  loadCanonicalBindingPins,
 } from "./repository";
 import {
   getCanonicalValueChangeRequest,
@@ -401,6 +402,23 @@ export async function submitCanonicalValueChange(
       throw new ApiError("CONFLICT", "Draft already has an open change request.", {
         draftId: input.draftId,
         requestId: open.id
+      });
+    }
+    const pins = await loadCanonicalBindingPins(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, bindingId: draft.binding_id
+    });
+    const staleReason = !pins || pins.currentValueId !== draft.base_current_value_id
+      ? "stale-base-value"
+      : pins.configRevisionId !== draft.config_revision_id ? "stale-base-revision"
+        : pins.definitionId !== draft.definition_id
+          || pins.definitionRevisionId !== draft.definition_revision_id
+          || pins.catalogReleaseId !== draft.catalog_release_id
+          || pins.sourceRef !== draft.source_ref
+          || pins.sourcePinId !== draft.source_pin_id
+          || pins.sourceFormat !== draft.source_format ? "stale-source-proof" : null;
+    if (staleReason) {
+      throw new ApiError("CONFLICT", "Draft source base changed before submission.", {
+        reason: staleReason, bindingId: draft.binding_id
       });
     }
     const inserted = await insertCanonicalValueChangeRequest(tx, {
