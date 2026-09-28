@@ -123,19 +123,20 @@ const loadEvidence = async (
   return records;
 };
 
-const loadOpenItems = async (
+const loadItems = async (
   client: pg.PoolClient,
   organizationId: string,
+  catalogReleaseId: string,
 ): Promise<{ records: ReviewItemRow[]; existing: ExistingOpenReviewItem[] }> => {
   const result = await client.query<ReviewItemRow>(
     `select id, evidence_fingerprint, matcher_revision, catalog_release_id, reason, status, etag_version
        from parameter_catalog.parameter_review_items
-      where organization_id = $1 and status = 'open'`,
-    [organizationId],
+      where organization_id = $1 and catalog_release_id = $2`,
+    [organizationId, catalogReleaseId],
   );
   return {
     records: result.rows,
-    existing: result.rows.map((row) => ({
+    existing: result.rows.filter((row) => row.status === "open").map((row) => ({
       id: row.id,
       groupingFingerprint: row.evidence_fingerprint,
     })),
@@ -208,24 +209,26 @@ const projectGroups = (
 ): ReviewQueueItem[] => {
   const byId = new Map(openRows.map((row) => [row.id, row]));
   const candidateState = { status: "current" as const, capturedRelease };
-  return groups.map((group) => {
+  return groups.flatMap((group) => {
     const id = ReviewItemId(group.existingItemId ?? reviewItemIdFor(group.groupingFingerprint));
     const persisted = byId.get(id);
-    return projectReviewQueueItem(group, {
+    if (!persisted || persisted.status !== "open" || persisted.evidence_fingerprint !== group.groupingFingerprint
+      || persisted.catalog_release_id !== capturedRelease.id || persisted.matcher_revision !== group.matcherRevision) return [];
+    return [projectReviewQueueItem(group, {
       capturedRelease,
       candidateState,
       persisted: {
         id,
-        etagVersion: Number(persisted?.etag_version ?? 1),
+        etagVersion: Number(persisted.etag_version),
       },
-    });
+    })];
   });
 };
 
 const readAuthorizedQueue = async (
   pool: pg.Pool,
   query: ListReviewQueueQuery,
-): Promise<Result<{ items: ReviewQueueItem[] }, ReviewQueueFailure>> => {
+): Promise<Result<{ items: ReviewQueueItem[]; ignoredReviewItemCount: number }, ReviewQueueFailure>> => {
   const authorized = authorizeReviewQueueRead(query);
   if (!authorized.ok) return authorized;
   const pin = validatePin(query.capturedRelease);
@@ -237,15 +240,19 @@ const readAuthorizedQueue = async (
   try {
     await client.query("begin");
     const records = await loadEvidence(client, query.organizationId);
-    const open = await loadOpenItems(client, query.organizationId);
+    const existing = await loadItems(client, query.organizationId, pin.value.id);
     const grouped = groupReviewEvidence(records, pin.value, {
-      existingOpenItems: open.existing,
+      existingOpenItems: existing.existing,
     });
     if (!grouped.ok) {
       await client.query("rollback");
       return grouped;
     }
-    for (const group of grouped.value) {
+    const closed = new Set(existing.records.filter((row) => row.status !== "open")
+      .map((row) => `${row.matcher_revision}\0${row.evidence_fingerprint}`));
+    const actionable = grouped.value.filter((group) => group.existingItemId !== null
+      || !closed.has(`${group.matcherRevision}\0${group.groupingFingerprint}`));
+    for (const group of actionable) {
       const id = group.existingItemId ?? reviewItemIdFor(group.groupingFingerprint);
       try {
         await insertOpenItem(client, {
@@ -271,10 +278,12 @@ const readAuthorizedQueue = async (
         throw error;
       }
     }
-    const refreshed = await loadOpenItems(client, query.organizationId);
-    const items = projectGroups(grouped.value, pin.value, refreshed.records);
+    const refreshed = await loadItems(client, query.organizationId, pin.value.id);
+    const items = projectGroups(actionable, pin.value, refreshed.records);
     await client.query("commit");
-    return { ok: true, value: { items } };
+    const ignoredReviewItemCount = new Set(refreshed.records.filter((row) => row.status === "out-of-scope")
+      .map((row) => row.id)).size;
+    return { ok: true, value: { items, ignoredReviewItemCount } };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;
@@ -295,6 +304,7 @@ export const listReviewQueue = async (
       value: {
         items: [],
         catalogRelease: query.capturedRelease,
+        ignoredReviewItemCount: result.value.ignoredReviewItemCount,
         emptyReason: "no-review-work",
       },
     };
@@ -304,6 +314,7 @@ export const listReviewQueue = async (
     value: {
       items: result.value.items,
       catalogRelease: query.capturedRelease,
+      ignoredReviewItemCount: result.value.ignoredReviewItemCount,
     },
   };
 };
