@@ -1,6 +1,7 @@
 import { corpusRefusal } from "./errors";
 import {
   COMPARISON_REPORT_CONTRACT_VERSION,
+  assertModD02SubjectTarget,
   checksumCanonicalBytes,
   serializeCanonical,
 } from "./corpusContributionSchema";
@@ -16,6 +17,7 @@ import {
 export const generateComparisonReport = (
   corpus: AggregatedComparisonCorpus,
 ): ComparisonReport => {
+  for (const item of corpus.cases) assertModD02SubjectTarget(item);
   const resultCounts = countResults(corpus.cases);
   if (resultCounts["unexplained-difference"] > 0) {
     throw corpusRefusal(

@@ -90,18 +90,22 @@ export function makeCase(
       expectedDifference: null,
     };
   }
+  const modSubjectId = family === "MOD" && comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+    ? `csub_${id}` : null;
   return {
     caseId: `${family}:${comparisonId}:${protectedReference.kind}:${id}`,
     comparisonId,
     protectedReference,
     legacyObservation: { status: "value", value: { id, family, side: "legacy" } },
-    canonicalObservation: { status: "value", value: { id, family, side: "canonical" } },
+    canonicalObservation: { status: "value", value: modSubjectId
+      ? { subject: { id: modSubjectId } }
+      : { id, family, side: "canonical" } },
     result,
     expectedDifference: {
       rClass: "R9",
       mappingHeadId: context.mappingHeadId,
       mappingHeadVersion: context.mappingHeadVersion,
-      typedTarget: protectedReference,
+      typedTarget: modSubjectId ? { kind: "catalog-subject", id: modSubjectId } : protectedReference,
       ruleId: comparisonId,
       planPin: context.planPin,
     },

@@ -2,11 +2,18 @@ import { createHash } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { seedOrganization } from "../../../testing/fixtures";
 import {
   createDisposableParameterCatalogDatabase,
   loadParameterCatalogFixture,
   type ParameterCatalogDatabase,
 } from "../../../testing/parameterCatalog";
+import {
+  installParameterModuleComparisonCatalogFixture,
+  registerParameterModuleComparisonDriver,
+} from "../../../testing/parameterCatalog/registryProjection";
+import { createParameterModule } from "../../parameters/parameterModuleRepository";
+import { CatalogSubjectId } from "../../parameter-catalog-contract";
 import { insertDismissedCompatible } from "../../parameter-modules/repository";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
@@ -20,9 +27,11 @@ import { resolveReviewItem } from "../../parameter-governance/resolveReviewItem"
 import {
   COMPARISON_FAMILIES,
   COMPARISON_IDS,
+  checksumComparisonContribution,
 } from "./corpusContributionSchema";
-import { preferPopulatedRehearsalOrganization } from "./corpusTestSupport";
+import { makeFamilyContributions, preferPopulatedRehearsalOrganization } from "./corpusTestSupport";
 import {
+  aggregateComparisonCorpus,
   aggregateLiveComparisonCorpus,
   assertIndependentPhaseReports,
   generateComparisonReport,
@@ -78,10 +87,64 @@ describe("live eleven-family comparison corpus", () => {
   let freshPreDb: ParameterCatalogDatabase;
   let freshPostDb: ParameterCatalogDatabase;
   let populatedDb: ParameterCatalogDatabase;
+  let d02Db: ParameterCatalogDatabase;
 
   afterAll(async () => {
-    await Promise.all([freshPreDb?.close(), freshPostDb?.close(), populatedDb?.close()]);
+    await Promise.all([freshPreDb?.close(), freshPostDb?.close(), populatedDb?.close(), d02Db?.close()]);
   });
+
+  it("rejects a rechecksummed MOD D02 target that differs from the produced Subject", async () => {
+    d02Db = await createDisposableParameterCatalogDatabase("dcpd02");
+    const database = createPostgresDatabase(d02Db.url);
+    try {
+      const pool = getRootPostgresPool(database)!;
+      const { pin } = await installParameterModuleComparisonCatalogFixture(pool);
+      await seedOrganization(pool, { id: "dcp-d02-org" });
+      const business = await createParameterModule(pool, { organizationId: "dcp-d02-org", name: "Business" });
+      const driver = await createParameterModule(pool, {
+        organizationId: "dcp-d02-org", parentId: business.id, name: "Driver",
+        kind: "driver-group", sourceKey: "compatible:acme,power",
+      });
+      await registerParameterModuleComparisonDriver(pool, {
+        organizationId: "dcp-d02-org", destinationModuleId: driver.id,
+        subjectId: CatalogSubjectId("csub_acme_power"), release: pin,
+        idempotencyKey: "dcp-d02-register", principalId: "dcp-d02-owner",
+      });
+      const input = providerInput(database, pool, "populated", "pre-activation", POP_PRE_SHA, pin);
+      const mod = await providers.find((provider) => provider.family === "MOD")!.provide(input);
+      const produced = mod.cases.find((item) => item.protectedReference.id === driver.id
+        && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY");
+      expect(produced?.canonicalObservation).toMatchObject({ status: "value", value: {
+        subject: { id: "csub_acme_power" },
+      } });
+      expect(produced?.expectedDifference?.typedTarget).toEqual({ kind: "catalog-subject", id: "csub_acme_power" });
+      const contributions = makeFamilyContributions(input).map((item) => item.family === "MOD" ? mod : item);
+      const accepted = aggregateComparisonCorpus(contributions, input);
+      expect(accepted.cases.some((item) => item.caseId === produced?.caseId)).toBe(true);
+      const unlinked = accepted.cases.find((item) => item.family === "MOD"
+        && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+        && item.protectedReference.id === business.id);
+      expect(unlinked?.result).toBe("unqueryable/protected-reference-missing");
+      expect(unlinked?.expectedDifference).toBeNull();
+      expect(() => generateComparisonReport(accepted)).toThrow("unqueryable/protected-reference-missing");
+
+      const cases = mod.cases.map((item) => item !== produced ? item : {
+        ...item,
+        expectedDifference: {
+          ...item.expectedDifference!,
+          typedTarget: { kind: "catalog-subject", id: "csub_other_subject" },
+        },
+      });
+      const unsigned = { ...mod, cases };
+      const forged = { ...unsigned, checksum: checksumComparisonContribution(unsigned) };
+      expect(forged.checksum).not.toBe(mod.checksum);
+      expect(() => aggregateComparisonCorpus(
+        contributions.map((item) => item.family === "MOD" ? forged : item), input,
+      )).toThrow("typedTarget.id must equal canonical Subject ID");
+    } finally {
+      await database.close();
+    }
+  }, 120_000);
 
   it("registers exactly eleven production families", () => {
     expect(providers.map((provider) => provider.family)).toEqual([...COMPARISON_FAMILIES]);
