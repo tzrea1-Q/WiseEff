@@ -22,10 +22,7 @@ import {
 } from "./parameterCatalogComparisonContribution";
 import { insertDismissedCompatible } from "./repository";
 import { listDismissedCompatibleIdentitiesForComparison } from "./comparisonInventoryRepository";
-import { compileCatalogRelease } from "../catalog-kernel/compiler";
-import { validCatalogReleaseBundle } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
-import { installPublishedRelease } from "../catalog-kernel/install/installer";
+import { installParameterModuleComparisonCatalogFixture } from "../../testing/parameterCatalog/registryProjection";
 import type { CatalogReleasePin } from "../parameter-catalog-contract";
 import * as comparisonInventoryRepository from "./comparisonInventoryRepository";
 import * as moduleRepository from "./repository";
@@ -58,19 +55,6 @@ function baseInput(
     catalogSnapshotChecksum: createHash("sha256").update(`catalog:${phase}:${inventoryMode}`).digest("hex"),
     expectedCatalogReleasePin,
   };
-}
-
-async function installComparisonRelease(pool: NonNullable<ReturnType<typeof getRootPostgresPool>>): Promise<CatalogReleasePin> {
-  const complete = validCatalogReleaseBundle();
-  const first = structuredClone(complete.releases[0]!);
-  const bundle = { schemaVersion: complete.schemaVersion, targetReleaseId: first.manifest.release.id, releases: [first] };
-  const compiled = compileCatalogRelease(bundle);
-  if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
-  const installed = await installPublishedRelease(pool, {
-    mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.value.aggregateDigest,
-  });
-  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
-  return { id: compiled.value.release.id, digest: compiled.value.release.digest };
 }
 
 function assertCanonicalChecksum(contribution: ModComparisonContribution) {
@@ -117,7 +101,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     const pool = getRootPostgresPool(database);
     expect(pool).toBeDefined();
     try {
-      const pin = await installComparisonRelease(pool!);
+      const { pin } = await installParameterModuleComparisonCatalogFixture(pool!);
       const contribution = await provideModParameterCatalogComparisonContribution(
         baseInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA, pin),
       );
@@ -139,7 +123,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     const pool = getRootPostgresPool(database);
     expect(pool).toBeDefined();
     try {
-      const pin = await installComparisonRelease(pool!);
+      const { pin } = await installParameterModuleComparisonCatalogFixture(pool!);
       const contribution = await provideModParameterCatalogComparisonContribution(
         baseInput(database, pool!, "fresh", "post-p13", FRESH_POST_SHA, pin),
       );
@@ -175,7 +159,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     expect(prePool).toBeDefined();
     expect(postPool).toBeDefined();
     try {
-      const pin = await installComparisonRelease(prePool!);
+      const { pin } = await installParameterModuleComparisonCatalogFixture(prePool!);
       const pre = await provideModParameterCatalogComparisonContribution(
         baseInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA, pin),
       );
@@ -242,7 +226,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     const pool = getRootPostgresPool(database);
     expect(pool).toBeDefined();
     try {
-      const pin = await installComparisonRelease(pool!);
+      const { pin } = await installParameterModuleComparisonCatalogFixture(pool!);
       const input = baseInput(database, pool!, "populated", "pre-activation", POP_PRE_SHA, pin);
       await database.query("insert into organizations (id, name) values ($1, $2)", ["c4-org-2", "C4 second organization"]);
       const before = await provideModParameterCatalogComparisonContribution(input);
