@@ -401,6 +401,58 @@ const installOrThrow = async (
   }
 };
 
+/** Bootstrap the fixed active, unbound-active, and retired Definition projection fixture. */
+export const installRegistryProjectionCatalogFixture = async (
+  pool: pg.Pool,
+): Promise<{
+  pin: CatalogReleasePin;
+  activeDefinitionIds: readonly [string, string];
+  retiredDefinitionId: string;
+}> => {
+  const bundle = mutable(firstReleaseBundle());
+  const release = bundle.releases[0]!;
+  const definition = release.documents.find((document) => document.kind === "definition");
+  if (!definition || definition.kind !== "definition") {
+    throw new Error("registry projection fixture definition missing");
+  }
+
+  const unboundActive = structuredClone(definition);
+  unboundActive.content.id = Y_DEFINITION_ID;
+  unboundActive.content.propertyKey = "iin_min";
+  unboundActive.content.revision.id = Y_REVISION_1;
+  unboundActive.content.revision.displayName = "Input current minimum";
+  unboundActive.content.revision.matching = {
+    ...unboundActive.content.revision.matching,
+    sourceProperty: "iin_min",
+  };
+
+  const retired = structuredClone(definition);
+  retired.content.id = "pdef_acme_power_legacy_limit";
+  retired.content.propertyKey = "legacy_limit";
+  retired.content.revision.id = "drev_acme_power_legacy_limit_1";
+  retired.content.revision.displayName = "Retired legacy limit";
+  retired.content.revision.lifecycle = "retired";
+
+  release.documents.push(unboundActive, retired);
+  refreshReleaseSource(release);
+
+  const compiled = compileOrThrow(bundle);
+  await installOrThrow(
+    createCatalogInstaller(pool),
+    {
+      mode: "bootstrap",
+      source: jsonCatalogReleaseSource(bundle),
+      expectedTargetDigest: compiled.aggregateDigest,
+    },
+    "registry projection",
+  );
+  return {
+    pin: pinOf(compiled),
+    activeDefinitionIds: [X_DEFINITION_ID, Y_DEFINITION_ID],
+    retiredDefinitionId: retired.content.id,
+  };
+};
+
 export const installPublishedCatalogChain = async (
   pool: pg.Pool,
 ): Promise<InstalledCatalogChain> => {

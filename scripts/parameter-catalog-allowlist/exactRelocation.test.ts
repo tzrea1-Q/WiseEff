@@ -9,6 +9,8 @@ import { applyReviewedExactRelocation, exactRelocationRecordPath, validateExactR
 import { scanParameterCatalogBoundaries } from "../check-parameter-catalog-boundaries";
 import { compareBoundaryInventory } from "./deterministicOutput";
 import type { BoundaryViolation } from "./schema";
+import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
+import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
 
 const repoRoot = process.cwd();
 const record: {
@@ -21,6 +23,24 @@ const allowlist = await loadAllowlistIndex(repoRoot);
 const source = execFileSync("git", ["show", `${record.trustedBaseSha}:${record.file}`], { cwd: repoRoot });
 const destination = await readFile(`${repoRoot}/${record.file}`);
 let discovered: BoundaryViolation[];
+const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T14RetiredSourceIds];
+const issue900RetiredIds = new Set((JSON.parse(await readFile(
+  `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-900-dashboard-retirement.json`, "utf8",
+)) as { retiredAllowlistEntries: Array<{ id: string }> }).retiredAllowlistEntries.map((entry) => entry.id));
+
+function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds]);
+  expect(issue900RetiredIds.size).toBe(13);
+  expect(issue913StaleRetiredSourceIds).toHaveLength(17);
+  expect(issue913T14RetiredSourceIds).toHaveLength(4);
+  expect(retired.size).toBe(34);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(34);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4);
+  expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
+    .toEqual([...retired].sort());
+  expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
+}
+
 beforeAll(async () => {
   const all = await scanParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha);
   const targets = new Set(record.pairs.map((pair) => pair.new.id));
@@ -40,7 +60,8 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(result).toHaveLength(23);
     expect(result[0]).toEqual(record.pairs[0]);
     expect(fixture.violations).toHaveLength(3519);
-    expect(allowlist.entries).toHaveLength(3491);
+    expect(fixture.violations.length - 28).toBe(3491);
+    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4);
   });
 
   it.each([
@@ -98,10 +119,10 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(() => validateExactRelocation(record, altered)).toThrow();
   });
 
-  it("does not absorb unmapped new debt or restore any of the six removed allowances", () => {
+  it("does not absorb unmapped new debt or restore historical and issue-specific retirements", () => {
     const ids = new Set(allowlist.entries.map((entry) => entry.id));
     const removed = fixture.violations.filter((entry) => !ids.has(entry.id));
-    expect(removed).toHaveLength(28);
+    expectCurrentRemovedPartition(removed);
     const unrelated = { ...record.pairs[0].new, id: `${record.pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
     const pairs = validateExactRelocation(record, { ...input(), discovered: [...discovered, unrelated] });
     const mapped = pairs.map((pair) => pair.old);

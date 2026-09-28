@@ -190,7 +190,19 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` 加载；mock mode 由 `src/config/power-management.json` 的 `parent`/`path` 经 `buildPowerManagementModuleTree()` 派生。
 
 mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量。API mode 的 `db:seed:m1` 会在 seed 时从已提交的 `aurora-board.dts` 模板额外派生 228 个 DTS 来源参数；每个落库项目值都包含 `sourceFileName=aurora-board.dts` 和含属性名的 `sourceNodePath`。修改基础 DTS 或项目差异后，运行 `npm run dts:seed:generate` 重新生成三份项目主 DTS fixture。可选：`npm run dtc:seed:compile` 在 CI 中用钉扎工具链验证 seed 板——不是产品正确性叙事的前提（seed 板为 SoT）。
+API 模式的 `/parameter-submissions` 与 `/parameter-review` 复用 canonical 请求 owner 及 pending、approved、rejected、withdrawn 状态。个人追踪的 `mine=true` 由服务端绑定认证提交人 ID，审核可见性与固定来源差异读取保持项目和租户授权。面板展示固定来源、审核决定和应用结果，不生成旧提交轮次；撤回只使用现有 pending 请求 owner。
+
+`?project=…&request=…` 在刷新后恢复 canonical 选择；无效或不可见 ID 明确提示不可用。选择只更新 URL，保留行按钮焦点；终态动作同步或清除所选 ID，项目切换后丢弃旧响应。保留的旧请求使用 `legacyRequest`（仍识别已知旧 `request` 链接）；API 模式下，旧个人归档信任服务端按本人、组织及项目范围过滤后的 `mine=true` 结果。旧归档 DTO 不包含提交人 ID，因此客户端不再重复按身份过滤，也不显示缺失的 ID；mock/旧流程本地数据仍可使用已有身份字段。旧记录只读，不进入 canonical 待办；旧批量审核仅属于 mock/旧流程。`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts` 在隔离本地真实 API 中以 1440×900 验证 canonical-only 生命周期、本人/审核人追踪、权限拒绝、失效链接、键盘焦点、刷新和重启。
+
 - `/parameter-home`：参数看板首页。UI 位于 `src/features/parameter-home/`，通过 `ParameterDashboardRepository` 读取 `/api/v1/parameters/dashboard/summary` 与 `/api/v1/parameters/dashboard/hotspots`。页面内 `AnalysisContextControls` 负责时间窗口与热榜维度切换；`dashboardState` 为 `summary` 与 `hotspots` 维护独立异步分区（`idle | loading | ready | empty | error`）。`derivePersonalWorkbench.ts` 基于 `WorkbenchSignals` 与角色生成待办与场景入口。
+
+API 模式的参数指标读取 canonical Binding、值、草稿、请求和历史事件，不叠加旧 semantic 数量。活跃 Binding 必须具有 present 当前值及归属正确的固定来源；已替代 Binding、已删除值和仅表示身份的来源占位均不计入。“已绑定 Definition”是这些活跃 Binding 所引用 Definition 的去重数量，不是整个 Catalog 总数；`totalParameters` 仅保留为 Binding 数量的兼容别名。删除后历史事件保留，但不恢复活跃数量。
+
+趋势和热榜窗口为过去 7、30 或 180 个完整 UTC 日，起点包含、今日 UTC 零点不包含。草稿和待审数独立反映当前状态：只有 pending canonical 请求进入审核待办。用户最新请求为 rejected 且草稿仍存在时，计为退回待办并从可编辑草稿数中排除；withdrawn 会让现存草稿回到可编辑草稿数；重新提交后清除退回待办，批准后草稿移除。热榜修改数要求已提交历史事件的前值不是身份占位值，因此排除首次物化，同时包含后续来源修订传播；该指标不等同于人员手动编辑数。canonical 风险分类尚不可用，显示“不可用”，不伪装为零或低风险；行为热度也不等于风险等级。项目和账号治理指标保留原义。汇总失败、字段不可用和查询成功的真零分别展示，各异步分区丢弃被新请求替代的响应。
+
+展示视角可选择当前范围内实际持有的较低角色，不授予权限。全部项目聚合卡片进入单项目工作台或审核队列前，先明确选择项目。canonical 热点链接保留目标支持的项目上下文，不虚构旧 parameter/module 筛选，也不承诺目标页面尚不支持的 Binding 定位。
+
+`e2e/acceptance/canonical-dashboard.acceptance.spec.ts` 在隔离的真实 API、PostgreSQL 和对象存储上，以 1440×900 验证 canonical-only 项目的创建草稿、提交、拒绝、批准、删除及项目跳转。既有首页路径验收仍位于 `e2e/acceptance/parameter-home.acceptance.spec.ts`（`PARAM-HOME-001`）。
 
 日志分析：
 

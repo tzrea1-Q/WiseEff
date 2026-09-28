@@ -22,6 +22,8 @@ export type RegistrationResult = {
   readonly registrationMethod: RegistrationMethod;
   readonly placementOrigin: PlacementOrigin;
   readonly moduleId: string;
+  /** Current Placement version for conditional move callers. */
+  readonly placementVersion?: string;
   readonly release: CatalogReleasePin;
   readonly idempotencyKey: string;
   readonly fingerprint: string;

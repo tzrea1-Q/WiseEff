@@ -12,7 +12,8 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import type { AuthContext } from "../auth/types";
 import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
-import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
+import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage, canViewParameters } from "../parameter-kernel/policy";
+import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import { getRootPostgresPool, isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
@@ -22,7 +23,7 @@ import { readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff"
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
-import { createBindingDraft, listProjectBindings } from "../parameter-topology/service";
+import { createBindingDraft, listProjectBindings, requireCanViewProject } from "../parameter-topology/service";
 import {
   createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
@@ -82,6 +83,30 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 function flattenQuery(query: Record<string, string | string[]>) {
   return Object.fromEntries(Object.entries(query).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]));
+}
+
+async function visibleValueChangeRequests(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; status?: "pending" | "approved" | "rejected" | "withdrawn"; mine?: boolean },
+  concealProject = false
+) {
+  if (!auth.user.isActive || !canViewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter view access is required for this project.");
+  }
+  if (!auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId)) {
+    throw new ApiError(concealProject ? "NOT_FOUND" : "FORBIDDEN", "Project parameter requests are not available.");
+  }
+  const items = await listCanonicalValueChangesForAuth(db, auth, input);
+  const canReadReviewQueue = !input.mine && canReviewParameters(auth)
+    && canReviewParameterStage(auth, input.projectId, "software_review")
+    && await hasCurrentCanonicalReviewRole(db, {
+      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+    });
+  if (!canReadReviewQueue) return items.filter((item) => item.submitterUserId === auth.user.id);
+  return input.status === "pending"
+    ? items.filter((item) => item.submitterUserId !== auth.user.id)
+    : items;
 }
 
 function topologyDraftToValueDraftDto(draft: ParameterDraftDto): CanonicalValueDraftDto | null {
@@ -280,6 +305,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({ limit: z.coerce.number().int().positive().max(200).optional() }),
         flattenQuery(request.query)
       );
+      requireCanViewProject(auth, params.projectId);
       const project = await getProjectById(db, {
         organizationId: auth.organization.id,
         projectId: params.projectId
@@ -329,6 +355,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({ projectId: z.string().min(1), bindingId: z.string().min(1) }),
         request.params
       );
+      requireCanViewProject(auth, params.projectId);
       const project = await getProjectById(db, {
         organizationId: auth.organization.id,
         projectId: params.projectId
@@ -794,12 +821,16 @@ export function registerCatalogProjectValueConsumerRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(projectBindingsParamsSchema, request.params);
     const query = parseWithSchema(
-      z.object({ status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional() }),
+      z.object({
+        status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional(),
+        mine: z.enum(["true", "false"]).optional()
+      }),
       flattenQuery(request.query)
     );
-    const items = await listCanonicalValueChangesForAuth(db, auth, {
+    const items = await visibleValueChangeRequests(db, auth, {
       projectId: params.projectId,
-      status: query.status
+      status: query.status,
+      mine: query.mine === "true"
     });
     return { status: 200, body: { items } };
   });
@@ -808,8 +839,15 @@ export function registerCatalogProjectValueConsumerRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1),requestId: z.string().min(1) }),request.params);
-    if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
-    const item = await readCanonicalSourceDiff(db,options.objectStore,auth,params);
+    const item = await db.transaction(async (tx) => {
+      // Keep the existing current-review-role lock through the frozen object read.
+      const visible = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
+      if (!visible.some((request) => request.id === params.requestId)) {
+        throw new ApiError("NOT_FOUND", "Source change request was not found.");
+      }
+      if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+      return readCanonicalSourceDiff(tx, options.objectStore, auth, params);
+    });
     return { status: 200,body: { item } };
   });
 

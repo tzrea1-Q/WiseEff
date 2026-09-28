@@ -13,6 +13,12 @@ export function computeEyebrow(
   if (hotspot.kind === "parameter") {
     return `${hotspot.projectCode} · ${hotspot.module}`;
   }
+  if (hotspot.kind === "module") {
+    return hotspot.projectCode;
+  }
+  if (hotspot.kind === "project" && !hotspot.lastChangedAt) {
+    return "窗口内暂无变更";
+  }
 
   if (hotspot.module !== "项目参数") {
     const projectCount = new Set(

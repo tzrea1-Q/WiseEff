@@ -240,6 +240,73 @@ const writeHeaders = {
 };
 
 describe("S8-GOV one-command HTTP mapping", () => {
+  it("passes an explicit module identity to the destination resolver without guessing a default", async () => {
+    const { ports, commands } = createHarness();
+    const response = await handleCatalogGovernance({
+      ...ports,
+      resolveDestinationModuleId: async (input) => {
+        expect(input).toMatchObject({ organizationId: orgAdmin.organizationId, subjectKind: "driver", destinationModuleId: "module-exact" });
+        return input.destinationModuleId ?? null;
+      }
+    }, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+      headers: writeHeaders,
+      body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, destinationModuleId: "module-exact" }
+    }));
+    expect(response.status).toBe(201);
+    expect(commands[0]).toMatchObject({ destinationModuleId: "module-exact" });
+  });
+
+  it("does not silently ignore an explicit module when a resolver cannot validate it", async () => {
+    const { ports, commands } = createHarness();
+    const response = await handleCatalogGovernance(ports, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+      headers: writeHeaders,
+      body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, destinationModuleId: "module-foreign" }
+    }));
+    expect(response.status).toBe(400);
+    expect(commands).toHaveLength(0);
+  });
+
+  it("passes the client's exact placement version to the atomic owner, including retries", async () => {
+    const { ports, commands } = createHarness();
+    const version = "1780000000000000";
+    const readPorts: CatalogGovernancePorts = { ...ports, getRegistration: async () => ({
+      id: registrationResult.registrationId,
+      organizationId: orgAdmin.organizationId,
+      subjectId: registrationResult.subjectId,
+      status: "active", method: "explicit", catalogReleaseId: pin.id, etag: "unused-registration-etag",
+      placement: { id: registrationResult.placementId, displayName: "Current module", parentPlacementId: null }
+    }) };
+    const input = request("PATCH", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${registrationResult.registrationId}/placement`, {
+      headers: { ...writeHeaders, [CATALOG_IF_MATCH_HEADER]: `"${registrationResult.placementId}:${version}"` },
+      body: { placement: { mode: "use-default" } }
+    });
+    expect((await handleCatalogGovernance(readPorts, input)).status).toBe(200);
+    expect((await handleCatalogGovernance(readPorts, input)).status).toBe(200);
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toMatchObject({ kind: "move-placement", expectedPlacementVersion: version });
+    expect(commands[1]).toEqual(commands[0]);
+    const invalid = { ...input, headers: { ...writeHeaders, [CATALOG_IF_MATCH_HEADER]: `"${registrationResult.placementId}"` } };
+    expect((await handleCatalogGovernance(readPorts, invalid)).status).toBe(409);
+    expect(commands).toHaveLength(2);
+  });
+
+  it("exposes cross-project placement impact only to organization administrators", async () => {
+    for (const canMutateOrganization of [true, false]) {
+      const { ports } = createHarness({ scope: { ...orgAdmin, canMutateOrganization } });
+      const result = await handleCatalogGovernance({ ...ports, getRegistration: async () => ({
+        id: registrationResult.registrationId, organizationId: orgAdmin.organizationId,
+        subjectId: registrationResult.subjectId, status: "active", method: "explicit",
+        catalogReleaseId: pin.id, etag: "registration-etag",
+        placement: { id: registrationResult.placementId, moduleId: "module-a", version: "123456", displayName: "Module A", parentPlacementId: null },
+        impact: { bindingCount: 7, projectCount: 3 }
+      }) }, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${registrationResult.registrationId}`));
+      expect(result.status).toBe(200);
+      const body = result.body as { item: { impact?: unknown; placement: { version?: unknown } } };
+      expect(body.item.impact).toEqual(canMutateOrganization ? { bindingCount: 7, projectCount: 3 } : undefined);
+      expect(body.item.placement.version).toBeUndefined();
+    }
+  });
+
   it("matches every frozen governance route and refuses legacy lookup", () => {
     for (const route of catalogGovernanceRoutes) {
       const filled = route.path

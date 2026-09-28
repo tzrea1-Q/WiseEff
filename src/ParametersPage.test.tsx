@@ -957,7 +957,7 @@ describe("ParametersPage draft edge cases", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看我的提交" }));
 
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-submissions");
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-submissions?project=aurora");
   });
 
   it("uses the draft sheet submit-parameter action to keep the item in the modified table", () => {

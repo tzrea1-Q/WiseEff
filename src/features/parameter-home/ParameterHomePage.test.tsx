@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useMemo, useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { DashboardState } from "@/application/parameters/dashboardState";
@@ -13,6 +13,8 @@ const summary: DashboardSummary = {
   projectId: null,
   kpis: {
     totalParameters: 51,
+    totalBindings: 51,
+    totalDefinitions: 40,
     managedProjects: 3,
     changeFrequency: 19,
     activeContributors: 5,
@@ -24,7 +26,8 @@ const summary: DashboardSummary = {
     workflowCount: 0,
     openItemCount: 0,
     pendingTodoCount: 0,
-    highRiskTouchCount: 0
+    highRiskTouchCount: null,
+    riskAvailability: "unavailable"
   },
   personalTrend: [],
   riskBuckets: [
@@ -59,7 +62,7 @@ const hotspot: DashboardHotspot = {
   score: 180,
   scoreBreakdown: { frequency: 30, scope: 40, workflow: 25, collaboration: 15 },
   evidence: [
-    "累计修改 12 / 200 个参数（6%）",
+    "已有已提交变更记录的参数绑定 12 / 200（6%），含来源修订传播",
     "窗口内 8 次参数变更",
     "待处理流程 2 项 · 窗口内 3 项请求"
   ],
@@ -98,6 +101,7 @@ function renderPage(over: {
   dashboardState?: DashboardState;
   runtime?: { loadSummary: ReturnType<typeof vi.fn>; loadHotspots: ReturnType<typeof vi.fn> };
   onDashboardOverviewScopeChange?: ReturnType<typeof vi.fn>;
+  onNavigate?: ReturnType<typeof vi.fn>;
 } = {}) {
   const loadSummary = over.runtime?.loadSummary ?? vi.fn();
   const loadHotspots = over.runtime?.loadHotspots ?? vi.fn();
@@ -113,7 +117,7 @@ function renderPage(over: {
         onDashboardDimensionChange={vi.fn()}
         onDashboardOverviewScopeChange={onDashboardOverviewScopeChange}
         onDashboardProjectChange={vi.fn()}
-        onNavigate={vi.fn()}
+        onNavigate={over.onNavigate ?? vi.fn()}
         onNewProject={vi.fn()}
       />
     </TopBarActionsHarness>
@@ -123,6 +127,16 @@ function renderPage(over: {
 }
 
 describe("ParameterHomePage", () => {
+  it("requires a project choice before opening an aggregate review queue", () => {
+    const onNavigate = vi.fn();
+    renderPage({ roleId: "software-committer", onNavigate });
+    fireEvent.click(screen.getByRole("button", { name: /处理待审阅参数变更/ }));
+    expect(onNavigate).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "选择要查看的项目" });
+    const project = initialState.configDraft.projects[0];
+    fireEvent.click(within(dialog).getByRole("button", { name: project.name, exact: true }));
+    expect(onNavigate).toHaveBeenCalledWith(`/parameter-review?project=${project.id}`);
+  });
   it("defaults to the overview workbench page", () => {
     renderPage({ roleId: "hardware-user" });
     expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
@@ -144,6 +158,8 @@ describe("ParameterHomePage", () => {
       })
     });
     expect(screen.getByText("加载态势指标", { selector: ".sr-only" })).toBeInTheDocument();
+    expect(screen.getByText("加载待办事项", { selector: ".sr-only" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "待办事项" })).not.toBeInTheDocument();
   });
 
   it("retries summary load from situation error", () => {
@@ -153,6 +169,7 @@ describe("ParameterHomePage", () => {
       })
     });
     fireEvent.click(screen.getAllByRole("button", { name: "重试" })[0]);
+    expect(screen.queryByRole("region", { name: "待办事项" })).not.toBeInTheDocument();
     expect(loadSummary).toHaveBeenCalledWith({
       projectId: undefined,
       window: "30d",
@@ -169,6 +186,17 @@ describe("ParameterHomePage", () => {
     });
     fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
     expect(screen.getByText("热榜失败")).toBeInTheDocument();
+  });
+
+  it("does not reuse stale hotspot recommendations while the scoped query fails", () => {
+    renderPage({
+      roleId: "hardware-user",
+      dashboardState: buildDashboardState({
+        hotspots: { status: "error", data: [hotspot], error: "热榜失败" }
+      })
+    });
+    expect(screen.getByText("不可用", { selector: ".parameter-home__scenario-entry b" })).toBeInTheDocument();
+    expect(screen.queryByText("查看热区所在项目：AUR-Prod")).not.toBeInTheDocument();
   });
 
   it("does not show review todos for guest", () => {
@@ -221,7 +249,7 @@ describe("ParameterHomePage", () => {
       roleId: "guest",
       dashboardState: buildDashboardState({ overviewScope: "overall" })
     });
-    expect(screen.getByText("参数总量", { selector: ".parameter-home__situation-stat-label" })).toBeInTheDocument();
+    expect(screen.getByText("活跃 Binding", { selector: ".parameter-home__situation-stat-label" })).toBeInTheDocument();
     expect(screen.queryByText("我的变更", { selector: ".parameter-home__situation-stat-label" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "参数更新趋势" })).toBeInTheDocument();
   });

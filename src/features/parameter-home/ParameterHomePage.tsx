@@ -5,6 +5,8 @@ import type { DashboardWindow, HotspotDimension, OverviewScope, WorkbenchSignals
 import type { PrototypeState } from "@/domain/prototype/types";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { useTopBarLeadingActions } from "@/components/layout";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import { Button } from "@/components/ui/button";
 import { AnalysisContextControls } from "./components/AnalysisContextControls";
 import { InsightSection } from "./components/InsightSection";
 import { OverviewRow } from "./components/OverviewRow";
@@ -47,6 +49,7 @@ export function ParameterHomePage({
   onNewProject
 }: ParameterHomePageProps) {
   const [workbenchPage, setWorkbenchPage] = useState<WorkbenchPage>(DEFAULT_WORKBENCH_PAGE);
+  const [projectDestination, setProjectDestination] = useState<string | null>(null);
 
   // The dashboard loads when this page mounts or its analysis context changes;
   // the shell no longer watches page.key on the page's behalf.
@@ -67,29 +70,40 @@ export function ParameterHomePage({
     state.activeRoleId
   ]);
 
-  const hotspotCount = dashboardState.hotspots.data?.length ?? 0;
+  const hotspotsAvailable = dashboardState.hotspots.status === "ready" || dashboardState.hotspots.status === "empty";
+  const hotspotCount = hotspotsAvailable ? dashboardState.hotspots.data.length : 0;
   useTopBarLeadingActions(
     <WorkbenchPageToggle
       placement="bar"
       page={workbenchPage}
       hotspotCount={hotspotCount}
+      hotspotStatus={dashboardState.hotspots.status}
       onPageChange={setWorkbenchPage}
     />,
-    [workbenchPage, hotspotCount]
+    [workbenchPage, hotspotCount, dashboardState.hotspots.status]
   );
 
   const projectId = dashboardState.projectScope ?? undefined;
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const projectOptions = useMemo(
-    () => state.configDraft.projects.map((project) => ({ value: project.id, label: project.name })),
-    [state.configDraft.projects]
+    () => state.configDraft.projects
+      // Legacy mock accounts have no scoped bindings; API accounts carry roles.
+      .filter((project) => currentUser?.isActive && (currentUser.roles === undefined || currentUser.roles.some(
+        (role) => role.projectId === null || role.projectId === project.id
+      )))
+      .map((project) => ({ value: project.id, label: project.name })),
+    [currentUser, state.configDraft.projects]
   );
   const summary = dashboardState.summary.data;
-  const hotspots = dashboardState.hotspots.data;
+  const hotspots = hotspotsAvailable ? dashboardState.hotspots.data : [];
   const workbench = useMemo(
     () =>
       derivePersonalWorkbench({
         roleId: state.activeRoleId,
         signals: summary?.workbenchSignals ?? EMPTY_SIGNALS,
+        projectScope: dashboardState.projectScope,
+        activeBindingCount: summary?.kpis.totalBindings,
+        hotspotsStatus: dashboardState.hotspots.status,
         changeRequests: state.changeRequests,
         drafts: state.parameterDrafts,
         projects: state.configDraft.projects.map((project) => ({
@@ -99,7 +113,17 @@ export function ParameterHomePage({
         })),
         hotspots
       }),
-    [state.activeRoleId, state.changeRequests, state.parameterDrafts, state.configDraft.projects, summary?.workbenchSignals, hotspots]
+    [
+      state.activeRoleId,
+      dashboardState.projectScope,
+      dashboardState.hotspots.status,
+      state.changeRequests,
+      state.parameterDrafts,
+      state.configDraft.projects,
+      summary?.workbenchSignals,
+      summary?.kpis.totalBindings,
+      hotspots
+    ]
   );
   const previousRoleViewRef = useRef<string | undefined>(undefined);
 
@@ -139,7 +163,22 @@ export function ParameterHomePage({
   );
 
   const workbenchPrimary = (
-    <WorkbenchPrimary workbench={workbench} onNavigate={onNavigate} onNewProject={onNewProject} />
+    <WorkbenchPrimary
+      workbench={workbench}
+      summaryStatus={dashboardState.summary.status}
+      summaryError={dashboardState.summary.error}
+      onSummaryRetry={reloadSummary}
+      onNavigate={(path) => {
+        const [pathname, query = ""] = path.split("?", 2);
+        if (["/parameters", "/parameter-review", "/parameter-submissions"].includes(pathname)
+          && !new URLSearchParams(query).get("project")) {
+          setProjectDestination(path);
+        } else {
+          onNavigate(path);
+        }
+      }}
+      onNewProject={onNewProject}
+    />
   );
 
   const insightSection = (
@@ -158,6 +197,29 @@ export function ParameterHomePage({
 
   return (
     <section className="parameter-home" aria-label="参数管理首页">
+      <ModalDialog open={projectDestination !== null} onDismiss={() => setProjectDestination(null)} className="confirm-dialog" describedBy>
+        {({ titleId, descriptionId }) => (
+          <>
+            <h2 id={titleId}>选择要查看的项目</h2>
+            <p id={descriptionId}>当前卡片汇总全部授权项目。选择项目后查看该项目的参数或待办。</p>
+            <div className="flex flex-wrap gap-2">
+            {projectOptions.map((project) => (
+              <Button key={project.value} type="button" variant="outline" onClick={() => {
+                if (!projectDestination) return;
+                const [pathname, query = ""] = projectDestination.split("?", 2);
+                const params = new URLSearchParams(query);
+                params.set("project", project.value);
+                setProjectDestination(null);
+                onDashboardProjectChange(project.value);
+                onNavigate(`${pathname}?${params.toString()}`);
+              }}>{project.label}</Button>
+            ))}
+            </div>
+            {projectOptions.length === 0 ? <p>当前没有可查看的项目。</p> : null}
+            <Button type="button" variant="ghost" onClick={() => setProjectDestination(null)}>取消</Button>
+          </>
+        )}
+      </ModalDialog>
       <div className="parameter-home__context-bar">
         <AnalysisContextControls
           window={dashboardState.window}

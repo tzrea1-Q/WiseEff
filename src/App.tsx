@@ -737,7 +737,7 @@ function AppShell({
     if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
-    const urlProjectId = page.key === "parameters" || page.key === "parameter-review"
+    const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
       ? new URLSearchParams(search).get("project") : null;
     const projectId = urlProjectId || state.activeProjectId;
     if (!projectId) {
@@ -1428,12 +1428,12 @@ function TopBar({
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
-    page.key === "parameters" || page.key === "parameter-review"
+    page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
       ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
   const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
-    if (page.key === "parameters" || page.key === "parameter-review") {
+    if (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions") {
       onNavigate(`/${page.key}?project=${encodeURIComponent(projectId)}`);
     }
   };

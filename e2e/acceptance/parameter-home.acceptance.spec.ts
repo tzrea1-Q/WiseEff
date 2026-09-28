@@ -43,32 +43,38 @@ test.describe("parameter-home production dashboard", () => {
     await expect(page.getByRole("radio", { name: "近 7 天" }).first()).toHaveAttribute("aria-checked", "true");
     await expect(page.locator(".parameter-home__panel-subtitle")).toContainText("近 7 天");
 
+    await page.getByRole("radio", { name: "近 30 天" }).first().click();
+    await expect(page.locator(".parameter-home__panel-subtitle")).toContainText("近 30 天");
     await page.getByRole("radio", { name: "模块榜" }).first().click();
     await expect(page.getByRole("radio", { name: "模块榜" }).first()).toHaveAttribute("aria-checked", "true");
 
     await page.getByRole("radio", { name: "项目榜" }).first().click();
-    await page.getByRole("button", { name: /展开热区 #1 / }).click();
-    const fabOverlapsLastHotspot = await page.evaluate(() => {
-      const fab = document.querySelector<HTMLElement>('button[aria-label="打开小泽"]');
-      const hotspotRows = Array.from(
-        document.querySelectorAll<HTMLElement>('[aria-label^="展开热区"], [aria-label^="收起热区"]')
-      );
-      const lastHotspot = hotspotRows.at(-1);
-      if (!fab || !lastHotspot) {
-        return true;
-      }
+    if (hotspotsBody.items?.length) {
+      await page.getByRole("button", { name: /展开热区 #1 / }).click();
+      const fabOverlapsLastHotspot = await page.evaluate(() => {
+        const fab = document.querySelector<HTMLElement>('button[aria-label="打开小泽"]');
+        const hotspotRows = Array.from(
+          document.querySelectorAll<HTMLElement>('[aria-label^="展开热区"], [aria-label^="收起热区"]')
+        );
+        const lastHotspot = hotspotRows.at(-1);
+        if (!fab || !lastHotspot) {
+          return true;
+        }
 
-      const fabRect = fab.getBoundingClientRect();
-      const hotspotRect = lastHotspot.getBoundingClientRect();
-      return !(
-        fabRect.right <= hotspotRect.left ||
-        fabRect.left >= hotspotRect.right ||
-        fabRect.bottom <= hotspotRect.top ||
-        fabRect.top >= hotspotRect.bottom
-      );
-    });
+        const fabRect = fab.getBoundingClientRect();
+        const hotspotRect = lastHotspot.getBoundingClientRect();
+        return !(
+          fabRect.right <= hotspotRect.left ||
+          fabRect.left >= hotspotRect.right ||
+          fabRect.bottom <= hotspotRect.top ||
+          fabRect.top >= hotspotRect.bottom
+        );
+      });
 
-    expect(fabOverlapsLastHotspot).toBe(false);
+      expect(fabOverlapsLastHotspot).toBe(false);
+    } else {
+      await expect(page.getByText("当前维度暂无热区数据", { exact: true })).toBeVisible();
+    }
 
     await recordOperationEvidence({
       operationId: "PARAM-HOME-001",
@@ -88,8 +94,9 @@ test.describe("parameter-home production dashboard", () => {
           responseSummary: `items=${hotspotsBody.items?.length ?? 0}`
         })
       ],
-      notes:
-        "Dashboard summary/hotspots APIs returned data; /parameter-home rendered time-window and hotspot-dimension controls at PC 1440x900; the expanded leaderboard remained unobstructed by the Xiaoze launcher."
+      notes: hotspotsBody.items?.length
+        ? "/parameter-home rendered dashboard controls at PC 1440x900; the first canonical hotspot was expandable and the leaderboard remained unobstructed by Xiaoze."
+        : "/parameter-home rendered dashboard controls and the canonical empty hotspot state at PC 1440x900."
     });
   });
 });

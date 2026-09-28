@@ -2,7 +2,7 @@ import type { DashboardHotspot } from "@/domain/parameters/dashboardTypes";
 
 const DIMENSIONS: Array<{ key: keyof DashboardHotspot["scoreBreakdown"]; label: string }> = [
   { key: "frequency", label: "窗口变更频次" },
-  { key: "scope", label: "累计修改范围" },
+  { key: "scope", label: "累计变更范围" },
   { key: "workflow", label: "流程压力" },
   { key: "collaboration", label: "协作广度" }
 ];
@@ -16,7 +16,7 @@ type HotspotScorePanelProps = {
 
 export function HotspotScorePanel({ hotspot, dimensionCeiling, sectionId, variant }: HotspotScorePanelProps) {
   const dimensions = DIMENSIONS.map((dimension) =>
-    dimension.key === "scope" && hotspot.kind === "parameter" ? { ...dimension, label: "项目修改范围" } : dimension
+    dimension.key === "scope" && hotspot.kind === "parameter" ? { ...dimension, label: "绑定变更记录" } : dimension
   );
 
   return (

@@ -107,6 +107,104 @@ describe("parameter routes", () => {
     expect(projectRepository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
   });
 
+  it("GET /api/v1/parameter-submission-rounds binds the personal archive to the submitter and project scope", async () => {
+    const db = makeDb();
+    const rounds = [
+      { id: "round-own", projectId: "aurora" },
+      { id: "round-other-user", projectId: "aurora" },
+      { id: "round-nebula-own", projectId: "nebula" },
+      { id: "round-out-of-scope", projectId: "other-project" }
+    ] as Awaited<ReturnType<typeof service.listSubmissionRounds>>;
+    vi.mocked(service.listSubmissionRounds).mockResolvedValue(rounds);
+    const ownIds = new Set(["round-own", "round-nebula-own", "round-out-of-scope"]);
+    vi.mocked(db.query).mockImplementation(async (_text, values) => {
+      const requestedIds = values?.[2] as string[];
+      return {
+        rows: requestedIds.filter((id) => ownIds.has(id)).map((id) => ({ id })),
+        rowCount: requestedIds.filter((id) => ownIds.has(id)).length
+      };
+    });
+
+    const response = await requestJson<{ items: typeof rounds }>(
+      makeServer({ db }),
+      "/api/v1/parameter-submission-rounds?projectId=aurora&mine=true"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((round) => round.id)).toEqual(["round-own"]);
+    expect(service.listSubmissionRounds).toHaveBeenCalledWith(db, makeAuth(), {
+      projectId: "aurora",
+      status: undefined
+    });
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("submitter_user_id = $2"),
+      ["org-1", "user-1", ["round-own", "round-other-user", "round-nebula-own", "round-out-of-scope"], ["aurora"]]
+    );
+
+    vi.clearAllMocks();
+    vi.mocked(service.listSubmissionRounds).mockResolvedValue(rounds);
+    const scopedResponse = await requestJson<{ items: typeof rounds }>(
+      makeServer({ db }),
+      "/api/v1/parameter-submission-rounds?mine=true"
+    );
+    expect(scopedResponse.body.items.map((round) => round.id)).toEqual(["round-own"]);
+    expect(service.listSubmissionRounds).toHaveBeenCalledTimes(1);
+    expect(service.listSubmissionRounds).toHaveBeenCalledWith(db, makeAuth(), {
+      status: undefined,
+      projectId: "aurora"
+    });
+    expect(scopedResponse.body.items.map((round) => round.projectId)).toEqual(["aurora"]);
+
+    vi.clearAllMocks();
+    const unauthorized = await requestJson<{ items: typeof rounds }>(
+      makeServer({ db }),
+      "/api/v1/parameter-submission-rounds?projectId=other-project&mine=true"
+    );
+    expect(unauthorized.body.items).toEqual([]);
+    expect(service.listSubmissionRounds).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    const inactive = makeAuth();
+    inactive.user = { ...inactive.user, isActive: false };
+    const inactiveResponse = await requestJson(
+      makeServer({ db, auth: inactive }),
+      "/api/v1/parameter-submission-rounds?mine=true"
+    );
+    expect(inactiveResponse.status).toBe(403);
+    expect(service.listSubmissionRounds).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    const scoped = makeAuth({ roles: [
+      { projectId: "aurora", roleId: "software-user" },
+      { projectId: "nebula", roleId: "software-user" }
+    ] });
+    vi.mocked(service.listSubmissionRounds).mockImplementation(async (_db, _auth, query) =>
+      rounds.filter((round) => round.projectId === query.projectId)
+    );
+    const scopedAll = await requestJson<{ items: typeof rounds }>(
+      makeServer({ db, auth: scoped }),
+      "/api/v1/parameter-submission-rounds?mine=true"
+    );
+    expect(scopedAll.body.items.map((round) => round.id)).toEqual(["round-own", "round-nebula-own"]);
+    expect(service.listSubmissionRounds).toHaveBeenCalledTimes(2);
+    expect(service.listSubmissionRounds).toHaveBeenNthCalledWith(1, db, scoped, { status: undefined, projectId: "aurora" });
+    expect(service.listSubmissionRounds).toHaveBeenNthCalledWith(2, db, scoped, { status: undefined, projectId: "nebula" });
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("project_id = any($4::text[])"),
+      ["org-1", "user-1", ["round-own", "round-other-user", "round-nebula-own"], ["aurora", "nebula"]]
+    );
+
+    vi.clearAllMocks();
+    vi.mocked(service.listSubmissionRounds).mockResolvedValue(rounds);
+    const legacy = await requestJson<{ items: typeof rounds }>(
+      makeServer({ db }),
+      "/api/v1/parameter-submission-rounds?mine=false"
+    );
+    expect(legacy.body.items).toEqual(rounds);
+    expect(service.listSubmissionRounds).toHaveBeenCalledWith(db, makeAuth(), { status: undefined });
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
   it("GET project workflow assignees returns service-filtered candidates", async () => {
     const db = makeDb();
     const candidates = {

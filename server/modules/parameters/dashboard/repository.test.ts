@@ -32,11 +32,19 @@ describe.skipIf(!databaseAvailable)("dashboard repository", () => {
     await db.rollback();
   });
 
-  it("counts KPIs scoped to org and window", async () => {
-    const kpis = await countKpis(db, { organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId, projectId: null, windowStart: "2026-06-07T00:00:00Z" });
-    expect(kpis.totalParameters).toBeGreaterThan(0);
+  it("does not count legacy semantic rows as canonical KPIs", async () => {
+    const kpis = await countKpis(db, {
+      organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
+      projectId: null,
+      windowStart: "2026-06-07T00:00:00Z",
+      windowEnd: "2026-07-07T00:00:00Z"
+    });
+    expect(kpis.totalParameters).toBe(0);
+    expect(kpis.totalBindings).toBe(0);
+    expect(kpis.totalDefinitions).toBe(0);
     expect(kpis.managedProjects).toBeGreaterThan(0);
-    expect(kpis.highRiskParameters).toBeGreaterThanOrEqual(1);
+    expect(kpis.highRiskParameters).toBeNull();
+    expect(kpis.riskAvailability).toBe("unavailable");
   });
 
   it("aggregates trend into zero-filled day buckets", async () => {
@@ -51,18 +59,18 @@ describe.skipIf(!databaseAvailable)("dashboard repository", () => {
     expect(points.every((p) => typeof p.changeCount === "number")).toBe(true);
   });
 
-  it("aggregates risk distribution by project without scaling", async () => {
+  it("does not derive risk distribution from legacy semantic rows", async () => {
     const buckets = await aggregateRiskDistribution(db, { organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId, projectId: null });
-    const aurora = buckets.find((b) => b.projectId === PARAMETER_DASHBOARD_FIXTURE.projectIds.aurora);
-    expect(aurora).toBeDefined();
-    expect(aurora!.high + aurora!.medium + aurora!.low).toBe(aurora!.total);
+    expect(buckets).toEqual([]);
   });
 
   it("aggregates workbench signals", async () => {
     const signals = await aggregateWorkbenchSignals(db, {
       organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
       userId: PARAMETER_DASHBOARD_FIXTURE.activeUserId,
-      projectId: null
+      projectId: null,
+      authorizedProjectIds: null,
+      reviewableProjectIds: []
     });
     expect(signals.reviewQueue).toBeGreaterThanOrEqual(0);
     expect(signals.inactiveAccounts).toBeGreaterThanOrEqual(0);
@@ -74,8 +82,8 @@ describe.skipIf(!databaseAvailable)("dashboard repository", () => {
       .mockResolvedValueOnce({
         rows: [
           {
-            contribution_count: "8",
-            workflow_count: "3",
+            contribution_count: "0",
+            workflow_count: "0",
             high_risk_touch_count: "2"
           }
         ],
@@ -91,6 +99,7 @@ describe.skipIf(!databaseAvailable)("dashboard repository", () => {
       projectId: "aurora",
       userId: "u-xu-yun",
       windowStart: "2026-06-01T00:00:00Z",
+      windowEnd: "2026-07-01T00:00:00Z",
       perspectiveRoleId: "software-user",
       workbenchSignals: {
         reviewQueue: 5,
@@ -105,18 +114,26 @@ describe.skipIf(!databaseAvailable)("dashboard repository", () => {
 
     expect(query).toHaveBeenCalledTimes(1);
     const [sql, args] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain("h.changed_by_user_id = $2");
-    expect(sql).toContain("r.submitter_user_id = $2");
-    expect(sql).toContain("h.project_id = $4");
-    expect(sql).toContain("r.project_id = $4");
-    expect(args).toEqual(["org-chargelab", "u-xu-yun", "2026-06-01T00:00:00Z", "aurora"]);
+    expect(sql).toContain("parameter_catalog.binding_history_events history");
+    expect(sql).toContain("public.project_parameter_value_change_requests request");
+    expect(sql).not.toContain("parameter_history_entries");
+    expect(sql).not.toContain("parameter_change_requests");
+    expect(args).toEqual([
+      "org-chargelab",
+      "aurora",
+      null,
+      "u-xu-yun",
+      "2026-06-01T00:00:00Z",
+      "2026-07-01T00:00:00Z"
+    ]);
 
     expect(result).toEqual({
-      contributionCount: 8,
-      workflowCount: 3,
-      highRiskTouchCount: 2,
+      contributionCount: 0,
+      workflowCount: 0,
+      highRiskTouchCount: null,
       openItemCount: 4,
-      pendingTodoCount: 3
+      pendingTodoCount: 2,
+      riskAvailability: "unavailable"
     });
   });
 
@@ -148,9 +165,18 @@ describe.skipIf(!databaseAvailable)("dashboard repository", () => {
 
     expect(query).toHaveBeenCalledTimes(1);
     const [sql, args] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain("t.changed_by_user_id = $4");
-    expect(sql).toContain("t.submitter_user_id = $4");
-    expect(args).toEqual(["2026-07-01T00:00:00Z", "2026-07-02T00:00:00Z", "org-chargelab", "u-xu-yun"]);
+    expect(sql).toContain("history.created_at");
+    expect(sql).toContain("request.created_at");
+    expect(sql).not.toContain("parameter_history_entries");
+    expect(sql).not.toContain("parameter_change_requests");
+    expect(args).toEqual([
+      "2026-07-01T00:00:00Z",
+      "2026-07-02T00:00:00Z",
+      "org-chargelab",
+      "u-xu-yun",
+      null,
+      null
+    ]);
     expect(points).toEqual([
       {
         bucketStart: "2026-07-01T00:00:00.000Z",
@@ -178,8 +204,10 @@ describe.skipIf(!databaseAvailable)("dashboard repository", () => {
       roleLevel: "committer"
     });
 
-    expect(result.contributionCount).toBe(2);
-    expect(result.workflowCount).toBe(2);
+    expect(result.contributionCount).toBe(0);
+    expect(result.workflowCount).toBe(0);
+    expect(result.highRiskTouchCount).toBeNull();
+    expect(result.riskAvailability).toBe("unavailable");
     expect(result.openItemCount).toBeGreaterThanOrEqual(0);
   });
 });

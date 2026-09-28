@@ -13,7 +13,7 @@ import {
   type RuntimeTopologyRelocationRecord,
 } from "./runtimeTopologyRelocation";
 import {
-  applyReviewedT14RewrittenSliceSuccessorRelocation,
+  t14RewrittenSliceSuccessorRelocationConfig,
   t14RewrittenSliceSuccessorRelocationRecordPath,
 } from "./t14RewrittenSliceSuccessorRelocation";
 import type { BoundaryViolation } from "./schema";
@@ -55,29 +55,34 @@ async function copyProofFixture() {
 
 function rewrittenSliceConfig(path: string, sha256: string): RelocationConfig {
   return {
+    ...t14RewrittenSliceSuccessorRelocationConfig,
     recordPath: path,
     recordSha256: sha256,
-    files: record.files.map((section) => ({ file: section.file, pairs: section.pairs.length })),
-    totalPairs: 57,
-    rejectAllowanceGrowth: true,
-    requireStableStructuralAnchor: true,
-    requireStableByteOrder: true,
-    requireIdenticalSlice: false,
-    requireUnchangedEvidence: false,
+    activeFiles: record.files
+      .map((section) => section.file)
+      .filter((file) =>
+        file !== "server/modules/parameter-modules/repository.ts"
+        && file !== "server/modules/parameter-modules/service.test.ts",
+      ),
   };
 }
 
 describe("T1.4 rewritten-slice current successor", () => {
-  it("binds 57 destinations whose evidence or raw slice may change", async () => {
-    const result = await applyReviewedT14RewrittenSliceSuccessorRelocation(
+  it("keeps 45 unchanged-file destinations active while reserving two moved files for Issue #913", async () => {
+    const result = await runReviewedRelocationRecord(
       repoRoot,
       fixture,
       allowances,
       discovered,
+      [],
+      rewrittenSliceConfig(
+        t14RewrittenSliceSuccessorRelocationRecordPath,
+        "56216b0d2463f74a764159e86caf5fa3ab50d3f0e957b66362a840d2294b86a7",
+      ),
     );
-    expect(result.relocations).toHaveLength(57);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(57);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(57);
+    expect(result.relocations).toHaveLength(45);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(45);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(45);
     const pairs = record.files.flatMap((section) => section.pairs);
     expect(pairs.every((pair) => pair.sourceSliceSha256 && pair.sliceSha256)).toBe(true);
     expect(
@@ -131,7 +136,17 @@ describe("T1.4 rewritten-slice current successor", () => {
       ),
     ).rejects.toThrow("stable anchor byte order");
     await expect(
-      applyReviewedT14RewrittenSliceSuccessorRelocation(root, fixture, allowances, discovered),
+      runReviewedRelocationRecord(
+        root,
+        fixture,
+        allowances,
+        discovered,
+        [],
+        rewrittenSliceConfig(
+          t14RewrittenSliceSuccessorRelocationRecordPath,
+          "56216b0d2463f74a764159e86caf5fa3ab50d3f0e957b66362a840d2294b86a7",
+        ),
+      ),
     ).rejects.toThrow("reviewed record integrity");
   });
 
@@ -148,9 +163,17 @@ describe("T1.4 rewritten-slice current successor", () => {
               ? [...discovered, pair.old]
               : discovered;
       const prior = kind === "cross-record" ? [{ id: pair.old.id, observed: pair.new }] : [];
-      await expect(
-        applyReviewedT14RewrittenSliceSuccessorRelocation(repoRoot, fixture, allowances, observations, prior),
-      ).rejects.toThrow();
+      await expect(runReviewedRelocationRecord(
+        repoRoot,
+        fixture,
+        allowances,
+        observations,
+        prior,
+        rewrittenSliceConfig(
+          t14RewrittenSliceSuccessorRelocationRecordPath,
+          "56216b0d2463f74a764159e86caf5fa3ab50d3f0e957b66362a840d2294b86a7",
+        ),
+      )).rejects.toThrow();
     },
   );
 
@@ -158,7 +181,17 @@ describe("T1.4 rewritten-slice current successor", () => {
     const pair = record.files[0]!.pairs[0]!;
     const extra = { id: pair.new.id, file: pair.new.file, rule: pair.new.rule, reason: pair.new.reason };
     await expect(
-      applyReviewedT14RewrittenSliceSuccessorRelocation(repoRoot, fixture, [...allowances, extra], discovered),
+      runReviewedRelocationRecord(
+        repoRoot,
+        fixture,
+        [...allowances, extra],
+        discovered,
+        [],
+        rewrittenSliceConfig(
+          t14RewrittenSliceSuccessorRelocationRecordPath,
+          "56216b0d2463f74a764159e86caf5fa3ab50d3f0e957b66362a840d2294b86a7",
+        ),
+      ),
     ).rejects.toThrow("allowance growth");
   });
 
@@ -174,6 +207,12 @@ describe("T1.4 rewritten-slice current successor", () => {
       requireStableStructuralAnchor: true,
       requireStableByteOrder: true,
       requireUnchangedEvidence: false,
+      activeFiles: record.files
+        .map((section) => section.file)
+        .filter((file) =>
+          file !== "server/modules/parameter-modules/repository.ts"
+          && file !== "server/modules/parameter-modules/service.test.ts",
+        ),
     };
     await expect(
       runReviewedRelocationRecord(root, fixture, allowances, discovered, [], historicalSliceDefault),

@@ -279,6 +279,9 @@ export function buildDtsWorkbenchRows({
       bindingId: binding.id,
       parameterSpecId: binding.parameterSpecId,
       parameterSpecVersionId: binding.parameterSpecVersionId,
+      definitionId: binding.definitionId ?? binding.parameterSpecId,
+      effectiveRevisionId:
+        binding.effectiveRevisionId ?? binding.definitionRevisionId ?? binding.parameterSpecVersionId,
       logicalNodeId: binding.logicalNodeId,
       propertyKey: binding.propertyKey,
       displayName: binding.displayName?.trim() || null,

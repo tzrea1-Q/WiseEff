@@ -13,4 +13,26 @@ describe("WorkbenchPageToggle", () => {
     fireEvent.click(screen.getByRole("radio", { name: "热榜" }));
     expect(onPageChange).toHaveBeenCalledWith("hotspots");
   });
+
+  it("does not present an unavailable hotspot query as zero", () => {
+    const { rerender } = render(
+      <WorkbenchPageToggle
+        page="overview"
+        hotspotCount={0}
+        hotspotStatus="loading"
+        onPageChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText("加载中")).toBeInTheDocument();
+
+    rerender(
+      <WorkbenchPageToggle
+        page="overview"
+        hotspotCount={0}
+        hotspotStatus="error"
+        onPageChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText("不可用")).toBeInTheDocument();
+  });
 });

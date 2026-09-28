@@ -50,6 +50,7 @@ import type { PendingEnablementDraft } from "./draftTrayTypes";
 import type { TrayHydrationDraft } from "@/application/parameters/canonicalDraftTray";
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
+import { loadCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
 import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import {
@@ -1101,7 +1102,9 @@ export function ApiProjectTopologyWorkspace({
 
   const loadBindingHistory = useCallback(
     (bindingId: string) => {
-      if (!repository?.listBindingHistory) return Promise.resolve([]);
+      if (!repository?.listBindingHistory) {
+        return Promise.reject(new Error("canonical binding history repository unavailable"));
+      }
       return repository.listBindingHistory(projectId, bindingId);
     },
     [projectId, repository]
@@ -1109,20 +1112,29 @@ export function ApiProjectTopologyWorkspace({
 
   const loadBindingCompare = useCallback(
     (bindingId: string) => {
-      if (!repository?.listBindingCompare) return Promise.resolve([]);
+      if (!repository?.listBindingCompare) {
+        return Promise.reject(new Error("canonical binding compare repository unavailable"));
+      }
       return repository.listBindingCompare(projectId, bindingId);
     },
     [projectId, repository]
   );
 
   const loadParameterSpec = useCallback(
-    (parameterSpecId: string) => {
-      if (!repository?.getSpec) {
-        return Promise.reject(new Error("parameter topology repository unavailable"));
+    (definitionId: string, effectiveRevisionId: string, propertyKey: string) => {
+      if (canonicalRepository?.getDefinitionRevision) {
+        return loadCanonicalDtsDefinitionDetail(canonicalRepository, {
+          definitionId,
+          revisionId: effectiveRevisionId,
+          propertyKey
+        });
       }
-      return repository.getSpec(parameterSpecId);
+      if (runtimeMode === "mock" && repository?.getSpec) {
+        return repository.getSpec(definitionId);
+      }
+      return Promise.reject(new Error("canonical definition repository unavailable"));
     },
-    [repository]
+    [canonicalRepository, repository, runtimeMode]
   );
 
   const loadPrimaryDtsSource = useCallback(async () => {

@@ -4,10 +4,13 @@ import { SituationStrip } from "./SituationStrip";
 
 const overallKpis = {
   totalParameters: 51,
+  totalBindings: 51,
+  totalDefinitions: 40,
   managedProjects: 3,
   changeFrequency: 19,
   activeContributors: 5,
-  highRiskParameters: 12
+  highRiskParameters: null,
+  riskAvailability: "unavailable" as const
 };
 
 const personalKpis = {
@@ -31,7 +34,7 @@ describe("SituationStrip", () => {
       />
     );
     expect(screen.getByText("51")).toBeInTheDocument();
-    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("不可用")).toBeInTheDocument();
   });
 
   it("shows personal empty message when personal KPIs are all zero", () => {
@@ -44,7 +47,8 @@ describe("SituationStrip", () => {
           workflowCount: 0,
           openItemCount: 0,
           pendingTodoCount: 0,
-          highRiskTouchCount: 0
+          highRiskTouchCount: null,
+          riskAvailability: "unavailable"
         }}
         scope="personal"
         roleView="guest"

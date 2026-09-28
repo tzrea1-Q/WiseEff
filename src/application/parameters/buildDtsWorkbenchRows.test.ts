@@ -220,6 +220,27 @@ const mappingTasks: IdentityMappingTask[] = [
 ];
 
 describe("buildDtsWorkbenchRows", () => {
+  it("exposes canonical definition and effective revision identity without remapping it to a legacy spec", () => {
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [{
+        ...binding,
+        definitionId: "definition-canonical-gpio-int",
+        definitionRevisionId: "revision-canonical-7"
+      }],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(row).toMatchObject({
+      definitionId: "definition-canonical-gpio-int",
+      effectiveRevisionId: "revision-canonical-7"
+    });
+  });
+
   it("excludes genuine JSON bindings from the DTS-only workbench", () => {
     const rows = buildDtsWorkbenchRows({
       projectId: "project-aurora",

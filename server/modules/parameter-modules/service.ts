@@ -12,7 +12,11 @@ import {
   canAdminParameters,
   canViewParameters,
 } from "../parameter-kernel/policy";
-import type { Database, Queryable } from "../../shared/database/client";
+import {
+  getRootPostgresPool,
+  type Database,
+  type Queryable,
+} from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { syncSingletonCardinalityBlockingTasks } from "../parameter-topology/bindingService";
 import {
@@ -32,14 +36,21 @@ import {
   listSubtreeModuleIds,
   moduleExists,
   readRegistry,
+  type RegistryCatalogSnapshot,
   updateBindingModuleId,
   type RecomputeBindingRow,
 } from "./repository";
+import { createCatalogKernel } from "../catalog-kernel/interface";
+import {
+  captureCurrentCatalogPin,
+  createPinCapturingCatalogRuntime,
+} from "../catalog-publication/runtime";
 import {
   compatibleSourceKey,
   resolveAttributionModuleForBinding,
 } from "./ensureAttributionModuleForBinding";
 import {
+  countCanonicalPlacementsForModules,
   createParameterModule,
   deleteParameterModule,
   getParameterModuleById,
@@ -97,6 +108,24 @@ function isPlatformSuperAdmin(auth: AuthContext) {
 
 function actorRoleIds(auth: AuthContext): string[] {
   return [...new Set(auth.roles.map((binding) => binding.roleId))];
+}
+
+/** Capture one current Catalog snapshot for every registry read in an operation. */
+async function captureRegistryCatalog(
+  db: Database,
+): Promise<RegistryCatalogSnapshot | null> {
+  const pool = getRootPostgresPool(db);
+  if (!pool) return null;
+  const pin = await captureCurrentCatalogPin(pool);
+  if (!pin) return null;
+  const loaded = await createPinCapturingCatalogRuntime(
+    pool,
+    createCatalogKernel(pool),
+  ).loadCurrentCatalog(pin);
+  if (!loaded.ok) {
+    throw new Error(`Current Catalog snapshot unavailable: ${loaded.error.kind}`);
+  }
+  return loaded.value;
 }
 
 async function writeModuleAttributionAudit(
@@ -250,6 +279,17 @@ export async function disbandDriverGroupModule(
       organizationId,
       moduleId: input.moduleId,
     });
+    const placementCount = await countCanonicalPlacementsForModules(tx, {
+      organizationId,
+      moduleIds: subtreeIds,
+    });
+    if (placementCount > 0) {
+      throw new ApiError(
+        "CONFLICT",
+        "Cannot disband a driver group referenced by Catalog placements.",
+        { moduleId: input.moduleId, placementCount },
+      );
+    }
     const removedMappings = await deleteMappingsForModules(tx, {
       organizationId,
       moduleIds: subtreeIds,
@@ -304,7 +344,7 @@ export async function disbandDriverGroupModule(
     } catch (error) {
       if (
         error instanceof Error &&
-        /child modules|referenced by parameters|device-instance|unclassified root/i.test(
+        /child modules|referenced by parameters|Catalog placements|device-instance|unclassified root/i.test(
           error.message,
         )
       ) {
@@ -463,7 +503,8 @@ export async function getParameterModuleRegistry(
   auth: AuthContext,
 ): Promise<{ item: ParameterModuleRegistryDto }> {
   requireCanView(auth);
-  const item = await readRegistry(db, auth.organization.id);
+  const catalog = await captureRegistryCatalog(db);
+  const item = await readRegistry(db, auth.organization.id, catalog);
   return { item };
 }
 
@@ -651,6 +692,7 @@ export async function createModuleMapping(
   input: CreateModuleMappingBody,
 ): Promise<{ item: ParameterModuleRegistryDto; apply: MappingApplyPreview }> {
   requireCanAdmin(auth);
+  const catalog = await captureRegistryCatalog(db);
   return db.transaction(async (tx) => {
     const moduleOk = await moduleExists(tx, {
       organizationId: auth.organization.id,
@@ -692,7 +734,7 @@ export async function createModuleMapping(
       [],
       emptiedModules,
     );
-    const item = await readRegistry(tx, auth.organization.id);
+    const item = await readRegistry(tx, auth.organization.id, catalog);
     await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-mapping-created",
       action: "create",
@@ -822,8 +864,9 @@ export async function deleteModuleMapping(
   input: { mappingId: string },
 ): Promise<{ item: ParameterModuleRegistryDto; apply: MappingApplyPreview }> {
   requireCanAdmin(auth);
+  const catalog = await captureRegistryCatalog(db);
   return db.transaction(async (tx) => {
-    const registryBefore = await readRegistry(tx, auth.organization.id);
+    const registryBefore = await readRegistry(tx, auth.organization.id, catalog);
     const mapping = registryBefore.mappings.find(
       (item) => item.id === input.mappingId,
     );
@@ -859,7 +902,7 @@ export async function deleteModuleMapping(
       [],
       emptiedModules,
     );
-    const item = await readRegistry(tx, auth.organization.id);
+    const item = await readRegistry(tx, auth.organization.id, catalog);
     await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-mapping-deleted",
       action: "delete",
@@ -1226,7 +1269,8 @@ export async function listDriverRegistry(
   auth: AuthContext,
 ): Promise<{ items: DriverRegistryEntry[]; total: number }> {
   requireCanView(auth);
-  const registry = await readRegistry(db, auth.organization.id);
+  const catalog = await captureRegistryCatalog(db);
+  const registry = await readRegistry(db, auth.organization.id, catalog);
   const schemaRegistry = await getCachedOrganizationSchemaRegistry(db, {
     schemasRoot,
     organizationId: auth.organization.id,

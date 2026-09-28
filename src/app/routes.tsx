@@ -277,7 +277,17 @@ export function PageRouter({
         />
       );
     case "parameter-submissions":
-      return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
+      return (
+        <ParameterSubmissionsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          parameterActions={parameterActions}
+          runtime={runtime}
+          runtimeMode={runtimeMode}
+        />
+      );
     case "parameter-home":
       return (
         <ParameterHomePage

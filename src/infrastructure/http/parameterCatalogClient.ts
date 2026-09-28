@@ -104,6 +104,21 @@ export type CatalogWriteContext = {
   ifMatch?: string;
 };
 
+/**
+ * Governance envelopes carry their conditional-write token beside `item`.
+ * The shared DTO schema intentionally validates the item envelope only, so
+ * the HTTP owner preserves this response metadata after DTO parsing.
+ */
+export type CatalogResponseWithEtag<T> = T & {
+  etag?: string;
+};
+
+type CatalogRequestInit = {
+  body?: unknown;
+  context?: Partial<CatalogWriteContext>;
+  preserveEtag?: boolean;
+};
+
 type CatalogClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -178,11 +193,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     path: string,
     schema: T,
     schemaName: string,
-    init: {
-      body?: unknown;
-      context?: Partial<CatalogWriteContext>;
-    } = {}
-  ): Promise<z.infer<T>> {
+    init: CatalogRequestInit = {}
+  ): Promise<CatalogResponseWithEtag<z.infer<T>>> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (init.body !== undefined) {
       headers["Content-Type"] = "application/json";
@@ -222,7 +234,17 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         error.requestId ?? ""
       );
     }
-    return parseContractDto(schema, body, schemaName);
+    const parsed = parseContractDto(schema, body, schemaName);
+    if (!init.preserveEtag) {
+      return parsed;
+    }
+    const envelopeEtag =
+      body && typeof body === "object" && typeof (body as { etag?: unknown }).etag === "string"
+        ? (body as { etag: string }).etag.trim()
+        : "";
+    const headerEtag = response.headers.get("ETag")?.trim() ?? "";
+    const etag = envelopeEtag || headerEtag;
+    return etag ? { ...parsed, etag } : parsed;
   }
 
   function canonical<Id extends ParameterCatalogCanonicalRouteId>(
@@ -367,7 +389,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         "GET",
         canonical("catalog.getPlacement", { organizationId, registrationId }),
         catalogPlacementResponseSchema,
-        "CatalogPlacementResponse"
+        "CatalogPlacementResponse",
+        { preserveEtag: true }
       ),
     updatePlacement: (
       organizationId: string,
@@ -382,7 +405,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         "CatalogPlacementResponse",
         {
           body: catalogUpdatePlacementRequestSchema.parse(body),
-          context
+          context,
+          preserveEtag: true
         }
       ),
     listObservations: (organizationId: string, query?: CatalogListQuery) =>
@@ -637,10 +661,10 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         "ProjectValueChangeRequestResponse",
         { body: catalogSubmitValueChangeRequestSchema.parse(body), context }
       ),
-    listProjectValueChangeRequests: (projectId: string, query?: { status?: string }) =>
+    listProjectValueChangeRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
       request(
         "GET",
-        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests${query?.status ? `?${new URLSearchParams({ status: query.status })}` : ""}`,
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
         catalogValueChangeRequestListResponseSchema,
         "ProjectValueChangeRequestListResponse"
       ),

@@ -80,9 +80,35 @@ export function ParameterReviewPage({
   runtimeMode
 }: PageProps) {
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
+  const searchParams = new URLSearchParams(search);
+  const requestedUrlRequestId = searchParams.get("request") ?? "";
+  const requestedLegacyQueryId = searchParams.get("legacyRequest") ?? "";
+  const reviewerRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const requestedLegacyStateId = requestedLegacyQueryId || (
+    requestedUrlRequestId && (
+      state.changeRequests.some((item) => item.id === requestedUrlRequestId)
+      || state.parameterInitializationReviews.some((item) => item.id === requestedUrlRequestId)
+    )
+      ? requestedUrlRequestId
+      : ""
+  );
+  const requestedLegacyRequest = state.changeRequests.find((request) => request.id === requestedLegacyStateId);
+  const requestedLegacyInitialization = state.parameterInitializationReviews.find(
+    (review) => review.id === requestedLegacyStateId
+  );
+  const requestedLegacyIsHistory = Boolean(
+    (requestedLegacyRequest && (
+      requestedLegacyRequest.status === "已合入"
+      || requestedLegacyRequest.status === "已打回"
+      || isReviewHistoryForRole(reviewerRoleId, requestedLegacyRequest)
+    ))
+    || Boolean(requestedLegacyInitialization && requestedLegacyInitialization.status !== "pending")
+  );
   const [selectedId, setSelectedId] = useState(() => {
-    // Deep link: /parameter-review?request=<id> restores the shared selection.
-    const requested = new URLSearchParams(search).get("request");
+    // Legacy queue records use an explicit namespace in API mode. A retained
+    // terminal request in the old state queue must never be offered to the
+    // canonical panel as its initial request.
+    const requested = requestedLegacyStateId || requestedUrlRequestId;
     if (requested && (state.changeRequests.some((item) => item.id === requested) || state.parameterInitializationReviews.some((item) => item.id === requested))) {
       return requested;
     }
@@ -94,13 +120,13 @@ export function ParameterReviewPage({
   const [batchSelectedIds, setBatchSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
-  const [reviewMode, setReviewMode] = useState<ParameterReviewMode>("pending");
+  const [reviewMode, setReviewMode] = useState<ParameterReviewMode>(requestedLegacyIsHistory ? "history" : "pending");
   const [filterModules, setFilterModules] = useState<string[]>([]);
   const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const reviewerRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const requestedRequestId = requestedLegacyStateId ? "" : requestedUrlRequestId;
   const canonicalProjectId = contextQuery.projectId || state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const canReviewCanonical = Boolean(currentUser?.isActive && currentUser.roles?.some((role) =>
@@ -108,10 +134,19 @@ export function ParameterReviewPage({
       || (role.roleId === "admin" && role.projectId === null)
   ));
   const canReviewInitialization = canPerform(reviewerRoleId, "parameter.review");
-  const { pending: pendingRequests, history: historyRequests } = useMemo(
-    () => splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests),
-    [reviewerRoleId, state.changeRequests]
-  );
+  const { pending: pendingRequests, history: historyRequests } = useMemo(() => {
+    // API mode's canonical panel owns project-value requests. Keeping the
+    // legacy semantic queue here would duplicate pending work and expose its
+    // old actions beside the canonical workflow. Initialization reviews have
+    // a separate contract and remain visible below.
+    if (runtimeMode === "api") {
+      return {
+        pending: [],
+        history: splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests).history
+      };
+    }
+    return splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests);
+  }, [reviewerRoleId, runtimeMode, state.changeRequests]);
   const pendingInitializationRows = useMemo(
     () =>
       canReviewInitialization
@@ -356,15 +391,43 @@ export function ParameterReviewPage({
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    if (params.get("request") === selectedId) {
+    const queryRequestId = params.get("request");
+    const queryIsLegacy = Boolean(
+      queryRequestId && (
+        state.changeRequests.some((request) => request.id === queryRequestId)
+        || state.parameterInitializationReviews.some((review) => review.id === queryRequestId)
+      )
+    );
+    const isLegacySelection = state.changeRequests.some((request) => request.id === selectedId)
+      || state.parameterInitializationReviews.some((review) => review.id === selectedId);
+    // A canonical request is owned by the v2 panel. The legacy queue must not
+    // overwrite its shareable request id with the first legacy row.
+    if (runtimeMode === "api" && queryRequestId && !queryIsLegacy) {
       return;
     }
-    params.set("request", selectedId);
+    if (runtimeMode === "api" && params.get("legacyRequest") && !isLegacySelection) {
+      return;
+    }
+    if (runtimeMode === "api") {
+      if (!isLegacySelection) {
+        return;
+      }
+      if (params.get("legacyRequest") === selectedId && !params.get("request")) {
+        return;
+      }
+      params.delete("request");
+      params.set("legacyRequest", selectedId);
+    } else {
+      if (params.get("request") === selectedId) {
+        return;
+      }
+      params.set("request", selectedId);
+    }
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-  }, [selectedId]);
+  }, [runtimeMode, selectedId, state.changeRequests, state.parameterInitializationReviews]);
 
   useEffect(() => {
-    if (!contextQuery.module && !contextQuery.projectId) {
+    if ((!contextQuery.module && !contextQuery.projectId) || requestedUrlRequestId || requestedLegacyQueryId) {
       return;
     }
 
@@ -384,7 +447,7 @@ export function ParameterReviewPage({
       );
       setSelectedId(matchingRequest.id);
     }
-  }, [contextQuery.module, contextQuery.projectId, reviewerRoleId, state.changeRequests, state.parameters]);
+  }, [contextQuery.module, contextQuery.projectId, requestedLegacyQueryId, requestedUrlRequestId, reviewerRoleId, state.changeRequests, state.parameters]);
 
   useEffect(() => {
     if (!selectedId || reviewMode !== "pending") {
@@ -392,10 +455,19 @@ export function ParameterReviewPage({
     }
 
     const request = state.changeRequests.find((item) => item.id === selectedId);
-    if (request && isReviewHistoryForRole(reviewerRoleId, request)) {
+    if (request && (
+      request.status === "已合入"
+      || request.status === "已打回"
+      || isReviewHistoryForRole(reviewerRoleId, request)
+    )) {
+      setReviewMode("history");
+      return;
+    }
+    const initialization = state.parameterInitializationReviews.find((item) => item.id === selectedId);
+    if (initialization && initialization.status !== "pending") {
       setReviewMode("history");
     }
-  }, [reviewMode, reviewerRoleId, selectedId, state.changeRequests]);
+  }, [reviewMode, reviewerRoleId, selectedId, state.changeRequests, state.parameterInitializationReviews]);
 
   useEffect(() => {
     if (reviewRows.length && !reviewRows.some((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId)) {
@@ -654,6 +726,21 @@ export function ParameterReviewPage({
       })()
     : [];
 
+  const selectCanonicalRequest = useCallback((requestId: string | null) => {
+    const params = new URLSearchParams(window.location.search);
+    if (canonicalProjectId) {
+      params.set("project", canonicalProjectId);
+    }
+    params.delete("legacyRequest");
+    if (requestId) {
+      params.set("request", requestId);
+    } else {
+      params.delete("request");
+    }
+    const query = params.toString();
+    window.history.replaceState(null, "", `/parameter-review${query ? `?${query}` : ""}`);
+  }, [canonicalProjectId]);
+
   return (
     <WorkbenchLayout title={reviewPageTitle}>
       {runtimeMode === "api" && canonicalProjectId ? (
@@ -663,6 +750,8 @@ export function ParameterReviewPage({
           repository={runtime?.parameterCatalogRepository}
           currentUserId={state.currentUserId}
           canReview={canReviewCanonical}
+          initialRequestId={requestedRequestId || undefined}
+          onSelectRequest={selectCanonicalRequest}
         />
       ) : null}
       <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby="review-queue-heading">
@@ -696,6 +785,9 @@ export function ParameterReviewPage({
             meta={reviewMeta}
           />
         </div>
+        {runtimeMode === "api" && reviewMode === "history" ? (
+          <p role="note">此处的旧版审阅记录仅作为只读归档，不能作为当前新版请求继续处理。</p>
+        ) : null}
         {reviewMode === "pending" && batchableRequests.length > 0 ? (
           <div className="review-batch-toolbar" role="toolbar" aria-label="批量审阅操作">
             <span className="review-batch-toolbar__hint">

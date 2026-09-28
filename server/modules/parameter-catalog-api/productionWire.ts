@@ -309,7 +309,7 @@ const createKernelReadiness = (
 };
 
 const expectedModuleKind = (subjectKind: CatalogSubjectKind): string =>
-  subjectKind === "driver" ? "driver-group" : "node-type";
+  subjectKind === "driver" ? "driver-group" : subjectKind === "node-type" ? "node-type" : "business";
 
 const lookupDefaultDestinationModule = async (
   pool: pg.Pool,
@@ -488,7 +488,15 @@ const createGovernancePorts = (
         }
       : undefined,
     resolveDestinationModuleId: pool
-      ? async ({ organizationId, subjectKind, placement }) => {
+      ? async ({ organizationId, subjectKind, placement, destinationModuleId }) => {
+          if (destinationModuleId !== undefined) {
+            const result = await pool.query<{ id: string }>(
+              `select id from public.parameter_modules
+                where organization_id = $1 and id = $2 and kind = $3`,
+              [organizationId, destinationModuleId, expectedModuleKind(subjectKind)],
+            );
+            return result.rows[0]?.id ?? null;
+          }
           if (placement.mode === "choose-parent") {
             return lookupChooseParentDestinationModule(pool, organizationId, placement);
           }
