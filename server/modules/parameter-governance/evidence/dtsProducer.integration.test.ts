@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { createWiseEffServer } from "../../../app";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { requestJson } from "../../../test/testClient";
 import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { installDriverSourceFixture } from "../../../testing/parameterCatalog/driverSource";
@@ -40,6 +42,8 @@ describe("#897 production DTS observation and Review Item association", () => {
     await db.query("insert into organizations(id,name) values ($1,'C1 producer')",[ORG]);
     await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'C1 producer','Admin',true)",
       [auth.user.id,ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('c1-producer-admin',$1,$2,null,'admin')",
+      [auth.user.id,ORG]);
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,'C1P','initialized')",
       [PROJECT,ORG]);
     await installDriverSourceFixture(db,auth,{subjectId:"csub_acme_power",compatible:"acme,power",
@@ -54,8 +58,10 @@ describe("#897 production DTS observation and Review Item association", () => {
       fileName:"board.dts",bytes:Buffer.from(source)});
     const configSet = await createConfigSet(db,auth,{projectId:PROJECT,name:"C1 source"});
     await addConfigSetFile(db,auth,{configSetId:configSet.id,fileId:uploaded.file.id,role:"base",sortOrder:0});
-    await uploadProjectParameterFile(db,storage,auth,{projectId:PROJECT,
-      fileName:"board.dts",bytes:Buffer.from(source)},{},undefined,db);
+    const uploadedThroughApp = await requestJson(createWiseEffServer({db,objectStore:storage}),
+      `/api/v1/projects/${PROJECT}/parameter-files`, {method:"POST",headers:{"X-WiseEff-User":auth.user.id},
+        body:JSON.stringify({fileName:"board.dts",contentBase64:Buffer.from(source).toString("base64")})});
+    expect(uploadedThroughApp.status).toBe(201);
 
     const page = await listDriverCompatibleDiscovery({db,objectStore:storage,auth,projectId:PROJECT});
     expect(page.status).toBe("ready");
