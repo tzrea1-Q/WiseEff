@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { routeManifest } from "../contracts/routeManifest";
 import {
   createDisposableParameterCatalogDatabase,
   loadParameterCatalogFixture,
@@ -19,6 +20,11 @@ import {
   type ModComparisonPhase,
   type ModInventoryMode,
 } from "./parameterCatalogComparisonContribution";
+import { insertDismissedCompatible } from "./repository";
+import { listDismissedCompatibleIdentitiesForComparison } from "./comparisonInventoryRepository";
+import * as comparisonInventoryRepository from "./comparisonInventoryRepository";
+import * as moduleRepository from "./repository";
+import * as legacyCatalog from "../parameter-catalog-api/legacy";
 
 const FRESH_PRE_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const FRESH_POST_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -59,9 +65,10 @@ describe("provideModParameterCatalogComparisonContribution", () => {
   let freshPreDb: ParameterCatalogDatabase;
   let freshPostDb: ParameterCatalogDatabase;
   let populatedDb: ParameterCatalogDatabase;
+  let boundaryDb: ParameterCatalogDatabase;
 
   afterAll(async () => {
-    await Promise.all([freshPreDb?.close(), freshPostDb?.close(), populatedDb?.close()]);
+    await Promise.all([freshPreDb?.close(), freshPostDb?.close(), populatedDb?.close(), boundaryDb?.close()]);
   });
 
   it("fresh pre-activation queries real PostgreSQL and proves zero inventory", async () => {
@@ -138,6 +145,8 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       expect(post.cases.length).toBe(pre.cases.length);
       expect(pre.checksum).not.toBe(post.checksum);
       expect(pre.sourceInventoryChecksum).toBe(post.sourceInventoryChecksum);
+      expect(pre.cases.map((item) => item.caseId)).toEqual(post.cases.map((item) => item.caseId));
+      expect(pre.cases.map((item) => item.protectedReference)).toEqual(post.cases.map((item) => item.protectedReference));
       expect(pre.candidateSha).not.toBe(post.candidateSha);
       expect(pre.phase).toBe("pre-activation");
       expect(post.phase).toBe("post-p13");
@@ -176,6 +185,105 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     } finally {
       await preDatabase.close();
       await postDatabase.close();
+    }
+  }, 120_000);
+
+  it("enumerates every historical dismissed compatible across the hints page boundary", async () => {
+    boundaryDb = await createDisposableParameterCatalogDatabase("modbound");
+    await loadParameterCatalogFixture(boundaryDb.url, "populated");
+    const database = createPostgresDatabase(boundaryDb.url);
+    const pool = getRootPostgresPool(database);
+    expect(pool).toBeDefined();
+    try {
+      const input = baseInput(database, pool!, "populated", "pre-activation", POP_PRE_SHA);
+      await database.query("insert into organizations (id, name) values ($1, $2)", ["c4-org-2", "C4 second organization"]);
+      const before = await provideModParameterCatalogComparisonContribution(input);
+      for (let index = 0; index < 201; index += 1) {
+        const compatible = `c4-vendor,device-${index.toString().padStart(3, "0")}`;
+        await insertDismissedCompatible(database, {
+          id: `c4-dismissed-${index}`,
+          organizationId: "wf671-org",
+          compatible,
+          reason: "historical dismissal",
+          dismissedByUserId: null,
+        });
+      }
+      // One historical dismissal has a legacy Binding; another has none.
+      await database.query(
+        `insert into dts_logical_node_revisions
+          (id, logical_node_id, config_revision_id, node_locator, name, compatible)
+         values ($1, $2, $3, $4, $5, $6)`,
+        ["c4-node-revision", "wf671-logical-node", "wf671-config-revision", "/c4", "C4 node", "c4-vendor,device-200"],
+      );
+      await insertDismissedCompatible(database, {
+        id: "c4-dismissed-other-org",
+        organizationId: "c4-org-2",
+        compatible: "c4-vendor,device-200",
+        reason: "different organization",
+        dismissedByUserId: null,
+      });
+      const persistedBefore = await listDismissedCompatibleIdentitiesForComparison(database, "wf671-org");
+      expect(persistedBefore).toHaveLength(201);
+      const oldPage = await moduleRepository.listDismissedCompatiblesForDiscovery(database, { organizationId: "wf671-org" });
+      const oldFullPage = await moduleRepository.listDismissedCompatiblesForDiscovery(database, { organizationId: "wf671-org", limit: 500 });
+      expect(oldPage).toHaveLength(200);
+      expect(oldFullPage.find((row) => row.compatible === "c4-vendor,device-200")?.bindingCount).toBeGreaterThan(0);
+      expect(oldFullPage.find((row) => row.compatible === "c4-vendor,device-000")?.bindingCount).toBe(0);
+      const otherOrganization = await listDismissedCompatibleIdentitiesForComparison(database, "c4-org-2");
+      expect(otherOrganization).toEqual([{ id: "c4-dismissed-other-org", compatible: "c4-vendor,device-200" }]);
+
+      const observedSpy = vi.spyOn(moduleRepository, "listObservedCompatiblesForDiscovery");
+      const dismissedPageSpy = vi.spyOn(moduleRepository, "listDismissedCompatiblesForDiscovery");
+      const legacyRequestSpy = vi.spyOn(legacyCatalog, "handleLegacyCatalogRequest");
+      const querySpy = vi.spyOn(pool!, "query");
+      const after = await provideModParameterCatalogComparisonContribution(input);
+      const dismissedRoute = routeManifest.find((route) => route.id === "parameterModules.restoreCompatible");
+      expect(dismissedRoute).toBeDefined();
+      const routePrefix = dismissedRoute!.path.split(":compatible")[0];
+      const dismissalRequests = legacyRequestSpy.mock.calls
+        .map(([request]) => request)
+        .filter((request) => request.path.startsWith(routePrefix));
+      const inventoryQueries = querySpy.mock.calls.map(([sql]) => String(sql));
+      querySpy.mockRestore();
+      legacyRequestSpy.mockRestore();
+      expect(observedSpy).not.toHaveBeenCalled();
+      expect(dismissedPageSpy).not.toHaveBeenCalled();
+      expect(dismissalRequests).toHaveLength(202);
+      expect(dismissalRequests.every((request) => request.method === "DELETE")).toBe(true);
+      expect(dismissalRequests.filter((request) => request.path === `${routePrefix}${encodeURIComponent("c4-vendor,device-200")}`)).toHaveLength(2);
+      observedSpy.mockRestore();
+      dismissedPageSpy.mockRestore();
+      assertCanonicalChecksum(after);
+      expect(after.sourceInventoryCount).toBe(before.sourceInventoryCount + 202);
+      expect(after.cases.filter((item) => item.protectedReference.kind !== "parameter-module-dismissed-compatible"))
+        .toEqual(before.cases);
+      const dismissedCases = after.cases.filter((item) => item.protectedReference.kind === "parameter-module-dismissed-compatible");
+      expect(dismissedCases).toHaveLength(202);
+      expect(dismissedCases.map((item) => item.protectedReference.id).sort()).toEqual(
+        [...persistedBefore, ...otherOrganization].map((row) => row.id).sort(),
+      );
+      expect(dismissedCases.map((item) => item.protectedReference.id)).toContain("c4-dismissed-0");
+      expect(dismissedCases.map((item) => item.protectedReference.id)).toContain("c4-dismissed-other-org");
+      expect(dismissedCases.every((item) => item.comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT")).toBe(true);
+      expect(new Set(after.cases.map((item) => item.caseId)).size).toBe(after.cases.length);
+      expect(inventoryQueries.some((sql) => sql.includes("select id, compatible") && sql.includes("where organization_id = $1"))).toBe(true);
+      expect(inventoryQueries.filter((sql) => /^\s*(insert|update|delete|truncate)\b/iu.test(sql))).toEqual([]);
+      expect(await listDismissedCompatibleIdentitiesForComparison(database, "wf671-org")).toEqual(persistedBefore);
+      const afterPost = await provideModParameterCatalogComparisonContribution(
+        baseInput(database, pool!, "populated", "post-p13", POP_POST_SHA),
+      );
+      assertCanonicalChecksum(afterPost);
+      expect(afterPost.sourceInventoryCount).toBe(after.sourceInventoryCount);
+      expect(afterPost.sourceInventoryChecksum).toBe(after.sourceInventoryChecksum);
+      expect(afterPost.cases.map((item) => [item.caseId, item.protectedReference, item.result]))
+        .toEqual(after.cases.map((item) => [item.caseId, item.protectedReference, item.result]));
+
+      const failingQuery = vi.spyOn(comparisonInventoryRepository, "listDismissedCompatibleIdentitiesForComparison")
+        .mockRejectedValueOnce(new Error("c4-identity-query-unavailable"));
+      await expect(provideModParameterCatalogComparisonContribution(input)).rejects.toThrow("c4-identity-query-unavailable");
+      failingQuery.mockRestore();
+    } finally {
+      await database.close();
     }
   }, 120_000);
 });
