@@ -240,6 +240,15 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       expect(single.status, JSON.stringify(single.body)).toBe(201);
       expect(JSON.stringify(detail.body.item.draftImpact)).not.toContain(single.body.item.id);
       if (!singleBefore) {
+        const beforeReplay = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+        const replayObjects = await objects(directory);
+        const replay = await requestJson<{ item: { id: string } }>(route(),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+            method: "POST", body: JSON.stringify(batchBody) });
+        expect(replay.status, JSON.stringify(replay.body)).toBe(201);
+        expect(replay.body.item.id).toBe(batch.id);
+        expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeReplay);
+        expect(await objects(directory)).toEqual(replayObjects);
         expect((await requestJson(route(other), `${path(batch.id)}/review`, {
           method: "POST", body: JSON.stringify({ decision: "approve",
             batchProofDigest: batch.batchProofDigest, draftImpactDigest: batch.draftImpactDigest }) })).status).toBe(404);

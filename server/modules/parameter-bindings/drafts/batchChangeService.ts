@@ -540,7 +540,7 @@ export async function submitCanonicalBatchValueChange(
     });
     const { draftImpact: impact, draftImpactDigest: impactDigest } =
       await captureCanonicalBatchDraftImpactInTransaction(tx, auth, input.projectId, proof, orderedDecisions);
-    await refusePendingSingleDraftReviews(tx, auth, input.projectId, impact);
+    if (wantsDraft) await refusePendingSingleDraftReviews(tx, auth, input.projectId, impact);
     for (const target of impact.filter((item) => item.role === "target")) {
       const decision = decisions.get(target.bindingId);
       if ((decision?.choice !== "draft" && decision?.draftId) || (target.drafts.some((draft) => !draft.currentlyStale)
@@ -673,6 +673,7 @@ export async function submitCanonicalBatchValueChange(
         && prior.targets.every((target) => target.draftId === null) && !compositionProof) return prior;
       throw new ApiError("CONFLICT", "Candidate already has a pending review request.");
     }
+    if (!compositionProof) await refusePendingSingleDraftReviews(tx, auth, input.projectId, impact);
     const bases = await tx.query<{
       binding_id: string; definition_id: string; effective_revision_id: string;
       catalog_release_id: string; current_value_id: string; config_revision_id: string;

@@ -521,6 +521,15 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       expect(single.status, JSON.stringify(single.body)).toBe(201);
       expect(JSON.stringify(detail.body.item.draftImpact)).not.toContain(single.body.item.id);
       if (!singleBefore) {
+        const beforeReplay = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+        const replayObjects = await objectBytes(storageDirectory);
+        const replay = await requestJson<{ item: { id: string } }>(route(),
+          `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+            method: "POST", body: JSON.stringify(batchBody) });
+        expect(replay.status, JSON.stringify(replay.body)).toBe(201);
+        expect(replay.body.item.id).toBe(batch.id);
+        expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeReplay);
+        expect(await objectBytes(storageDirectory)).toEqual(replayObjects);
         const blocked = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
         const blockedObjects = await objectBytes(storageDirectory);
         const refused = await requestJson(route(reviewer),
