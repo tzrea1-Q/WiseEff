@@ -25,7 +25,8 @@ import {
 } from "../parameter-catalog-contract/index";
 import { canViewParameters } from "../parameter-kernel/policy";
 import { executeProposal } from "../parameter-governance/proposals";
-import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
+import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../parameter-governance/queries";
+import type { GovernanceRegistrationRecord } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
 import { resolveReviewItem } from "../parameter-governance/resolveReviewItem";
 import { createReviewQueueReader } from "../parameter-governance/review";
@@ -35,6 +36,7 @@ import type { Database } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
 import type { MappingQueryable } from "../catalog-cutover/mapping";
 import type { ObjectStore } from "../logs/objectStore";
+import { catalogRegistrationDtoSchema } from "../contracts/dtoSchemas/parameterCatalog";
 
 import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
@@ -103,6 +105,90 @@ const pinOf = (id: string, digest: string): CatalogReleasePin => ({
   id: CatalogReleaseId(id),
   digest: CatalogReleaseDigest(digest),
 });
+
+/** Complete, read-only Governance projection for a release comparison snapshot. */
+export type ComparisonGovernanceRegistration = GovernanceRegistrationRecord;
+export async function readPinnedGovernanceRegistrationsForComparison(
+  pool: pg.Pool,
+  organizationIds: readonly string[],
+  expectedPin: CatalogReleasePin,
+): Promise<Map<string, readonly ComparisonGovernanceRegistration[]>> {
+  const matches = (pin: CatalogReleasePin | null) =>
+    pin?.id === expectedPin.id && pin.digest === expectedPin.digest;
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release differs from comparison input");
+  }
+  const client = await pool.connect();
+  const byOrganization = new Map<string, readonly GovernanceRegistrationRecord[]>();
+  const seenRegistrationIds = new Set<string>();
+  const seenPlacementIds = new Set<string>();
+  try {
+    await client.query("begin transaction isolation level repeatable read read only");
+    const pointer = await readCurrentCatalogPointer(client);
+    if (pointer.kind !== "installed" || !matches(pointer.current)) {
+      throw new Error("Catalog release changed before snapshot");
+    }
+    const queries = createGovernanceCatalogQueries(client);
+    for (const organizationId of organizationIds) {
+      const items: GovernanceRegistrationRecord[] = [];
+      const seenCursors = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const result = await queries.listRegistrations({
+          organizationId,
+          observedCatalogReleaseId: expectedPin.id,
+          authScope: { organizationId, principalId: "mod-comparison-reader" },
+          limit: 100,
+          cursor,
+        });
+        if (!result.ok) throw new Error(`Registration query failed for ${organizationId}: ${JSON.stringify(result.error)}`);
+        const page = result.value;
+        if (page?.semantics !== GOVERNANCE_CURRENT_PROJECTION_SEMANTICS || !Array.isArray(page.items) ||
+            page.items.length > 100 || (page.nextCursor !== null &&
+              (typeof page.nextCursor !== "string" || !page.nextCursor))) {
+          throw new Error(`Registration response malformed for ${organizationId}`);
+        }
+        for (const item of page.items) {
+          if (!item || typeof item.id !== "string" || !item.id ||
+              item.organizationId !== organizationId || item.catalogReleaseId !== expectedPin.id ||
+              typeof item.subjectId !== "string" || !item.subjectId ||
+              !item.placement || typeof item.placement.id !== "string" || !item.placement.id ||
+              !catalogRegistrationDtoSchema.safeParse({
+                id: item.id, organizationId: item.organizationId, subjectId: item.subjectId,
+                status: item.status, method: item.method,
+                placement: {
+                  id: item.placement.id, displayName: item.placement.displayName,
+                  parentPlacementId: item.placement.parentPlacementId,
+                  ...(item.placement.moduleId ? { moduleId: item.placement.moduleId } : {}),
+                },
+                catalogReleaseId: item.catalogReleaseId,
+              }).success || seenRegistrationIds.has(item.id) || seenPlacementIds.has(item.placement.id)) {
+            throw new Error(`Registration identity or shape invalid for ${organizationId}`);
+          }
+          seenRegistrationIds.add(item.id);
+          seenPlacementIds.add(item.placement.id);
+          items.push(item);
+        }
+        cursor = page.nextCursor ?? undefined;
+        if (cursor && (page.items.length === 0 || seenCursors.has(cursor))) {
+          throw new Error(`Registration pagination did not advance for ${organizationId}`);
+        }
+        if (cursor) seenCursors.add(cursor);
+      } while (cursor);
+      byOrganization.set(organizationId, items);
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release changed during comparison read");
+  }
+  return byOrganization;
+}
 
 const wrapMappingQueryable = (
   query: (text: string, values?: unknown[]) => Promise<unknown>,

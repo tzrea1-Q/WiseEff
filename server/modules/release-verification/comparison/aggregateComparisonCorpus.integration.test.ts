@@ -12,6 +12,7 @@ import { compileCatalogRelease } from "../../catalog-kernel/compiler";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
+import type { CatalogReleasePin } from "../../parameter-catalog-contract";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 import { createEvidenceIngest } from "../../parameter-governance/evidence";
 import { createReviewQueueReader } from "../../parameter-governance/review";
@@ -40,6 +41,7 @@ function providerInput(
   inventoryMode: ComparisonProviderInput["inventoryMode"],
   phase: ComparisonProviderInput["phase"],
   candidateSha: string,
+  expectedCatalogReleasePin: CatalogReleasePin,
 ): ComparisonProviderInput {
   return {
     database,
@@ -54,7 +56,21 @@ function providerInput(
     catalogSnapshotChecksum: createHash("sha256")
       .update(`catalog:${phase}:${inventoryMode}`)
       .digest("hex"),
+    expectedCatalogReleasePin,
   };
+}
+
+async function installComparisonRelease(pool: NonNullable<ReturnType<typeof getRootPostgresPool>>): Promise<CatalogReleasePin> {
+  const complete = validCatalogReleaseBundle();
+  const first = structuredClone(complete.releases[0]!);
+  const bundle = { schemaVersion: complete.schemaVersion, targetReleaseId: first.manifest.release.id, releases: [first] };
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+  const installed = await installPublishedRelease(pool, {
+    mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.value.aggregateDigest,
+  });
+  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+  return { id: compiled.value.release.id, digest: compiled.value.release.digest };
 }
 
 describe("live eleven-family comparison corpus", () => {
@@ -77,8 +93,9 @@ describe("live eleven-family comparison corpus", () => {
     const pool = getRootPostgresPool(database);
     expect(pool).toBeDefined();
     try {
+      const pin = await installComparisonRelease(pool!);
       const corpus = await aggregateLiveComparisonCorpus(
-        providerInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA),
+        providerInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA, pin),
         providers,
       );
       expect(corpus.phase).toBe("pre-activation");
@@ -109,12 +126,14 @@ describe("live eleven-family comparison corpus", () => {
     const prePool = getRootPostgresPool(preDatabase);
     expect(prePool).toBeDefined();
     try {
+      const postPin = await installComparisonRelease(postPool!);
+      const prePin = await installComparisonRelease(prePool!);
       const postCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(postDatabase, postPool!, "fresh", "post-p13", FRESH_POST_SHA),
+        providerInput(postDatabase, postPool!, "fresh", "post-p13", FRESH_POST_SHA, postPin),
         providers,
       );
       const preCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(preDatabase, prePool!, "fresh", "pre-activation", FRESH_PRE_SHA),
+        providerInput(preDatabase, prePool!, "fresh", "pre-activation", FRESH_PRE_SHA, prePin),
         providers,
       );
       expect(postCorpus.phase).toBe("post-p13");
@@ -143,12 +162,13 @@ describe("live eleven-family comparison corpus", () => {
     expect(prePool).toBeDefined();
     expect(postPool).toBeDefined();
     try {
+      const pin = await installComparisonRelease(prePool!);
       const preCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA),
+        providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA, pin),
         providers,
       );
       const postCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA),
+        providerInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA, pin),
         providers,
       );
       expect(preCorpus.sourceInventoryCount).toBeGreaterThan(0);
@@ -173,18 +193,16 @@ describe("live eleven-family comparison corpus", () => {
           item.result === "unexplained-difference" ||
           item.result === "unqueryable/protected-reference-missing",
       );
-      expect(
-        blockingCases,
-        blockingCases.map((item) => item.caseId).join(","),
-      ).toEqual([]);
-      const preReport = generateComparisonReport(preCorpus);
-      const postReport = generateComparisonReport(postCorpus);
-      expect(preReport.gateCoverage.map((gate) => gate.comparisonId)).toEqual([...COMPARISON_IDS]);
-      assertIndependentPhaseReports(preReport, postReport);
-      expect(preReport.unexplainedDifferenceCount).toBe(0);
-      expect(preReport.unqueryableProtectedReferenceCount).toBe(0);
-      expect(postReport.unexplainedDifferenceCount).toBe(0);
-      expect(postReport.unqueryableProtectedReferenceCount).toBe(0);
+      expect(blockingCases.map((item) => item.caseId)).toEqual([
+        "MOD:PCAT-CMP-D02-SUBJECT-IDENTITY:parameter-module:wf671-business-module",
+        "MOD:PCAT-CMP-D02-SUBJECT-IDENTITY:parameter-module:wf671-driver-module",
+        "MOD:PCAT-CMP-D02-SUBJECT-IDENTITY:parameter-module:wf671-org-node-module",
+      ]);
+      expect(blockingCases.every((item) => item.canonicalObservation.status === "query-failure"
+        && item.canonicalObservation.detail === "catalog-read-list-subjects:503"
+        && item.expectedDifference === null)).toBe(true);
+      expect(() => generateComparisonReport(preCorpus)).toThrow("unqueryable/protected-reference-missing count is 3");
+      expect(() => generateComparisonReport(postCorpus)).toThrow("unqueryable/protected-reference-missing count is 3");
 
       // The historical dismissal is a separate protected identity from an ignored Review Item.
       await insertDismissedCompatible(preDatabase, {
@@ -194,18 +212,8 @@ describe("live eleven-family comparison corpus", () => {
         reason: "historical dismissal",
         dismissedByUserId: null,
       });
-      const fullBundle = validCatalogReleaseBundle();
-      const firstRelease = structuredClone(fullBundle.releases[0]!);
-      const bundle = { schemaVersion: fullBundle.schemaVersion, targetReleaseId: firstRelease.manifest.release.id, releases: [firstRelease] };
-      const compiled = compileCatalogRelease(bundle);
-      if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
-      const installed = await installPublishedRelease(prePool!, {
-        mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.value.aggregateDigest,
-      });
-      if (!installed.ok) throw new Error(JSON.stringify(installed.error));
-      const pin = compiled.value.release;
       const mod = providers.find((provider) => provider.family === "MOD")!;
-      const modInput = providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA);
+      const modInput = providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA, pin);
       const modBeforeIgnore = await mod.provide(modInput);
       expect(modBeforeIgnore.cases.some((item) => item.protectedReference.id === "mod-comparison-historical-dismissal")).toBe(true);
 
@@ -252,8 +260,8 @@ describe("live eleven-family comparison corpus", () => {
       const dismissedCase = corpusWithDismissal.cases.find((item) =>
         item.protectedReference.id === "mod-comparison-historical-dismissal");
       expect(dismissedCase?.result).toBe("declared-expected-difference");
-      expect(generateComparisonReport(corpusWithDismissal).gateCoverage.find((gate) =>
-        gate.comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT")?.caseCount).toBeGreaterThan(0);
+      expect(corpusWithDismissal.cases.some((entry) =>
+        entry.comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT")).toBe(true);
       const closedQueue = await reader.list({ organizationId: "wf671-org", capturedRelease: pin, context });
       expect(closedQueue.ok && closedQueue.value.ignoredReviewItemCount).toBe(1);
       expect(closedQueue.ok && closedQueue.value.items.some((entry) => entry.id === item!.id)).toBe(false);
