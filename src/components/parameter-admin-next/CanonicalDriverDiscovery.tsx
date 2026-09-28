@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { buildCatalogHref, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { CatalogDriverCompatibleDiscoveryResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 
 type ReadyPage = Extract<CatalogDriverCompatibleDiscoveryResponse, { status: "ready" }>;
@@ -15,6 +16,10 @@ const unavailableText = {
 } as const;
 const unavailableMessage = (reason: string) =>
   unavailableText[reason as keyof typeof unavailableText] ?? "发现服务暂不可用，请刷新后重试。";
+const isReleaseDrift = (cause: unknown) =>
+  cause instanceof WiseEffApiError && cause.code === "CONFLICT" && cause.details.reason === "release-drift";
+const discoveryErrorMessage = (cause: unknown) =>
+  isReleaseDrift(cause) ? unavailableText["release-drift"] : presentError(cause, "发现结果加载失败，请刷新。");
 
 export function CanonicalDriverDiscovery({ governance, organizationId, onNavigate, onAuthorOverlay, refreshKey = 0 }: {
   governance: ParameterCatalogGovernanceRepository;
@@ -50,7 +55,7 @@ export function CanonicalDriverDiscovery({ governance, organizationId, onNavigat
         setCursor(result.nextCursor);
       })
       .catch((cause) => {
-        if (request === generation.current) setError(presentError(cause, "发现结果加载失败，请刷新。"));
+        if (request === generation.current) setError(discoveryErrorMessage(cause));
       })
       .finally(() => {
         if (request === generation.current) setLoading(false);
@@ -70,11 +75,13 @@ export function CanonicalDriverDiscovery({ governance, organizationId, onNavigat
       );
       if (request !== generation.current) return;
       if (next.status === "unavailable") {
+        if (next.reason === "release-drift") setCursor(null);
         setError(unavailableMessage(next.reason));
         return;
       }
       if (next.catalogRelease.id !== page.catalogRelease.id ||
           next.catalogRelease.digest !== page.catalogRelease.digest) {
+        setCursor(null);
         setError(unavailableText["release-drift"]);
         return;
       }
@@ -89,7 +96,10 @@ export function CanonicalDriverDiscovery({ governance, organizationId, onNavigat
       setItems((current) => [...current, ...next.items]);
       setCursor(next.nextCursor);
     } catch (cause) {
-      if (request === generation.current) setError(presentError(cause, "发现结果加载失败，请刷新。"));
+      if (request === generation.current) {
+        if (isReleaseDrift(cause)) setCursor(null);
+        setError(discoveryErrorMessage(cause));
+      }
     } finally {
       if (request === generation.current) setLoading(false);
     }

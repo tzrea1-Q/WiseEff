@@ -25,6 +25,7 @@ test.describe("Issue 897 canonical module ownership", () => {
   const environment = captureProcessEnvForDisposableRuntime();
   let runtime: DisposablePostCutoverRuntime;
   let releaseId: string;
+  let releaseFixture: ReturnType<typeof firstReleaseBundle>;
   let driverRegistrationId: string;
   let bindingId: string;
   let unknownObservationId: string;
@@ -67,6 +68,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     }
     refreshAuthoritativeSource(release);
     const fixture = { ...bundle, releases: [release] };
+    releaseFixture = fixture;
     const compiled = compileCatalogRelease(fixture);
     if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
     releaseId = compiled.value.release.id;
@@ -472,5 +474,110 @@ test.describe("Issue 897 canonical module ownership", () => {
     await expect(page.getByRole("region", { name: "驱动兼容发现" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "全量重算" })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("canonical-admin-page-project-viewer-denied.png"), animations: "disabled" });
+  });
+
+  test("real HTTP 409 release drift keeps the first page separate and refreshes onto the new pin", async ({ page, request }, info) => {
+    test.setTimeout(120_000);
+    const headers = authHeadersForRole("admin");
+    const content = `/dts-v1/;\n/ { ${Array.from({ length: 51 }, (_, index) =>
+      `drift_node_${index} { compatible = "acme,power"; };`).join(" ")} };\n`;
+    const config = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+      headers, data: { name: "issue897-release-drift-source" }
+    });
+    expect(config.status(), await config.text()).toBe(201);
+    const upload = () => request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+      headers, data: { fileName: "release-drift.dts", contentBase64: Buffer.from(content).toString("base64") }
+    });
+    const file = await upload();
+    expect(file.status(), await file.text()).toBe(201);
+    const member = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${(await config.json()).item.id}/files`), {
+      headers, data: { fileId: (await file.json()).item.id, role: "base", sortOrder: 0 }
+    });
+    expect(member.ok(), await member.text()).toBe(true);
+    const parsed = await upload();
+    expect(parsed.status(), await parsed.text()).toBe(201);
+    const discoveryPath = `/api/v2/organizations/${organizationId}/driver-compatible-discovery`;
+    const traffic: Array<{ method: string; path: string; status: number; releasePin: string | null }> = [];
+    const legacyRequests: string[] = [];
+    page.on("request", call => {
+      if (/discovery-hints|\/parameter-modules\/mappings|\/parameter-modules\/recompute/.test(call.url())) {
+        legacyRequests.push(`${call.method()} ${new URL(call.url()).pathname}`);
+      }
+    });
+    page.on("response", response => {
+      const url = new URL(response.url());
+      if (url.pathname === discoveryPath) traffic.push({
+        method: response.request().method(), path: `${url.pathname}${url.search}`,
+        status: response.status(),
+        releasePin: response.request().headers()["x-wiseeff-catalog-release"] ?? null
+      });
+    });
+    await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
+    const discovery = page.getByRole("region", { name: "驱动兼容发现" });
+    await expect(discovery.locator(".canonical-driver-discovery__item")).toHaveCount(50);
+    const first = await request.get(apiRoute(`${discoveryPath}?limit=50`), { headers });
+    expect(first.status(), await first.text()).toBe(200);
+    const firstPage = await first.json();
+    expect(firstPage.status).toBe("ready");
+    expect(firstPage.items).toHaveLength(50);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+    await expect(discovery.getByText(new RegExp(`目录发布 ${firstPage.catalogRelease.id}`))).toBeVisible();
+
+    const successor = structuredClone(releaseFixture.releases[0]!) as Parameters<typeof refreshAuthoritativeSource>[0];
+    successor.manifest.release = { ...successor.manifest.release,
+      id: "crel_issue897_drift_2", version: "1.1.0", sequence: successor.manifest.release.sequence + 1,
+      publishedAt: "2026-09-28T00:00:00Z", predecessor: firstPage.catalogRelease };
+    refreshAuthoritativeSource(successor);
+    const nextBundle = { ...releaseFixture, targetReleaseId: successor.manifest.release.id,
+      releases: [...releaseFixture.releases, successor] };
+    const compiled = compileCatalogRelease(nextBundle);
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+    const pool = new pg.Pool({ connectionString: runtime.databaseUrl });
+    try {
+      const installed = await installPublishedRelease(pool, { mode: "advance",
+        source: jsonCatalogReleaseSource(nextBundle), expectedCurrent: firstPage.catalogRelease,
+        expectedTargetDigest: compiled.value.aggregateDigest });
+      expect(installed.ok, JSON.stringify(installed)).toBe(true);
+    } finally { await pool.end(); }
+
+    expectedApiFailures.push({ method: "GET", path: discoveryPath, status: 409 });
+    const driftedResponse = page.waitForResponse(response => new URL(response.url()).pathname === discoveryPath &&
+      new URL(response.url()).searchParams.has("cursor") && response.status() === 409);
+    await discovery.getByRole("button", { name: "加载下一页" }).click();
+    const drifted = await driftedResponse;
+    const errorBody = await drifted.json();
+    expect(errorBody.error).toMatchObject({ code: "CONFLICT", details: {
+      reason: "release-drift", expectedCatalogReleaseId: firstPage.catalogRelease.id,
+      currentCatalogReleaseId: successor.manifest.release.id
+    } });
+    await expect(discovery.getByRole("alert")).toContainText("目录发布已变化，请刷新发现结果。");
+    await expect(discovery.locator(".canonical-driver-discovery__item")).toHaveCount(50);
+    await expect(discovery.getByRole("button", { name: "加载下一页" })).toHaveCount(0);
+    await discovery.getByRole("alert").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("canonical-real-release-drift-409.png"), animations: "disabled" });
+
+    const refreshedResponse = page.waitForResponse(response => new URL(response.url()).pathname === discoveryPath &&
+      !new URL(response.url()).searchParams.has("cursor") && response.status() === 200);
+    await discovery.getByRole("button", { name: "刷新发现" }).click();
+    expect((await (await refreshedResponse).json()).catalogRelease.id).toBe(successor.manifest.release.id);
+    await expect(discovery.getByText(new RegExp(`目录发布 ${successor.manifest.release.id}`))).toBeVisible();
+    await expect(discovery.locator(".canonical-driver-discovery__item")).toHaveCount(50);
+    const continuedResponse = page.waitForResponse(response => new URL(response.url()).pathname === discoveryPath &&
+      new URL(response.url()).searchParams.has("cursor") && response.status() === 200);
+    await discovery.getByRole("button", { name: "加载下一页" }).click();
+    await continuedResponse;
+    await expect.poll(() => discovery.locator(".canonical-driver-discovery__item").count()).toBeGreaterThan(50);
+    expect(traffic.filter(entry => entry.path.includes("cursor="))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 409, releasePin: firstPage.catalogRelease.id }),
+      expect.objectContaining({ status: 200, releasePin: successor.manifest.release.id })
+    ]));
+    expect(legacyRequests).toEqual([]);
+    await discovery.getByText(new RegExp(`目录发布 ${successor.manifest.release.id}`)).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("canonical-real-release-drift-refreshed.png"), animations: "disabled" });
+    await writeFile(info.outputPath("canonical-real-release-drift-network.json"), JSON.stringify({
+      fixturePublication: { previous: firstPage.catalogRelease, current: {
+        id: successor.manifest.release.id, digest: compiled.value.release.digest } },
+      traffic, conflict: errorBody.error.details, legacyRequests
+    }, null, 2));
   });
 });
