@@ -22,6 +22,8 @@ import {
 } from "./parameterCatalogComparisonContribution";
 import { insertDismissedCompatible } from "./repository";
 import { listDismissedCompatibleIdentitiesForComparison } from "./comparisonInventoryRepository";
+import { installParameterModuleComparisonCatalogFixture } from "../../testing/parameterCatalog/registryProjection";
+import type { CatalogReleasePin } from "../parameter-catalog-contract";
 import * as comparisonInventoryRepository from "./comparisonInventoryRepository";
 import * as moduleRepository from "./repository";
 import * as legacyCatalog from "../parameter-catalog-api/legacy";
@@ -38,6 +40,7 @@ function baseInput(
   inventoryMode: ModInventoryMode,
   phase: ModComparisonPhase,
   candidateSha: string,
+  expectedCatalogReleasePin: CatalogReleasePin,
 ): ModComparisonContributionInput {
   return {
     database,
@@ -50,6 +53,7 @@ function baseInput(
     mappingHeadVersion: phase === "pre-activation" ? 1 : 2,
     mappingHeadChecksum: createHash("sha256").update(`${phase}:${inventoryMode}`).digest("hex"),
     catalogSnapshotChecksum: createHash("sha256").update(`catalog:${phase}:${inventoryMode}`).digest("hex"),
+    expectedCatalogReleasePin,
   };
 }
 
@@ -60,6 +64,25 @@ function assertCanonicalChecksum(contribution: ModComparisonContribution) {
   expect(bytes.toString("utf8").endsWith("\n")).toBe(true);
   expect(bytes.toString("utf8")).not.toContain("\r");
   expect(contribution.checksum).toBe(checksumModComparisonBytes(bytes));
+}
+
+function emitProbe(label: string, contribution: ModComparisonContribution): void {
+  if (process.env.MOD_COMPARISON_PROBE !== "1") return;
+  process.stdout.write(`MOD_COMPARISON_PROBE ${JSON.stringify({
+    label,
+    phase: contribution.phase,
+    inventoryMode: contribution.inventoryMode,
+    sourceInventoryCount: contribution.sourceInventoryCount,
+    sourceInventoryChecksum: contribution.sourceInventoryChecksum,
+    checksum: contribution.checksum,
+    cases: contribution.cases.map((item) => ({
+      caseId: item.caseId,
+      protectedReference: item.protectedReference,
+      result: item.result,
+      legacyFailure: item.legacyObservation.status === "query-failure" ? item.legacyObservation.detail : null,
+      canonicalFailure: item.canonicalObservation.status === "query-failure" ? item.canonicalObservation.detail : null,
+    })),
+  })}\n`);
 }
 
 describe("provideModParameterCatalogComparisonContribution", () => {
@@ -78,10 +101,12 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     const pool = getRootPostgresPool(database);
     expect(pool).toBeDefined();
     try {
+      const { pin } = await installParameterModuleComparisonCatalogFixture(pool!);
       const contribution = await provideModParameterCatalogComparisonContribution(
-        baseInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA),
+        baseInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA, pin),
       );
       assertCanonicalChecksum(contribution);
+      emitProbe("fresh-pre", contribution);
       expect(contribution.phase).toBe("pre-activation");
       expect(contribution.inventoryMode).toBe("fresh");
       expect(contribution.sourceInventoryCount).toBe(0);
@@ -98,10 +123,12 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     const pool = getRootPostgresPool(database);
     expect(pool).toBeDefined();
     try {
+      const { pin } = await installParameterModuleComparisonCatalogFixture(pool!);
       const contribution = await provideModParameterCatalogComparisonContribution(
-        baseInput(database, pool!, "fresh", "post-p13", FRESH_POST_SHA),
+        baseInput(database, pool!, "fresh", "post-p13", FRESH_POST_SHA, pin),
       );
       assertCanonicalChecksum(contribution);
+      emitProbe("fresh-post", contribution);
       expect(contribution.phase).toBe("post-p13");
       expect(contribution.inventoryMode).toBe("fresh");
       expect(contribution.sourceInventoryCount).toBe(0);
@@ -132,14 +159,17 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     expect(prePool).toBeDefined();
     expect(postPool).toBeDefined();
     try {
+      const { pin } = await installParameterModuleComparisonCatalogFixture(prePool!);
       const pre = await provideModParameterCatalogComparisonContribution(
-        baseInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA),
+        baseInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA, pin),
       );
       const post = await provideModParameterCatalogComparisonContribution(
-        baseInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA),
+        baseInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA, pin),
       );
       assertCanonicalChecksum(pre);
       assertCanonicalChecksum(post);
+      emitProbe("populated-pre", pre);
+      emitProbe("populated-post", post);
       expect(pre.sourceInventoryCount).toBeGreaterThan(0);
       expect(post.sourceInventoryCount).toBe(pre.sourceInventoryCount);
       expect(pre.cases.length).toBeGreaterThan(0);
@@ -196,7 +226,8 @@ describe("provideModParameterCatalogComparisonContribution", () => {
     const pool = getRootPostgresPool(database);
     expect(pool).toBeDefined();
     try {
-      const input = baseInput(database, pool!, "populated", "pre-activation", POP_PRE_SHA);
+      const { pin } = await installParameterModuleComparisonCatalogFixture(pool!);
+      const input = baseInput(database, pool!, "populated", "pre-activation", POP_PRE_SHA, pin);
       await database.query("insert into organizations (id, name) values ($1, $2)", ["c4-org-2", "C4 second organization"]);
       const before = await provideModParameterCatalogComparisonContribution(input);
       for (let index = 0; index < 201; index += 1) {
@@ -255,11 +286,11 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       expect(dismissalRequests).toHaveLength(202);
       expect(dismissalRequests.every((request) => request.method === "DELETE")).toBe(true);
       expect(dismissalRequests.filter((request) => request.path === `${routePrefix}${encodeURIComponent("c4-vendor,device-200")}`)).toHaveLength(2);
-      expect(canonicalOrganizations).toContain("wf671-org");
-      expect(canonicalOrganizations).toContain("c4-org-2");
+      expect(canonicalOrganizations).toEqual([]);
       observedSpy.mockRestore();
       dismissedPageSpy.mockRestore();
       assertCanonicalChecksum(after);
+      emitProbe("dismissed-201-plus-1-pre", after);
       expect(after.sourceInventoryCount).toBe(before.sourceInventoryCount + 202);
       expect(after.cases.filter((item) => item.protectedReference.kind !== "parameter-module-dismissed-compatible"))
         .toEqual(before.cases);
@@ -277,9 +308,10 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       expect(inventoryQueries.filter((sql) => /^\s*(insert|update|delete|truncate)\b/iu.test(sql))).toEqual([]);
       expect(await listDismissedCompatibleIdentitiesForComparison(database, "wf671-org")).toEqual(persistedBefore);
       const afterPost = await provideModParameterCatalogComparisonContribution(
-        baseInput(database, pool!, "populated", "post-p13", POP_POST_SHA),
+        baseInput(database, pool!, "populated", "post-p13", POP_POST_SHA, pin),
       );
       assertCanonicalChecksum(afterPost);
+      emitProbe("dismissed-201-plus-1-post", afterPost);
       expect(afterPost.sourceInventoryCount).toBe(after.sourceInventoryCount);
       expect(afterPost.sourceInventoryChecksum).toBe(after.sourceInventoryChecksum);
       expect(afterPost.cases.map((item) => [item.caseId, item.protectedReference, item.result]))
@@ -291,6 +323,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
           ? Promise.resolve({ status: 404, headers: {}, body: {} })
           : actualLegacyRequest(request, options));
       const unavailable = await provideModParameterCatalogComparisonContribution(input);
+      emitProbe("dismissed-legacy-route-failure", unavailable);
       missingLegacyRoute.mockRestore();
       const unavailableCases = unavailable.cases.filter((item) =>
         item.protectedReference.id === "c4-dismissed-200" || item.protectedReference.id === "c4-dismissed-other-org");

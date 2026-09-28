@@ -1,4 +1,5 @@
 import type pg from "pg";
+import type { CatalogReleasePin } from "../../parameter-catalog-contract";
 
 import { provideAgtParameterCatalogComparisonContribution } from "../../agent/parameterCatalogComparisonContribution";
 import { provideDbgParameterCatalogComparisonContribution } from "../../debugging/parameterCatalogComparisonContribution";
@@ -23,6 +24,8 @@ import {
 export type ComparisonProviderInput = AggregationContext & {
   readonly database: Database;
   readonly pool: pg.Pool;
+  /** The comparison input's captured release identity; MOD rejects absence or drift. */
+  readonly expectedCatalogReleasePin?: CatalogReleasePin;
 };
 
 export type ComparisonProvider = {
@@ -139,6 +142,7 @@ export const createProductionComparisonProviders = (): readonly ComparisonProvid
       provideModParameterCatalogComparisonContribution({
         database: input.database,
         pool: input.pool,
+        expectedCatalogReleasePin: input.expectedCatalogReleasePin,
         ...sharedPins(input),
       }),
   },

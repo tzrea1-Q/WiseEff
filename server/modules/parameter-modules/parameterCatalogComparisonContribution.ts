@@ -3,11 +3,9 @@ import type pg from "pg";
 
 import type { AuthContext } from "../auth/types";
 import { createCatalogKernel } from "../catalog-kernel/interface";
-import {
-  handleCatalogGovernance,
-  emptyGovernanceQueryPorts,
-  type CatalogGovernancePorts,
-} from "../parameter-catalog-api/governance";
+import { captureCurrentCatalogPin } from "../catalog-publication/runtime/pinCache";
+import type { CatalogReleasePin } from "../parameter-catalog-contract";
+import { readPinnedGovernanceRegistrationsForComparison, type ComparisonGovernanceRegistration } from "../parameter-catalog-api/productionWire";
 import {
   handleCatalogRead,
   kernelOnlyTimelineComposer,
@@ -93,6 +91,7 @@ export type ModComparisonContributionInput = {
   readonly mappingHeadVersion: number;
   readonly mappingHeadChecksum: string;
   readonly catalogSnapshotChecksum: string;
+  readonly expectedCatalogReleasePin?: CatalogReleasePin;
 };
 
 export type ModComparisonContribution = {
@@ -122,6 +121,7 @@ type InventoryRecord =
   | (ModProtectedReference & {
       readonly kind: "parameter-module" | "parameter-module-mapping" | "subject-registration" | "subject-placement";
       readonly applicable: readonly ModComparisonId[];
+      readonly organizationId?: string;
     });
 
 function compareText(left: string, right: string): number {
@@ -225,50 +225,6 @@ function createReadPorts(pool: pg.Pool, organizationId: string): CatalogReadPort
   };
 }
 
-function createGovernancePorts(organizationId: string): CatalogGovernancePorts {
-  return {
-    authenticate: async () => ({
-      ok: true as const,
-      scope: {
-        principalId: "mod-comparison-reader",
-        organizationId,
-        actorKind: "platform-admin" as const,
-        canReadGovernance: true,
-        canMutateOrganization: true,
-        canReviewProposals: true,
-        defaultDestinationModuleId: "",
-        defaultSubjectKind: "driver" as const,
-      },
-    }),
-    currentRelease: async () => null,
-    executeRegistration: async () => ({
-      ok: false as const,
-      error: { kind: "catalog-drift" as const, code: "PCAT-GUARD-DRIFT" as const, sqlstate: "PCA04" as const },
-    }),
-    resolveReviewItem: async () => ({
-      ok: false as const,
-      error: { kind: "review-item-not-found" as const, reviewItemId: "mod-unwired" },
-    }),
-    executeProposal: async () => ({
-      ok: false as const,
-      error: {
-        kind: "permission-denied" as const,
-        actorKind: "platform-admin" as const,
-        method: "executeProposal" as const,
-      },
-    }),
-    listReviewQueue: async () => ({
-      ok: false as const,
-      error: { kind: "permission-denied" as const, actorKind: "anonymous" as const },
-    }),
-    getReviewItem: async () => ({
-      ok: false as const,
-      error: { kind: "review-item-not-found" as const, reviewItemId: "mod-unwired" },
-    }),
-    ...emptyGovernanceQueryPorts,
-  };
-}
-
 function createLegacyOptions(database: Database, organizationId: string): LegacyCatalogOptions {
   const auth = inventoryAuth(organizationId);
   return {
@@ -290,6 +246,7 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
       byKey.set(`parameter-module:${module.id}`, {
         kind: "parameter-module",
         id: module.id,
+        organizationId,
         applicable: ["PCAT-CMP-D02-SUBJECT-IDENTITY"],
       });
     }
@@ -297,6 +254,7 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
       byKey.set(`parameter-module-mapping:${mapping.id}`, {
         kind: "parameter-module-mapping",
         id: mapping.id,
+        organizationId,
         applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"],
       });
     }
@@ -316,12 +274,14 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
       byKey.set(`subject-registration:${item.moduleId}`, {
         kind: "subject-registration",
         id: item.moduleId,
+        organizationId,
         applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"],
       });
       if (item.defaultBusinessCategoryId) {
         byKey.set(`subject-placement:${item.moduleId}`, {
           kind: "subject-placement",
           id: item.moduleId,
+          organizationId,
           applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"],
         });
       }
@@ -345,11 +305,16 @@ async function observeCanonicalSubjects(
   });
   if (response.status === 200 && response.body && typeof response.body === "object") {
     const body = response.body as { items?: unknown };
+    if (!Array.isArray(body.items) || body.items.some((item) =>
+      !item || typeof item !== "object" || typeof item.id !== "string" || !item.id)) {
+      return { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: "catalog-read-list-subjects-malformed-response" };
+    }
     return {
       status: "value",
       value: {
         httpStatus: response.status,
-        itemCount: Array.isArray(body.items) ? body.items.length : 0,
+        itemCount: body.items.length,
       },
     };
   }
@@ -357,46 +322,6 @@ async function observeCanonicalSubjects(
     status: "query-failure",
     code: String(response.status),
     detail: "catalog-read-list-subjects",
-  };
-}
-
-async function observeCanonicalRegistrations(
-  organizationId: string,
-): Promise<{ observation: ModQueryObservation; records: InventoryRecord[] }> {
-  const ports = createGovernancePorts(organizationId);
-  const response = await handleCatalogGovernance(ports, {
-    method: "GET",
-    path: catalogPath("catalog.listRegistrations", { organizationId }),
-    params: { organizationId },
-    query: {},
-    headers: {},
-    requestId: randomUUID(),
-    body: undefined,
-  });
-  if (response.status === 200 && response.body && typeof response.body === "object") {
-    const body = response.body as { items?: Array<{ id?: string }> };
-    const items = Array.isArray(body.items) ? body.items : [];
-    return {
-      observation: {
-        status: "value",
-        value: { httpStatus: response.status, itemCount: items.length },
-      },
-      records: items
-        .filter((item) => typeof item.id === "string")
-        .map((item) => ({
-          kind: "subject-registration",
-          id: item.id as string,
-          applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"] as const,
-        })),
-    };
-  }
-  return {
-    observation: {
-      status: "query-failure",
-      code: String(response.status),
-      detail: "catalog-governance-list-registrations",
-    },
-    records: [],
   };
 }
 
@@ -454,6 +379,10 @@ async function observeLegacyHttp(
       detail: `legacy-dismissed-compatible-http-${result.status}`,
     };
   }
+  if (result.status >= 500) {
+    return { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+      detail: `legacy-http-${result.status}` };
+  }
   return {
     status: "value",
     value: {
@@ -498,16 +427,10 @@ function classifyCase(input: {
   readonly mappingHeadVersion: number;
   readonly planPin: string;
 }): { result: ModComparisonResult; expectedDifference: ModExpectedDifference | null } {
-  if (
-    input.legacyObservation.status === "query-failure" &&
-    input.legacyObservation.code === MOD_UNQUERYABLE_FAILURE_CODE
-  ) {
+  if (input.legacyObservation.status === "query-failure") {
     return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
   }
-  if (
-    input.canonicalObservation.status === "query-failure" &&
-    input.canonicalObservation.code === MOD_UNQUERYABLE_FAILURE_CODE
-  ) {
+  if (input.canonicalObservation.status === "query-failure") {
     return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
   }
 
@@ -535,6 +458,13 @@ function classifyCase(input: {
     planPin: input.planPin,
   };
   return { result: "declared-expected-difference", expectedDifference };
+}
+
+function retainQueryFailure(observation: ModQueryObservation): ModQueryObservation {
+  return observation.status === "query-failure" && observation.code !== MOD_UNQUERYABLE_FAILURE_CODE
+    ? { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: `${observation.detail}:${observation.code}` }
+    : observation;
 }
 
 function sortInventory(records: InventoryRecord[]): InventoryRecord[] {
@@ -573,17 +503,47 @@ export async function provideModParameterCatalogComparisonContribution(
   if (!/^[a-f0-9]{40}$/u.test(input.candidateSha)) {
     throw new Error("MOD comparison candidateSha must be a full Git SHA");
   }
+  const expectedPin = input.expectedCatalogReleasePin;
+  if (!expectedPin) throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: expected Catalog release pin missing`);
+  if (typeof expectedPin.id !== "string" || !expectedPin.id ||
+      typeof expectedPin.digest !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(expectedPin.digest)) {
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: expected Catalog release pin invalid`);
+  }
 
   const organizations = await queryOrganizationIds(input.database);
   const organizationId = organizations[0] ?? "platform";
+  let registrations: Awaited<ReturnType<typeof readPinnedGovernanceRegistrationsForComparison>>;
+  try {
+    registrations = await readPinnedGovernanceRegistrationsForComparison(input.pool, organizations, expectedPin);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(MOD_UNQUERYABLE_FAILURE_CODE)) throw error;
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: canonical Registration read failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
   const moduleRecords = await queryModInventory(input.database);
   const canonicalSubjects = await observeCanonicalSubjects(input.pool, organizationId);
-  const canonicalRegistrations = await observeCanonicalRegistrations(organizationId);
-  const canonicalRegistrationsByOrganization = new Map<string, ModQueryObservation>([
-    [organizationId, canonicalRegistrations.observation],
-  ]);
-
-  const inventory = sortInventory([...moduleRecords, ...canonicalRegistrations.records]);
+  const canonicalRecords: InventoryRecord[] = [...registrations.entries()].flatMap(([org, rows]) =>
+    rows.flatMap((row) => [
+      { kind: "subject-registration" as const, id: row.id, organizationId: org,
+        applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"] as const },
+      { kind: "subject-placement" as const, id: row.placement.id, organizationId: org,
+        applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"] as const },
+    ]),
+  );
+  const canonicalByIdentity = new Map<string, ComparisonGovernanceRegistration>();
+  for (const [org, rows] of registrations) {
+    for (const registration of rows) {
+      for (const id of [registration.id, registration.placement.id, registration.placement.moduleId]) {
+        if (!id) continue;
+        const key = `${org}\0${id}`;
+        const existing = canonicalByIdentity.get(key);
+        if (existing && existing.id !== registration.id) {
+          throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: canonical identity collision in ${org}`);
+        }
+        canonicalByIdentity.set(key, registration);
+      }
+    }
+  }
+  const inventory = sortInventory([...moduleRecords, ...canonicalRecords]);
 
   if (input.inventoryMode === "fresh" && inventory.length !== 0) {
     throw new Error(
@@ -596,7 +556,7 @@ export async function provideModParameterCatalogComparisonContribution(
     const protectedReference = { kind: record.kind, id: record.id };
     const legacyOrganizationId = record.kind === "parameter-module-dismissed-compatible"
       ? record.organizationId
-      : organizationId;
+      : record.organizationId ?? organizationId;
     const routeIdentity = record.kind === "parameter-module-dismissed-compatible"
       ? record.legacyCompatible
       : record.id;
@@ -607,7 +567,7 @@ export async function provideModParameterCatalogComparisonContribution(
       ) {
         throw new Error(`MOD comparison rejected unknown comparison ID ${comparisonId}`);
       }
-      const legacyObservation =
+      const legacyObservation = retainQueryFailure(
         record.kind === "parameter-module"
           ? await observeLegacyModule(input.database, legacyOrganizationId, record.id)
           : await observeLegacyHttp(
@@ -616,14 +576,38 @@ export async function provideModParameterCatalogComparisonContribution(
               comparisonId,
               protectedReference,
               routeIdentity,
-            );
+            ),
+      );
       let canonicalObservation = canonicalSubjects;
       if (comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT") {
-        canonicalObservation = canonicalRegistrationsByOrganization.get(legacyOrganizationId)
-          ?? (await observeCanonicalRegistrations(legacyOrganizationId)).observation;
-        canonicalRegistrationsByOrganization.set(legacyOrganizationId, canonicalObservation);
+        const rows = registrations.get(legacyOrganizationId);
+        if (!rows) throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: organization scope missing`);
+        const match = canonicalByIdentity.get(`${legacyOrganizationId}\0${record.id}`);
+        canonicalObservation = {
+          status: "value",
+          value: {
+            catalogReleaseId: expectedPin.id,
+            catalogReleaseDigest: expectedPin.digest,
+            organizationId: legacyOrganizationId,
+            itemCount: rows.length,
+            ...(match ? { registration: {
+              id: match.id,
+              subjectId: match.subjectId,
+              status: match.status,
+              method: match.method,
+              placementId: match.placement.id,
+              placement: {
+                id: match.placement.id,
+                displayName: match.placement.displayName,
+                parentPlacementId: match.placement.parentPlacementId,
+                moduleId: match.placement.moduleId ?? null,
+              },
+            } } : {}),
+          },
+        };
       }
 
+      canonicalObservation = retainQueryFailure(canonicalObservation);
       const classified = classifyCase({
         comparisonId,
         legacyObservation,
@@ -646,6 +630,10 @@ export async function provideModParameterCatalogComparisonContribution(
   }
 
   const sortedCases = sortCases(cases);
+  const finalPin = await captureCurrentCatalogPin(input.pool);
+  if (finalPin?.id !== expectedPin.id || finalPin.digest !== expectedPin.digest) {
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: Catalog release changed during MOD comparison`);
+  }
   const inventoryBytes = Buffer.from(`${JSON.stringify(sortKeys(inventory))}\n`, "utf8");
   const sourceInventoryChecksum = checksumModComparisonBytes(inventoryBytes);
   const unsigned: Omit<ModComparisonContribution, "checksum"> = {
