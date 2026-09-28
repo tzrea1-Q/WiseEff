@@ -199,7 +199,7 @@ describe("live eleven-family comparison corpus", () => {
         "MOD:PCAT-CMP-D02-SUBJECT-IDENTITY:parameter-module:wf671-org-node-module",
       ]);
       expect(blockingCases.every((item) => item.canonicalObservation.status === "query-failure"
-        && item.canonicalObservation.detail === "catalog-read-list-subjects:503"
+        && item.canonicalObservation.detail === "no-exact-subject-association"
         && item.expectedDifference === null)).toBe(true);
       expect(() => generateComparisonReport(preCorpus)).toThrow("unqueryable/protected-reference-missing count is 3");
       expect(() => generateComparisonReport(postCorpus)).toThrow("unqueryable/protected-reference-missing count is 3");

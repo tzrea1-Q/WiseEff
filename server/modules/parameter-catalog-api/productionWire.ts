@@ -4,7 +4,7 @@ import type { AuthContext } from "../auth/types";
 import { permissionsForRoles } from "../auth/policy";
 import type { UsageProjectScope } from "../parameter-bindings/usage";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { createCatalogKernel, type CatalogKernel } from "../catalog-kernel/interface";
+import { createCatalogKernel, type CatalogKernel, type CatalogSubjectDetailSnapshot } from "../catalog-kernel/interface";
 import { isCatalogProjectionEmpty, readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
   captureCurrentCatalogPin,
@@ -108,6 +108,61 @@ const pinOf = (id: string, digest: string): CatalogReleasePin => ({
 
 /** Complete, read-only Governance projection for a release comparison snapshot. */
 export type ComparisonGovernanceRegistration = GovernanceRegistrationRecord;
+export type ComparisonCatalogSubject = CatalogSubjectDetailSnapshot;
+
+/** Exact current-release Subject identities through the production read composition. */
+export async function readPinnedCatalogSubjectsForComparison(
+  pool: pg.Pool,
+  db: Database,
+  scopes: readonly {
+    readonly organizationId: string;
+    readonly auth: AuthContext;
+    readonly subjectIds: readonly CatalogSubjectId[];
+  }[],
+  expectedPin: CatalogReleasePin,
+): Promise<Map<string, ReadonlyMap<string, ComparisonCatalogSubject | null>>> {
+  const matches = (pin: CatalogReleasePin | null) =>
+    pin?.id === expectedPin.id && pin.digest === expectedPin.digest;
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release differs from comparison input");
+  }
+  const byOrganization = new Map<string, ReadonlyMap<string, ComparisonCatalogSubject | null>>();
+  for (const { organizationId, auth, subjectIds } of scopes) {
+    if (byOrganization.has(organizationId)) throw new Error(`Duplicate Subject scope for ${organizationId}`);
+    const ports = createReadPorts(pool, async () => auth, db, { env: process.env });
+    const authenticated = await ports.authenticate({
+      method: "GET", path: "/api/v2/catalog/subjects", params: {}, query: {}, headers: {},
+      requestId: "mod-comparison-subject-read",
+    });
+    if (!authenticated.ok || !authenticated.scope.canReadCatalog ||
+        authenticated.scope.organizationId !== organizationId ||
+        auth.user.organizationId !== organizationId) {
+      throw new Error(`Catalog Subject read unauthorized for ${organizationId}`);
+    }
+    const readiness = await ports.readiness.current();
+    if (readiness.status !== "ready" || !matches(readiness.document.pin)) {
+      throw new Error(`Catalog Subject read not ready for ${organizationId}: ${readiness.status}`);
+    }
+    const loaded = await ports.runtime.loadCurrentCatalog(expectedPin);
+    if (!loaded.ok || !matches({ id: loaded.value.release.id, digest: loaded.value.release.digest })) {
+      throw new Error(`Catalog Subject snapshot unavailable for ${organizationId}`);
+    }
+    const subjects = new Map<string, ComparisonCatalogSubject | null>();
+    for (const id of subjectIds) {
+      if (authenticated.scope.subjects.kind === "only" && !authenticated.scope.subjects.ids.includes(id)) {
+        throw new Error(`Catalog Subject outside authorized scope for ${organizationId}`);
+      }
+      const found = loaded.value.getSubject(id);
+      subjects.set(id, found.status === "found" || found.status === "retired" ? found.subject : null);
+    }
+    byOrganization.set(organizationId, subjects);
+  }
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release changed during Subject comparison read");
+  }
+  return byOrganization;
+}
+
 export async function readPinnedGovernanceRegistrationsForComparison(
   pool: pg.Pool,
   organizationIds: readonly string[],

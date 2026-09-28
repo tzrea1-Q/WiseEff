@@ -2,20 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
 
 import type { AuthContext } from "../auth/types";
-import { createCatalogKernel } from "../catalog-kernel/interface";
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime/pinCache";
-import type { CatalogReleasePin } from "../parameter-catalog-contract";
-import { readPinnedGovernanceRegistrationsForComparison, type ComparisonGovernanceRegistration } from "../parameter-catalog-api/productionWire";
+import { CatalogSubjectId, type CatalogReleasePin } from "../parameter-catalog-contract";
 import {
-  handleCatalogRead,
-  kernelOnlyTimelineComposer,
-  unregisteredProjection,
-  zeroUsageProjection,
-  type CatalogReadPorts,
-} from "../parameter-catalog-api/read";
+  readPinnedCatalogSubjectsForComparison,
+  readPinnedGovernanceRegistrationsForComparison,
+  type ComparisonGovernanceRegistration,
+} from "../parameter-catalog-api/productionWire";
 import { handleLegacyCatalogRequest } from "../parameter-catalog-api/legacy";
 import type { LegacyCatalogOptions } from "../parameter-catalog-api/legacy";
-import { parameterCatalogCanonicalRoutes } from "../contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "../contracts/routeManifest";
 import type { Database } from "../../shared/database/client";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -180,51 +175,6 @@ async function queryOrganizationIds(database: Database): Promise<readonly string
   return result.rows.map((row) => row.id);
 }
 
-function catalogPath(routeId: string, params: Record<string, string> = {}): string {
-  const route = parameterCatalogCanonicalRoutes.find((entry) => entry.id === routeId);
-  if (!route) {
-    throw new Error(`Missing catalog route ${routeId}`);
-  }
-  return route.path.replace(/:([^/]+)/g, (_match, name: string) => {
-    const value = params[name];
-    if (!value) {
-      throw new Error(`Missing path parameter ${name}`);
-    }
-    return encodeURIComponent(value);
-  });
-}
-
-function createReadPorts(pool: pg.Pool, organizationId: string): CatalogReadPorts {
-  const kernel = createCatalogKernel(pool);
-  const scope = {
-    principalId: "mod-comparison-reader",
-    organizationId,
-    actorKind: "platform-admin" as const,
-    canReadCatalog: true,
-    projectScope: { kind: "only" as const, ids: [] },
-    canRegister: true,
-    subjects: { kind: "all" as const },
-    definitions: { kind: "all" as const },
-  };
-  return {
-    runtime: kernel,
-    readiness: {
-      async current() {
-        await pool.query("select 1 as ok");
-        return { status: "not-ready", retryAfterSeconds: 1 };
-      },
-      async named() {
-        await pool.query("select 1 as ok");
-        return { status: "unknown" };
-      },
-    },
-    registration: unregisteredProjection,
-    usage: zeroUsageProjection,
-    timeline: kernelOnlyTimelineComposer,
-    authenticate: async () => ({ ok: true as const, scope }),
-  };
-}
-
 function createLegacyOptions(database: Database, organizationId: string): LegacyCatalogOptions {
   const auth = inventoryAuth(organizationId);
   return {
@@ -288,41 +238,6 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
     }
   }
   return [...byKey.values()];
-}
-
-async function observeCanonicalSubjects(
-  pool: pg.Pool,
-  organizationId: string,
-): Promise<ModQueryObservation> {
-  const ports = createReadPorts(pool, organizationId);
-  const response = await handleCatalogRead(ports, {
-    method: "GET",
-    path: catalogPath("catalog.listSubjects"),
-    params: {},
-    query: {},
-    headers: {},
-    requestId: randomUUID(),
-  });
-  if (response.status === 200 && response.body && typeof response.body === "object") {
-    const body = response.body as { items?: unknown };
-    if (!Array.isArray(body.items) || body.items.some((item) =>
-      !item || typeof item !== "object" || typeof item.id !== "string" || !item.id)) {
-      return { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
-        detail: "catalog-read-list-subjects-malformed-response" };
-    }
-    return {
-      status: "value",
-      value: {
-        httpStatus: response.status,
-        itemCount: body.items.length,
-      },
-    };
-  }
-  return {
-    status: "query-failure",
-    code: String(response.status),
-    detail: "catalog-read-list-subjects",
-  };
 }
 
 function fillLegacyPath(path: string, identity: string): string {
@@ -443,6 +358,14 @@ function classifyCase(input: {
     return { result: "exact-equivalent", expectedDifference: null };
   }
 
+  const subject = input.canonicalObservation.status === "value"
+    ? input.canonicalObservation.value.subject : undefined;
+  if (input.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY" &&
+      (!subject || typeof subject !== "object" ||
+        typeof (subject as { id?: unknown }).id !== "string" || !(subject as { id: string }).id)) {
+    return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
+  }
+
   const expectedDifference: ModExpectedDifference = {
     rClass: "R9",
     mappingHeadId: input.mappingHeadId,
@@ -452,7 +375,8 @@ function classifyCase(input: {
         input.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
           ? "catalog-subject"
           : "subject-placement",
-      id: input.mappingHeadId,
+      id: input.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+        ? (subject as { id: string }).id : input.mappingHeadId,
     },
     ruleId: input.comparisonId,
     planPin: input.planPin,
@@ -520,7 +444,6 @@ export async function provideModParameterCatalogComparisonContribution(
     throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: canonical Registration read failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
   const moduleRecords = await queryModInventory(input.database);
-  const canonicalSubjects = await observeCanonicalSubjects(input.pool, organizationId);
   const canonicalRecords: InventoryRecord[] = [...registrations.entries()].flatMap(([org, rows]) =>
     rows.flatMap((row) => [
       { kind: "subject-registration" as const, id: row.id, organizationId: org,
@@ -542,6 +465,25 @@ export async function provideModParameterCatalogComparisonContribution(
         canonicalByIdentity.set(key, registration);
       }
     }
+  }
+  const subjectIdsByOrganization = new Map<string, Set<CatalogSubjectId>>();
+  for (const record of moduleRecords) {
+    if (record.kind !== "parameter-module") continue;
+    if (!record.organizationId) throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: module organization missing`);
+    const registration = canonicalByIdentity.get(`${record.organizationId}\0${record.id}`);
+    if (registration?.placement.moduleId !== record.id) continue;
+    const ids = subjectIdsByOrganization.get(record.organizationId) ?? new Set<CatalogSubjectId>();
+    ids.add(CatalogSubjectId(registration.subjectId));
+    subjectIdsByOrganization.set(record.organizationId, ids);
+  }
+  let catalogSubjects: Awaited<ReturnType<typeof readPinnedCatalogSubjectsForComparison>>;
+  try {
+    catalogSubjects = await readPinnedCatalogSubjectsForComparison(input.pool, input.database,
+      [...subjectIdsByOrganization].map(([org, ids]) => ({
+        organizationId: org, auth: inventoryAuth(org), subjectIds: [...ids],
+      })), expectedPin);
+  } catch (error) {
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: canonical Subject read failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
   const inventory = sortInventory([...moduleRecords, ...canonicalRecords]);
 
@@ -578,8 +520,45 @@ export async function provideModParameterCatalogComparisonContribution(
               routeIdentity,
             ),
       );
-      let canonicalObservation = canonicalSubjects;
-      if (comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT") {
+      let canonicalObservation: ModQueryObservation;
+      if (comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY") {
+        const match = canonicalByIdentity.get(`${legacyOrganizationId}\0${record.id}`);
+        const subjectRows = catalogSubjects.get(legacyOrganizationId);
+        const subject = match && subjectRows?.get(match.subjectId);
+        const legacyKind = legacyObservation.status === "value" ? legacyObservation.value.kind : undefined;
+        const expectedKind = legacyKind === "driver-group" ? "driver"
+          : legacyKind === "node-type" ? "node-type" : null;
+        let detail: string | null = null;
+        if (!match || match.placement.moduleId !== record.id) detail = "no-exact-subject-association";
+        else if (!subjectRows || !subjectRows.has(match.subjectId)) detail = "canonical-subject-response-missing";
+        else if (!subject) detail = "canonical-subject-not-published";
+        else if (subject.id !== match.subjectId) detail = "canonical-subject-identity-mismatch";
+        else if (expectedKind !== subject.kind) detail = "canonical-subject-kind-mismatch";
+        canonicalObservation = detail
+          ? { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE, detail }
+          : {
+              status: "value",
+              value: {
+                catalogReleaseId: expectedPin.id,
+                catalogReleaseDigest: expectedPin.digest,
+                organizationId: legacyOrganizationId,
+                association: { registrationId: match!.id, placementId: match!.placement.id, moduleId: record.id },
+                subject: {
+                  id: subject!.id,
+                  type: subject!.kind,
+                  canonicalName: subject!.canonicalKey,
+                  selector: subject!.membership.selector,
+                  lifecycle: subject!.membership.lifecycle,
+                  membershipReleaseId: subject!.membership.release.id,
+                  aliases: subject!.aliases.map((alias) => ({
+                    id: alias.id, selector: alias.selector,
+                    lifecycle: alias.membership.lifecycle,
+                    membershipReleaseId: alias.membership.release.id,
+                  })),
+                },
+              },
+            };
+      } else {
         const rows = registrations.get(legacyOrganizationId);
         if (!rows) throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: organization scope missing`);
         const match = canonicalByIdentity.get(`${legacyOrganizationId}\0${record.id}`);
