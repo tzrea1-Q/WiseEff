@@ -94,7 +94,7 @@ export type ModuleAttributionTreeProps = {
   }>;
   onMove: (moduleId: string, parentId: string | null) => void | Promise<void>;
   onDelete: (moduleId: string) => void | Promise<void>;
-  onRemoveMapping: (mappingId: string) => void | Promise<void>;
+  onRemoveMapping?: (mappingId: string) => void | Promise<void>;
   onAddCompatibleMapping?: (input: {
     moduleId: string;
     matchValue: string;
@@ -754,7 +754,7 @@ export function ModuleAttributionTree({
               : undefined
           }
           onRemoveCompatibleMapping={
-            editingModule.kind === "driver-group"
+            editingModule.kind === "driver-group" && onRemoveMapping
               ? (mappingId) => void onRemoveMapping(mappingId)
               : undefined
           }

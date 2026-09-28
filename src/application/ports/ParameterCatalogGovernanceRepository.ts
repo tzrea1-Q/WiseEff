@@ -2,6 +2,8 @@ import type {
   CatalogAcceptProposalRequest,
   CatalogCreateProposalRequest,
   CatalogListQuery,
+  CatalogDriverCompatibleDiscoveryQuery,
+  CatalogDriverCompatibleDiscoveryResponse,
   CatalogObservationListResponse,
   CatalogObservationResponse,
   CatalogPlacementResponse,
@@ -26,6 +28,8 @@ export type {
   CatalogAcceptProposalRequest,
   CatalogCreateProposalRequest,
   CatalogListQuery,
+  CatalogDriverCompatibleDiscoveryQuery,
+  CatalogDriverCompatibleDiscoveryResponse,
   CatalogObservationListResponse,
   CatalogObservationResponse,
   CatalogPlacementResponse,
@@ -95,6 +99,11 @@ export interface ParameterCatalogGovernanceRepository {
     organizationId: string,
     query?: CatalogListQuery
   ): Promise<CatalogObservationListResponse>;
+  listDriverCompatibleDiscovery(
+    organizationId: string,
+    query?: CatalogDriverCompatibleDiscoveryQuery,
+    expectedRelease?: { id: string; digest: string }
+  ): Promise<CatalogDriverCompatibleDiscoveryResponse>;
   getObservation(
     organizationId: string,
     observationId: string

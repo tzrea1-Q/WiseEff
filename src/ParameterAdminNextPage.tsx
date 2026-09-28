@@ -262,14 +262,7 @@ export function ParameterAdminNextPage({
                   roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
                 })}
                 sessionPermissions={sessionPermissions}
-                canonicalEnabled={
-                  runtimeMode === "api" &&
-                  Boolean(
-                    runtime?.parameterCatalogRepository &&
-                      runtime.parameterCatalogGovernanceRepository &&
-                      catalogOrganizationId
-                  )
-                }
+                canonicalEnabled={runtimeMode === "api"}
               />
             ) : null}
           </>

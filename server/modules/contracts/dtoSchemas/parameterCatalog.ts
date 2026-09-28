@@ -1268,6 +1268,40 @@ export const catalogPlacementResponseSchema = itemEnvelopeSchema(catalogPlacemen
   rejectLegacySpecKeys
 );
 export const catalogObservationListResponseSchema = catalogItemsEnvelopeSchema(catalogObservationDtoSchema);
+export const catalogDriverCompatibleDiscoveryResponseSchema = z.union([
+  catalogObject({
+    status: z.literal("unavailable"),
+    reason: closedEnum(["catalog-unavailable", "release-drift", "review-evidence-limit", "review-evidence-invalid"])
+  }),
+  catalogObject({
+    status: z.literal("ready"),
+    catalogRelease: catalogReleasePinSchema,
+    matcherRevision: z.string(),
+    items: z.array(catalogObject({
+      observationId: z.string(), projectId: z.string(), logicalNodeId: z.string(),
+      configRevisionId: z.string(), observedCatalogReleaseId: z.string(),
+      observedMatcherRevision: z.string(),
+      source: z.union([
+        catalogObject({status: z.literal("unavailable"), reason: z.string()}),
+        catalogObject({status: z.literal("historical"), currentConfigRevisionId: z.string(),
+          historicalCompatibles: z.array(z.string())}),
+        catalogObject({status: z.literal("current"), configSetId: z.string(), sourceName: z.string(),
+          fileVersionId: z.string(), sourceDigest: z.string(), revisionDigest: z.string()})
+      ]),
+      compatibles: z.array(catalogObject({
+        compatible: z.string(),
+        candidate: z.union([
+          catalogObject({kind: z.literal("recognized"), subjectId: z.string(), registrationId: z.string().nullable()}),
+          catalogObject({kind: z.literal("review-required"),
+            reason: closedEnum(["unknown", "ambiguous", "retired"]),
+            reviewItemIds: z.array(z.string()).nullable()})
+        ])
+      }))
+    })),
+    nextCursor: z.string().nullable(), ignoredReviewItemCount: z.number().int().nonnegative().nullable(),
+    emptyReason: z.literal("no-observations").optional()
+  })
+]);
 export const catalogObservationResponseSchema = itemEnvelopeSchema(catalogObservationDtoSchema).superRefine(
   rejectLegacySpecKeys
 );
@@ -1471,6 +1505,7 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogPlacementResponse: catalogPlacementResponseSchema,
   CatalogUpdatePlacementRequest: catalogUpdatePlacementRequestSchema,
   CatalogObservationListResponse: catalogObservationListResponseSchema,
+  CatalogDriverCompatibleDiscoveryResponse: catalogDriverCompatibleDiscoveryResponseSchema,
   CatalogObservationResponse: catalogObservationResponseSchema,
   CatalogReviewItemListResponse: catalogReviewItemListResponseSchema,
   CatalogReviewItemResponse: catalogReviewItemResponseSchema,
@@ -1690,6 +1725,13 @@ export const parameterCatalogCanonicalRoutes = [
     stability: "mvp"
   },
   {
+    id: "catalog.listDriverCompatibleDiscovery",
+    method: "GET",
+    path: "/api/v2/organizations/:organizationId/driver-compatible-discovery",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
     id: "catalog.listReviewItems",
     method: "GET",
     path: "/api/v2/organizations/:organizationId/parameter-review-items",
@@ -1870,6 +1912,7 @@ export const parameterCatalogRouteGates: Record<
   "catalog.updatePlacement": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.listObservations": ["PCAT-API-05"],
   "catalog.getObservation": ["PCAT-API-05"],
+  "catalog.listDriverCompatibleDiscovery": ["PCAT-API-05"],
   "catalog.listReviewItems": ["PCAT-API-05"],
   "catalog.getReviewItem": ["PCAT-API-05"],
   "catalog.resolveReviewItem": ["PCAT-API-05", "PCAT-API-10"],
@@ -1925,6 +1968,7 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.updatePlacement": "updatePlacement",
   "catalog.listObservations": "listObservations",
   "catalog.getObservation": "getObservation",
+  "catalog.listDriverCompatibleDiscovery": "listDriverCompatibleDiscovery",
   "catalog.listReviewItems": "listReviewItems",
   "catalog.getReviewItem": "getReviewItem",
   "catalog.resolveReviewItem": "resolveReviewItem",
@@ -2275,6 +2319,21 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogObservationResponse",
     additionalResponses: catalogReadErrors,
     successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.listDriverCompatibleDiscovery": {
+    summary: "Discover source-proven Driver compatibles for authorized projects",
+    tags: ["catalog"],
+    responseBody: "CatalogDriverCompatibleDiscoveryResponse",
+    additionalResponses: { ...catalogReadErrors, "400": "ErrorResponse", "409": "ErrorResponse" },
+    requestParameters: [
+      { name: "projectId", in: "query" },
+      { name: "observationId", in: "query" },
+      ...pageQueryParameters,
+      { ...catalogReleaseRequestHeader, required: false,
+        description: "Required with cursor; must match the first page's catalog release." }
+    ],
+    successHeaders: [{ ...catalogReleaseResponseHeader, required: false,
+      description: "Present on ready pages; unavailable pages have no proven release pin." }]
   },
   "catalog.listReviewItems": {
     summary: "List the organization parameter review queue",

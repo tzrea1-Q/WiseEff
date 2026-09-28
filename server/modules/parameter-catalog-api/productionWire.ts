@@ -37,6 +37,7 @@ import type { MappingQueryable } from "../catalog-cutover/mapping";
 import type { ObjectStore } from "../logs/objectStore";
 
 import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
+import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
 import { createParameterCatalogMigrationService } from "../parameter-catalog-migration/service";
 import type { ReplacementPublicationPorts } from "../parameter-catalog-migration/types";
 import { enqueuePublicationJob } from "../catalog-publication/enqueue";
@@ -659,6 +660,9 @@ export const registerParameterCatalogApi = (
     router,
     createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
   );
+  registerCatalogDriverCompatibleDiscoveryRoute(router, {
+    db: options.db, objectStore: options.objectStore, resolveAuth: options.resolveAuth,
+  });
   registerCatalogDefinitionReplacementRoutes(
     router,
     createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),

@@ -657,6 +657,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
   };
 
   const governance: ParameterCatalogGovernanceRepository = {
+    async listDriverCompatibleDiscovery() {
+      return { status: "unavailable", reason: "catalog-unavailable" };
+    },
     async listRegistrations(organizationId) {
       assertReadyForRead(store);
       assertOrganizationScope(organizationId);

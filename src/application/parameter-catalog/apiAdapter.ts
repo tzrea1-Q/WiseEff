@@ -108,6 +108,8 @@ export function createApiParameterCatalogGovernanceRepository(
     updatePlacement: async (organizationId, registrationId, body, context) =>
       client.updatePlacement(organizationId, registrationId, body, conditionalContext(context)),
     listObservations: (organizationId, query) => client.listObservations(organizationId, query),
+    listDriverCompatibleDiscovery: (organizationId, query, expectedRelease) =>
+      client.listDriverCompatibleDiscovery(organizationId, query, expectedRelease),
     getObservation: (organizationId, observationId) =>
       client.getObservation(organizationId, observationId),
     listReviewItems: (organizationId, query) => client.listReviewItems(organizationId, query),
