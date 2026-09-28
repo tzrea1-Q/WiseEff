@@ -19,6 +19,7 @@ import type {
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";
+import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptTransaction";
 import {
   getConfigSetById,
   getFileConfigSetMembership,
@@ -368,14 +369,14 @@ export async function uploadProjectParameterFile(
   const source = normalized.bytes.toString("utf8");
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
 
-  return db.transaction(async (tx) => {
+  const runUpload = async (tx: Database, uploadStore: ObjectStore) => {
     const existing = await getProjectParameterFileByName(tx, {
       organizationId: auth.organization.id,
       projectId: normalized.projectId,
       fileName: normalized.fileName,
     });
     if (existing) await assertLegacySourceMutationAllowed(tx,existing.id);
-    const stored = await objectStore.put({
+    const stored = await uploadStore.put({
       organizationId: auth.organization.id,
       fileName: normalized.fileName,
       contentType: contentTypeForFormat(format),
@@ -415,7 +416,7 @@ export async function uploadProjectParameterFile(
       });
     }
     if (format === "dts") {
-      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
+      await maybeIngestSemanticConfigRevision(tx, uploadStore, auth, {
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source,
@@ -457,7 +458,10 @@ export async function uploadProjectParameterFile(
       version,
       ...(driverSummary ? { driverSummary } : {}),
     };
-  });
+  };
+  return producerRoot
+    ? withCanonicalSourceAttemptTransaction(db, objectStore, (tx, attempt) => runUpload(tx, attempt.objectStore))
+    : db.transaction((tx) => runUpload(tx, objectStore));
 }
 
 export function getProjectParameterFileContent(

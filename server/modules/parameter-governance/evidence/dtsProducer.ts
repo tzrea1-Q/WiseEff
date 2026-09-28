@@ -4,6 +4,7 @@ import type { Database } from "../../../shared/database/client";
 import { getRootPostgresPool } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
 import { createCatalogKernel, DriverCompatible } from "../../catalog-kernel/interface";
+import { PARAMETER_GOVERNANCE_WRITER_ROLE, quoteIdent } from "../../catalog-kernel/security/catalogRoleManifest";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
 import { parseDtsValue } from "../../dts";
@@ -87,25 +88,21 @@ export async function produceDtsCompatibleEvidenceInTransaction(
     const locator: DtsObservationLocator = { kind: "dts-property",fileVersionId: property.fileVersionId,
       nodeOccurrenceId: property.nodeOccurrenceId,propertyOccurrenceId: property.propertyOccurrenceId,
       propertyName: "compatible" };
-    await tx.query(
-      `insert into parameter_catalog.project_parameter_source_occurrences
-       (id,organization_id,project_id,config_set_id,file_id,occurrence_kind,logical_node_id)
-       values ($1,$2,$3,$4,$5,'dts',$6) on conflict do nothing`,
-      [randomUUID(),auth.organization.id,property.projectId,property.configSetId,property.fileId,property.logicalNodeId],
-    );
-    const occurrences = (await tx.query<{ id: string }>(
-      `select id from parameter_catalog.project_parameter_source_occurrences
-       where organization_id=$1 and project_id=$2 and config_set_id=$3 and file_id=$4
-         and occurrence_kind='dts' and logical_node_id=$5`,
-      [auth.organization.id,property.projectId,property.configSetId,property.fileId,property.logicalNodeId],
-    )).rows;
-    if (occurrences.length !== 1) throw new Error("DTS compatible source occurrence is ambiguous");
+    await tx.query(`set local role ${quoteIdent(PARAMETER_GOVERNANCE_WRITER_ROLE)}`);
+    const occurrence = (await tx.query<{ id: string }>(
+      `select parameter_catalog.ensure_dts_observation_source_occurrence(
+         $1,$2,$3,$4,$5,$6,$7,$8) as id`,
+      [randomUUID(),auth.organization.id,property.projectId,property.configSetId,property.fileId,
+        property.logicalNodeId,configRevisionId,property.fileVersionId],
+    )).rows[0];
+    await tx.query("reset role");
+    if (!occurrence) throw new Error("DTS compatible source occurrence is unavailable");
     const sourceIdentity = `dts-compatible-property:${configRevisionId}:${property.propertyOccurrenceId}`;
     const observed = await ingestSourceBoundEvidenceInTransaction(tx,{
       organizationId:auth.organization.id,sourceIdentity,catalogReleaseId:pin.id,
       matcherRevision:subjectMatcherRevision,matcherOutput:{status:observationStatus},
       provenance:{projectId:property.projectId,logicalNodeId:property.logicalNodeId,
-        configRevisionId,sourceOccurrenceId:occurrences[0]!.id,sourceLocator:locator},
+        configRevisionId,sourceOccurrenceId:occurrence.id,sourceLocator:locator},
     },{kind:"observation"});
     if (observed.kind !== "observation") throw new Error("DTS source observation was not written");
     observationIds.push(observed.id);
