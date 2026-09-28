@@ -1,6 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
@@ -10,6 +12,7 @@ import { installDriverSourceFixture } from "../../testing/parameterCatalog/drive
 import { insertDtsObservationSourceFixture, loadDtsObservationSourceFixture } from "../../testing/parameterCatalog/dtsObservationSource";
 import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
 import { createLocalObjectStore } from "../logs/objectStore";
+import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { listCatalogBindingRowsForProject } from "../parameter-bindings/catalogProjectValueSync";
 import { ingestConfigRevision } from "./ingestService";
 import { readCurrentDtsCompatibleSource, type CurrentDtsCompatibleSourceInput } from "./currentDtsCompatibleSource";
@@ -176,6 +179,63 @@ describe("#897 source-owned DTS compatible currentness without Binding pins", ()
     expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(before);
     expect(await objectBytes()).toEqual(objectsBefore);
   });
+
+  it("uses the non-superuser API LOGIN and refuses a concurrent source advance", async () => {
+    const token = `d897${randomBytes(5).toString("hex")}`;
+    const runtime = await provisionPublicationRuntimeLogins(lane.url,{ mode: "lab",runToken: token });
+    const api = createPostgresDatabase(runtime.apiUrl);
+    const writer = new pg.Client({ connectionString: lane.url });
+    let writerConnected = false;
+    const before = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    const objectsBefore = await objectBytes();
+    try {
+      const role = (await api.query<{
+        sessionUser: string; currentUser: string; superuser: boolean; inherit: boolean;
+        filesSelect: boolean; filesUpdate: boolean; revisionsSelect: boolean;
+        observationsSelect: boolean; migrationFilesUpdate: boolean;
+      }>(`select session_user as "sessionUser",current_user as "currentUser",
+          role.rolsuper as superuser,role.rolinherit as inherit,
+          has_table_privilege(current_user,'public.project_parameter_files','SELECT') as "filesSelect",
+          has_table_privilege(current_user,'public.project_parameter_files','UPDATE') as "filesUpdate",
+          has_table_privilege(current_user,'public.dts_config_revisions','SELECT') as "revisionsSelect",
+          has_table_privilege(current_user,'parameter_catalog.parameter_observations','SELECT') as "observationsSelect",
+          has_table_privilege('catalog_migration_owner','public.project_parameter_files','UPDATE') as "migrationFilesUpdate"
+         from pg_roles role where role.rolname=current_user`)).rows[0];
+      expect(role).toEqual({ sessionUser: runtime.apiRole,currentUser: runtime.apiRole,
+        superuser: false,inherit: false,filesSelect: true,filesUpdate: true,
+        revisionsSelect: true,observationsSelect: true,migrationFilesUpdate: false });
+      const current = await readCurrentDtsCompatibleSource(api,storage,viewer,first.input);
+      expect(current).toMatchObject({ status: "current",
+        compatibles: ["vendor,device","acme,backup"] });
+      await expect(readCurrentDtsCompatibleSource(api,storage,FOREIGN,first.input))
+        .rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(readCurrentDtsCompatibleSource(api,storage,NO_VIEW,first.input))
+        .rejects.toMatchObject({ code: "FORBIDDEN" });
+
+      await writer.connect();
+      writerConnected = true;
+      await writer.query("begin");
+      await writer.query("update project_parameter_files set current_version_id=$2 where id=$1",
+        [first.includeId,nextVersionId]);
+      const busy = await readCurrentDtsCompatibleSource(api,storage,viewer,first.input);
+      expect(busy).toMatchObject({ status: "unavailable",reason: "source-proof-busy" });
+      await writer.query("commit");
+      expect(await readCurrentDtsCompatibleSource(api,storage,viewer,first.input))
+        .toMatchObject({ status: "historical",currentConfigRevisionId: candidate.revision.id });
+    } finally {
+      if (writerConnected) {
+        await writer.query("rollback").catch(() => undefined);
+        await writer.end();
+      }
+      await db.query("update project_parameter_files set current_version_id=$2 where id=$1",
+        [first.includeId,first.includeVersion.id]);
+      await api.close();
+      const dropped = await dropLabRuntimeLogins(lane.url,token);
+      expect(dropped.failed).toEqual([]);
+    }
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(before);
+    expect(await objectBytes()).toEqual(objectsBefore);
+  }, 120_000);
 
   it("uses each current file version after rollback while the latest UI revision remains the candidate", async () => {
     expect(await readCurrentDtsCompatibleSource(db,storage,viewer,candidate.input))
