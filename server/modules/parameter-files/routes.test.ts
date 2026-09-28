@@ -173,7 +173,9 @@ describe("parameter file routes", () => {
         fileName: "config.json",
         bytes
       },
-      { requestId: "test-request" }
+      { requestId: "test-request" },
+      undefined,
+      db
     );
   });
 

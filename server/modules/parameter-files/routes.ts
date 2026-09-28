@@ -357,7 +357,9 @@ export function registerParameterFileRoutes(
         fileName: body.fileName.trim(),
         bytes: decodeContentBase64(body.contentBase64)
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      undefined,
+      db
     );
 
     return {
@@ -394,7 +396,9 @@ export function registerParameterFileRoutes(
         fileName: file.fileName,
         bytes: decodeContentBase64(body.contentBase64)
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      undefined,
+      db
     );
 
     return {
@@ -1066,7 +1070,8 @@ export function registerParameterFileRoutes(
         configSetId: body.configSetId,
         role: body.role
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      db
     );
     return {
       status: 200,

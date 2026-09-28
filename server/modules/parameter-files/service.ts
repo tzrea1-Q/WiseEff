@@ -16,7 +16,7 @@ import type {
   ConfigRevisionManifest,
   ConfigRevisionManifestMember,
 } from "../parameter-topology/types";
-import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";
 import {
@@ -344,6 +344,7 @@ export async function uploadProjectParameterFile(
   input: UploadProjectParameterFileInput,
   context: ParameterFileServiceContext = {},
   ingestOptions?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
+  producerRoot?: Database,
 ): Promise<{
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
@@ -418,7 +419,7 @@ export async function uploadProjectParameterFile(
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source,
-      }, ingestOptions, getRootPostgresPool(db) ? db : undefined);
+      }, ingestOptions, producerRoot);
     }
     await createParameterFileUploadAudit(
       asAuditTx(tx),

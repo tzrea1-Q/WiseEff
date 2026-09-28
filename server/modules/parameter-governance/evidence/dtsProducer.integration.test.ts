@@ -55,7 +55,7 @@ describe("#897 production DTS observation and Review Item association", () => {
     const configSet = await createConfigSet(db,auth,{projectId:PROJECT,name:"C1 source"});
     await addConfigSetFile(db,auth,{configSetId:configSet.id,fileId:uploaded.file.id,role:"base",sortOrder:0});
     await uploadProjectParameterFile(db,storage,auth,{projectId:PROJECT,
-      fileName:"board.dts",bytes:Buffer.from(source)});
+      fileName:"board.dts",bytes:Buffer.from(source)},{},undefined,db);
 
     const page = await listDriverCompatibleDiscovery({db,objectStore:storage,auth,projectId:PROJECT});
     expect(page.status).toBe("ready");
@@ -178,7 +178,7 @@ describe("#897 production DTS observation and Review Item association", () => {
     await addConfigSetFile(db,auth,{configSetId:nextSet.id,fileId:initial.file.id,role:"base",sortOrder:0});
     const brokenStorage = { ...storage,getBounded:async () => Buffer.from("corrupt") };
     await expect(uploadProjectParameterFile(db,brokenStorage,auth,{projectId:nextProject,
-      fileName:"failed.dts",bytes:Buffer.from(source)})).rejects.toThrow("DTS evidence source is unavailable");
+      fileName:"failed.dts",bytes:Buffer.from(source)},{},undefined,db)).rejects.toThrow("DTS evidence source is unavailable");
     const failedWrites = (await db.query<{ count: string }>(
       `select count(*)::text as count from parameter_catalog.parameter_observations where project_id=$1`,
       [nextProject])).rows[0]!.count;
@@ -201,7 +201,7 @@ describe("#897 production DTS observation and Review Item association", () => {
       const set = await createConfigSet(emptyDb,auth,{projectId:PROJECT,name:"Before Catalog"});
       await addConfigSetFile(emptyDb,auth,{configSetId:set.id,fileId:initial.file.id,role:"base",sortOrder:0});
       await expect(uploadProjectParameterFile(emptyDb,storage,auth,{projectId:PROJECT,
-        fileName:"empty.dts",bytes:Buffer.from(source)}))
+        fileName:"empty.dts",bytes:Buffer.from(source)},{},undefined,emptyDb))
         .rejects.toThrow("Current Catalog release is unavailable");
       expect((await emptyDb.query<{ current_version_id: string }>(
         `select current_version_id from project_parameter_files where id=$1`,[initial.file.id])).rows[0]?.current_version_id)

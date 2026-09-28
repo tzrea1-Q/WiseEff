@@ -15,7 +15,7 @@ import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import { buildIngestDriverSummary } from "../parameter-modules/ingestDriverSummary";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
-import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { diffResolvedDts } from "./baselineDiff";
 import {
@@ -820,7 +820,8 @@ export async function activateCandidate(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: ActivateCandidateInput,
-  context: CandidateServiceContext = {}
+  context: CandidateServiceContext = {},
+  producerRoot?: Database,
 ): Promise<ActivateCandidateResult> {
   const trustedContext = rejectTrustedContextForUnmigratedCandidateMutation(
     context,
@@ -1024,7 +1025,7 @@ export async function activateCandidate(
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source
-      }, undefined, getRootPostgresPool(db) ? db : undefined);
+      }, undefined, producerRoot);
     }
 
     const activated = await markParameterFileCandidateActive(tx, {
