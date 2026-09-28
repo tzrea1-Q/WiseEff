@@ -11,11 +11,12 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { ingestConfigRevisionInTransaction, type ConfigRevisionIngestOptions } from "../parameter-topology/ingestService";
+import { produceDtsCompatibleEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 import type {
   ConfigRevisionManifest,
   ConfigRevisionManifestMember,
 } from "../parameter-topology/types";
-import type { Database, Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";
 import {
@@ -226,7 +227,7 @@ async function createParameterFileUploadAudit(
  * Isolated DTS uploads without config-set membership are skipped.
  */
 export async function maybeIngestSemanticConfigRevision(
-  db: Queryable,
+  db: Database,
   objectStore: ObjectStore,
   auth: AuthContext,
   input: {
@@ -235,6 +236,7 @@ export async function maybeIngestSemanticConfigRevision(
     frozenSource: string;
   },
   options?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
+  producerRoot?: Database,
 ): Promise<void> {
   const membership = await getFileConfigSetMembership(db, {
     organizationId: auth.organization.id,
@@ -329,7 +331,10 @@ export async function maybeIngestSemanticConfigRevision(
     members,
   };
 
-  await ingestConfigRevisionInTransaction(db, manifest, auth, undefined, options);
+  const revision = await ingestConfigRevisionInTransaction(db, manifest, auth, undefined, options);
+  if (producerRoot) {
+    await produceDtsCompatibleEvidenceInTransaction(db,producerRoot,objectStore,auth,revision.id);
+  }
 }
 
 export async function uploadProjectParameterFile(
@@ -402,18 +407,18 @@ export async function uploadProjectParameterFile(
     if (format === "dts" && isDtsStructuralIngestEnabled()) {
       await ingestDtsFileVersion(tx, version.id, source);
     }
-    if (format === "dts") {
-      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
-        fileId: file.id,
-        frozenVersionId: version.id,
-        frozenSource: source,
-      }, ingestOptions);
-    }
     if (version.origin === "upload") {
       await syncFileVersion(asAuditTx(tx), auth, {
         fileId: file.id,
         versionId: version.id,
       });
+    }
+    if (format === "dts") {
+      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
+        fileId: file.id,
+        frozenVersionId: version.id,
+        frozenSource: source,
+      }, ingestOptions, getRootPostgresPool(db) ? db : undefined);
     }
     await createParameterFileUploadAudit(
       asAuditTx(tx),

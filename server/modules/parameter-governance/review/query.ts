@@ -1,4 +1,5 @@
 import pg from "pg";
+import type { Queryable } from "../../../shared/database/client";
 
 import {
   CatalogReleaseDigest,
@@ -97,14 +98,15 @@ export const parseStoredEvidence = (value: unknown): StoredReviewEvidenceBody | 
 };
 
 const loadEvidence = async (
-  client: pg.PoolClient,
+  client: Queryable,
   organizationId: string,
+  observationIds: readonly string[] | null = null,
 ): Promise<ReviewEvidenceRecord[]> => {
   const result = await client.query<EvidenceRow>(
     `select id, organization_id, reason, candidate_safe_digest, r_class, source_graph_ref, evidence
        from parameter_catalog.parameter_review_evidence
-      where organization_id = $1`,
-    [organizationId],
+      where organization_id = $1 and ($2::text[] is null or observation_id=any($2::text[]))`,
+    [organizationId,observationIds],
   );
   const records: ReviewEvidenceRecord[] = [];
   for (const row of result.rows) {
@@ -124,7 +126,7 @@ const loadEvidence = async (
 };
 
 const loadItems = async (
-  client: pg.PoolClient,
+  client: Queryable,
   organizationId: string,
   catalogReleaseId: string,
 ): Promise<{ records: ReviewItemRow[]; existing: ExistingOpenReviewItem[] }> => {
@@ -144,7 +146,7 @@ const loadItems = async (
 };
 
 const insertOpenItem = async (
-  client: pg.PoolClient,
+  client: Queryable,
   input: {
     id: string;
     organizationId: string;
@@ -225,6 +227,39 @@ const projectGroups = (
   });
 };
 
+/** Existing Review Queue grouping, used by the trusted file-activation transaction. */
+export async function materializeReviewItemsInTransaction(
+  tx: Queryable, organizationId: string, capturedRelease: CatalogReleasePin,
+  observationIds: readonly string[] | null = null,
+): Promise<Result<{ actionable: readonly GroupedReview[]; refreshed: ReviewItemRow[] }, ReviewQueueFailure>> {
+  const records = await loadEvidence(tx, organizationId, observationIds);
+  const existing = await loadItems(tx, organizationId, capturedRelease.id);
+  const grouped = groupReviewEvidence(records, capturedRelease, { existingOpenItems: existing.existing });
+  if (!grouped.ok) return grouped;
+  const closed = new Set(existing.records.filter((row) => row.status !== "open")
+    .map((row) => `${row.matcher_revision}\0${row.evidence_fingerprint}`));
+  const actionable = grouped.value.filter((group) => group.existingItemId !== null
+    || !closed.has(`${group.matcherRevision}\0${group.groupingFingerprint}`));
+  for (const group of actionable) {
+    try {
+      await insertOpenItem(tx, {
+        id: group.existingItemId ?? reviewItemIdFor(group.groupingFingerprint),
+        organizationId: group.organizationId, groupingFingerprint: group.groupingFingerprint,
+        matcherRevision: group.matcherRevision, catalogReleaseId: group.catalogReleaseId,
+        reason: group.reason,
+      });
+    } catch (error) {
+      if (error instanceof pg.DatabaseError && error.code === "23505") return {
+        ok:false,error:{kind:"duplicate-group",organizationId:group.organizationId,
+          groupingFingerprint:group.groupingFingerprint},
+      };
+      throw error;
+    }
+  }
+  const refreshed = await loadItems(tx, organizationId, capturedRelease.id);
+  return {ok:true,value:{actionable,refreshed:refreshed.records}};
+}
+
 const readAuthorizedQueue = async (
   pool: pg.Pool,
   query: ListReviewQueueQuery,
@@ -239,49 +274,14 @@ const readAuthorizedQueue = async (
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const records = await loadEvidence(client, query.organizationId);
-    const existing = await loadItems(client, query.organizationId, pin.value.id);
-    const grouped = groupReviewEvidence(records, pin.value, {
-      existingOpenItems: existing.existing,
-    });
-    if (!grouped.ok) {
+    const materialized = await materializeReviewItemsInTransaction(client,query.organizationId,pin.value);
+    if (!materialized.ok) {
       await client.query("rollback");
-      return grouped;
+      return materialized;
     }
-    const closed = new Set(existing.records.filter((row) => row.status !== "open")
-      .map((row) => `${row.matcher_revision}\0${row.evidence_fingerprint}`));
-    const actionable = grouped.value.filter((group) => group.existingItemId !== null
-      || !closed.has(`${group.matcherRevision}\0${group.groupingFingerprint}`));
-    for (const group of actionable) {
-      const id = group.existingItemId ?? reviewItemIdFor(group.groupingFingerprint);
-      try {
-        await insertOpenItem(client, {
-          id,
-          organizationId: group.organizationId,
-          groupingFingerprint: group.groupingFingerprint,
-          matcherRevision: group.matcherRevision,
-          catalogReleaseId: group.catalogReleaseId,
-          reason: group.reason,
-        });
-      } catch (error) {
-        await client.query("rollback");
-        if (error instanceof pg.DatabaseError && error.code === "23505") {
-          return {
-            ok: false,
-            error: {
-              kind: "duplicate-group",
-              organizationId: group.organizationId,
-              groupingFingerprint: group.groupingFingerprint,
-            },
-          };
-        }
-        throw error;
-      }
-    }
-    const refreshed = await loadItems(client, query.organizationId, pin.value.id);
-    const items = projectGroups(actionable, pin.value, refreshed.records);
+    const items = projectGroups(materialized.value.actionable, pin.value, materialized.value.refreshed);
     await client.query("commit");
-    const ignoredReviewItemCount = new Set(refreshed.records.filter((row) => row.status === "out-of-scope")
+    const ignoredReviewItemCount = new Set(materialized.value.refreshed.filter((row) => row.status === "out-of-scope")
       .map((row) => row.id)).size;
     return { ok: true, value: { items, ignoredReviewItemCount } };
   } catch (error) {

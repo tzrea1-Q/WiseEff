@@ -15,7 +15,7 @@ import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import { buildIngestDriverSummary } from "../parameter-modules/ingestDriverSummary";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
-import type { Database, Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { diffResolvedDts } from "./baselineDiff";
 import {
@@ -1019,12 +1019,12 @@ export async function activateCandidate(
       await ingestDtsFileVersion(tx, version.id, source);
     }
     if (locked.format === "dts") {
+      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
       await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source
-      });
-      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
+      }, undefined, getRootPostgresPool(db) ? db : undefined);
     }
 
     const activated = await markParameterFileCandidateActive(tx, {
