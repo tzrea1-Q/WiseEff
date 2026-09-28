@@ -48,6 +48,7 @@ import type {
   catalogLegacyGoneResponseSchema,
   catalogLegacyIdentifierResponseSchema,
   catalogObservationListResponseSchema,
+  catalogDriverCompatibleDiscoveryResponseSchema,
   catalogObservationResponseSchema,
   catalogPlacementResponseSchema,
   catalogProjectBindingDtoSchema,
@@ -105,6 +106,7 @@ export type CatalogRestoreRegistrationRequest = z.infer<typeof catalogRestoreReg
 export type CatalogPlacementResponse = z.infer<typeof catalogPlacementResponseSchema>;
 export type CatalogUpdatePlacementRequest = z.infer<typeof catalogUpdatePlacementRequestSchema>;
 export type CatalogObservationListResponse = z.infer<typeof catalogObservationListResponseSchema>;
+export type CatalogDriverCompatibleDiscoveryResponse = z.infer<typeof catalogDriverCompatibleDiscoveryResponseSchema>;
 export type CatalogObservationResponse = z.infer<typeof catalogObservationResponseSchema>;
 export type CatalogReviewItemListResponse = z.infer<typeof catalogReviewItemListResponseSchema>;
 export type CatalogReviewItemResponse = z.infer<typeof catalogReviewItemResponseSchema>;
@@ -178,6 +180,13 @@ export type CatalogListQuery = {
   placementModuleId?: string;
   propertyKey?: string;
   catalogReleaseId?: string;
+};
+
+export type CatalogDriverCompatibleDiscoveryQuery = {
+  projectId?: string;
+  observationId?: string;
+  cursor?: string;
+  limit?: number;
 };
 
 export function catalogDocumentFromDto(dto: CatalogDocumentResponse): CatalogDocumentResponse {

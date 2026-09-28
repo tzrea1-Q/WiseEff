@@ -7,6 +7,7 @@ import {
   parameterCatalogClientMethodByRouteId
 } from "@wiseeff/dto-schemas";
 import { WiseEffApiError } from "./apiClient";
+import { createApiParameterCatalogGovernanceRepository } from "../../application/parameter-catalog/apiAdapter";
 import {
   catalogFailureClientBehavior,
   catalogFailureReason,
@@ -38,6 +39,30 @@ const catalogDocument = {
 };
 
 describe("parameter catalog client contract", () => {
+  it("passes only discovery filters through the port and rejects mixed-release pages", async () => {
+    const page = {status:"ready",catalogRelease:{id:"crel_one",digest:"sha256:one"},
+      matcherRevision:"matcher-one",items:[],nextCursor:null,ignoredReviewItemCount:null,
+      emptyReason:"no-observations"};
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(page));
+    const repository = createApiParameterCatalogGovernanceRepository(
+      createParameterCatalogClient({fetchImpl:fetchMock}));
+    await expect(repository.listDriverCompatibleDiscovery("org_one",{cursor:"obs_before"}))
+      .rejects.toMatchObject({code:"VALIDATION_FAILED",details:{reason:"release-pin-required"}});
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(repository.listDriverCompatibleDiscovery("org_one",
+      {projectId:"project_one",observationId:"obs_one",cursor:"obs_before",limit:3},
+      {id:"crel_one",digest:"sha256:one"})).resolves.toEqual(page);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/v2/organizations/org_one/driver-compatible-discovery?projectId=project_one&observationId=obs_one&cursor=obs_before&limit=3");
+    expect((fetchMock.mock.calls[0]?.[1]?.headers as Record<string,string>)["X-WiseEff-Catalog-Release"])
+      .toBe("crel_one");
+    await expect(repository.listDriverCompatibleDiscovery("org_one",{cursor:"obs_before"},
+      {id:"crel_one",digest:"sha256:different"})).rejects.toMatchObject({
+        code:"CONFLICT",details:{reason:"release-drift"}});
+    fetchMock.mockImplementationOnce(async () => jsonResponse({status:"unavailable",reason:"review-evidence-invalid"}));
+    await expect(repository.listDriverCompatibleDiscovery("org_one")).resolves.toEqual(
+      {status:"unavailable",reason:"review-evidence-invalid"});
+  });
   it("exposes a typed method for every frozen canonical route", () => {
     const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: vi.fn() });
     for (const route of parameterCatalogCanonicalRoutes) {

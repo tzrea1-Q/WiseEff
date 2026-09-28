@@ -35,6 +35,7 @@ import {
   catalogLegacyIdentifierResponseSchema,
   catalogLegacyIdentifierTypeSchema,
   catalogObservationListResponseSchema,
+  catalogDriverCompatibleDiscoveryResponseSchema,
   catalogObservationResponseSchema,
   catalogPlacementResponseSchema,
   catalogProposalListResponseSchema,
@@ -98,6 +99,7 @@ import type {
   CatalogCreatePublicationCandidateRequest,
   CatalogPublishPublicationCandidateRequest,
   CatalogListQuery,
+  CatalogDriverCompatibleDiscoveryQuery,
   CatalogRegisterSubjectRequest,
   CatalogRejectProposalRequest,
   CatalogResolveReviewItemRequest,
@@ -172,6 +174,17 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   if (query.placementModuleId) params.set("placementModuleId", query.placementModuleId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
   if (query.catalogReleaseId) params.set("catalogReleaseId", query.catalogReleaseId);
+  const encoded = params.toString();
+  return encoded ? `${path}?${encoded}` : path;
+}
+
+function appendDiscoveryQuery(path: string, query?: CatalogDriverCompatibleDiscoveryQuery) {
+  if (!query) return path;
+  const params = new URLSearchParams();
+  if (query.projectId !== undefined) params.set("projectId", query.projectId);
+  if (query.observationId !== undefined) params.set("observationId", query.observationId);
+  if (query.cursor !== undefined) params.set("cursor", query.cursor);
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
   const encoded = params.toString();
   return encoded ? `${path}?${encoded}` : path;
 }
@@ -426,6 +439,28 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogObservationListResponseSchema,
         "CatalogObservationListResponse"
       ),
+    listDriverCompatibleDiscovery: async (
+      organizationId: string,
+      query?: CatalogDriverCompatibleDiscoveryQuery,
+      expectedRelease?: { id: string; digest: string }
+    ) => {
+      if (query?.cursor !== undefined && !expectedRelease) {
+        throw new WiseEffApiError("VALIDATION_FAILED", "A discovery cursor requires its catalog release pin.",
+          { reason: "release-pin-required" }, "");
+      }
+      const page = await request("GET",
+        appendDiscoveryQuery(canonical("catalog.listDriverCompatibleDiscovery", { organizationId }), query),
+        catalogDriverCompatibleDiscoveryResponseSchema,
+        "CatalogDriverCompatibleDiscoveryResponse",
+        { context: expectedRelease ? { catalogReleaseId: expectedRelease.id } : undefined });
+      if (expectedRelease && page.status === "ready" &&
+          (page.catalogRelease.id !== expectedRelease.id || page.catalogRelease.digest !== expectedRelease.digest)) {
+        throw new WiseEffApiError("CONFLICT", "The catalog release changed. Refresh before continuing.",
+          { reason: "release-drift", expectedCatalogReleaseId: expectedRelease.id,
+            currentCatalogReleaseId: page.catalogRelease.id }, "");
+      }
+      return page;
+    },
     getObservation: (organizationId: string, observationId: string) =>
       request(
         "GET",
@@ -926,6 +961,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.getPlacement": "getPlacement",
     "catalog.updatePlacement": "updatePlacement",
     "catalog.listObservations": "listObservations",
+    "catalog.listDriverCompatibleDiscovery": "listDriverCompatibleDiscovery",
     "catalog.getObservation": "getObservation",
     "catalog.listReviewItems": "listReviewItems",
     "catalog.getReviewItem": "getReviewItem",

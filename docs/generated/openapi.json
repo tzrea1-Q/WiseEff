@@ -8655,6 +8655,110 @@
         }
       }
     },
+    "/api/v2/organizations/{organizationId}/driver-compatible-discovery": {
+      "get": {
+        "operationId": "catalog.listDriverCompatibleDiscovery",
+        "summary": "Discover source-proven Driver compatibles for authorized projects",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "observationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque catalog cursor bound to the release.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Bounded page size.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-WiseEff-Catalog-Release",
+            "in": "header",
+            "required": false,
+            "description": "Required with cursor; must match the first page's catalog release.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDriverCompatibleDiscoveryResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Present on ready pages; unavailable pages have no proven release pin.",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/organizations/{organizationId}/parameter-review-items": {
       "get": {
         "operationId": "catalog.listReviewItems",
@@ -34891,6 +34995,294 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogObservationResponse"
+      },
+      "CatalogDriverCompatibleDiscoveryResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "unavailable"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "catalog-unavailable",
+                  "release-drift",
+                  "review-evidence-limit",
+                  "review-evidence-invalid"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ready"
+                ]
+              },
+              "catalogRelease": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "digest"
+                ],
+                "additionalProperties": false
+              },
+              "matcherRevision": {
+                "type": "string"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "observationId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "logicalNodeId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "observedCatalogReleaseId": {
+                      "type": "string"
+                    },
+                    "observedMatcherRevision": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable"
+                              ]
+                            },
+                            "reason": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "reason"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "historical"
+                              ]
+                            },
+                            "currentConfigRevisionId": {
+                              "type": "string"
+                            },
+                            "historicalCompatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "currentConfigRevisionId",
+                            "historicalCompatibles"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "current"
+                              ]
+                            },
+                            "configSetId": {
+                              "type": "string"
+                            },
+                            "sourceName": {
+                              "type": "string"
+                            },
+                            "fileVersionId": {
+                              "type": "string"
+                            },
+                            "sourceDigest": {
+                              "type": "string"
+                            },
+                            "revisionDigest": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "configSetId",
+                            "sourceName",
+                            "fileVersionId",
+                            "sourceDigest",
+                            "revisionDigest"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "compatibles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "compatible": {
+                            "type": "string"
+                          },
+                          "candidate": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "recognized"
+                                    ]
+                                  },
+                                  "subjectId": {
+                                    "type": "string"
+                                  },
+                                  "registrationId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "subjectId",
+                                  "registrationId"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "review-required"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "enum": [
+                                      "unknown",
+                                      "ambiguous",
+                                      "retired"
+                                    ]
+                                  },
+                                  "reviewItemIds": {
+                                    "type": [
+                                      "array",
+                                      "null"
+                                    ],
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "reason",
+                                  "reviewItemIds"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "compatible",
+                          "candidate"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "observationId",
+                    "projectId",
+                    "logicalNodeId",
+                    "configRevisionId",
+                    "observedCatalogReleaseId",
+                    "observedMatcherRevision",
+                    "source",
+                    "compatibles"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "nextCursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ignoredReviewItemCount": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "emptyReason": {
+                "type": "string",
+                "enum": [
+                  "no-observations"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "catalogRelease",
+              "matcherRevision",
+              "items",
+              "nextCursor",
+              "ignoredReviewItemCount"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-wiseeff-schema": "CatalogDriverCompatibleDiscoveryResponse"
       },
       "CatalogReviewItemListResponse": {
         "type": "object",
