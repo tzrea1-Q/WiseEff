@@ -48,6 +48,7 @@ export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [
   "restoreRegistration",
   "getPlacement",
   "updatePlacement",
+  "listDriverCompatibleDiscovery",
   "listObservations",
   "getObservation",
   "listReviewItems",
