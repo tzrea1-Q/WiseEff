@@ -221,3 +221,15 @@ export const parseCanonicalPropertyKey = (
   }
   return { ok: true, value: asPropertyKey(propertyKey) };
 };
+
+/** Implementation dependencies consumed by the server-owned Catalog subject matcher revision. */
+export const canonicalIdentityParserImplementation = [
+  classifyCommonFailure,
+  parseCanonicalCompatibleSelector,
+  parseCanonicalNodeName,
+  parseCanonicalConfigurationSchemaId,
+  asDriverCompatible,
+  asNormalizedNodeTypeName,
+  asNormalizedConfigurationSchemaId,
+].map((implementation) => implementation.toString()).join("\n")
+  + JSON.stringify(forbiddenConfigurationSchemaIdSuffixes);

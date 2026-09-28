@@ -72,7 +72,7 @@ const validatePin = (pin: CatalogReleasePin): Result<CatalogReleasePin, ReviewQu
   return { ok: true, value: pin };
 };
 
-const parseStoredEvidence = (value: unknown): StoredReviewEvidenceBody | null => {
+export const parseStoredEvidence = (value: unknown): StoredReviewEvidenceBody | null => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
   if (!isUsableToken(body.sourceIdentity) || !isUsableToken(body.catalogReleaseId)) return null;

@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
+
 import {
+  canonicalIdentityParserImplementation,
+  canonicalSerializationImplementation,
   parseCanonicalCompatibleSelector,
   parseCanonicalConfigurationSchemaId,
   parseCanonicalNodeName,
+  serializeContract,
+  type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
 import type {
   CatalogSubjectDetailSnapshot,
@@ -249,3 +255,28 @@ export const resolveCatalogSubject = (
     ? nodeDecision.result
     : { status: "unknown", reason: "no-candidate" };
 };
+
+/** Server-owned identity of the reviewed subject-matching contract, independent of a Catalog release. */
+export const subjectMatcherContract = Object.freeze({
+  selectorParsing: "canonical-exact-compatible-node-name-configuration-schema-id",
+  priority: ["driver", "configuration-schema", "node-type"],
+  driver: "exact-full-selector-or-governed-alias",
+  nodeType: "explicit-fallback-only",
+  selection: "one-live-without-retired-conflict",
+} as const);
+
+export const subjectMatcherRevision = `sha256:${createHash("sha256")
+  .update(serializeContract(subjectMatcherContract as unknown as ContractJsonValue))
+  .update("\n")
+  .update(canonicalIdentityParserImplementation)
+  .update("\n")
+  .update(canonicalSerializationImplementation)
+  .update("\n")
+  .update([
+    resolveCatalogSubject, decideHits, collectHits, foldSubjectHit, uniqueSubjects,
+    canonicalSelectorValues, aliasSelectorKind, parsedDriverCompatibles,
+    parsedConfigurationSchemaIds, parsedNodeTypeName, compareSubjectHit, compareAliasId,
+    parseCanonicalCompatibleSelector, parseCanonicalConfigurationSchemaId,
+    parseCanonicalNodeName, compareOrderTuples,
+  ].map((implementation) => implementation.toString()).join("\n"))
+  .digest("hex")}`;
