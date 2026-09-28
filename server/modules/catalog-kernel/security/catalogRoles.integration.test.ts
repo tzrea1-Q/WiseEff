@@ -1365,6 +1365,7 @@ describe("0138 Catalog role migration paths", () => {
           "0173_canonical_batch_draft_impact_pair.sql": "26924e1a0ef7e4f94cc47bd6cce6a79f0727e400109bee5685e38b6e362fedfb",
           "0174_canonical_batch_composition_proof.sql": "505922550af2a450b44619ebe90c0f7caf0a7da8cd1d08b62217402fc97d2613",
           "0175_canonical_batch_frozen_draft_choice.sql": "4286bd3da43f9812ce1fca56fa142d55f9afd4ba71b6876e47f823157c9ff2c2",
+          "0176_dts_observation_source_occurrence.sql": "b688d730d674e4e4a3dcb49ba7239cc9df8b9dfcce64a9db1a9a42ab35e829bd",
         };
         const receipts = await admin.query<{ name: string; checksum: string }>(
           "select name, checksum from schema_migrations order by name",
