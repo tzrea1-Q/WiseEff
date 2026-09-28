@@ -4,13 +4,17 @@ import { expect, test } from "playwright/test";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
 import { makeTestAuthContext } from "../../server/testing/authContext";
 import { installConfigurationSourceFixture } from "../../server/testing/parameterCatalog/configurationSource";
+import { installDriverSourceFixture } from "../../server/testing/parameterCatalog/driverSource";
 import { insertFileVersion } from "../../server/modules/parameter-files/repository";
 import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { createUserInvocation } from "../../server/modules/auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../../server/modules/audit/trustedRefusalSink";
 import { addConfigSetFile } from "../../server/modules/parameter-files/configSetService";
 import { registerCanonicalJsonSource } from "../../server/modules/parameter-files/canonicalJsonSource";
-import { loadPublishedCatalog } from "../../server/modules/parameter-bindings/catalogProjectValueSync";
+import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../../server/modules/parameter-bindings/catalogProjectValueSync";
+import { loadLegacyBindingIdentity } from "../../server/modules/parameter-bindings/binding/migrationAdapter";
+import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
+import type { ConfigRevisionManifest } from "../../server/modules/parameter-topology/types";
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { dismissXiaozeHint } from "./helpers/catalogBrowser";
@@ -207,3 +211,181 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
     } finally { await db.close(); }
   } finally { await restore?.(outcome); }
 });
+
+for (const format of ["json", "dts"] as const) {
+test(`#906 B explains unsupported canonical member actions for ${format} without mutation`, async ({ page, request }, testInfo) => {
+  test.setTimeout(180_000);
+  let runtime: DisposablePostCutoverRuntime | undefined;
+  let restore: RestoreDisposablePostCutoverRuntime | undefined;
+  let outcome: "success" | "failure" = "failure";
+  const network: string[] = [];
+  const mutationRequests: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  try {
+    const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      label: `b906_member_limits_${format}`, markerPurpose: `b906-member-limits-${format}`
+    });
+    runtime = started.runtime;
+    restore = started.restore;
+    const api = (path: string) => `${runtime!.apiUrl}${path}`;
+    const adminHeaders = authHeadersForRole("admin");
+    const db = createPostgresDatabase(runtime.databaseUrl);
+    const storage = createLocalObjectStore(runtime.objectStoreRoot);
+    const admin = makeTestAuthContext({ userId: acceptanceCast.xuYun.userId,
+      organizationId: "org-chargelab", permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
+      roles: [{ roleId: "admin", projectId: null }] });
+    try {
+      if (format === "json") {
+        await installConfigurationSourceFixture(db, admin, {
+          subjectId: "csub_b906_member_limits_json", schemaId: "wiseeff.b906.member.limits"
+        });
+      } else {
+        await installDriverSourceFixture(db, admin, { subjectId: "csub_acme_power",
+          compatible: "acme,power", businessName: "B #906 member limits", driverName: "Acme power",
+          idempotencyKey: "b906-member-limits-dts", reason: "DTS member limitation browser fixture" });
+      }
+      const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+      if (!catalog) throw new Error("Published Catalog fixture unavailable");
+      const created = await request.post(api("/api/v1/projects/aurora/config-sets"), {
+        headers: adminHeaders, data: { name: `B #906 member limits ${format}` }
+      });
+      expect(created.status(), await created.text()).toBe(201);
+      const setId = (await created.json()).item.id as string;
+      const upload = async (name: string, content: string) => {
+        const response = await request.post(api("/api/v1/projects/aurora/parameter-files"), {
+          headers: adminHeaders, data: { fileName: name, contentBase64: Buffer.from(content).toString("base64") }
+        });
+        expect(response.ok(), await response.text()).toBe(true);
+        const body = await response.json() as { item: { id: string }; version: { id: string } };
+        return { name, id: body.item.id, versionId: body.version.id, content };
+      };
+      const dtsSource = '/dts-v1/;\n/ { charger: device@0 { compatible = "acme,power"; iin_max = <36>; }; };\n';
+      const memberContent = format === "json" ? '{"limit":36}\n' : dtsSource;
+      const members = [];
+      for (let index = 0; index < 2; index += 1) {
+        const member = await upload(`b906-limits-${format}-${index}.${format}`, memberContent);
+        const added = await request.post(api(`/api/v1/projects/aurora/config-sets/${setId}/files`), {
+          headers: adminHeaders, data: { fileId: member.id, role: index ? "overlay" : "base", sortOrder: index }
+        });
+        expect(added.ok(), await added.text()).toBe(true);
+        members.push(member);
+      }
+      const ungrouped = await upload(`b906-limits-unassigned-${format}.${format}`, memberContent);
+      if (format === "json") {
+        for (const member of members) {
+          await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, admin, catalog, {
+            projectId: "aurora", configSetId: setId, fileId: member.id, fileVersionId: member.versionId,
+            configurationSchemaId: "wiseeff.b906.member.limits", rootPointer: "",
+            mappings: [{ definitionId: "pdef_acme_power_iin_max", pointer: "/limit" }],
+            invocation: createUserInvocation(admin), requestId: `register:${member.id}`,
+            refusalSink: createTrustedRefusalAuditSink(db)
+          }));
+        }
+      } else {
+        const manifest: ConfigRevisionManifest = { organizationId: "org-chargelab", projectId: "aurora",
+          configSetId: setId, entryFile: members[0]!.name, includeSearchPaths: ["."], overlayOrder: [],
+          members: members.map((member, index) => ({ fileId: member.id, fileVersionId: member.versionId,
+            fileName: member.name, sourceName: member.name, role: index ? "overlay" : "base",
+            sortOrder: index, content: member.content })) };
+        const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+        await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog,
+          { organizationId: "org-chargelab", projectId: "aurora", configSetId: setId,
+            configRevisionId: revision.id }));
+      }
+      const bindingIds = (await db.query<{ binding_id: string }>(
+        `select distinct binding_id from parameter_catalog.project_value_source_pins
+         where file_id=$1 order by binding_id`, [members[0]!.id]
+      )).rows.map((row) => row.binding_id);
+      expect(bindingIds.length).toBeGreaterThan(0);
+      expect(await Promise.all(bindingIds.map((id) =>
+        loadLegacyBindingIdentity(getRootPostgresPool(db)!, id)))).toEqual(bindingIds.map(() => null));
+      const before = (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_value_change_requests where project_id='aurora'"
+      )).rows[0]!.count;
+      page.on("request", (browserRequest) => {
+        const path = new URL(browserRequest.url()).pathname;
+        if (path.includes(`/config-sets/${setId}/files`) || path.includes("/parameter-value-change-requests/member-removals")) {
+          network.push(`${browserRequest.method()} ${path}`);
+          if (browserRequest.method() !== "GET") mutationRequests.push(`${browserRequest.method()} ${path}`);
+        }
+      });
+      page.on("response", (response) => {
+        if (response.request().method() === "GET" && response.url().includes("/source-workflow")) {
+          network.push(`GET ${response.status()} ${new URL(response.url()).pathname}`);
+        }
+      });
+      await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${setId}&inspector=config-set`);
+      await dismissXiaozeHint(page);
+      const inspector = page.getByRole("complementary", { name: "配置检查器" });
+      const add = inspector.getByRole("button", { name: "添加成员" });
+      await expect(inspector.getByText(/canonical 成员新增尚无受审入口/)).toBeVisible();
+      await expect(add).toBeDisabled();
+      const addReasonId = await add.getAttribute("aria-describedby");
+      expect(addReasonId).toBeTruthy();
+      await expect(inspector.locator(`#${addReasonId}`)).toContainText("canonical 成员新增尚无受审入口");
+      const treeAssign = page.getByRole("button", { name: `编入 ${ungrouped.name}` });
+      await expect(treeAssign).toBeDisabled();
+      const treeReasonId = await treeAssign.getAttribute("aria-describedby");
+      expect(treeReasonId).toBeTruthy();
+      await expect(page.locator(`#${treeReasonId}`)).toContainText("canonical 成员新增尚无受审入口");
+      const memberRemove = inspector.getByRole("button", { name: `移除 ${members[0]!.name}` });
+      if (format === "json") await expect(memberRemove).toBeEnabled();
+      else await expect(memberRemove).toBeDisabled();
+      const addBox = await add.boundingBox();
+      if (!addBox) throw new Error("Add button not visible");
+      await page.mouse.click(addBox.x + addBox.width / 2, addBox.y + addBox.height / 2);
+      await inspector.getByRole("combobox", { name: "待编入文件" }).focus();
+      await page.keyboard.press("Tab");
+      expect(await add.evaluate((node) => node === document.activeElement)).toBe(false);
+      await page.keyboard.press("Enter");
+      if (format === "dts") {
+        const removeReasonId = await memberRemove.getAttribute("aria-describedby");
+        expect(removeReasonId).toBeTruthy();
+        await expect(inspector.locator(`#${removeReasonId}`)).toContainText("DTS 成员删除尚无受审入口");
+        const removeBox = await memberRemove.boundingBox();
+        if (!removeBox) throw new Error("DTS removal button not visible");
+        await page.mouse.click(removeBox.x + removeBox.width / 2, removeBox.y + removeBox.height / 2);
+        await inspector.getByRole("combobox", { name: "待编入文件" }).focus();
+        for (let step = 0; step < 6; step += 1) {
+          await page.keyboard.press("Tab");
+          expect(await memberRemove.evaluate((node) => node === document.activeElement)).toBe(false);
+        }
+        await page.getByRole("treeitem", { name: `${members[0]!.name} 基础 v1` }).click();
+        const fileRemove = inspector.getByRole("button", { name: "从配置集移除" });
+        await expect(fileRemove).toBeDisabled();
+        const fileReasonId = await fileRemove.getAttribute("aria-describedby");
+        expect(fileReasonId).toBeTruthy();
+        await expect(inspector.locator(`#${fileReasonId}`)).toContainText("DTS 成员删除尚无受审入口");
+      } else {
+        await memberRemove.click();
+        await expect(page.getByRole("dialog", { name: "提交 JSON 成员删除审核" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("dialog", { name: "提交 JSON 成员删除审核" })).toBeHidden();
+        await add.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath("b906-json-member-add-limit-1440x900.png") });
+        await page.getByRole("treeitem", { name: `${members[0]!.name} 基础 v1` }).click();
+        const fileRemove = inspector.getByRole("button", { name: "从配置集移除" });
+        await expect(fileRemove).toBeEnabled();
+        await fileRemove.click();
+        await expect(page.getByRole("dialog", { name: "提交 JSON 成员删除审核" })).toBeVisible();
+        await page.keyboard.press("Escape");
+      }
+      await expect(page.getByRole("dialog", { name: "提交 JSON 成员删除审核" })).toHaveCount(0);
+      expect(mutationRequests).toEqual([]);
+      expect(network.some((entry) => entry.startsWith("GET 200") && entry.endsWith(`/${members[0]!.id}/source-workflow`))).toBe(true);
+      const after = (await db.query<{ count: number }>(
+        "select count(*)::int as count from project_parameter_value_change_requests where project_id='aurora'"
+      )).rows[0]!.count;
+      expect(after).toBe(before);
+      expect(pageErrors).toEqual([]);
+      await inspector.getByRole("button", { name: "从配置集移除" }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`b906-${format}-member-limits-1440x900.png`) });
+      await testInfo.attach(`${format}-member-limits-network.txt`, {
+        body: Buffer.from(network.join("\n")), contentType: "text/plain"
+      });
+      outcome = "success";
+    } finally { await db.close(); }
+  } finally { await restore?.(outcome); }
+});
+}

@@ -1,0 +1,7 @@
+GET /api/v1/projects/aurora/config-sets/3e331235-a558-4bfc-9d47-ce1984367ce8/files
+GET 200 /api/v1/projects/aurora/parameter-files/15bcf4e7-9995-4fb3-a403-30e6c8bc5494/source-workflow
+GET 200 /api/v1/projects/aurora/parameter-files/15bcf4e7-9995-4fb3-a403-30e6c8bc5494/source-workflow
+GET 200 /api/v1/projects/aurora/parameter-files/93b0829b-86b2-42be-aeb3-d1913e2b6616/source-workflow
+GET 200 /api/v1/projects/aurora/parameter-files/e4cf730f-e370-4e2e-906b-9f73c986c66b/source-workflow
+GET 200 /api/v1/projects/aurora/parameter-files/93b0829b-86b2-42be-aeb3-d1913e2b6616/source-workflow
+GET 200 /api/v1/projects/aurora/parameter-files/e4cf730f-e370-4e2e-906b-9f73c986c66b/source-workflow

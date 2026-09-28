@@ -131,7 +131,7 @@ export function WorkbenchSourceTree({
   const sourceSetMutationReason = sourceWorkflowSetError
     ? sourceWorkflowSetError
     : sourceWorkflowSetCanonical
-      ? "当前配置集包含 canonical 来源成员，成员变更必须通过来源审核流程。"
+      ? "当前配置集包含 canonical 来源成员；canonical 成员新增尚无受审入口，不能编入文件。"
       : selectedMembers.length === 0
         ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
       : "配置集来源一致性尚未完成校验，成员变更已禁用。";
@@ -328,6 +328,7 @@ export function WorkbenchSourceTree({
                 type="button"
                 aria-label={`编入 ${item.fileName}`}
                 title={sourceSetMutationBlocked ? sourceSetMutationReason : undefined}
+                aria-describedby={sourceSetMutationBlocked ? "source-tree-member-add-reason" : undefined}
                 disabled={pendingAction !== null || sourceSetMutationBlocked}
                 onClick={() => onAssignUngroupedFile(item)}
               >
@@ -337,7 +338,8 @@ export function WorkbenchSourceTree({
           </div>
         ))}
         {ungroupedFiles.length > 0 && sourceSetMutationBlocked ? (
-          <p role="note">{sourceSetMutationReason} 未完成校验前不能编入当前配置集。</p>
+          <p id="source-tree-member-add-reason" role="note">{sourceSetMutationReason}
+            {sourceWorkflowSetCanonical ? "" : " 未完成校验前不能编入当前配置集。"}</p>
         ) : null}
       </div>
     </aside>

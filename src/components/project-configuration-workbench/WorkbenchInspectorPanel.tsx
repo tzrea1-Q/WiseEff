@@ -250,6 +250,9 @@ export function WorkbenchInspectorPanel({
   const sourceWorkflowUnknown = Boolean(selectedMember) && !sourceWorkflow && !sourceWorkflowError;
   const sourceMutationBlocked = sourceWorkflowLoading || Boolean(sourceWorkflowError) || sourceWorkflowUnknown;
   const selectedSourceCanonical = sourceWorkflow?.canonical === true;
+  const canonicalAddReason = "canonical 成员新增尚无受审入口，当前不能添加或编入文件。";
+  const dtsRemovalReason = "DTS 成员删除尚无受审入口，当前不能移除。";
+  const selectedDtsRemovalBlocked = sourceWorkflowSetCanonical && selectedMember?.format === "dts";
   const sourceSetMutationBlocked =
     sourceWorkflowSetLoading ||
     !sourceWorkflowSetReady ||
@@ -264,7 +267,7 @@ export function WorkbenchInspectorPanel({
   const sourceSetMutationReason = sourceWorkflowSetError
     ? sourceWorkflowSetError
     : sourceWorkflowSetCanonical
-      ? "当前配置集包含 canonical 来源成员，成员变更必须通过来源审核流程。"
+      ? canonicalAddReason
       : selectedMembers.length === 0
         ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
       : "配置集来源一致性尚未完成校验，成员变更已禁用。";
@@ -684,7 +687,7 @@ export function WorkbenchInspectorPanel({
                   </div>
                 ) : null}
                 {sourceWorkflowSetCanonical ? (
-                  <p role="note">{sourceSetMutationReason} 当前配置集成员不能直接增删。</p>
+                  <p role="note">当前配置集包含 canonical 来源成员。仅符合条件的 JSON 成员删除可提交人工审核；其他操作请查看按钮旁的限制说明。</p>
                 ) : null}
                 {!sourceWorkflowSetReady && !sourceWorkflowSetLoading && !sourceWorkflowSetError ? (
                   <p role="note">{sourceSetMutationReason}</p>
@@ -707,10 +710,15 @@ export function WorkbenchInspectorPanel({
                               pendingAction !== null ||
                               (sourceSetMutationBlocked && !reviewedRemovalReady(member))
                             }
+                            aria-describedby={sourceWorkflowSetCanonical && member.format === "dts"
+                              ? `member-removal-reason-${member.fileId}` : undefined}
                             onClick={() => onRequestRemoveMember(member)}
                           >
                             移除
                           </button>
+                        ) : null}
+                        {sourceWorkflowSetCanonical && member.format === "dts" ? (
+                          <small id={`member-removal-reason-${member.fileId}`}>{dtsRemovalReason}</small>
                         ) : null}
                       </li>
                     ))}
@@ -764,10 +772,12 @@ export function WorkbenchInspectorPanel({
                       type="button"
                       disabled={!memberFileId || pendingAction !== null || sourceSetMutationBlocked}
                       title={sourceSetMutationBlocked ? sourceSetMutationReason : undefined}
+                      aria-describedby={sourceWorkflowSetCanonical ? "canonical-member-add-reason" : undefined}
                       onClick={onAddMember}
                     >
                       添加成员
                     </button>
+                    {sourceWorkflowSetCanonical ? <p id="canonical-member-add-reason" role="note">{canonicalAddReason}</p> : null}
                   </div>
                 ) : null}
               </section>
@@ -812,7 +822,8 @@ export function WorkbenchInspectorPanel({
                 </dd>
               </div>
               {canAdmin ? (
-                <div className="configuration-workbench__inspector-actions">
+                <>
+                  <div className="configuration-workbench__inspector-actions">
                   <button
                     className="button subtle"
                     type="button"
@@ -837,13 +848,21 @@ export function WorkbenchInspectorPanel({
                     type="button"
                     disabled={pendingAction !== null || (!reviewedRemovalReady(selectedMember)
                       && (sourceSetMutationBlocked || selectedSourceCanonical))}
-                    title={reviewedRemovalReady(selectedMember) ? "提交成员删除审核" : sourceSetMutationBlocked
-                      ? sourceSetMutationReason : selectedSourceCanonical ? sourceMutationReason : undefined}
+                    title={reviewedRemovalReady(selectedMember) ? "提交成员删除审核"
+                      : selectedDtsRemovalBlocked ? dtsRemovalReason
+                      : sourceSetMutationBlocked ? sourceSetMutationReason
+                      : selectedSourceCanonical ? sourceMutationReason : undefined}
+                    aria-describedby={selectedDtsRemovalBlocked
+                      ? "canonical-dts-member-removal-reason" : undefined}
                     onClick={() => onRequestRemoveMember(selectedMember)}
                   >
                     从配置集移除
                   </button>
-                </div>
+                  </div>
+                  {selectedDtsRemovalBlocked ? (
+                    <p id="canonical-dts-member-removal-reason" role="note">{dtsRemovalReason}</p>
+                  ) : null}
+                </>
               ) : null}
             </>
           ) : null}
