@@ -22,7 +22,7 @@ import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJson
 import { loadPublishedCatalog } from "../catalogProjectValueSync";
 import { loadLegacyBindingIdentity } from "../binding/migrationAdapter";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
-import { createCanonicalValueDraft, removeCanonicalValueDraft } from "./service";
+import { createCanonicalValueDraft, listCanonicalValueDraftsForReviewer, removeCanonicalValueDraft } from "./service";
 import { captureCanonicalBatchDraftImpactInTransaction } from "./batchChangeService";
 import { catalogBatchValueChangeRequestResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 
@@ -335,6 +335,17 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     expect(after.versions).toHaveLength(before.versions.length + 1);
     expect(after.audits).toHaveLength(before.audits.length + 1);
     expect(after.drafts).toEqual(before.drafts);
+    for (const [bindingId, draftId] of [[first.bindingId, selected.id],
+      [second.bindingId, unselected.id], [sibling, siblingDraft.id]] as const) {
+      expect(await listCanonicalValueDraftsForReviewer(db, reviewer, { projectId: PROJECT, bindingId }))
+        .toEqual(expect.arrayContaining([expect.objectContaining({ draftId, stale: true })]));
+      const pin = (await db.query<{ file_version_id: string }>(`
+        select pin.file_version_id from parameter_catalog.project_parameter_bindings binding
+          join parameter_catalog.project_value_source_pins pin
+            on pin.binding_id=binding.id and pin.project_value_id=binding.current_value_id
+         where binding.id=$1`, [bindingId])).rows[0];
+      expect(pin?.file_version_id).toBe(after.files.find((file) => file.id === fileId)?.currentVersionId);
+    }
     const values = (await db.query<{ value: unknown }>(`
       select value.value from parameter_catalog.project_parameter_bindings binding
         join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
@@ -345,6 +356,19 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
       method: "POST", body: JSON.stringify(approvalBody)
     })).body).toEqual(approved.body);
     expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(after);
+    const staleSubmission = await requestJson<{ item: { id: string } }>(route(secondAuthor),
+      `/api/v2/projects/${PROJECT}/parameter-value-drafts/${siblingDraft.id}/submit`, {
+        method: "POST", body: JSON.stringify({ assignedToUserId: REVIEWER }) });
+    expect(staleSubmission.status, JSON.stringify(staleSubmission.body)).toBe(201);
+    const stalePending = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+    const staleObjects = await objectBytes(storageDirectory);
+    const staleReview = await requestJson(route(reviewer),
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${staleSubmission.body.item.id}/review`, {
+        method: "POST", body: JSON.stringify({ decision: "approve" }) });
+    expect(staleReview).toMatchObject({ status: 409, body: { error: {
+      details: { reason: "stale-base-value" } } } });
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(stalePending);
+    expect(await objectBytes(storageDirectory)).toEqual(staleObjects);
   }, 120_000);
 
   it("rejects omitted or wrong mixed decisions and a newly inserted sibling draft", async () => {
@@ -436,6 +460,110 @@ describe("#906 C whole-cohort JSON draft impact over HTTP", () => {
     expect(preview.bindings).toHaveLength(2);
     return { item, preview };
   }
+
+  it.each(["single-before-batch", "single-after-batch"])(
+    "characterizes a pending sibling JSON request: %s", async (order) => {
+      const workflow = await requestJson<{ item: { proofToken: string } }>(route(),
+        `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-workflow`);
+      const version = (await db.query<{ current_version_id: string }>(
+        "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!.current_version_id;
+      const prepared = await requestJson<{ item: { candidateId: string; proofToken: string;
+        targets: Array<{ bindingId: string }> } }>(route(),
+        `/api/v1/projects/${PROJECT}/parameter-files/${fileId}/source-manual-sync/prepare`, {
+          method: "POST", headers: { "X-Request-Id": `c906-json-pending-${order}-prepare` },
+          body: JSON.stringify({
+            contentBase64: Buffer.from('{"first":{"limit":50},"second":{"limit":60},"third":{"limit":30}}\n').toString("base64"),
+            expectedCurrentVersionId: version, expectedWorkflowProofToken: workflow.body.item.proofToken
+          })
+        });
+      expect(prepared.status, JSON.stringify(prepared.body)).toBe(201);
+      const sibling = bindings.find((id) => !prepared.body.item.targets.some((target) => target.bindingId === id))!;
+      const oldDraft = await draft(sibling, secondAuthor, 99);
+      const submitSingle = () => requestJson<{ item: { id: string; status: string } }>(route(secondAuthor),
+        `/api/v2/projects/${PROJECT}/parameter-value-drafts/${oldDraft.id}/submit`, {
+          method: "POST", body: JSON.stringify({ assignedToUserId: REVIEWER }) });
+      const singleBefore = order === "single-before-batch" ? await submitSingle() : null;
+      if (singleBefore) expect(singleBefore.status, JSON.stringify(singleBefore.body)).toBe(201);
+      const conflicts = await requestJson<{ items: unknown[]; ineligible: unknown[] }>(route(),
+        `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.body.item.candidateId}/source-conflicts`);
+      expect(conflicts).toMatchObject({ status: 200, body: { items: [], ineligible: [] } });
+      const submitted = await requestJson<{ item: { id: string; status: string; batchProofDigest: string;
+        draftImpactDigest: string } }>(route(),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, {
+          method: "POST", body: JSON.stringify({ candidateId: prepared.body.item.candidateId,
+            expectedProofToken: prepared.body.item.proofToken,
+            reason: "Review two changed JSON values", assignedToUserId: REVIEWER }) });
+      expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+      const batch = submitted.body.item;
+      const detail = await requestJson<{ item: { draftImpact: Array<{ bindingId: string; role: string;
+        drafts: Array<{ draftId: string; expectedEffect: string }> }> } }>(route(reviewer),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${batch.id}/batch`);
+      expect(detail.status).toBe(200);
+      expect(detail.body.item.draftImpact).toHaveLength(3);
+      expect(detail.body.item.draftImpact.find((entry) => entry.bindingId === sibling))
+        .toMatchObject({ role: "sibling", drafts: [{ draftId: oldDraft.id,
+          expectedEffect: "preserved-stale" }] });
+      const single = singleBefore ?? await submitSingle();
+      expect(single.status, JSON.stringify(single.body)).toBe(201);
+      expect(JSON.stringify(detail.body.item.draftImpact)).not.toContain(single.body.item.id);
+      const singleQueue = await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests?status=pending`);
+      expect(singleQueue.body.items.map((item) => item.id)).toContain(single.body.item.id);
+      const pending = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+      expect(pending.requests).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: single.body.item.id, status: "pending" }),
+        expect.objectContaining({ id: batch.id, status: "pending" })]));
+      const diff = await requestJson<{ item: { bindings: unknown[] } }>(route(reviewer),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${batch.id}/source-diff`);
+      expect(diff.status).toBe(200);
+      expect(diff.body.item.bindings).toHaveLength(3);
+      const approved = await requestJson(route(reviewer),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${batch.id}/review`, {
+          method: "POST", body: JSON.stringify({ decision: "approve",
+            batchProofDigest: batch.batchProofDigest, draftImpactDigest: batch.draftImpactDigest }) });
+      expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+      const after = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
+      expect(after.requests).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: single.body.item.id, status: "pending" }),
+        expect.objectContaining({ id: batch.id, status: "approved" })]));
+      expect((await requestJson<{ items: Array<{ id: string }> }>(route(reviewer),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests?status=pending`))
+        .body.items.map((item) => item.id)).toContain(single.body.item.id);
+      expect(after.values).toHaveLength(pending.values.length + 3);
+      expect(after.pins).toHaveLength(pending.pins.length + 3);
+      expect(after.history).toHaveLength(pending.history.length + 3);
+      expect(after.versions).toHaveLength(pending.versions.length + 1);
+      expect(after.audits).toHaveLength(pending.audits.length + 1);
+      expect(after.drafts).toEqual(pending.drafts);
+      expect(await listCanonicalValueDraftsForReviewer(db, reviewer, { projectId: PROJECT, bindingId: sibling }))
+        .toEqual([expect.objectContaining({ draftId: oldDraft.id, stale: true,
+          pendingRequestId: single.body.item.id })]);
+      const current = (await db.query<{ binding_id: string; value: unknown; file_version_id: string }>(`
+        select binding.id as binding_id,value.value,pin.file_version_id
+          from parameter_catalog.project_parameter_bindings binding
+          join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+          join parameter_catalog.project_value_source_pins pin
+            on pin.binding_id=binding.id and pin.project_value_id=value.id
+         where binding.organization_id=$1 and binding.project_id=$2`, [ORG, PROJECT])).rows;
+      expect(current.map((entry) => entry.value).sort((a, b) => Number(a) - Number(b)))
+        .toEqual([30, 50, 60]);
+      expect(current).toHaveLength(3);
+      expect(current.every((entry) => entry.file_version_id === after.files.find((file) => file.id === fileId)?.currentVersionId))
+        .toBe(true);
+      const finalVersion = (await db.query<{ storage_key: string }>(`
+        select storage_key from project_parameter_file_versions where id=$1`,
+      [after.files.find((file) => file.id === fileId)?.currentVersionId])).rows[0]!;
+      expect((await storage.get(finalVersion.storage_key)).toString())
+        .toBe('{"first":{"limit":50},"second":{"limit":60},"third":{"limit":30}}\n');
+      const beforeOldReview = await objectBytes(storageDirectory);
+      const oldReview = await requestJson(route(reviewer),
+        `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${single.body.item.id}/review`, {
+          method: "POST", body: JSON.stringify({ decision: "approve" }) });
+      expect(oldReview).toMatchObject({ status: 409, body: { error: {
+        details: { reason: "stale-base-value" } } } });
+      expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).toEqual(after);
+      expect(await objectBytes(storageDirectory)).toEqual(beforeOldReview);
+    }, 120_000);
 
   it("reports unprepared and pending target drafts before a JSON batch can be reviewed", async () => {
     const { item, preview } = await candidate();
