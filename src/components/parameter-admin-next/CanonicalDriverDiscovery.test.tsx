@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { CanonicalDriverDiscovery } from "./CanonicalDriverDiscovery";
 
 const pin = { id: "crel_one", digest: "sha256:one" };
@@ -49,6 +50,52 @@ describe("CanonicalDriverDiscovery", () => {
     await waitFor(() => expect(list).toHaveBeenCalledTimes(3));
     expect(await screen.findByText("当前范围没有兼容发现。")).toBeInTheDocument();
     expect(screen.getByText(/已忽略复核项：0/)).toBeInTheDocument();
+  });
+
+  it("reports a structured first-page release drift and retries from page one", async () => {
+    const list = vi.fn()
+      .mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "The catalog release changed.",
+        { reason: "release-drift", expectedCatalogReleaseId: "crel_one", currentCatalogReleaseId: "crel_two" }, "req-first"))
+      .mockResolvedValueOnce({ ...ready([item("obs_new")], null), catalogRelease: { id: "crel_two", digest: "sha256:two" } });
+    render(<CanonicalDriverDiscovery governance={port(list)} organizationId="org_one" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("目录发布已变化，请刷新发现结果。");
+    fireEvent.click(screen.getByRole("button", { name: "刷新发现" }));
+    expect(await screen.findByText("vendor,device")).toBeInTheDocument();
+    expect(list).toHaveBeenNthCalledWith(2, "org_one", { limit: 50 });
+  });
+
+  it("reports a thrown release drift without keeping the old cursor and refreshes its pin", async () => {
+    const nextPin = { id: "crel_two", digest: "sha256:two" };
+    const list = vi.fn()
+      .mockResolvedValueOnce(ready([item("obs_old")], "obs_old"))
+      .mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "The catalog release changed.",
+        { reason: "release-drift", expectedCatalogReleaseId: pin.id, currentCatalogReleaseId: nextPin.id }, "req-page"))
+      .mockResolvedValueOnce({ ...ready([item("obs_new", "vendor,new")], "obs_new"), catalogRelease: nextPin })
+      .mockResolvedValueOnce({ ...ready([item("obs_last", "vendor,last")], null), catalogRelease: nextPin });
+    render(<CanonicalDriverDiscovery governance={port(list)} organizationId="org_one" />);
+    expect(await screen.findByText("vendor,device")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "加载下一页" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("目录发布已变化，请刷新发现结果。");
+    expect(screen.getByText("vendor,device")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载下一页" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新发现" }));
+    expect(await screen.findByText("vendor,new")).toBeInTheDocument();
+    expect(screen.queryByText("vendor,device")).not.toBeInTheDocument();
+    expect(list).toHaveBeenNthCalledWith(3, "org_one", { limit: 50 });
+    fireEvent.click(screen.getByRole("button", { name: "加载下一页" }));
+    expect(await screen.findByText("vendor,last")).toBeInTheDocument();
+    expect(list).toHaveBeenNthCalledWith(4, "org_one", { cursor: "obs_new", limit: 50 }, nextPin);
+  });
+
+  it("keeps other structured conflicts on the existing generic error path", async () => {
+    const list = vi.fn()
+      .mockResolvedValueOnce(ready([item("obs_one")], "obs_one"))
+      .mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "The placement changed.",
+        { reason: "placement-changed" }, "req-other"));
+    render(<CanonicalDriverDiscovery governance={port(list)} organizationId="org_one" />);
+    expect(await screen.findByText("vendor,device")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "加载下一页" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("操作与当前状态冲突，请刷新后重试。");
   });
 
   it("keeps historical and unavailable sources distinct from current actions", async () => {
