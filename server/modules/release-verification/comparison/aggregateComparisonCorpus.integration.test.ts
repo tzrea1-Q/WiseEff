@@ -7,6 +7,15 @@ import {
   loadParameterCatalogFixture,
   type ParameterCatalogDatabase,
 } from "../../../testing/parameterCatalog";
+import { insertDismissedCompatible } from "../../parameter-modules/repository";
+import { compileCatalogRelease } from "../../catalog-kernel/compiler";
+import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
+import { installPublishedRelease } from "../../catalog-kernel/install/installer";
+import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
+import { createEvidenceIngest } from "../../parameter-governance/evidence";
+import { createReviewQueueReader } from "../../parameter-governance/review";
+import { resolveReviewItem } from "../../parameter-governance/resolveReviewItem";
 import {
   COMPARISON_FAMILIES,
   COMPARISON_IDS,
@@ -176,6 +185,78 @@ describe("live eleven-family comparison corpus", () => {
       expect(preReport.unqueryableProtectedReferenceCount).toBe(0);
       expect(postReport.unexplainedDifferenceCount).toBe(0);
       expect(postReport.unqueryableProtectedReferenceCount).toBe(0);
+
+      // The historical dismissal is a separate protected identity from an ignored Review Item.
+      await insertDismissedCompatible(preDatabase, {
+        id: "mod-comparison-historical-dismissal",
+        organizationId: "wf671-org",
+        compatible: "vendor,review-only",
+        reason: "historical dismissal",
+        dismissedByUserId: null,
+      });
+      const fullBundle = validCatalogReleaseBundle();
+      const firstRelease = structuredClone(fullBundle.releases[0]!);
+      const bundle = { schemaVersion: fullBundle.schemaVersion, targetReleaseId: firstRelease.manifest.release.id, releases: [firstRelease] };
+      const compiled = compileCatalogRelease(bundle);
+      if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+      const installed = await installPublishedRelease(prePool!, {
+        mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.value.aggregateDigest,
+      });
+      if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+      const pin = compiled.value.release;
+      const mod = providers.find((provider) => provider.family === "MOD")!;
+      const modInput = providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA);
+      const modBeforeIgnore = await mod.provide(modInput);
+      expect(modBeforeIgnore.cases.some((item) => item.protectedReference.id === "mod-comparison-historical-dismissal")).toBe(true);
+
+      await preDatabase.query(
+        "insert into users (id, organization_id, name, title, is_active) values ($1, $2, $3, $4, true)",
+        ["mod-comparison-reviewer", "wf671-org", "MOD reviewer", "Admin"],
+      );
+      const ingested = await createEvidenceIngest(prePool!).ingest({
+        organizationId: "wf671-org", sourceIdentity: "mod-comparison-review-source",
+        catalogReleaseId: pin.id, matcherRevision: subjectMatcherRevision,
+        matcherOutput: { status: "unknown" },
+        evidence: { propertyKey: "mod-comparison-review", compatible: "vendor,review-only" },
+        provenance: null,
+      });
+      expect(ingested.ok).toBe(true);
+      const reader = createReviewQueueReader(prePool!);
+      const context = { actorKind: "org-admin" as const, principalId: "mod-comparison-reviewer", organizationId: "wf671-org" };
+      const queue = await reader.list({ organizationId: "wf671-org", capturedRelease: pin, context });
+      expect(queue.ok).toBe(true);
+      if (!queue.ok) throw new Error(JSON.stringify(queue.error));
+      const item = queue.value.items.find((entry) => entry.identityKey === "property:mod-comparison-review");
+      expect(item).toBeDefined();
+      const resolved = await resolveReviewItem(prePool!, {
+        resolution: "mark-out-of-scope", organizationId: "wf671-org", reviewItemId: item!.id,
+        expectedRelease: pin, etag: item!.etag, idempotencyKey: "mod-comparison-ignore",
+        context, reason: item!.reason, outOfScopeReason: "Review closure only",
+      });
+      expect(resolved.ok).toBe(true);
+      const databaseState = async () => (await prePool!.query(
+        `select
+           (select count(*)::integer from parameter_module_dismissed_compatibles) as dismissed,
+           (select count(*)::integer from parameter_catalog.parameter_review_items) as review_items,
+           (select count(*)::integer from parameter_catalog.parameter_review_evidence) as review_evidence,
+           (select count(*)::integer from public.audit_events) as audits,
+           (select count(*)::integer from project_parameter_bindings) as bindings`,
+      )).rows[0];
+      const stateBeforeRead = await databaseState();
+      const modAfterIgnore = await mod.provide(modInput);
+      expect(await databaseState()).toEqual(stateBeforeRead);
+      expect(modAfterIgnore.sourceInventoryCount).toBe(modBeforeIgnore.sourceInventoryCount);
+      expect(modAfterIgnore.sourceInventoryChecksum).toBe(modBeforeIgnore.sourceInventoryChecksum);
+      expect(modAfterIgnore.cases).toEqual(modBeforeIgnore.cases);
+      const corpusWithDismissal = await aggregateLiveComparisonCorpus(modInput, providers);
+      const dismissedCase = corpusWithDismissal.cases.find((item) =>
+        item.protectedReference.id === "mod-comparison-historical-dismissal");
+      expect(dismissedCase?.result).toBe("declared-expected-difference");
+      expect(generateComparisonReport(corpusWithDismissal).gateCoverage.find((gate) =>
+        gate.comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT")?.caseCount).toBeGreaterThan(0);
+      const closedQueue = await reader.list({ organizationId: "wf671-org", capturedRelease: pin, context });
+      expect(closedQueue.ok && closedQueue.value.ignoredReviewItemCount).toBe(1);
+      expect(closedQueue.ok && closedQueue.value.items.some((entry) => entry.id === item!.id)).toBe(false);
     } finally {
       await preDatabase.close();
       await postDatabase.close();

@@ -22,10 +22,10 @@ import { routeManifest } from "../contracts/routeManifest";
 import type { Database } from "../../shared/database/client";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import {
-  getModuleDiscoveryHints,
   getParameterModuleRegistry,
   listDriverRegistry,
 } from "./service";
+import { listDismissedCompatibleIdentitiesForComparison } from "./comparisonInventoryRepository";
 
 export const MOD_COMPARISON_CONTRACT_VERSION = "pcat-comparison-contribution/v1";
 export const MOD_COMPARISON_FAMILY = "MOD";
@@ -112,9 +112,17 @@ export type ModComparisonContribution = {
   readonly checksum: string;
 };
 
-type InventoryRecord = ModProtectedReference & {
-  readonly applicable: readonly ModComparisonId[];
-};
+type InventoryRecord =
+  | (ModProtectedReference & {
+      readonly kind: "parameter-module-dismissed-compatible";
+      readonly applicable: readonly ModComparisonId[];
+      readonly organizationId: string;
+      readonly legacyCompatible: string;
+    })
+  | (ModProtectedReference & {
+      readonly kind: "parameter-module" | "parameter-module-mapping" | "subject-registration" | "subject-placement";
+      readonly applicable: readonly ModComparisonId[];
+    });
 
 function compareText(left: string, right: string): number {
   if (left < right) return -1;
@@ -292,11 +300,14 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
         applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"],
       });
     }
-    const hints = await getModuleDiscoveryHints(database, auth);
-    for (const dismissed of hints.item.dismissedCompatibles) {
-      byKey.set(`parameter-module-dismissed-compatible:${dismissed.compatible}`, {
+    const dismissedCompatibles = await listDismissedCompatibleIdentitiesForComparison(database, organizationId);
+    for (const dismissed of dismissedCompatibles) {
+      // The cutover registry protects the legacy row ID; the retired HTTP route still addresses its compatible.
+      byKey.set(`parameter-module-dismissed-compatible:${dismissed.id}`, {
         kind: "parameter-module-dismissed-compatible",
-        id: dismissed.compatible,
+        id: dismissed.id,
+        organizationId,
+        legacyCompatible: dismissed.compatible,
         applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"],
       });
     }
@@ -401,6 +412,7 @@ async function observeLegacyHttp(
   organizationId: string,
   comparisonId: ModComparisonId,
   reference: ModProtectedReference,
+  routeIdentity = reference.id,
 ): Promise<ModQueryObservation> {
   const route = routeManifest.find((entry) => {
     if (!entry.id.startsWith("parameterModules.")) {
@@ -416,7 +428,7 @@ async function observeLegacyHttp(
       return entry.id === "parameterModules.createMapping";
     }
     if (reference.kind === "parameter-module-dismissed-compatible") {
-      return entry.id === "parameterModules.dismissCompatible";
+      return entry.id === "parameterModules.restoreCompatible";
     }
     return entry.id === "parameterModules.getRegistry";
   });
@@ -426,7 +438,7 @@ async function observeLegacyHttp(
   const result = await handleLegacyCatalogRequest(
     {
       method: route.method,
-      path: fillLegacyPath(route.path, reference.id),
+      path: fillLegacyPath(route.path, routeIdentity),
       params: {},
       query: comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY" ? { id: reference.id } : {},
       headers: {},
@@ -435,6 +447,13 @@ async function observeLegacyHttp(
     },
     createLegacyOptions(database, organizationId),
   );
+  if (reference.kind === "parameter-module-dismissed-compatible" && result.status !== 410) {
+    return {
+      status: "query-failure",
+      code: MOD_UNQUERYABLE_FAILURE_CODE,
+      detail: `legacy-dismissed-compatible-http-${result.status}`,
+    };
+  }
   return {
     status: "value",
     value: {
@@ -560,6 +579,9 @@ export async function provideModParameterCatalogComparisonContribution(
   const moduleRecords = await queryModInventory(input.database);
   const canonicalSubjects = await observeCanonicalSubjects(input.pool, organizationId);
   const canonicalRegistrations = await observeCanonicalRegistrations(organizationId);
+  const canonicalRegistrationsByOrganization = new Map<string, ModQueryObservation>([
+    [organizationId, canonicalRegistrations.observation],
+  ]);
 
   const inventory = sortInventory([...moduleRecords, ...canonicalRegistrations.records]);
 
@@ -572,6 +594,12 @@ export async function provideModParameterCatalogComparisonContribution(
   const cases: ModComparisonCase[] = [];
   for (const record of inventory) {
     const protectedReference = { kind: record.kind, id: record.id };
+    const legacyOrganizationId = record.kind === "parameter-module-dismissed-compatible"
+      ? record.organizationId
+      : organizationId;
+    const routeIdentity = record.kind === "parameter-module-dismissed-compatible"
+      ? record.legacyCompatible
+      : record.id;
     for (const comparisonId of record.applicable) {
       if (
         comparisonId !== "PCAT-CMP-D02-SUBJECT-IDENTITY" &&
@@ -581,12 +609,20 @@ export async function provideModParameterCatalogComparisonContribution(
       }
       const legacyObservation =
         record.kind === "parameter-module"
-          ? await observeLegacyModule(input.database, organizationId, record.id)
-          : await observeLegacyHttp(input.database, organizationId, comparisonId, protectedReference);
-      const canonicalObservation =
-        comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
-          ? canonicalSubjects
-          : canonicalRegistrations.observation;
+          ? await observeLegacyModule(input.database, legacyOrganizationId, record.id)
+          : await observeLegacyHttp(
+              input.database,
+              legacyOrganizationId,
+              comparisonId,
+              protectedReference,
+              routeIdentity,
+            );
+      let canonicalObservation = canonicalSubjects;
+      if (comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT") {
+        canonicalObservation = canonicalRegistrationsByOrganization.get(legacyOrganizationId)
+          ?? (await observeCanonicalRegistrations(legacyOrganizationId)).observation;
+        canonicalRegistrationsByOrganization.set(legacyOrganizationId, canonicalObservation);
+      }
 
       const classified = classifyCase({
         comparisonId,
