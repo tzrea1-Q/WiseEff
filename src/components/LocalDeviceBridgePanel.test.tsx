@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocalDeviceBridgePanel } from "./LocalDeviceBridgePanel";
 import { listReleases } from "../infrastructure/http/deviceBridgeClient";
 import * as bridgeLauncher from "../infrastructure/http/bridgeConnectLauncher";
+import { resolveWiseEffApiBaseUrl } from "../infrastructure/http/runtimeMode";
 import { FOREIGN_ACCOUNT_REBIND_HINT } from "./bridgePanelStatus";
 
 vi.mock("../infrastructure/http/deviceBridgeClient", async (importOriginal) => {
@@ -20,6 +21,47 @@ vi.mock("../infrastructure/http/bridgeConnectLauncher", async (importOriginal) =
     launchBridgeSchemeForConnect: vi.fn()
   };
 });
+
+let unexpectedNetwork: string[];
+beforeEach(() => {
+  unexpectedNetwork = [];
+  vi.mocked(listReleases).mockReset();
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
+    const request = `${init?.method ?? "GET"} ${String(input)}`;
+    unexpectedNetwork.push(request);
+    throw new Error(`Unexpected network request: ${request}`);
+  }));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  expect(unexpectedNetwork).toEqual([]);
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+function pairingResponse() {
+  return new Response(JSON.stringify({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" }), { status: 200 });
+}
+
+function stubPairingPost(result: () => Promise<Response>) {
+  const pairingFetch = vi.fn<typeof fetch>(async (input, init) => {
+    const request = `${init?.method ?? "GET"} ${String(input)}`;
+    if (String(input) !== `${resolveWiseEffApiBaseUrl()}/api/v1/device-bridges/pairing-codes` ||
+        init?.method !== "POST" || init.body !== "{}") {
+      unexpectedNetwork.push(request);
+      throw new Error(`Unexpected network request: ${request}`);
+    }
+    return result();
+  });
+  vi.stubGlobal("fetch", pairingFetch);
+  return pairingFetch;
+}
 
 function renderPanel() {
   return render(
@@ -68,6 +110,7 @@ describe("LocalDeviceBridgePanel install manifest loading", () => {
 });
 
 it("retains confirmed pairing when listing fails and allows retry", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
   const bridge = { id: "br-local", machineLabel: "本机", platform: "windows", arch: "amd64", revokedAt: null };
   const probeHealth = async () => ({
     health: { ok: true as const, connected: true, paired: true, bridgeId: bridge.id, updatedAt: "2026-09-15T00:00:00Z" },
@@ -145,56 +188,109 @@ it("asks the current user to rebind a live local bridge owned by another account
   expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
 });
 
+const olderBridge = {
+  id: "br-A", machineLabel: "本机", platform: "darwin" as const, arch: "arm64" as const,
+  clientVersion: "0.1.0", capabilities: {}, createdAt: "2026-09-16T00:00:00.000Z",
+  lastSeenAt: "2026-09-16T00:00:00.000Z", revokedAt: null
+};
+const olderHealth = {
+  ok: true as const, paired: true, connected: true, bridgeId: "br-A",
+  updatedAt: "2026-09-16T00:00:00.000Z",
+  tools: { adb: { available: true }, hdc: { available: true } }
+};
+const olderManifest = {
+  recommendedVersion: "0.1.1", minCompatibleVersion: "0.1.0",
+  items: [{
+    platform: "darwin", arch: "arm64", artifactKind: "installer", version: "0.1.1",
+    downloadUrl: "/downloads/device-bridge/0.1.1/darwin/arm64/WiseEffBridge_0.1.1_darwin_arm64.pkg"
+  }]
+};
+const olderBridgeProps = {
+  detecting: false, protocol: "hdc" as const, onDetect: () => undefined,
+  listBridges: async () => [olderBridge]
+};
+
 it("prompts to install the latest Bridge when local health is an older client", async () => {
-  vi.mocked(listReleases).mockResolvedValue({
-    recommendedVersion: "0.1.1",
-    minCompatibleVersion: "0.1.0",
-    items: [
-      {
-        platform: "darwin",
-        arch: "arm64",
-        artifactKind: "installer",
-        version: "0.1.1",
-        downloadUrl: "/downloads/device-bridge/0.1.1/darwin/arm64/WiseEffBridge_0.1.1_darwin_arm64.pkg"
-      }
-    ]
-  } as never);
+  const pairingFetch = stubPairingPost(async () => pairingResponse());
+  vi.mocked(listReleases).mockResolvedValue(olderManifest as never);
 
   render(
     <LocalDeviceBridgePanel
-      detecting={false}
-      protocol="hdc"
-      onDetect={() => undefined}
-      listBridges={async () => [
-        {
-          id: "br-A",
-          machineLabel: "本机",
-          platform: "darwin",
-          arch: "arm64",
-          clientVersion: "0.1.0",
-          capabilities: {},
-          createdAt: "2026-09-16T00:00:00.000Z",
-          lastSeenAt: "2026-09-16T00:00:00.000Z",
-          revokedAt: null
-        }
-      ]}
+      {...olderBridgeProps}
       probeHealth={async () => ({
-        health: {
-          ok: true,
-          paired: true,
-          connected: true,
-          bridgeId: "br-A",
-          updatedAt: "2026-09-16T00:00:00.000Z",
-          tools: { adb: { available: true }, hdc: { available: true } }
-        },
-        reachability: "ok"
+        health: olderHealth, reachability: "ok"
       })}
     />
   );
 
   expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
   expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "重新检测设备" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
   expect(await screen.findByText("图形安装包（推荐）")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
+  expect(pairingFetch).toHaveBeenCalledTimes(1);
+  expect(pairingFetch).toHaveBeenCalledWith(expect.stringMatching(/\/api\/v1\/device-bridges\/pairing-codes$/),
+    expect.objectContaining({ method: "POST", body: "{}" }));
+});
+
+it.each(["success", "failure"] as const)(
+  "keeps the install step after a pending pairing request finishes with %s",
+  async (outcome) => {
+    const reconnectingOldHealth = { ...olderHealth, connected: false, serverUrl: "https://old.example" };
+    const health = deferred<{ health: typeof reconnectingOldHealth; reachability: "ok" }>();
+    const manifest = deferred<typeof olderManifest>();
+    const pairing = deferred<void>();
+    const pairingFetch = stubPairingPost(async () => { await pairing.promise; return pairingResponse(); });
+    vi.mocked(listReleases).mockReturnValue(manifest.promise as never);
+    render(<LocalDeviceBridgePanel {...olderBridgeProps} probeHealth={() => health.promise} />);
+
+    await waitFor(() => expect(pairingFetch).toHaveBeenCalledTimes(1));
+    expect(listReleases).not.toHaveBeenCalled();
+    await act(async () => health.resolve({ health: reconnectingOldHealth, reachability: "ok" }));
+    await waitFor(() => expect(pairingFetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listReleases).toHaveBeenCalledTimes(1));
+    await act(async () => manifest.resolve(olderManifest));
+    expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
+    expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
+    expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
+    await act(async () => {
+      if (outcome === "success") pairing.resolve(undefined);
+      else pairing.reject(new Error("pairing unavailable"));
+    });
+    if (outcome === "failure") expect(screen.getByText("pairing unavailable")).toBeInTheDocument();
+    else expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
+    expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
+    expect(pairingFetch).toHaveBeenCalledTimes(2);
+  }
+);
+
+it("keeps the install step when an old-client health refresh completes after the manifest", async () => {
+  const pairingFetch = stubPairingPost(async () => pairingResponse());
+  vi.mocked(listReleases).mockResolvedValue(olderManifest as never);
+  const firstProbe = async () => ({ health: olderHealth, reachability: "ok" as const });
+  const lateHealth = deferred<{ health: typeof olderHealth; reachability: "ok" }>();
+  const secondProbe = vi.fn(() => lateHealth.promise);
+  const view = render(<LocalDeviceBridgePanel {...olderBridgeProps} probeHealth={firstProbe} />);
+
+  expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
+  expect(listReleases).toHaveBeenCalledTimes(1);
+  view.rerender(<LocalDeviceBridgePanel {...olderBridgeProps} probeHealth={secondProbe} />);
+  await waitFor(() => expect(secondProbe).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
+  expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
+
+  await act(async () => lateHealth.resolve({
+    health: { ...olderHealth, updatedAt: "2026-09-16T00:01:00.000Z" }, reachability: "ok"
+  }));
+  expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
+  expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
+  expect(listReleases).toHaveBeenCalledTimes(1);
+  expect(pairingFetch).toHaveBeenCalledTimes(1);
 });
