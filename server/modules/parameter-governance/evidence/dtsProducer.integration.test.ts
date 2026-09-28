@@ -369,9 +369,14 @@ describe("#897 production DTS observation and Review Item association", () => {
     expect(await objects()).toEqual(beforeObjects);
     const page = await listDriverCompatibleDiscovery({db:api,objectStore:storage,auth,projectId});
     expect(page.status).toBe("ready");
-    if (page.status === "ready") expect(page.items[0]?.compatibles.find((entry) =>
-      entry.compatible === "vendor,device")?.candidate)
-      .toMatchObject({kind:"review-required",reviewItemIds:[expect.any(String)]});
+    if (page.status === "ready") {
+      const candidates = page.items.flatMap((item) => item.compatibles)
+        .filter((entry) => entry.compatible === "vendor,device").map((entry) => entry.candidate);
+      expect(candidates).toHaveLength(2);
+      for (const candidate of candidates) {
+        expect(candidate).toMatchObject({kind:"review-required",reviewItemIds:[expect.any(String)]});
+      }
+    }
   });
 
   it("fails a semantic source activation before any Catalog release without partial database writes", async () => {
