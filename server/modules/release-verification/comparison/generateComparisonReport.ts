@@ -1,9 +1,12 @@
 import { corpusRefusal } from "./errors";
+import { aggregateComparisonCorpus, collectComparisonContributions } from "./aggregateComparisonCorpus";
 import {
   COMPARISON_REPORT_CONTRACT_VERSION,
   assertModD02SubjectTarget,
   checksumCanonicalBytes,
   serializeCanonical,
+  type AggregationContext,
+  type ComparisonContribution,
 } from "./corpusContributionSchema";
 import {
   buildGateCoverage,
@@ -13,11 +16,25 @@ import {
   type AggregatedComparisonCorpus,
   type ComparisonReport,
 } from "./corpusResultSchema";
+import type { ComparisonProviderInput } from "./productionProviders";
 
 export const generateComparisonReport = (
   corpus: AggregatedComparisonCorpus,
+  contributions: readonly ComparisonContribution[],
+  context: AggregationContext,
 ): ComparisonReport => {
+  if (!corpus || !Array.isArray(corpus.cases)) {
+    throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "comparison corpus cases are required");
+  }
   for (const item of corpus.cases) assertModD02SubjectTarget(item);
+  if (!Array.isArray(contributions) || !context) {
+    throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "original contributions and comparison context are required");
+  }
+  const expected = aggregateComparisonCorpus(contributions, context);
+  if (!serializeCanonical(corpus).equals(serializeCanonical(expected))) {
+    throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "corpus differs from its original family contributions");
+  }
+  corpus = expected;
   const resultCounts = countResults(corpus.cases);
   if (resultCounts["unexplained-difference"] > 0) {
     throw corpusRefusal(
@@ -90,6 +107,12 @@ export const generateComparisonReport = (
     throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "report checksum is not stable over canonical bytes");
   }
   return report;
+};
+
+export const generateLiveComparisonReport = async (input: ComparisonProviderInput): Promise<ComparisonReport> => {
+  const contributions = await collectComparisonContributions(input);
+  const corpus = aggregateComparisonCorpus(contributions, input);
+  return generateComparisonReport(corpus, contributions, input);
 };
 
 export const assertIndependentPhaseReports = (

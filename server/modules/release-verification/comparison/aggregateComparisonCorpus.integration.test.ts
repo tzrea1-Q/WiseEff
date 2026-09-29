@@ -34,7 +34,9 @@ import {
   aggregateComparisonCorpus,
   aggregateLiveComparisonCorpus,
   assertIndependentPhaseReports,
+  collectComparisonContributions,
   generateComparisonReport,
+  generateLiveComparisonReport,
   productionComparisonProviders,
   type ComparisonProviderInput,
 } from "./index";
@@ -126,7 +128,7 @@ describe("live eleven-family comparison corpus", () => {
         && item.protectedReference.id === business.id);
       expect(unlinked?.result).toBe("unqueryable/protected-reference-missing");
       expect(unlinked?.expectedDifference).toBeNull();
-      expect(() => generateComparisonReport(accepted)).toThrow("unqueryable/protected-reference-missing");
+      expect(() => generateComparisonReport(accepted, contributions, input)).toThrow("unqueryable/protected-reference-missing");
 
       const cases = mod.cases.map((item) => item !== produced ? item : {
         ...item,
@@ -157,10 +159,9 @@ describe("live eleven-family comparison corpus", () => {
     expect(pool).toBeDefined();
     try {
       const pin = await installComparisonRelease(pool!);
-      const corpus = await aggregateLiveComparisonCorpus(
-        providerInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA, pin),
-        providers,
-      );
+      const input = providerInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA, pin);
+      const contributions = await collectComparisonContributions(input, providers);
+      const corpus = aggregateComparisonCorpus(contributions, input);
       expect(corpus.phase).toBe("pre-activation");
       expect(corpus.inventoryMode).toBe("fresh");
       expect(corpus.cases).toEqual([]);
@@ -169,7 +170,8 @@ describe("live eleven-family comparison corpus", () => {
       for (const binding of corpus.familyBindings) {
         expect(binding.sourceInventoryCount).toBe(0);
       }
-      const report = generateComparisonReport(corpus);
+      const report = generateComparisonReport(corpus, contributions, input);
+      expect(await generateLiveComparisonReport(input)).toEqual(report);
       expect(report.unexplainedDifferenceCount).toBe(0);
       expect(report.unqueryableProtectedReferenceCount).toBe(0);
       expect(report.gateCoverage.map((gate) => gate.comparisonId)).toEqual([...COMPARISON_IDS]);
@@ -191,21 +193,19 @@ describe("live eleven-family comparison corpus", () => {
     try {
       const postPin = await installComparisonRelease(postPool!);
       const prePin = await installComparisonRelease(prePool!);
-      const postCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(postDatabase, postPool!, "fresh", "post-p13", FRESH_POST_SHA, postPin),
-        providers,
-      );
-      const preCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(preDatabase, prePool!, "fresh", "pre-activation", FRESH_PRE_SHA, prePin),
-        providers,
-      );
+      const postInput = providerInput(postDatabase, postPool!, "fresh", "post-p13", FRESH_POST_SHA, postPin);
+      const preInput = providerInput(preDatabase, prePool!, "fresh", "pre-activation", FRESH_PRE_SHA, prePin);
+      const postContributions = await collectComparisonContributions(postInput, providers);
+      const preContributions = await collectComparisonContributions(preInput, providers);
+      const postCorpus = aggregateComparisonCorpus(postContributions, postInput);
+      const preCorpus = aggregateComparisonCorpus(preContributions, preInput);
       expect(postCorpus.phase).toBe("post-p13");
       expect(postCorpus.inventoryMode).toBe("fresh");
       expect(postCorpus.sourceInventoryCount).toBe(0);
       expect(postCorpus.cases).toEqual([]);
       expect(preCorpus.sourceInventoryCount).toBe(0);
-      const preReport = generateComparisonReport(preCorpus);
-      const postReport = generateComparisonReport(postCorpus);
+      const preReport = generateComparisonReport(preCorpus, preContributions, preInput);
+      const postReport = generateComparisonReport(postCorpus, postContributions, postInput);
       assertIndependentPhaseReports(preReport, postReport);
       expect(preReport.checksum).not.toBe(postReport.checksum);
     } finally {
@@ -226,14 +226,12 @@ describe("live eleven-family comparison corpus", () => {
     expect(postPool).toBeDefined();
     try {
       const pin = await installComparisonRelease(prePool!);
-      const preCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA, pin),
-        providers,
-      );
-      const postCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA, pin),
-        providers,
-      );
+      const preInput = providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA, pin);
+      const postInput = providerInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA, pin);
+      const preContributions = await collectComparisonContributions(preInput, providers);
+      const postContributions = await collectComparisonContributions(postInput, providers);
+      const preCorpus = aggregateComparisonCorpus(preContributions, preInput);
+      const postCorpus = aggregateComparisonCorpus(postContributions, postInput);
       expect(preCorpus.sourceInventoryCount).toBeGreaterThan(0);
       expect(postCorpus.sourceInventoryCount).toBe(preCorpus.sourceInventoryCount);
       expect(preCorpus.sourceInventoryChecksum).toBe(postCorpus.sourceInventoryChecksum);
@@ -264,8 +262,8 @@ describe("live eleven-family comparison corpus", () => {
       expect(blockingCases.every((item) => item.canonicalObservation.status === "query-failure"
         && item.canonicalObservation.detail === "no-exact-subject-association"
         && item.expectedDifference === null)).toBe(true);
-      expect(() => generateComparisonReport(preCorpus)).toThrow("unqueryable/protected-reference-missing count is 3");
-      expect(() => generateComparisonReport(postCorpus)).toThrow("unqueryable/protected-reference-missing count is 3");
+      expect(() => generateComparisonReport(preCorpus, preContributions, preInput)).toThrow("unqueryable/protected-reference-missing count is 3");
+      expect(() => generateComparisonReport(postCorpus, postContributions, postInput)).toThrow("unqueryable/protected-reference-missing count is 3");
 
       // The historical dismissal is a separate protected identity from an ignored Review Item.
       await insertDismissedCompatible(preDatabase, {
