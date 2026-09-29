@@ -7,7 +7,8 @@ import type { ArchiveObjectStore } from "./archive";
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
 
-export const MIGRATION_CONTRACT_VERSION = "s7-orc-p0-p10-v1";
+export const LEGACY_MIGRATION_CONTRACT_VERSION = "s7-orc-p0-p10-v1";
+export const MIGRATION_CONTRACT_VERSION = "s7-orc-p0-p10-v2";
 
 export const PRE_ACTIVATION_PHASES = [
   "P0",
@@ -55,6 +56,9 @@ export const CUTOVER_FAILURE_CODES = [
   "PCAT-ORC-CLASSIFICATION-BLOCKED",
   "PCAT-ORC-PHASE-FAILED",
   "PCAT-ORC-RESUME-INVALIDATED",
+  "PCAT-ORC-MANIFEST-UNAVAILABLE",
+  "PCAT-ORC-MANIFEST-INVALID",
+  "PCAT-ORC-PERMISSION-DENIED",
 ] as const;
 export type CutoverFailureCode = (typeof CUTOVER_FAILURE_CODES)[number];
 
