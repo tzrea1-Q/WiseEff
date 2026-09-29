@@ -31,6 +31,7 @@ import {
   validateIssue913StaleHistoricalPartition,
 } from "./issue913StaleSuccessorRelocation";
 import type { BoundaryViolation } from "./schema";
+import { registerT14RewrittenSliceSuccessorRelocationProof } from "./t14RewrittenSliceSuccessorRelocation.proof";
 
 const repoRoot = process.cwd();
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
@@ -57,6 +58,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await Promise.all(temporaryRoots.map((root) => rm(root, { recursive: true, force: true })));
 });
+
+registerT14RewrittenSliceSuccessorRelocationProof(() => discovered);
 
 async function copyServiceProofFixture() {
   const root = await mkdtemp(join(tmpdir(), "issue913-t14-service-"));
