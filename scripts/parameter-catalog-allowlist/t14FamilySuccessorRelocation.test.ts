@@ -19,6 +19,8 @@ const changedFiles = new Set([
   "server/modules/parameter-topology/writeLock.ts",
   "server/modules/parameter-files/conflictService.test.ts",
   "server/modules/parameter-files/syncService.test.ts",
+  // Six prior T1.4 destinations in this file now have exact #903 successors.
+  "server/modules/knowledge/parameterReferences.ts",
 ]);
 const activeFiles = t14FamilySuccessorRelocationConfig.files
   .map((section) => section.file)
@@ -30,7 +32,7 @@ beforeAll(async () => {
 }, 60_000);
 
 describe("T1.4 family historical record subset", () => {
-  it("keeps all 199 unchanged-file destinations active", async () => {
+  it("keeps all 193 unchanged-file destinations active", async () => {
     const result = await runReviewedRelocationRecord(
       repoRoot,
       fixture,
@@ -40,9 +42,9 @@ describe("T1.4 family historical record subset", () => {
       { ...t14FamilySuccessorRelocationConfig, activeFiles },
     );
 
-    expect(result.relocations).toHaveLength(199);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(199);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(199);
+    expect(result.relocations).toHaveLength(193);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(193);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(193);
     expect(result.relocations.every((entry) => !changedFiles.has(entry.observed.file))).toBe(true);
   });
 });

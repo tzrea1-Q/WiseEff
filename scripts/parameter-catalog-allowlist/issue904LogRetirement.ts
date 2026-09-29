@@ -12,7 +12,7 @@ const dParent = "2060de5e98425f02b598b90bb4553a8d7742928c";
 const dParentBlob = "c29f748344dcaaf532af357255310205e426861e";
 const dHead = "931ffd989d17166e8dc0f06d5b94f5a16a8a59f1";
 const fixedBlob = "d2803fb1c7273ea764058a34f863a6bdd6cc05e6";
-const retiredIds = [
+export const issue904LogRetiredIds = [
   "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:1a70b383ae7e6440",
   "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:60440b5438bb4a26",
 ] as const;
@@ -40,7 +40,7 @@ export async function verifyIssue904LogRetirement(
   requireRetirement(oid(beforeD) === dParentBlob
     && (beforeD.toString("utf8").match(/where\.join/gu) ?? []).length === 3,
   "all three D-parent dynamic SQL sites");
-  const historical = fixture.violations.filter((entry) => retiredIds.includes(entry.id as typeof retiredIds[number]));
+  const historical = fixture.violations.filter((entry) => issue904LogRetiredIds.includes(entry.id as typeof issue904LogRetiredIds[number]));
   requireRetirement(historical.length === 2, "two exact historical observations");
   for (const entry of historical) {
     requireRetirement(entry.file === file && entry.trustedBlobOid === oldBlob

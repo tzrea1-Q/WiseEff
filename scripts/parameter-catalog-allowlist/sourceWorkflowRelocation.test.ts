@@ -20,6 +20,7 @@ import type { BoundaryViolation } from "./schema";
 import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
 import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
 import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
+import { issue904LogRetiredIds } from "./issue904LogRetirement";
 import * as historicalExports from "./runtimeTopologyRelocation";
 
 const repoRoot = process.cwd();
@@ -42,16 +43,18 @@ const issue853DRetiredIds = (JSON.parse(await readFile(join(
 
 function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
   const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
-    ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds]);
+    ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds,
+    ...issue904LogRetiredIds]);
   expect(issue900RetiredIds.size).toBe(13);
   expect(issue913StaleRetiredSourceIds).toHaveLength(17);
   expect(issue913T14RetiredSourceIds).toHaveLength(4);
   expect(issue853CActionRetiredSourceIds).toHaveLength(2);
   expect(issue853CRemainderRetiredIds).toHaveLength(42);
   expect(issue853DRetiredIds).toHaveLength(22);
-  expect(retired.size).toBe(100);
-  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(100);
-  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2 + 42 + 22);
+  expect(issue904LogRetiredIds).toHaveLength(2);
+  expect(retired.size).toBe(102);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(102);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2 + 42 + 22 + issue904LogRetiredIds.length);
   expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
     .toEqual([...retired].sort());
   expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);

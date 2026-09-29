@@ -506,6 +506,8 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           "0174_canonical_batch_composition_proof.sql",
           "0175_canonical_batch_frozen_draft_choice.sql",
           "0176_dts_observation_source_occurrence.sql",
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
         ]);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
@@ -601,6 +603,8 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         "0174_canonical_batch_composition_proof.sql",
         "0175_canonical_batch_frozen_draft_choice.sql",
         "0176_dts_observation_source_occurrence.sql",
+        "0177_knowledge_definition_references.sql",
+        "0178_log_related_parameter_snapshots.sql",
       ]);
 
       const rows = await db.query<{
