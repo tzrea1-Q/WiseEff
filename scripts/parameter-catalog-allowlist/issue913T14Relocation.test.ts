@@ -31,6 +31,7 @@ import {
   validateIssue913StaleHistoricalPartition,
 } from "./issue913StaleSuccessorRelocation";
 import type { BoundaryViolation } from "./schema";
+import { registerIssue903904JointProof } from "./issue903904JointProof.proof";
 import { registerT14RewrittenSliceSuccessorRelocationProof } from "./t14RewrittenSliceSuccessorRelocation.proof";
 
 const repoRoot = process.cwd();
@@ -60,6 +61,7 @@ afterAll(async () => {
 });
 
 registerT14RewrittenSliceSuccessorRelocationProof(() => discovered);
+registerIssue903904JointProof(() => discovered);
 
 async function copyServiceProofFixture() {
   const root = await mkdtemp(join(tmpdir(), "issue913-t14-service-"));

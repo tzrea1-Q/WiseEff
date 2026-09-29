@@ -1,21 +1,18 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import { scanParameterCatalogBoundaries } from "../check-parameter-catalog-boundaries";
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
 import { applyReviewedIssue903KnowledgeSuccessor } from "./issue903KnowledgeSuccessor";
 import { verifyIssue904LogRetirement } from "./issue904LogRetirement";
+import type { BoundaryViolation } from "./schema";
 
 const repoRoot = process.cwd();
 const fixture = await loadBoundaryViolationFixture(repoRoot);
 const allowances = (await loadAllowlistIndex(repoRoot)).entries;
-let raw: Awaited<ReturnType<typeof scanParameterCatalogBoundaries>>;
 
-beforeAll(async () => {
-  raw = await scanParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha);
-}, 60_000);
-
-describe("#903/#904 joint native evidence", () => {
-  it("connects every exact Knowledge successor to the historical A identity", async () => {
+/** Register both proofs beside Issue #913's same-tree Catalog scan. */
+export function registerIssue903904JointProof(getRaw: () => readonly BoundaryViolation[]) {
+  it("#903 connects every exact Knowledge successor to the historical A identity", async () => {
+    const raw = getRaw();
     // The scanner's unchanged-position binding already recognizes this one initial fixture ID.
     const prebound = raw.map((entry) => entry.file === "src/infrastructure/http/knowledgeClient.test.ts"
       && entry.token === "route:/api/v1/knowledge/related-to-spec"
@@ -47,7 +44,8 @@ describe("#903/#904 joint native evidence", () => {
     )).rejects.toThrow(/baseline position bridge/);
   });
 
-  it("rejects either revived Logs observation or old allowance", async () => {
+  it("#904 rejects either revived Logs observation or old allowance", async () => {
+    const raw = getRaw();
     await expect(verifyIssue904LogRetirement(repoRoot, fixture, allowances, raw)).resolves.toBeUndefined();
     const old = fixture.violations.find((entry) => entry.id
       === "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:1a70b383ae7e6440")!;
@@ -57,4 +55,4 @@ describe("#903/#904 joint native evidence", () => {
       ...allowances, { id: old.id, rule: old.rule, file: old.file, reason: old.reason },
     ], raw)).rejects.toThrow(/retired ID or allowance revived/);
   });
-});
+}
