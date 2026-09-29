@@ -18,6 +18,7 @@ import {
 import { migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
 import {
   S2_SCH_0171_FINGERPRINT,
+  S2_SCH_0176_FINGERPRINT,
   S2_SCH_LIVE_FINGERPRINT,
   readCanonicalSchemaFingerprint,
 } from "../../../testing/parameterCatalog";
@@ -1355,8 +1356,8 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 });
 
 describe("0138 Catalog role migration paths", () => {
-  it("0172-0178 receipts, frozen proof guards and writer ACL match the live schema", async () => {
-    await withTempDatabase({ prefix: "pcat_rbac_0178", migrate: false }, async ({ db, connectionString }) => {
+  it("0172-0179 receipts, frozen proof guards and writer ACL match the live schema", async () => {
+    await withTempDatabase({ prefix: "pcat_rbac_0179", migrate: false }, async ({ db, connectionString }) => {
       await applyMigrations(db, migrationsDir, {
         through: "0176_dts_observation_source_occurrence.sql",
       });
@@ -1368,9 +1369,15 @@ describe("0138 Catalog role migration paths", () => {
         );
         expect(historicalReceipts.rows).toHaveLength(174);
         expect(historicalReceipts.rows.at(-1)?.name).toBe("0176_dts_observation_source_occurrence.sql");
-        expect(await applyMigrations(db, migrationsDir)).toEqual([
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0178_log_related_parameter_snapshots.sql",
+        })).toEqual([
           "0177_knowledge_definition_references.sql",
           "0178_log_related_parameter_snapshots.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir)).toEqual([
+          "0179_parameter_catalog_comparison_manifest_binding.sql",
         ]);
         const expectedChecksums = {
           "0172_canonical_batch_draft_impact.sql": "6a40b58507c134884adff408c416bcae4249adcf008eb93bee8f901a7c649a53",
@@ -1380,6 +1387,7 @@ describe("0138 Catalog role migration paths", () => {
           "0176_dts_observation_source_occurrence.sql": "b688d730d674e4e4a3dcb49ba7239cc9df8b9dfcce64a9db1a9a42ab35e829bd",
           "0177_knowledge_definition_references.sql": "08cc13e6b5488bc976bc14b84e0e28fa74dbaedcae29c61f9a878805d5d2d7b6",
           "0178_log_related_parameter_snapshots.sql": "9a3d80c997a4ea49a501fdb633f0bb0b1b87c2020d5451901a03abe254ae0203",
+          "0179_parameter_catalog_comparison_manifest_binding.sql": "1ec7ffd3ce83aabccf964b1a544422cc60ce1a3ddb527a4cc70de4bdd1889e4d",
         };
         const receipts = await admin.query<{ name: string; checksum: string }>(
           "select name, checksum from schema_migrations order by name",
@@ -1392,8 +1400,9 @@ describe("0138 Catalog role migration paths", () => {
         expect(receipts.rows.slice(174).map(({ name }) => name)).toEqual([
           "0177_knowledge_definition_references.sql",
           "0178_log_related_parameter_snapshots.sql",
+          "0179_parameter_catalog_comparison_manifest_binding.sql",
         ]);
-        expect(receipts.rows).toHaveLength(176);
+        expect(receipts.rows).toHaveLength(177);
         for (const { name, checksum } of receipts.rows) {
           expect(checksum).toBe(createHash("sha256")
             .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
@@ -1472,6 +1481,123 @@ describe("0138 Catalog role migration paths", () => {
     });
   }, 120_000);
 
+  it("0179 preserves existing v1 comparison rows and their immutable guards", async () => {
+    await withTempDatabase({ prefix: "pcat_rbac_0179_v1", migrate: false }, async ({ db, connectionString }) => {
+      await applyMigrations(db, migrationsDir, { through: "0178_log_related_parameter_snapshots.sql" });
+      await db.query(`
+        insert into parameter_catalog.parameter_catalog_cutover_runs
+          (id, source_snapshot_fingerprint, target_artifact_sha, target_catalog_release_digest,
+           migration_contract_version, plan_digest, current_phase, state)
+        values ('0179-v1-history', 'v1-history', repeat('a', 40), 'v1-release',
+                's7-orc-p0-p10-v1', 'v1-plan', 'P10', 'completed')
+      `);
+      await db.query(`
+        insert into parameter_catalog.parameter_catalog_comparison_cases
+          (id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference)
+        values ('0179-v1-case', '0179-v1-history', 'PCAT-CMP-D01', 'runtime', 'v1-retained', true)
+      `);
+      await db.query(`
+        insert into parameter_catalog.parameter_catalog_comparison_results
+          (comparison_case_id, outcome, mapping_version_id, rule_id, evidence)
+        values ('0179-v1-case', 'unqueryable/protected-reference-missing', null, null, '{}'::jsonb)
+      `);
+      const cases = await db.query(`
+        select id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `);
+      const results = await db.query(`
+        select comparison_case_id, outcome, mapping_version_id, rule_id, evidence, compared_at
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `);
+      const immutableTriggers = () => db.query(`
+        select tgname, tgenabled from pg_catalog.pg_trigger
+        where tgname in ('parameter_catalog_comparison_cases_immutable',
+                         'parameter_catalog_comparison_results_immutable')
+        order by tgname
+      `);
+      const guardsBefore = await immutableTriggers();
+      expect(guardsBefore.rows).toEqual([
+        { tgname: "parameter_catalog_comparison_cases_immutable", tgenabled: "O" },
+        { tgname: "parameter_catalog_comparison_results_immutable", tgenabled: "O" },
+      ]);
+      const priorRejection = await captureDatabaseError(db.query(`
+        update parameter_catalog.parameter_catalog_comparison_results
+        set evidence = '{}'::jsonb where comparison_case_id = '0179-v1-case'
+      `));
+      expect(priorRejection.where).toContain("reject_immutable_catalog_change");
+      const receipts = (await db.query("select name, checksum from schema_migrations order by name")).rows;
+      expect(receipts).toHaveLength(176);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+
+      const functionAcl = () => db.query(`
+        select pg_catalog.pg_get_userbyid(proowner) as owner, prosecdef as security_definer,
+          proconfig as settings,
+          pg_catalog.has_function_privilege('public', oid, 'execute') as public_execute,
+          pg_catalog.has_function_privilege('parameter_governance_writer_role', oid, 'execute') as writer_execute,
+          pg_catalog.has_function_privilege('catalog_synchronizer_role', oid, 'execute') as synchronizer_execute
+        from pg_catalog.pg_proc
+        where oid = 'parameter_catalog.assert_comparison_result_mapping_run()'::regprocedure
+      `);
+      const aclBefore = await functionAcl();
+      expect(aclBefore.rows).toEqual([{
+        owner: CATALOG_MIGRATION_OWNER, security_definer: false,
+        settings: ["search_path=pg_catalog, parameter_catalog"],
+        public_execute: false, writer_execute: false, synchronizer_execute: false,
+      }]);
+
+      expect(await applyMigrations(db, migrationsDir)).toEqual([
+        "0179_parameter_catalog_comparison_manifest_binding.sql",
+      ]);
+      const upgradedReceipts = (await db.query("select name, checksum from schema_migrations order by name")).rows;
+      expect(upgradedReceipts.slice(0, -1)).toEqual(receipts);
+      expect(upgradedReceipts.at(-1)).toEqual({
+        name: "0179_parameter_catalog_comparison_manifest_binding.sql",
+        checksum: "1ec7ffd3ce83aabccf964b1a544422cc60ce1a3ddb527a4cc70de4bdd1889e4d",
+      });
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      expect((await functionAcl()).rows).toEqual(aclBefore.rows);
+      expect((await immutableTriggers()).rows).toEqual(guardsBefore.rows);
+      expect((await db.query(`
+        select id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `)).rows).toEqual(cases.rows);
+      expect((await db.query(`
+        select comparison_case_id, outcome, mapping_version_id, rule_id, evidence, compared_at
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `)).rows).toEqual(results.rows);
+      const newColumns = await db.query(`
+        select comparison_phase, protected_reference_kind, protected_reference_id,
+          protected_reference_owner_scope_kind, protected_reference_owner_scope_id
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `);
+      expect(Object.values(newColumns.rows[0] ?? {})).toEqual(Array(5).fill(null));
+      const selectionColumns = await db.query(`
+        select selection_run_id, selection_plan_digest, selection_catalog_release_id,
+          selection_catalog_release_digest, selection_manifest_digest,
+          selection_p7_checkpoint_digest, selection_legacy_identity_id, selection_mapping_version_id
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `);
+      expect(Object.values(selectionColumns.rows[0] ?? {})).toEqual(Array(8).fill(null));
+      const currentRejection = await captureDatabaseError(db.query(`
+        update parameter_catalog.parameter_catalog_comparison_results
+        set evidence = '{}'::jsonb where comparison_case_id = '0179-v1-case'
+      `));
+      expect(currentRejection.where).toContain("reject_immutable_catalog_change");
+      const caseRejection = await captureDatabaseError(db.query(`
+        delete from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `));
+      expect(caseRejection.where).toContain("reject_immutable_catalog_change");
+      expect((await db.query(`
+        select id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `)).rows).toEqual(cases.rows);
+      expect((await db.query(`
+        select comparison_case_id, outcome, mapping_version_id, rule_id, evidence, compared_at
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `)).rows).toEqual(results.rows);
+    });
+  }, 120_000);
+
   it("0170 upgrades a populated 0169 database without granting Catalog reads or direct guard execution", async () => {
     await withTempDatabase(
       { prefix: "pcat_rbac_0170_upgrade", migrate: false },
@@ -1508,6 +1634,7 @@ describe("0138 Catalog role migration paths", () => {
             "0176_dts_observation_source_occurrence.sql",
             "0177_knowledge_definition_references.sql",
             "0178_log_related_parameter_snapshots.sql",
+            "0179_parameter_catalog_comparison_manifest_binding.sql",
           ];
           expect(await applyMigrations(db, migrationsDir)).toEqual(successorMigrations);
           expect(await applyMigrations(db, migrationsDir)).toEqual([]);
@@ -1696,7 +1823,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0178 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0179 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1800,10 +1927,16 @@ describe("0138 Catalog role migration paths", () => {
           "0175_canonical_batch_frozen_draft_choice.sql",
           "0176_dts_observation_source_occurrence.sql",
         ]);
-        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
-        expect(await applyMigrations(db, migrationsDir)).toEqual([
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0178_log_related_parameter_snapshots.sql",
+        })).toEqual([
           "0177_knowledge_definition_references.sql",
           "0178_log_related_parameter_snapshots.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir)).toEqual([
+          "0179_parameter_catalog_comparison_manifest_binding.sql",
         ]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
         upgrade = await aclFingerprint(db);
