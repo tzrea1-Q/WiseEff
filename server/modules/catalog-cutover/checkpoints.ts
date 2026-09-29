@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
 
 import {
+  LEGACY_MIGRATION_CONTRACT_VERSION,
+  MIGRATION_CONTRACT_VERSION,
   PRE_ACTIVATION_PHASES,
   UNAVAILABLE_PHASES,
   type CutoverCheckpoint,
@@ -46,20 +48,48 @@ export const mintCutoverRunId = (): string => `cutover_${randomUUID()}`;
 
 export const mintCutoverEventId = (): string => `cevt_${randomUUID()}`;
 
+const normalizeJsonbValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(normalizeJsonbValue);
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, nested]) => [key, normalizeJsonbValue(nested)]),
+  );
+};
+
+export const normalizedCheckpointDigestFor = (
+  phase: PreActivationPhase,
+  payload: Readonly<Record<string, unknown>>,
+): string =>
+  `sha256:${createHash("sha256")
+    .update(JSON.stringify({ phase, payload: normalizeJsonbValue(payload) }))
+    .digest("hex")}`;
+
+export const normalizedP7CheckpointDigestFor = (
+  payload: Readonly<Record<string, unknown>>,
+): string => normalizedCheckpointDigestFor("P7", payload);
+
+const legacyCheckpointDigestFor = (
+  phase: PreActivationPhase,
+  payload: Readonly<Record<string, unknown>>,
+): string =>
+  `sha256:${createHash("sha256")
+    .update(JSON.stringify({ phase, payload }))
+    .digest("hex")}`;
+
 export const checkpointDigestFor = (
   phase: PreActivationPhase,
   payload: Readonly<Record<string, unknown>>,
-): string => {
-  const canonical = JSON.stringify({
-    phase,
-    payload,
-  });
-  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
-};
+): string => legacyCheckpointDigestFor(phase, payload);
 
 type RunRow = {
   id: string;
   plan_digest: string;
+  source_snapshot_fingerprint: string;
+  target_artifact_sha: string;
+  target_catalog_release_digest: string;
+  migration_contract_version: string;
   current_phase: string;
   state: string;
 };
@@ -90,7 +120,8 @@ export const loadRunByPlanDigest = async (
 ): Promise<RunRow | null> => {
   const result = await client.query<RunRow>(
     `
-    select id, plan_digest, current_phase, state
+    select id, plan_digest, source_snapshot_fingerprint, target_artifact_sha,
+           target_catalog_release_digest, migration_contract_version, current_phase, state
       from parameter_catalog.parameter_catalog_cutover_runs
      where plan_digest = $1
      order by created_at asc
@@ -107,7 +138,8 @@ export const loadRunById = async (
 ): Promise<RunRow | null> => {
   const result = await client.query<RunRow>(
     `
-    select id, plan_digest, current_phase, state
+    select id, plan_digest, source_snapshot_fingerprint, target_artifact_sha,
+           target_catalog_release_digest, migration_contract_version, current_phase, state
       from parameter_catalog.parameter_catalog_cutover_runs
      where id = $1
     `,
@@ -221,7 +253,22 @@ export const persistCheckpoint = async (
 ): Promise<CutoverResult<CutoverCheckpoint>> => {
   const allowed = assertAllowedPhase(input.phase);
   if (!allowed.ok) return allowed;
-  const digest = checkpointDigestFor(allowed.value, input.payload);
+  const run = await client.query<{ migration_contract_version: string }>(
+    `select migration_contract_version
+       from parameter_catalog.parameter_catalog_cutover_runs
+      where id = $1`,
+    [input.runId],
+  );
+  const contractVersion = run.rows[0]?.migration_contract_version;
+  if (
+    contractVersion !== MIGRATION_CONTRACT_VERSION &&
+    contractVersion !== LEGACY_MIGRATION_CONTRACT_VERSION
+  ) {
+    return fail("PCAT-ORC-NOT-FOUND", `Cutover run ${input.runId} has no supported migration contract`);
+  }
+  const digest = contractVersion === MIGRATION_CONTRACT_VERSION
+    ? normalizedCheckpointDigestFor(allowed.value, input.payload)
+    : legacyCheckpointDigestFor(allowed.value, input.payload);
   await client.query(
     `
     insert into parameter_catalog.parameter_catalog_cutover_checkpoints (

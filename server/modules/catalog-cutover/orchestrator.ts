@@ -38,9 +38,11 @@ import {
   type CutoverQueryable,
 } from "./checkpoints";
 import {
+  LEGACY_MIGRATION_CONTRACT_VERSION,
   MIGRATION_CONTRACT_VERSION,
   PRE_ACTIVATION_PHASES,
   type CutoverPlan,
+  type CutoverIdentityPin,
   type CutoverResult,
   type CutoverRunSnapshot,
   type ExecuteCutoverInput,
@@ -49,7 +51,13 @@ import {
   type PreActivationPhase,
   type RecoverCutoverInput,
 } from "./interface";
-import { appendMappingVersion } from "./mapping";
+import { appendMappingVersion, type MappingOutcome } from "./mapping";
+import {
+  mappingManifestDigestFor,
+  parseMappingManifestV2,
+  type MappingManifestSelection,
+  type MappingManifestV2WithoutDigest,
+} from "./mappingManifest";
 import { assertCutoverIdentities, assertIdentitiesMatch } from "./identities";
 import { assertObservedQuiescence } from "./quiescence";
 import { assertObservedRecoveryPoint } from "./recoveryPointObservation";
@@ -82,6 +90,38 @@ const BINDING_CONSUMED = Object.freeze({
 
 const sha256Prefixed = (value: string): string =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
+
+const cutoverPlanDigestFor = (
+  plan: Omit<CutoverPlan, "planDigest">,
+  identities: CutoverIdentityPin,
+): string =>
+  sha256Prefixed(
+    JSON.stringify({
+      sourceSnapshotFingerprint: plan.sourceSnapshotFingerprint,
+      targetArtifactSha: plan.targetArtifactSha,
+      targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+      migrationContractVersion: plan.migrationContractVersion,
+      phases: plan.phases,
+      identities,
+    }),
+  );
+
+const assertCutoverPlan = (
+  plan: CutoverPlan,
+  identities: CutoverIdentityPin,
+): CutoverResult<CutoverPlan> => {
+  if (
+    !Array.isArray(plan.phases) ||
+    (plan.migrationContractVersion !== MIGRATION_CONTRACT_VERSION &&
+      plan.migrationContractVersion !== LEGACY_MIGRATION_CONTRACT_VERSION) ||
+    !PRE_ACTIVATION_PHASES.every((phase, index) => plan.phases[index] === phase) ||
+    plan.phases.length !== PRE_ACTIVATION_PHASES.length ||
+    cutoverPlanDigestFor(plan, identities) !== plan.planDigest
+  ) {
+    return fail("PCAT-ORC-INVALID-PLAN", "Cutover plan digest or migration contract does not match its inputs");
+  }
+  return ok(plan);
+};
 
 const parseBundle = async (source: CatalogReleaseSource) => {
   const manifest = new TextDecoder().decode(await source.readManifest());
@@ -126,24 +166,17 @@ export const planCutover = async (
     }
   }
   const sourceSnapshotFingerprint = fingerprintP0Graph(input.graph);
-  const planDigest = sha256Prefixed(
-    JSON.stringify({
-      sourceSnapshotFingerprint,
-      targetArtifactSha: input.targetArtifactSha,
-      targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
-      migrationContractVersion: MIGRATION_CONTRACT_VERSION,
-      phases: PRE_ACTIVATION_PHASES,
-      identities: identities.value,
-    }),
-  );
-  return ok({
-    planDigest,
+  const cutoverPlan = {
     sourceSnapshotFingerprint,
     targetArtifactSha: input.targetArtifactSha,
     targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
     migrationContractVersion: MIGRATION_CONTRACT_VERSION,
     phases: PRE_ACTIVATION_PHASES,
     identities: identities.value,
+  } satisfies Omit<CutoverPlan, "planDigest">;
+  return ok({
+    ...cutoverPlan,
+    planDigest: cutoverPlanDigestFor(cutoverPlan, identities.value),
   });
 };
 
@@ -172,12 +205,47 @@ const readCurrentReleaseId = async (client: CutoverQueryable): Promise<string | 
   return result.rows[0]?.current_catalog_release_id ?? null;
 };
 
+const readCurrentReleasePin = async (
+  client: CutoverQueryable,
+): Promise<{ id: string; digest: string } | null> => {
+  const result = await client.query<{ id: string; digest: string }>(
+    `
+    select state.current_catalog_release_id as id, release.release_digest as digest
+      from parameter_catalog.catalog_state state
+      join parameter_catalog.catalog_releases release
+        on release.id = state.current_catalog_release_id
+     where state.singleton = true
+    `,
+  );
+  const row = result.rows[0];
+  return row ? { id: row.id, digest: row.digest } : null;
+};
+
+const readP1P5ReleasePins = async (
+  client: CutoverQueryable,
+  runId: string,
+): Promise<{ p1: Record<string, unknown> | null; p5: Record<string, unknown> | null }> => {
+  const result = await client.query<{ phase: string; payload: Record<string, unknown> }>(
+    `
+    select phase, payload
+      from parameter_catalog.parameter_catalog_cutover_checkpoints
+     where cutover_run_id = $1 and phase in ('P1', 'P5')
+    `,
+    [runId],
+  );
+  return {
+    p1: result.rows.find((row) => row.phase === "P1")?.payload ?? null,
+    p5: result.rows.find((row) => row.phase === "P5")?.payload ?? null,
+  };
+};
+
 const runPhase = async (
   phase: PreActivationPhase,
   input: ExecuteCutoverInput,
   client: pg.PoolClient,
   runId: string,
   classificationRef: { value: ClassificationResult | null },
+  migrationContractVersion: string,
 ): Promise<CutoverResult<Readonly<Record<string, unknown>>>> => {
   switch (phase) {
     case "P0": {
@@ -290,7 +358,24 @@ const runPhase = async (
           `R0 blockers stop the run before mapping (${classified.blockers.length})`,
         );
       }
-      const releaseId = await readCurrentReleaseId(client);
+      let releaseId: string | null;
+      if (migrationContractVersion === MIGRATION_CONTRACT_VERSION) {
+        const current = await readCurrentReleasePin(client);
+        const pinned = await readP1P5ReleasePins(client, runId);
+        if (
+          !current ||
+          pinned.p1?.releaseId !== current.id ||
+          pinned.p1?.targetCatalogReleaseDigest !== input.plan.targetCatalogReleaseDigest ||
+          pinned.p5?.currentId !== current.id ||
+          pinned.p5?.currentDigest !== current.digest ||
+          current.digest !== input.plan.targetCatalogReleaseDigest
+        ) {
+          return fail("PCAT-ORC-PHASE-FAILED", "P7 Catalog Release pin differs from P1, P5, or the plan");
+        }
+        releaseId = current.id;
+      } else {
+        releaseId = await readCurrentReleaseId(client);
+      }
       if (!releaseId) {
         return fail("PCAT-ORC-PHASE-FAILED", "P7 requires an installed Catalog Release");
       }
@@ -300,6 +385,7 @@ const runPhase = async (
         encryptionKey: input.archiveEncryptionKey,
       });
       const mapped: string[] = [];
+      const selections: MappingManifestSelection[] = [];
       for (const assignment of classified.assignments) {
         const disposition = DISPOSITION_BY_R_CLASS[assignment.rClass];
         if (disposition === "blocked") {
@@ -308,6 +394,7 @@ const runPhase = async (
             `R0 blockers stop the run before mapping (${assignment.identityId})`,
           );
         }
+        let outcome: MappingOutcome;
         if (disposition !== "archived") {
           const head = await client.query<{ definition_id: string }>(
             `
@@ -323,50 +410,39 @@ const runPhase = async (
           if (!definitionId) {
             return fail("PCAT-ORC-PHASE-FAILED", "P7 mapped disposition requires a Catalog definition head");
           }
-          const mappedRow = await appendMappingVersion({
-            client,
+          outcome = {
+            kind: "operational",
+            targetKind: "parameter-definition",
+            targetId: definitionId,
+          };
+        } else {
+          const archived = await adapter.persistArchive({
+            actor: { role: "cutover-operator", auditRef: input.operatorAuditRef },
+            legacyIdentityId: assignment.identityId,
+            ownerScopeKind: assignment.ownerScopeKind,
+            ownerScopeId: assignment.ownerScopeId,
+            rClass: assignment.rClass,
+            reason: `cutover-${disposition}-${assignment.rClass}`,
+            sourceGraph: {
+              sourcePayload: {
+                kind: "legacy-row",
+                cls: assignment.rClass,
+                disposition,
+              },
+              relationGraph: {
+                edges: [],
+              },
+            },
+            protectedReferences: [{ kind: "legacy-identity", id: assignment.identityId }],
             cutoverRunId: runId,
-            classification: classified,
-            identityId: assignment.identityId,
-            sourceChecksum: classified.graphFingerprint,
-            expectedHead: null,
-            outcome: {
-              kind: "operational",
-              targetKind: "parameter-definition",
-              targetId: definitionId,
-            },
+            catalogReleaseId: releaseId,
+            successAuditRef: input.operatorAuditRef,
+            retainUntil: new Date("2027-09-03T00:00:00.000Z"),
           });
-          if (!mappedRow.ok) {
-            return fail("PCAT-ORC-PHASE-FAILED", mappedRow.error.detail);
+          if (!archived.ok) {
+            return fail("PCAT-ORC-PHASE-FAILED", archived.error.detail);
           }
-          mapped.push(`${assignment.identityId}:${disposition}`);
-          continue;
-        }
-        const archived = await adapter.persistArchive({
-          actor: { role: "cutover-operator", auditRef: input.operatorAuditRef },
-          legacyIdentityId: assignment.identityId,
-          ownerScopeKind: assignment.ownerScopeKind,
-          ownerScopeId: assignment.ownerScopeId,
-          rClass: assignment.rClass,
-          reason: `cutover-${disposition}-${assignment.rClass}`,
-          sourceGraph: {
-            sourcePayload: {
-              kind: "legacy-row",
-              cls: assignment.rClass,
-              disposition,
-            },
-            relationGraph: {
-              edges: [],
-            },
-          },
-          protectedReferences: [{ kind: "legacy-identity", id: assignment.identityId }],
-          cutoverRunId: runId,
-          catalogReleaseId: releaseId,
-          successAuditRef: input.operatorAuditRef,
-          retainUntil: new Date("2027-09-03T00:00:00.000Z"),
-        });
-        if (!archived.ok) {
-          return fail("PCAT-ORC-PHASE-FAILED", archived.error.detail);
+          outcome = { kind: "archived", archiveId: archived.value.archiveId };
         }
         const mappedRow = await appendMappingVersion({
           client,
@@ -375,18 +451,63 @@ const runPhase = async (
           identityId: assignment.identityId,
           sourceChecksum: classified.graphFingerprint,
           expectedHead: null,
-          outcome: { kind: "archived", archiveId: archived.value.archiveId },
+          outcome,
         });
         if (!mappedRow.ok) {
           return fail("PCAT-ORC-PHASE-FAILED", mappedRow.error.detail);
         }
+        if (mappedRow.value.status === "blocked") {
+          return fail("PCAT-ORC-CLASSIFICATION-BLOCKED", `R0 blockers stop the run before mapping (${assignment.identityId})`);
+        }
         mapped.push(`${assignment.identityId}:${disposition}`);
+        selections.push({
+          legacyIdentityId: assignment.identityId,
+          sourceKind: assignment.sourceKind,
+          sourceId: assignment.sourceId,
+          ownerScopeKind: assignment.ownerScopeKind,
+          ownerScopeId: assignment.ownerScopeId,
+          rClass: assignment.rClass,
+          disposition,
+          status: mappedRow.value.status,
+          headCasVersion: mappedRow.value.head.casVersion,
+          mappingVersion: mappedRow.value.head.version,
+        });
       }
-      return ok({
+      const legacyPayload = {
         mappedCount: mapped.length,
         mapping: appendMappingVersion.name,
         archive: createArchiveAdapter.name,
         dispatched: mapped,
+      };
+      if (migrationContractVersion === LEGACY_MIGRATION_CONTRACT_VERSION) return ok(legacyPayload);
+      const manifestWithoutDigest: MappingManifestV2WithoutDigest = {
+        schemaVersion: 2,
+        selectionRunId: runId,
+        planDigest: input.plan.planDigest,
+        sourceSnapshotFingerprint: input.plan.sourceSnapshotFingerprint,
+        targetArtifactSha: input.plan.targetArtifactSha,
+        catalogReleaseId: releaseId,
+        catalogReleaseDigest: input.plan.targetCatalogReleaseDigest,
+        selectionCount: selections.length,
+        selections,
+      };
+      const mappingManifest = {
+        ...manifestWithoutDigest,
+        digest: mappingManifestDigestFor(manifestWithoutDigest),
+      };
+      if (
+        selections.length !== classified.assignments.length ||
+        selections.some((selection, index) =>
+          selection.legacyIdentityId !== classified.assignments[index]?.identityId ||
+          (index > 0 && selections[index - 1]!.legacyIdentityId >= selection.legacyIdentityId),
+        ) ||
+        !parseMappingManifestV2(mappingManifest)
+      ) {
+        return fail("PCAT-ORC-MANIFEST-INVALID", "P7 mapping manifest is incomplete, unordered, or has an invalid digest");
+      }
+      return ok({
+        ...legacyPayload,
+        mappingManifest,
       });
     }
     case "P8": {
@@ -473,6 +594,11 @@ export const executeCutover = async (
   }
   const plannedIdentities = assertCutoverIdentities(input.plan.identities);
   if (!plannedIdentities.ok) return plannedIdentities;
+  const validPlan = assertCutoverPlan(input.plan, plannedIdentities.value);
+  if (!validPlan.ok) return validPlan;
+  if (fingerprintP0Graph(input.graph) !== input.plan.sourceSnapshotFingerprint) {
+    return fail("PCAT-ORC-INVALID-PLAN", "Source graph fingerprint does not match the cutover plan");
+  }
   const matched = assertIdentitiesMatch(
     plannedIdentities.value,
     input.observedIdentities ?? plannedIdentities.value,
@@ -483,6 +609,18 @@ export const executeCutover = async (
     if (!populated.ok) return populated;
 
     const existing = await loadRunByPlanDigest(client, input.plan.planDigest);
+    if (
+      existing &&
+      (existing.source_snapshot_fingerprint !== input.plan.sourceSnapshotFingerprint ||
+        existing.target_artifact_sha !== input.plan.targetArtifactSha ||
+        existing.target_catalog_release_digest !== input.plan.targetCatalogReleaseDigest ||
+        existing.migration_contract_version !== input.plan.migrationContractVersion)
+    ) {
+      return fail("PCAT-ORC-INVALID-PLAN", "Caller plan does not match the persisted cutover run identity");
+    }
+    if (!existing && input.plan.migrationContractVersion !== MIGRATION_CONTRACT_VERSION) {
+      return fail("PCAT-ORC-INVALID-PLAN", "New runs must use the current migration contract version");
+    }
     const run = existing ?? (await insertPlannedRun(client, { runId: `cutover_${createHash("sha256").update(input.plan.planDigest).digest("hex").slice(0, 32)}`, plan: input.plan }));
     const priorCheckpoints = await loadCheckpoints(client, run.id);
     const resumed = priorCheckpoints.length > 0 || existing != null;
@@ -521,7 +659,14 @@ export const executeCutover = async (
           `Injected crash before ${phase}; inspect the last committed checkpoint and resume the same plan`,
         );
       }
-      const payload = await runPhase(phase, input, client, run.id, classificationRef);
+      const payload = await runPhase(
+        phase,
+        input,
+        client,
+        run.id,
+        classificationRef,
+        run.migration_contract_version,
+      );
       if (!payload.ok) {
         await updateRunProgress(client, {
           runId: run.id,

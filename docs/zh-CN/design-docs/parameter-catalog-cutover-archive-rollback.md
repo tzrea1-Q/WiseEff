@@ -195,6 +195,12 @@ synchronizer stage 并原子提交 release projection、所需 Definition revisi
 
 mapping version 永不 update/delete。首次 cutover 为每个 protected legacy identity 创建一个 head。identical replay 为 no-op；source checksum、owner scope、relation fingerprint、target kind/ID 任一不同都属于 conflict。candidate traffic 后的 correction 追加 superseding version，并通过 forward recovery 推进 head，不能编辑旧 decision。
 
+新建的 `s7-orc-p0-p10-v2` run 在已提交 P7 checkpoint 中额外固定完整、按 identity 排序的 mapping 选择清单。每项取自 append/replay 的实际返回值：来源 identity 与 owner、R class 与 disposition、append/replay 状态、选择时的 head CAS version，以及含 typed target 或 Archive 的精确不可变 mapping version。清单摘要把有序项与选择它们的 run、plan、来源指纹、候选 artifact、Catalog Release ID/digest 绑定。replay 可以选择**由更早 run 创建**的版本；版本创建 run 与清单选择 run 是不同事实。后来推进 current head 不改变该 checkpoint。
+
+完成 run 的读取先在同一只读一致性快照内核对每个 checkpoint 摘要和每条不可变 identity/version 引用，再生成组织投影。新 v2 每个 phase 的 checkpoint 摘要均正规化 JSONB 键顺序；已持久化的 v1 checkpoint 保持原摘要语义。组织投影明确为部分结果：保留完整 run 摘要作关联，并提供自身绑定 scope 的摘要与数量。组织范围须由已鉴权执行入口及持久化授权确定；任意组织 ID 数组或内存角色声明不足以授权。v1 checkpoint 未记录逐 identity version 引用时返回 `mapping-manifest-not-captured`，其 inspect/recovery 仍可使用。P7 失败时不存在成功清单，即使较早的逐 identity 写入已提交、恢复时需要精确 replay。清单仅证明完成 run 选择了哪些版本，不证明 mapping 算法正确或 P11-P16 已可用。
+
+迁移 0137 现有 `comparison_result_mapping_run_fk` 要求 comparison case 与 mapping version 属于同一个**创建 run**。合法 v2 manifest 可以选择更早 run 创建的版本，因此后续 comparison result 持久化需要独立的前向契约，以该 manifest 的**选择 run**核对 case。本切片不修改已应用约束，也不启用 comparison 持久化或 P11-P16。
+
 ### Required fields
 
 | Field           | Contract                                                                                                             |
