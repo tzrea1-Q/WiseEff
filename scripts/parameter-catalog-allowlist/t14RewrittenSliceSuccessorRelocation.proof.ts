@@ -3,9 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 
-import { scanParameterCatalogBoundaries } from "../check-parameter-catalog-boundaries";
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
 import {
   runReviewedRelocationRecord,
@@ -33,15 +32,7 @@ const changedFiles = new Set([
   "server/modules/dts-reload/repository.ts",
   "server/modules/parameter-topology/writeLock.ts",
 ]);
-let discovered: BoundaryViolation[];
-
-beforeAll(async () => {
-  discovered = await scanParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha);
-}, 60_000);
-
-afterAll(async () => {
-  await Promise.all(temporaryRoots.map((root) => rm(root, { recursive: true, force: true })));
-});
+let discovered: readonly BoundaryViolation[];
 
 async function copyProofFixture() {
   const root = await mkdtemp(join(tmpdir(), "t14-rewritten-slice-"));
@@ -72,7 +63,17 @@ function rewrittenSliceConfig(path: string, sha256: string): RelocationConfig {
   };
 }
 
-describe("T1.4 rewritten-slice current successor", () => {
+/** Register the historical proof beside Issue #913's same-tree Catalog scan. */
+export function registerT14RewrittenSliceSuccessorRelocationProof(
+  getDiscovered: () => readonly BoundaryViolation[],
+) {
+  beforeAll(() => {
+    discovered = getDiscovered();
+  });
+  afterAll(async () => {
+    await Promise.all(temporaryRoots.map((root) => rm(root, { recursive: true, force: true })));
+  });
+
   it("keeps 23 unchanged-file destinations active while reserving changed files", async () => {
     const result = await runReviewedRelocationRecord(
       repoRoot,
@@ -223,4 +224,4 @@ describe("T1.4 rewritten-slice current successor", () => {
       runReviewedRelocationRecord(root, fixture, allowances, discovered, [], historicalSliceDefault),
     ).rejects.toThrow("identical raw slice");
   });
-});
+}
