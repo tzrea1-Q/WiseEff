@@ -347,31 +347,13 @@ const logSelect = `
   left join log_domains ld on ld.id = lr.log_domain_id
 `;
 
-function addCondition(parts: string[], values: unknown[], condition: (placeholder: string) => string, value: unknown) {
-  values.push(value);
-  parts.push(condition(`$${values.length}`));
-}
-
-function addRelatedParameterVisibility(auth: AuthContext, where: string[], values: unknown[]) {
+function relatedParameterVisibilityValues(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("parameter:view")) {
-    where.push("lr.related_parameter_id is null");
-    return;
+    return { organizationWide: false, projectIds: [] as string[] };
   }
   const organizationWide = auth.roles.some((role) => role.projectId === null);
   const projectIds = [...new Set(auth.roles.flatMap((role) => role.projectId ? [role.projectId] : []))];
-  values.push(organizationWide, projectIds);
-  where.push(`(
-    lr.related_parameter_id is null
-    or (
-      lr.related_parameter_project_id is not null
-      and exists (
-        select 1 from public.projects related_project
-        where related_project.id = lr.related_parameter_project_id
-          and related_project.organization_id = lr.organization_id
-      )
-      and ($${values.length - 1}::boolean or lr.related_parameter_project_id = any($${values.length}::text[]))
-    )
-  )`);
+  return { organizationWide, projectIds };
 }
 
 export async function createFileObject(
@@ -593,25 +575,38 @@ export async function listLogs(
     includeArchived?: boolean;
   }
 ) {
-  const values: unknown[] = [auth.organization.id];
-  const where = ["lr.organization_id = $1"];
-
-  if (!query.includeArchived) {
-    where.push("lr.archive_state = 'active'");
-  }
-  if (query.status) {
-    addCondition(where, values, (placeholder) => `lr.status = ${placeholder}`, query.status);
-  }
-  if (query.timeWindow) {
-    const interval = query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days";
-    where.push(`lr.captured_at >= now() - interval '${interval}'`);
-  }
-  addRelatedParameterVisibility(auth, where, values);
+  const interval = query.timeWindow
+    ? query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days"
+    : null;
+  const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
+  const values: unknown[] = [
+    auth.organization.id,
+    query.status || null,
+    interval,
+    Boolean(query.includeArchived),
+    organizationWide,
+    projectIds
+  ];
 
   const result = await db.query<LogRecordRow>(
     `
     ${logSelect}
-    where ${where.join("\n      and ")}
+    where lr.organization_id = $1
+      and ($2::text is null or lr.status = $2)
+      and ($3::interval is null or lr.captured_at >= now() - $3::interval)
+      and ($4::boolean or lr.archive_state = 'active')
+      and (
+        lr.related_parameter_id is null
+        or (
+          lr.related_parameter_project_id is not null
+          and exists (
+            select 1 from public.projects related_project
+            where related_project.id = lr.related_parameter_project_id
+              and related_project.organization_id = lr.organization_id
+          )
+          and ($5::boolean or lr.related_parameter_project_id = any($6::text[]))
+        )
+      )
     order by lr.captured_at desc, lr.id asc
     `,
     values
@@ -621,16 +616,27 @@ export async function listLogs(
 }
 
 export async function getLogDetail(db: Queryable, auth: AuthContext, logId: string) {
-  const values: unknown[] = [auth.organization.id, logId];
-  const where = ["lr.organization_id = $1", "lr.id = $2"];
-  addRelatedParameterVisibility(auth, where, values);
+  const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
   const result = await db.query<LogRecordRow>(
     `
     ${logSelect}
-    where ${where.join("\n      and ")}
+    where lr.organization_id = $1
+      and lr.id = $2
+      and (
+        lr.related_parameter_id is null
+        or (
+          lr.related_parameter_project_id is not null
+          and exists (
+            select 1 from public.projects related_project
+            where related_project.id = lr.related_parameter_project_id
+              and related_project.organization_id = lr.organization_id
+          )
+          and ($3::boolean or lr.related_parameter_project_id = any($4::text[]))
+        )
+      )
     limit 1
     `,
-    values
+    [auth.organization.id, logId, organizationWide, projectIds]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -1135,13 +1141,11 @@ export async function aggregateFeedbackInsights(
   auth: AuthContext,
   query: { timeWindow?: "today" | "7d" | "30d" } = {}
 ): Promise<LogFeedbackInsightDto[]> {
-  const values: unknown[] = [auth.organization.id];
-  const where = ["lf.organization_id = $1"];
-  if (query.timeWindow) {
-    const interval = query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days";
-    where.push(`lf.created_at >= now() - interval '${interval}'`);
-  }
-  addRelatedParameterVisibility(auth, where, values);
+  const interval = query.timeWindow
+    ? query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days"
+    : null;
+  const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
+  const values: unknown[] = [auth.organization.id, interval, organizationWide, projectIds];
 
   const result = await db.query<FeedbackInsightRow>(
     `
@@ -1160,7 +1164,20 @@ export async function aggregateFeedbackInsights(
     left join log_analysis_reports report
       on report.run_id = coalesce(lf.run_id, lr.current_run_id)
     left join log_domains ld on ld.id = lr.log_domain_id
-    where ${where.join("\n      and ")}
+    where lf.organization_id = $1
+      and ($2::interval is null or lf.created_at >= now() - $2::interval)
+      and (
+        lr.related_parameter_id is null
+        or (
+          lr.related_parameter_project_id is not null
+          and exists (
+            select 1 from public.projects related_project
+            where related_project.id = lr.related_parameter_project_id
+              and related_project.organization_id = lr.organization_id
+          )
+          and ($3::boolean or lr.related_parameter_project_id = any($4::text[]))
+        )
+      )
     group by lr.log_domain_id, ld.name, report.analysis_source, report.prompt_version
     order by total_count desc, log_domain_name asc nulls first, prompt_version desc nulls last
     `,
