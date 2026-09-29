@@ -51,7 +51,8 @@ wiseeff_catalog_upgrade_refuse() {
 
 wiseeff_catalog_upgrade_tsx_source() {
   cat <<'TS'
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, writeSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -74,6 +75,7 @@ const identityJsonPath = process.env.WISEEFF_CATALOG_IDENTITY_JSON ?? "";
 const recoveryJsonPath = process.env.WISEEFF_CATALOG_RECOVERY_JSON ?? "";
 const deploymentId = process.env.WISEEFF_CATALOG_DEPLOYMENT_ID ?? "s11-apl";
 const hostFingerprint = process.env.WISEEFF_CATALOG_HOST_FINGERPRINT ?? "sha256:s11-apl-host";
+const modD02CaptureEnabled = process.env.WISEEFF_MOD_D02_CAPTURE_ENABLED === "true";
 
 const spec = (rel: string): string => pathToFileURL(path.join(root, rel)).href;
 
@@ -88,6 +90,31 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
     return null;
   }
   return value as Record<string, unknown>;
+};
+
+const readLocalSessionToken = (): string => {
+  const tty = openSync("/dev/tty", "r+");
+  const sttyOptions = { env: { PATH: "/usr/bin:/bin", LC_ALL: "C" } };
+  let savedMode: string | null = null;
+  try {
+    savedMode = execFileSync("stty", ["-g"], { ...sttyOptions, stdio: [tty, "pipe", "ignore"], encoding: "utf8" }).trim();
+    execFileSync("stty", ["-echo"], { ...sttyOptions, stdio: [tty, "ignore", "ignore"] });
+    writeSync(tty, "Local Organization Admin session token for MOD D02 capture: ");
+    const bytes: number[] = [];
+    const one = Buffer.alloc(1);
+    while (bytes.length <= 4096 && readSync(tty, one, 0, 1, null) === 1 && one[0] !== 10) {
+      bytes.push(one[0]!);
+    }
+    writeSync(tty, "\n");
+    if (bytes.length === 0 || bytes.length > 4096) throw new Error("MOD D02 local session token is unavailable");
+    return Buffer.from(bytes).toString("utf8").trim();
+  } finally {
+    try {
+      if (savedMode) execFileSync("stty", [savedMode], { ...sttyOptions, stdio: [tty, "ignore", "ignore"] });
+    } finally {
+      closeSync(tty);
+    }
+  }
 };
 
 const main = async () => {
@@ -156,6 +183,7 @@ const main = async () => {
     recoveryMod,
     recoveryObservationMod,
     liveStoreMod,
+    modD02CaptureMod,
   ] = await Promise.all([
     import(spec("ops/self-hosted/scripts/parameter-catalog-upgrade/controller.ts")),
     import(spec("ops/self-hosted/scripts/parameter-catalog-upgrade/actions.ts")),
@@ -172,6 +200,7 @@ const main = async () => {
     import(spec("ops/self-hosted/storage/recoveryPoint.ts")),
     import(spec("server/modules/catalog-cutover/recoveryPointObservation.ts")),
     import(spec("ops/self-hosted/storage/liveStorePorts.ts")),
+    import(spec("server/modules/release-verification/comparison/offlineModD02Capture.ts")),
   ]);
 
   const { openCatalogUpgradeController } = controllerMod;
@@ -185,7 +214,8 @@ const main = async () => {
   const { compileCatalogRelease } = compilerMod;
   const { createReleaseVerificationService } = verificationMod;
   const { createPostgresGateAdapters, loadPackagedMigrationInventory } = postgresGatesMod;
-  const { createDatabase } = databaseMod;
+  const { createDatabase, createPostgresDatabase, getRootPostgresPool } = databaseMod;
+  const { captureOfflineModD02PreP11 } = modD02CaptureMod;
   const {
     captureRecoveryPoint,
     createMemoryStorePort,
@@ -239,6 +269,7 @@ const main = async () => {
   };
   let lastPlan: CutoverPlanLike | null = null;
   let lastExecute: Record<string, unknown> | null = null;
+  let modD02Capture: Record<string, unknown> | null = null;
   let lastAttempt: { results?: unknown } | null = null;
 
   const zeroInventoryPlan = (): CutoverPlanLike => {
@@ -534,6 +565,42 @@ const main = async () => {
       fail(executed.error.code, executed.error.detail);
     }
 
+    if (modD02CaptureEnabled) {
+      if (parsedMode !== "populated" || lastExecute?.state !== "completed" ||
+          lastExecute.currentPhase !== "P10" || typeof lastExecute.runId !== "string" ||
+          !process.env.WISEEFF_MOD_D02_SOURCE_READER_DATABASE_URL ||
+          !process.env.WISEEFF_MOD_D02_CAPTURE_DATABASE_URL) {
+        fail("PCAT-UPG-ILLEGAL-ACTION", "MOD D02 capture requires completed populated P10 and two configured maintenance connections");
+      }
+      const sourceDatabase = createPostgresDatabase(process.env.WISEEFF_MOD_D02_SOURCE_READER_DATABASE_URL);
+      const captureDatabase = createPostgresDatabase(process.env.WISEEFF_MOD_D02_CAPTURE_DATABASE_URL);
+      let captureFailed = false;
+      try {
+        const receipt = await captureOfflineModD02PreP11({
+          sourceDatabase,
+          sourcePool: getRootPostgresPool(sourceDatabase)!,
+          captureDatabase,
+          token: readLocalSessionToken(),
+          runId: lastExecute.runId,
+          requestId: `${runId}:mod-d02-pre-p11`,
+          expectedPlanDigest: planForExecute.planDigest,
+          expectedArtifactSha: planForExecute.targetArtifactSha,
+          expectedCatalogReleaseDigest: planForExecute.targetCatalogReleaseDigest,
+          enabled: true,
+          authProvider: process.env.AUTH_PROVIDER ?? "local",
+        });
+        modD02Capture = { ...receipt };
+      } catch {
+        captureFailed = true;
+      } finally {
+        await sourceDatabase.close();
+        await captureDatabase.close();
+      }
+      if (captureFailed) {
+        fail("PCAT-UPG-ILLEGAL-ACTION", "MOD D02 capture failed; P11 verification was not started");
+      }
+    }
+
     const inventoryDigest = await loadPackagedMigrationInventory();
     const populatedPins = parsedMode === "populated";
     const mappingHeadDigest = populatedPins ? checkpointDigestOf(lastExecute, "P7") : "";
@@ -651,6 +718,7 @@ const main = async () => {
         replayed,
         state: ran.value.state,
         zeroMode,
+        modD02Capture,
         contractPhases: PRE_ACTIVATION_PHASES,
         executedPhases: zeroMode ? [] : PRE_ACTIVATION_PHASES,
         verificationPhase: "P11a",

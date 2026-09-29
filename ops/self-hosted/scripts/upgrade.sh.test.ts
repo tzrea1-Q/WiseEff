@@ -4806,6 +4806,18 @@ describe("S11-APL catalog apply threat matrix", () => {
     expect(protocol).not.toMatch(/WISEEFF_CATALOG_QUIESCED=true/);
   });
 
+  it("keeps optional MOD D02 capture after completed P10 and before verification", () => {
+    const source = readFileSync("ops/self-hosted/scripts/upgrade.sh", "utf8");
+    const executed = source.indexOf('const executed = await controller.dispatch({');
+    const capture = source.indexOf('const receipt = await captureOfflineModD02PreP11({');
+    const verification = source.indexOf('action: "prepareVerification"');
+    expect(executed).toBeGreaterThanOrEqual(0);
+    expect(capture).toBeGreaterThan(executed);
+    expect(verification).toBeGreaterThan(capture);
+    expect(source).toContain('process.env.WISEEFF_MOD_D02_CAPTURE_ENABLED === "true"');
+    expect(source).toContain('if (modD02CaptureEnabled) {');
+  });
+
   it("refuses catalog apply without operator quiesce attestation", () => {
     const runDir = mkdtempSync(join(tmpdir(), "wiseeff-s11-apl-quiesce-"));
     const journalPath = catalogJournalPath(runDir);
