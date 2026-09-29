@@ -594,8 +594,6 @@ export const executeCutover = async (
   }
   const plannedIdentities = assertCutoverIdentities(input.plan.identities);
   if (!plannedIdentities.ok) return plannedIdentities;
-  const validPlan = assertCutoverPlan(input.plan, plannedIdentities.value);
-  if (!validPlan.ok) return validPlan;
   if (fingerprintP0Graph(input.graph) !== input.plan.sourceSnapshotFingerprint) {
     return fail("PCAT-ORC-INVALID-PLAN", "Source graph fingerprint does not match the cutover plan");
   }
@@ -607,6 +605,8 @@ export const executeCutover = async (
   return withCutoverLock(input.pool, input.plan.planDigest, async (client) => {
     const populated = await requirePopulated(client, input.graph);
     if (!populated.ok) return populated;
+    const validPlan = assertCutoverPlan(input.plan, plannedIdentities.value);
+    if (!validPlan.ok) return validPlan;
 
     const existing = await loadRunByPlanDigest(client, input.plan.planDigest);
     if (
