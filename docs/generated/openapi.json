@@ -26590,6 +26590,9 @@
               "relatedParameterId": {
                 "type": "string"
               },
+              "relatedParameterProjectId": {
+                "type": "string"
+              },
               "device": {
                 "type": "string"
               },
@@ -26853,6 +26856,9 @@
               "relatedParameterId": {
                 "type": "string"
               },
+              "relatedParameterProjectId": {
+                "type": "string"
+              },
               "device": {
                 "type": "string"
               },
@@ -27042,6 +27048,9 @@
                   "type": "string"
                 },
                 "relatedParameterId": {
+                  "type": "string"
+                },
+                "relatedParameterProjectId": {
                   "type": "string"
                 },
                 "device": {
@@ -27296,6 +27305,9 @@
                 "type": "string"
               },
               "relatedParameterId": {
+                "type": "string"
+              },
+              "relatedParameterProjectId": {
                 "type": "string"
               },
               "device": {

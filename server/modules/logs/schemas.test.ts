@@ -62,6 +62,7 @@ describe("log schemas", () => {
       relatedParameterId: "binding-1",
       relatedParameterPin: {
         kind: "canonical-pin" as const,
+        projectId: "project-1",
         bindingId: "binding-1",
         definitionRevisionId: "drev-1"
       }
@@ -70,7 +71,7 @@ describe("log schemas", () => {
     expect(
       createLogFileBodySchema.safeParse({
         ...file,
-        relatedParameterPin: { kind: "canonical-pin", bindingId: "binding-other" }
+        relatedParameterPin: { kind: "canonical-pin", projectId: "project-1", bindingId: "binding-other" }
       }).success
     ).toBe(false);
     expect(scopedRelatedParameterId(file)).toBe("binding-1");
@@ -78,7 +79,7 @@ describe("log schemas", () => {
       createLogBodySchema.safeParse({
         fileObjectId: "file-1",
         fileName: "pack-controller.log",
-        relatedParameterPin: { kind: "canonical-pin", bindingId: "binding-1" }
+        relatedParameterPin: { kind: "canonical-pin", projectId: "project-1", bindingId: "binding-1" }
       }).success
     ).toBe(true);
   });

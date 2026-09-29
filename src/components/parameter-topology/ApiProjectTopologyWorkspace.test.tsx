@@ -294,6 +294,15 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ })).toBeVisible();
   });
 
+  it("opens the requested Binding in the loaded project without a legacy parameter id", async () => {
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId="binding-sc8562-gpio-int"
+      topologyRepository={createRepository()}
+      listConfigSets={vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }])} />);
+
+    await waitFor(() => expect(document.querySelector('[data-binding-id="binding-sc8562-gpio-int"]'))
+      .toHaveAttribute("aria-selected", "true"));
+  });
+
   it("hides toolchain compile diagnostics but keeps product governance errors", async () => {
     const repository = createRepository({
       getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => {
@@ -1986,4 +1995,3 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
   });
 });
-

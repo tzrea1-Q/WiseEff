@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { AnalyzeLogInput } from "../analyzer";
+import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
 import {
   createAgentLoopLogAnalyzer,
+  LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION,
   LOG_ANALYSIS_LOOP_PROMPT_VERSION,
   LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID
 } from "./agentLoop";
@@ -76,10 +78,35 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(output.evidence[0].lineNumbers).toEqual([3, 4]);
     // Three model calls: two tool steps plus the final.
     expect(model.calls).toHaveLength(3);
+    expect(model.calls[0].find((message) => message.role === "system")?.content).toContain(
+      `prompt version ${LOG_ANALYSIS_LOOP_PROMPT_VERSION}`
+    );
     // The kernel fed both tool results back into the conversation.
     const lastMessages = model.calls[2];
     expect(lastMessages.some((message) => message.content.startsWith("Tool result for get_prefilter_findings:"))).toBe(true);
     expect(lastMessages.some((message) => message.content.startsWith("Tool result for read_line_range:"))).toBe(true);
+  });
+
+  it("uses the recorded prompt version when analyzing a frozen related parameter", async () => {
+    const { model, adapter } = analyzer([
+      { content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 5 } } },
+      { content: finalPayload }
+    ]);
+    const relatedParameterSnapshot = {
+      schemaVersion: 1,
+      propertyKey: "threshold",
+      pin: { kind: "canonical-pin", bindingId: "binding-1", payload: { kind: "number", value: 5 } },
+      revision: {},
+      sourcePin: {}
+    } as unknown as RelatedParameterRunSnapshot;
+
+    const output = await adapter.analyze(buildInput({ relatedParameterId: "binding-1", relatedParameterSnapshot }));
+
+    expect(output.promptVersion).toBe(LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION);
+    expect(model.calls[0].find((message) => message.role === "system")?.content).toContain(
+      `prompt version ${LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION}`
+    );
   });
 
   it("injects the analysis question and domain into the mission prompt", async () => {

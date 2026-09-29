@@ -174,10 +174,14 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
 
     const defaultList = await listLogs(db, auth(), {});
     const fullList = await listLogs(db, auth(), { includeArchived: true });
+    const recentProcessing = await listLogs(db, auth(), { status: "processing", timeWindow: "today" });
+    const recentComplete = await listLogs(db, auth(), { status: "complete", timeWindow: "today" });
 
     expect(defaultList.map((log) => log.id)).toEqual([activeId]);
     expect(fullList.map((log) => log.id).sort()).toEqual([activeId, archivedId].sort());
     expect(fullList.find((log) => log.id === archivedId)?.archiveState).toBe("archived");
+    expect(recentProcessing.map((log) => log.id)).toEqual([activeId]);
+    expect(recentComplete).toEqual([]);
   });
 
   it("keeps retained logs readable after the submitting user is deleted", async () => {

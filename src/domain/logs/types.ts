@@ -115,6 +115,7 @@ export type LogRecord = {
   updatedAtIso: string;
   submittedBy: string;
   relatedParameterId?: string;
+  relatedParameterProjectId?: string;
   device?: string;
   failureReason?: string;
   analysisQuestion?: string;

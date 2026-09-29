@@ -97,13 +97,11 @@ async function fileToBase64(file: File) {
 }
 
 function uploadBody(input: LogUploadInput, contentBase64: string) {
-  const relatedParameterId = input.relatedParameterPin?.bindingId ?? input.relatedParameterId;
   return {
     fileName: input.file.name,
     contentType: input.file.type || "application/octet-stream",
     contentBase64,
     ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
-    ...(relatedParameterId !== undefined ? { relatedParameterId } : {}),
     ...(input.relatedParameterPin !== undefined ? { relatedParameterPin: input.relatedParameterPin } : {}),
     ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {})
   };

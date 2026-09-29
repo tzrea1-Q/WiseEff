@@ -150,6 +150,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [selectedLogId]);
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLog ?? emptyLogRecord;
+  const relatedParameterUnlocated = Boolean(logActions && activeLog.relatedParameterId && !activeLog.relatedParameterProjectId);
   const evidenceByLine = useMemo(() => {
     const map = new Map<number, LogEvidence[]>();
 
@@ -260,7 +261,10 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
 
     const params = new URLSearchParams();
 
-    if (activeLog.relatedParameterId) {
+    if (activeLog.relatedParameterId && activeLog.relatedParameterProjectId) {
+      params.set("project", activeLog.relatedParameterProjectId);
+      params.set("bindingId", activeLog.relatedParameterId);
+    } else if (activeLog.relatedParameterId && !logActions) {
       params.set("parameter", activeLog.relatedParameterId);
     }
     params.set("logId", activeLog.id);
@@ -417,6 +421,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           onExport={onExport}
           onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
+          relatedParameterLocated={Boolean(logActions && activeLog.relatedParameterId && activeLog.relatedParameterProjectId)}
+          relatedParameterUnlocated={relatedParameterUnlocated}
           onRetry={handleRetryLog}
         />
         <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
@@ -824,6 +830,8 @@ function LogConclusionCard({
   log,
   onAskAgent,
   onPrimary,
+  relatedParameterLocated = false,
+  relatedParameterUnlocated = false,
   onExport,
   onCopyLink,
   onDistil,
@@ -834,6 +842,8 @@ function LogConclusionCard({
   log: LogRecord;
   onAskAgent: () => void;
   onPrimary: () => void;
+  relatedParameterLocated?: boolean;
+  relatedParameterUnlocated?: boolean;
   onExport: () => void;
   onCopyLink: () => void;
   /** Present only when the user holds knowledge:edit (distil-to-knowledge). */
@@ -864,10 +874,11 @@ function LogConclusionCard({
       ) : null}
       <ConfidenceBar value={log.confidence} status={log.status} analysisSource={log.analysisSource} />
       <div className="logs-conclusion-actions">
-        <button className="button primary" disabled={log.status !== "Complete"} type="button" onClick={onPrimary}>
+        <button className="button primary" disabled={log.status !== "Complete" || relatedParameterUnlocated} type="button" onClick={onPrimary}>
           <Sparkles size={16} />
-          生成参数修改请求
+          {relatedParameterLocated ? "查看关联参数" : "生成参数修改请求"}
         </button>
+        {relatedParameterUnlocated ? <p role="status">旧参数关联缺少可验证的项目与 Binding 定位，无法作为当前参数发起修改。</p> : null}
         <button className="button subtle" disabled={log.status !== "Complete"} type="button" onClick={onExport}>
           <Download size={16} />
           导出报告

@@ -112,8 +112,7 @@ describe("createHttpLogAnalysisRepository", () => {
     await expect(
       repository.uploadLog({
         file,
-        analysisQuestion: "Why did charging slow?",
-        relatedParameterId: "fast-charge-current"
+        analysisQuestion: "Why did charging slow?"
       })
     ).resolves.toMatchObject({ log: { id: "log-1" }, job: { id: "job-1" } });
 
@@ -126,12 +125,11 @@ describe("createHttpLogAnalysisRepository", () => {
       fileName: "diagnostics.csv",
       contentType: "text/csv",
       contentBase64: btoa("timestamp,message\n1,ok"),
-      analysisQuestion: "Why did charging slow?",
-      relatedParameterId: "fast-charge-current"
+      analysisQuestion: "Why did charging slow?"
     });
   });
 
-  it("uploads a relatedParameterPin as a scoped binding id", async () => {
+  it("uploads a relatedParameterPin with an exact project and binding id", async () => {
     const fetchMock = createFetchMock({ fileObject: { id: "file-1" }, log: baseLogDto, job: baseJobDto }, 201);
     const repository = createRepository(fetchMock);
     const file = new File(["timestamp,message\n1,ok"], "diagnostics.csv", { type: "text/csv" });
@@ -143,6 +141,7 @@ describe("createHttpLogAnalysisRepository", () => {
       file,
       relatedParameterPin: {
         kind: "canonical-pin",
+        projectId: "project-1",
         bindingId: "binding-1",
         definitionRevisionId: "drev-1"
       }
@@ -152,9 +151,9 @@ describe("createHttpLogAnalysisRepository", () => {
       fileName: "diagnostics.csv",
       contentType: "text/csv",
       contentBase64: btoa("timestamp,message\n1,ok"),
-      relatedParameterId: "binding-1",
       relatedParameterPin: {
         kind: "canonical-pin",
+        projectId: "project-1",
         bindingId: "binding-1",
         definitionRevisionId: "drev-1"
       }

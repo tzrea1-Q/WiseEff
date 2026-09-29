@@ -72,6 +72,13 @@ const moduleRegistry: ParameterModuleRegistry = {
 };
 
 describe("JsonBindingPanel", () => {
+  it("opens the exact JSON Binding deep link for viewing", async () => {
+    render(<JsonBindingPanel bindings={[jsonBinding, secondBinding]} requestedBindingId="binding-json-2" />);
+
+    expect(await screen.findByRole("dialog", { name: "battery-limits 参数详情" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "charging-policy 参数详情" })).not.toBeInTheDocument();
+  });
+
   it("renders module navigation, parameter table and no download buttons in table rows", () => {
     render(
       <JsonBindingPanel
@@ -418,4 +425,3 @@ describe("JsonBindingPanel", () => {
     expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:mock-url");
   });
 });
-

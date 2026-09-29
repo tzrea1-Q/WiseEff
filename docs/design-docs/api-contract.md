@@ -36,7 +36,7 @@ Rules:
 
 ## Log and Debugging Scope
 
-M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. They do not accept `projectId` query parameters or body fields. Log records may include optional `relatedParameterId` as a soft link to M1 definitions.
+M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. A new log association requires `relatedParameterPin: { kind: "canonical-pin", projectId, bindingId, definitionId?, definitionRevisionId? }`; the server authorizes that exact project Binding and freezes its canonical Value, DefinitionRevision, and source pin for each analysis run. Rerun resolves the current Binding again; prior run snapshots and reports remain historical. `relatedParameterId` alone is not accepted for new uploads, and legacy stored links without a verified project scope cannot be treated as current. Unassociated log uploads and debugging APIs do not accept a top-level `projectId` field.
 
 ## Log Domains and Analyzer Provenance
 

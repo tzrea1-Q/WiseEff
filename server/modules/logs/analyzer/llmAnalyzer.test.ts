@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
 import { analyzeWithDegradation } from "../worker";
 import {
   buildBudgetedExcerpt,
   createLlmLogAnalyzer,
   groundLlmEvidence,
+  LOG_ANALYSIS_PARAMETER_PROMPT_VERSION,
   LOG_ANALYSIS_PROMPT_VERSION,
   LogAnalysisProviderError,
   type LogAnalysisChatMessage,
@@ -50,8 +52,9 @@ const validPayload = {
 describe("createLlmLogAnalyzer", () => {
   it("returns a grounded agent analysis with prompt version and model label", async () => {
     const calls: Array<{ outcome: string }> = [];
+    const captured: LogAnalysisChatMessage[] = [];
     const analyzer = createLlmLogAnalyzer({
-      model: jsonModel(validPayload),
+      model: jsonModel(validPayload, captured),
       modelLabel: "test-model",
       tokenBudget: 8000,
       telemetry: { recordLlmCall: (input) => calls.push(input) }
@@ -66,7 +69,37 @@ describe("createLlmLogAnalyzer", () => {
     expect(output.evidence).toHaveLength(1);
     expect(output.evidence[0].lineNumbers).toEqual([3, 4]);
     expect(output.evidence[0].stageId).toBe("rootcause");
+    expect(captured.find((message) => message.role === "system")?.content).toContain(
+      `prompt version ${LOG_ANALYSIS_PROMPT_VERSION}`
+    );
     expect(calls).toEqual([expect.objectContaining({ outcome: "ok" })]);
+  });
+
+  it("uses the recorded prompt version when analyzing a frozen related parameter", async () => {
+    const captured: LogAnalysisChatMessage[] = [];
+    const relatedParameterSnapshot = {
+      schemaVersion: 1,
+      propertyKey: "threshold",
+      pin: { kind: "canonical-pin", bindingId: "binding-1", payload: { kind: "number", value: 5 } },
+      revision: {},
+      sourcePin: {}
+    } as unknown as RelatedParameterRunSnapshot;
+    const analyzer = createLlmLogAnalyzer({
+      model: jsonModel(validPayload, captured),
+      modelLabel: "test-model",
+      tokenBudget: 8000
+    });
+
+    const output = await analyzer.analyze({
+      parsed: parseFixture(),
+      relatedParameterId: "binding-1",
+      relatedParameterSnapshot
+    });
+
+    expect(output.promptVersion).toBe(LOG_ANALYSIS_PARAMETER_PROMPT_VERSION);
+    expect(captured.find((message) => message.role === "system")?.content).toContain(
+      `prompt version ${LOG_ANALYSIS_PARAMETER_PROMPT_VERSION}`
+    );
   });
 
   it("injects the analysis question and log domain into the prompt", async () => {

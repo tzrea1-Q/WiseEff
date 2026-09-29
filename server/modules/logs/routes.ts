@@ -38,7 +38,6 @@ import {
   listLogsQuerySchema,
   logFeedbackBodySchema,
   rerunLogBodySchema,
-  scopedRelatedParameterId,
   setLogDomainKnowledgeLinksBodySchema,
   setLogDomainWebhookBodySchema,
   updateLogDomainBodySchema,
@@ -124,7 +123,8 @@ export function registerLogRoutes(
       contentType: body.contentType,
       bytes,
       analysisQuestion: body.analysisQuestion,
-      relatedParameterId: scopedRelatedParameterId(body),
+      relatedParameterId: body.relatedParameterId,
+      relatedParameterPin: body.relatedParameterPin,
       logDomainId: body.logDomainId
     }, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
@@ -142,7 +142,8 @@ export function registerLogRoutes(
         fileObjectId: body.fileObjectId,
         fileName: body.fileName,
         analysisQuestion: body.analysisQuestion,
-        relatedParameterId: scopedRelatedParameterId(body),
+        relatedParameterId: body.relatedParameterId,
+        relatedParameterPin: body.relatedParameterPin,
         logDomainId: body.logDomainId
       },
       { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue }
