@@ -15,12 +15,14 @@ import {
   createDisposableParameterCatalogDatabase,
   type ParameterCatalogDatabase,
 } from "../../testing/parameterCatalog";
+import { seedOrganization } from "../../testing/fixtures";
 import {
   firstReleaseBundle,
   populatedCutoverGraph,
   seedPopulatedCutover,
 } from "../../testing/parameterCatalog/cutoverPopulatedFixture";
-import { createLocalArchiveObjectStore } from "./archive";
+import { createPostgresDatabase } from "../../shared/database/client";
+import { createArchiveAdapter, createLocalArchiveObjectStore } from "./archive";
 import { classifyFrozenP0Graph, type FrozenP0Graph } from "./classifier";
 import { appendMappingVersion, readCurrentMappingHead } from "./mapping";
 import {
@@ -46,6 +48,7 @@ import { fixtureCutoverIdentities } from "./identities";
 import { fixtureObservedQuiescence } from "./quiescence";
 import { fixtureObservedRecoveryPoint } from "./recoveryPointObservation";
 import { parseMappingManifestV2 } from "./mappingManifest";
+import { createParameterModule } from "../parameters/parameterModuleRepository";
 
 const CATALOG_TEST_TIMEOUT_MS = 60_000;
 const CATALOG_HOOK_TIMEOUT_MS = 120_000;
@@ -146,6 +149,49 @@ const s7R9R10ManifestGraph = (): FrozenP0Graph => ({
   placements: [],
   bindings: [],
   bindingRevisions: [],
+});
+
+const s7ModR1R10ManifestGraph = (modules: {
+  r1: { id: string; attributionSubjectId: string | null };
+  r10: { id: string; attributionSubjectId: string | null };
+}): FrozenP0Graph => ({
+  ...populatedCutoverGraph(),
+  identities: [
+    {
+      id: "a-s7mod-lid-r1",
+      sourceSystem: "wiseeff-v1",
+      sourceKind: "parameter-module",
+      ownerScopeKind: "organization",
+      ownerScopeId: "s7mod-org",
+      sourceId: modules.r1.id,
+    },
+    {
+      id: "b-s7mod-lid-r10",
+      sourceSystem: "wiseeff-v1",
+      sourceKind: "parameter-module",
+      ownerScopeKind: "organization",
+      ownerScopeId: "s7mod-org",
+      sourceId: modules.r10.id,
+    },
+  ],
+  modules: [
+    {
+      id: modules.r1.id,
+      organizationId: "s7mod-org",
+      kind: "driver-group",
+      origin: "curated",
+      name: "amba",
+      attributionSubjectId: modules.r1.attributionSubjectId,
+    },
+    {
+      id: modules.r10.id,
+      organizationId: "s7mod-org",
+      kind: "driver-group",
+      origin: "curated",
+      name: "s7mod-unknown",
+      attributionSubjectId: modules.r10.attributionSubjectId,
+    },
+  ],
 });
 
 describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TIMEOUT_MS }, () => {
@@ -959,6 +1005,189 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
     } finally {
       await isolatedClient.end().catch(() => undefined);
       await isolatedPool.end().catch(() => undefined);
+      await isolated.close().catch(() => undefined);
+      await rm(isolatedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses cross-run replay when a MOD mapping's new Archive ID differs", async () => {
+    const isolated = await createDisposableParameterCatalogDatabase("s7modreplay");
+    const isolatedPool = new pg.Pool({ connectionString: isolated.url, max: 4 });
+    const isolatedClient = new pg.Client({ connectionString: isolated.url });
+    const ownerDatabase = createPostgresDatabase(isolated.url);
+    const isolatedRoot = await mkdtemp(path.join(os.tmpdir(), "s7mod-replay-"));
+    try {
+      await isolatedClient.connect();
+      await seedOrganization(isolatedClient, { id: "s7mod-org" });
+      const moduleR1 = await createParameterModule(ownerDatabase, {
+        organizationId: "s7mod-org",
+        name: "amba",
+        kind: "driver-group",
+        origin: "curated",
+        sourceKey: "compatible:s7mod-r1",
+      });
+      const moduleR10 = await createParameterModule(ownerDatabase, {
+        organizationId: "s7mod-org",
+        name: "s7mod-unknown",
+        kind: "driver-group",
+        origin: "curated",
+        sourceKey: "compatible:s7mod-r10",
+      });
+      const modGraph = s7ModR1R10ManifestGraph({
+        r1: { id: moduleR1.id, attributionSubjectId: moduleR1.attributionSubjectId },
+        r10: { id: moduleR10.id, attributionSubjectId: moduleR10.attributionSubjectId },
+      });
+      const classification = classifyFrozenP0Graph(modGraph);
+      expect(classification.ok).toBe(true);
+      if (!classification.ok) return;
+      expect(classification.value.assignments.map(({ identityId, rClass }) => [identityId, rClass])).toEqual([
+        ["a-s7mod-lid-r1", "R1"],
+        ["b-s7mod-lid-r10", "R10"],
+      ]);
+      await seedPopulatedCutover(isolatedClient, modGraph);
+      const compiled = compileCatalogRelease(bundle);
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      const installed = await installPublishedRelease(isolatedPool, {
+        mode: "bootstrap",
+        source: jsonCatalogReleaseSource(bundle),
+        expectedTargetDigest: compiled.value.release.digest,
+      });
+      expect(installed.ok).toBe(true);
+      if (!installed.ok) return;
+
+      const makePlan = async (artifactSha: string, seed: string) => planCutover({
+        graph: modGraph,
+        targetArtifactSha: artifactSha,
+        targetCatalogReleaseDigest: compiled.value.release.digest,
+        identities: fixtureCutoverIdentities(seed),
+        catalogReleaseSource: jsonCatalogReleaseSource(bundle),
+      });
+      const planA = await makePlan("a".repeat(40), "s7mod-run-a");
+      expect(planA.ok).toBe(true);
+      if (!planA.ok) return;
+
+      const objectStore = createLocalArchiveObjectStore(isolatedRoot);
+      let archiveObjectWrites = 0;
+      const failSecondArchiveWrite = {
+        ...objectStore,
+        async putExclusive(ref: string, bytes: Buffer) {
+          archiveObjectWrites += 1;
+          if (archiveObjectWrites === 2) throw new Error("injected second MOD Archive object failure");
+          return objectStore.putExclusive(ref, bytes);
+        },
+      };
+      const executeInputFor = (runPlan: CutoverPlan, archiveObjectStore: typeof objectStore) => ({
+        pool: isolatedPool,
+        plan: runPlan,
+        graph: modGraph,
+        catalogReleaseSource: jsonCatalogReleaseSource(bundle),
+        archiveObjectStore,
+        archiveEncryptionKey: encryptionKey,
+        operatorAuditRef: `audit-${runPlan.targetArtifactSha.slice(0, 1)}-s7mod-replay`,
+        quiescence: fixtureObservedQuiescence(),
+        recoveryPoint: fixtureObservedRecoveryPoint(),
+      });
+
+      const runA = await executeCutover(executeInputFor(planA.value, failSecondArchiveWrite));
+      expect(archiveObjectWrites).toBe(2);
+      expect(runA).toMatchObject({
+        ok: false,
+        error: { code: "PCAT-ORC-PHASE-FAILED", detail: "injected second MOD Archive object failure" },
+      });
+      const inspectedA = await inspectCutover({ pool: isolatedPool, planDigest: planA.value.planDigest });
+      expect(inspectedA.ok).toBe(true);
+      if (!inspectedA.ok) return;
+      expect(inspectedA.value.state).toBe("failed");
+      expect(inspectedA.value.currentPhase).toBe("P7");
+      expect(inspectedA.value.checkpoints.some(({ phase }) => phase === "P7")).toBe(false);
+
+      const archiveReader = createArchiveAdapter({ client: isolatedClient, objectStore, encryptionKey });
+      const archiveActor = { role: "cutover-operator" as const, auditRef: "audit-s7mod-replay-reader" };
+      const firstArchiveA = await archiveReader.restoreArchive({
+        actor: archiveActor,
+        legacyIdentityId: "a-s7mod-lid-r1",
+        cutoverRunId: inspectedA.value.runId,
+      });
+      expect(firstArchiveA.ok).toBe(true);
+      if (!firstArchiveA.ok) return;
+      expect(firstArchiveA.value.metadata.rClass).toBe("R1");
+      expect(firstArchiveA.value.metadata.cutoverRunId).toBe(inspectedA.value.runId);
+      expect(await archiveReader.restoreArchive({
+        actor: archiveActor,
+        legacyIdentityId: "b-s7mod-lid-r10",
+        cutoverRunId: inspectedA.value.runId,
+      })).toMatchObject({ ok: false, error: { code: "PCAT-ARC-NOT-FOUND" } });
+
+      const firstHeadA = await readCurrentMappingHead({ client: isolatedClient, identityId: "a-s7mod-lid-r1" });
+      expect(firstHeadA.ok).toBe(true);
+      if (!firstHeadA.ok) return;
+      expect(firstHeadA.value.version).toMatchObject({
+        cutoverRunId: inspectedA.value.runId,
+        versionNumber: 1,
+        rClass: "R1",
+        archiveId: firstArchiveA.value.metadata.archiveId,
+      });
+      expect(await readCurrentMappingHead({ client: isolatedClient, identityId: "b-s7mod-lid-r10" }))
+        .toMatchObject({ ok: false, error: { code: "PCAT-MAP-UNMAPPED" } });
+
+      const planB = await makePlan("b".repeat(40), "s7mod-run-b");
+      expect(planB.ok).toBe(true);
+      if (!planB.ok) return;
+      const runB = await executeCutover(executeInputFor(planB.value, objectStore));
+      expect(runB).toMatchObject({
+        ok: false,
+        error: {
+          code: "PCAT-ORC-PHASE-FAILED",
+          detail: "CAS mismatch: refusing to overwrite the current mapping head",
+        },
+      });
+      const inspectedB = await inspectCutover({ pool: isolatedPool, planDigest: planB.value.planDigest });
+      expect(inspectedB.ok).toBe(true);
+      if (!inspectedB.ok) return;
+      expect(inspectedB.value.runId).not.toBe(inspectedA.value.runId);
+      expect(inspectedB.value.currentPhase).toBe("P7");
+      expect(inspectedB.value.checkpoints.some(({ phase }) => phase === "P7")).toBe(false);
+
+      const firstArchiveB = await archiveReader.restoreArchive({
+        actor: archiveActor,
+        legacyIdentityId: "a-s7mod-lid-r1",
+        cutoverRunId: inspectedB.value.runId,
+      });
+      expect(firstArchiveB.ok).toBe(true);
+      if (!firstArchiveB.ok) return;
+      expect(firstArchiveB.value.metadata.archiveId).not.toBe(firstArchiveA.value.metadata.archiveId);
+      expect(firstArchiveB.value.metadata.rClass).toBe("R1");
+      expect(await appendMappingVersion({
+        client: isolatedClient,
+        cutoverRunId: inspectedB.value.runId,
+        classification: classification.value,
+        identityId: "a-s7mod-lid-r1",
+        sourceChecksum: classification.value.graphFingerprint,
+        expectedHead: null,
+        outcome: { kind: "archived", archiveId: firstArchiveB.value.metadata.archiveId },
+      })).toMatchObject({
+        ok: false,
+        error: {
+          code: "PCAT-MAP-CONFLICT",
+          detail: "CAS mismatch: refusing to overwrite the current mapping head",
+        },
+      });
+      expect(await archiveReader.restoreArchive({
+        actor: archiveActor,
+        legacyIdentityId: "b-s7mod-lid-r10",
+        cutoverRunId: inspectedB.value.runId,
+      })).toMatchObject({ ok: false, error: { code: "PCAT-ARC-NOT-FOUND" } });
+
+      const firstHeadB = await readCurrentMappingHead({ client: isolatedClient, identityId: "a-s7mod-lid-r1" });
+      expect(firstHeadB).toEqual(firstHeadA);
+      expect(await readCurrentMappingHead({ client: isolatedClient, identityId: "b-s7mod-lid-r10" }))
+        .toMatchObject({ ok: false, error: { code: "PCAT-MAP-UNMAPPED" } });
+      expect(await objectStore.listRefs()).toHaveLength(2);
+    } finally {
+      await isolatedClient.end().catch(() => undefined);
+      await isolatedPool.end().catch(() => undefined);
+      await ownerDatabase.close().catch(() => undefined);
       await isolated.close().catch(() => undefined);
       await rm(isolatedRoot, { recursive: true, force: true });
     }
