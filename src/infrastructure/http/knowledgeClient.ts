@@ -44,15 +44,7 @@ export type KnowledgeFileDto = {
   updatedAt: string;
 };
 
-export type KnowledgeParameterReferenceDto = {
-  specId: string;
-  propertyKey: string;
-  displayName: string | null;
-  driverModule: string | null;
-  lifecycle: KnowledgeParameterReference["lifecycle"];
-  createdByUserId: string | null;
-  createdAt: string;
-};
+export type KnowledgeParameterReferenceDto = KnowledgeParameterReference;
 
 export type KnowledgeEntryDto = {
   id: string;
@@ -132,15 +124,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
           createdAt: dto.file.createdAt
         }
       : null,
-    parameterReferences: (dto.parameterReferences ?? []).map((reference) => ({
-      specId: reference.specId,
-      propertyKey: reference.propertyKey,
-      displayName: reference.displayName,
-      driverModule: reference.driverModule,
-      lifecycle: reference.lifecycle,
-      createdByUserId: reference.createdByUserId,
-      createdAt: reference.createdAt
-    }))
+    parameterReferences: (dto.parameterReferences ?? []).map((reference) => ({ ...reference }))
   };
 }
 
@@ -351,6 +335,29 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
         `/api/v1/knowledge/related-to-spec?${params.toString()}`
       );
       return { items: response.items };
+    },
+
+    async relatedToDefinition(definitionId) {
+      const params = new URLSearchParams({ definitionId });
+      const response = await apiClient.get<ListEnvelope<KnowledgeSearchResult>>(
+        `/api/v1/knowledge/related-to-definition?${params.toString()}`
+      );
+      return { items: response.items };
+    },
+
+    async addDefinitionReference(entryId, definitionId) {
+      const response = await apiClient.put<ItemEnvelope<KnowledgeEntryDto>>(
+        `${entryPath(entryId)}/definition-references/${encodeURIComponent(definitionId)}`,
+        {}
+      );
+      return entryFromDto(response.item);
+    },
+
+    async removeDefinitionReference(entryId, definitionId) {
+      const response = await apiClient.delete<ItemEnvelope<KnowledgeEntryDto>>(
+        `${entryPath(entryId)}/definition-references/${encodeURIComponent(definitionId)}`
+      );
+      return entryFromDto(response.item);
     },
 
     async addParameterReference(entryId, specId) {

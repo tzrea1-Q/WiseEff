@@ -279,3 +279,12 @@ export async function seedSpecBindingGraph(db: Queryable, fixture: SpecBindingGr
     }
   }
 }
+
+/** Assert a canonical-only test Definition has no legacy Spec identity. */
+export async function countLegacySpecsById(db: Queryable, id: string): Promise<number> {
+  const result = await db.query<{ count: number }>(
+    "select count(*)::int as count from parameter_specs where id = $1",
+    [id]
+  );
+  return result.rows[0]?.count ?? 0;
+}

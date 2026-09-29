@@ -40,3 +40,8 @@ export {
   type LoadedParameterCatalogFixture,
   type ParameterCatalogFixtureMode,
 } from "./fixtureLoader";
+
+export {
+  knowledgeCatalogBundle,
+  installKnowledgeDefinitionReferencesCatalogFixture,
+} from "./registryProjection";

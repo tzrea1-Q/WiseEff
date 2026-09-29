@@ -1,7 +1,7 @@
 import type pg from "pg";
 
 import { CatalogSubjectId, type CatalogReleasePin } from "../../modules/parameter-catalog-contract/index";
-import { installRegistryProjectionCatalogFixture } from "../../modules/catalog-kernel/runtime/catalogChain.fixture";
+import { installRegistryProjectionCatalogFixture, refreshReleaseSource, X_DEFINITION_ID } from "../../modules/catalog-kernel/runtime/catalogChain.fixture";
 import { validCatalogReleaseBundle, refreshAuthoritativeSource } from "../../modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { compileCatalogRelease } from "../../modules/catalog-kernel/compiler";
 import { jsonCatalogReleaseSource } from "../../modules/catalog-kernel/interface";
@@ -13,6 +13,83 @@ export async function installParameterModuleRegistryProjectionFixture(pool: pg.P
 }
 
 type RegistryProjectionFixture = Awaited<ReturnType<typeof installParameterModuleRegistryProjectionFixture>>;
+
+type Mutable<Value> = Value extends readonly (infer Item)[]
+  ? Mutable<Item>[]
+  : Value extends object
+    ? { -readonly [Key in keyof Value]: Mutable<Value[Key]> }
+    : Value;
+
+/** Published Catalog source with 60 searchable Definitions and one retired Definition. */
+export function knowledgeCatalogBundle() {
+  const complete = validCatalogReleaseBundle();
+  const release = structuredClone(complete.releases[0]!) as Mutable<(typeof complete.releases)[number]>;
+  const subjectTemplate = release.documents.find((document) => document.kind === "subject");
+  const definitionTemplate = release.documents.find((document) => document.kind === "definition");
+  if (!subjectTemplate || subjectTemplate.kind !== "subject" || !definitionTemplate || definitionTemplate.kind !== "definition") {
+    throw new Error("Knowledge Definition fixture templates are missing.");
+  }
+
+  for (let index = 0; index < 30; index += 1) {
+    const subjectId = `csub_kb_batch_${String(index).padStart(2, "0")}`;
+    const subject = structuredClone(subjectTemplate);
+    subject.content.id = subjectId;
+    subject.content.canonicalKey = `driver:knowledge-batch,device-${index}`;
+    subject.content.selector.value = `knowledge-batch,device-${index}`;
+    release.documents.push(subject);
+    for (let property = 0; property < 2; property += 1) {
+      const item = structuredClone(definitionTemplate);
+      item.content.id = `pdef_kb_batch_${index}_${property}`;
+      item.content.subjectId = subjectId;
+      item.content.propertyKey = `knowledge_batch_property_${index}_${property}`;
+      item.content.revision.id = `drev_kb_batch_${index}_${property}_1`;
+      item.content.revision.displayName = `Knowledge batch property ${index}-${property}`;
+      item.content.revision.matching.sourceProperty = item.content.propertyKey;
+      release.documents.push(item);
+    }
+  }
+
+  const retired = structuredClone(definitionTemplate);
+  retired.content.id = "pdef_kb_batch_retired";
+  retired.content.propertyKey = "knowledge_retired_property";
+  retired.content.revision.id = "drev_kb_batch_retired_1";
+  retired.content.revision.displayName = "Retired Knowledge Batch Property";
+  retired.content.revision.lifecycle = "retired";
+  retired.content.revision.matching.sourceProperty = retired.content.propertyKey;
+  release.documents.push(retired);
+  refreshReleaseSource(release as Parameters<typeof refreshReleaseSource>[0]);
+  return {
+    schemaVersion: complete.schemaVersion,
+    targetReleaseId: release.manifest.release.id,
+    releases: [release]
+  };
+}
+
+/** A published Catalog with more than two pages of searchable Definitions. */
+export async function installKnowledgeDefinitionReferencesCatalogFixture(pool: pg.Pool) {
+  const bundle = knowledgeCatalogBundle();
+  const retiredDefinitionId = bundle.releases[0]!.documents.find(
+    (document) => document.kind === "definition" && document.content.id === "pdef_kb_batch_retired"
+  );
+  if (!retiredDefinitionId || retiredDefinitionId.kind !== "definition") {
+    throw new Error("Knowledge Definition fixture is missing its retired Definition.");
+  }
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+  const installed = await installPublishedRelease(pool, {
+    mode: "bootstrap",
+    source: jsonCatalogReleaseSource(bundle),
+    expectedTargetDigest: compiled.value.aggregateDigest
+  });
+  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+  return {
+    pin: { id: compiled.value.release.id, digest: compiled.value.release.digest },
+    activeDefinitionId: X_DEFINITION_ID,
+    retiredDefinitionId: retiredDefinitionId.content.id,
+    searchTerm: "knowledge_batch_property",
+    searchableDefinitionCount: 60
+  };
+}
 
 /** Published Driver subjects for MOD comparison, including a 100-row pagination boundary. */
 export async function installParameterModuleComparisonCatalogFixture(pool: pg.Pool, additionalDrivers = 0): Promise<{

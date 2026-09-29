@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../../auth/types";
@@ -198,7 +198,7 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("knowledge.getDocument names the entry's referenced definitions with honest lifecycles", async () => {
+  it("knowledge.getDocument keeps legacy Specs and canonical Definitions distinct", async () => {
     const specId = "pspec:kb-tools-ratio";
     await db.query(
       `insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key)
@@ -215,8 +215,19 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
        values ($1, $2, 1, '充电泵比率', '', '{"kind":"int32"}'::jsonb, 'deprecated', 'active')`,
       [`${specId}:v1`, specId]
     );
-    const { addKnowledgeParameterReference } = await import("../../knowledge/service");
-    await addKnowledgeParameterReference(db, editor, { entryId: publishedEntryId, specId });
+    await db.query(
+      `insert into knowledge_parameter_references
+       (id, organization_id, entry_id, parameter_spec_id, created_by_user_id)
+       values ($1, $2, $3, $4, $5)`,
+      [randomUUID(), ORG_ID, publishedEntryId, specId, editor.user.id]
+    );
+    const definitionId = "pdef_kb_tools_current_ref";
+    await db.query(
+      `insert into knowledge_definition_references
+       (id, organization_id, entry_id, definition_id, created_by_user_id)
+       values ($1, $2, $3, $4, $5)`,
+      [randomUUID(), ORG_ID, publishedEntryId, definitionId, editor.user.id]
+    );
 
     const registry = registryFor();
     const document = await registry.run(
@@ -224,8 +235,46 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
       { auth: makeAuth(MEMBER, ["knowledge:view"]), requestId: "req-9", sessionId: "session-1" },
       { entryId: publishedEntryId }
     );
+    expect(document.data.referencedParameters).toHaveLength(2);
+    expect(document.data.referencedParameters).toContainEqual({
+      kind: "legacy-spec",
+      specId,
+      name: "充电泵比率",
+      lifecycle: "deprecated",
+      historicalOnly: false,
+      mappingStatus: "unmapped"
+    });
+    expect(document.data.referencedParameters).toContainEqual({
+      kind: "definition",
+      definitionId,
+      availability: "unavailable",
+      name: "定义不可用",
+      lifecycle: null
+    });
+  });
+
+  it("knowledge.getDocument keeps unavailable canonical identity without presenting its ID as a name", async () => {
+    const definitionId = "pdef_private_definition_label";
+    await db.query(
+      `insert into knowledge_definition_references
+       (id, organization_id, entry_id, definition_id, created_by_user_id)
+       values ($1, $2, $3, $4, $5)`,
+      [randomUUID(), ORG_ID, publishedEntryId, definitionId, editor.user.id]
+    );
+
+    const document = await registryFor().run(
+      "knowledge.getDocument",
+      { auth: makeAuth(MEMBER, ["knowledge:view"]), requestId: "req-unavailable", sessionId: "session-1" },
+      { entryId: publishedEntryId }
+    );
     expect(document.data.referencedParameters).toEqual([
-      { specId, name: "充电泵比率", lifecycle: "deprecated" }
+      {
+        kind: "definition",
+        definitionId,
+        availability: "unavailable",
+        name: "定义不可用",
+        lifecycle: null
+      }
     ]);
   });
 

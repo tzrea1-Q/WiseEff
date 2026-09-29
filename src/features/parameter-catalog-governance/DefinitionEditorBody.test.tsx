@@ -22,7 +22,7 @@ const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
  * through preview -> confirm -> execute -> continue.
  */
 describe("DefinitionEditorBody", () => {
-  function renderDialog() {
+  function renderDialog(relatedKnowledge?: Parameters<typeof DefinitionEditorBody>[0]["relatedKnowledge"]) {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const preview = vi
       .spyOn(ports.catalog, "previewDefinitionReplacement")
@@ -194,12 +194,23 @@ describe("DefinitionEditorBody", () => {
         catalog={ports.catalog}
         catalogReleaseId={CATALOG_RELEASE_ID}
         definition={activeDefinition}
+        relatedKnowledge={relatedKnowledge}
         subjects={[registeredSubject]}
         createIdempotencyKey={() => "idem-847-correction"}
       />
     );
     return { ...view, preview, execute, continueReplacement };
   }
+
+  it("loads published knowledge by exact Definition identity and opens the entry", async () => {
+    const load = vi.fn(async () => [{ entryId: "kb-903", title: "定义关联知识", excerpt: "", updatedAt: "2026-09-29T00:00:00Z" }]);
+    const onOpenEntry = vi.fn();
+    renderDialog({ load, onOpenEntry });
+    expect(await screen.findByText("定义关联知识")).toBeInTheDocument();
+    expect(load).toHaveBeenCalledWith(activeDefinition.id);
+    await userEvent.setup().click(screen.getByRole("button", { name: "定义关联知识" }));
+    expect(onOpenEntry).toHaveBeenCalledWith("kb-903");
+  });
 
   it("requires an identity change, a project manifest and a reason before previewing", async () => {
     const user = userEvent.setup();
