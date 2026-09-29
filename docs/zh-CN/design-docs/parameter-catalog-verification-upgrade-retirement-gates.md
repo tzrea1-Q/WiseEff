@@ -258,6 +258,8 @@ Local schema mock 不能满足这些 gate。V02-V07、V11-V17、M01-M04、P01 �
 
 Comparison report 是 immutable subordinate Evidence Artifact。它使用 issue #678 固定的四个 result class：`exact-equivalent`、`declared-expected-difference`、`unexplained-difference` 与 `unqueryable/protected-reference-missing`。
 
+内部 v2 MOD D02 writer 只保存 organization-scoped case batch，不能生成完整的 11-family report。入口要求 server-branded user invocation，从 invocation 派生 organization 与 principal，重载持久化授权，并在写事务中锁定/复核 user 与 role 行。若 P7 将 parameter-module 选为 R1/R10 Archive，selection 只证明精确 version 与 Archive，不证明 D02 Subject identity 或 expected-difference rule。若 scoped reads 将 module 经由唯一 active Registration/Placement 解析到 pinned active Subject，该 case 保存为不带 expected-difference 声明的 `unexplained-difference`，因此 full report 仍被阻断。缺少 selection、查询失败、retired Subject 或不支持的 selection 仍是 unqueryable blocker。
+
 | Gate ID        | 必需 deterministic coverage                                                                                                                 | Blocking failure code                       | Required evidence                                              |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------- |
 | `PCAT-CMP-D01` | 每个 protected Definitions list partition/detail：membership、lifecycle、owner、property key、current/pinned revision、typed gone outcome。 | `PCAT-CMP-D01-DEFINITION-SEMANTICS`         | case/count/checksum 与 catalog/frontend coverage               |

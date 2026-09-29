@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 
 import { CatalogSubjectId } from "../../parameter-catalog-contract";
+import type { MappingManifestSelection } from "../../catalog-cutover/mappingManifest";
 import { corpusRefusal } from "./errors";
 
 export const COMPARISON_CONTRIBUTION_CONTRACT_VERSION = "pcat-comparison-contribution/v1";
 export const COMPARISON_CORPUS_CONTRACT_VERSION = "pcat-comparison-corpus/v1";
 export const COMPARISON_REPORT_CONTRACT_VERSION = "pcat-comparison-report/v1";
+export const COMPARISON_CASE_CONTEXT_V2_CONTRACT_VERSION = "pcat-comparison-case-context/v2";
+export const COMPARISON_CASE_CONTRIBUTION_V2_CONTRACT_VERSION = "pcat-comparison-case-contribution/v2";
 
 export const COMPARISON_FAMILIES = [
   "CGH",
@@ -97,6 +100,110 @@ export type ExpectedDifference = {
   readonly Archive?: { readonly id: string };
   readonly ruleId: string;
   readonly planPin: string;
+};
+
+export type ExpectedDifferenceV2 = {
+  readonly rClass: string;
+  readonly mappingVersionId: string;
+  readonly typedTarget?: { readonly kind: string; readonly id: string };
+  readonly Archive?: { readonly id: string };
+  readonly ruleId: string;
+  readonly planPin: string;
+};
+
+/** Exact immutable selection row returned by the completed-manifest reader. */
+export type ComparisonCaseSelectionV2 = MappingManifestSelection;
+
+export type ComparisonCaseInventoryV2 = {
+  readonly kind: string;
+  readonly id: string;
+  readonly ownerScopeKind: "organization";
+  readonly ownerScopeId: string;
+};
+
+export type ComparisonCaseContextV2 = {
+  readonly contractVersion: typeof COMPARISON_CASE_CONTEXT_V2_CONTRACT_VERSION;
+  readonly phase: ComparisonPhase;
+  readonly selectionRunId: string;
+  readonly selectionPlanDigest: string;
+  readonly selectionTargetArtifactSha: string;
+  readonly selectionCatalogReleaseId: string;
+  readonly selectionCatalogReleaseDigest: string;
+  readonly selectionManifestDigest: string;
+  readonly selectionP7CheckpointDigest: string;
+  readonly selectionProjectionDigest: string;
+  readonly selectionProjectionCoverage: "complete-run" | "organization-projection";
+  readonly selectionProjectionCount: number;
+  readonly selection: ComparisonCaseSelectionV2 | null;
+  readonly sourceInventoryCount: number;
+  readonly sourceInventoryChecksum: string;
+};
+
+export type ComparisonCaseContributionV2 = {
+  readonly contractVersion: typeof COMPARISON_CASE_CONTRIBUTION_V2_CONTRACT_VERSION;
+  readonly family: "MOD";
+  readonly caseId: string;
+  readonly comparisonId: "PCAT-CMP-D02-SUBJECT-IDENTITY";
+  readonly protectedReference: ProtectedReference;
+  readonly protectedReferenceOwnerScopeKind: "platform" | "organization" | "project";
+  readonly protectedReferenceOwnerScopeId: string;
+  readonly legacyObservation: QueryObservation;
+  readonly canonicalObservation: QueryObservation;
+  readonly result: ComparisonResultClass;
+  readonly expectedDifference: ExpectedDifferenceV2 | null;
+  readonly unqueryableReason: string | null;
+  readonly context: ComparisonCaseContextV2;
+  readonly checksum: string;
+};
+
+export type ComparisonCaseBatchV2 = {
+  readonly contractVersion: "pcat-comparison-case-batch/v2";
+  readonly family: "MOD";
+  readonly comparisonId: "PCAT-CMP-D02-SUBJECT-IDENTITY";
+  readonly phase: "pre-activation";
+  readonly organizationId: string;
+  readonly selectionRunId: string;
+  readonly selectionProjectionDigest: string;
+  readonly selectionProjectionCount: number;
+  readonly modSelectionIdentityIds: readonly string[];
+  readonly inventory: readonly ComparisonCaseInventoryV2[];
+  readonly sourceInventoryCount: number;
+  readonly sourceInventoryChecksum: string;
+  readonly cases: readonly ComparisonCaseContributionV2[];
+  readonly blockers: readonly string[];
+};
+
+export const comparisonCaseIdV2For = (input: {
+  readonly selectionRunId: string;
+  readonly phase: "pre-activation";
+  readonly family: "MOD";
+  readonly comparisonId: "PCAT-CMP-D02-SUBJECT-IDENTITY";
+  readonly protectedReference: ProtectedReference;
+  readonly ownerScopeKind: "organization";
+  readonly ownerScopeId: string;
+  readonly legacyIdentityId: string | null;
+}): string => {
+  const identity = [
+    input.selectionRunId,
+    input.phase,
+    input.family,
+    input.comparisonId,
+    input.protectedReference.kind,
+    input.protectedReference.id,
+    input.ownerScopeKind,
+    input.ownerScopeId,
+    input.legacyIdentityId,
+  ];
+  const digest = createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+  return [
+    "pcat_cmp_v2",
+    input.ownerScopeKind,
+    encodeURIComponent(input.ownerScopeId),
+    encodeURIComponent(input.protectedReference.kind),
+    encodeURIComponent(input.protectedReference.id),
+    input.legacyIdentityId ? encodeURIComponent(input.legacyIdentityId) : "unselected",
+    digest,
+  ].join(":");
 };
 
 export type ComparisonCase = {
