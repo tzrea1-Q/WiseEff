@@ -148,7 +148,8 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     };
     const denied = await request(withoutCatalogView, "PUT", `/api/v1/knowledge/entries/${entryId}/definition-references/${activeDefinitionId}`);
     expect(denied.status).toBe(403);
-    const deniedRows = await getRootPostgresPool(db)!.query<{ count: number }>(
+    const pool = getRootPostgresPool(db)!;
+    const deniedRows = await pool.query<{ count: number }>(
       "select count(*)::int as count from knowledge_definition_references where entry_id = $1",
       [entryId]
     );
@@ -168,7 +169,6 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     const repeated = await request(auth, "PUT", `/api/v1/knowledge/entries/${entryId}/definition-references/${activeDefinitionId}`);
     expect(repeated.status).toBe(200);
     expect(repeated.body.item.parameterReferences).toHaveLength(1);
-    const pool = getRootPostgresPool(db)!;
     const counts = await pool.query<{ definition_count: number; legacy_count: number; add_audit_count: number }>(
       `select
          (select count(*)::int from knowledge_definition_references where entry_id = $1) as definition_count,
@@ -336,11 +336,26 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     );
 
     await pool.query("delete from users where id = $1", [REFERENCE_CREATOR]);
-    const author = await pool.query<{ created_by_user_id: string | null }>(
-      "select created_by_user_id from knowledge_definition_references where entry_id = $1",
+    const author = await pool.query<{
+      organization_id: string;
+      definition_id: string;
+      created_by_user_id: string | null;
+    }>(
+      "select organization_id, definition_id, created_by_user_id from knowledge_definition_references where entry_id = $1",
       [entryId]
     );
-    expect(author.rows[0]?.created_by_user_id).toBeNull();
+    expect(author.rows).toEqual([{
+      organization_id: ORG_A,
+      definition_id: activeDefinitionId,
+      created_by_user_id: null
+    }]);
+    const visible = await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`);
+    expect(visible.status).toBe(200);
+    expect(visible.body.item.parameterReferences).toContainEqual(expect.objectContaining({
+      kind: "definition", definitionId: activeDefinitionId
+    }));
+    const hidden = await request(authB, "GET", `/api/v1/knowledge/entries/${entryId}`);
+    expect(hidden.status).toBe(404);
 
     const removed = await request(auth, "DELETE", `/api/v1/knowledge/entries/${entryId}/definition-references/${activeDefinitionId}`);
     expect(removed.status).toBe(200);
