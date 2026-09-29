@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,7 +8,9 @@ import { expect, it } from "vitest";
 
 import { getAuthContextForExternalIdentity } from "../../auth/repository";
 import { createUserInvocation } from "../../auth/trustedInvocation";
-import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { createLocalAuthService } from "../../auth/localAuth";
+import { hashLocalAccountPassword, hashLocalSessionToken } from "../../auth/localAccountCredentials";
+import { createDatabase, createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import { seedOrganization, seedUser } from "../../../testing/fixtures";
 import {
   createDisposableParameterCatalogDatabase,
@@ -79,13 +81,18 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
   const archiveRoot = await mkdtemp(path.join(os.tmpdir(), "mod-case-v2-"));
   const writerRole = `s7_mod_case_writer_${randomBytes(5).toString("hex")}`;
   const writerPassword = randomBytes(24).toString("hex");
+  const sourceReaderRole = `s7_mod_case_reader_${randomBytes(5).toString("hex")}`;
+  const sourceReaderPassword = randomBytes(24).toString("hex");
   let writerDatabase: ReturnType<typeof createPostgresDatabase> | null = null;
+  let sourceReaderDatabase: ReturnType<typeof createPostgresDatabase> | null = null;
   let writerRoleCreated = false;
+  let sourceReaderRoleCreated = false;
 
   const organizationId = "s7-mod-case-org";
   const otherOrganizationId = "s7-mod-case-other-org";
   const principalId = "s7-mod-case-admin";
   const otherPrincipalId = "s7-mod-case-other-admin";
+  const projectAdminId = "s7-mod-case-project-admin";
   const moduleAIdentityId = "s7orc-lid-r1-mod-a";
   const moduleBIdentityId = "s7orc-lid-r10-mod-b";
 
@@ -95,12 +102,44 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
     await seedOrganization(client, { id: otherOrganizationId });
     await seedUser(client, { id: principalId, organizationId });
     await seedUser(client, { id: otherPrincipalId, organizationId: otherOrganizationId });
+    await seedUser(client, { id: projectAdminId, organizationId });
     await client.query(
       `insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id)
-       values ($1,$2,$3,null,'admin'),($4,$5,$6,null,'admin')`,
+       values ($1,$2,$3,null,'admin'),($4,$5,$6,null,'admin'),($7,$8,$9,$10,'admin')`,
       [`role-${principalId}`, principalId, organizationId,
-        `role-${otherPrincipalId}`, otherPrincipalId, otherOrganizationId],
+        `role-${otherPrincipalId}`, otherPrincipalId, otherOrganizationId,
+        `role-${projectAdminId}`, projectAdminId, organizationId, "s7-mod-case-project"],
     );
+    const localPassword = randomBytes(24).toString("hex");
+    const projectAdminPassword = randomBytes(24).toString("hex");
+    await client.query(
+      `insert into public.user_password_credentials (user_id, username, password_hash)
+       values ($1, $2, $3), ($4, $5, $6)`,
+      [principalId, "s7.mod.reader.admin", await hashLocalAccountPassword(localPassword),
+        projectAdminId, "s7.mod.reader.project-admin", await hashLocalAccountPassword(projectAdminPassword)],
+    );
+    const sessionClock = new Date("2026-09-30T00:00:00.000Z");
+    const localAdminLogin = await createLocalAuthService(ownerDatabase, {
+      now: () => sessionClock,
+    }).login(
+      { username: "s7.mod.reader.admin", password: localPassword },
+      { requestId: "s7-mod-case-reader-login" },
+    );
+    expect(localAdminLogin.auth.roles).toContainEqual({ projectId: null, roleId: "admin" });
+    const projectAdminLogin = await createLocalAuthService(ownerDatabase, {
+      now: () => sessionClock,
+    }).login(
+      { username: "s7.mod.reader.project-admin", password: projectAdminPassword },
+      { requestId: "s7-mod-case-project-admin-login" },
+    );
+    expect(projectAdminLogin.auth.roles).toContainEqual({ projectId: "s7-mod-case-project", roleId: "admin" });
+    const localSessionHash = hashLocalSessionToken(localAdminLogin.session.token);
+    const localSessionIdResult = await client.query<{ id: string }>(
+      "select id from public.auth_sessions where token_hash = $1",
+      [localSessionHash],
+    );
+    expect(localSessionIdResult.rows).toHaveLength(1);
+    const localSessionId = localSessionIdResult.rows[0]!.id;
 
     const installed = await installParameterModuleComparisonCatalogFixture(ownerPool, 1);
     const bundle = comparisonCatalogBundle(1);
@@ -531,12 +570,12 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
 
     const captureBusinessRows = async () => {
       const users = await client.query<{ row: unknown }>(
-        "select to_jsonb(user_row) as row from public.users user_row where id = $1",
-        [principalId],
+        "select to_jsonb(user_row) as row from public.users user_row where id = any($1::text[]) order by id",
+        [[principalId, projectAdminId]],
       );
       const roleBindings = await client.query<{ row: unknown }>(
-        "select to_jsonb(binding) as row from public.user_role_bindings binding where user_id = $1 and organization_id = $2 order by id",
-        [principalId, organizationId],
+        "select to_jsonb(binding) as row from public.user_role_bindings binding where user_id = any($1::text[]) and organization_id = $2 order by user_id, id",
+        [[principalId, projectAdminId], organizationId],
       );
       const modules = await client.query<{ row: unknown }>(
         "select to_jsonb(module_row) as row from public.parameter_modules module_row where id = any($1::text[]) order by id",
@@ -558,7 +597,442 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
         placements: placements.rows.map(({ row }) => row),
       };
     };
-    const businessRowsBeforeWrite = await captureBusinessRows();
+    const fingerprint = (value: unknown): string =>
+      createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    const captureBusinessFingerprint = async () => fingerprint(await captureBusinessRows());
+    const captureSessionFingerprint = async () => {
+      const result = await client.query<{ row: unknown }>(
+        `select to_jsonb(session_row) as row
+           from public.auth_sessions session_row
+          where user_id = any($1::text[])
+          order by user_id, id`,
+        [[principalId, projectAdminId]],
+      );
+      return fingerprint(result.rows.map(({ row }) => row));
+    };
+    const captureArchiveFingerprint = async () => {
+      const names = (await readdir(archiveRoot, { withFileTypes: true }))
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name)
+        .sort();
+      const objects = await Promise.all(names.map(async (name) => [
+        name,
+        createHash("sha256").update(await readFile(path.join(archiveRoot, name))).digest("hex"),
+      ] as const));
+      return fingerprint(objects);
+    };
+    const assertReaderReadUnchanged = async <T>(read: () => Promise<T>, expected: T): Promise<T> => {
+      const businessBefore = await captureBusinessFingerprint();
+      const sessionsBefore = await captureSessionFingerprint();
+      const archivesBefore = await captureArchiveFingerprint();
+      const result = await read();
+      expect(result).toBe(expected);
+      expect((await captureBusinessFingerprint()) === businessBefore).toBe(true);
+      expect((await captureSessionFingerprint()) === sessionsBefore).toBe(true);
+      expect((await captureArchiveFingerprint()) === archivesBefore).toBe(true);
+      return result;
+    };
+    const businessRowsBeforeWrite = await captureBusinessFingerprint();
+    const authSessionFingerprintBeforeRead = await captureSessionFingerprint();
+    const archiveFingerprintBeforeRead = await captureArchiveFingerprint();
+
+    await client.query(`create role ${sourceReaderRole} login password ${sqlQuote(sourceReaderPassword)} noinherit nosuperuser nobypassrls`);
+    sourceReaderRoleCreated = true;
+    await client.query(`alter role ${sourceReaderRole} set default_transaction_read_only = on`);
+    await client.query(`alter role ${sourceReaderRole} set log_min_duration_statement = 0`);
+    await client.query(`alter role ${sourceReaderRole} set log_parameter_max_length = 0`);
+    await client.query(`grant usage on schema public, parameter_catalog, catalog_publication to ${sourceReaderRole}`);
+    const sourceReaderSelectColumns = [
+      ["public.users", ["id", "organization_id", "name", "email", "title", "is_active"]],
+      ["public.organizations", ["id", "name"]],
+      ["public.user_role_bindings", ["user_id", "project_id", "role_id"]],
+      ["public.user_password_credentials", ["user_id", "username"]],
+      ["public.roles", ["id", "permissions"]],
+      ["public.parameter_modules", ["id", "organization_id", "name", "parent_id", "sort_order", "description", "scope", "importance", "kind", "origin", "source_key", "attribution_subject_id", "path"]],
+      ["public.parameter_module_mappings", ["id", "organization_id", "parameter_module_id", "match_kind", "match_value", "priority"]],
+      ["public.projects", ["id", "organization_id"]],
+      ["parameter_catalog.parameter_catalog_cutover_runs", ["id", "source_snapshot_fingerprint", "target_artifact_sha", "target_catalog_release_digest", "migration_contract_version", "plan_digest", "current_phase", "state"]],
+      ["parameter_catalog.parameter_catalog_cutover_checkpoints", ["cutover_run_id", "phase", "checkpoint_digest", "payload", "committed_at"]],
+      ["parameter_catalog.parameter_catalog_cutover_events", ["cutover_run_id", "phase", "event_kind", "payload"]],
+      ["parameter_catalog.catalog_releases", ["id", "release_digest", "predecessor_release_id", "release_version", "release_sequence", "published_at"]],
+      ["parameter_catalog.legacy_mapping_versions", ["id", "legacy_identity_id", "cutover_run_id", "version_number", "source_checksum", "graph_fingerprint", "r_class", "target_kind", "target_id", "archive_id", "evidence_archive_id", "supersedes_version_id"]],
+      ["parameter_catalog.legacy_identities", ["id", "source_kind", "source_id", "owner_scope_kind", "owner_scope_id"]],
+      ["parameter_catalog.catalog_state", ["current_catalog_release_id"]],
+      ["parameter_catalog.catalog_materializations", ["release_id", "compiled_fingerprint", "database_fingerprint", "installed_at"]],
+      ["parameter_catalog.catalog_release_subjects", ["release_id", "subject_id", "lifecycle", "selector_snapshot", "tombstone_provenance"]],
+      ["parameter_catalog.catalog_subjects", ["id", "kind", "canonical_key"]],
+      ["parameter_catalog.catalog_release_subject_aliases", ["release_id", "alias_id", "lifecycle", "tombstone_provenance"]],
+      ["parameter_catalog.catalog_subject_aliases", ["id", "subject_id", "selector_kind", "normalized_selector"]],
+      ["parameter_catalog.catalog_release_definition_heads", ["release_id", "definition_id", "revision_id"]],
+      ["parameter_catalog.parameter_definitions", ["id", "subject_id", "property_key"]],
+      ["parameter_catalog.definition_revisions", ["id", "definition_id", "revision_number", "catalog_release_id", "content_digest", "content"]],
+      ["parameter_catalog.catalog_activation_receipts", ["id", "kind", "release_id", "release_digest", "created_at"]],
+      ["parameter_catalog.organization_subject_registrations", ["id", "organization_id", "subject_id", "status", "registration_method", "current_placement_id", "updated_at"]],
+      ["parameter_catalog.subject_placements", ["id", "organization_id", "registration_id", "module_id", "updated_at"]],
+      ["parameter_catalog.current_project_parameter_bindings", ["id", "organization_id", "registration_id"]],
+      ["catalog_publication.publication_policies", ["singleton", "revision", "publication_enabled", "low_risk_single_actor_publish", "capability_contract_revision", "updated_at", "updated_by_principal_id"]],
+      ["catalog_publication.release_artifacts", ["artifact_digest"]],
+    ] as const;
+    for (const [relation, columns] of sourceReaderSelectColumns) {
+      await client.query(`grant select (${columns.join(", ")}) on ${relation} to ${sourceReaderRole}`);
+    }
+
+    const sourceReaderUrl = new URL(fixture.url);
+    sourceReaderUrl.username = sourceReaderRole;
+    sourceReaderUrl.password = sourceReaderPassword;
+    const sourceReaderDb = createPostgresDatabase(sourceReaderUrl.toString());
+    sourceReaderDatabase = sourceReaderDb;
+    const sourceReaderPool = getRootPostgresPool(sourceReaderDb)!;
+    expect(getRootPostgresPool(sourceReaderDb)).toBe(sourceReaderPool);
+    const sourceReaderSession = await sourceReaderPool.query<{
+      session_user: string;
+      current_user: string;
+      rolsuper: boolean;
+      rolinherit: boolean;
+      rolbypassrls: boolean;
+      default_transaction_read_only: string;
+      log_min_duration_statement: string;
+      log_parameter_max_length: string;
+      membership_count: number;
+      username_select: boolean;
+      password_hash_select: boolean;
+      auth_sessions_select: boolean;
+      auth_sessions_update: boolean;
+      module_insert: boolean;
+      module_update: boolean;
+      module_delete: boolean;
+      comparison_case_insert: boolean;
+      comparison_result_insert: boolean;
+      comparison_case_update: boolean;
+      comparison_case_delete: boolean;
+      comparison_result_update: boolean;
+      comparison_result_delete: boolean;
+      audit_select: boolean;
+      dismissed_compatible_select: boolean;
+      public_schema_create: boolean;
+      parameter_catalog_schema_create: boolean;
+      catalog_publication_schema_create: boolean;
+      database_temp: boolean;
+      assert_catalog_subject_active_execute: boolean;
+    }>(
+      `select session_user, current_user, role.rolsuper, role.rolinherit, role.rolbypassrls,
+              current_setting('default_transaction_read_only') as default_transaction_read_only,
+              current_setting('log_min_duration_statement') as log_min_duration_statement,
+              current_setting('log_parameter_max_length') as log_parameter_max_length,
+              (select count(*)::int from pg_auth_members membership where membership.member = role.oid) as membership_count,
+              has_column_privilege(current_user, 'public.user_password_credentials', 'username', 'select') as username_select,
+              has_column_privilege(current_user, 'public.user_password_credentials', 'password_hash', 'select') as password_hash_select,
+              has_table_privilege(current_user, 'public.auth_sessions', 'select') as auth_sessions_select,
+              has_table_privilege(current_user, 'public.auth_sessions', 'update') as auth_sessions_update,
+              has_table_privilege(current_user, 'public.parameter_modules', 'insert') as module_insert,
+              has_table_privilege(current_user, 'public.parameter_modules', 'update') as module_update,
+              has_table_privilege(current_user, 'public.parameter_modules', 'delete') as module_delete,
+              has_table_privilege(current_user, 'parameter_catalog.parameter_catalog_comparison_cases', 'insert') as comparison_case_insert,
+              has_table_privilege(current_user, 'parameter_catalog.parameter_catalog_comparison_results', 'insert') as comparison_result_insert,
+              has_table_privilege(current_user, 'parameter_catalog.parameter_catalog_comparison_cases', 'update') as comparison_case_update,
+              has_table_privilege(current_user, 'parameter_catalog.parameter_catalog_comparison_cases', 'delete') as comparison_case_delete,
+              has_table_privilege(current_user, 'parameter_catalog.parameter_catalog_comparison_results', 'update') as comparison_result_update,
+              has_table_privilege(current_user, 'parameter_catalog.parameter_catalog_comparison_results', 'delete') as comparison_result_delete,
+              has_table_privilege(current_user, 'public.audit_events', 'select') as audit_select,
+              has_table_privilege(current_user, 'public.parameter_module_dismissed_compatibles', 'select') as dismissed_compatible_select,
+              has_schema_privilege(current_user, 'public', 'create') as public_schema_create,
+              has_schema_privilege(current_user, 'parameter_catalog', 'create') as parameter_catalog_schema_create,
+              has_schema_privilege(current_user, 'catalog_publication', 'create') as catalog_publication_schema_create,
+              has_database_privilege(current_user, current_database(), 'temp') as database_temp,
+              has_function_privilege(current_user, 'parameter_catalog.assert_catalog_subject_active(text,text,text,text)', 'execute') as assert_catalog_subject_active_execute
+         from pg_roles role
+        where role.rolname = current_user`,
+    );
+    expect(sourceReaderSession.rows).toEqual([{
+      session_user: sourceReaderRole,
+      current_user: sourceReaderRole,
+      rolsuper: false,
+      rolinherit: false,
+      rolbypassrls: false,
+      default_transaction_read_only: "on",
+      log_min_duration_statement: "0",
+      log_parameter_max_length: "0",
+      membership_count: 0,
+      username_select: true,
+      password_hash_select: false,
+      auth_sessions_select: false,
+      auth_sessions_update: false,
+      module_insert: false,
+      module_update: false,
+      module_delete: false,
+      comparison_case_insert: false,
+      comparison_result_insert: false,
+      comparison_case_update: false,
+      comparison_case_delete: false,
+      comparison_result_update: false,
+      comparison_result_delete: false,
+      audit_select: false,
+      dismissed_compatible_select: false,
+      public_schema_create: false,
+      parameter_catalog_schema_create: false,
+      catalog_publication_schema_create: false,
+      database_temp: true,
+      assert_catalog_subject_active_execute: false,
+    }]);
+    const executableVolatileDefinerFunctions = await sourceReaderPool.query<{ signature: string }>(
+      `select format('%I.%I(%s)', namespace.nspname, procedure.proname,
+                     pg_get_function_identity_arguments(procedure.oid)) as signature
+         from pg_proc procedure
+         join pg_namespace namespace on namespace.oid = procedure.pronamespace
+        where namespace.nspname = any($1::text[])
+          and procedure.prosecdef
+          and procedure.provolatile = 'v'
+          and has_function_privilege(current_user, procedure.oid, 'execute')
+        order by signature`,
+      [["public", "parameter_catalog", "catalog_publication"]],
+    );
+    expect(executableVolatileDefinerFunctions.rows.map(({ signature }) => signature)).toEqual([]);
+    const assertReaderSqlState = async (sql: string, values: unknown[] = []) => {
+      const deniedClient = await sourceReaderPool.connect();
+      let state: string | null = null;
+      try {
+        await deniedClient.query("set default_transaction_read_only = off");
+        await deniedClient.query("begin");
+        try {
+          await deniedClient.query(sql, values);
+        } catch (error) {
+          const code = (error as { code?: unknown }).code;
+          state = typeof code === "string" ? code : "unknown";
+        }
+        await deniedClient.query("rollback");
+      } finally {
+        await deniedClient.query("rollback").catch(() => undefined);
+        await deniedClient.query("set default_transaction_read_only = on").catch(() => undefined);
+        deniedClient.release();
+      }
+      expect(state).toBe("42501");
+    };
+    await assertReaderSqlState(
+      `insert into parameter_catalog.parameter_catalog_comparison_cases
+        (id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference)
+       values ('reader-denied-comparison-case', $1, 'PCAT-CMP-D02', 'MOD', 'reader-denied-case', true)`,
+      [runB.value.runId],
+    );
+    await assertReaderSqlState(
+      `insert into parameter_catalog.parameter_catalog_comparison_results
+        (comparison_case_id, outcome, evidence)
+       values ('reader-denied-comparison-result', 'exact-equivalent', '{}'::jsonb)`,
+    );
+    await assertReaderSqlState("select id from public.audit_events limit 0");
+    await assertReaderSqlState("select id from public.parameter_module_dismissed_compatibles limit 0");
+    await assertReaderSqlState(
+      "select parameter_catalog.assert_catalog_subject_active('crel_x','sha256:x','csub_x','active')",
+    );
+    expect(invocationAuth.roles).toContainEqual({ projectId: null, roleId: "admin" });
+    const sourceReaderTransaction = await sourceReaderPool.connect();
+    try {
+      await sourceReaderTransaction.query("begin");
+      const readOnly = await sourceReaderTransaction.query<{ transaction_read_only: string }>(
+        "select current_setting('transaction_read_only') as transaction_read_only",
+      );
+      expect(readOnly.rows[0]?.transaction_read_only).toBe("on");
+      await sourceReaderTransaction.query("rollback");
+    } finally {
+      sourceReaderTransaction.release();
+    }
+    const sourceReaderReadiness = await evaluateDualFactReadiness(sourceReaderPool, { dataMode: "new-empty" });
+    if (sourceReaderReadiness.status !== "ready") {
+      const detail = sourceReaderReadiness.status === "not-ready"
+        ? sourceReaderReadiness.reasons.join(",")
+        : sourceReaderReadiness.status;
+      throw new Error(`MOD D02 source-reader readiness failed: ${detail}`);
+    }
+    const directForeignSource = await sourceReaderPool.query<{ id: string; organization_id: string }>(
+      "select id, organization_id from public.parameter_modules where id = $1",
+      [foreignSameSourceModule.id],
+    );
+    expect(directForeignSource.rows).toEqual([{
+      id: foreignSameSourceModule.id,
+      organization_id: otherOrganizationId,
+    }]);
+    const sourceReaderBatch = await provideModParameterCatalogComparisonCaseBatchV2({
+      database: sourceReaderDb,
+      pool: sourceReaderPool,
+      runId: runB.value.runId,
+      invocation,
+    });
+    expect(sourceReaderBatch.sourceInventoryCount).toBe(2);
+    expect(sourceReaderBatch.inventory.map((item) => item.id).sort()).toEqual([moduleA.id, moduleB.id].sort());
+    expect(sourceReaderBatch.inventory.every((item) =>
+      item.ownerScopeKind === "organization" && item.ownerScopeId === organizationId,
+    )).toBe(true);
+    expect(sourceReaderBatch.inventory.some((item) => item.id === foreignSameSourceModule.id)).toBe(false);
+    expect(sourceReaderBatch.blockers).toEqual([]);
+    expect(sourceReaderBatch.cases).toHaveLength(2);
+    expect(sourceReaderBatch.cases.every((item) => item.canonicalObservation.status === "value")).toBe(true);
+    expect(sourceReaderBatch.cases.every((item) =>
+      item.context.selection?.status === "appended" &&
+      item.context.selection?.mappingVersion.targetKind === null &&
+      Boolean(item.context.selection?.mappingVersion.archiveId),
+    )).toBe(true);
+    expect(sourceReaderBatch.cases.map((item) => item.context.selection?.legacyIdentityId).sort())
+      .toEqual([moduleAIdentityId, moduleBIdentityId].sort());
+
+    const sessionColumns = ["id", "user_id", "organization_id", "token_hash", "expires_at", "revoked_at"];
+    await client.query(
+      `grant select (${sessionColumns.join(", ")}) on public.auth_sessions to ${sourceReaderRole}`,
+    );
+    const sessionCandidate = async (token: string) => {
+      const candidate = await sourceReaderPool.query<{
+        id: string;
+        user_id: string;
+        organization_id: string;
+        expires_at: string;
+        revoked_at: string | null;
+      }>(
+        `select id, user_id, organization_id, expires_at::text as expires_at, revoked_at::text as revoked_at
+           from public.auth_sessions
+          where token_hash = $1
+          limit 1`,
+        [hashLocalSessionToken(token)],
+      );
+      const row = candidate.rows[0];
+      if (!row) return "invalid";
+      if (token === localAdminLogin.session.token) expect(row.id).toBe(localSessionId);
+      if (row.revoked_at) return "revoked";
+      if (new Date(row.expires_at).getTime() <= sessionClock.getTime()) return "expired";
+      try {
+        const currentAuth = await getAuthContextForExternalIdentity(sourceReaderDb, {
+          organizationId: row.organization_id,
+          subject: row.user_id,
+        });
+        return currentAuth.roles.some((role) =>
+          role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin"),
+        )
+          ? "active-admin"
+          : "active-without-org-admin";
+      } catch (error) {
+        const code = (error as { code?: unknown }).code;
+        if (code === "FORBIDDEN") return "inactive";
+        if (code === "UNAUTHENTICATED") return "no-current-role";
+        return "auth-query-failed";
+      }
+    };
+    try {
+      await assertReaderReadUnchanged(() => sessionCandidate(localAdminLogin.session.token), "active-admin");
+      await assertReaderReadUnchanged(
+        () => sessionCandidate(projectAdminLogin.session.token),
+        "active-without-org-admin",
+      );
+      const unknownSessionToken = `we_local_${randomBytes(32).toString("base64url")}`;
+      await assertReaderReadUnchanged(() => sessionCandidate(unknownSessionToken), "invalid");
+
+      await client.query("update public.auth_sessions set expires_at = $2 where id = $1", [
+        localSessionId,
+        new Date(sessionClock.getTime() - 1).toISOString(),
+      ]);
+      await assertReaderReadUnchanged(() => sessionCandidate(localAdminLogin.session.token), "expired");
+      await client.query("update public.auth_sessions set expires_at = $2 where id = $1", [
+        localSessionId,
+        localAdminLogin.session.expiresAt,
+      ]);
+
+      await client.query("update public.auth_sessions set revoked_at = $2 where id = $1", [
+        localSessionId,
+        sessionClock.toISOString(),
+      ]);
+      await assertReaderReadUnchanged(() => sessionCandidate(localAdminLogin.session.token), "revoked");
+      await client.query("update public.auth_sessions set revoked_at = null where id = $1", [localSessionId]);
+
+      await client.query("update public.users set is_active = false where id = $1", [principalId]);
+      await assertReaderReadUnchanged(() => sessionCandidate(localAdminLogin.session.token), "inactive");
+      await client.query("update public.users set is_active = true where id = $1", [principalId]);
+
+      await client.query("update public.user_role_bindings set role_id = 'software-user' where id = $1", [
+        `role-${principalId}`,
+      ]);
+      await assertReaderReadUnchanged(() => sessionCandidate(localAdminLogin.session.token), "active-without-org-admin");
+      await client.query("update public.user_role_bindings set role_id = 'admin' where id = $1", [
+        `role-${principalId}`,
+      ]);
+
+      await assertReaderReadUnchanged(async () => {
+        const sessionResolveClient = await sourceReaderPool.connect();
+        let localResolveFailureState: string | null = null;
+        try {
+          const defaultReadOnly = await sessionResolveClient.query<{ setting: string }>(
+            "select current_setting('default_transaction_read_only') as setting",
+          );
+          expect(defaultReadOnly.rows[0]?.setting).toBe("on");
+          await sessionResolveClient.query("set default_transaction_read_only = off");
+          const sessionResolveDatabase = createDatabase(sessionResolveClient);
+          try {
+            await createLocalAuthService(sessionResolveDatabase, {
+              now: () => sessionClock,
+            }).resolveSession(`Bearer ${localAdminLogin.session.token}`);
+          } catch (error) {
+            const code = (error as { code?: unknown }).code;
+            localResolveFailureState = typeof code === "string" ? code : "unknown";
+          }
+        } finally {
+          await sessionResolveClient.query("set default_transaction_read_only = on").catch(() => undefined);
+          sessionResolveClient.release();
+        }
+        return localResolveFailureState;
+      }, "42501");
+
+      const roleAttemptClient = await sourceReaderPool.connect();
+      let setRoleFailureState: string | null = null;
+      try {
+        try {
+          await roleAttemptClient.query("set role parameter_governance_writer_role");
+        } catch (error) {
+          const code = (error as { code?: unknown }).code;
+          setRoleFailureState = typeof code === "string" ? code : "unknown";
+        }
+      } finally {
+        roleAttemptClient.release();
+      }
+      expect(setRoleFailureState).toBe("42501");
+    } finally {
+      await client.query(
+        `revoke select (${sessionColumns.join(", ")}) on public.auth_sessions from ${sourceReaderRole}`,
+      );
+    }
+    expect((await captureBusinessFingerprint()) === businessRowsBeforeWrite).toBe(true);
+    expect((await captureSessionFingerprint()) === authSessionFingerprintBeforeRead).toBe(true);
+    expect((await captureArchiveFingerprint()) === archiveFingerprintBeforeRead).toBe(true);
+
+    const sourceReaderWriteClient = await sourceReaderPool.connect();
+    let deniedReaderWriteState: string | null = null;
+    try {
+      await sourceReaderWriteClient.query("set default_transaction_read_only = off");
+      await sourceReaderWriteClient.query("begin");
+      try {
+        await sourceReaderWriteClient.query("update public.parameter_modules set name = name where false");
+      } catch (error) {
+        const code = (error as { code?: unknown }).code;
+        deniedReaderWriteState = typeof code === "string" ? code : "unknown";
+      }
+      await sourceReaderWriteClient.query("rollback");
+    } finally {
+      await sourceReaderWriteClient.query("set default_transaction_read_only = on").catch(() => undefined);
+      sourceReaderWriteClient.release();
+    }
+    expect(deniedReaderWriteState).toBe("42501");
+
+    await client.query(`revoke select (username) on public.user_password_credentials from ${sourceReaderRole}`);
+    let revokedReadState: string | null = null;
+    try {
+      await provideModParameterCatalogComparisonCaseBatchV2({
+        database: sourceReaderDb,
+        pool: sourceReaderPool,
+        runId: runB.value.runId,
+        invocation,
+      });
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      revokedReadState = typeof code === "string" ? code : "unknown";
+    }
+    expect(revokedReadState).toBe("42501");
+    expect((await captureBusinessFingerprint()) === businessRowsBeforeWrite).toBe(true);
+    expect((await captureSessionFingerprint()) === authSessionFingerprintBeforeRead).toBe(true);
+    expect((await captureArchiveFingerprint()) === archiveFingerprintBeforeRead).toBe(true);
 
     const faultFunction = "parameter_catalog.test_fail_second_mod_d02_result_insert";
     const faultTrigger = "test_fail_second_mod_d02_result_insert";
@@ -582,7 +1056,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
       await expect(writeModParameterCatalogComparisonCasesV2(writerInput))
         .rejects.toThrow("controlled second MOD D02 result insert failure");
       expect(await readComparisonResidue()).toEqual({ cases: "0", results: "0" });
-      expect(await captureBusinessRows()).toEqual(businessRowsBeforeWrite);
+      expect((await captureBusinessFingerprint()) === businessRowsBeforeWrite).toBe(true);
     } finally {
       await client.query(`drop trigger if exists ${faultTrigger} on parameter_catalog.parameter_catalog_comparison_results`);
       await client.query(`drop function if exists ${faultFunction}()`);
@@ -622,7 +1096,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
     expect(persisted.rows.every((row) =>
       row.evidence?.result === "unexplained-difference" && row.evidence.expectedDifference === null,
     )).toBe(true);
-    expect(await captureBusinessRows()).toEqual(businessRowsBeforeWrite);
+    expect((await captureBusinessFingerprint()) === businessRowsBeforeWrite).toBe(true);
 
     const immutableRows = async () => {
       const rows = await client.query<{ comparison_case: unknown; result: unknown }>(
@@ -654,7 +1128,12 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
       .rejects.toThrow("result key is already bound to different evidence");
     expect(await immutableRows()).toEqual(immutableRowsBeforeSourceDrift);
   } finally {
+    await sourceReaderDatabase?.close().catch(() => undefined);
     await writerDatabase?.close().catch(() => undefined);
+    if (sourceReaderRoleCreated) {
+      await client.query(`drop owned by ${sourceReaderRole}`).catch(() => undefined);
+      await client.query(`drop role ${sourceReaderRole}`).catch(() => undefined);
+    }
     if (writerRoleCreated) {
       await client.query(`drop owned by ${writerRole}`).catch(() => undefined);
       await client.query(`drop role ${writerRole}`).catch(() => undefined);
