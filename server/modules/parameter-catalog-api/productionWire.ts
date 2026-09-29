@@ -34,9 +34,13 @@ import { createUsageQueries } from "../parameter-bindings/usage";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { Database } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import type { MappingQueryable } from "../catalog-cutover/mapping";
 import type { ObjectStore } from "../logs/objectStore";
-import { catalogRegistrationDtoSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import {
+  catalogDefinitionResponseSchema,
+  catalogRegistrationDtoSchema,
+} from "../contracts/dtoSchemas/parameterCatalog";
 
 import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
@@ -69,6 +73,7 @@ import type {
 import { registerCatalogLegacyRoutes } from "./legacy/routes";
 import type { LegacyCatalogOptions } from "./legacy/types";
 import { registerCatalogReadRoutes } from "./read/routes";
+import { handleCatalogRead } from "./read/handlers";
 import {
   createRegistrationProjectionFromQueries,
   createUsageProjectionFromQueries,
@@ -91,6 +96,37 @@ const UNAVAILABLE_RELEASE_ID = "catalog-unready";
 const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
 
 export type CatalogApiAuthResolver = (request: RouteRequest) => Promise<AuthContext> | AuthContext;
+
+/** The Knowledge writer uses the same authenticated Definition read as Catalog HTTP. */
+export async function readCatalogDefinitionForKnowledge(
+  db: Database,
+  auth: AuthContext,
+  definitionId: string,
+  requestId = "knowledge-definition-reference",
+) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new ApiError("CONFLICT", "Catalog read is unavailable.", { reason: "catalog-unavailable" });
+  const response = await handleCatalogRead(
+    createReadPorts(pool, async () => auth, db, { env: process.env }),
+    {
+      method: "GET",
+      path: `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`,
+      params: {}, query: {}, headers: {}, requestId,
+    },
+  );
+  if (response.status === 404) throw new ApiError("NOT_FOUND", "Parameter definition was not found.");
+  if (response.status === 401 || response.status === 403) {
+    throw new ApiError("FORBIDDEN", "Parameter definition is not visible.");
+  }
+  if (response.status !== 200) {
+    throw new ApiError("CONFLICT", "Catalog definition read is unavailable.", {
+      reason: (response.body as { error?: { details?: { reason?: string } } }).error?.details?.reason ?? "catalog-unavailable",
+    });
+  }
+  const parsed = catalogDefinitionResponseSchema.safeParse(response.body);
+  if (!parsed.success) throw new ApiError("CONFLICT", "Catalog definition proof is invalid.", { reason: "catalog-proof-invalid" });
+  return parsed.data.item;
+}
 
 const unavailableRuntime: CatalogReadPorts["runtime"] = {
   async loadCurrentCatalog() {

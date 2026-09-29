@@ -82,6 +82,11 @@ export interface KnowledgeRepository {
    * (definition detail 相关知识; published-only, org-scoped server-side).
    */
   relatedToSpec(specId: string): Promise<{ items: KnowledgeSearchResult[] }>;
+  /** Published knowledge for an exact canonical Definition identity. */
+  relatedToDefinition(definitionId: string): Promise<{ items: KnowledgeSearchResult[] }>;
+  /** Add or remove only a verified canonical Definition reference. */
+  addDefinitionReference(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
+  removeDefinitionReference(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
   /** Add a structural definition reference (idempotent; entry-edit gated). */
   addParameterReference(entryId: string, specId: string): Promise<KnowledgeEntry>;
   /** Remove a structural definition reference (entry-edit gated). */

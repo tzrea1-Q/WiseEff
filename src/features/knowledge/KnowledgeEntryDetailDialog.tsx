@@ -23,8 +23,8 @@ export type KnowledgeEntryDetailDialogProps = {
   onArchive: (entry: KnowledgeEntry) => Promise<void>;
   onRestore: (entry: KnowledgeEntry) => Promise<void>;
   onDownloadFile: (entry: KnowledgeEntry) => Promise<void>;
-  /** Deep link into the definition surface (/parameter-admin?spec=…). */
-  onOpenParameterSpec?: (specId: string) => void;
+  /** Deep link only for an exact canonical Definition identity. */
+  onOpenDefinition?: (definitionId: string) => void;
   /** Router navigation for distillation source links; absent hides them. */
   onNavigate?: (path: string) => void;
   onClose: () => void;
@@ -58,7 +58,7 @@ export function KnowledgeEntryDetailDialog({
   onArchive,
   onRestore,
   onDownloadFile,
-  onOpenParameterSpec,
+  onOpenDefinition,
   onNavigate,
   onClose
 }: KnowledgeEntryDetailDialogProps) {
@@ -114,7 +114,7 @@ export function KnowledgeEntryDetailDialog({
                 <div className="mt-2" aria-label="关联参数定义" data-testid="knowledge-parameter-references">
                   <KnowledgeParameterReferenceChips
                     references={entry.parameterReferences}
-                    onOpenSpec={onOpenParameterSpec}
+                    onOpenDefinition={onOpenDefinition}
                   />
                 </div>
               ) : null}

@@ -30,6 +30,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 
 import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -41,6 +42,7 @@ export type CatalogOrganizationSurfaceProps = {
   onAnchorChange: (href: string, mode: "push" | "replace") => void;
   organizationId?: string;
   currentPersonId: string;
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
 };
 
 export function CatalogOrganizationSurface({
@@ -52,7 +54,8 @@ export function CatalogOrganizationSurface({
   search,
   onAnchorChange,
   organizationId,
-  currentPersonId
+  currentPersonId,
+  relatedKnowledge
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
   const anchor = parseCatalogUrlAnchor(search);
@@ -196,6 +199,7 @@ export function CatalogOrganizationSurface({
             catalog={catalog}
             catalogReleaseId={catalogReleaseId}
             definition={definition}
+            relatedKnowledge={relatedKnowledge}
             subjects={catalogSubjects}
             createIdempotencyKey={createGovernanceIdempotencyKey}
             // The catalog refreshes when the dialog closes, so a written result

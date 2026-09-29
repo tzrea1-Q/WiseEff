@@ -23,28 +23,41 @@ export type KnowledgeFileDto = {
   updatedAt: string;
 };
 
-/**
- * Structural reference from a knowledge entry to a parameter definition.
- * Binds to `parameter_specs.id` — the stable surrogate (ADR-0017) — so identity
- * corrections never break it; the lifecycle is reported honestly so deprecated
- * definitions (ADR-0011 soft retirement) render an explicit badge while the
- * reference survives.
- */
-export type KnowledgeParameterReferenceDto = {
+type KnowledgeParameterReferenceFields = {
   specId: string;
-  propertyKey: string;
+  definitionId: string;
+  propertyKey: string | null;
   displayName: string | null;
-  /** Attribution-subject display name (the module humans know the definition by). */
+  /** Catalog Subject's canonical name for current definitions. */
   driverModule: string | null;
-  lifecycle: "draft" | "active" | "deprecated";
+  lifecycle: "draft" | "active" | "deprecated" | "retired" | null;
   createdByUserId: string | null;
   createdAt: string;
+};
+
+/** Canonical references bind to Catalog Definition identity, never a legacy Spec id. */
+export type KnowledgeDefinitionReferenceDto = Omit<KnowledgeParameterReferenceFields, "specId" | "lifecycle"> & {
+  kind: "definition";
+  lifecycle: "active" | "deprecated" | "retired" | null;
+  availability: "current" | "unavailable";
+  specId?: never;
+};
+
+/** Old Spec references remain explicit history and keep their S7 mapping facts. */
+export type KnowledgeLegacySpecReferenceDto = Omit<KnowledgeParameterReferenceFields, "definitionId" | "lifecycle"> & {
+  kind: "legacy-spec";
+  lifecycle: "draft" | "active" | "deprecated";
+  definitionId?: never;
   /** Exact S7-MAP historical target; never a silent retarget onto draft-current. */
   historicalOnly?: boolean;
   mappingStatus?: "current" | "historical" | "orphaned" | "archived" | "unmapped";
   canonicalTargetKind?: string | null;
   canonicalTargetId?: string | null;
 };
+
+export type KnowledgeParameterReferenceDto =
+  | KnowledgeDefinitionReferenceDto
+  | KnowledgeLegacySpecReferenceDto;
 
 export type KnowledgeEntryDto = {
   id: string;
@@ -70,7 +83,7 @@ export type KnowledgeEntryDto = {
   contentMarkdown: string | null;
   /** Current file metadata for file-form entries. */
   file: KnowledgeFileDto | null;
-  /** Structural parameter-definition references (deferred roadmap item 2). */
+  /** Canonical Definition links plus immutable-shape legacy Spec history. */
   parameterReferences: KnowledgeParameterReferenceDto[];
 };
 

@@ -67,6 +67,7 @@ export type ParameterAdminNextPageProps = {
   onNewProject?: () => void;
   /** Published knowledge referencing a definition (相关知识); absent without knowledge:view. */
   relatedKnowledge?: SpecRelatedKnowledgeSource;
+  definitionRelatedKnowledge?: SpecRelatedKnowledgeSource;
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
   sessionPermissions?: readonly string[] | null;
@@ -96,6 +97,7 @@ export function ParameterAdminNextPage({
   state,
   onNewProject,
   relatedKnowledge,
+  definitionRelatedKnowledge,
   runtime,
   catalogOrganizationId,
   sessionPermissions
@@ -162,6 +164,7 @@ export function ParameterAdminNextPage({
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
         currentPersonId={state?.currentUserId ?? ""}
+        relatedKnowledge={definitionRelatedKnowledge}
       />
     ) : undefined;
   const isConfigurationWorkbenchRoute =

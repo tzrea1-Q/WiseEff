@@ -840,6 +840,27 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "knowledge.relatedToDefinition",
+    method: "GET",
+    path: "/api/v1/knowledge/related-to-definition",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.addDefinitionReference",
+    method: "PUT",
+    path: "/api/v1/knowledge/entries/:entryId/definition-references/:definitionId",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.removeDefinitionReference",
+    method: "DELETE",
+    path: "/api/v1/knowledge/entries/:entryId/definition-references/:definitionId",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
     id: "knowledge.addParameterReference",
     method: "PUT",
     path: "/api/v1/knowledge/entries/:entryId/parameter-references/:specId",

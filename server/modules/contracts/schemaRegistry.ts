@@ -1287,16 +1287,35 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeRelatedToSpecResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
-  "knowledge.addParameterReference": {
-    summary:
-      "Add a structural parameter-definition reference to a knowledge entry (idempotent; entry owner with knowledge:edit, or knowledge:manage; the reference binds to the parameter_specs.id surrogate and survives identity corrections and deprecation)",
+  "knowledge.relatedToDefinition": {
+    summary: "Published knowledge structurally referencing one exact visible Catalog Definition (knowledge:view and parameter:view; published-only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeRelatedToSpecResponse",
+    requestParameters: [{ name: "definitionId", in: "query", required: true }, { name: "limit", in: "query", required: false }],
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.addDefinitionReference": {
+    summary: "Idempotently add a verified Catalog Definition reference to a knowledge entry (entry owner or knowledge:manage, plus parameter:view; audited)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.removeDefinitionReference": {
+    summary: "Idempotently remove an exact Catalog Definition reference from a knowledge entry (entry owner or knowledge:manage; audited)",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "knowledge.addParameterReference": {
+    summary:
+      "Replay an existing historical Spec reference; new legacy Spec references are rejected with 409 (entry owner with knowledge:edit, or knowledge:manage)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "knowledge.removeParameterReference": {
     summary:
-      "Remove a structural parameter-definition reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
+      "Remove an existing historical Spec reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }

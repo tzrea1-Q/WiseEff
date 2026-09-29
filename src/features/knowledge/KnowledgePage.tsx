@@ -25,7 +25,7 @@ import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
 import {
   KnowledgeEntryEditorDialog,
   type KnowledgeEditorSubmit,
-  type KnowledgeSpecPickerOption
+  type KnowledgeDefinitionPickerPage
 } from "./KnowledgeEntryEditorDialog";
 import { KnowledgeFileUploadDialog, type KnowledgeFileUploadSubmit } from "./KnowledgeFileUploadDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
@@ -37,13 +37,10 @@ export type KnowledgePageProps = {
   askXiaozeEnabled?: boolean;
   /** Deep-linked entry id (e.g. from a Xiaoze citation /knowledge?entryId=…). */
   initialEntryId?: string | null;
-  /**
-   * Definition search for the reference picker (parameter-specs read API);
-   * absent (no `parameter:view` / no topology adapter) hides the picker.
-   */
-  searchParameterSpecs?: (q: string) => Promise<KnowledgeSpecPickerOption[]>;
-  /** Deep link into the definition surface (/parameter-admin?spec=…). */
-  onOpenParameterSpec?: (specId: string) => void;
+  /** Authenticated CatalogRead search; absent without parameter view permission. */
+  searchParameterDefinitions?: (q: string, cursor?: string, catalogReleaseId?: string) => Promise<KnowledgeDefinitionPickerPage>;
+  /** Deep link to an exact canonical Definition, never a historical Spec ID. */
+  onOpenDefinition?: (definitionId: string) => void;
   /** Router navigation for distillation source links (log / reload run). */
   onNavigate?: (path: string) => void;
 };
@@ -62,8 +59,8 @@ export function KnowledgePage({
   capability,
   askXiaozeEnabled = false,
   initialEntryId = null,
-  searchParameterSpecs,
-  onOpenParameterSpec,
+  searchParameterDefinitions,
+  onOpenDefinition,
   onNavigate
 }: KnowledgePageProps) {
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
@@ -299,13 +296,15 @@ export function KnowledgePage({
     setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     return updated.parameterReferences;
   };
-  const parameterReferencePicker = searchParameterSpecs
+  const parameterReferencePicker = searchParameterDefinitions
     ? {
-        search: searchParameterSpecs,
-        onAdd: async (entryId: string, specId: string) =>
-          applyReferenceUpdate(await repository.addParameterReference(entryId, specId)),
-        onRemove: async (entryId: string, specId: string) =>
-          applyReferenceUpdate(await repository.removeParameterReference(entryId, specId))
+        search: searchParameterDefinitions,
+        onAdd: async (entryId: string, definitionId: string) =>
+          applyReferenceUpdate(await repository.addDefinitionReference(entryId, definitionId)),
+        onRemove: async (entryId: string, reference: KnowledgeEntry["parameterReferences"][number]) =>
+          applyReferenceUpdate(await (reference.kind === "definition"
+            ? repository.removeDefinitionReference(entryId, reference.definitionId)
+            : repository.removeParameterReference(entryId, reference.specId)))
       }
     : undefined;
 
@@ -483,7 +482,7 @@ export function KnowledgePage({
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onDownloadFile={handleDownload}
-        onOpenParameterSpec={onOpenParameterSpec}
+        onOpenDefinition={onOpenDefinition}
         onNavigate={onNavigate}
         onClose={() => setSelectedId(null)}
       />

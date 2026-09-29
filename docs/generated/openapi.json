@@ -12056,10 +12056,164 @@
         }
       }
     },
+    "/api/v1/knowledge/related-to-definition": {
+      "get": {
+        "operationId": "knowledge.relatedToDefinition",
+        "summary": "Published knowledge structurally referencing one exact visible Catalog Definition (knowledge:view and parameter:view; published-only)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "definitionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeRelatedToSpecResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/definition-references/{definitionId}": {
+      "put": {
+        "operationId": "knowledge.addDefinitionReference",
+        "summary": "Idempotently add a verified Catalog Definition reference to a knowledge entry (entry owner or knowledge:manage, plus parameter:view; audited)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "definitionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "knowledge.removeDefinitionReference",
+        "summary": "Idempotently remove an exact Catalog Definition reference from a knowledge entry (entry owner or knowledge:manage; audited)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "definitionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/entries/{entryId}/parameter-references/{specId}": {
       "put": {
         "operationId": "knowledge.addParameterReference",
-        "summary": "Add a structural parameter-definition reference to a knowledge entry (idempotent; entry owner with knowledge:edit, or knowledge:manage; the reference binds to the parameter_specs.id surrogate and survives identity corrections and deprecation)",
+        "summary": "Replay an existing historical Spec reference; new legacy Spec references are rejected with 409 (entry owner with knowledge:edit, or knowledge:manage)",
         "tags": [
           "knowledge"
         ],
@@ -12101,6 +12255,9 @@
           "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -12108,7 +12265,7 @@
       },
       "delete": {
         "operationId": "knowledge.removeParameterReference",
-        "summary": "Remove a structural parameter-definition reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
+        "summary": "Remove an existing historical Spec reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
         "tags": [
           "knowledge"
         ],

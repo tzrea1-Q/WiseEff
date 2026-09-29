@@ -1,5 +1,6 @@
 import type { AuthContext } from "../auth/types";
-import type { Queryable } from "../../shared/database/client";
+import { isRootDatabase, type Queryable } from "../../shared/database/client";
+import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
 import type {
   InsertKnowledgeEntryInput,
@@ -186,7 +187,8 @@ async function loadEntryExtras(db: Queryable, auth: AuthContext, rows: Knowledge
   const referencesByEntryId = await loadParameterReferencesByEntryIds(
     db,
     auth,
-    rows.map((row) => row.id)
+    rows.map((row) => row.id),
+    isRootDatabase(db) ? (definitionId) => readCatalogDefinitionForKnowledge(db, auth, definitionId) : undefined
   );
 
   return rows.map((row) =>
