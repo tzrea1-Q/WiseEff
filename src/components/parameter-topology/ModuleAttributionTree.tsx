@@ -60,6 +60,11 @@ export type ModuleAttributionTreeProps = {
       defaultBusinessCategoryId: string | null;
     }
   >;
+  /** Canonical UI mode suppresses legacy placement actions for canonical-only groups. */
+  canonicalModeEnabled?: boolean;
+  /** Whether the canonical subject placement panel is available on this page. */
+  canonicalPlacementAvailable?: boolean;
+  onOpenCanonicalPlacement?: () => void;
   /** When set, 「查看」on the unclassified root prefers opening the queue. */
   hasUnclassifiedQueue?: boolean;
   onOpenUnclassifiedQueue?: () => void;
@@ -354,6 +359,9 @@ export function ModuleAttributionTree({
   driverCoverage,
   driverCoverageDetails,
   driverRegistrationByModuleId,
+  canonicalModeEnabled = false,
+  canonicalPlacementAvailable = false,
+  onOpenCanonicalPlacement,
   hasUnclassifiedQueue = false,
   onOpenUnclassifiedQueue,
   onUpdateModule,
@@ -432,6 +440,9 @@ export function ModuleAttributionTree({
     editingModule?.kind === "driver-group"
       ? driverRegistrationByModuleId?.get(editingModule.id)
       : undefined;
+  const hasHistoricalDriverRegistration =
+    editingDriverRegistration?.driverNature != null ||
+    editingDriverRegistration?.instanceCardinality != null;
 
   const toggleExpanded = (moduleId: string) => {
     setExpandedIds((current) => {
@@ -740,7 +751,9 @@ export function ModuleAttributionTree({
             editingDriverRegistration?.defaultBusinessCategoryId ?? null
           }
           onUpdateDefaultBusinessCategory={
-            editingModule.kind === "driver-group" && onUpdateDriverRegistrationDefault
+            editingModule.kind === "driver-group" &&
+            onUpdateDriverRegistrationDefault &&
+            (!canonicalModeEnabled || hasHistoricalDriverRegistration)
               ? (defaultBusinessCategoryId) =>
                   void onUpdateDriverRegistrationDefault(
                     editingModule.id,
@@ -749,10 +762,24 @@ export function ModuleAttributionTree({
               : undefined
           }
           onReplayPlacement={
-            editingModule.kind === "driver-group" && onReplayDriverPlacement
+            editingModule.kind === "driver-group" &&
+            onReplayDriverPlacement &&
+            (!canonicalModeEnabled || hasHistoricalDriverRegistration)
               ? () => onReplayDriverPlacement(editingModule.id)
               : undefined
           }
+          onManageCanonicalPlacement={
+            editingModule.kind === "driver-group" &&
+            canonicalPlacementAvailable &&
+            onOpenCanonicalPlacement
+              ? () => {
+                  setEditingModuleId(null);
+                  setDialogMutationError(null);
+                  onOpenCanonicalPlacement();
+                }
+              : undefined
+          }
+          legacyControlsAreHistorical={canonicalModeEnabled}
           onRemoveCompatibleMapping={
             editingModule.kind === "driver-group" && onRemoveMapping
               ? (mappingId) => void onRemoveMapping(mappingId)

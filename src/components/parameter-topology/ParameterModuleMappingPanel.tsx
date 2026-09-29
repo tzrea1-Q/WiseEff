@@ -725,6 +725,21 @@ export function ParameterModuleMappingPanel({
             driverCoverage={driverCoverage}
             driverCoverageDetails={driverCoverageDetails}
             driverRegistrationByModuleId={driverRegistrationByModuleId}
+            canonicalModeEnabled={canonicalEnabled}
+            canonicalPlacementAvailable={Boolean(
+              canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId
+            )}
+            onOpenCanonicalPlacement={
+              canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId
+                ? () => {
+                    window.requestAnimationFrame(() => {
+                      const panel = document.getElementById("canonical-subject-placement");
+                      panel?.scrollIntoView({ block: "start" });
+                      panel?.focus({ preventScroll: true });
+                    });
+                  }
+                : undefined
+            }
             canAdmin={canAdmin}
             busy={busy}
             hasUnclassifiedQueue={legacyQueueVisible}

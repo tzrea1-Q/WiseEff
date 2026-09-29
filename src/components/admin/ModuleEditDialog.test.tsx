@@ -245,6 +245,30 @@ describe("ModuleEditDialog", () => {
     expect(await within(dialog).findByText(/回放完成：移动 1/)).toBeInTheDocument();
   });
 
+  it("labels legacy placement controls and offers canonical placement separately", () => {
+    const onManageCanonicalPlacement = vi.fn();
+    render(
+      <ModuleEditDialog
+        module={{ name: "SC8562", description: "", scope: "", kind: "driver-group" }}
+        existingNames={[]}
+        canAdmin
+        onUpdateDefaultBusinessCategory={vi.fn()}
+        onReplayPlacement={vi.fn()}
+        onManageCanonicalPlacement={onManageCanonicalPlacement}
+        legacyControlsAreHistorical
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
+    const historical = within(dialog).getByRole("region", { name: "历史驱动登记" });
+    expect(within(historical).getByText("以下控件只作用于旧版驱动登记，不会修改规范主体归属。")).toBeInTheDocument();
+    const canonical = within(dialog).getByRole("region", { name: "规范主体放置" });
+    fireEvent.click(within(canonical).getByRole("button", { name: "管理规范主体与归属" }));
+    expect(onManageCanonicalPlacement).toHaveBeenCalledOnce();
+  });
+
   it("previews overlay retirement impact and gates no-successor coverage loss", async () => {
     const onDeprecateOverlaySchema = vi.fn().mockResolvedValue(undefined);
     render(
