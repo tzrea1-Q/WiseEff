@@ -21,9 +21,9 @@ export const S2_SCH_CONTRACT_FINGERPRINT =
 export const S2_SCH_0171_FINGERPRINT =
   "40db30e5fecec0de3a34e6ca34db8aaf51e70c3c57fe7154dd78b2e1f827df59";
 
-/** Current Catalog schema through 0178; 0177/0178 change public tables, so the measured Catalog fingerprint is unchanged. */
+/** Current Catalog schema through 0179; 0177/0178 change public tables, while 0179 binds comparison rows. */
 export const S2_SCH_LIVE_FINGERPRINT =
-  "6093c85dff61c592bfa48f9d19c38fa74c737418307f70062f68a17959a186ce";
+  "79320ab6d68c846b7e75ff9e2627fe80b1abcb4d0e700fc4ca7848573580a981";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

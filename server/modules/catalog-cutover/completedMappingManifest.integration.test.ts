@@ -203,6 +203,7 @@ it("exports a verified completed mapping manifest as organization-bound projecti
       public.user_role_bindings, public.user_password_credentials, public.roles,
       public.projects, parameter_catalog.parameter_catalog_cutover_runs,
       parameter_catalog.parameter_catalog_cutover_checkpoints,
+      parameter_catalog.parameter_catalog_cutover_events,
       parameter_catalog.catalog_releases, parameter_catalog.legacy_mapping_versions,
       parameter_catalog.legacy_identities to ${localReadRole}`);
     const localUrl = new URL(database.url);

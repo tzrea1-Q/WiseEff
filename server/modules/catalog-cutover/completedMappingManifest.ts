@@ -190,6 +190,18 @@ const readInSnapshot = async (
   const p5 = byPhase.get("P5")!;
   const p6 = byPhase.get("P6")!;
   const p7 = byPhase.get("P7")!;
+  const p7CheckpointEvents = await client.query<{ checkpoint_digest: string | null }>(
+    `select payload->>'checkpointDigest' as checkpoint_digest
+       from parameter_catalog.parameter_catalog_cutover_events
+      where cutover_run_id = $1 and phase = 'P7' and event_kind = 'checkpoint'`,
+    [run.id],
+  );
+  if (
+    p7CheckpointEvents.rows.length === 0 ||
+    p7CheckpointEvents.rows.some((event) => event.checkpoint_digest !== p7.checkpointDigest)
+  ) {
+    return invalid("P7 checkpoint digest differs from immutable checkpoint events");
+  }
   const manifest = parseMappingManifestV2(p7.payload.mappingManifest);
   if (!manifest) return invalid("P7 mapping manifest is missing or malformed");
   if (
