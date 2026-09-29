@@ -3,17 +3,37 @@ import type pg from "pg";
 
 import type { AuthContext } from "../auth/types";
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime/pinCache";
-import { CatalogSubjectId, type CatalogReleasePin } from "../parameter-catalog-contract";
 import {
+  CatalogReleaseDigest,
+  CatalogReleaseId,
+  CatalogSubjectId,
+  type CatalogReleasePin,
+} from "../parameter-catalog-contract";
+import {
+  checksumCanonicalBytes,
+  serializeCanonical,
+  COMPARISON_CASE_CONTEXT_V2_CONTRACT_VERSION,
+  COMPARISON_CASE_CONTRIBUTION_V2_CONTRACT_VERSION,
+  comparisonCaseIdV2For,
+  type ComparisonCaseBatchV2,
+  type ComparisonCaseContributionV2,
+  type ComparisonCaseInventoryV2,
+  type ComparisonCaseSelectionV2,
+  type QueryObservation,
+} from "../release-verification/comparison/corpusContributionSchema";
+import {
+  readCompletedModComparisonManifestForComparison,
   readPinnedCatalogSubjectsForComparison,
   readPinnedGovernanceRegistrationsForComparison,
+  type ComparisonCatalogSubject,
   type ComparisonGovernanceRegistration,
+  type CompletedMappingManifest,
 } from "../parameter-catalog-api/productionWire";
 import { handleLegacyCatalogRequest } from "../parameter-catalog-api/legacy";
 import type { LegacyCatalogOptions } from "../parameter-catalog-api/legacy";
 import { routeManifest } from "../contracts/routeManifest";
-import type { Database } from "../../shared/database/client";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { getRootPostgresPool, type Database } from "../../shared/database/client";
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import {
   getParameterModuleRegistry,
   listDriverRegistry,
@@ -634,5 +654,343 @@ export async function provideModParameterCatalogComparisonContribution(
   return {
     ...unsigned,
     checksum: checksumModComparisonBytes(bytes),
+  };
+}
+
+export type ModComparisonCaseBatchV2Input = {
+  readonly database: Database;
+  readonly pool: pg.Pool;
+  readonly runId: string;
+  readonly invocation: TrustedInvocationContext;
+};
+
+const v2IdentityKey = (input: {
+  readonly sourceKind: string;
+  readonly sourceId: string;
+  readonly ownerScopeKind: string;
+  readonly ownerScopeId: string;
+}): string => `${input.sourceKind}\0${input.sourceId}\0${input.ownerScopeKind}\0${input.ownerScopeId}`;
+
+const makeModD02CaseV2 = (input: {
+  readonly manifest: CompletedMappingManifest;
+  readonly inventory: readonly ComparisonCaseInventoryV2[];
+  readonly sourceInventoryChecksum: string;
+  readonly selection: ComparisonCaseSelectionV2 | null;
+  readonly sourceKind: string;
+  readonly sourceId: string;
+  readonly ownerScopeId: string;
+  readonly legacyObservation: QueryObservation;
+  readonly canonicalObservation: QueryObservation;
+  readonly forcedFailure?: string;
+}): ComparisonCaseContributionV2 => {
+  const protectedReference = { kind: input.sourceKind, id: input.sourceId };
+  let result: ComparisonCaseContributionV2["result"];
+  let expectedDifference: ComparisonCaseContributionV2["expectedDifference"] = null;
+  const canonicalSubject = input.canonicalObservation.status === "value"
+    ? input.canonicalObservation.value.subject
+    : undefined;
+  const canonicalSubjectId = canonicalSubject && typeof canonicalSubject === "object" &&
+      typeof (canonicalSubject as { id?: unknown }).id === "string"
+    ? (canonicalSubject as { id: string }).id
+    : undefined;
+  const selectedTargetMatches = input.selection?.mappingVersion.targetKind === "catalog-subject" &&
+    input.selection.mappingVersion.targetId !== null &&
+    input.selection.mappingVersion.targetId === canonicalSubjectId;
+  const archivedSelection = input.selection?.disposition === "archived" &&
+    (input.selection.rClass === "R1" || input.selection.rClass === "R10") &&
+    input.selection.mappingVersion.rClass === input.selection.rClass &&
+    typeof input.selection.mappingVersion.archiveId === "string" &&
+    input.selection.mappingVersion.archiveId.length > 0 &&
+    input.selection.mappingVersion.targetKind === null &&
+    input.selection.mappingVersion.targetId === null;
+  const observationsEqual = input.legacyObservation.status === "value" &&
+    input.canonicalObservation.status === "value" &&
+    serializeCanonical(input.legacyObservation.value).equals(
+      serializeCanonical(input.canonicalObservation.value),
+    );
+  const unqueryableReason = input.forcedFailure ??
+    (!input.selection ? "completed-manifest-selection-missing" :
+      input.legacyObservation.status === "query-failure" ? input.legacyObservation.detail :
+        input.canonicalObservation.status === "query-failure" ? input.canonicalObservation.detail :
+          !canonicalSubjectId ? "canonical-subject-observation-missing" :
+            !selectedTargetMatches && !archivedSelection
+              ? "selected-mapping-does-not-support-mod-d02-comparison"
+              : null);
+  if (unqueryableReason) {
+    result = "unqueryable/protected-reference-missing";
+  } else if (observationsEqual) {
+    result = "exact-equivalent";
+  } else if (selectedTargetMatches) {
+    result = "declared-expected-difference";
+    expectedDifference = {
+      rClass: input.selection!.rClass,
+      mappingVersionId: input.selection!.mappingVersion.id,
+      typedTarget: { kind: "catalog-subject", id: canonicalSubjectId! },
+      ruleId: "PCAT-CMP-D02-SUBJECT-IDENTITY",
+      planPin: input.manifest.planDigest,
+    };
+  } else if (archivedSelection) {
+    // P7 proves this selected version and Archive, but that evidence does not
+    // prove a D02 Subject target or an expected-difference rule.
+    result = "unexplained-difference";
+  } else {
+    result = "unqueryable/protected-reference-missing";
+  }
+  const caseId = comparisonCaseIdV2For({
+    selectionRunId: input.manifest.selectionRunId,
+    phase: "pre-activation",
+    family: "MOD",
+    comparisonId: "PCAT-CMP-D02-SUBJECT-IDENTITY",
+    protectedReference,
+    ownerScopeKind: "organization",
+    ownerScopeId: input.ownerScopeId,
+    legacyIdentityId: input.selection?.legacyIdentityId ?? null,
+  });
+  const unsigned: Omit<ComparisonCaseContributionV2, "checksum"> = {
+    contractVersion: COMPARISON_CASE_CONTRIBUTION_V2_CONTRACT_VERSION,
+    family: "MOD",
+    caseId,
+    comparisonId: "PCAT-CMP-D02-SUBJECT-IDENTITY",
+    protectedReference,
+    protectedReferenceOwnerScopeKind: "organization",
+    protectedReferenceOwnerScopeId: input.ownerScopeId,
+    legacyObservation: input.legacyObservation,
+    canonicalObservation: input.canonicalObservation,
+    result,
+    expectedDifference,
+    unqueryableReason: result === "unqueryable/protected-reference-missing" ? unqueryableReason : null,
+    context: {
+      contractVersion: COMPARISON_CASE_CONTEXT_V2_CONTRACT_VERSION,
+      phase: "pre-activation",
+      selectionRunId: input.manifest.selectionRunId,
+      selectionPlanDigest: input.manifest.planDigest,
+      selectionTargetArtifactSha: input.manifest.targetArtifactSha,
+      selectionCatalogReleaseId: input.manifest.catalogRelease.id,
+      selectionCatalogReleaseDigest: input.manifest.catalogRelease.digest,
+      selectionManifestDigest: input.manifest.fullRunDigest,
+      selectionP7CheckpointDigest: input.manifest.p7CheckpointDigest,
+      selectionProjectionDigest: input.manifest.projection.digest,
+      selectionProjectionCoverage: input.manifest.projection.coverage,
+      selectionProjectionCount: input.manifest.projection.selectionCount,
+      selection: input.selection,
+      sourceInventoryCount: input.inventory.length,
+      sourceInventoryChecksum: input.sourceInventoryChecksum,
+    },
+  };
+  return {
+    ...unsigned,
+    checksum: checksumCanonicalBytes(serializeCanonical(unsigned)),
+  };
+};
+
+/** Real, organization-scoped MOD D02 inventory bound to a persisted completed-run selection. */
+export async function provideModParameterCatalogComparisonCaseBatchV2(
+  input: ModComparisonCaseBatchV2Input,
+): Promise<ComparisonCaseBatchV2> {
+  if (getRootPostgresPool(input.database) !== input.pool) {
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: database and pool are not the same root connection`);
+  }
+  if (!input.runId) {
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: run id is required`);
+  }
+  const scope = await readCompletedModComparisonManifestForComparison(input);
+  const { auth, manifest } = scope;
+  const organizationId = auth.organization.id;
+  const principalId = auth.user.id;
+  const expectedPin: CatalogReleasePin = {
+    id: CatalogReleaseId(manifest.catalogRelease.id),
+    digest: CatalogReleaseDigest(manifest.catalogRelease.digest),
+  };
+
+  const registry = await getParameterModuleRegistry(input.database, auth);
+  const modules = [...registry.item.modules].sort((left, right) =>
+    compareText(left.id, right.id) || compareText(left.kind, right.kind));
+  const inventory: ComparisonCaseInventoryV2[] = modules.map((module) => ({
+    kind: "parameter-module",
+    id: module.id,
+    ownerScopeKind: "organization",
+    ownerScopeId: organizationId,
+  }));
+  const inventoryBytes = serializeCanonical(inventory);
+  const sourceInventoryChecksum = checksumCanonicalBytes(inventoryBytes);
+  const modSelections = manifest.projection.selections
+    .filter((selection) => selection.sourceKind === "parameter-module")
+    .sort((left, right) => compareText(left.legacyIdentityId, right.legacyIdentityId));
+  const selectionKeys = new Map<string, typeof modSelections>();
+  for (const selection of modSelections) {
+    const key = v2IdentityKey(selection);
+    const existing = selectionKeys.get(key) ?? [];
+    selectionKeys.set(key, [...existing, selection]);
+  }
+
+  let registrations: Awaited<ReturnType<typeof readPinnedGovernanceRegistrationsForComparison>>;
+  try {
+    registrations = await readPinnedGovernanceRegistrationsForComparison(
+      input.pool,
+      [organizationId],
+      expectedPin,
+      principalId,
+    );
+  } catch (error) {
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: scoped Governance read failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
+  const registrationsByModule = new Map<string, ComparisonGovernanceRegistration[]>();
+  for (const registration of registrations.get(organizationId) ?? []) {
+    const moduleId = registration.placement.moduleId;
+    if (!moduleId) continue;
+    const existing = registrationsByModule.get(moduleId) ?? [];
+    registrationsByModule.set(moduleId, [...existing, registration]);
+  }
+  const subjectIds = [...new Set(modules.flatMap((module) =>
+    (registrationsByModule.get(module.id) ?? [])
+      .filter((registration) => registration.placement.moduleId === module.id)
+      .map((registration) => CatalogSubjectId(registration.subjectId)),
+  ))];
+  let subjects = new Map<string, ReadonlyMap<string, ComparisonCatalogSubject | null>>();
+  if (subjectIds.length > 0) {
+    try {
+      subjects = await readPinnedCatalogSubjectsForComparison(input.pool, input.database, [{
+        organizationId,
+        auth,
+        subjectIds,
+      }], expectedPin);
+    } catch (error) {
+      throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: scoped Subject read failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+  }
+  const subjectRows = subjects.get(organizationId);
+  const cases: ComparisonCaseContributionV2[] = [];
+  const observedModuleKeys = new Set<string>();
+  for (const module of modules) {
+    const source = { sourceKind: "parameter-module", sourceId: module.id,
+      ownerScopeKind: "organization", ownerScopeId: organizationId };
+    const key = v2IdentityKey(source);
+    observedModuleKeys.add(key);
+    const selections = selectionKeys.get(key) ?? [];
+    const legacyObservation: QueryObservation = {
+      status: "value",
+      value: {
+        id: module.id,
+        kind: module.kind,
+        origin: module.origin,
+        parentId: module.parentId,
+        attributionSubjectId: module.attributionSubjectId,
+        sourceKey: module.sourceKey,
+      },
+    };
+    const linked = registrationsByModule.get(module.id) ?? [];
+    const registration = linked.length === 1 ? linked[0] : undefined;
+    const subject = registration ? subjectRows?.get(registration.subjectId) : undefined;
+    let canonicalObservation: QueryObservation;
+    if (linked.length !== 1) {
+      canonicalObservation = {
+        status: "query-failure",
+        code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: linked.length === 0 ? "no-exact-subject-association" : "multiple-subject-associations-for-module",
+      };
+    } else if (!subjectRows?.has(registration!.subjectId)) {
+      canonicalObservation = { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: "canonical-subject-response-missing" };
+    } else if (!subject || subject.id !== registration!.subjectId) {
+      canonicalObservation = { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: "canonical-subject-not-published" };
+    } else if (registration!.status !== "active") {
+      canonicalObservation = { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: "subject-registration-not-active" };
+    } else if (subject.membership.lifecycle !== "active") {
+      canonicalObservation = { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: "canonical-subject-not-active" };
+    } else {
+      const expectedKind = module.kind === "driver-group" ? "driver"
+        : module.kind === "node-type" ? "node-type" : null;
+      if (!expectedKind || expectedKind !== subject.kind) {
+        canonicalObservation = { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+          detail: "canonical-subject-kind-mismatch" };
+      } else {
+      canonicalObservation = {
+        status: "value",
+        value: {
+          catalogReleaseId: expectedPin.id,
+          catalogReleaseDigest: expectedPin.digest,
+          organizationId,
+          association: { registrationId: registration!.id,
+            placementId: registration!.placement.id, moduleId: module.id,
+            registrationStatus: registration!.status, registrationMethod: registration!.method },
+          subject: {
+            id: subject.id,
+            type: subject.kind,
+            canonicalName: subject.canonicalKey,
+            selector: subject.membership.selector,
+            lifecycle: subject.membership.lifecycle,
+            membershipReleaseId: subject.membership.release.id,
+          },
+        },
+      };
+      }
+    }
+    if (selections.length === 0) {
+      cases.push(makeModD02CaseV2({
+        manifest, inventory, sourceInventoryChecksum,
+        selection: null,
+        sourceKind: source.sourceKind,
+        sourceId: source.sourceId,
+        ownerScopeId: organizationId,
+        legacyObservation,
+        canonicalObservation,
+        forcedFailure: "completed-manifest-selection-missing",
+      }));
+      continue;
+    }
+    for (const selection of selections) {
+      cases.push(makeModD02CaseV2({
+        manifest, inventory, sourceInventoryChecksum,
+        selection,
+        sourceKind: selection.sourceKind,
+        sourceId: selection.sourceId,
+        ownerScopeId: selection.ownerScopeId,
+        legacyObservation,
+        canonicalObservation,
+        forcedFailure: selections.length > 1 ? "multiple-manifest-selections-for-module" : undefined,
+      }));
+    }
+  }
+  for (const selection of modSelections) {
+    const key = v2IdentityKey(selection);
+    if (observedModuleKeys.has(key)) continue;
+    cases.push(makeModD02CaseV2({
+      manifest, inventory, sourceInventoryChecksum,
+      selection,
+      sourceKind: selection.sourceKind,
+      sourceId: selection.sourceId,
+      ownerScopeId: selection.ownerScopeId,
+      legacyObservation: { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: "selected-module-missing-from-scoped-inventory" },
+      canonicalObservation: { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
+        detail: "selected-module-missing-from-scoped-inventory" },
+    }));
+  }
+  const currentPin = await captureCurrentCatalogPin(input.pool);
+  if (currentPin?.id !== expectedPin.id || currentPin.digest !== expectedPin.digest) {
+    throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: Catalog release changed during scoped MOD D02 read`);
+  }
+  cases.sort((left, right) => compareText(left.caseId, right.caseId));
+  const blockers = cases
+    .filter((item) => item.result === "unqueryable/protected-reference-missing")
+    .map((item) => `${item.caseId}:${item.unqueryableReason ?? "unqueryable-reason-missing"}`);
+  return {
+    contractVersion: "pcat-comparison-case-batch/v2",
+    family: "MOD",
+    comparisonId: "PCAT-CMP-D02-SUBJECT-IDENTITY",
+    phase: "pre-activation",
+    organizationId,
+    selectionRunId: manifest.selectionRunId,
+    selectionProjectionDigest: manifest.projection.digest,
+    selectionProjectionCount: manifest.projection.selectionCount,
+    modSelectionIdentityIds: modSelections.map((selection) => selection.legacyIdentityId),
+    inventory,
+    sourceInventoryCount: inventory.length,
+    sourceInventoryChecksum,
+    cases,
+    blockers,
   };
 }

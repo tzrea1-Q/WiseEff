@@ -1,6 +1,12 @@
 import type pg from "pg";
 
+import { getAuthContextForExternalIdentity } from "../auth/repository";
 import type { AuthContext } from "../auth/types";
+import {
+  assertTrustedInvocationContext,
+  assertTrustedInvocationMatchesAuth,
+  type TrustedInvocationContext,
+} from "../auth/trustedInvocation";
 import { permissionsForRoles } from "../auth/policy";
 import type { UsageProjectScope } from "../parameter-bindings/usage";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -36,6 +42,11 @@ import type { Database } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { MappingQueryable } from "../catalog-cutover/mapping";
+import {
+  readCompletedCutoverMappingManifest,
+  type CompletedMappingManifest,
+} from "../catalog-cutover/completedMappingManifest";
+export type { CompletedMappingManifest } from "../catalog-cutover/completedMappingManifest";
 import type { ObjectStore } from "../logs/objectStore";
 import {
   catalogDefinitionResponseSchema,
@@ -146,6 +157,52 @@ const pinOf = (id: string, digest: string): CatalogReleasePin => ({
 export type ComparisonGovernanceRegistration = GovernanceRegistrationRecord;
 export type ComparisonCatalogSubject = CatalogSubjectDetailSnapshot;
 
+export type CompletedModComparisonManifestScope = {
+  readonly auth: AuthContext;
+  readonly manifest: CompletedMappingManifest;
+};
+
+/** Revalidates persisted organization authority and the immutable P7 manifest for MOD comparison reads. */
+export async function readCompletedModComparisonManifestForComparison(input: {
+  readonly database: Database;
+  readonly pool: pg.Pool;
+  readonly runId: string;
+  readonly invocation: TrustedInvocationContext;
+}): Promise<CompletedModComparisonManifestScope> {
+  if (getRootPostgresPool(input.database) !== input.pool) {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison manifest database and pool differ");
+  }
+  const invocation = assertTrustedInvocationContext(input.invocation);
+  if (invocation.initiator !== "user") {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison requires a user invocation");
+  }
+  const organizationId = invocation.principal.organization.id;
+  const principalId = invocation.principal.user.id;
+  const auth = await getAuthContextForExternalIdentity(input.database, {
+    organizationId,
+    subject: principalId,
+  });
+  assertTrustedInvocationMatchesAuth(auth, invocation, "MOD comparison manifest read");
+  if (auth.organization.id !== organizationId || auth.user.id !== principalId ||
+      auth.user.organizationId !== organizationId || !auth.user.isActive) {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison manifest persisted principal scope is invalid");
+  }
+  const result = await readCompletedCutoverMappingManifest({
+    pool: input.pool,
+    runId: input.runId,
+    auth,
+  });
+  if (!result.ok) {
+    throw new Error(`PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison completed manifest is unavailable: ${result.error.detail}`);
+  }
+  const manifest = result.value;
+  if (manifest.projection.organizationId !== organizationId ||
+      manifest.projection.principalId !== principalId) {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison completed manifest returned a different organization or principal");
+  }
+  return { auth, manifest };
+}
+
 /** Exact current-release Subject identities through the production read composition. */
 export async function readPinnedCatalogSubjectsForComparison(
   pool: pg.Pool,
@@ -203,7 +260,11 @@ export async function readPinnedGovernanceRegistrationsForComparison(
   pool: pg.Pool,
   organizationIds: readonly string[],
   expectedPin: CatalogReleasePin,
+  principalId = "mod-comparison-reader",
 ): Promise<Map<string, readonly ComparisonGovernanceRegistration[]>> {
+  if (!principalId || principalId.trim() !== principalId) {
+    throw new Error("Governance comparison principal is invalid");
+  }
   const matches = (pin: CatalogReleasePin | null) =>
     pin?.id === expectedPin.id && pin.digest === expectedPin.digest;
   if (!matches(await captureCurrentCatalogPin(pool))) {
@@ -228,7 +289,7 @@ export async function readPinnedGovernanceRegistrationsForComparison(
         const result = await queries.listRegistrations({
           organizationId,
           observedCatalogReleaseId: expectedPin.id,
-          authScope: { organizationId, principalId: "mod-comparison-reader" },
+          authScope: { organizationId, principalId },
           limit: 100,
           cursor,
         });
