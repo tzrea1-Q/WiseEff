@@ -99,6 +99,9 @@ const issue853SuccessorRecords = await Promise.all([
 ].map(async (name) => JSON.parse(await readFile(
   `${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/${name}`, "utf8",
 )) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> }));
+const issue903KnowledgeSuccessor = JSON.parse(
+  await readFile(`${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-903-a-knowledge-successor.json`, "utf8"),
+) as { pairs: Array<{ cOldId: string; aSourceId: string }> };
 const currentUnallowlistedRecord = JSON.parse(
   await readFile(`${process.cwd()}/scripts/fixtures/parameter-catalog-allowlist/issue-853-a-0169-current-unallowlisted.json`, "utf8"),
 ) as {
@@ -1150,12 +1153,24 @@ describe("parameter catalog boundary checker", () => {
         && !staleSuccessorIds.has(id),
       ).sort();
       expect(expectedIssue911Unclassified).toHaveLength(76);
-      expect(otherwiseUnclassified.map((entry) => entry.id).sort()).toEqual(expectedIssue911Unclassified);
-      expect(otherwiseUnclassified.filter((entry) => !issue911Ids.has(entry.id))).toHaveLength(0);
-      expect(report.relocations).toHaveLength(946);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(946);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(946);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_892);
+      const knowledgeSourceIds = new Set(issue903KnowledgeSuccessor.pairs.map((pair) => pair.aSourceId));
+      expect(issue903KnowledgeSuccessor.pairs).toHaveLength(34);
+      expect(knowledgeSourceIds.size).toBe(34);
+      // Fifteen old T14 aliases still count under the historical family/rewrite sets;
+      // one Knowledge occurrence binds at its unchanged baseline position.
+      expect(report.relocations.filter((entry) => knowledgeSourceIds.has(entry.id))).toHaveLength(33);
+      const newKnowledgeUnclassified = otherwiseUnclassified
+        .filter((entry) => knowledgeSourceIds.has(entry.id)).map((entry) => entry.id).sort();
+      expect(newKnowledgeUnclassified).toHaveLength(18);
+      expect(otherwiseUnclassified.map((entry) => entry.id).sort()).toEqual(
+        [...expectedIssue911Unclassified, ...newKnowledgeUnclassified].sort(),
+      );
+      expect(otherwiseUnclassified.filter((entry) => !issue911Ids.has(entry.id)
+        && !knowledgeSourceIds.has(entry.id))).toHaveLength(0);
+      expect(report.relocations).toHaveLength(964);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(964);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(964);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_928);
       expect(currentUnallowlistedRecord.schemaVersion).toBe(1);
       expect(currentUnallowlistedRecord.baseHead).toBe("78e10fb2e9ebb29ada9db7fdf854a5c60f4bfc89");
       expect(currentUnallowlistedRecord.ownerHead).toBe("78e7d699d6868d76560f166ec9d233aece1657b1");

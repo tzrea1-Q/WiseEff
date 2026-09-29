@@ -36,6 +36,8 @@ import {
 import { applyReviewedDebuggingTransferRelocation } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
 import { applyReviewedSourceWorkflowRelocation, applyReviewedSourceWorkflowConsumerRelocation } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
 import { applyReviewedIssue913T14Relocation } from "./parameter-catalog-allowlist/issue913T14Relocation";
+import { applyReviewedIssue903KnowledgeSuccessor } from "./parameter-catalog-allowlist/issue903KnowledgeSuccessor";
+import { verifyIssue904LogRetirement } from "./parameter-catalog-allowlist/issue904LogRetirement";
 import {
   applyReviewedIssue853CRouteRelocation,
   applyReviewedIssue853CCatalogSplitRelocation,
@@ -416,6 +418,7 @@ export async function checkParameterCatalogBoundaries(
   );
   await verifyIssue853CActionRetirement(repoRoot, fixture, allowlist.entries, violations);
   await verifyIssue853CRemainderRetirement(repoRoot, fixture, allowlist.entries, violations);
+  await verifyIssue904LogRetirement(repoRoot, fixture, allowlist.entries, violations);
   const t14Relocated = await applyReviewedIssue913T14Relocation(
     repoRoot,
     fixture,
@@ -423,9 +426,13 @@ export async function checkParameterCatalogBoundaries(
     consumerRelocated.violations,
     [...priorRelocations, ...consumerRelocated.relocations],
   );
+  const knowledgeRelocated = await applyReviewedIssue903KnowledgeSuccessor(
+    repoRoot, fixture, allowlist.entries, t14Relocated.violations, discovered,
+  );
   const issue853CRepositoryRelocated = await applyReviewedIssue853CRepositoryRelocation(
-    repoRoot, fixture, allowlist.entries, t14Relocated.violations,
-    [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations],
+    repoRoot, fixture, allowlist.entries, knowledgeRelocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations, ...t14Relocated.relocations,
+      ...knowledgeRelocated.relocations],
   );
   const issue853CRemainderRelocated = await applyReviewedIssue853CRemainderRelocation(
     repoRoot, fixture, allowlist.entries, issue853CRepositoryRelocated.violations,
@@ -436,6 +443,7 @@ export async function checkParameterCatalogBoundaries(
     ...priorRelocations,
     ...consumerRelocated.relocations,
     ...t14Relocated.relocations,
+    ...knowledgeRelocated.relocations,
     ...issue853CRepositoryRelocated.relocations,
     ...issue853CRemainderRelocated.relocations,
   ];

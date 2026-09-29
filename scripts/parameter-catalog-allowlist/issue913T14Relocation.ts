@@ -15,7 +15,9 @@ const repositoryFile = "server/modules/parameter-modules/repository.ts";
 const serviceTestFile = "server/modules/parameter-modules/service.test.ts";
 
 export const issue913T14SuccessorPairCount = 45;
-export const issue913T14ExpectedActiveRelocationCount = 267;
+// Fifteen Knowledge aliases are now authenticated against the #903 successor below.
+// The full frozen T14 historical record is still checked before this active subset runs.
+export const issue913T14ExpectedActiveRelocationCount = 252;
 export const issue913T14RetiredSourceIds = [
   "S12-MOD:legacy-catalog-table-name:860a2404dfe5c6b4:8cd263657607ec3e",
   "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:7d4a0c6f2bb42f1c",
@@ -33,6 +35,7 @@ export const issue913T14ServiceSuccessorRelocationRecordPath =
 const changedFiles = [repositoryFile, serviceTestFile] as const;
 const changedFileSet = new Set<string>(changedFiles);
 const issue853ChangedFiles = new Set([
+  "server/modules/knowledge/parameterReferences.ts",
   "server/modules/agent/tools/actionTools.ts",
   "server/modules/debugging/repository.ts",
   "server/modules/dts-reload/behaviouralVerify.ts",
@@ -141,7 +144,7 @@ export async function applyReviewedIssue913T14Relocation(
       activeFiles: activeUnchangedFiles(t14FamilySuccessorRelocationConfig),
     },
   );
-  requireT14(family.relocations.length === 199, "active family historical subset");
+  requireT14(family.relocations.length === 193, "active family historical subset");
 
   const familyAndPrior = [...existingRelocations, ...family.relocations];
   const rewritten = await runReviewedRelocationRecord(
@@ -155,7 +158,7 @@ export async function applyReviewedIssue913T14Relocation(
       activeFiles: activeUnchangedFiles(t14RewrittenSliceSuccessorRelocationConfig),
     },
   );
-  requireT14(rewritten.relocations.length === 23, "active rewritten historical subset");
+  requireT14(rewritten.relocations.length === 14, "active rewritten historical subset");
 
   const familyChangedPairs = familyProof.pairs.filter((pair) => changedFileSet.has(pair.old.file));
   const rewrittenChangedPairs = rewrittenProof.pairs.filter((pair) => changedFileSet.has(pair.old.file));

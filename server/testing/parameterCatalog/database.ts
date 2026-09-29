@@ -21,7 +21,7 @@ export const S2_SCH_CONTRACT_FINGERPRINT =
 export const S2_SCH_0171_FINGERPRINT =
   "40db30e5fecec0de3a34e6ca34db8aaf51e70c3c57fe7154dd78b2e1f827df59";
 
-/** Current schema through 0176; measured on fresh and upgraded PostgreSQL/pgvector. */
+/** Current Catalog schema through 0178; 0177/0178 change public tables, so the measured Catalog fingerprint is unchanged. */
 export const S2_SCH_LIVE_FINGERPRINT =
   "6093c85dff61c592bfa48f9d19c38fa74c737418307f70062f68a17959a186ce";
 

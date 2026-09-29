@@ -31,6 +31,7 @@ const changedFiles = new Set([
   "server/modules/dts-reload/behaviouralVerify.ts",
   "server/modules/dts-reload/repository.ts",
   "server/modules/parameter-topology/writeLock.ts",
+  "server/modules/knowledge/parameterReferences.ts",
 ]);
 let discovered: readonly BoundaryViolation[];
 
@@ -42,7 +43,9 @@ async function copyProofFixture() {
     ...record.files.map((section) => section.file),
   ]) {
     await mkdir(dirname(join(root, file)), { recursive: true });
-    await writeFile(join(root, file), await readFile(join(repoRoot, file)));
+    await writeFile(join(root, file), file === "server/modules/knowledge/parameterReferences.ts"
+      ? execFileSync("git", ["show", `097ad35625cc8ca2401f2cd028404f16a18a75ba:${file}`], { cwd: repoRoot })
+      : await readFile(join(repoRoot, file)));
   }
   const gitDir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
     cwd: repoRoot,
@@ -74,7 +77,7 @@ export function registerT14RewrittenSliceSuccessorRelocationProof(
     await Promise.all(temporaryRoots.map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  it("keeps 23 unchanged-file destinations active while reserving changed files", async () => {
+  it("keeps 14 unchanged-file destinations active while reserving changed files", async () => {
     const result = await runReviewedRelocationRecord(
       repoRoot,
       fixture,
@@ -86,9 +89,9 @@ export function registerT14RewrittenSliceSuccessorRelocationProof(
         "56216b0d2463f74a764159e86caf5fa3ab50d3f0e957b66362a840d2294b86a7",
       ),
     );
-    expect(result.relocations).toHaveLength(23);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(23);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(23);
+    expect(result.relocations).toHaveLength(14);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(14);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(14);
     const pairs = record.files.flatMap((section) => section.pairs);
     expect(pairs.every((pair) => pair.sourceSliceSha256 && pair.sliceSha256)).toBe(true);
     expect(
@@ -136,9 +139,11 @@ export function registerT14RewrittenSliceSuccessorRelocationProof(
         root,
         fixture,
         allowances,
-        discovered,
+        section!.pairs.map((pair) => pair.new),
         [],
-        rewrittenSliceConfig(t14RewrittenSliceSuccessorRelocationRecordPath, createHash("sha256").update(bytes).digest("hex")),
+        { ...rewrittenSliceConfig(t14RewrittenSliceSuccessorRelocationRecordPath,
+          createHash("sha256").update(bytes).digest("hex")),
+        activeFiles: [section!.file] },
       ),
     ).rejects.toThrow("stable anchor byte order");
     await expect(

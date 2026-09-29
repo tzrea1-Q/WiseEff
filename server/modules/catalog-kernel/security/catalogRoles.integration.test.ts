@@ -1355,24 +1355,45 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 });
 
 describe("0138 Catalog role migration paths", () => {
-  it("0172-0176 receipts, frozen proof guards and writer ACL match the live schema", async () => {
-    await withTempDatabase({ prefix: "pcat_rbac_0176" }, async ({ connectionString }) => {
+  it("0172-0178 receipts, frozen proof guards and writer ACL match the live schema", async () => {
+    await withTempDatabase({ prefix: "pcat_rbac_0178", migrate: false }, async ({ db, connectionString }) => {
+      await applyMigrations(db, migrationsDir, {
+        through: "0176_dts_observation_source_occurrence.sql",
+      });
       const admin = new pg.Client({ connectionString });
       await admin.connect();
       try {
+        const historicalReceipts = await admin.query<{ name: string; checksum: string }>(
+          "select name, checksum from schema_migrations order by name",
+        );
+        expect(historicalReceipts.rows).toHaveLength(174);
+        expect(historicalReceipts.rows.at(-1)?.name).toBe("0176_dts_observation_source_occurrence.sql");
+        expect(await applyMigrations(db, migrationsDir)).toEqual([
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
+        ]);
         const expectedChecksums = {
           "0172_canonical_batch_draft_impact.sql": "6a40b58507c134884adff408c416bcae4249adcf008eb93bee8f901a7c649a53",
           "0173_canonical_batch_draft_impact_pair.sql": "26924e1a0ef7e4f94cc47bd6cce6a79f0727e400109bee5685e38b6e362fedfb",
           "0174_canonical_batch_composition_proof.sql": "505922550af2a450b44619ebe90c0f7caf0a7da8cd1d08b62217402fc97d2613",
           "0175_canonical_batch_frozen_draft_choice.sql": "4286bd3da43f9812ce1fca56fa142d55f9afd4ba71b6876e47f823157c9ff2c2",
           "0176_dts_observation_source_occurrence.sql": "b688d730d674e4e4a3dcb49ba7239cc9df8b9dfcce64a9db1a9a42ab35e829bd",
+          "0177_knowledge_definition_references.sql": "08cc13e6b5488bc976bc14b84e0e28fa74dbaedcae29c61f9a878805d5d2d7b6",
+          "0178_log_related_parameter_snapshots.sql": "9a3d80c997a4ea49a501fdb633f0bb0b1b87c2020d5451901a03abe254ae0203",
         };
         const receipts = await admin.query<{ name: string; checksum: string }>(
           "select name, checksum from schema_migrations order by name",
         );
         const files = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
         expect(receipts.rows.map(({ name }) => name)).toEqual(files);
-        expect(receipts.rows).toHaveLength(174);
+        const through0176 = files.filter((name) => name <= "0176_dts_observation_source_occurrence.sql");
+        expect(through0176).toHaveLength(174);
+        expect(receipts.rows.slice(0, 174).map(({ name }) => name)).toEqual(through0176);
+        expect(receipts.rows.slice(174).map(({ name }) => name)).toEqual([
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
+        ]);
+        expect(receipts.rows).toHaveLength(176);
         for (const { name, checksum } of receipts.rows) {
           expect(checksum).toBe(createHash("sha256")
             .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
@@ -1485,6 +1506,8 @@ describe("0138 Catalog role migration paths", () => {
             "0174_canonical_batch_composition_proof.sql",
             "0175_canonical_batch_frozen_draft_choice.sql",
             "0176_dts_observation_source_occurrence.sql",
+            "0177_knowledge_definition_references.sql",
+            "0178_log_related_parameter_snapshots.sql",
           ];
           expect(await applyMigrations(db, migrationsDir)).toEqual(successorMigrations);
           expect(await applyMigrations(db, migrationsDir)).toEqual([]);
@@ -1673,7 +1696,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0176 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0178 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1768,12 +1791,19 @@ describe("0138 Catalog role migration paths", () => {
           through: "0171_canonical_dts_batch_target_contract.sql",
         });
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0171_FINGERPRINT);
-        expect(await applyMigrations(db, migrationsDir)).toEqual([
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0176_dts_observation_source_occurrence.sql",
+        })).toEqual([
           "0172_canonical_batch_draft_impact.sql",
           "0173_canonical_batch_draft_impact_pair.sql",
           "0174_canonical_batch_composition_proof.sql",
           "0175_canonical_batch_frozen_draft_choice.sql",
           "0176_dts_observation_source_occurrence.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir)).toEqual([
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
         ]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
         upgrade = await aclFingerprint(db);
