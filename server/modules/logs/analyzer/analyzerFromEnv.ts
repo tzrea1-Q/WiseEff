@@ -12,7 +12,7 @@ import {
   type LogAnalysisChatModel,
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
-import { createDbLogAnalysisToolBackends } from "./tools/dbToolBackends";
+import { createWorkerLogAnalysisToolBackends } from "./tools/workerToolBackends";
 
 export type LogAnalyzerEnv = {
   LOG_ANALYSIS_API_BASE_URL?: string;
@@ -158,11 +158,12 @@ export function createLogAnalyzerFromEnv(
       telemetry: options.telemetry,
       bindToolBackends: (input) =>
         db && input.organizationId
-          ? createDbLogAnalysisToolBackends({
+          ? createWorkerLogAnalysisToolBackends({
               db,
               organizationId: input.organizationId,
               logDomainId: input.logDomainId,
               relatedParameterId: input.relatedParameterId,
+              relatedParameterSnapshot: input.relatedParameterSnapshot,
               embeddingClient: options.embeddingClient
             })
           : {}

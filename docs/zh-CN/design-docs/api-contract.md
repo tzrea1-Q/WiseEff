@@ -94,7 +94,7 @@ M6.2 adds OIDC-backed production auth and durable user-governance contract entri
 
 ## 调试参数语义
 
-M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id` 为边界，不接受 `projectId` 查询参数或请求体字段。日志记录可含可选 `relatedParameterId` 作为指向 M1 定义的软链接。
+M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id` 为边界。新日志关联必须提供 `relatedParameterPin: { kind: "canonical-pin", projectId, bindingId, definitionId?, definitionRevisionId? }`；服务端鉴权该精确项目 Binding，并为每次分析冻结 canonical Value、DefinitionRevision 与来源 pin。重新分析再次解析当前 Binding；旧 run 快照及报告保留为历史。新上传不能只传 `relatedParameterId`，存量缺少已验证项目范围的软链接不得当作当前值。无关联日志上传与调试 API 不接受顶层 `projectId` 字段。
 
 `GET /api/v1/debugging/parameters?protocol=adb` 返回 enabled、未 archived 且所选协议 binding 启用的组织 catalog 行。鉴权仅使用组织级调试权限。
 
@@ -378,7 +378,11 @@ GET  /api/v1/jobs/:jobId/events
   "contentType": "text/plain",
   "contentBase64": "V0FSTiB0ZW1wPTc1",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current",
+  "relatedParameterPin": {
+    "kind": "canonical-pin",
+    "projectId": "project_123",
+    "bindingId": "binding_123"
+  },
   "logDomainId": "domain_123"
 }
 ```
@@ -390,7 +394,11 @@ GET  /api/v1/jobs/:jobId/events
   "fileObjectId": "file_123",
   "fileName": "charging_thermal_trace.log",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current",
+  "relatedParameterPin": {
+    "kind": "canonical-pin",
+    "projectId": "project_123",
+    "bindingId": "binding_123"
+  },
   "logDomainId": "domain_123"
 }
 ```

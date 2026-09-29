@@ -45,6 +45,7 @@ export type PrimaryJsonSource = {
 
 export type JsonBindingPanelProps = {
   bindings: readonly ProjectParameterBinding[];
+  requestedBindingId?: string;
   moduleRegistry?: ParameterModuleRegistry | null;
   canEdit?: boolean;
   draftBindingIds?: ReadonlySet<string>;
@@ -141,6 +142,7 @@ function findEarliestJsonSourceLine(
 /** JSON bindings workbench matching DTS layout (Topology Navigator + Table + Modal Dialogs). */
 export function JsonBindingPanel({
   bindings,
+  requestedBindingId,
   moduleRegistry,
   canEdit = false,
   draftBindingIds,
@@ -172,6 +174,16 @@ export function JsonBindingPanel({
   // Dialog states
   const [viewingBindingId, setViewingBindingId] = useState<string | null>(null);
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
+  const handledRequest = useRef<string | null>(null);
+  useEffect(() => {
+    if (!requestedBindingId || handledRequest.current === requestedBindingId
+      || !jsonBindings.some((binding) => binding.id === requestedBindingId)) return;
+    handledRequest.current = requestedBindingId;
+    setResultsMode("parameters");
+    setQuery("");
+    setSelectedNodeId(null);
+    setViewingBindingId(requestedBindingId);
+  }, [jsonBindings, requestedBindingId]);
 
   // Draft form states inside edit dialog
   const activeEditBinding = useMemo(

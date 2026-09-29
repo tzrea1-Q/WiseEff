@@ -11,6 +11,7 @@ import type {
 import type { LogFormatProfile } from "./formatProfile";
 import type { LogArchiveState, LogFeedbackRating, LogRecordDto } from "./types";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
+import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 
 type LogFileObjectRow = {
   id: string;
@@ -44,6 +45,7 @@ type LogRecordRow = {
   updated_at: string | Date;
   submitted_by: string | null;
   related_parameter_id: string | null;
+  related_parameter_project_id?: string | null;
   failure_reason: string | null;
   analysis_question: string | null;
   log_domain_id?: string | null;
@@ -81,6 +83,8 @@ type WorkerLogRunSnapshotRow = {
   storage_key: string;
   analysis_question: string | null;
   related_parameter_id: string | null;
+  related_parameter_project_id: string | null;
+  related_parameter_snapshot: unknown;
   submitted_by_user_id: string | null;
   job_status: LogRunStatus;
   run_status: LogRunStatus;
@@ -125,6 +129,8 @@ export type CreateLogRecordWithRunAndJobInput = {
   submittedByUserId: string;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  relatedParameterProjectId?: string;
+  relatedParameterSnapshot?: RelatedParameterRunSnapshot;
   logDomainId?: string;
 };
 
@@ -139,6 +145,8 @@ export type LogWorkerRunSnapshot = {
   analysisQuestion: string | null;
   /** Parameter binding the log was uploaded against; feeds get_related_parameter_context (P2). */
   relatedParameterId: string | null;
+  relatedParameterProjectId: string | null;
+  relatedParameterSnapshot: unknown;
   submittedByUserId: string | null;
   jobStatus: LogRunStatus;
   runStatus: LogRunStatus;
@@ -241,6 +249,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
     updatedAt: dateTimeToIso(row.updated_at),
     submittedBy: row.submitted_by ?? "已注销用户",
     relatedParameterId: row.related_parameter_id ?? undefined,
+    relatedParameterProjectId: row.related_parameter_project_id ?? undefined,
     failureReason: row.failure_reason ?? undefined,
     analysisQuestion: row.analysis_question ?? undefined,
     logDomainId: row.log_domain_id ?? undefined,
@@ -284,6 +293,8 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     storageKey: row.storage_key,
     analysisQuestion: row.analysis_question,
     relatedParameterId: row.related_parameter_id,
+    relatedParameterProjectId: row.related_parameter_project_id,
+    relatedParameterSnapshot: row.related_parameter_snapshot,
     submittedByUserId: row.submitted_by_user_id,
     jobStatus: row.job_status,
     runStatus: row.run_status,
@@ -323,6 +334,7 @@ const logSelect = `
     lr.updated_at,
     users.name as submitted_by,
     lr.related_parameter_id,
+    lr.related_parameter_project_id,
     lr.failure_reason,
     lr.analysis_question,
     lr.log_domain_id,
@@ -338,6 +350,28 @@ const logSelect = `
 function addCondition(parts: string[], values: unknown[], condition: (placeholder: string) => string, value: unknown) {
   values.push(value);
   parts.push(condition(`$${values.length}`));
+}
+
+function addRelatedParameterVisibility(auth: AuthContext, where: string[], values: unknown[]) {
+  if (!auth.user.isActive || !auth.permissions.includes("parameter:view")) {
+    where.push("lr.related_parameter_id is null");
+    return;
+  }
+  const organizationWide = auth.roles.some((role) => role.projectId === null);
+  const projectIds = [...new Set(auth.roles.flatMap((role) => role.projectId ? [role.projectId] : []))];
+  values.push(organizationWide, projectIds);
+  where.push(`(
+    lr.related_parameter_id is null
+    or (
+      lr.related_parameter_project_id is not null
+      and exists (
+        select 1 from public.projects related_project
+        where related_project.id = lr.related_parameter_project_id
+          and related_project.organization_id = lr.organization_id
+      )
+      and ($${values.length - 1}::boolean or lr.related_parameter_project_id = any($${values.length}::text[]))
+    )
+  )`);
 }
 
 export async function createFileObject(
@@ -404,9 +438,9 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
       `
       insert into log_records (
         id, organization_id, file_object_id, file_name, source, status,
-        analysis_question, related_parameter_id, submitted_by_user_id, log_domain_id
+        analysis_question, related_parameter_id, related_parameter_project_id, submitted_by_user_id, log_domain_id
       )
-      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9)
+      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9, $10)
       returning id
       `,
       [
@@ -417,6 +451,7 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         input.source,
         input.analysisQuestion ?? null,
         input.relatedParameterId ?? null,
+        input.relatedParameterProjectId ?? null,
         input.submittedByUserId,
         input.logDomainId ?? null
       ]
@@ -424,12 +459,12 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
     await tx.query<RunRow>(
       `
       insert into log_analysis_runs (
-        id, organization_id, log_record_id, status, current_stage, progress
+        id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot
       )
-      values ($1, $2, $3, 'queued', 'parse', 0)
+      values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb)
       returning id, log_record_id, status, current_stage, progress, error_message, updated_at
       `,
-      [input.runId, input.organizationId, input.logId]
+      [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null]
     );
     const job = await createLogAnalysisJob(tx, {
       id: input.jobId,
@@ -466,6 +501,7 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         updated_at,
         (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
         related_parameter_id,
+        related_parameter_project_id,
         failure_reason,
         analysis_question,
         log_domain_id,
@@ -490,6 +526,7 @@ export async function markUnsupportedLog(
     failureReason: string;
     analysisQuestion?: string;
     relatedParameterId?: string;
+    relatedParameterProjectId?: string;
     logDomainId?: string;
   }
 ) {
@@ -497,9 +534,10 @@ export async function markUnsupportedLog(
     `
     insert into log_records (
       id, organization_id, file_object_id, file_name, source, status,
-      failure_reason, analysis_question, related_parameter_id, submitted_by_user_id, log_domain_id
+      failure_reason, analysis_question, related_parameter_id, submitted_by_user_id, log_domain_id,
+      related_parameter_project_id
     )
-    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9, $10, $11)
     returning
       id,
       current_run_id,
@@ -522,6 +560,7 @@ export async function markUnsupportedLog(
       updated_at,
       (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
       related_parameter_id,
+      related_parameter_project_id,
       failure_reason,
       analysis_question,
       log_domain_id,
@@ -537,7 +576,8 @@ export async function markUnsupportedLog(
       input.analysisQuestion ?? null,
       input.relatedParameterId ?? null,
       input.submittedByUserId,
-      input.logDomainId ?? null
+      input.logDomainId ?? null,
+      input.relatedParameterProjectId ?? null
     ]
   );
 
@@ -566,6 +606,7 @@ export async function listLogs(
     const interval = query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days";
     where.push(`lr.captured_at >= now() - interval '${interval}'`);
   }
+  addRelatedParameterVisibility(auth, where, values);
 
   const result = await db.query<LogRecordRow>(
     `
@@ -580,14 +621,16 @@ export async function listLogs(
 }
 
 export async function getLogDetail(db: Queryable, auth: AuthContext, logId: string) {
+  const values: unknown[] = [auth.organization.id, logId];
+  const where = ["lr.organization_id = $1", "lr.id = $2"];
+  addRelatedParameterVisibility(auth, where, values);
   const result = await db.query<LogRecordRow>(
     `
     ${logSelect}
-    where lr.organization_id = $1
-      and lr.id = $2
+    where ${where.join("\n      and ")}
     limit 1
     `,
-    [auth.organization.id, logId]
+    values
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -704,6 +747,8 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       lfo.storage_key,
       lr.analysis_question,
       lr.related_parameter_id,
+      lr.related_parameter_project_id,
+      run.related_parameter_snapshot,
       lr.submitted_by_user_id,
       job.status as job_status,
       run.status as run_status,
@@ -1090,11 +1135,13 @@ export async function aggregateFeedbackInsights(
   auth: AuthContext,
   query: { timeWindow?: "today" | "7d" | "30d" } = {}
 ): Promise<LogFeedbackInsightDto[]> {
+  const values: unknown[] = [auth.organization.id];
   const where = ["lf.organization_id = $1"];
   if (query.timeWindow) {
     const interval = query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days";
     where.push(`lf.created_at >= now() - interval '${interval}'`);
   }
+  addRelatedParameterVisibility(auth, where, values);
 
   const result = await db.query<FeedbackInsightRow>(
     `
@@ -1117,7 +1164,7 @@ export async function aggregateFeedbackInsights(
     group by lr.log_domain_id, ld.name, report.analysis_source, report.prompt_version
     order by total_count desc, log_domain_name asc nulls first, prompt_version desc nulls last
     `,
-    [auth.organization.id]
+    values
   );
 
   return result.rows.map((row) => {
@@ -1145,17 +1192,18 @@ export async function createRerunWithJob(
     logId: string;
     analysisQuestion?: string;
     logDomainId?: string;
+    relatedParameterSnapshot?: RelatedParameterRunSnapshot;
   }
 ): Promise<LogAnalysisJobDto> {
   await db.query<RunRow>(
     `
     insert into log_analysis_runs (
-      id, organization_id, log_record_id, status, current_stage, progress
+      id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot
     )
-    values ($1, $2, $3, 'queued', 'parse', 0)
+    values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb)
     returning id, log_record_id, status, current_stage, progress, error_message, updated_at
     `,
-    [input.runId, input.organizationId, input.logId]
+    [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null]
   );
   const job = await createLogAnalysisJob(db, {
     id: input.jobId,

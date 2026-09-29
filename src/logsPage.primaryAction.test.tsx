@@ -92,6 +92,37 @@ afterEach(() => {
 });
 
 describe("LogsPage api rerun wiring", () => {
+  it("navigates a verified canonical link to its exact project Binding", async () => {
+    const linkedLog = { ...completeLog, relatedParameterId: "binding-exact", relatedParameterProjectId: "project-exact" };
+    const repository = renderApiLogs(createLogRepository({
+      listLogs: vi.fn().mockResolvedValue(initialState.logs.map((log) => log.id === linkedLog.id ? linkedLog : log)),
+      getLog: vi.fn().mockResolvedValue(linkedLog)
+    }));
+    await waitForApiRuntime(repository);
+
+    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    fireEvent.click(screen.getByRole("button", { name: "查看关联参数" }));
+    expect(window.location.pathname).toBe("/parameters");
+    expect(window.location.search).toContain("project=project-exact");
+    expect(window.location.search).toContain("bindingId=binding-exact");
+    expect(window.location.search).not.toContain("parameter=");
+  });
+
+  it("does not route an unverified legacy association into a current Binding", async () => {
+    const linkedLog = { ...completeLog, relatedParameterId: "legacy-binding-id" };
+    const repository = renderApiLogs(createLogRepository({
+      listLogs: vi.fn().mockResolvedValue(initialState.logs.map((log) => log.id === linkedLog.id ? linkedLog : log)),
+      getLog: vi.fn().mockResolvedValue(linkedLog)
+    }));
+    await waitForApiRuntime(repository);
+
+    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    expect(screen.getByRole("button", { name: /生成参数修改请求/ })).toBeDisabled();
+    expect(screen.getByText(/旧参数关联缺少可验证的项目与 Binding 定位/)).toBeVisible();
+  });
+
   it("Complete log api rerun action calls repository rerunLog", async () => {
     const repository = renderApiLogs();
     await waitForApiRuntime(repository);
@@ -127,6 +158,12 @@ describe("LogsPage api rerun wiring", () => {
 });
 
 describe("getContextQuery", () => {
+  it("keeps an exact Binding target separate from the legacy parameter id", () => {
+    const query = getContextQuery("?project=aurora&bindingId=binding-1&logId=log-1");
+
+    expect(query).toMatchObject({ projectId: "aurora", bindingId: "binding-1", parameterId: "", logId: "log-1" });
+  });
+
   it("返回 logId 字段", () => {
     const query = getContextQuery("?logId=log-active&project=aurora");
 
@@ -142,6 +179,27 @@ describe("getContextQuery", () => {
 });
 
 describe("LogsPage · 主行动", () => {
+  it("canonical 关联日志跳到精确项目 Binding", () => {
+    renderApp({
+      path: "/logs",
+      initialAppState: {
+        ...userState,
+        logs: userState.logs.map((log) => log.id === completeLog.id
+          ? { ...log, relatedParameterId: "pbind-exact", relatedParameterProjectId: "project-exact" }
+          : log)
+      }
+    });
+
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    fireEvent.click(screen.getByRole("button", { name: /生成参数修改请求/ }));
+
+    expect(window.location.pathname).toBe("/parameters");
+    expect(window.location.search).toContain("project=project-exact");
+    expect(window.location.search).toContain("bindingId=pbind-exact");
+    expect(window.location.search).not.toContain("parameter=");
+  });
+
   it("Complete 日志点击主按钮跳转到 /parameters 且 URL 带 logId", () => {
     renderApp({ path: "/logs", initialAppState: userState });
 

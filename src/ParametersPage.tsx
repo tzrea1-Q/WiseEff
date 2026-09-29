@@ -487,7 +487,7 @@ export function ParametersPage({
   ]);
 
   useEffect(() => {
-    if (!effectiveCanEdit || !contextQuery.logId) {
+    if (!effectiveCanEdit || !contextQuery.logId || contextQuery.bindingId) {
       return;
     }
 
@@ -521,7 +521,7 @@ export function ParametersPage({
 
       return nextDrafts;
     });
-  }, [activeParameterById, effectiveCanEdit, contextQuery.logId, contextQuery.parameterId, projectParameters, resolvedProjectId, selected, state.logs]);
+  }, [activeParameterById, effectiveCanEdit, contextQuery.bindingId, contextQuery.logId, contextQuery.parameterId, projectParameters, resolvedProjectId, selected, state.logs]);
 
   useEffect(() => {
     if (previousUserIdRef.current === state.currentUserId) {
@@ -1015,6 +1015,7 @@ export function ParametersPage({
         {isApiMode ? (
           <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
+            requestedBindingId={contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
             canEdit={effectiveCanEdit}
             layoutMode={topologyLayoutMode}
             runtimeMode="api"

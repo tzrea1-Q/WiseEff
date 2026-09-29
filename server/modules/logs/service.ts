@@ -3,8 +3,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { LogAnalysisJobDto } from "../jobs/types";
-import type { Database, Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue";
 import { getActiveLogDomainForBinding } from "./domainsRepository";
@@ -41,6 +42,12 @@ import {
   unpackLogArchive
 } from "./unpack";
 import type { LogFeedbackRating, LogRecordDto } from "./types";
+import {
+  resolveAuthorizedRelatedParameter,
+  toRelatedParameterRunSnapshot,
+  type RelatedParameterRunSnapshot,
+  type RelatedParameterSelection
+} from "./relatedParameter";
 
 export type UploadLogFileInput = {
   fileName: string;
@@ -48,6 +55,7 @@ export type UploadLogFileInput = {
   bytes: Buffer | Uint8Array;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  relatedParameterPin?: RelatedParameterSelection;
   logDomainId?: string;
 };
 
@@ -56,6 +64,7 @@ export type CreateLogFromFileInput = {
   fileName: string;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  relatedParameterPin?: RelatedParameterSelection;
   logDomainId?: string;
 };
 
@@ -88,6 +97,47 @@ function unsupportedReason() {
 type LogUploadIntake =
   | { supported: true; bytes: Buffer }
   | { supported: false; failureReason: string };
+
+type ResolvedLogRelatedParameter = {
+  relatedParameterId: string;
+  relatedParameterProjectId: string;
+  relatedParameterSnapshot: RelatedParameterRunSnapshot;
+};
+
+async function resolveLogRelatedParameter(
+  db: Database,
+  auth: AuthContext,
+  input: { relatedParameterId?: string; relatedParameterPin?: RelatedParameterSelection }
+): Promise<ResolvedLogRelatedParameter | undefined> {
+  if (!input.relatedParameterPin) {
+    if (input.relatedParameterId) {
+      throw new ApiError(
+        "CONFLICT",
+        "Related parameters must be selected by an authorized, project-scoped canonical Binding."
+      );
+    }
+    return undefined;
+  }
+  if (input.relatedParameterId && input.relatedParameterId !== input.relatedParameterPin.bindingId) {
+    throw new ApiError("VALIDATION_FAILED", "relatedParameterId must match relatedParameterPin.bindingId.");
+  }
+  const pool = getRootPostgresPool(db);
+  if (!pool) {
+    throw new ApiError("INTERNAL_ERROR", "A root PostgreSQL pool is required to resolve a related parameter pin.");
+  }
+  const parameter = await resolveAuthorizedRelatedParameter(pool, {
+    invocation: createUserInvocation(auth),
+    projectId: input.relatedParameterPin.projectId,
+    bindingId: input.relatedParameterPin.bindingId,
+    definitionId: input.relatedParameterPin.definitionId,
+    definitionRevisionId: input.relatedParameterPin.definitionRevisionId
+  });
+  return {
+    relatedParameterId: parameter.pin.bindingId,
+    relatedParameterProjectId: parameter.pin.projectId,
+    relatedParameterSnapshot: toRelatedParameterRunSnapshot(parameter)
+  };
+}
 
 /**
  * Archive-aware intake (P3): `.gz` / single-entry `.zip` uploads are unpacked
@@ -199,6 +249,7 @@ export async function uploadLogFile(
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
   const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
+  const relatedParameter = await resolveLogRelatedParameter(db, auth, input);
   const intake = resolveLogUploadIntake({
     fileName: input.fileName,
     bytes: input.bytes instanceof Buffer ? input.bytes : Buffer.from(input.bytes)
@@ -224,7 +275,8 @@ export async function uploadLogFile(
         submittedByUserId: auth.user.id,
         failureReason: intake.failureReason,
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId,
+        relatedParameterId: relatedParameter?.relatedParameterId,
+        relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
         logDomainId
       });
       if (!log) {
@@ -261,7 +313,9 @@ export async function uploadLogFile(
         source: "upload",
         submittedByUserId: auth.user.id,
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId,
+        relatedParameterId: relatedParameter?.relatedParameterId,
+        relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
+        relatedParameterSnapshot: relatedParameter?.relatedParameterSnapshot,
         logDomainId
       }
     );
@@ -312,6 +366,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
       fileName: input.fileName
     });
   }
+  const relatedParameter = await resolveLogRelatedParameter(db, auth, input);
 
   if (!isAnalyzableStoredLogObject(fileObject)) {
     return db.transaction(async (tx) => {
@@ -324,7 +379,8 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         submittedByUserId: auth.user.id,
         failureReason: unsupportedReason(),
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId,
+        relatedParameterId: relatedParameter?.relatedParameterId,
+        relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
         logDomainId
       });
       if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.");
@@ -357,7 +413,9 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         source: "upload",
         submittedByUserId: auth.user.id,
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId,
+        relatedParameterId: relatedParameter?.relatedParameterId,
+        relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
+        relatedParameterSnapshot: relatedParameter?.relatedParameterSnapshot,
         logDomainId
       }
     );
@@ -408,9 +466,24 @@ export async function listLogRuns(db: Queryable, auth: AuthContext, logId: strin
 export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: RerunLogAnalysisInput, context: ServiceContext = {}) {
   requireLogAnalyze(auth);
 
+  const existing = await getLogDetail(db, auth, input.logId);
+  if (!existing) {
+    throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
+  }
+  const relatedParameter = existing.relatedParameterId && existing.relatedParameterProjectId
+    ? await resolveLogRelatedParameter(db, auth, {
+        relatedParameterId: existing.relatedParameterId,
+        relatedParameterPin: {
+          kind: "canonical-pin",
+          projectId: existing.relatedParameterProjectId,
+          bindingId: existing.relatedParameterId
+        }
+      })
+    : undefined;
+
   const result = await db.transaction(async (tx) => {
-    const existing = await getLogDetail(tx, auth, input.logId);
-    if (!existing) {
+    const current = await getLogDetail(tx, auth, input.logId);
+    if (!current) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
     }
     const logDomainId = await requireBindableLogDomainId(tx, auth, input.logDomainId);
@@ -421,7 +494,8 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
       organizationId: auth.organization.id,
       logId: input.logId,
       analysisQuestion: input.analysisQuestion,
-      logDomainId
+      logDomainId,
+      relatedParameterSnapshot: relatedParameter?.relatedParameterSnapshot
     });
     const log = await getLogDetail(tx, auth, input.logId);
     if (!log) {
@@ -438,7 +512,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
           runId: job.runId,
           jobId: job.id,
           analysisQuestion: input.analysisQuestion,
-          logDomainId: logDomainId ?? existing.logDomainId ?? null
+          logDomainId: logDomainId ?? current.logDomainId ?? null
         }
       },
       context
