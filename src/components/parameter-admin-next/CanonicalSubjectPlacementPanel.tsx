@@ -408,6 +408,8 @@ export function CanonicalSubjectPlacementPanel({
       className="parameter-module-mapping-panel__grid parameter-canonical-subject-panel"
       aria-label="规范主体归属"
       data-canonical-subject-panel="true"
+      id="canonical-subject-placement"
+      tabIndex={-1}
     >
       <section>
         <header className="parameter-module-mapping-panel__section-head">
