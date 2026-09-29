@@ -87,7 +87,7 @@ POST /api/v2/parameter-catalog/cutover-runs/:runId/comparison/mod-d02
 - 对精确的 `parameter_catalog.assert_catalog_subject_active(text,text,text,text)` guard 授予 `EXECUTE`；以及
 - 对 `public.audit_events` 授予固定 capture event 的 `SELECT, INSERT`，用于按精确 ID 核对重试；不授予 update/delete/truncate。
 
-这些因加锁而需要的 UPDATE 只属于 `NOLOGIN` 函数 owner。该 owner 没有成员也不能登录。普通 API runtime 不获得表权限，也不属于 owner role。独立的 `wiseeff_mod_d02_capture` LOGIN 作为经过身份认证的 capture service 专用连接，只获得 schema `USAGE` 和该函数的 `EXECUTE`；它不能成为 Governance、Catalog、Cutover、Verification 或 migration-owner role 的成员。从 `PUBLIC` 和所有其他角色撤销此函数 EXECUTE。将 `search_path` 固定到可信系统 schema（例如 `pg_catalog, pg_temp`），函数内所有非系统对象均使用 schema-qualified 名称。
+这些因加锁而需要的 UPDATE 只属于 `NOLOGIN` 函数 owner。该 owner 没有成员也不能登录。其 `audit_events` SELECT 是表级授权；真正把读取限制为固定 ID 的是拟议 definer 函数体，不是 SQL 行级权限。普通 API runtime 不获得表权限，也不属于 owner role。独立的 `wiseeff_mod_d02_capture` LOGIN 作为经过身份认证的 capture service 专用连接，只获得 schema `USAGE` 和该函数的 `EXECUTE`；它不能成为 Governance、Catalog、Cutover、Verification 或 migration-owner role 的成员。从 `PUBLIC` 和所有其他角色撤销此函数 EXECUTE。将 `search_path` 固定到可信系统 schema（例如 `pg_catalog, pg_temp`），函数内所有非系统对象均使用 schema-qualified 名称。
 
 TypeScript writer 必须调整为通过这一个函数调用提交生成的 batch。函数在同一事务内取得现有 users/role 行的 `FOR SHARE` 锁，以及 modules、registrations、placements 的 `SHARE` 表锁，然后核对完整 MOD inventory 的数量/校验和、每个已锁定 module 的 `id/kind/origin/parentId/attributionSubjectId/sourceKey` 与 case legacy observation，以及精确 Registration/Placement 关联。函数原子插入并验证每个 case/result 配对及 audit，在提交前强制检查 0179 deferred constraint；0179 负责绑定 run/P7 selection，却不会拒绝缺少 result 的 case。函数不会重复 TypeScript 语义 provider，也不声称其 observation 为真。拒绝分离的“先加锁”函数再加 API 直接 DML：锁按事务生命周期释放，API 直接 DML 仍会报 `42501`。独立 P11 verifier 仍负责验证源边界和全部 family 的语义等价。
 
