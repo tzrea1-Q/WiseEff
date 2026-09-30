@@ -536,9 +536,23 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
     wrapperCaptureUrl.searchParams.set("application_name", wrapperCaptureApplication);
     const countWrapperConnections = async () => (await client.query<{ count: string }>(
       `select count(*)::text as count from pg_catalog.pg_stat_activity
-        where application_name in ($1, $2)`,
+        where datname = current_database() and application_name in ($1, $2)`,
       [wrapperSourceApplication, wrapperCaptureApplication],
     )).rows[0]?.count;
+    const waitForWrapperConnectionsToClose = async () => {
+      // Pool.end() initiates protocol/socket shutdown; backend exit is observed separately.
+      // Keep the existing test-database cleanup deadline and report remaining backend identities.
+      await expect.poll(async () => {
+        await client.query("select pg_catalog.pg_stat_clear_snapshot()");
+        return (await client.query<{
+          pid: number; application_name: string; state: string; wait_event_type: string | null;
+        }>(
+          `select pid, application_name, state, wait_event_type from pg_catalog.pg_stat_activity
+            where datname = current_database() and application_name in ($1, $2) order by pid`,
+          [wrapperSourceApplication, wrapperCaptureApplication],
+        )).rows;
+      }, { timeout: 5_000, interval: 25 }).toEqual([]);
+    };
     const captureFromUrls = (token: string) => captureOfflineModD02PreP11FromUrls({
       sourceDatabaseUrl: wrapperSourceUrl.toString(),
       captureDatabaseUrl: wrapperCaptureUrl.toString(),
@@ -550,6 +564,7 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
     });
     const replay = await captureFromUrls(login.session.token);
     expect(replay).toMatchObject({ newlyWrittenCount: 0, replayedWriteCount: 2 });
+    await waitForWrapperConnectionsToClose();
     expect(await countWrapperConnections()).toBe("0");
     const firstAudit = await client.query<{ count: string }>(
       "select count(*)::text as count from public.audit_events where kind = 'mod-d02-comparison-capture' and target_id = $1",
@@ -612,6 +627,7 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
 
     await expect(captureFromUrls("invalid-session-token"))
       .rejects.toThrow("Session is not active");
+    await waitForWrapperConnectionsToClose();
     expect(await countWrapperConnections()).toBe("0");
     const afterSession = await client.query<{ last_used_at: Date | null }>(
       "select last_used_at from public.auth_sessions where user_id = $1", [principalId],
