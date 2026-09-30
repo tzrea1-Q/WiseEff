@@ -25,9 +25,17 @@ export const S2_SCH_0171_FINGERPRINT =
 export const S2_SCH_0176_FINGERPRINT =
   "6093c85dff61c592bfa48f9d19c38fa74c737418307f70062f68a17959a186ce";
 
-/** Current Catalog schema through 0179; 0177/0178 change public tables, while 0179 binds comparison rows. */
-export const S2_SCH_LIVE_FINGERPRINT =
+/** Historical 0179 comparison-manifest binding stage. */
+export const S2_SCH_0179_FINGERPRINT =
   "79320ab6d68c846b7e75ff9e2627fe80b1abcb4d0e700fc4ca7848573580a981";
+
+/** Historical 0180 offline capture functions, before readiness revalidation. */
+export const S2_SCH_0180_FINGERPRINT =
+  "1a2daa7314974e1203ea3100725f408009d2c9d69289caa4f9ea38e544ba0f3a";
+
+/** Current schema through 0181, measured on fresh and stepwise upgraded PostgreSQL. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "bd79fcababc6baa972d0935d1e837a5dc78195a225563d92be7a717af4e97797";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

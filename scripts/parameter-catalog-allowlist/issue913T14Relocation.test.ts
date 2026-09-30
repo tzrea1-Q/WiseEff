@@ -33,6 +33,7 @@ import {
 import type { BoundaryViolation } from "./schema";
 import { registerIssue903904JointProof } from "./issue903904JointProof.proof";
 import { registerT14RewrittenSliceSuccessorRelocationProof } from "./t14RewrittenSliceSuccessorRelocation.proof";
+import { registerExactRelocationProof } from "./exactRelocation.proof";
 
 const repoRoot = process.cwd();
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
@@ -62,6 +63,7 @@ afterAll(async () => {
 
 registerT14RewrittenSliceSuccessorRelocationProof(() => discovered);
 registerIssue903904JointProof(() => discovered);
+registerExactRelocationProof(() => discovered);
 
 async function copyServiceProofFixture() {
   const root = await mkdtemp(join(tmpdir(), "issue913-t14-service-"));

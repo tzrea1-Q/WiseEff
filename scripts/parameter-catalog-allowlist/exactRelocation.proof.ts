@@ -6,7 +6,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
 import { applyReviewedExactRelocation, exactRelocationRecordPath, validateExactRelocation } from "./exactRelocation";
-import { scanParameterCatalogBoundaries } from "../check-parameter-catalog-boundaries";
 import { compareBoundaryInventory } from "./deterministicOutput";
 import type { BoundaryViolation } from "./schema";
 import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
@@ -52,8 +51,10 @@ function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
   expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
 }
 
-beforeAll(async () => {
-  const all = await scanParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha);
+/** Register all exact relocation assertions beside #913's same-tree, same-base live scan. */
+export function registerExactRelocationProof(getRaw: () => readonly BoundaryViolation[]) {
+beforeAll(() => {
+  const all = getRaw();
   const targets = new Set(record.pairs.map((pair) => pair.new.id));
   discovered = all.filter((violation) => targets.has(violation.id));
 }, 60_000);
@@ -159,3 +160,4 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     }
   });
 });
+}
