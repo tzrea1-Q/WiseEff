@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -53,6 +53,8 @@ import {
 import { seedDriverPositionRecordPath, seedDriverQueryRecordPath } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 import { issue901RoutesTestRelocationRecordPath } from "./parameter-catalog-allowlist/issue901RouteTestRelocation";
 import { issue900DashboardRelocationRecordPath } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
+import { loadAllowlistIndex } from "./parameter-catalog-allowlist/index";
+import { issue1006RetiredId, verifyIssue1006Retirement } from "./parameter-catalog-allowlist/issue1006Retirement.proof";
 
 const seedDriverRecords = await Promise.all([seedDriverPositionRecordPath, seedDriverQueryRecordPath].map(async (path) =>
   JSON.parse(await readFile(`${process.cwd()}/${path}`, "utf8")) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> },
@@ -1562,7 +1564,9 @@ describe("parameter catalog boundary checker", () => {
           expect(newSources.get(entry.file)!.includes(oldSlice)).toBe(false);
         }
       }
-      expect(report.summary).toEqual({
+      const allowances = (await loadAllowlistIndex(repoRoot)).entries;
+      // Keep the frozen aggregate in its historical LOG stage, proved by exact retirements.
+      expect(await verifyIssue1006Retirement(repoRoot, fixture, allowances, report)).toEqual({
         violations: 3_564,
         allowlisted: 3_391,
         unallowlisted: 173,
@@ -1570,6 +1574,42 @@ describe("parameter catalog boundary checker", () => {
         metadataMismatches: 0,
         allowlistGrowth: 0,
       });
+      expect(report.summary).toEqual({
+        violations: 3_562, allowlisted: 3_389, unallowlisted: 173,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      const retired = JSON.parse(execFileSync("git", ["show",
+        "e94da503b8e01f838de1aba0cac4059be01a841b:docs/exec-plans/active/849-inventory/mod-dismissed-identity-read-retirement.json",
+      ], { encoding: "utf8" })).retired[0];
+      expect(retired.id).toBe(issue1006RetiredId);
+      await expect(verifyIssue1006Retirement(repoRoot, fixture, allowances, {
+        ...report, violations: [...report.violations, retired],
+      })).rejects.toThrow(/retired read or allowance revived/);
+      await expect(verifyIssue1006Retirement(repoRoot, fixture, allowances, {
+        ...report, violations: report.violations.slice(1),
+      })).rejects.toThrow(/complete baseline raw ID set/);
+      await expect(verifyIssue1006Retirement(repoRoot, fixture, allowances, {
+        ...report, violations: report.violations.map((entry, index) => index === 0
+          ? { ...entry, id: issue1006RetiredId.replace(/.$/, "0") } : entry),
+      })).rejects.toThrow(/complete baseline raw ID set/);
+      await expect(verifyIssue1006Retirement(repoRoot, fixture, allowances, {
+        ...report, unallowlisted: report.unallowlisted.slice(1),
+      })).rejects.toThrow(/complete inherited 173 ID set/);
+      await expect(verifyIssue1006Retirement(repoRoot, fixture, [...allowances, retired], report))
+        .rejects.toThrow(/retired read or allowance revived/);
+      const revivedRoot = await mkdtemp(join(tmpdir(), "issue1006-revived-read-"));
+      try {
+        await mkdir(join(revivedRoot, "server/modules/parameter-modules"), { recursive: true });
+        await writeFile(join(revivedRoot, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+          cwd: repoRoot, encoding: "utf8",
+        }).trim()}\n`);
+        await writeFile(join(revivedRoot, retired.file), execFileSync("git", ["show",
+          `6ecf3e3c6f0fce18ed43572dddc7f2bb1f94b914:${retired.file}`], { cwd: repoRoot }));
+        await expect(verifyIssue1006Retirement(revivedRoot, fixture, allowances, report))
+          .rejects.toThrow(/current whole-file retirement/);
+      } finally {
+        await rm(revivedRoot, { recursive: true, force: true });
+      }
       expect(report.violations.map((violation) => violation.id)).toEqual(
         [...report.violations.map((violation) => violation.id)].sort(),
       );

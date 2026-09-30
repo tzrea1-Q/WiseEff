@@ -479,7 +479,9 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       } });
       const olderInventory = await mkdtemp(join(tmpdir(), "wiseeff-t11-older-inventory-"));
       try {
-        expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([
+        expect(await applyMigrations(resumedDb, migrationsDir, {
+          through: "0181_mod_d02_capture_revalidation.sql",
+        })).toEqual([
           "0151_source_occurrence_identity.sql",
           "0152_pinned_source_graph_immutability.sql",
           "0153_source_occurrence_integrity.sql",
@@ -512,6 +514,10 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           "0180_mod_d02_offline_capture.sql",
           "0181_mod_d02_capture_revalidation.sql",
         ]);
+        const through0181 = (await resumedDb.query("select * from schema_migrations order by name")).rows;
+        expect(await applyMigrations(resumedDb, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+        expect((await resumedDb.query("select * from schema_migrations order by name")).rows.slice(0, -1))
+          .toEqual(through0181);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
         const bindings = (await resumedDb.query("select * from parameter_catalog.project_parameter_bindings order by id")).rows;
@@ -579,7 +585,9 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       await seedPopulatedGraph(db, connectionString);
       await seedPopulatedObservations(db);
 
-      await expect(applyMigrations(db, migrationsDir)).resolves.toEqual([
+      await expect(applyMigrations(db, migrationsDir, {
+        through: "0181_mod_d02_capture_revalidation.sql",
+      })).resolves.toEqual([
         "0151_source_occurrence_identity.sql",
         "0152_pinned_source_graph_immutability.sql",
         "0153_source_occurrence_integrity.sql",
@@ -612,6 +620,10 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         "0180_mod_d02_offline_capture.sql",
         "0181_mod_d02_capture_revalidation.sql",
       ]);
+      const through0181 = (await db.query("select * from schema_migrations order by name")).rows;
+      await expect(applyMigrations(db, migrationsDir)).resolves.toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+      expect((await db.query("select * from schema_migrations order by name")).rows.slice(0, -1))
+        .toEqual(through0181);
 
       const rows = await db.query<{
         observation_id: string;

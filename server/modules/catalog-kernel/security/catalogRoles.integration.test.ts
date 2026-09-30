@@ -22,6 +22,7 @@ import {
   S2_SCH_0176_FINGERPRINT,
   S2_SCH_0179_FINGERPRINT,
   S2_SCH_0180_FINGERPRINT,
+  S2_SCH_0181_FINGERPRINT,
   S2_SCH_LIVE_FINGERPRINT,
   readCanonicalSchemaFingerprint,
 } from "../../../testing/parameterCatalog";
@@ -1465,7 +1466,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 });
 
 describe("0138 Catalog role migration paths", () => {
-  it("0172-0181 receipts, historical phase pins and writer ACL match the live schema", async () => {
+  it("0172-0182 receipts, historical phase pins and writer ACL match the live schema", async () => {
     await withTempDatabase({ prefix: "pcat_rbac_0179", migrate: false }, async ({ db, connectionString }) => {
       await applyMigrations(db, migrationsDir, {
         through: "0176_dts_observation_source_occurrence.sql",
@@ -1498,7 +1499,14 @@ describe("0138 Catalog role migration paths", () => {
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0180_FINGERPRINT);
         const through0180 = (await admin.query("select name, checksum from schema_migrations order by name")).rows;
         expect(through0180.slice(0, -1)).toEqual(through0179);
-        expect(await applyMigrations(db, migrationsDir)).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0181_mod_d02_capture_revalidation.sql",
+        })).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
+        const through0181 = (await admin.query("select name, checksum from schema_migrations order by name")).rows;
+        expect(through0181).toHaveLength(179);
+        expect(through0181.slice(0, -1)).toEqual(through0180);
+        expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
         const expectedChecksums = {
           "0172_canonical_batch_draft_impact.sql": "6a40b58507c134884adff408c416bcae4249adcf008eb93bee8f901a7c649a53",
@@ -1511,13 +1519,14 @@ describe("0138 Catalog role migration paths", () => {
           "0179_parameter_catalog_comparison_manifest_binding.sql": "1ec7ffd3ce83aabccf964b1a544422cc60ce1a3ddb527a4cc70de4bdd1889e4d",
           "0180_mod_d02_offline_capture.sql": "3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb",
           "0181_mod_d02_capture_revalidation.sql": "2674cff84ec482f54b547339aca44699e94b7c0af8648a19aab7c383d847e9d5",
+          "0182_legacy_dismissed_identity_reader.sql": "151bd22764a7d528c0e183a1bf0482412670ecff8f4c0d994e846f7326e8ffae",
         };
         const receipts = await admin.query<{ name: string; checksum: string }>(
           "select name, checksum from schema_migrations order by name",
         );
         const files = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
         expect(receipts.rows.map(({ name }) => name)).toEqual(files);
-        expect(receipts.rows.slice(0, -1)).toEqual(through0180);
+        expect(receipts.rows.slice(0, -1)).toEqual(through0181);
         expect(receipts.rows.slice(0, 174)).toEqual(historicalReceipts.rows);
         const through0176 = files.filter((name) => name <= "0176_dts_observation_source_occurrence.sql");
         expect(through0176).toHaveLength(174);
@@ -1528,8 +1537,9 @@ describe("0138 Catalog role migration paths", () => {
           "0179_parameter_catalog_comparison_manifest_binding.sql",
           "0180_mod_d02_offline_capture.sql",
           "0181_mod_d02_capture_revalidation.sql",
+          "0182_legacy_dismissed_identity_reader.sql",
         ]);
-        expect(receipts.rows).toHaveLength(179);
+        expect(receipts.rows).toHaveLength(180);
         for (const { name, checksum } of receipts.rows) {
           expect(checksum).toBe(createHash("sha256")
             .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
@@ -1688,9 +1698,15 @@ describe("0138 Catalog role migration paths", () => {
         through: "0180_mod_d02_offline_capture.sql",
       })).toEqual(["0180_mod_d02_offline_capture.sql"]);
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0180_FINGERPRINT);
-      expect(await applyMigrations(db, migrationsDir)).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
-      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      expect(await applyMigrations(db, migrationsDir, {
+        through: "0181_mod_d02_capture_revalidation.sql",
+      })).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
       expect((await db.query("select name, checksum from schema_migrations order by name")).rows.slice(0, -2))
+        .toEqual(upgradedReceipts);
+      expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      expect((await db.query("select name, checksum from schema_migrations order by name")).rows.slice(0, -3))
         .toEqual(upgradedReceipts);
       expect((await functionAcl()).rows).toEqual(aclBefore.rows);
       expect((await immutableTriggers()).rows).toEqual(guardsBefore.rows);
@@ -1775,7 +1791,11 @@ describe("0138 Catalog role migration paths", () => {
             "0180_mod_d02_offline_capture.sql",
             "0181_mod_d02_capture_revalidation.sql",
           ];
-          expect(await applyMigrations(db, migrationsDir)).toEqual(successorMigrations);
+          expect(await applyMigrations(db, migrationsDir, {
+            through: "0181_mod_d02_capture_revalidation.sql",
+          })).toEqual(successorMigrations);
+          expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
+          expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
           expect(await applyMigrations(db, migrationsDir)).toEqual([]);
           const receipts = await admin.query<{ name: string; checksum: string }>(`
             select name, checksum from schema_migrations
@@ -1783,6 +1803,7 @@ describe("0138 Catalog role migration paths", () => {
           `);
           expect(receipts.rows.map(({ name }) => name)).toEqual([
             "0170_restore_subject_placement_definer.sql", ...successorMigrations,
+            "0182_legacy_dismissed_identity_reader.sql",
           ]);
           for (const { name, checksum } of receipts.rows) {
             expect(checksum).toBe(createHash("sha256")
@@ -1962,7 +1983,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0181 upgrade produce the same ACL fingerprint", async () => withTestClusterRoleCatalogLock(async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0182 upgrade produce the same ACL fingerprint", async () => withTestClusterRoleCatalogLock(async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -2084,7 +2105,11 @@ describe("0138 Catalog role migration paths", () => {
           through: "0180_mod_d02_offline_capture.sql",
         })).toEqual(["0180_mod_d02_offline_capture.sql"]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0180_FINGERPRINT);
-        expect(await applyMigrations(db, migrationsDir)).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0181_mod_d02_capture_revalidation.sql",
+        })).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
         upgrade = await aclFingerprint(db);
       },
