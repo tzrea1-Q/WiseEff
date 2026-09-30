@@ -262,7 +262,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       expect(oldFullPage.find((row) => row.compatible === "c4-vendor,device-200")?.bindingCount).toBeGreaterThan(0);
       expect(oldFullPage.find((row) => row.compatible === "c4-vendor,device-000")?.bindingCount).toBe(0);
       const otherOrganization = await listDismissedCompatibleIdentitiesForComparison(database, "c4-org-2");
-      expect(otherOrganization).toEqual([{ id: "c4-dismissed-other-org", compatible: "c4-vendor,device-200" }]);
+      expect(otherOrganization).toEqual([{ organizationId: "c4-org-2", id: "c4-dismissed-other-org", compatible: "c4-vendor,device-200" }]);
 
       const observedSpy = vi.spyOn(moduleRepository, "listObservedCompatiblesForDiscovery");
       const dismissedPageSpy = vi.spyOn(moduleRepository, "listDismissedCompatiblesForDiscovery");
@@ -304,7 +304,7 @@ describe("provideModParameterCatalogComparisonContribution", () => {
       expect(dismissedCases.every((item) => item.comparisonId === "PCAT-CMP-D03-REGISTRATION-PLACEMENT")).toBe(true);
       expect(dismissedCases.every((item) => item.legacyObservation.status === "value" && item.legacyObservation.value.httpStatus === 410)).toBe(true);
       expect(new Set(after.cases.map((item) => item.caseId)).size).toBe(after.cases.length);
-      expect(inventoryQueries.some((sql) => sql.includes("select id, compatible") && sql.includes("where organization_id = $1"))).toBe(true);
+      expect(inventoryQueries.some((sql) => sql.includes("parameter_catalog.list_retained_dismissed_compatible_identities($1)"))).toBe(true);
       expect(inventoryQueries.filter((sql) => /^\s*(insert|update|delete|truncate)\b/iu.test(sql))).toEqual([]);
       expect(await listDismissedCompatibleIdentitiesForComparison(database, "wf671-org")).toEqual(persistedBefore);
       const afterPost = await provideModParameterCatalogComparisonContribution(

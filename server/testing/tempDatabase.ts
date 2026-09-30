@@ -15,6 +15,7 @@ const ROLE_DDL_MIGRATIONS = [
   "0139_parameter_catalog_verification_core.sql",
   "0140_catalog_publication_control_plane.sql",
   "0180_mod_d02_offline_capture.sql",
+  "0182_legacy_dismissed_identity_reader.sql",
 ];
 
 /** Test-only wrapper: hold the cluster lease before the runner's target-DB locks. */

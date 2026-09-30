@@ -33,9 +33,13 @@ export const S2_SCH_0179_FINGERPRINT =
 export const S2_SCH_0180_FINGERPRINT =
   "1a2daa7314974e1203ea3100725f408009d2c9d69289caa4f9ea38e544ba0f3a";
 
-/** Current schema through 0181, measured on fresh and stepwise upgraded PostgreSQL. */
-export const S2_SCH_LIVE_FINGERPRINT =
+/** Historical 0181 readiness-revalidation stage, retained unchanged. */
+export const S2_SCH_0181_FINGERPRINT =
   "bd79fcababc6baa972d0935d1e837a5dc78195a225563d92be7a717af4e97797";
+
+/** Current 0182 retained-identity reader stage, measured on fresh and upgraded PostgreSQL. */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "2ab9046e3ceb66ab9f91b1d7eb96e5d929f9b25f8b3fda0bb0c190fcac761fd5";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
