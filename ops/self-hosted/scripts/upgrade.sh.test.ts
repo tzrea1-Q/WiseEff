@@ -19,6 +19,8 @@ import { fixtureObservedQuiescence } from "../../../server/modules/catalog-cutov
 import { fixtureObservedRecoveryPoint } from "../../../server/modules/catalog-cutover/recoveryPointObservation";
 import type { FrozenP0Graph } from "../../../server/modules/catalog-cutover/classifier";
 import { createDisposableParameterCatalogDatabase } from "../../../server/testing/parameterCatalog";
+import { createEphemeralTestDatabase } from "../../../server/testing/testDatabase";
+import { populatedCutoverGraph, seedPopulatedCutover } from "../../../server/testing/parameterCatalog/cutoverPopulatedFixture";
 import {
   isForbiddenComposeAppPostgres,
   postgresIdentityFromUrl,
@@ -4375,6 +4377,110 @@ exit 0
   });
 });
 
+describe("offline MOD D02 maintenance entry on disposable PostgreSQL", { timeout: 180_000 }, () => {
+  it("keeps disabled connections closed and refuses wrong stage, pin, and post-P10 missing connections", async () => {
+    const databaseUrl = process.env.TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
+    if (!databaseUrl || isForbiddenComposeAppPostgres(databaseUrl)) {
+      throw new Error("MOD D02 maintenance entry requires dedicated pgvector PostgreSQL");
+    }
+    const fresh = await createEphemeralTestDatabase("d02entryf");
+    const populated = await createEphemeralTestDatabase("d02entryp");
+    try {
+      const bundle = firstReleaseBundle();
+      const compiled = compileCatalogRelease(bundle);
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      const graph = populatedCutoverGraph();
+      const seedClient = new pg.Client({ connectionString: populated.url });
+      await seedClient.connect();
+      try {
+        await seedPopulatedCutover(seedClient, graph);
+      } finally {
+        await seedClient.end();
+      }
+      const apply = (mode: "fresh" | "populated", url: string, inputGraph: FrozenP0Graph,
+        runId: string, env: NodeJS.ProcessEnv, releaseDigest = compiled.value.release.digest) => {
+        const root = mkdtempSync(join(tmpdir(), "wiseeff-mod-d02-entry-"));
+        const archiveRoot = join(root, "archive");
+        mkdirSync(archiveRoot);
+        const graphPath = join(root, "graph.json");
+        const releasePath = join(root, "release.json");
+        const journalPath = join(root, "journal.json");
+        writeFileSync(graphPath, JSON.stringify(inputGraph));
+        writeFileSync(releasePath, JSON.stringify(bundle));
+        const result = runUpgrade([
+          "apply", "--catalog-apply-mode", mode,
+          "--catalog-graph", graphPath,
+          "--catalog-release-json", releasePath,
+          "--catalog-journal", journalPath,
+          "--catalog-run-id", runId,
+          "--catalog-target-artifact-sha", ARTIFACT_SHA,
+          "--catalog-target-release-digest", releaseDigest,
+          "--catalog-archive-root", archiveRoot,
+          "--catalog-archive-key-hex", randomBytes(32).toString("hex"),
+          "--catalog-operator-audit-ref", "audit-s11-apl-mod-entry",
+          "--json",
+        ], catalogCliEnv({ DATABASE_URL: url, WISEEFF_CATALOG_QUIESCED: "true", ...env }));
+        return { result, journalPath };
+      };
+      const unreachable = "postgres://127.0.0.1:1/capture-unreachable";
+      const maintenanceUrls = {
+        WISEEFF_MOD_D02_SOURCE_READER_DATABASE_URL: unreachable,
+        WISEEFF_MOD_D02_CAPTURE_DATABASE_URL: unreachable,
+      };
+
+      const disabled = apply("fresh", fresh.url, EMPTY_P0_GRAPH, "d02-entry-disabled",
+        { ...maintenanceUrls, WISEEFF_MOD_D02_CAPTURE_ENABLED: "" });
+      expect(disabled.result.status, disabled.result.stderr).toBe(0);
+      expect(parseApplyJson(disabled.result.stdout).state).toBe("verification-ran");
+
+      const wrongStage = apply("fresh", fresh.url, EMPTY_P0_GRAPH, "d02-entry-wrong-stage",
+        { ...maintenanceUrls, WISEEFF_MOD_D02_CAPTURE_ENABLED: "true" });
+      expect(wrongStage.result.status).not.toBe(0);
+      expect(`${wrongStage.result.stdout}\n${wrongStage.result.stderr}`).toContain(
+        "MOD D02 capture requires completed populated P10",
+      );
+      expect(`${wrongStage.result.stdout}\n${wrongStage.result.stderr}`).not.toContain("verification-ran");
+
+      const wrongPin = apply("populated", populated.url, graph, "d02-entry-wrong-pin",
+        { ...maintenanceUrls, WISEEFF_MOD_D02_CAPTURE_ENABLED: "true" },
+        `sha256:${"0".repeat(64)}`);
+      expect(wrongPin.result.status).not.toBe(0);
+      expect(`${wrongPin.result.stdout}\n${wrongPin.result.stderr}`).toContain(
+        "target catalog release digest does not match the compiled bundle",
+      );
+      expect(`${wrongPin.result.stdout}\n${wrongPin.result.stderr}`).not.toContain("verification-ran");
+
+      const postP10Failure = apply("populated", populated.url, graph, "d02-entry-no-connections",
+        { WISEEFF_MOD_D02_CAPTURE_ENABLED: "true",
+          WISEEFF_MOD_D02_SOURCE_READER_DATABASE_URL: "",
+          WISEEFF_MOD_D02_CAPTURE_DATABASE_URL: "" });
+      expect(postP10Failure.result.status).not.toBe(0);
+      expect(`${postP10Failure.result.stdout}\n${postP10Failure.result.stderr}`).toContain(
+        "MOD D02 capture requires completed populated P10 and two configured maintenance connections",
+      );
+      expect(`${postP10Failure.result.stdout}\n${postP10Failure.result.stderr}`).not.toContain("verification-ran");
+      const journal = JSON.parse(readFileSync(postP10Failure.journalPath, "utf8")) as {
+        entries: { action: string }[];
+      };
+      expect(journal.entries.map((entry) => entry.action)).toEqual(["plan", "execute"]);
+      const inspect = new pg.Client({ connectionString: populated.url });
+      await inspect.connect();
+      try {
+        const run = await inspect.query<{ state: string; current_phase: string }>(
+          "select state, current_phase from parameter_catalog.parameter_catalog_cutover_runs",
+        );
+        expect(run.rows).toEqual([{ state: "completed", current_phase: "P10" }]);
+      } finally {
+        await inspect.end();
+      }
+    } finally {
+      await fresh.drop();
+      await populated.drop();
+    }
+  }, 180_000);
+});
+
 const S11_APL_THREAT_MATRIX = Object.freeze([
   {
     id: 1,
@@ -4809,7 +4915,7 @@ describe("S11-APL catalog apply threat matrix", () => {
   it("keeps optional MOD D02 capture after completed P10 and before verification", () => {
     const source = readFileSync("ops/self-hosted/scripts/upgrade.sh", "utf8");
     const executed = source.indexOf('const executed = await controller.dispatch({');
-    const capture = source.indexOf('const receipt = await captureOfflineModD02PreP11({');
+    const capture = source.indexOf('const receipt = await captureOfflineModD02PreP11FromUrls({');
     const verification = source.indexOf('action: "prepareVerification"');
     expect(executed).toBeGreaterThanOrEqual(0);
     expect(capture).toBeGreaterThan(executed);

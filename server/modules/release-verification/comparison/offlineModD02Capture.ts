@@ -1,6 +1,6 @@
 import type pg from "pg";
 
-import { getRootPostgresPool, type Database } from "../../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type Database } from "../../../shared/database/client";
 import { hashLocalSessionToken } from "../../auth/localAccountCredentials";
 import { createOfflineModD02SourceReader } from "./offlineModD02SourceReader";
 
@@ -26,6 +26,14 @@ export type OfflineModD02CaptureInput = {
   readonly expectedCatalogReleaseDigest: string;
   readonly enabled?: boolean;
   readonly authProvider?: string;
+};
+
+export type OfflineModD02CaptureFromUrlsInput = Omit<
+  OfflineModD02CaptureInput,
+  "sourceDatabase" | "sourcePool" | "captureDatabase"
+> & {
+  readonly sourceDatabaseUrl: string;
+  readonly captureDatabaseUrl: string;
 };
 
 export type OfflineModD02CaptureReceipt = {
@@ -133,4 +141,24 @@ export async function captureOfflineModD02PreP11(
     sourceIdentity,
     captureIdentity,
   };
+}
+
+/** The maintenance entry owns both roots, including when capture rejects. */
+export async function captureOfflineModD02PreP11FromUrls(
+  input: OfflineModD02CaptureFromUrlsInput,
+): Promise<OfflineModD02CaptureReceipt> {
+  const { sourceDatabaseUrl, captureDatabaseUrl, ...captureInput } = input;
+  const sourceDatabase = createPostgresDatabase(sourceDatabaseUrl);
+  let captureDatabase: ReturnType<typeof createPostgresDatabase> | undefined;
+  try {
+    captureDatabase = createPostgresDatabase(captureDatabaseUrl);
+    return await captureOfflineModD02PreP11({
+      ...captureInput,
+      sourceDatabase,
+      sourcePool: getRootPostgresPool(sourceDatabase)!,
+      captureDatabase,
+    });
+  } finally {
+    await Promise.all([sourceDatabase.close(), captureDatabase?.close()]);
+  }
 }

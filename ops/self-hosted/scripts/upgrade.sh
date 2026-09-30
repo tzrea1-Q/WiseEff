@@ -214,8 +214,8 @@ const main = async () => {
   const { compileCatalogRelease } = compilerMod;
   const { createReleaseVerificationService } = verificationMod;
   const { createPostgresGateAdapters, loadPackagedMigrationInventory } = postgresGatesMod;
-  const { createDatabase, createPostgresDatabase, getRootPostgresPool } = databaseMod;
-  const { captureOfflineModD02PreP11 } = modD02CaptureMod;
+  const { createDatabase } = databaseMod;
+  const { captureOfflineModD02PreP11FromUrls } = modD02CaptureMod;
   const {
     captureRecoveryPoint,
     createMemoryStorePort,
@@ -572,14 +572,10 @@ const main = async () => {
           !process.env.WISEEFF_MOD_D02_CAPTURE_DATABASE_URL) {
         fail("PCAT-UPG-ILLEGAL-ACTION", "MOD D02 capture requires completed populated P10 and two configured maintenance connections");
       }
-      const sourceDatabase = createPostgresDatabase(process.env.WISEEFF_MOD_D02_SOURCE_READER_DATABASE_URL);
-      const captureDatabase = createPostgresDatabase(process.env.WISEEFF_MOD_D02_CAPTURE_DATABASE_URL);
-      let captureFailed = false;
       try {
-        const receipt = await captureOfflineModD02PreP11({
-          sourceDatabase,
-          sourcePool: getRootPostgresPool(sourceDatabase)!,
-          captureDatabase,
+        const receipt = await captureOfflineModD02PreP11FromUrls({
+          sourceDatabaseUrl: process.env.WISEEFF_MOD_D02_SOURCE_READER_DATABASE_URL,
+          captureDatabaseUrl: process.env.WISEEFF_MOD_D02_CAPTURE_DATABASE_URL,
           token: readLocalSessionToken(),
           runId: lastExecute.runId,
           requestId: `${runId}:mod-d02-pre-p11`,
@@ -591,12 +587,6 @@ const main = async () => {
         });
         modD02Capture = { ...receipt };
       } catch {
-        captureFailed = true;
-      } finally {
-        await sourceDatabase.close();
-        await captureDatabase.close();
-      }
-      if (captureFailed) {
         fail("PCAT-UPG-ILLEGAL-ACTION", "MOD D02 capture failed; P11 verification was not started");
       }
     }
