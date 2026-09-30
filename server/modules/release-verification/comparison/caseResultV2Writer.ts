@@ -214,7 +214,7 @@ const assertCaseContribution = (
   failClosed(`unsupported D02 case result for ${item.caseId}`);
 };
 
-const assertBatch = (batch: ComparisonCaseBatchV2, manifest: CompletedMappingManifest): void => {
+export const assertModD02CapturableBatch = (batch: ComparisonCaseBatchV2, manifest: CompletedMappingManifest): void => {
   if (batch.contractVersion !== "pcat-comparison-case-batch/v2" ||
       batch.family !== "MOD" || batch.comparisonId !== D02_COMPARISON_ID ||
       batch.phase !== "pre-activation" ||
@@ -310,6 +310,10 @@ const assertBatch = (batch: ComparisonCaseBatchV2, manifest: CompletedMappingMan
     .map((item) => `${item.caseId}:${queryFailureDetail(item)}`);
   if (!serializeCanonical(expectedBlockers).equals(serializeCanonical(batch.blockers))) {
     failClosed("MOD D02 blocker inventory differs from per-case observations");
+  }
+  if (batch.blockers.length > 0 || batch.cases.some((item) =>
+    item.result === "unqueryable/protected-reference-missing")) {
+    failClosed(`MOD D02 full organization inventory has ${batch.blockers.length} unqueryable case(s): ${batch.blockers.join(",")}`);
   }
 };
 
@@ -584,13 +588,7 @@ export async function writeModParameterCatalogComparisonCasesV2(
   assertTrustedInvocationMatchesAuth(authBeforeWrite, input.invocation, "MOD D02 protected write");
   assertPersistedOrganizationAdmin(authBeforeWrite, scope);
   const manifest = manifestScope.manifest;
-  assertBatch(batch, manifest);
-  if (batch.blockers.length > 0) {
-    failClosed(`MOD D02 full organization inventory has ${batch.blockers.length} unqueryable case(s): ${batch.blockers.join(",")}`);
-  }
-  if (batch.cases.some((item) => item.result === "unqueryable/protected-reference-missing")) {
-    failClosed("MOD D02 case batch contains an unqueryable case");
-  }
+  assertModD02CapturableBatch(batch, manifest);
 
   let newlyWrittenCount = 0;
   await input.database.transaction(async (tx) => {
