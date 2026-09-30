@@ -9,6 +9,7 @@ import {
   serializeContract,
 } from "../../parameter-catalog-contract";
 import { applyMigrations } from "../../../shared/database/migrations";
+import { withTestClusterRoleCatalogLock } from "../../../testing/testDatabase";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
@@ -827,12 +828,14 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       { prefix: "pcat_rbac_0138_replay", migrate: false },
       async ({ db }) => {
         await applyMigrations(db, migrationsDir, { through: ROLES_MIGRATION });
-        const before = await aclFingerprint(db);
-        const sql = await fs.readFile(path.join(migrationsDir, ROLES_MIGRATION), "utf8");
-        await db.query(sql);
-        const after = await aclFingerprint(db);
-        expect(after).toBe(before);
-        expect(before).toMatch(/^[0-9a-f]{64}$/);
+        await withTestClusterRoleCatalogLock(async () => {
+          const before = await aclFingerprint(db);
+          const sql = await fs.readFile(path.join(migrationsDir, ROLES_MIGRATION), "utf8");
+          await db.query(sql);
+          const after = await aclFingerprint(db);
+          expect(after).toBe(before);
+          expect(before).toMatch(/^[0-9a-f]{64}$/);
+        });
       },
     );
   }, 120_000);
@@ -1959,7 +1962,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0181 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0181 upgrade produce the same ACL fingerprint", async () => withTestClusterRoleCatalogLock(async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -2089,5 +2092,5 @@ describe("0138 Catalog role migration paths", () => {
 
     expect(fresh).toMatch(/^[0-9a-f]{64}$/);
     expect(upgrade).toBe(fresh);
-  }, 180_000);
+  }), 180_000);
 });

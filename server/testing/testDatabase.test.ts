@@ -2,17 +2,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 
 import type { QueryResult } from "../shared/database/client";
-import { withTempDatabase } from "./tempDatabase";
+import { applyMigrations } from "../shared/database/migrations";
+import { provisionPublicationRuntimeLogins } from "../modules/catalog-publication/runtime/provisionRuntimeLogins";
+import { provisionPublicationRuntimeLogins as provisionLabRuntimeLogins } from "./labRuntimeLogins";
+import { applyTestMigrations, migrationsDir, withTempDatabase } from "./tempDatabase";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
   createSerializedTestQueryable,
   dropTestDatabase,
+  hasTestClusterRoleCatalogLock,
   isTestDatabaseAvailable,
+  withTestClusterRoleCatalogLock,
   type InMemoryTestDatabase
 } from "./testDatabase";
 
 describe("test database query scheduling", () => {
+  it("routes server test migration imports through the cluster lease wrapper", () => {
+    expect(applyMigrations).toBe(applyTestMigrations);
+    expect(provisionPublicationRuntimeLogins).toBe(provisionLabRuntimeLogins);
+  });
+
   it("serializes concurrent service queries on the transaction client", async () => {
     let activeQueries = 0;
     let maximumConcurrentQueries = 0;
@@ -221,5 +231,64 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
       await admin.end();
       await ephemeral.drop();
     }
+  });
+});
+
+describe.skipIf(!databaseAvailable)("cluster role lifecycle lease", () => {
+  it("serializes role migrations across databases while ordinary queries remain parallel", async () => {
+    await withTempDatabase({ prefix: "role_lease_a", migrate: false }, async ({ db: a }) => {
+      await withTempDatabase({ prefix: "role_lease_b", migrate: false }, async ({ db: b }) => {
+        let release!: () => void;
+        let entered!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        const acquired = new Promise<void>((resolve) => { entered = resolve; });
+        const first = withTestClusterRoleCatalogLock(async () => {
+          entered();
+          await expect(withTestClusterRoleCatalogLock(async () => undefined))
+            .rejects.toThrow("Nested test cluster role catalog lease");
+          await held;
+        });
+        await acquired;
+        let secondEntered = false;
+        const second = withTestClusterRoleCatalogLock(async () => { secondEntered = true; });
+        try {
+          expect((await Promise.all([a.query("select 1"), b.query("select 1")])).map((r) => r.rows))
+            .toEqual([[{ "?column?": 1 }], [{ "?column?": 1 }]]);
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          expect(secondEntered).toBe(false);
+        } finally {
+          release();
+          await Promise.all([first, second]);
+        }
+        expect(secondEntered).toBe(true);
+        const applied = await Promise.all([
+          applyTestMigrations(a, migrationsDir, { through: "0180_mod_d02_offline_capture.sql" }),
+          applyTestMigrations(b, migrationsDir, { through: "0180_mod_d02_offline_capture.sql" }),
+        ]);
+        expect(applied.map((names) => names.at(-1))).toEqual([
+          "0180_mod_d02_offline_capture.sql",
+          "0180_mod_d02_offline_capture.sql",
+        ]);
+        await withTestClusterRoleCatalogLock(async () => {
+          expect(await applyTestMigrations(a, migrationsDir, { through: "0180_mod_d02_offline_capture.sql" }))
+            .toEqual([]);
+        });
+      });
+    });
+  }, 180_000);
+
+  it("releases the lease after a callback throws", async () => {
+    await expect(withTestClusterRoleCatalogLock(async () => {
+      throw new Error("lease probe");
+    })).rejects.toThrow("lease probe");
+    await expect(withTestClusterRoleCatalogLock(async () => "acquired")).resolves.toBe("acquired");
+    let releaseProbe!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseProbe = resolve; });
+    let inheritedContext!: Promise<boolean>;
+    await withTestClusterRoleCatalogLock(async () => {
+      inheritedContext = gate.then(() => hasTestClusterRoleCatalogLock());
+    });
+    releaseProbe();
+    expect(await inheritedContext).toBe(false);
   });
 });

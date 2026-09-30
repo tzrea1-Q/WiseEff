@@ -10,7 +10,12 @@ import { createLocalAuthService } from "../../auth/localAuth";
 import { hashLocalAccountPassword, hashLocalSessionToken } from "../../auth/localAccountCredentials";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import { seedOrganization, seedUser } from "../../../testing/fixtures";
-import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
+import {
+  createEphemeralTestDatabase,
+  withTestClusterRoleCatalogLock,
+  type EphemeralTestDatabase,
+} from "../../../testing/testDatabase";
+import { withAdminClient } from "../../../testing/tempDatabase";
 import { populatedCutoverGraph, seedPopulatedCutover } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import {
   installParameterModuleComparisonCatalogFixture,
@@ -31,8 +36,7 @@ import { captureOfflineModD02PreP11, captureOfflineModD02PreP11FromUrls } from "
 import { createOfflineModD02SourceReader } from "./offlineModD02SourceReader";
 import { serializeCanonical } from "./corpusContributionSchema";
 
-it("captures real pre-P11 MOD D02 cases through fixed source and function-only logins", async () => {
-  const fixture = await createEphemeralTestDatabase("modcapture");
+async function runCaptureFixture(fixture: EphemeralTestDatabase, injectFailureAfterLogin = false) {
   const ownerDatabase = createPostgresDatabase(fixture.url);
   const ownerPool = getRootPostgresPool(ownerDatabase)!;
   const client = new pg.Client({ connectionString: fixture.url });
@@ -183,6 +187,8 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
       throw error;
     }
 
+    await withTestClusterRoleCatalogLock(async () => {
+      try {
     // Passwords exist only in the disposable cluster and never leave this test.
     const readerPassword = randomBytes(24).toString("hex");
     const capturePassword = randomBytes(24).toString("hex");
@@ -220,6 +226,10 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
       expect(role.rows).toHaveLength(1);
       expect(role.rows[0]).toMatchObject({ rolsuper: false, rolbypassrls: false });
       expect(role.rows[0]?.session_user).toBe(role.rows[0]?.current_user);
+    }
+    if (injectFailureAfterLogin) {
+      await client.query("begin");
+      throw new Error("injected failure after fixed-role LOGIN");
     }
     const foreignRows = await readerPool.query<{ id: string }>(
       "select id from public.parameter_modules where organization_id = $1",
@@ -536,9 +546,23 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
     wrapperCaptureUrl.searchParams.set("application_name", wrapperCaptureApplication);
     const countWrapperConnections = async () => (await client.query<{ count: string }>(
       `select count(*)::text as count from pg_catalog.pg_stat_activity
-        where application_name in ($1, $2)`,
+        where datname = current_database() and application_name in ($1, $2)`,
       [wrapperSourceApplication, wrapperCaptureApplication],
     )).rows[0]?.count;
+    const waitForWrapperConnectionsToClose = async () => {
+      // Pool.end() initiates protocol/socket shutdown; backend exit is observed separately.
+      // Keep the existing test-database cleanup deadline and report remaining backend identities.
+      await expect.poll(async () => {
+        await client.query("select pg_catalog.pg_stat_clear_snapshot()");
+        return (await client.query<{
+          pid: number; application_name: string; state: string; wait_event_type: string | null;
+        }>(
+          `select pid, application_name, state, wait_event_type from pg_catalog.pg_stat_activity
+            where datname = current_database() and application_name in ($1, $2) order by pid`,
+          [wrapperSourceApplication, wrapperCaptureApplication],
+        )).rows;
+      }, { timeout: 5_000, interval: 25 }).toEqual([]);
+    };
     const captureFromUrls = (token: string) => captureOfflineModD02PreP11FromUrls({
       sourceDatabaseUrl: wrapperSourceUrl.toString(),
       captureDatabaseUrl: wrapperCaptureUrl.toString(),
@@ -550,6 +574,7 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
     });
     const replay = await captureFromUrls(login.session.token);
     expect(replay).toMatchObject({ newlyWrittenCount: 0, replayedWriteCount: 2 });
+    await waitForWrapperConnectionsToClose();
     expect(await countWrapperConnections()).toBe("0");
     const firstAudit = await client.query<{ count: string }>(
       "select count(*)::text as count from public.audit_events where kind = 'mod-d02-comparison-capture' and target_id = $1",
@@ -612,6 +637,7 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
 
     await expect(captureFromUrls("invalid-session-token"))
       .rejects.toThrow("Session is not active");
+    await waitForWrapperConnectionsToClose();
     expect(await countWrapperConnections()).toBe("0");
     const afterSession = await client.query<{ last_used_at: Date | null }>(
       "select last_used_at from public.auth_sessions where user_id = $1", [principalId],
@@ -637,11 +663,60 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
     await readerDatabase?.close().catch(() => undefined);
     await captureDatabase?.close().catch(() => undefined);
     await captureClient?.end().catch(() => undefined);
-    await client.query("alter role wiseeff_mod_d02_source_reader password null").catch(() => undefined);
-    await client.query("alter role wiseeff_mod_d02_capture password null").catch(() => undefined);
+    await withAdminClient(async (admin) => {
+        const cleanupErrors: unknown[] = [];
+        for (const role of ["wiseeff_mod_d02_source_reader", "wiseeff_mod_d02_capture"]) {
+          try {
+            await admin.query(`alter role ${role} password null`);
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
+        }
+        const roles = await admin.query<{ rolname: string; password_is_null: boolean }>(
+          `select rolname, rolpassword is null as password_is_null
+             from pg_catalog.pg_authid
+            where rolname = any($1::text[]) order by rolname`,
+          [["wiseeff_mod_d02_capture", "wiseeff_mod_d02_source_reader"]],
+        );
+        expect(roles.rows).toEqual([
+          { rolname: "wiseeff_mod_d02_capture", password_is_null: true },
+          { rolname: "wiseeff_mod_d02_source_reader", password_is_null: true },
+        ]);
+        if (cleanupErrors.length) throw new AggregateError(cleanupErrors, "Failed to restore MOD D02 role passwords");
+        await expect.poll(async () => {
+          await admin.query("select pg_catalog.pg_stat_clear_snapshot()");
+          return (await admin.query<{ count: string }>(
+            `select count(*)::text as count from pg_catalog.pg_stat_activity
+              where datname = $1 and usename = any($2::text[])`,
+            [new URL(fixture.url).pathname.slice(1), ["wiseeff_mod_d02_capture", "wiseeff_mod_d02_source_reader"]],
+          )).rows[0]?.count;
+        }, { timeout: 5_000, interval: 25 }).toBe("0");
+    });
+      }
+    });
+  } finally {
     await client.end().catch(() => undefined);
     await ownerDatabase.close().catch(() => undefined);
-    await fixture.drop().catch(() => undefined);
     await rm(archiveRoot, { recursive: true, force: true });
+  }
+}
+
+it("captures real pre-P11 MOD D02 cases through fixed source and function-only logins", async () => {
+  const fixture = await createEphemeralTestDatabase("modcapture");
+  try {
+    await runCaptureFixture(fixture);
+  } finally {
+    await fixture.drop();
+  }
+}, 180_000);
+
+it("restores fixed-role passwords and closes LOGIN backends after failure", async () => {
+  const fixture = await createEphemeralTestDatabase("modfail");
+  try {
+    await expect(runCaptureFixture(fixture, true))
+      .rejects.toThrow("injected failure after fixed-role LOGIN");
+    await expect(withTestClusterRoleCatalogLock(async () => "released")).resolves.toBe("released");
+  } finally {
+    await fixture.drop();
   }
 }, 180_000);

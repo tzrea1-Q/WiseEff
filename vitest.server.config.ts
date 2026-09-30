@@ -11,6 +11,21 @@ const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
 const defaultMaxWorkers = Math.min(4, Math.max(1, Math.floor(os.cpus().length / 2) || 1));
 
 export default defineConfig({
+  plugins: [{
+    name: "test-cluster-role-migration-lease",
+    enforce: "pre",
+    resolveId(source, importer) {
+      // Route test replay calls through the lease without editing frozen test blobs.
+      if (importer?.split("?")[0]?.endsWith(".test.ts")
+        && source.endsWith("/shared/database/migrations")) {
+        return path.resolve(projectRoot, "server/testing/tempDatabase.ts");
+      }
+      if (importer?.split("?")[0]?.endsWith(".test.ts")
+        && source.endsWith("/provisionRuntimeLogins")) {
+        return path.resolve(projectRoot, "server/testing/labRuntimeLogins.ts");
+      }
+    },
+  }],
   resolve: {
     alias: {
       "@": path.resolve(projectRoot, "src"),
