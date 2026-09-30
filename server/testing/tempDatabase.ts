@@ -2,13 +2,49 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createDatabase, type Database } from "../shared/database/client";
-import { applyMigrations } from "../shared/database/migrations";
-import { createSerializedTestQueryable, dropTestDatabase } from "./testDatabase";
+import { applyMigrations as applyRepositoryMigrations, type ApplyMigrationsOptions } from "../shared/database/migrations";
+import { createSerializedTestQueryable, dropTestDatabase, hasTestClusterRoleCatalogLock, withTestClusterRoleCatalogLock } from "./testDatabase";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 
 /** Absolute path to `server/migrations`, shared by suites that replay migrations manually. */
 export const migrationsDir = path.join(projectRoot, "server", "migrations");
+
+const ROLE_DDL_MIGRATIONS = [
+  "0138_canonical_parameter_catalog_roles.sql",
+  "0139_parameter_catalog_verification_core.sql",
+  "0140_catalog_publication_control_plane.sql",
+  "0180_mod_d02_offline_capture.sql",
+];
+
+/** Test-only wrapper: hold the cluster lease before the runner's target-DB locks. */
+export async function applyTestMigrations(
+  db: Database,
+  directory: string,
+  options: ApplyMigrationsOptions = {},
+): Promise<string[]> {
+  const selectedRoleDdl = directory === migrationsDir ? ROLE_DDL_MIGRATIONS.filter(
+    (file) => (options.before === undefined || file < options.before)
+      && (options.through === undefined || file <= options.through),
+  ) : [];
+  if (selectedRoleDdl.length === 0) return applyRepositoryMigrations(db, directory, options);
+  // A role-sensitive fixture can hold the outer lease across multiple replays.
+  if (hasTestClusterRoleCatalogLock()) return applyRepositoryMigrations(db, directory, options);
+  const exists = await db.query<{ exists: boolean }>(
+    "select to_regclass('public.schema_migrations') is not null as exists",
+  );
+  const applied = exists.rows[0]?.exists
+    ? (await db.query<{ name: string }>(
+      "select name from schema_migrations where name = any($1::text[])",
+      [selectedRoleDdl],
+    )).rows.map(({ name }) => name)
+    : [];
+  return selectedRoleDdl.every((file) => applied.includes(file))
+    ? applyRepositoryMigrations(db, directory, options)
+    : withTestClusterRoleCatalogLock(() => applyRepositoryMigrations(db, directory, options));
+}
+
+export { applyTestMigrations as applyMigrations };
 
 export function resolveTestDatabaseUrl(): string {
   return (
@@ -81,7 +117,7 @@ export async function withTempDatabase<T>(
 
   try {
     if (options.migrate !== false) {
-      await applyMigrations(db, migrationsDir);
+      await applyTestMigrations(db, migrationsDir);
     }
     return await fn({ db, connectionString });
   } finally {

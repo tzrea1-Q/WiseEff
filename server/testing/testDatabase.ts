@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,12 +20,12 @@ const migrationsDir = path.join(projectRoot, "server", "migrations");
 loadDotenvFiles(projectRoot);
 
 /**
- * Serializes only the rare template-build moment. Individual suites no longer take a
- * cluster-wide lock: every vitest fork works in its own database cloned from a
- * migrations-fingerprinted template, so suites parallelize freely and local runs see the
- * same fresh schema state as CI (no dependence on the dev database's cutover state).
+ * Serializes template builds and the cluster-shared role lifecycle. Ordinary suite
+ * work uses per-worker databases and remains parallel; role DDL and fixed-role LOGIN
+ * fixtures share this postgres-database lease.
  */
 const TEMPLATE_BUILD_LOCK = 4_201_659;
+const roleCatalogLease = new AsyncLocalStorage<{ active: boolean }>();
 const TEMPLATE_LOCK_WAIT_MS = 120_000;
 const TEMPLATE_LOCK_POLL_MS = 50;
 const DATABASE_DISCONNECT_WAIT_MS = 5_000;
@@ -123,6 +124,30 @@ async function acquireTemplateLock(admin: pg.Client): Promise<void> {
   throw new Error(
     `Timed out after ${TEMPLATE_LOCK_WAIT_MS}ms waiting for test template build lock ${TEMPLATE_BUILD_LOCK}`
   );
+}
+
+/**
+ * Shared roles live across databases. Acquire this session lease on postgres before
+ * target-database migration locks (7154209001, then 0180's 89710010180) or any
+ * fixed-role password/LOGIN work. Callers must not nest this lease.
+ */
+export async function withTestClusterRoleCatalogLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (roleCatalogLease.getStore()?.active) throw new Error("Nested test cluster role catalog lease");
+  const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
+  await admin.connect();
+  const lease = { active: true };
+  try {
+    await acquireTemplateLock(admin);
+    return await roleCatalogLease.run(lease, fn);
+  } finally {
+    lease.active = false;
+    await admin.query("select pg_advisory_unlock($1)", [TEMPLATE_BUILD_LOCK]).catch(() => undefined);
+    await admin.end();
+  }
+}
+
+export function hasTestClusterRoleCatalogLock(): boolean {
+  return roleCatalogLease.getStore()?.active === true;
 }
 
 async function dropStaleTestDatabases(admin: pg.Client, keepFingerprint: string): Promise<void> {

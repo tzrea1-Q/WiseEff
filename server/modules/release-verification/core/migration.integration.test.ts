@@ -4,6 +4,7 @@ import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { createDatabase } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
+import { withTestClusterRoleCatalogLock } from "../../../testing/testDatabase";
 import {
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
@@ -84,18 +85,23 @@ describe("verification-core migration", () => {
           const before = await client.query<{ relname: string }>(verificationRelationSql);
           expect(before.rows).toEqual([]);
 
-          await client.query("begin");
-          await client.query(sql);
-          const during = await client.query<{ relname: string }>(verificationRelationSql);
-          expect(during.rows.map((row) => row.relname)).toEqual([
-            "verification_approvals",
-            "verification_attempts",
-            "verification_gate_registry",
-            "verification_gate_results",
-            "verification_plans",
-            "verification_reports",
-          ]);
-          await client.query("rollback");
+          await withTestClusterRoleCatalogLock(async () => {
+            await client.query("begin");
+            try {
+              await client.query(sql);
+              const during = await client.query<{ relname: string }>(verificationRelationSql);
+              expect(during.rows.map((row) => row.relname)).toEqual([
+                "verification_approvals",
+                "verification_attempts",
+                "verification_gate_registry",
+                "verification_gate_results",
+                "verification_plans",
+                "verification_reports",
+              ]);
+            } finally {
+              await client.query("rollback");
+            }
+          });
 
           const afterRollback = await client.query<{ relname: string }>(verificationRelationSql);
           expect(afterRollback.rows).toEqual([]);
