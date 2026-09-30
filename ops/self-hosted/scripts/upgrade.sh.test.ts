@@ -4380,7 +4380,8 @@ exit 0
 describe("offline MOD D02 maintenance entry on disposable PostgreSQL", { timeout: 180_000 }, () => {
   it("keeps disabled connections closed and refuses wrong stage, pin, and post-P10 missing connections", async () => {
     const databaseUrl = process.env.TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
-    if (!databaseUrl || isForbiddenComposeAppPostgres(databaseUrl)) {
+    if ((!databaseUrl && process.env.CI !== "true") ||
+        (databaseUrl && isForbiddenComposeAppPostgres(databaseUrl))) {
       throw new Error("MOD D02 maintenance entry requires dedicated pgvector PostgreSQL");
     }
     const fresh = await createEphemeralTestDatabase("d02entryf");
