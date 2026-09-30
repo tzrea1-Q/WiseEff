@@ -11,7 +11,7 @@ const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
 if (process.env.CI === "true") {
   let cpuQuota = "unavailable";
   try { cpuQuota = readFileSync("/sys/fs/cgroup/cpu.max", "utf8").trim(); } catch { /* CPU quota diagnostics are unavailable. */ }
-  console.info(`[scripts scheduling] node=${process.version} availableParallelism=${availableParallelism()} configuredMaxWorkers=1 cpu.max=${cpuQuota}`);
+  console.error(`[scripts scheduling] node=${process.version} availableParallelism=${availableParallelism()} configuredMaxWorkers=1 cpu.max=${cpuQuota}`);
 }
 
 // Ops/governance script tests are pure Node behavior tests; they do not need jsdom or the
