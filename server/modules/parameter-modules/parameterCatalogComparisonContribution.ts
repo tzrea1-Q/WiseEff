@@ -234,7 +234,7 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
       byKey.set(`parameter-module-dismissed-compatible:${dismissed.id}`, {
         kind: "parameter-module-dismissed-compatible",
         id: dismissed.id,
-        organizationId,
+        organizationId: dismissed.organizationId,
         legacyCompatible: dismissed.compatible,
         applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"],
       });
