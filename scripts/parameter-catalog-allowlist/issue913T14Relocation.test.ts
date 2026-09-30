@@ -34,6 +34,11 @@ import type { BoundaryViolation } from "./schema";
 import { registerIssue903904JointProof } from "./issue903904JointProof.proof";
 import { registerT14RewrittenSliceSuccessorRelocationProof } from "./t14RewrittenSliceSuccessorRelocation.proof";
 import { registerExactRelocationProof } from "./exactRelocation.proof";
+import { registerIssue853CRelocationProof } from "./issue853CRelocation.proof";
+import { registerIssue900DashboardRelocationProof } from "./issue900DashboardRelocation.proof";
+import { registerRuntimeTopologyRelocationProof } from "./runtimeTopologyRelocation.proof";
+import { registerSourceWorkflowRelocationProof } from "./sourceWorkflowRelocation.proof";
+import { registerT14FamilySuccessorRelocationProof } from "./t14FamilySuccessorRelocation.proof";
 
 const repoRoot = process.cwd();
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
@@ -64,6 +69,11 @@ afterAll(async () => {
 registerT14RewrittenSliceSuccessorRelocationProof(() => discovered);
 registerIssue903904JointProof(() => discovered);
 registerExactRelocationProof(() => discovered);
+registerIssue853CRelocationProof(() => discovered, fixture.trustedBaseSha);
+registerIssue900DashboardRelocationProof(() => discovered, fixture.trustedBaseSha);
+registerRuntimeTopologyRelocationProof(() => discovered, fixture.trustedBaseSha);
+registerSourceWorkflowRelocationProof(() => discovered, fixture.trustedBaseSha);
+registerT14FamilySuccessorRelocationProof(() => discovered, fixture.trustedBaseSha);
 
 async function copyServiceProofFixture() {
   const root = await mkdtemp(join(tmpdir(), "issue913-t14-service-"));
