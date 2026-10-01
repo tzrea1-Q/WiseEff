@@ -25,7 +25,7 @@ loadDotenvFiles(projectRoot);
  * fixtures share this postgres-database lease.
  */
 const TEMPLATE_BUILD_LOCK = 4_201_659;
-const roleCatalogLease = new AsyncLocalStorage<{ active: boolean }>();
+const roleCatalogLease = new AsyncLocalStorage<{ active: boolean; clones: Promise<void> }>();
 const TEMPLATE_LOCK_WAIT_MS = 120_000;
 const TEMPLATE_LOCK_POLL_MS = 50;
 const DATABASE_DISCONNECT_WAIT_MS = 5_000;
@@ -135,11 +135,18 @@ export async function withTestClusterRoleCatalogLock<T>(fn: () => Promise<T>): P
   if (roleCatalogLease.getStore()?.active) throw new Error("Nested test cluster role catalog lease");
   const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
   await admin.connect();
-  const lease = { active: true };
+  const lease = { active: true, clones: Promise.resolve() };
   try {
     await acquireTemplateLock(admin);
     return await roleCatalogLease.run(lease, fn);
   } finally {
+    // Borrowed clones may still be in flight when the callback returns. Keep the
+    // postgres lease until the complete queue is drained, including later enqueues.
+    let pending: Promise<void>;
+    do {
+      pending = lease.clones;
+      await pending;
+    } while (pending !== lease.clones);
     lease.active = false;
     await admin.query("select pg_advisory_unlock($1)", [TEMPLATE_BUILD_LOCK]).catch(() => undefined);
     await admin.end();
@@ -178,8 +185,8 @@ async function ensureTemplateDatabase(admin: pg.Client, fingerprint: string): Pr
   await admin.query(`create database ${buildName}`);
 
   const buildClient = new pg.Client({ connectionString: connectionStringFor(buildName) });
-  await buildClient.connect();
   try {
+    await buildClient.connect();
     const db = createDatabase({
       query: async (text, values = []) => {
         const result = await buildClient.query(text, values);
@@ -187,6 +194,10 @@ async function ensureTemplateDatabase(admin: pg.Client, fingerprint: string): Pr
       }
     });
     await applyMigrations(db, migrationsDir);
+  } catch (error) {
+    await buildClient.end().catch(() => undefined);
+    await dropTestDatabase(admin, buildName);
+    throw error;
   } finally {
     await buildClient.end().catch(() => undefined);
   }
@@ -294,14 +305,30 @@ async function cloneTemplateDatabase(name: string): Promise<void> {
     }
     // Serialize template build and cloning: concurrent CREATE DATABASE from one
     // template fails while the template is being copied by another backend.
-    await acquireTemplateLock(admin);
+    const outerLease = roleCatalogLease.getStore();
+    let reuseOuterLease = outerLease?.active === true;
+    let releaseClone: (() => void) | undefined;
+    if (outerLease?.active) {
+      const preceding = outerLease.clones;
+      outerLease.clones = new Promise<void>((resolve) => { releaseClone = resolve; });
+      await preceding;
+      if (!outerLease.active) {
+        releaseClone?.();
+        releaseClone = undefined;
+        reuseOuterLease = false;
+      }
+    }
+    if (!reuseOuterLease) await acquireTemplateLock(admin);
     try {
       const templateName = await ensureTemplateDatabase(admin, fingerprint);
       if (!(await databaseExists(admin, name))) {
         await admin.query(`create database ${name} template ${templateName}`);
       }
     } finally {
-      await admin.query("select pg_advisory_unlock($1)", [TEMPLATE_BUILD_LOCK]).catch(() => undefined);
+      releaseClone?.();
+      if (!reuseOuterLease) {
+        await admin.query("select pg_advisory_unlock($1)", [TEMPLATE_BUILD_LOCK]).catch(() => undefined);
+      }
     }
   } finally {
     await admin.end().catch(() => undefined);

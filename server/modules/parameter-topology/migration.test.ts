@@ -76,13 +76,13 @@ function expectedBindingId(specId: string, logicalNodeId: string) {
 }
 
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
-  await withSharedTempDatabase({ prefix: "mig14" }, ({ db }) => fn(db));
+  await withSharedTempDatabase({ prefix: "mig14", migrate: "template" }, ({ db }) => fn(db));
 }
 
 async function withTempDatabaseConnection(
   fn: (ctx: { db: Database; connectionString: string }) => Promise<void>
 ) {
-  await withSharedTempDatabase({ prefix: "mig14" }, ({ db, connectionString }) =>
+  await withSharedTempDatabase({ prefix: "mig14", migrate: "template" }, ({ db, connectionString }) =>
     fn({ db, connectionString })
   );
 }

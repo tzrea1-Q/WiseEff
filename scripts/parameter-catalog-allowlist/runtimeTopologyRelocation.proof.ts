@@ -20,6 +20,7 @@ import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocatio
 import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
 import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
 import { issue904LogRetiredIds } from "./issue904LogRetirement";
+import { projectTemplateFixtureSuccessor, templateFixtureSuccessorPath, validateTemplateFixtureSuccessor } from "./templateFixtureSuccessor";
 
 const repoRoot = process.cwd();
 const record: RuntimeTopologyRelocationRecord = JSON.parse(
@@ -47,7 +48,7 @@ const postCutoverSourceByFile = new Map(
   ]),
 );
 const postCutoverDestinationByFile = new Map(
-  await Promise.all(postCutoverRecord.files.map(async (section) => [section.file, await readFile(`${repoRoot}/${section.file}`)] as const)),
+  postCutoverRecord.files.map((section) => [section.file, execFileSync("git", ["show", `dd7bc33e22b5d2e970d7a37ec25c97e6e45bea1c:${section.file}`], { cwd: repoRoot })] as const),
 );
 let discovered: BoundaryViolation[];
 const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T14RetiredSourceIds];
@@ -79,10 +80,55 @@ function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
 
 /** Consume the full current-tree raw scan from the proof owner, before relocation. */
 export function registerRuntimeTopologyRelocationProof(getRaw: () => readonly BoundaryViolation[], trustedBaseSha: string) {
-  beforeAll(() => {
+  beforeAll(async () => {
     expect(trustedBaseSha).toBe(fixture.trustedBaseSha);
-    discovered = [...getRaw()];
+    discovered = (await projectTemplateFixtureSuccessor(repoRoot, getRaw())).raw;
   }, 60_000);
+
+  describe("exact template fixture successor", () => {
+    async function successorInput() {
+      const bytes = await readFile(join(repoRoot, templateFixtureSuccessorPath));
+      const value = JSON.parse(bytes.toString()) as { files: Array<{ file: string; pairs: Array<{ old: BoundaryViolation; new: BoundaryViolation }> }> };
+      const historical = new Map(value.files.map(({ file }) => [file, execFileSync("git", ["show", `dd7bc33e22b5d2e970d7a37ec25c97e6e45bea1c:${file}`], { cwd: repoRoot })]));
+      const current = new Map(await Promise.all(value.files.map(async ({ file }) => [file, await readFile(join(repoRoot, file))] as const)));
+      return { bytes, value, historical, current, raw: structuredClone([...getRaw()]) };
+    }
+    it("preserves all 170 exact slices, the original 29 destinations and inherited permissions", async () => {
+      const input = await successorInput();
+      const result = validateTemplateFixtureSuccessor(input.bytes, input.raw, input.historical, input.current);
+      expect(result.currentForOld.size).toBe(170);
+      expect(postCutoverRecord.files.flatMap((file) => file.pairs).every((pair) => result.currentForOld.has(pair.new.id))).toBe(true);
+      expect(result.raw).toHaveLength(input.raw.length);
+      expect(result.native.filter((item) => input.value.files.some(({ file }) => item.file === file))
+        .every((item) => allowlist.entries.some((entry) => entry.id === item.id))).toBe(true);
+    });
+    it.each(["duplicate pair", "omitted pair", "reordered pair", "swapped ID", "slice hash"])("rejects altered %s", async (kind) => {
+      const input = await successorInput();
+      const pairs = input.value.files[0].pairs;
+      if (kind === "duplicate pair") pairs[1] = structuredClone(pairs[0]);
+      if (kind === "omitted pair") pairs.pop();
+      if (kind === "reordered pair") pairs.reverse();
+      if (kind === "swapped ID") [pairs[0].new.id, pairs[1].new.id] = [pairs[1].new.id, pairs[0].new.id];
+      if (kind === "slice hash") Object.assign(pairs[0], { sliceSha256: "0".repeat(64) });
+      expect(() => validateTemplateFixtureSuccessor(Buffer.from(JSON.stringify(input.value)), input.raw, input.historical, input.current)).toThrow("pinned complete endpoint ledger");
+    });
+    it.each(["duplicate", "omitted", "same-count replacement", "growth"])("rejects %s current inventory", async (kind) => {
+      const input = await successorInput();
+      const id = input.value.files[0].pairs[0].new.id;
+      const index = input.raw.findIndex((item) => item.id === id);
+      if (kind === "duplicate") input.raw.push(structuredClone(input.raw[index]));
+      if (kind === "omitted") input.raw.splice(index, 1);
+      if (kind === "same-count replacement") input.raw[index].id += "changed";
+      if (kind === "growth") input.raw.push({ ...input.raw[index], id: `${id}-new` });
+      expect(() => validateTemplateFixtureSuccessor(input.bytes, input.raw, input.historical, input.current)).toThrow();
+    });
+    it.each(["inside", "outside"])("rejects changed current bytes %s mapped slices", async (kind) => {
+      const input = await successorInput();
+      const file = input.value.files[0];
+      input.current.get(file.file)![kind === "inside" ? file.pairs[0].new.byteStart : 0] ^= 1;
+      expect(() => validateTemplateFixtureSuccessor(input.bytes, input.raw, input.historical, input.current)).toThrow("whole-file blob");
+    });
+  });
 
   function input() {
     return {

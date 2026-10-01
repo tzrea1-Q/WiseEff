@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createDatabase, type Database } from "../shared/database/client";
 import { applyMigrations as applyRepositoryMigrations, type ApplyMigrationsOptions } from "../shared/database/migrations";
-import { createSerializedTestQueryable, dropTestDatabase, hasTestClusterRoleCatalogLock, withTestClusterRoleCatalogLock } from "./testDatabase";
+import { createEphemeralTestDatabase, createSerializedTestQueryable, dropTestDatabase, hasTestClusterRoleCatalogLock, withTestClusterRoleCatalogLock } from "./testDatabase";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 
@@ -80,11 +80,13 @@ export type WithTempDatabaseOptions = {
   /** Identifier fragment baked into the generated database name: `wiseeff_<prefix>_<ts>_<rand>`. */
   prefix: string;
   /**
-   * Apply every repository migration before the callback runs. Defaults to true.
+   * Execute every repository migration on a fresh database. Defaults to true.
    * Suites that replay migrations selectively (upgrade/backfill tests) pass false
    * and drive `applyMigrations`/their own subset against `migrationsDir` themselves.
+   * Ordinary fixtures may explicitly choose "template" for an exclusively cloned,
+   * fully migrated database. This does not replay cluster-shared role guards.
    */
-  migrate?: boolean;
+  migrate?: boolean | "template";
 };
 
 /**
@@ -100,13 +102,16 @@ export async function withTempDatabase<T>(
     /[^a-z0-9_]/gi,
     ""
   );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
+  const template = options.migrate === "template"
+    ? await createEphemeralTestDatabase(options.prefix)
+    : undefined;
+  if (!template) {
+    await withAdminClient(async (admin) => {
+      await admin.query(`create database ${dbName}`);
+    });
+  }
+  const connectionString = template?.url ?? adminConnectionString(dbName);
   const client = new pg.Client({ connectionString });
-  await client.connect();
   // FIFO-serialize queries on the single client so route handlers that fan out
   // concurrent queries stay deterministic (see testing-strategy: transactional FIFO).
   const db = createDatabase(
@@ -117,13 +122,15 @@ export async function withTempDatabase<T>(
   );
 
   try {
-    if (options.migrate !== false) {
+    await client.connect();
+    if (!template && options.migrate !== false) {
       await applyTestMigrations(db, migrationsDir);
     }
     return await fn({ db, connectionString });
   } finally {
     await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
+    if (template) await template.drop();
+    else await withAdminClient(async (admin) => {
       await dropTestDatabase(admin, dbName);
     });
   }

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import { projectTemplateFixtureSuccessor } from "./templateFixtureSuccessor";
 
 import { boundaryViolationSchema, type AllowlistEntry, type BoundaryViolation, type BoundaryViolationFixture } from "./schema";
 
@@ -356,7 +357,22 @@ export async function applyReviewedPostCutoverRelocation(
   discovered: readonly BoundaryViolation[],
   existingRelocations: readonly RuntimeTopologyRelocation[] = [],
 ) {
-  return runReviewedRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, postCutoverConfig);
+  if (!fixture.violations.some((item) => postCutoverConfig.files.some(({ file }) => item.file === file))) {
+    return { violations: [...discovered], relocations: [] as RuntimeTopologyRelocation[] };
+  }
+  const history = await verifyHistoricalRelocationRecord(repoRoot, fixture, allowances, postCutoverConfig, {
+    commit: "dd7bc33e22b5d2e970d7a37ec25c97e6e45bea1c",
+    tree: "ec4603fef1498bbad6f2cdfb5a9dd08c4984f4a1",
+  });
+  const current = await projectTemplateFixtureSuccessor(repoRoot, discovered);
+  for (const pair of history.pairs) {
+    requireMatch(current.currentForOld.has(pair.new.id), "complete historical 29 destinations");
+    requireMatch(!existingRelocations.some((item) => item.id === pair.old.id), "cross-record source mapping");
+  }
+  return {
+    violations: current.native,
+    relocations: history.pairs.map((pair) => ({ id: pair.old.id, observed: current.currentForOld.get(pair.new.id)! })),
+  };
 }
 
 /**
