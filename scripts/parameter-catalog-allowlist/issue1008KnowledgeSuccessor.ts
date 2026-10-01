@@ -8,6 +8,17 @@ const head = "c208a12d1e92039206cdacbbd61d53fec4e3181b";
 const base = "c8e7ad22ffd0c2d4d559b4769f205dd86eb8ea11";
 const path = "docs/exec-plans/active/849-inventory/issue-903-legacy-read-error-observations.json";
 const recordDigest = "b2959cea92d6b24cc67738f59674e1160753feae165883fdbf59ae5e82b04279";
+// #1011 adds only the public LegacyLookupFn returned-failure consumer check.
+// The six-blob #1008 handoff and its 23 endpoints remain pinned to their history.
+const returnedFailureSuccessor = {
+  head: "adc410d14db9eccd8d3d11709f4cbaf064f20b03",
+  path: "server/modules/knowledge/definitionReferences.integration.test.ts",
+  oldBlob: "31579658279b0fe6669c99e58f0f67de227c7942",
+  newBlob: "181bc8664be6d89cdb84632065fd7ff1bc8ba898",
+  oldSha256: "eaaafc21910676d635616f3e53e4da3697e9bca06479ee03fac236278735b6d6",
+  newSha256: "26dc651e5f6af368fa2d0050096ed08954db24304b7af2e227ccc2783dc8c860",
+  insertionSha256: "4002d4ed69a7b2be2ed59472b5f7d6e709a49240bf671ec5c4b2c7e75400a528",
+};
 type Endpoint = BoundaryViolation & { sourceSpanText: string; spanSha256: string };
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const blob = (bytes: Buffer) => createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
@@ -33,12 +44,26 @@ export async function projectIssue1008KnowledgeSuccessor(repoRoot: string, raw: 
   const currentFiles = new Map<string, Buffer>();
   for (const item of record.candidateSourceBlobs) {
     const current = await readFile(join(repoRoot, item.path));
-    check(blob(current) === item.candidateBlob && git(head, item.path).equals(current), `whole-file blob ${item.path}`);
+    const historical = git(head, item.path);
+    check(blob(historical) === item.candidateBlob, `historical whole-file blob ${item.path}`);
+    if (item.path === returnedFailureSuccessor.path) {
+      const successor = returnedFailureSuccessor;
+      check(item.candidateBlob === successor.oldBlob && historical.length === 22613
+        && sha(historical) === successor.oldSha256, "fixed pre-#1011 whole-file history");
+      check(blob(current) === successor.newBlob && sha(current) === successor.newSha256
+        && current.equals(git(successor.head, item.path)), `whole-file blob ${item.path}`);
+      check(current.length === 24102 && sha(current.subarray(14243, 15732)) === successor.insertionSha256
+        && historical.subarray(0, 14243).equals(current.subarray(0, 14243))
+        && historical.subarray(14243).equals(current.subarray(15732)), "only exact returned-failure insertion");
+    } else {
+      check(blob(current) === item.candidateBlob && historical.equals(current), `whole-file blob ${item.path}`);
+    }
     currentFiles.set(item.path, current);
   }
   const oldById = new Map(record.removed.map((item) => [item.id, item]));
   const newById = new Map(record.added.map((item) => [item.id, item]));
   const rawById = new Map(raw.map((item) => [item.id, item]));
+  check(rawById.size === raw.length, "duplicate observed ID");
   const historicalFiles = new Map<string, Buffer>();
   const oldForCurrent = new Map<string, BoundaryViolation>();
   const currentForOld = new Map<string, BoundaryViolation>();
@@ -71,10 +96,12 @@ export async function projectIssue1008KnowledgeSuccessor(repoRoot: string, raw: 
     oldForCurrent.set(next.id, endpoint);
     currentForOld.set(old.id, observed);
   }
-  const watched = raw.filter((item) => historicalFiles.has(item.file));
+  const watched = raw.filter((item) => currentFiles.has(item.file));
   check(watched.length === 23 && watched.every((item) => oldForCurrent.has(item.id)), "no unmatched current observation");
+  const projectedRaw = raw.map((item) => oldForCurrent.get(item.id) ?? item);
+  check(new Set(projectedRaw.map((item) => item.id)).size === raw.length, "projected ID collision");
   return {
-    raw: raw.map((item) => oldForCurrent.get(item.id) ?? item), historicalFiles, currentForOld,
+    raw: projectedRaw, historicalFiles, currentForOld,
     project: (items: readonly BoundaryViolation[]) => items.map((item) => oldForCurrent.get(item.id) ?? item),
   };
 }

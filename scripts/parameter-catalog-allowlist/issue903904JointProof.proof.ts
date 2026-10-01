@@ -71,6 +71,15 @@ export function registerIssue903904JointProof(getRaw: () => readonly BoundaryVio
       await writeFile(join(tamperedRoot, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
         cwd: repoRoot, encoding: "utf8",
       }).trim()}\n`);
+      const successorPath = "server/modules/knowledge/definitionReferences.integration.test.ts";
+      const successorBytes = await readFile(join(repoRoot, successorPath));
+      for (const offset of [14243, 0]) {
+        const tampered = Buffer.from(successorBytes);
+        tampered[offset] ^= 1;
+        await writeFile(join(tamperedRoot, successorPath), tampered);
+        await expect(projectIssue1008KnowledgeSuccessor(tamperedRoot, raw)).rejects.toThrow(/whole-file blob/);
+      }
+      await writeFile(join(tamperedRoot, successorPath), successorBytes);
       await writeFile(join(tamperedRoot, current.file), Buffer.concat([await readFile(join(repoRoot, current.file)), Buffer.from("\n")]));
       await expect(projectIssue1008KnowledgeSuccessor(tamperedRoot, raw)).rejects.toThrow(/whole-file blob/);
       await writeFile(join(tamperedRoot, path), Buffer.concat([bytes, Buffer.from("\n")]));
@@ -78,6 +87,32 @@ export function registerIssue903904JointProof(getRaw: () => readonly BoundaryVio
     } finally {
       await rm(tamperedRoot, { recursive: true, force: true });
     }
+  });
+
+  it("#1011 retains all 23 Knowledge endpoints and rejects changed or incomplete identities", async () => {
+    const raw = getRaw();
+    const current = raw.find((entry) => entry.file === "server/modules/knowledge/parameterReferences.ts")!;
+    const result = await projectIssue1008KnowledgeSuccessor(repoRoot, raw);
+    expect(result.currentForOld.size).toBe(23);
+    expect(raw.filter((entry) => entry.file === "server/modules/knowledge/definitionReferences.integration.test.ts"))
+      .toEqual([]);
+    await expect(projectIssue1008KnowledgeSuccessor(repoRoot, raw.filter((entry) => entry.id !== current.id)))
+      .rejects.toThrow(/exact source and destination/);
+    await expect(projectIssue1008KnowledgeSuccessor(repoRoot, [...raw, current]))
+      .rejects.toThrow(/duplicate observed ID/);
+    const changedId = current.id.replace(/.$/, current.id.endsWith("0") ? "1" : "0");
+    await expect(projectIssue1008KnowledgeSuccessor(repoRoot, raw.map((entry) => entry.id === current.id
+      ? { ...entry, id: changedId } : entry))).rejects.toThrow(/exact source and destination/);
+    await expect(projectIssue1008KnowledgeSuccessor(repoRoot, raw.map((entry) => entry.id === current.id
+      ? { ...entry, trustedBlobOid: "0000000000000000000000000000000000000000" } : entry)))
+      .rejects.toThrow(/current endpoint/);
+    await expect(projectIssue1008KnowledgeSuccessor(repoRoot, [...raw, {
+      ...current, id: changedId, file: "server/modules/knowledge/definitionReferences.integration.test.ts",
+    }])).rejects.toThrow(/no unmatched current observation/);
+    const oldId = [...result.currentForOld].find(([, entry]) => entry.id === current.id)![0];
+    await expect(projectIssue1008KnowledgeSuccessor(repoRoot, [...raw, {
+      ...current, id: oldId, file: "unwatched-collision-fixture.ts",
+    }])).rejects.toThrow(/projected ID collision/);
   });
 
   it("#904 rejects either revived Logs observation or old allowance", async () => {
