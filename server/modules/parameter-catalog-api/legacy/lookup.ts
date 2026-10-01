@@ -9,6 +9,7 @@ import {
   catalogMappingTargetKindSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import { legacyLookupIdentifierTypes } from "../../parameter-catalog-contract/index";
+import { ApiError } from "../../../shared/http/errors";
 
 import {
   LEGACY_LOOKUP_SOURCE_SYSTEM,
@@ -98,7 +99,10 @@ const probeTuple = async (
     if (result.error.code === "PCAT-MAP-CONFLICT") {
       return { status: "conflict" };
     }
-    return "absent";
+    if (result.error.code === "PCAT-MAP-UNKNOWN-IDENTITY" || result.error.code === "PCAT-MAP-UNMAPPED") {
+      return "absent";
+    }
+    throw new ApiError("INTERNAL_ERROR", "Internal server error.");
   }
   if (result.value.outcome === "blocked") {
     return { status: "blocked" };

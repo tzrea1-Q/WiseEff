@@ -285,6 +285,26 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
       expect((await request({ ...auth, roles: [], permissions: [] }, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(403);
     } finally { injected.mockRestore(); }
     expect({ knowledge: await snapshot(), history: await history.snapshot() }).toEqual(before);
+    // Returned owner failures must cross the actual shared lookup boundary;
+    // this simulates a MappingFailure, not a corrupted PostgreSQL record.
+    const lookupOwner = legacyApi.lookupLegacyIdentifier;
+    const returnedFailure = vi.spyOn(legacyApi, "lookupLegacyIdentifier").mockImplementation((input) =>
+      lookupOwner({ ...input, lookup: async () => ({ ok: false, error: {
+        code: "PCAT-MAP-WRITE-FAILED", detail: "private mapping failure details"
+      } }) }));
+    try {
+      for (const path of [`/api/v1/knowledge/entries/${entryId}`, "/api/v1/knowledge/entries"]) {
+        const failed = await request(auth, "GET", path);
+        expect(failed.status).toBe(500);
+        expect(failed.body).toMatchObject({ error: { code: "INTERNAL_ERROR", message: "Internal server error.", details: {} } });
+        expect(failed.body.item).toBeUndefined();
+        expect(JSON.stringify(failed.body)).not.toContain("private mapping failure details");
+      }
+      await expect(readDocument()).rejects.toMatchObject({ code: "INTERNAL_ERROR", message: "Internal server error.", details: {} });
+      expect((await request(authB, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(404);
+      expect((await request({ ...auth, roles: [], permissions: [] }, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(403);
+    } finally { returnedFailure.mockRestore(); }
+    expect({ knowledge: await snapshot(), history: await history.snapshot() }).toEqual(before);
     expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`)).body.item.parameterReferences)
       .toEqual(archived.body.item.parameterReferences);
   });
