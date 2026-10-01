@@ -98,7 +98,7 @@ export const firstReleaseBundle = (): CatalogReleaseBundle => {
  * and T6 treats an empty catalog as no evidence at all.
  */
 export const seedPopulatedCutover = async (
-  client: pg.Client,
+  client: Pick<pg.Client, "query">,
   graph: FrozenP0Graph,
 ): Promise<void> => {
   for (const spec of graph.specs) {

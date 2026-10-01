@@ -438,25 +438,21 @@ async function mapLoadedReferenceRows(
     let mappingStatus: KnowledgeLegacySpecReferenceDto["mappingStatus"] = orphan ? "orphaned" : "unmapped";
     let canonicalTargetKind: string | null = null;
     let canonicalTargetId: string | null = null;
-    try {
-      const outcome = await lookupLegacyIdentifier({
-        client: db as never,
-        legacyType: "parameter-spec",
-        legacyId: row.parameter_spec_id,
-        organizationId: auth.organization.id
-      });
-      if (outcome.kind === "archived") {
-        historicalOnly = true;
-        mappingStatus = "archived";
-        canonicalTargetKind = "Archive";
-      } else if (outcome.kind === "mapped" && outcome.item?.target) {
-        historicalOnly = Boolean(outcome.item.historicalOnly);
-        mappingStatus = historicalOnly ? "historical" : "current";
-        canonicalTargetKind = outcome.item.target.kind;
-        canonicalTargetId = outcome.item.target.id;
-      }
-    } catch {
-      // Keep chip fields when mapping is unqueryable.
+    const outcome = await lookupLegacyIdentifier({
+      client: db as never,
+      legacyType: "parameter-spec",
+      legacyId: row.parameter_spec_id,
+      organizationId: auth.organization.id
+    });
+    if (outcome.kind === "archived") {
+      historicalOnly = true;
+      mappingStatus = "archived";
+      canonicalTargetKind = "Archive";
+    } else if (outcome.kind === "mapped" && outcome.item?.target) {
+      historicalOnly = Boolean(outcome.item.historicalOnly);
+      mappingStatus = historicalOnly ? "historical" : "current";
+      canonicalTargetKind = outcome.item.target.kind;
+      canonicalTargetId = outcome.item.target.id;
     }
     mapped.push({
       entryId: row.entry_id,

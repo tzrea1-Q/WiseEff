@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { createHttpServer } from "../../shared/http/server";
@@ -12,12 +15,15 @@ import { countLegacySpecsById, seedSpecBindingGraph } from "../../testing/fixtur
 import {
   createDisposableParameterCatalogDatabase,
   installKnowledgeDefinitionReferencesCatalogFixture,
+  installLegacyReferenceFixture,
   type ParameterCatalogDatabase
 } from "../../testing/parameterCatalog";
 import { registerParameterCatalogApi } from "../parameter-catalog-api/productionWire";
 import { createDefaultKnowledgeTextExtractor } from "./extraction";
 import type { ObjectStore } from "../logs/objectStore";
 import { registerKnowledgeRoutes } from "./routes";
+import { createKnowledgeTools } from "../agent/tools/knowledgeTools";
+import * as legacyApi from "../parameter-catalog-api/legacy";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -57,6 +63,8 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   let retiredDefinitionId: string;
   let searchTerm: string;
   let searchableDefinitionCount: number;
+  let catalogRelease: { id: string; digest: string };
+  let archiveRoot: string;
 
   beforeAll(async () => {
     fixture = await createDisposableParameterCatalogDatabase("kbdefref");
@@ -68,6 +76,8 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     retiredDefinitionId = catalogFixture.retiredDefinitionId;
     searchTerm = catalogFixture.searchTerm;
     searchableDefinitionCount = catalogFixture.searchableDefinitionCount;
+    catalogRelease = catalogFixture.pin;
+    archiveRoot = await mkdtemp(join(tmpdir(), "wiseeff-kb903-legacy-archive-"));
     await pool.query("insert into organizations (id,name) values ($1,'Knowledge A'),($2,'Knowledge B')", [ORG_A, ORG_B]);
     for (const [id, organizationId] of [[USER_A, ORG_A], [USER_B, ORG_B], [REFERENCE_CREATOR, ORG_A]] as const) {
       await pool.query(
@@ -107,6 +117,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     }
     await db?.close();
     await fixture?.close();
+    if (archiveRoot) await rm(archiveRoot, { recursive: true, force: true });
   });
 
   async function request(context: AuthContext, method: string, path: string, body?: unknown) {
@@ -225,6 +236,57 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
       [entryId]
     );
     expect(audit.rows[0]?.count).toBe(1);
+  });
+
+  it("keeps real unmapped and archived history distinct from injected lookup failures on HTTP and Agent reads", async () => {
+    const entryId = await createEntry(auth, "Legacy mapping failure boundary");
+    const pool = getRootPostgresPool(db)!;
+    const history = await installLegacyReferenceFixture(pool, archiveRoot, catalogRelease);
+    await pool.query(`insert into knowledge_parameter_references
+      (id,organization_id,entry_id,parameter_spec_id,created_by_user_id) values ($1,$2,$3,$4,$5)`,
+    [randomUUID(), ORG_A, entryId, history.specId, USER_A]);
+    const document = createKnowledgeTools({ db }).find((tool) => tool.name === "knowledge.getDocument")!;
+    const readDocument = () => document.run({ auth, requestId: "kb903-legacy-read", sessionId: "kb903" }, { entryId });
+    const reference = { kind: "legacy-spec", specId: history.specId };
+    const unmapped = await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`);
+    expect(unmapped.status).toBe(200);
+    expect(unmapped.body.item.parameterReferences).toContainEqual(expect.objectContaining({ ...reference, mappingStatus: "unmapped" }));
+    expect((await readDocument()).data.referencedParameters).toContainEqual(expect.objectContaining({ ...reference, mappingStatus: "unmapped" }));
+
+    await history.archive(entryId);
+    const archived = await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`);
+    expect(archived.status).toBe(200);
+    expect(archived.body.item.parameterReferences).toContainEqual(expect.objectContaining({
+      ...reference, mappingStatus: "archived", historicalOnly: true, canonicalTargetKind: "Archive", canonicalTargetId: null
+    }));
+    expect((await readDocument()).data.referencedParameters).toContainEqual(expect.objectContaining({
+      ...reference, mappingStatus: "archived", historicalOnly: true
+    }));
+
+    const snapshot = async () => (await pool.query(`select
+      (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries,
+      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions,
+      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_parameter_references r) as legacy_refs,
+      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_definition_references r) as definition_refs,
+      (select jsonb_agg(to_jsonb(a) order by id) from audit_events a) as audits
+    `)).rows;
+    const before = { knowledge: await snapshot(), history: await history.snapshot() };
+    const failure = new Error("simulated legacy lookup PostgreSQL transport failure");
+    const injected = vi.spyOn(legacyApi, "lookupLegacyIdentifier").mockRejectedValue(failure);
+    try {
+      for (const path of [`/api/v1/knowledge/entries/${entryId}`, "/api/v1/knowledge/entries"]) {
+        const failed = await request(auth, "GET", path);
+        expect(failed.status).toBe(500);
+        expect(failed.body).toMatchObject({ error: { code: "INTERNAL_ERROR", message: "Internal server error.", details: {} } });
+        expect(failed.body.item).toBeUndefined();
+      }
+      await expect(readDocument()).rejects.toBe(failure);
+      expect((await request(authB, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(404);
+      expect((await request({ ...auth, roles: [], permissions: [] }, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(403);
+    } finally { injected.mockRestore(); }
+    expect({ knowledge: await snapshot(), history: await history.snapshot() }).toEqual(before);
+    expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`)).body.item.parameterReferences)
+      .toEqual(archived.body.item.parameterReferences);
   });
 
   it("rejects new retired Definition references but keeps an exact historical replay", async () => {

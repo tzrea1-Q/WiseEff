@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
@@ -16,6 +16,7 @@ import {
   removeKnowledgeParameterReference
 } from "./service";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
+import * as legacyApi from "../parameter-catalog-api/legacy";
 import { createDefaultKnowledgeTextExtractor } from "./extraction";
 import type { ObjectStore } from "../logs/objectStore";
 
@@ -276,6 +277,24 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
         throw new Error("simulated PostgreSQL transport failure");
       })
     ).rejects.toThrow("simulated PostgreSQL transport failure");
+  });
+
+  it("propagates a legacy mapping transport failure instead of returning an unmapped reference", async () => {
+    const auth = makeAuth(EDITOR_A, viewEdit);
+    const entry = await createMarkdownEntry(db, auth, "Legacy lookup failure");
+    await seedLegacyReference(db, auth, entry.id, SPEC_ORG);
+    const before = await loadParameterReferencesByEntryIds(db, auth, [entry.id]);
+    expect(before.get(entry.id)?.[0]).toMatchObject({ kind: "legacy-spec", specId: SPEC_ORG, mappingStatus: "unmapped" });
+
+    const failure = new Error("simulated legacy mapping PostgreSQL transport failure");
+    const injected = vi.spyOn(legacyApi, "lookupLegacyIdentifier").mockRejectedValue(failure);
+    try {
+      await expect(loadParameterReferencesByEntryIds(db, auth, [entry.id])).rejects.toBe(failure);
+    } finally {
+      injected.mockRestore();
+    }
+    expect(await loadParameterReferencesByEntryIds(db, auth, [entry.id])).toEqual(before);
+    expect(await listReferenceAudits(db, entry.id)).toEqual([]);
   });
 
   it("enforces publisher accountability: non-owner edit is 403, manager may govern, viewer may not", async () => {
