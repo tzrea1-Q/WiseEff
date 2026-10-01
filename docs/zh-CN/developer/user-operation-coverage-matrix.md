@@ -88,7 +88,7 @@
 - `KB-DISTILL-002`：Hardware Committer 在 `/dts-reload` 把终态重载运行（已验证 / 不可验证 / 矛盾 / 失败）沉淀为带诚实结局措辞的预填知识草稿，经深链交接到 `/knowledge` 草稿编辑器并发布（条目保存 `source_reload_run_id`），断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ADMIN-001`：Admin 经确定性小泽审批流创建 Agent 知识草稿后，在 `/knowledge-admin` 的 Agent 草稿发布队列审阅（创建人、会话来源、来源分析链接）、发布其一并归档拒绝其一，断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-REC-001`：Hardware User 在 `/logs` 查看已完成分析的「相关知识」区块（仅已发布条目、引用深链进入 `/knowledge`、草稿与归档永不出现），断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
-- `KB-XREF-001`：Hardware User 在 `/knowledge` 管理条目的参数定义引用并在定义详情看到已发布的引用条目（草稿永不出现；废弃后 chip 存续带「已废弃」徽章），断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-XREF-001`：Hardware User 在 `/knowledge` 分页搜索并管理精确 Definition 引用，增删幂等且有审计；Admin 在现有参数页面按精确身份反查并返回知识条目，草稿与已归档条目永不出现；同一 Definition 合法转为 deprecated 后引用与「已废弃」徽章存续。旧 Spec 历史保持独立、可读及可授权移除，新引用返回拒绝。断言覆盖 UI、API、DB、审计；使用非超级用户 API LOGIN，生命周期 producer 为专用 pre-regime 安装，未证明线上激活或已部署 deprecated 作者入口（`e2e/acceptance/knowledge-canonical-definition.acceptance.spec.ts`）。
 - `PARAM-HOME-001`：PC 1440×900 下，Admin 在 `/parameter-home` 加载 dashboard summary/hotspots API，并切换页面内时间窗口与热榜维度，同时保持现有 Xiaoze 悬浮球不遮挡 dashboard 内容（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试节点新增、编辑、禁用/恢复、HDC/ADB binding 维护，以及节点、binding、operation 历史的级联永久删除，并下载完整节点目录文件、上传该文件预览并确认合并、重新读取与重新导出，断言覆盖 UI、API、DB 和 audit。
 - `DEBUG-ADMIN-846-CAPACITY`：Admin 导出全量节点目录，预览 2,001 节点 / 501 模块的文件，在一次事务内导入并在重新读取与再导出后核对语义一致，断言覆盖 API、DB 与 audit。
