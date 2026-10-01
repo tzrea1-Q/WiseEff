@@ -21,6 +21,7 @@ import {
 } from "../../parameter-catalog-contract/index";
 import { createEvidenceIngest, fingerprintCanonical } from "../../parameter-governance/evidence";
 import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import { readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../values";
 import {
   migrationsDir,
   withTempDatabase as withSharedTempDatabase
@@ -1874,6 +1875,15 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       expect(resolved.rows).toEqual([
         { logical_id: newBinding, occurrence_id: newBinding }
       ]);
+      const scope = { organizationId: "org-src-occ-0151", projectId: "project-src-occ-0151" };
+      expect(await readOwnedCurrentBinding(db, { ...scope, bindingId: "binding-src-occ-0151" }))
+        .toEqual({ status: "replaced" });
+      expect(await readOwnedCurrentBinding(db, { ...scope, bindingId: newBinding }))
+        .toMatchObject({ status: "current", binding: { id: newBinding, definitionId: newDefinition } });
+      expect(await readOwnedCurrentBinding(db, { ...scope, projectId: "foreign-project", bindingId: "binding-src-occ-0151" }))
+        .toEqual({ status: "missing" });
+      expect(await readOwnedProjectValueIdentity(db, { ...scope, bindingId: "binding-src-occ-0151", projectValueId: "value-src-occ-0151" }))
+        .toMatchObject({ bindingId: "binding-src-occ-0151", definitionId: old.definition_id, definitionRevisionId: old.revision_id });
       const occurrenceResolverDefinition = await db.query<{ definition: string }>(
         `select pg_get_functiondef(
            'parameter_catalog.resolve_current_binding_by_source_occurrence(text,text,text)'::regprocedure

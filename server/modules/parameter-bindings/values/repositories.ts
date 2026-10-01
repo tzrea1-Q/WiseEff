@@ -171,7 +171,7 @@ export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { or
 }
 
 /** Historical pin reads use exact owner/value identity, never the current file tip. */
-export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string; lock?: boolean }) {
   const result = await tx.query<CanonicalValueSourcePin>(
     `select pin.id as "sourcePinId", pin.organization_id as "organizationId", pin.project_id as "projectId",
        pin.binding_id as "bindingId", pin.definition_id as "definitionId", pin.project_value_id as "projectValueId",
@@ -195,7 +195,7 @@ export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { org
      join public.dts_config_revisions revision on revision.id=pin.config_revision_id
        and revision.organization_id=pin.organization_id and revision.project_id=pin.project_id
        and revision.config_set_id=occurrence.config_set_id
-     where pin.organization_id=$1 and pin.project_id=$2 and pin.binding_id=$3 and pin.project_value_id=$4`,
+     where pin.organization_id=$1 and pin.project_id=$2 and pin.binding_id=$3 and pin.project_value_id=$4${input.lock ? " for share of pin" : ""}`,
     [input.organizationId,input.projectId,input.bindingId,input.projectValueId],
   );
   return result.rows.length === 1 ? result.rows[0]! : null;
@@ -296,6 +296,7 @@ export const loadBindingById = async (
   client: ValueClient,
   bindingId: string,
   lock: "update" | "share" | "none" = "none",
+  scope?: { organizationId: string; projectId: string; currentOnly?: boolean },
 ): Promise<BindingTipRow | null> => {
   // A locked read addresses the *current* Binding, so it goes through the
   // replacement projection: a stale writer then loses its row lock instead of
@@ -303,9 +304,10 @@ export const loadBindingById = async (
   // accepts FOR UPDATE through this view and locks the underlying base row
   // (verified empirically).  The unlocked read stays on the base relation so
   // historical, pinned and revision-addressed callers keep addressing the exact
-  // Binding id.
+  // Binding id. Scoped current readers can also request that projection without
+  // a lock; scope is applied before locking, so foreign rows are never locked.
   const relation =
-    lock === "none"
+    lock === "none" && !scope?.currentOnly
       ? "parameter_catalog.project_parameter_bindings"
       : "parameter_catalog.current_project_parameter_bindings";
   const lockSql = lock === "update" ? " for update" : lock === "share" ? " for share" : "";
@@ -313,8 +315,8 @@ export const loadBindingById = async (
     `select id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
        from ${relation}
-      where id = $1${lockSql}`,
-    [bindingId],
+      where id = $1${scope ? " and organization_id = $2 and project_id = $3" : ""}${lockSql}`,
+    scope ? [bindingId, scope.organizationId, scope.projectId] : [bindingId],
   );
   return result.rows[0] ?? null;
 };
