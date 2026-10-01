@@ -91,6 +91,95 @@ export async function installKnowledgeDefinitionReferencesCatalogFixture(pool: p
   };
 }
 
+/**
+ * Two complete releases for an existing Knowledge reference's lifecycle check.
+ * Test-only bootstrap/advance, before publication takeover: no activation receipt
+ * or activation audit. The caller creates the reference before advancing.
+ */
+export async function installKnowledgeDefinitionLifecycleFixture(pool: pg.Pool) {
+  const bundle = knowledgeCatalogBundle();
+  const initial = bundle.releases[0]!;
+  const definition = initial.documents.find(
+    (document) => document.kind === "definition" && document.content.id === X_DEFINITION_ID,
+  );
+  if (!definition || definition.kind !== "definition") {
+    throw new Error("Knowledge lifecycle fixture Definition is missing.");
+  }
+  const successor = structuredClone(definition);
+  successor.content.id = "pdef_kb_lifecycle_successor";
+  successor.content.propertyKey = "knowledge_lifecycle_successor";
+  successor.content.revision.id = "drev_kb_lifecycle_successor_1";
+  successor.content.revision.displayName = "Knowledge lifecycle successor";
+  successor.content.revision.matching.sourceProperty = successor.content.propertyKey;
+  initial.documents.push(successor);
+  refreshAuthoritativeSource(initial);
+  const compiledInitial = compileCatalogRelease(bundle);
+  if (!compiledInitial.ok) throw new Error(JSON.stringify(compiledInitial.error));
+  const initialPin = { id: compiledInitial.value.release.id, digest: compiledInitial.value.release.digest };
+
+  const next = structuredClone(initial);
+  Object.assign(next.manifest.release, {
+    id: "crel_kb_definition_deprecated_2",
+    version: "1.1.0",
+    sequence: initial.manifest.release.sequence + 1,
+    publishedAt: "2026-09-02T00:00:00Z",
+    predecessor: { ...initialPin },
+  });
+  const deprecated = next.documents.find(
+    (document) => document.kind === "definition" && document.content.id === X_DEFINITION_ID,
+  );
+  if (!deprecated || deprecated.kind !== "definition") {
+    throw new Error("Knowledge lifecycle successor snapshot is missing its Definition.");
+  }
+  Object.assign(deprecated.content.revision, {
+    id: "drev_kb_lifecycle_iin_max_2",
+    number: definition.content.revision.number + 1,
+    lifecycle: "deprecated",
+    successorDefinitionId: successor.content.id,
+  });
+  refreshAuthoritativeSource(next);
+  const successorBundle = { ...bundle, targetReleaseId: next.manifest.release.id, releases: [initial, next] };
+  const compiledNext = compileCatalogRelease(successorBundle);
+  if (!compiledNext.ok) throw new Error(JSON.stringify(compiledNext.error));
+  const installed = await installPublishedRelease(pool, {
+    mode: "bootstrap",
+    source: jsonCatalogReleaseSource(bundle),
+    expectedTargetDigest: compiledInitial.value.aggregateDigest,
+  });
+  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+
+  return {
+    pin: { ...initialPin },
+    activeDefinitionId: X_DEFINITION_ID,
+    retiredDefinitionId: "pdef_kb_batch_retired",
+    searchTerm: "knowledge_batch_property",
+    searchableDefinitionCount: 60,
+    successorDefinitionId: successor.content.id,
+    initialRevisionId: definition.content.revision.id,
+    async advanceToDeprecated() {
+      const advanced = await installPublishedRelease(pool, {
+        mode: "advance",
+        source: jsonCatalogReleaseSource(successorBundle),
+        expectedCurrent: initialPin,
+        expectedTargetDigest: compiledNext.value.aggregateDigest,
+      });
+      if (!advanced.ok) throw new Error(JSON.stringify(advanced.error));
+      return {
+        previous: { ...initialPin },
+        current: { id: compiledNext.value.release.id, digest: compiledNext.value.release.digest },
+        definitionId: X_DEFINITION_ID,
+        previousRevisionId: definition.content.revision.id,
+        revisionId: deprecated.content.revision.id,
+        successorDefinitionId: successor.content.id,
+        installOutcome: advanced.value,
+        publicationMode: "pre-regime" as const,
+        activationReceipt: null,
+        activationAudit: null,
+      };
+    },
+  };
+}
+
 /** Published Driver subjects for MOD comparison, including a 100-row pagination boundary. */
 export async function installParameterModuleComparisonCatalogFixture(pool: pg.Pool, additionalDrivers = 0): Promise<{
   pin: CatalogReleasePin;
