@@ -1,5 +1,7 @@
 export { createBindingService, stabilizeCanonicalBinding, readSourceRegistrationAgreement } from "./service";
 export type { BindingService } from "./service";
+export { readOwnedCurrentBinding } from "./read";
+export type { OwnedCurrentBindingRead, PersistedBindingReference } from "./read";
 export type {
   Binding,
   BindingAgreementConflictReason,

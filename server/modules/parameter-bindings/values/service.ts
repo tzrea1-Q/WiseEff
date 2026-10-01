@@ -119,10 +119,22 @@ export async function hasDeletedCurrentValue(tx: Queryable, input: { organizatio
   return (await loadProjectValueById(tx as ValueClient, binding.current_value_id))?.value_state === "deleted";
 }
 
-export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string; lock?: boolean }) {
   assertSourceReadScope(input);
   if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return null;
   return queryOwnedProjectValueSourcePin(tx,input);
+}
+
+/** Exact historical identity, including replaced Bindings and non-current
+ * values. Never substitute a current tip for the caller's immutable value ID. */
+export async function readOwnedProjectValueIdentity(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return null;
+  const binding = await loadBindingById(tx as ValueClient, input.bindingId, "none");
+  if (!binding || binding.organization_id !== input.organizationId || binding.project_id !== input.projectId) return null;
+  const value = await loadProjectValueById(tx as ValueClient, input.projectValueId);
+  if (!value || value.binding_id !== binding.id) return null;
+  return { bindingId: binding.id, definitionId: binding.definition_id, definitionRevisionId: value.definition_revision_id };
 }
 
 export async function isCurrentGovernedSourceValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {

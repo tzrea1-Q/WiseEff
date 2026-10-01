@@ -12,6 +12,7 @@ export {
   loadSourceBindingCohortReadOnly,
   hasDeletedCurrentValue,
   loadOwnedProjectValueSourcePin,
+  readOwnedProjectValueIdentity,
   isCurrentGovernedSourceValue,
   loadSourceValueReplay,
 } from "./service";

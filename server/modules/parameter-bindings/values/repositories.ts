@@ -171,7 +171,7 @@ export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { or
 }
 
 /** Historical pin reads use exact owner/value identity, never the current file tip. */
-export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string; lock?: boolean }) {
   const result = await tx.query<CanonicalValueSourcePin>(
     `select pin.id as "sourcePinId", pin.organization_id as "organizationId", pin.project_id as "projectId",
        pin.binding_id as "bindingId", pin.definition_id as "definitionId", pin.project_value_id as "projectValueId",
@@ -195,7 +195,7 @@ export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { org
      join public.dts_config_revisions revision on revision.id=pin.config_revision_id
        and revision.organization_id=pin.organization_id and revision.project_id=pin.project_id
        and revision.config_set_id=occurrence.config_set_id
-     where pin.organization_id=$1 and pin.project_id=$2 and pin.binding_id=$3 and pin.project_value_id=$4`,
+     where pin.organization_id=$1 and pin.project_id=$2 and pin.binding_id=$3 and pin.project_value_id=$4${input.lock ? " for share of pin" : ""}`,
     [input.organizationId,input.projectId,input.bindingId,input.projectValueId],
   );
   return result.rows.length === 1 ? result.rows[0]! : null;

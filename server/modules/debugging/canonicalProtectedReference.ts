@@ -3,19 +3,9 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import { createCatalogKernel } from "../catalog-kernel/interface";
-import {
-  CatalogReleaseId,
-  CatalogSubjectId,
-  DefinitionRevisionId,
-  ParameterBindingId,
-  ParameterDefinitionId,
-  ProjectValueId,
-  SubjectRegistrationId
-} from "../parameter-catalog-contract";
-import type { Binding } from "../parameter-bindings/binding";
-import { readProtectedReference } from "../parameter-bindings/adapters/readAdapter";
-import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
-import type { CanonicalValueSourcePin } from "../parameter-bindings/values/types";
+import { readOwnedCurrentBinding } from "../parameter-bindings/binding";
+import { readProtectedReference } from "../parameter-bindings/adapters";
+import { loadOwnedProjectValueSourcePin, readOwnedProjectValueIdentity, type CanonicalValueSourcePin } from "../parameter-bindings/values";
 import { lockCanonicalSourceCohort } from "../parameter-files/canonicalSource";
 import type { DebugNodeRecord } from "./types";
 
@@ -57,20 +47,6 @@ export type CanonicalDebugResolutionMode = "read" | "mutate" | "history";
 type StoredBindingRecord = {
   projectParameterBindingId?: string | null;
   bindingId?: string | null;
-};
-
-type BindingRow = {
-  id: string;
-  organization_id: string;
-  catalog_release_id: string;
-  project_id: string;
-  logical_node_id: string | null;
-  source_occurrence_id: string;
-  registration_id: string;
-  subject_id: string;
-  definition_id: string;
-  effective_revision_id: string;
-  current_value_id: string;
 };
 
 const typedBlock = (protectedReferenceReason: string): CanonicalDebugPin => ({
@@ -118,56 +94,10 @@ export function isCanonicalDebugHistoryVisible(auth: AuthContext, pin: Canonical
   return pin.protectedReferenceKind !== "canonical-pin" || Boolean(pin.projectId && canViewCanonicalDebugProject(auth, pin.projectId));
 }
 
-function bindingFromRow(row: BindingRow, catalogRelease: Binding["catalogRelease"]): Binding {
-  return {
-    id: ParameterBindingId(row.id),
-    organizationId: row.organization_id,
-    projectId: row.project_id,
-    logicalNodeId: row.logical_node_id,
-    sourceOccurrenceId: row.source_occurrence_id,
-    registrationId: SubjectRegistrationId(row.registration_id),
-    subjectId: CatalogSubjectId(row.subject_id),
-    definitionId: ParameterDefinitionId(row.definition_id),
-    effectiveRevisionId: DefinitionRevisionId(row.effective_revision_id),
-    currentValueId: ProjectValueId(row.current_value_id),
-    catalogRelease
-  };
-}
-
 function failureReason(error: unknown) {
   if (!error || typeof error !== "object") return "catalog-unavailable";
   const kind = "kind" in error && typeof error.kind === "string" ? error.kind : undefined;
   return kind ? `catalog-${kind}` : "catalog-unavailable";
-}
-
-async function loadCurrentBinding(
-  queryable: Queryable,
-  input: { organizationId: string; projectId: string; bindingId: string; lock?: boolean }
-): Promise<BindingRow | null> {
-  const result = await queryable.query<BindingRow>(
-    `select id, organization_id, catalog_release_id, project_id, logical_node_id,
-            source_occurrence_id, registration_id, subject_id, definition_id,
-            effective_revision_id, current_value_id
-       from parameter_catalog.current_project_parameter_bindings
-      where organization_id = $1 and project_id = $2 and id = $3
-      limit 1${input.lock ? " for update" : ""}`,
-    [input.organizationId, input.projectId, input.bindingId]
-  );
-  return result.rows[0] ?? null;
-}
-
-async function bindingExistsOutsideCurrentView(
-  queryable: Queryable,
-  input: { organizationId: string; projectId: string; bindingId: string }
-) {
-  const result = await queryable.query<{ id: string }>(
-    `select id
-       from parameter_catalog.project_parameter_bindings
-      where organization_id = $1 and project_id = $2 and id = $3
-      limit 1`,
-    [input.organizationId, input.projectId, input.bindingId]
-  );
-  return result.rows.length === 1;
 }
 
 /**
@@ -186,27 +116,22 @@ export async function resolveDebugNodeCanonicalReference(
     return typedBlock("project-scope");
   }
 
-  const row = await loadCurrentBinding(db, {
+  const owned = await readOwnedCurrentBinding(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     bindingId: input.bindingId
   });
-  if (!row) {
-    return (await bindingExistsOutsideCurrentView(db, {
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      bindingId: input.bindingId
-    }))
-      ? typedBlock("binding-replaced")
-      : typedBlock("missing-binding");
+  if (owned.status !== "current") {
+    return typedBlock(owned.status === "replaced" ? "binding-replaced" : "missing-binding");
   }
-  if (row.organization_id !== auth.organization.id || row.project_id !== input.projectId) {
+  const row = owned.binding;
+  if (row.organizationId !== auth.organization.id || row.projectId !== input.projectId) {
     return typedBlock("binding-owner-mismatch");
   }
-  if (input.expectedEffectiveRevisionId && input.expectedEffectiveRevisionId !== row.effective_revision_id) {
+  if (input.expectedEffectiveRevisionId && input.expectedEffectiveRevisionId !== row.effectiveRevisionId) {
     return typedBlock("revision-disagreement");
   }
-  if (input.expectedCurrentValueId && input.expectedCurrentValueId !== row.current_value_id) {
+  if (input.expectedCurrentValueId && input.expectedCurrentValueId !== row.currentValueId) {
     return typedBlock("version-drift");
   }
 
@@ -217,11 +142,11 @@ export async function resolveDebugNodeCanonicalReference(
 
   try {
     const kernel = createCatalogKernel(pool);
-    const releasePin = await kernel.resolveCatalogReleasePin(CatalogReleaseId(row.catalog_release_id));
+    const releasePin = await kernel.resolveCatalogReleasePin(row.catalogReleaseId);
     if (!releasePin.ok) return typedBlock(failureReason(releasePin.error));
     const loaded = await kernel.loadPinnedCatalog(releasePin.value);
     if (!loaded.ok) return typedBlock(failureReason(loaded.error));
-    const binding = bindingFromRow(row, loaded.value.release);
+    const binding = { ...row, catalogRelease: loaded.value.release };
     const protectedRead = await readProtectedReference(pool, {
       snapshot: loaded.value,
       binding,
@@ -231,11 +156,11 @@ export async function resolveDebugNodeCanonicalReference(
       return typedBlock(protectedRead.error.reason);
     }
 
-    const sourcePin = await loadOwnedProjectValueSourcePin(pool, {
+    const sourcePin = await loadOwnedProjectValueSourcePin(db, {
       organizationId: auth.organization.id,
-      projectId: row.project_id,
+      projectId: row.projectId,
       bindingId: row.id,
-      projectValueId: row.current_value_id
+      projectValueId: row.currentValueId
     });
     if (!sourcePin) {
       return typedBlock("missing-source-pin");
@@ -253,10 +178,10 @@ export async function resolveDebugNodeCanonicalReference(
     return {
       protectedReferenceKind: "canonical-pin",
       bindingId: row.id,
-      projectId: row.project_id,
-      definitionId: row.definition_id,
-      effectiveRevisionId: row.effective_revision_id,
-      currentValueId: row.current_value_id,
+      projectId: row.projectId,
+      definitionId: row.definitionId,
+      effectiveRevisionId: row.effectiveRevisionId,
+      currentValueId: row.currentValueId,
       sourcePinId: sourcePin.sourcePinId,
       configRevisionId: sourcePin.configRevisionId,
       sourcePin
@@ -325,35 +250,29 @@ export async function assertDebugNodeCanonicalReferenceCurrent(
   reference: CanonicalDebugReference
 ): Promise<void> {
   await lockCanonicalSourceCohort(tx, reference.sourcePin);
-  const row = await loadCurrentBinding(tx, {
+  const owned = await readOwnedCurrentBinding(tx, {
     organizationId: auth.organization.id,
     projectId: reference.projectId,
     bindingId: reference.bindingId,
     lock: true
   });
   if (
-    !row ||
-    row.definition_id !== reference.definitionId ||
-    row.current_value_id !== reference.currentValueId ||
-    row.effective_revision_id !== reference.effectiveRevisionId
+    owned.status !== "current" ||
+    owned.binding.definitionId !== reference.definitionId ||
+    owned.binding.currentValueId !== reference.currentValueId ||
+    owned.binding.effectiveRevisionId !== reference.effectiveRevisionId
   ) {
     throw new ApiError("CONFLICT", "Canonical debug binding changed before device I/O.", {
       reason: "version-drift",
       bindingId: reference.bindingId
     });
   }
-  await tx.query(
-    `select pin.id
-       from parameter_catalog.project_value_source_pins pin
-      where pin.id = $1 and pin.organization_id = $2 and pin.project_id = $3
-      for share`,
-    [reference.sourcePinId, auth.organization.id, reference.projectId]
-  );
   const sourcePin = await loadOwnedProjectValueSourcePin(tx, {
     organizationId: auth.organization.id,
     projectId: reference.projectId,
     bindingId: reference.bindingId,
-    projectValueId: reference.currentValueId
+    projectValueId: reference.currentValueId,
+    lock: true
   });
   if (!sourcePin || sourcePin.sourcePinId !== reference.sourcePinId || sourcePin.configRevisionId !== reference.configRevisionId) {
     throw new ApiError("CONFLICT", "Canonical debug source pin changed before device I/O.", {
@@ -383,21 +302,16 @@ export async function assertDebugHistoryPin(
       projectId: pin.projectId
     });
   }
-  const binding = await tx.query<{ id: string; definition_id: string; definition_revision_id: string }>(
-    `select binding.id, binding.definition_id, value.definition_revision_id
-       from parameter_catalog.project_parameter_bindings binding
-       join parameter_catalog.project_parameter_values value
-         on value.id = $4 and value.binding_id = binding.id
-      where binding.id = $1 and binding.organization_id = $2 and binding.project_id = $3
-      limit 1`,
-    [pin.bindingId, auth.organization.id, pin.projectId, pin.currentValueId]
-  );
-  if (binding.rows.length !== 1) {
+  const identity = await readOwnedProjectValueIdentity(tx, {
+    bindingId: pin.bindingId, organizationId: auth.organization.id,
+    projectId: pin.projectId, projectValueId: pin.currentValueId
+  });
+  if (!identity) {
     throw new ApiError("CONFLICT", "Snapshot canonical debug binding is unavailable.", { reason: "missing-binding" });
   }
   if (
-    binding.rows[0]?.definition_id !== pin.definitionId ||
-    binding.rows[0]?.definition_revision_id !== pin.effectiveRevisionId
+    identity.definitionId !== pin.definitionId ||
+    identity.definitionRevisionId !== pin.effectiveRevisionId
   ) {
     throw new ApiError("CONFLICT", "Snapshot canonical debug definition revision is unavailable.", {
       reason: "revision-disagreement"
