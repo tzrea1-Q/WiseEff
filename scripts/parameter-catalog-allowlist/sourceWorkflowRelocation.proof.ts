@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
+import { verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
 import { compareBoundaryInventory } from "./deterministicOutput";
 import { applyReviewedSourceWorkflowRelocation, sourceWorkflowRelocationRecordPath,
   applyReviewedSourceWorkflowConsumerRelocation, sourceWorkflowConsumerRelocationRecordPath,
@@ -40,7 +41,16 @@ const issue853DRetiredIds = (JSON.parse(await readFile(join(
   repoRoot, "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json",
 ), "utf8")) as { retiredIds: string[] }).retiredIds;
 
-function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
+const knowledgeHistoricalView = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
+const knowledgeRetiredIds = new Set(knowledgeHistoricalView.retired.map(({ old }) => old.id));
+
+function expectCurrentRemovedPartition(currentRemoved: readonly BoundaryViolation[]) {
+  const removed = currentRemoved.filter(({ id }) => !knowledgeRetiredIds.has(id)); // old 130-entry historical stage only
+  expect(currentRemoved.filter(({ id }) => knowledgeRetiredIds.has(id)))
+    .toEqual(fixture.violations.filter(({ id }) => knowledgeRetiredIds.has(id)));
+  expect(currentRemoved.length).toBe(removed.length + knowledgeHistoricalView.retired.length);
+  expect(allowances.map(({ id }) => id).sort()).toEqual(knowledgeHistoricalView.historicalAllowances
+    .filter(({ id }) => !knowledgeRetiredIds.has(id)).map(({ id }) => id).sort());
   const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
     ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds,
     ...issue904LogRetiredIds]);

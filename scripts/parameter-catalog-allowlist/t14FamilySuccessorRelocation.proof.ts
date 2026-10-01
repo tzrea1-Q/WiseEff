@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
-import { runReviewedRelocationRecord } from "./runtimeTopologyRelocation";
-import { t14FamilySuccessorRelocationConfig } from "./t14FamilySuccessorRelocation";
+import { verifyHistoricalRelocationProof } from "./runtimeTopologyRelocation";
+import { applyReviewedT14FamilySuccessorRelocation, t14FamilySuccessorRelocationConfig,
+  verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
 import type { BoundaryViolation } from "./schema";
+import { historicalIssue913T14Allowances } from "./issue913T14Relocation";
 
 const repoRoot = process.cwd();
 const fixture = await loadBoundaryViolationFixture(repoRoot);
@@ -34,19 +36,29 @@ export function registerT14FamilySuccessorRelocationProof(getRaw: () => readonly
   }, 60_000);
 
   describe("T1.4 family historical record subset", () => {
-    it("keeps all 193 unchanged-file destinations active", async () => {
-      const result = await runReviewedRelocationRecord(
+    it("authenticates all 193 historical destinations and the exact current retirement partition", async () => {
+      const knowledge = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
+      const historical = await verifyHistoricalRelocationProof(repoRoot, fixture,
+        await historicalIssue913T14Allowances(repoRoot, fixture, allowances),
+        { ...t14FamilySuccessorRelocationConfig, activeFiles },
+        { commit: "097ad35625cc8ca2401f2cd028404f16a18a75ba", tree: "74b3df3635590d34738896e550e31eb9c8db0948" });
+      expect(historical.pairs).toHaveLength(265);
+      const historicalActive = historical.pairs.filter(({ old }) => activeFiles.includes(old.file));
+      expect(historicalActive).toHaveLength(193);
+      expect(new Set(historicalActive.map(({ old }) => old.id)).size).toBe(193);
+      expect(new Set(historicalActive.map(({ new: next }) => next.id)).size).toBe(193);
+      const result = await applyReviewedT14FamilySuccessorRelocation(
         repoRoot,
         fixture,
         allowances,
         discovered,
         [],
-        { ...t14FamilySuccessorRelocationConfig, activeFiles },
+        activeFiles,
       );
 
-      expect(result.relocations).toHaveLength(193);
-      expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(193);
-      expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(193);
+      expect(result.relocations.length + knowledge.retired.length).toBe(193);
+      expect(new Set(result.relocations.map((entry) => entry.id)).size + knowledge.retired.length).toBe(193);
+      expect(new Set(result.relocations.map((entry) => entry.observed.id)).size + knowledge.retired.length).toBe(193);
       expect(result.relocations.every((entry) => !changedFiles.has(entry.observed.file))).toBe(true);
     });
   });

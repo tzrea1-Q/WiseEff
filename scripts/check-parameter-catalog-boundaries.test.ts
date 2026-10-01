@@ -32,7 +32,7 @@ import {
   sourceWorkflowRelocationRecordPath,
   sourceWorkflowConsumerRelocationRecordPath,
 } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
-import { t14FamilySuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
+import { t14FamilySuccessorRelocationRecordPath, historicalIssue1015KnowledgeReport } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
 import {
   issue913T14RetiredSourceIds,
@@ -977,11 +977,20 @@ describe("parameter catalog boundary checker", () => {
     "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
-      const [currentReport, fixture] = await Promise.all([
+      const [nativeReport, fixture] = await Promise.all([
         checkParameterCatalogBoundaries(repoRoot, "9b3ba7df7e21f5589684bc92c872da593ad4c246"),
         loadBoundaryViolationFixture(repoRoot),
       ]);
-      const currentAllowances = (await loadAllowlistIndex(repoRoot)).entries;
+      const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
+      // Only the proved A5d view enters the unchanged #1013/#1009 historical assertions.
+      // The independent native report below contains no restored sources or permissions.
+      const knowledgeStage = await historicalIssue1015KnowledgeReport(repoRoot, fixture, nativeAllowances, nativeReport);
+      const currentReport = knowledgeStage.report;
+      const currentAllowances = knowledgeStage.allowances;
+      expect(nativeReport.summary).toEqual({
+        violations: currentReport.summary.violations - 9, allowlisted: currentReport.summary.allowlisted - 9,
+        unallowlisted: 163, staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
       const report = await historicalIssue1009Report(repoRoot, currentAllowances, currentReport);
       // The exact #1013 proof restores this accepted historical stage, never the native result.
       expect((await acceptedIssue1009StageReport(repoRoot, currentAllowances, currentReport)).summary).toEqual({
@@ -1650,7 +1659,7 @@ describe("parameter catalog boundary checker", () => {
           expect(newSources.get(entry.file)!.includes(oldSlice)).toBe(false);
         }
       }
-      const allowances = (await loadAllowlistIndex(repoRoot)).entries;
+      const allowances = currentAllowances; // proved historical A5d permissions, not current native permissions
       // Keep the frozen aggregate in its historical LOG stage, proved by exact retirements.
       expect(await verifyIssue1006Retirement(repoRoot, fixture, allowances, report)).toEqual({
         violations: 3_564,

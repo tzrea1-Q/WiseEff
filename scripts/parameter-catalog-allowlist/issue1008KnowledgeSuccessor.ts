@@ -55,6 +55,14 @@ export async function projectIssue1008KnowledgeSuccessor(repoRoot: string, raw: 
       check(current.length === 24102 && sha(current.subarray(14243, 15732)) === successor.insertionSha256
         && historical.subarray(0, 14243).equals(current.subarray(0, 14243))
         && historical.subarray(14243).equals(current.subarray(15732)), "only exact returned-failure insertion");
+    } else if (item.path === "server/testing/parameterCatalog/index.ts") {
+      check(item.candidateBlob === "8ed95db394a3b19ff3c15bf3fd400cab4af1c3a4" && historical.length === 1398
+        && blob(current) === "16d5c41cbd6d9ef28e11a512f48362f02c98fae6"
+        && current.equals(git("7db2e686f086172ec18b82507d76202cf5bb60af", item.path)), `whole-file blob ${item.path}`);
+      check(current.length === 1444
+        && sha(current.subarray(1299, 1345)) === "2345bd07b48277747fd025ad511c89f15010f9e5949bba1d1cab8299cc4ffe15"
+        && historical.subarray(0, 1299).equals(current.subarray(0, 1299))
+        && historical.subarray(1299).equals(current.subarray(1345)), "only exact lifecycle fixture export insertion");
     } else {
       check(blob(current) === item.candidateBlob && historical.equals(current), `whole-file blob ${item.path}`);
     }

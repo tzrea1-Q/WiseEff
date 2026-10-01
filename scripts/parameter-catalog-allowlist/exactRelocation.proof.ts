@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
+import { verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
 import { applyReviewedExactRelocation, exactRelocationRecordPath, validateExactRelocation } from "./exactRelocation";
 import { compareBoundaryInventory } from "./deterministicOutput";
 import type { BoundaryViolation } from "./schema";
@@ -33,7 +34,16 @@ const issue853DRetiredIds = (JSON.parse(await readFile(
   `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json`, "utf8",
 )) as { retiredIds: string[] }).retiredIds;
 
-function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
+const knowledgeHistoricalView = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowlist.entries);
+const knowledgeRetiredIds = new Set(knowledgeHistoricalView.retired.map(({ old }) => old.id));
+
+function expectCurrentRemovedPartition(currentRemoved: readonly BoundaryViolation[]) {
+  const removed = currentRemoved.filter(({ id }) => !knowledgeRetiredIds.has(id)); // old 130-entry historical stage only
+  expect(currentRemoved.filter(({ id }) => knowledgeRetiredIds.has(id)))
+    .toEqual(fixture.violations.filter(({ id }) => knowledgeRetiredIds.has(id)));
+  expect(currentRemoved.length).toBe(removed.length + knowledgeHistoricalView.retired.length);
+  expect(allowlist.entries.map(({ id }) => id).sort()).toEqual(knowledgeHistoricalView.historicalAllowances
+    .filter(({ id }) => !knowledgeRetiredIds.has(id)).map(({ id }) => id).sort());
   const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
     ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds,
     ...issue904LogRetiredIds]);
@@ -73,7 +83,8 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(result[0]).toEqual(record.pairs[0]);
     expect(fixture.violations).toHaveLength(3519);
     expect(fixture.violations.length - 28).toBe(3491);
-    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42 - 22 - issue904LogRetiredIds.length);
+    expect(knowledgeHistoricalView.historicalAllowances).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42 - 22 - issue904LogRetiredIds.length);
+    expect(allowlist.entries.length + knowledgeHistoricalView.retired.length).toBe(knowledgeHistoricalView.historicalAllowances.length);
   });
 
   it.each([

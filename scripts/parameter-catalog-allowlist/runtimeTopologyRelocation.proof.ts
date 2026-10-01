@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { compareBoundaryInventory } from "./deterministicOutput";
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
+import { verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
 import {
   applyReviewedRuntimeTopologyRelocation,
   applyReviewedPostCutoverRelocation,
@@ -60,7 +61,16 @@ const issue853DRetiredIds = (JSON.parse(await readFile(
   `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json`, "utf8",
 )) as { retiredIds: string[] }).retiredIds;
 
-function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
+const knowledgeHistoricalView = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowlist.entries);
+const knowledgeRetiredIds = new Set(knowledgeHistoricalView.retired.map(({ old }) => old.id));
+
+function expectCurrentRemovedPartition(currentRemoved: readonly BoundaryViolation[]) {
+  const removed = currentRemoved.filter(({ id }) => !knowledgeRetiredIds.has(id)); // old 130-entry historical stage only
+  expect(currentRemoved.filter(({ id }) => knowledgeRetiredIds.has(id)))
+    .toEqual(fixture.violations.filter(({ id }) => knowledgeRetiredIds.has(id)));
+  expect(currentRemoved.length).toBe(removed.length + knowledgeHistoricalView.retired.length);
+  expect(allowlist.entries.map(({ id }) => id).sort()).toEqual(knowledgeHistoricalView.historicalAllowances
+    .filter(({ id }) => !knowledgeRetiredIds.has(id)).map(({ id }) => id).sort());
   const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
     ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds,
     ...issue904LogRetiredIds]);
@@ -164,7 +174,8 @@ export function registerRuntimeTopologyRelocationProof(getRaw: () => readonly Bo
       expect(new Set(result.map((pair) => pair.new.id)).size).toBe(16);
       expect(fixture.violations).toHaveLength(3519);
       expect(fixture.violations.length - 28).toBe(3491);
-      expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42 - 22 - issue904LogRetiredIds.length);
+      expect(knowledgeHistoricalView.historicalAllowances).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42 - 22 - issue904LogRetiredIds.length);
+      expect(allowlist.entries.length + knowledgeHistoricalView.retired.length).toBe(knowledgeHistoricalView.historicalAllowances.length);
     });
 
     it.each([

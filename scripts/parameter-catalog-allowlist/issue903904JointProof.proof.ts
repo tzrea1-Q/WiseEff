@@ -80,6 +80,15 @@ export function registerIssue903904JointProof(getRaw: () => readonly BoundaryVio
         await expect(projectIssue1008KnowledgeSuccessor(tamperedRoot, raw)).rejects.toThrow(/whole-file blob/);
       }
       await writeFile(join(tamperedRoot, successorPath), successorBytes);
+      const exportPath = "server/testing/parameterCatalog/index.ts";
+      const exportBytes = await readFile(join(repoRoot, exportPath));
+      for (const offset of [1299, 0]) {
+        const changed = Buffer.from(exportBytes);
+        changed[offset] ^= 1;
+        await writeFile(join(tamperedRoot, exportPath), changed);
+        await expect(projectIssue1008KnowledgeSuccessor(tamperedRoot, raw)).rejects.toThrow(/whole-file blob/);
+      }
+      await writeFile(join(tamperedRoot, exportPath), exportBytes);
       await writeFile(join(tamperedRoot, current.file), Buffer.concat([await readFile(join(repoRoot, current.file)), Buffer.from("\n")]));
       await expect(projectIssue1008KnowledgeSuccessor(tamperedRoot, raw)).rejects.toThrow(/whole-file blob/);
       await writeFile(join(tamperedRoot, path), Buffer.concat([bytes, Buffer.from("\n")]));

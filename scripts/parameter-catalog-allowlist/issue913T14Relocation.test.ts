@@ -38,6 +38,7 @@ import { registerIssue853CRelocationProof } from "./issue853CRelocation.proof";
 import { registerIssue900DashboardRelocationProof } from "./issue900DashboardRelocation.proof";
 import { registerRuntimeTopologyRelocationProof } from "./runtimeTopologyRelocation.proof";
 import { registerSourceWorkflowRelocationProof } from "./sourceWorkflowRelocation.proof";
+import { applyReviewedT14FamilySuccessorRelocation, verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
 import { registerT14FamilySuccessorRelocationProof } from "./t14FamilySuccessorRelocation.proof";
 
 const repoRoot = process.cwd();
@@ -109,6 +110,85 @@ async function copyStaleSuccessorProofFixture() {
 }
 
 describe("Issue #913 T1.4 successor relocation", () => {
+  it("#1015 retires only nine licensed test sources and preserves every current endpoint", async () => {
+    const proof = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
+    expect(proof.oldPairs).toHaveLength(13);
+    expect(proof.currentPairs).toHaveLength(4);
+    expect(proof.retired).toHaveLength(9);
+    expect(new Set([...proof.currentPairs, ...proof.retired].map(({ old }) => old.id)))
+      .toEqual(new Set(proof.oldPairs.map(({ old }) => old.id)));
+    const file = "e2e/acceptance/knowledge.acceptance.spec.ts";
+    const current = discovered.filter((entry) => entry.file === file);
+    expect(current).toHaveLength(6);
+    const activeFiles = [file];
+    const apply = (raw: readonly BoundaryViolation[], permissions = allowances) =>
+      applyReviewedT14FamilySuccessorRelocation(repoRoot, fixture, permissions, raw, [], activeFiles);
+    expect((await apply(discovered)).relocations).toHaveLength(4);
+    for (const retired of proof.retired) {
+      const original = proof.historicalAllowances.find(({ id }) => id === retired.old.id)!;
+      await expect(apply(discovered, [...allowances, original])).rejects.toThrow(/retired allowance revived/);
+      await expect(apply([...discovered, retired.new])).rejects.toThrow(/complete six current/);
+    }
+    for (const changed of [
+      discovered.filter(({ id }) => id !== current[0]!.id), [...discovered, current[0]!],
+      [...discovered].reverse(),
+      discovered.map((entry) => entry.id === current[0]!.id ? { ...entry, id: `${entry.id}-replaced` } : entry),
+      discovered.map((entry) => entry.id === current[0]!.id ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+      [...discovered, { ...current[0]!, id: `${current[0]!.id}-new` }],
+    ]) await expect(apply(changed)).rejects.toThrow(/relocation rejected|Knowledge successor rejected/);
+    for (const endpoint of current.filter((entry) => entry.line < 21)) {
+      await expect(apply(discovered, [...allowances, {
+        id: endpoint.id, file: endpoint.file, rule: endpoint.rule, reason: endpoint.reason,
+      }])).rejects.toThrow(/unallowed GET/);
+    }
+
+    const root = await mkdtemp(join(tmpdir(), "issue1015-knowledge-proof-"));
+    temporaryRoots.push(root);
+    const paths = [file, "scripts/fixtures/parameter-catalog-allowlist/t14-t22-family-successor-relocation.json",
+      "scripts/fixtures/parameter-catalog-allowlist/issue-1015-knowledge-current-relocation.json",
+      "scripts/parameter-catalog-allowlist/shards/s12-knw.json",
+      "e2e/acceptance/knowledge-canonical-definition.acceptance.spec.ts", "e2e/acceptance/requirements.ts",
+      "e2e/acceptance/operationMatrix.ts", "server/testing/parameterCatalog/registryProjection.ts",
+      "server/testing/parameterCatalog/knowledgeDefinitionLifecycle.test.ts"];
+    for (const path of paths) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), await readFile(join(repoRoot, path)));
+    }
+    await writeFile(join(root, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd: repoRoot, encoding: "utf8",
+    }).trim()}\n`);
+    const source = await readFile(join(repoRoot, file));
+    const old = execFileSync("git", ["show", `5d90785fea95ee436e4e2faccc2be0e0328d3c54:${file}`], { cwd: repoRoot });
+    for (const changed of [Buffer.concat([source, old.subarray(7833, 9621)]),
+      Buffer.concat([source, old.subarray(53764, 62932)]), Buffer.concat([source, Buffer.from("\n// outside slice\n")]),
+      Buffer.from(source.toString().replace("where organization_id = $1 order by id limit 1", "where organization_id <> $1 order by id limit 1"))]) {
+      expect(changed.equals(source)).toBe(false);
+      await writeFile(join(root, file), changed);
+      await expect(verifyIssue1015KnowledgeSuccessor(root, fixture, allowances)).rejects.toThrow(/whole-file source/);
+    }
+    await writeFile(join(root, file), source);
+    const shardPath = paths[3]!;
+    const shard = JSON.parse((await readFile(join(repoRoot, shardPath))).toString());
+    for (const entries of [shard.entries.slice(1), [...shard.entries].reverse(),
+      [...shard.entries, proof.historicalAllowances.find(({ id }) => id === proof.retired[0]!.old.id)],
+      shard.entries.map((entry: { id: string }, index: number) => index === 0 ? { ...entry, id: `${entry.id}-changed` } : entry)]) {
+      await writeFile(join(root, shardPath), JSON.stringify({ ...shard, entries }));
+      await expect(verifyIssue1015KnowledgeSuccessor(root, fixture, allowances)).rejects.toThrow(/exact shard revocations/);
+    }
+    await writeFile(join(root, shardPath), await readFile(join(repoRoot, shardPath)));
+    for (const path of paths.slice(1, 3)) {
+      const original = await readFile(join(repoRoot, path));
+      await writeFile(join(root, path), Buffer.concat([original, Buffer.from("\n")]));
+      await expect(verifyIssue1015KnowledgeSuccessor(root, fixture, allowances)).rejects.toThrow(/frozen thirteen|pinned current four/);
+      await writeFile(join(root, path), original);
+    }
+    for (const path of paths.slice(4)) {
+      const original = await readFile(join(repoRoot, path));
+      await writeFile(join(root, path), Buffer.concat([original, Buffer.from("\n// altered scope or lifecycle\n")]));
+      await expect(verifyIssue1015KnowledgeSuccessor(root, fixture, allowances)).rejects.toThrow(/fixed canonical required replacement/);
+      await writeFile(join(root, path), original);
+    }
+  });
   it("leaves unrelated synthetic fixtures unchanged", async () => {
     const unrelatedFixture = {
       ...fixture,
@@ -152,9 +232,10 @@ describe("Issue #913 T1.4 successor relocation", () => {
 
     expect(issue913T14SuccessorPairCount).toBe(45);
     expect(issue913T14ExpectedActiveRelocationCount).toBe(252);
-    expect(result.relocations).toHaveLength(252);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(252);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(252);
+    const knowledge = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
+    expect(result.relocations.length + knowledge.retired.length).toBe(252);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size + knowledge.retired.length).toBe(252);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size + knowledge.retired.length).toBe(252);
     expect(changedRelocations).toHaveLength(45);
     expect(changedRelocations.filter((entry) => entry.observed.file === repositoryFile)).toHaveLength(20);
     expect(changedRelocations.filter((entry) => entry.observed.file === serviceTestFile)).toHaveLength(25);
