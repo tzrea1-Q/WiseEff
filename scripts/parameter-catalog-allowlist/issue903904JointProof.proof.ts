@@ -1,8 +1,13 @@
 import { expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
 import { applyReviewedIssue903KnowledgeSuccessor } from "./issue903KnowledgeSuccessor";
 import { verifyIssue904LogRetirement } from "./issue904LogRetirement";
+import { projectIssue1008KnowledgeSuccessor } from "./issue1008KnowledgeSuccessor";
 import type { BoundaryViolation } from "./schema";
 
 const repoRoot = process.cwd();
@@ -42,6 +47,37 @@ export function registerIssue903904JointProof(getRaw: () => readonly BoundaryVio
         ? { ...entry, byteStart: entry.byteStart + 1, byteEnd: entry.byteEnd + 1 }
         : entry) }, allowances, prebound, raw,
     )).rejects.toThrow(/baseline position bridge/);
+    const current = raw.find((entry) => entry.file === "server/modules/knowledge/parameterReferences.ts")!;
+    await expect(applyReviewedIssue903KnowledgeSuccessor(
+      repoRoot, fixture, allowances, prebound,
+      raw.map((entry) => entry.id === current.id ? { ...entry, id: entry.id.replace(/.$/, entry.id.endsWith("0") ? "1" : "0") } : entry),
+    )).rejects.toThrow(/exact source and destination/);
+    await expect(applyReviewedIssue903KnowledgeSuccessor(
+      repoRoot, fixture, [...allowances, current], prebound, raw,
+    )).rejects.toThrow(/no current successor allowance/);
+    await expect(applyReviewedIssue903KnowledgeSuccessor(
+      repoRoot, fixture, allowances, prebound,
+      raw.map((entry) => entry.id === current.id ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+    )).rejects.toThrow(/current endpoint/);
+    const tamperedRoot = await mkdtemp(join(tmpdir(), "issue1008-successor-tamper-"));
+    try {
+      const path = "docs/exec-plans/active/849-inventory/issue-903-legacy-read-error-observations.json";
+      const bytes = await readFile(join(repoRoot, path));
+      const record = JSON.parse(bytes.toString());
+      for (const file of [path, ...record.candidateSourceBlobs.map((item: { path: string }) => item.path)]) {
+        await mkdir(dirname(join(tamperedRoot, file)), { recursive: true });
+        await writeFile(join(tamperedRoot, file), await readFile(join(repoRoot, file)));
+      }
+      await writeFile(join(tamperedRoot, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+        cwd: repoRoot, encoding: "utf8",
+      }).trim()}\n`);
+      await writeFile(join(tamperedRoot, current.file), Buffer.concat([await readFile(join(repoRoot, current.file)), Buffer.from("\n")]));
+      await expect(projectIssue1008KnowledgeSuccessor(tamperedRoot, raw)).rejects.toThrow(/whole-file blob/);
+      await writeFile(join(tamperedRoot, path), Buffer.concat([bytes, Buffer.from("\n")]));
+      await expect(projectIssue1008KnowledgeSuccessor(tamperedRoot, raw)).rejects.toThrow(/pinned C handoff/);
+    } finally {
+      await rm(tamperedRoot, { recursive: true, force: true });
+    }
   });
 
   it("#904 rejects either revived Logs observation or old allowance", async () => {

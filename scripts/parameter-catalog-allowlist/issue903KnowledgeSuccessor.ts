@@ -7,6 +7,7 @@ import type { AllowlistEntry, BoundaryViolation, BoundaryViolationFixture } from
 import type { RuntimeTopologyRelocation } from "./runtimeTopologyRelocation";
 import { t14FamilySuccessorRelocationConfig } from "./t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationConfig } from "./t14RewrittenSliceSuccessorRelocation";
+import { projectIssue1008KnowledgeSuccessor } from "./issue1008KnowledgeSuccessor";
 
 const cRecordPath = "docs/exec-plans/active/849-inventory/issue-903-native-catalog-observations.json";
 const cRecordSha256 = "c5b3ddc9c5f7905b0b582bab4d9a5debdc099500524efb31ecd14367c8b60c55";
@@ -77,6 +78,21 @@ export async function applyReviewedIssue903KnowledgeSuccessor(
   if (fixture.trustedBaseSha !== aBase) {
     return { violations: [...discovered], relocations: [] as RuntimeTopologyRelocation[] };
   }
+  const successor = await projectIssue1008KnowledgeSuccessor(repoRoot, raw);
+  requireProof([...successor.currentForOld.values()].every((entry) => !allowances.some((item) => item.id === entry.id)),
+    "no current successor allowance");
+  const historical = await applyHistoricalIssue903KnowledgeSuccessor(
+    repoRoot, fixture, allowances, successor.project(discovered), successor.raw, successor.historicalFiles,
+  );
+  return { ...historical, relocations: historical.relocations.map((entry) => ({
+    ...entry, observed: successor.currentForOld.get(entry.observed.id) ?? entry.observed,
+  })) };
+}
+
+async function applyHistoricalIssue903KnowledgeSuccessor(
+  repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
+  discovered: readonly BoundaryViolation[], raw: readonly BoundaryViolation[], historicalFiles: Map<string, Buffer>,
+) {
   const c = await pinnedJson(repoRoot, cRecordPath, cRecordSha256) as {
     schemaVersion: number; baseCommit: string; pairs: CPair[];
   };
@@ -157,7 +173,7 @@ export async function applyReviewedIssue903KnowledgeSuccessor(
     sourceBytes.set(pair.path, oldFile);
     const oldAFile = aSourceBytes.get(pair.path) ?? git(aHead, pair.path);
     aSourceBytes.set(pair.path, oldAFile);
-    const newFile = destinationBytes.get(pair.path) ?? await readFile(resolve(repoRoot, pair.path));
+    const newFile = destinationBytes.get(pair.path) ?? historicalFiles.get(pair.path) ?? await readFile(resolve(repoRoot, pair.path));
     destinationBytes.set(pair.path, newFile);
     const cFile = cHeadBytes.get(pair.path) ?? git(cHead, pair.path);
     cHeadBytes.set(pair.path, cFile);

@@ -55,6 +55,7 @@ import { issue901RoutesTestRelocationRecordPath } from "./parameter-catalog-allo
 import { issue900DashboardRelocationRecordPath } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
 import { loadAllowlistIndex } from "./parameter-catalog-allowlist/index";
 import { issue1006RetiredId, verifyIssue1006Retirement } from "./parameter-catalog-allowlist/issue1006Retirement.proof";
+import { historicalIssue1009Report } from "./parameter-catalog-allowlist/issue1009DebuggingRetirement.proof";
 
 const seedDriverRecords = await Promise.all([seedDriverPositionRecordPath, seedDriverQueryRecordPath].map(async (path) =>
   JSON.parse(await readFile(`${process.cwd()}/${path}`, "utf8")) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> },
@@ -976,10 +977,34 @@ describe("parameter catalog boundary checker", () => {
     "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
-      const [report, fixture] = await Promise.all([
+      const [currentReport, fixture] = await Promise.all([
         checkParameterCatalogBoundaries(repoRoot, "9b3ba7df7e21f5589684bc92c872da593ad4c246"),
         loadBoundaryViolationFixture(repoRoot),
       ]);
+      const currentAllowances = (await loadAllowlistIndex(repoRoot)).entries;
+      const report = await historicalIssue1009Report(repoRoot, currentAllowances, currentReport);
+      expect(currentReport.summary).toEqual({
+        violations: 3_556, allowlisted: 3_389, unallowlisted: 167,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
+        ...currentReport, violations: currentReport.violations.slice(1),
+      })).rejects.toThrow(/complete baseline raw ID set/);
+      await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
+        ...currentReport, unallowlisted: currentReport.unallowlisted.slice(1),
+      })).rejects.toThrow(/complete inherited 173 ID set/);
+      await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
+        ...currentReport, violations: currentReport.violations.map((entry, index) => index === 0
+          ? { ...entry, id: entry.id.replace(/.$/, entry.id.endsWith("0") ? "1" : "0") } : entry),
+      })).rejects.toThrow(/complete baseline raw ID set/);
+      const dbgRecord = JSON.parse(await readFile(join(repoRoot,
+        "scripts/fixtures/parameter-catalog-allowlist/issue-1009-debugging-retirement.json"), "utf8"));
+      const dbgRetired = dbgRecord.retired[0].old;
+      await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
+        ...currentReport, violations: [...currentReport.violations, dbgRetired],
+      })).rejects.toThrow(/observation\/allowance revived/);
+      await expect(historicalIssue1009Report(repoRoot, [...currentAllowances, dbgRetired], currentReport))
+        .rejects.toThrow(/observation\/allowance revived/);
 
       expect(fixture.trustedBaseSha).toBe("9b3ba7df7e21f5589684bc92c872da593ad4c246");
       expect(boundaryInventoryStatistics(fixture.violations)).toEqual({
