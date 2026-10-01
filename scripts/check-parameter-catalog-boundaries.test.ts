@@ -55,7 +55,7 @@ import { issue901RoutesTestRelocationRecordPath } from "./parameter-catalog-allo
 import { issue900DashboardRelocationRecordPath } from "./parameter-catalog-allowlist/issue900DashboardRelocation";
 import { loadAllowlistIndex } from "./parameter-catalog-allowlist/index";
 import { issue1006RetiredId, verifyIssue1006Retirement } from "./parameter-catalog-allowlist/issue1006Retirement.proof";
-import { historicalIssue1009Report } from "./parameter-catalog-allowlist/issue1009DebuggingRetirement.proof";
+import { acceptedIssue1009StageReport, historicalIssue1009Report } from "./parameter-catalog-allowlist/issue1009DebuggingRetirement.proof";
 
 const seedDriverRecords = await Promise.all([seedDriverPositionRecordPath, seedDriverQueryRecordPath].map(async (path) =>
   JSON.parse(await readFile(`${process.cwd()}/${path}`, "utf8")) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> },
@@ -983,8 +983,13 @@ describe("parameter catalog boundary checker", () => {
       ]);
       const currentAllowances = (await loadAllowlistIndex(repoRoot)).entries;
       const report = await historicalIssue1009Report(repoRoot, currentAllowances, currentReport);
-      expect(currentReport.summary).toEqual({
+      // The exact #1013 proof restores this accepted historical stage, never the native result.
+      expect((await acceptedIssue1009StageReport(repoRoot, currentAllowances, currentReport)).summary).toEqual({
         violations: 3_556, allowlisted: 3_389, unallowlisted: 167,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      expect(currentReport.summary).toEqual({
+        violations: 3_552, allowlisted: 3_389, unallowlisted: 163,
         staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
       });
       await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
@@ -1005,6 +1010,62 @@ describe("parameter catalog boundary checker", () => {
       })).rejects.toThrow(/observation\/allowance revived/);
       await expect(historicalIssue1009Report(repoRoot, [...currentAllowances, dbgRetired], currentReport))
         .rejects.toThrow(/observation\/allowance revived/);
+      const successorPath = "docs/exec-plans/active/849-inventory/issue-898-debugging-test-owner-read-handoff.json";
+      const successorBytes = await readFile(join(repoRoot, successorPath));
+      const successor = JSON.parse(successorBytes.toString());
+      const nextCount = currentReport.violations.find(({ id }) => id === successor.rawDiagnostic.headOnly[0].id)!;
+      for (const old of successor.rawDiagnostic.baseOnly) {
+        await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
+          ...currentReport, violations: [...currentReport.violations, old],
+        })).rejects.toThrow(/observation\/allowance revived/);
+        await expect(historicalIssue1009Report(repoRoot, [...currentAllowances, old], currentReport))
+          .rejects.toThrow(/unallowed successor endpoint/);
+      }
+      await expect(historicalIssue1009Report(repoRoot, [...currentAllowances, nextCount], currentReport))
+        .rejects.toThrow(/unallowed successor endpoint/);
+      for (const violations of [
+        [...currentReport.violations, nextCount],
+        [...currentReport.violations].reverse(),
+        [...currentReport.violations, { ...nextCount, id: `${nextCount.id}-new-source` }],
+      ]) {
+        await expect(historicalIssue1009Report(repoRoot, currentAllowances, { ...currentReport, violations }))
+          .rejects.toThrow(/complete baseline raw ID set/);
+      }
+      await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
+        ...currentReport, violations: currentReport.violations.map((entry) => entry.id === nextCount.id
+          ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+      })).rejects.toThrow(/exact current count metadata/);
+      await expect(historicalIssue1009Report(repoRoot, currentAllowances, {
+        ...currentReport, summary: { ...currentReport.summary, allowlistGrowth: 1 },
+      })).rejects.toThrow(/allowance integrity/);
+      const alteredRoot = await mkdtemp(join(tmpdir(), "issue1013-successor-negatives-"));
+      try {
+        await writeFile(join(alteredRoot, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+          cwd: repoRoot, encoding: "utf8",
+        }).trim()}\n`);
+        await mkdir(join(alteredRoot, "docs/exec-plans/active/849-inventory"), { recursive: true });
+        await mkdir(join(alteredRoot, "server/modules/debugging"), { recursive: true });
+        const source = await readFile(join(repoRoot, successor.ownerFile));
+        await writeFile(join(alteredRoot, successorPath), successorBytes);
+        for (const changed of [
+          source.toString().replace("organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId",
+            "organizationId: fixture.otherOrganizationId, projectId: fixture.projectId, bindingId: fixture.bindingId"),
+          source.toString().replace('expect(current.status).toBe("current")', 'expect(current.status).toBe("missing")'),
+          `${source.toString()}\n${successor.byteChanges[0].oldSlice}`,
+          `${source.toString()}\n// outside reviewed slices\n`,
+        ]) {
+          expect(changed).not.toBe(source.toString());
+          await writeFile(join(alteredRoot, successor.ownerFile), changed);
+          await expect(acceptedIssue1009StageReport(alteredRoot, currentAllowances, currentReport))
+            .rejects.toThrow(/whole-file #1013 successor bytes/);
+        }
+        await writeFile(join(alteredRoot, successor.ownerFile), source);
+        await writeFile(join(alteredRoot, successorPath), `${successorBytes.toString()}\n`);
+        await expect(acceptedIssue1009StageReport(alteredRoot, currentAllowances, currentReport))
+          .rejects.toThrow(/pinned #1013 handoff/);
+      } finally {
+        await rm(alteredRoot, { recursive: true, force: true });
+      }
 
       expect(fixture.trustedBaseSha).toBe("9b3ba7df7e21f5589684bc92c872da593ad4c246");
       expect(boundaryInventoryStatistics(fixture.violations)).toEqual({
