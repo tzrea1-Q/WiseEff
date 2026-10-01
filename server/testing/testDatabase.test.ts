@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 import type { QueryResult } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
@@ -247,9 +248,16 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     originalUrl = original.url;
     await original.drop();
     for (const [suffix, fails] of [["\n-- test fingerprint successor\n", false], ["\nselect * from template_build_failure_probe;\n", true]] as const) {
-      const before = await withAdminClient(async (admin) => (await admin.query(
-        "select datname from pg_database where datname like 'wiseeff_test_tpl_%' order by datname"
-      )).rows);
+      const hash = createHash("sha256");
+      for (const file of (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort()) {
+        hash.update(file).update("\0").update(await readFile(path.join(migrationsDir, file), "utf8"));
+        if (file === last) hash.update(suffix);
+        hash.update("\0");
+      }
+      const ownedNames = [`wiseeff_test_tpl_${hash.digest("hex").slice(0, 12)}`, `wiseeff_test_tplbuild_${process.pid}`];
+      if (fails) await withAdminClient(async (admin) => {
+        expect((await admin.query("select datname from pg_database where datname=any($1::text[])", [ownedNames])).rows).toEqual([]);
+      });
       const spy = vi.spyOn(fs, "readFile").mockImplementation(async (...args: Parameters<typeof readFile>) => {
         const result = await readFile(...args);
         return args[0] === sqlPath && args[1] === "utf8" ? `${result}${suffix}` : result;
@@ -260,8 +268,8 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
         if (fails) {
           await expect(changed("fingerprintbad")).rejects.toMatchObject({ code: "42P01" });
           await withAdminClient(async (admin) => {
-            expect((await admin.query("select datname from pg_database where datname like 'wiseeff_test_tpl_%' order by datname")).rows).toEqual(before);
-            expect((await admin.query("select datname from pg_database where datname like 'wiseeff_test_tplbuild_%'")).rows).toEqual([]);
+            expect((await admin.query("select datname from pg_database where datname=any($1::text[])", [ownedNames])).rows).toEqual([]);
+            expect((await admin.query("select pid from pg_stat_activity where datname=any($1::text[])", [ownedNames])).rows).toEqual([]);
           });
         } else {
           const next = await changed("fingerprintnew");
@@ -283,7 +291,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     let cloneAcl: unknown[] = [];
     let cloneSchema = "";
     const acl = async (db: { query: (sql: string) => Promise<{ rows: unknown[] }> }) => (await db.query(`
-      select 'relation' as kind, n.nspname as schema, c.relname as name,
+      select 'relation' as kind, n.nspname::text as schema, c.relname::text as name,
              pg_get_userbyid(c.relowner) as owner, c.relacl::text as acl
         from pg_class c join pg_namespace n on n.oid=c.relnamespace
        where n.nspname in ('public','parameter_catalog','catalog_publication')
@@ -321,12 +329,21 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
         from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
         join pg_proc p on p.oid=t.tgfoid left join pg_constraint k on k.oid=t.tgconstraint
        where n.nspname in ('public','parameter_catalog','catalog_publication')
-      order by 1,2,3
+      order by 1,2,3,4,5
     `)).rows;
     await withTempDatabase({ prefix: "tplcompare", migrate: "template" }, async ({ db, connectionString }) => {
       cloneReceipts = (await db.query("select name, checksum from schema_migrations order by name")).rows;
       cloneOrganizations = (await db.query("select id,name from organizations order by id")).rows;
       cloneAcl = await acl(db);
+      const constraintNames = (await db.query<{ name: string }>(`
+        select c.relname::text || '.' || k.conname::text as name
+          from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace
+         where n.nspname='catalog_publication' order by name
+      `)).rows.map(({ name }) => name);
+      expect(constraintNames.some((name) => name.length > 63)).toBe(true);
+      expect((cloneAcl as { kind: string; schema: string; name: string }[])
+        .filter((row) => row.kind === "constraint" && row.schema === "catalog_publication")
+        .map(({ name }) => name)).toEqual(constraintNames);
       cloneSchema = await readCanonicalSchemaFingerprint(connectionString);
     });
     await withTempDatabase({ prefix: "freshcompare" }, async ({ db, connectionString }) => {
