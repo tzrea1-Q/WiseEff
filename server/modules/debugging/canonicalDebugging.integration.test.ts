@@ -167,15 +167,23 @@ describe("canonical-only node debugging HTTP acceptance (#898)", () => {
       decision: "approve", note: "Independent product reviewer"
     }, adminToken);
     expect(reviewed.status, JSON.stringify(reviewed.body)).toBe(200);
-    const reviewedValueId = (await db.query<{ current_value_id: string }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [fixture.bindingId])).rows[0]!.current_value_id;
+    const scope = { organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId };
+    const reviewedBinding = await readOwnedCurrentBinding(db, scope);
+    expect(reviewedBinding.status).toBe("current");
+    if (reviewedBinding.status !== "current") throw new Error("Reviewed Binding must be current.");
+    expect(reviewedBinding.binding).toMatchObject({ id: scope.bindingId, organizationId: scope.organizationId, projectId: scope.projectId });
+    const reviewedValueId = reviewedBinding.binding.currentValueId;
     expect(reviewedValueId).not.toBe(fixture.currentValueId);
     const rolledBack = await json("POST", `/api/v1/debugging/snapshots/${written.body.snapshot.id}/rollback`, { confirmationToken: "confirm-rollback" });
     expect(rolledBack.status, JSON.stringify(rolledBack.body)).toBe(200);
     expect(bridge.values.get(nodePath)).toBe("5");
     const rollback = (await db.query<{ canonical_pin: unknown }>("select canonical_pin from node_operations where id=$1", [rolledBack.body.operations[0].id])).rows[0]!;
     expect(rollback.canonical_pin).toEqual(pin);
-    const current = (await db.query<{ current_value_id: string }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [fixture.bindingId])).rows[0]!;
-    expect(current.current_value_id).toBe(reviewedValueId);
+    const current = await readOwnedCurrentBinding(db, scope);
+    expect(current.status).toBe("current");
+    if (current.status !== "current") throw new Error("Rolled-back Binding must remain current.");
+    expect(current.binding).toMatchObject({ id: scope.bindingId, organizationId: scope.organizationId, projectId: scope.projectId });
+    expect(current.binding.currentValueId).toBe(reviewedValueId);
     const calls = bridge.calls.length;
     const repeat = await json("POST", `/api/v1/debugging/snapshots/${written.body.snapshot.id}/rollback`, { confirmationToken: "confirm-rollback" });
     expect(repeat.status, JSON.stringify(repeat.body)).toBe(400);
