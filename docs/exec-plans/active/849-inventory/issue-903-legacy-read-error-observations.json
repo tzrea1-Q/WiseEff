@@ -8,10 +8,10 @@
   "change": "Knowledge legacy lookup thrown failures propagate; returned legal mapping outcomes and identity projection unchanged.",
   "counts": {
     "baseRaw": 3562,
-    "candidateRaw": 3572,
+    "candidateRaw": 3562,
     "exactRetained": 3539,
     "removedIds": 23,
-    "addedIds": 33,
+    "addedIds": 23,
     "uniqueExactSpanPairs": 23
   },
   "removed": [
@@ -409,176 +409,6 @@
   ],
   "added": [
     {
-      "id": "S12-KNW:canonical-catalog-raw-access:1a80397d815b4865:082cd5d8bd391126",
-      "family": "S12-KNW",
-      "rule": "canonical-catalog-raw-access",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 308,
-      "column": 25,
-      "byteStart": 16083,
-      "byteEnd": 16125,
-      "token": "canonical:parameter_catalog.legacy_identities",
-      "evidence": "parameter_catalog.legacy_identities: from parameter_catalog.legacy_identities",
-      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "\"from parameter_catalog.legacy_identities\"",
-      "spanSha256": "2c6340cd5cabad6b99da630510b91f1e1f67f4334ac517f141d7303ce8875d23"
-    },
-    {
-      "id": "S12-KNW:canonical-catalog-raw-access:1fae8cfbd0306203:771176f154b0a870",
-      "family": "S12-KNW",
-      "rule": "canonical-catalog-raw-access",
-      "file": "server/modules/knowledge/parameterReferences.test.ts",
-      "line": 291,
-      "column": 25,
-      "byteStart": 11026,
-      "byteEnd": 11068,
-      "token": "canonical:parameter_catalog.legacy_identities",
-      "evidence": "parameter_catalog.legacy_identities: from parameter_catalog.legacy_identities",
-      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
-      "sourceSpanText": "\"from parameter_catalog.legacy_identities\"",
-      "spanSha256": "2c6340cd5cabad6b99da630510b91f1e1f67f4334ac517f141d7303ce8875d23"
-    },
-    {
-      "id": "S12-KNW:canonical-catalog-raw-access:84581551cdb6bb78:01b421f58fef58e5",
-      "family": "S12-KNW",
-      "rule": "canonical-catalog-raw-access",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 266,
-      "column": 22,
-      "byteStart": 12756,
-      "byteEnd": 12911,
-      "token": "canonical:parameter_catalog.legacy_identities",
-      "evidence": "parameter_catalog.legacy_identities: insert into parameter_catalog.legacy_identities (id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id) values ($1,$2,$3,$4,$5,$6)",
-      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "`insert into parameter_catalog.legacy_identities\n      (id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id) values ($1,$2,$3,$4,$5,$6)`",
-      "spanSha256": "40e41514960098656aaeb7f1cd18275576c2e4f5451bfb8e0c93acf3f685737d"
-    },
-    {
-      "id": "S12-KNW:canonical-catalog-raw-access:af07d84c391e3edc:6daecf1417e34f6f",
-      "family": "S12-KNW",
-      "rule": "canonical-catalog-raw-access",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 273,
-      "column": 22,
-      "byteStart": 13455,
-      "byteEnd": 13954,
-      "token": "canonical:parameter_catalog.parameter_catalog_archives",
-      "evidence": "parameter_catalog.parameter_catalog_archives: insert into parameter_catalog.parameter_catalog_archives (id,legacy_identity_id,owner_scope_kind,owner_scope_id,r_class,reason,source_checksum,graph_checksum, encrypted_object_ref,protected_ref…",
-      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "`insert into parameter_catalog.parameter_catalog_archives\n      (id,legacy_identity_id,owner_scope_kind,owner_scope_id,r_class,reason,source_checksum,graph_checksum,\n       encrypted_object_ref,protected_references,cutover_run_id,catalog_release_id,success_audit_ref,retain_until)\n      values ('kb903-legacy-archive',$1,$2,$3,'R1','historical compatibility fixture','sha256:kb903-source',$4,\n        'object://kb903/history','[]','kb903-legacy-run',$5,'audit-kb903-history','2027-10-01T00:00:00Z')`",
-      "spanSha256": "c0cbcf47dada956d449600299e2237427a89ca3ecc81aa330d3c7120e715bcbd"
-    },
-    {
-      "id": "S12-KNW:canonical-catalog-raw-access:c1d4e1205066462c:5c02693ff0193311",
-      "family": "S12-KNW",
-      "rule": "canonical-catalog-raw-access",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 269,
-      "column": 22,
-      "byteStart": 13065,
-      "byteEnd": 13376,
-      "token": "canonical:parameter_catalog.parameter_catalog_cutover_runs",
-      "evidence": "parameter_catalog.parameter_catalog_cutover_runs: insert into parameter_catalog.parameter_catalog_cutover_runs (id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current…",
-      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "`insert into parameter_catalog.parameter_catalog_cutover_runs\n      (id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current_phase,state)\n      values ('kb903-legacy-run',$1,$2,'sha256:kb903-release',$3,'sha256:kb903-plan','P7','running')`",
-      "spanSha256": "2ba159283cfb030d946b956332f967e4084bbede9664f5ea40f5cbff9ca3b9fd"
-    },
-    {
-      "id": "S12-KNW:canonical-catalog-raw-access:df1393c144f75cc0:d135bf464505201a",
-      "family": "S12-KNW",
-      "rule": "canonical-catalog-raw-access",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 295,
-      "column": 52,
-      "byteStart": 15062,
-      "byteEnd": 15780,
-      "token": "canonical:parameter_catalog.legacy_mapping_heads",
-      "evidence": "parameter_catalog.legacy_mapping_heads: select (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries, (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions, (select jsonb_agg(to_jsonb…",
-      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "`select\n      (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_parameter_references r) as legacy_refs,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_definition_references r) as definition_refs,\n      (select jsonb_agg(to_jsonb(a) order by id) from audit_events a) as audits,\n      (select jsonb_agg(to_jsonb(h) order by legacy_identity_id) from parameter_catalog.legacy_mapping_heads h) as heads,\n      (select jsonb_agg(to_jsonb(v) order by id) from parameter_catalog.legacy_mapping_versions v) as mappings\n    `",
-      "spanSha256": "edaa2291ffda288fe11c525808f2921adce3f219a2a25c82b86ef27b799f261e"
-    },
-    {
-      "id": "S12-KNW:canonical-catalog-raw-access:fd50ee72393b0ed0:9ca16c4cf211eab1",
-      "family": "S12-KNW",
-      "rule": "canonical-catalog-raw-access",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 295,
-      "column": 52,
-      "byteStart": 15062,
-      "byteEnd": 15780,
-      "token": "canonical:parameter_catalog.legacy_mapping_versions",
-      "evidence": "parameter_catalog.legacy_mapping_versions: select (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries, (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions, (select jsonb_agg(to_js…",
-      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "`select\n      (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_parameter_references r) as legacy_refs,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_definition_references r) as definition_refs,\n      (select jsonb_agg(to_jsonb(a) order by id) from audit_events a) as audits,\n      (select jsonb_agg(to_jsonb(h) order by legacy_identity_id) from parameter_catalog.legacy_mapping_heads h) as heads,\n      (select jsonb_agg(to_jsonb(v) order by id) from parameter_catalog.legacy_mapping_versions v) as mappings\n    `",
-      "spanSha256": "edaa2291ffda288fe11c525808f2921adce3f219a2a25c82b86ef27b799f261e"
-    },
-    {
-      "id": "S12-KNW:forbidden-catalog-internal-import:6763158bee4bf118:2df4908d0f84886f",
-      "family": "S12-KNW",
-      "rule": "forbidden-catalog-internal-import",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 23,
-      "column": 1,
-      "byteStart": 1278,
-      "byteEnd": 1378,
-      "token": "../catalog-cutover/classifier/__fixtures__/p0GraphFixture",
-      "evidence": "../catalog-cutover/classifier/__fixtures__/p0GraphFixture",
-      "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "import { FROZEN_P0_GRAPH_FIXTURE } from \"../catalog-cutover/classifier/__fixtures__/p0GraphFixture\";",
-      "spanSha256": "3dc6b6654a9d0d3b3c7723792b0fe75054ae00614482079f71b616e8b1331dba"
-    },
-    {
-      "id": "S12-KNW:forbidden-catalog-internal-import:8337b7ea13ddc581:dcbcf7414ec65fd1",
-      "family": "S12-KNW",
-      "rule": "forbidden-catalog-internal-import",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 22,
-      "column": 1,
-      "byteStart": 1167,
-      "byteEnd": 1277,
-      "token": "../catalog-cutover/classifier",
-      "evidence": "../catalog-cutover/classifier",
-      "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "import { classifyFrozenP0Graph, CLASSIFIER_VERSION, fingerprintP0Graph } from \"../catalog-cutover/classifier\";",
-      "spanSha256": "6684b01e44d2f8bfd089074e457a6ecdb0d46f90c97e22cbb75fcc57cceae256"
-    },
-    {
-      "id": "S12-KNW:forbidden-catalog-internal-import:aac28a61ab1a47ff:ffcdd916b3bc8ee3",
-      "family": "S12-KNW",
-      "rule": "forbidden-catalog-internal-import",
-      "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "line": 24,
-      "column": 1,
-      "byteStart": 1379,
-      "byteEnd": 1445,
-      "token": "../catalog-cutover/mapping",
-      "evidence": "../catalog-cutover/mapping",
-      "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
-      "sourceSpanText": "import { appendMappingVersion } from \"../catalog-cutover/mapping\";",
-      "spanSha256": "c6fde6daf6597f473bc1815c1746f6d9141790ab7dbb6290f2993ae57293d181"
-    },
-    {
       "id": "S12-KNW:legacy-catalog-raw-read:138f197f9f1d034f:6895607941e977b8",
       "family": "S12-KNW",
       "rule": "legacy-catalog-raw-read",
@@ -800,104 +630,104 @@
       "spanSha256": "542305877af19a489a71c829313cc712e6173f38478d228f83d16565f682524e"
     },
     {
-      "id": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:cdbde639f6853b23",
+      "id": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:874c971bad7b9bb0",
       "family": "S12-KNW",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/knowledge/parameterReferences.test.ts",
-      "line": 127,
+      "line": 128,
       "column": 5,
-      "byteStart": 4127,
-      "byteEnd": 4346,
+      "byteStart": 4189,
+      "byteEnd": 4408,
       "token": "write:parameter_spec_versions",
       "evidence": "write parameter_spec_versions: insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status) values ($1, $2, 1, $3, '', '{\"kind\":\"int32\"}'::jsonb, $4, 'active')",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
       "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
+      "trustedBlobOid": "b900eb4e468d7411de6203e9eb9c22cc9137f848",
       "sourceSpanText": "`\n    insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status)\n    values ($1, $2, 1, $3, '', '{\"kind\":\"int32\"}'::jsonb, $4, 'active')\n    `",
       "spanSha256": "6170cfdba359e2bf43f052df63819ed14d61164943c7133082b4a85063442659"
     },
     {
-      "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:5fb525093c36339b",
+      "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:3f58c66cffedfbf3",
       "family": "S12-KNW",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/knowledge/parameterReferences.test.ts",
-      "line": 113,
-      "column": 5,
-      "byteStart": 3710,
-      "byteEnd": 3909,
-      "token": "write:parameter_specs",
-      "evidence": "write parameter_specs: insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle) values ($1, $2, 'manual', $3, $4, $5, $6)",
-      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
-      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
-      "sourceSpanText": "`\n    insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle)\n    values ($1, $2, 'manual', $3, $4, $5, $6)\n    `",
-      "spanSha256": "3e2b1a53210971196361d814ffdb9e75278f871a81b2cd46c0ae6c75ac75bae4"
-    },
-    {
-      "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:827021a8c3d22202",
-      "family": "S12-KNW",
-      "rule": "legacy-catalog-sql-write",
-      "file": "server/modules/knowledge/parameterReferences.test.ts",
-      "line": 446,
+      "line": 443,
       "column": 9,
-      "byteStart": 18361,
-      "byteEnd": 18474,
+      "byteStart": 18273,
+      "byteEnd": 18386,
       "token": "write:parameter_specs",
       "evidence": "write parameter_specs: update parameter_specs set attribution_subject_id = $2, property_key = $3, specification_key = $4 where id = $1",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
       "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
+      "trustedBlobOid": "b900eb4e468d7411de6203e9eb9c22cc9137f848",
       "sourceSpanText": "`update parameter_specs set attribution_subject_id = $2, property_key = $3, specification_key = $4 where id = $1`",
       "spanSha256": "3ecfc0678cfb3546f4048683aef009371c5f70c05cdb7e53044ed887992f85b8"
     },
     {
-      "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:8a3e23ba9460bff9",
+      "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:7319b98baf1e9a5b",
       "family": "S12-KNW",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/knowledge/parameterReferences.test.ts",
-      "line": 427,
+      "line": 114,
+      "column": 5,
+      "byteStart": 3772,
+      "byteEnd": 3971,
+      "token": "write:parameter_specs",
+      "evidence": "write parameter_specs: insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle) values ($1, $2, 'manual', $3, $4, $5, $6)",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      "trustedBlobOid": "b900eb4e468d7411de6203e9eb9c22cc9137f848",
+      "sourceSpanText": "`\n    insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle)\n    values ($1, $2, 'manual', $3, $4, $5, $6)\n    `",
+      "spanSha256": "3e2b1a53210971196361d814ffdb9e75278f871a81b2cd46c0ae6c75ac75bae4"
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:ccfae4eb6b5fd3a9",
+      "family": "S12-KNW",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "line": 424,
       "column": 22,
-      "byteStart": 17366,
-      "byteEnd": 17444,
+      "byteStart": 17278,
+      "byteEnd": 17356,
       "token": "write:parameter_specs",
       "evidence": "write parameter_specs: update parameter_specs set definition_lifecycle = 'deprecated' where id = $1",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
       "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
+      "trustedBlobOid": "b900eb4e468d7411de6203e9eb9c22cc9137f848",
       "sourceSpanText": "`update parameter_specs set definition_lifecycle = 'deprecated' where id = $1`",
       "spanSha256": "6c168a590f96d6f2381a79f7fcc2ac3d0832c4387297f8606bd939b1111477f6"
     },
     {
-      "id": "S12-KNW:legacy-catalog-sql-write:48b8b4f10b7a8fbd:026ef16ac947a0fb",
+      "id": "S12-KNW:legacy-catalog-sql-write:48b8b4f10b7a8fbd:849943e32ce4ccfb",
       "family": "S12-KNW",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/knowledge/parameterReferences.test.ts",
-      "line": 105,
+      "line": 106,
       "column": 5,
-      "byteStart": 3411,
-      "byteEnd": 3600,
+      "byteStart": 3473,
+      "byteEnd": 3662,
       "token": "write:attribution_subjects",
       "evidence": "write attribution_subjects: insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key) values ($1, $2, 'driver-registration', $3, $1) on conflict (id) do nothing",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
       "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
+      "trustedBlobOid": "b900eb4e468d7411de6203e9eb9c22cc9137f848",
       "sourceSpanText": "`\n    insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key)\n    values ($1, $2, 'driver-registration', $3, $1)\n    on conflict (id) do nothing\n    `",
       "spanSha256": "d81838f6121544726a687510708ab78d23d470a9fdbcb6c66d1a2f9da7149029"
     },
     {
-      "id": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:15919009679df59f",
+      "id": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:34cf0f0f3548577f",
       "family": "S12-KNW",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/knowledge/parameterReferences.test.ts",
-      "line": 485,
+      "line": 482,
       "column": 29,
-      "byteStart": 20415,
-      "byteEnd": 20458,
+      "byteStart": 20327,
+      "byteEnd": 20370,
       "token": "write:parameter_specs",
       "evidence": "write parameter_specs: delete from parameter_specs where id = $1",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
       "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-      "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
+      "trustedBlobOid": "b900eb4e468d7411de6203e9eb9c22cc9137f848",
       "sourceSpanText": "`delete from parameter_specs where id = $1`",
       "spanSha256": "f5086dbb8b26c225c2ea06c6db547a05638b6cc1befadfb0fd4ed59ed763d1e2"
     },
@@ -1038,32 +868,32 @@
     },
     {
       "oldId": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:1e26e040e45801f2",
-      "newId": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:cdbde639f6853b23",
+      "newId": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:874c971bad7b9bb0",
       "evidence": "unique same scanner context anchor and exact span/rule/token/evidence match; not Catalog authorization"
     },
     {
       "oldId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:2e36c57ce2edc236",
-      "newId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:8a3e23ba9460bff9",
+      "newId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:ccfae4eb6b5fd3a9",
       "evidence": "unique same scanner context anchor and exact span/rule/token/evidence match; not Catalog authorization"
     },
     {
       "oldId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:9bec1a96e12ba3c3",
-      "newId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:827021a8c3d22202",
+      "newId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:3f58c66cffedfbf3",
       "evidence": "unique same scanner context anchor and exact span/rule/token/evidence match; not Catalog authorization"
     },
     {
       "oldId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:a1d07fc10af8367b",
-      "newId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:5fb525093c36339b",
+      "newId": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:7319b98baf1e9a5b",
       "evidence": "unique same scanner context anchor and exact span/rule/token/evidence match; not Catalog authorization"
     },
     {
       "oldId": "S12-KNW:legacy-catalog-sql-write:48b8b4f10b7a8fbd:1e1db7854ddcebc5",
-      "newId": "S12-KNW:legacy-catalog-sql-write:48b8b4f10b7a8fbd:026ef16ac947a0fb",
+      "newId": "S12-KNW:legacy-catalog-sql-write:48b8b4f10b7a8fbd:849943e32ce4ccfb",
       "evidence": "unique same scanner context anchor and exact span/rule/token/evidence match; not Catalog authorization"
     },
     {
       "oldId": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:f1735788c555393e",
-      "newId": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:15919009679df59f",
+      "newId": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:34cf0f0f3548577f",
       "evidence": "unique same scanner context anchor and exact span/rule/token/evidence match; not Catalog authorization"
     },
     {
@@ -1088,43 +918,361 @@
     }
   ],
   "unmatchedOld": [],
-  "unmatchedNew": [
-    "S12-KNW:canonical-catalog-raw-access:1a80397d815b4865:082cd5d8bd391126",
-    "S12-KNW:canonical-catalog-raw-access:1fae8cfbd0306203:771176f154b0a870",
-    "S12-KNW:canonical-catalog-raw-access:84581551cdb6bb78:01b421f58fef58e5",
-    "S12-KNW:canonical-catalog-raw-access:af07d84c391e3edc:6daecf1417e34f6f",
-    "S12-KNW:canonical-catalog-raw-access:c1d4e1205066462c:5c02693ff0193311",
-    "S12-KNW:canonical-catalog-raw-access:df1393c144f75cc0:d135bf464505201a",
-    "S12-KNW:canonical-catalog-raw-access:fd50ee72393b0ed0:9ca16c4cf211eab1",
-    "S12-KNW:forbidden-catalog-internal-import:6763158bee4bf118:2df4908d0f84886f",
-    "S12-KNW:forbidden-catalog-internal-import:8337b7ea13ddc581:dcbcf7414ec65fd1",
-    "S12-KNW:forbidden-catalog-internal-import:aac28a61ab1a47ff:ffcdd916b3bc8ee3"
-  ],
-  "sourceBlobs": [
+  "unmatchedNew": [],
+  "candidateParentCommit": "15204dd89f4968019212e72aca400801aec51f83",
+  "candidateSourceBlobs": [
     {
       "path": "server/modules/knowledge/parameterReferences.ts",
-      "baseBlob": "d59925922e7c9c20c16e5109fb1d963cf191c719",
       "candidateBlob": "5d22e313ca1227d419b13281eb1e9e4977b17dc2"
     },
     {
       "path": "server/modules/knowledge/parameterReferences.test.ts",
-      "baseBlob": "89274d4229a5c7383093ebea711b0fb9031ebbd2",
-      "candidateBlob": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf"
+      "candidateBlob": "b900eb4e468d7411de6203e9eb9c22cc9137f848"
     },
     {
       "path": "server/modules/knowledge/definitionReferences.integration.test.ts",
-      "baseBlob": "9b68ba679c18bac3f4d5435f389dda906fc9a1de",
-      "candidateBlob": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114"
+      "candidateBlob": "31579658279b0fe6669c99e58f0f67de227c7942"
+    },
+    {
+      "path": "server/testing/parameterCatalog/legacyReferences.ts",
+      "candidateBlob": "e84c6a157b1e1c4106e63e45c827d3d46228db14"
+    },
+    {
+      "path": "server/testing/parameterCatalog/cutoverPopulatedFixture.ts",
+      "candidateBlob": "7a0d3885e9ae505da2d9e7d833f6af39f21c4f74"
+    },
+    {
+      "path": "server/testing/parameterCatalog/index.ts",
+      "candidateBlob": "8ed95db394a3b19ff3c15bf3fd400cab4af1c3a4"
     }
   ],
-  "nativeGate": {
-    "exitCode": 1,
-    "stop": "Issue #903 Knowledge successor rejected: A source and destination 0",
-    "inherited": {
-      "raw": 3562,
-      "allowed": 3389,
-      "unallowed": 173
+  "finalSuccessorRule": "At published successor verify all candidateSourceBlobs against Git; this artifact cannot self-name its containing commit.",
+  "initialCandidate": {
+    "commit": "15204dd89f4968019212e72aca400801aec51f83",
+    "tree": "a67ac1d1a10d98d4c3cff97b7ab0b472a6e9894b",
+    "counts": {
+      "baseRaw": 3562,
+      "candidateRaw": 3572,
+      "exactRetained": 3539,
+      "removedIds": 23,
+      "addedIds": 33,
+      "uniqueExactSpanPairs": 23
     },
-    "candidateEffectiveInventory": null
+    "trueNewTestAccesses": [
+      {
+        "initialObservation": {
+          "id": "S12-KNW:canonical-catalog-raw-access:1a80397d815b4865:082cd5d8bd391126",
+          "family": "S12-KNW",
+          "rule": "canonical-catalog-raw-access",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 308,
+          "column": 25,
+          "byteStart": 16083,
+          "byteEnd": 16125,
+          "token": "canonical:parameter_catalog.legacy_identities",
+          "evidence": "parameter_catalog.legacy_identities: from parameter_catalog.legacy_identities",
+          "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "\"from parameter_catalog.legacy_identities\"",
+          "spanSha256": "2c6340cd5cabad6b99da630510b91f1e1f67f4334ac517f141d7303ce8875d23"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Public typed lookupLegacyIdentifier rejection spy; no table-name query interception.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:canonical-catalog-raw-access:1fae8cfbd0306203:771176f154b0a870",
+          "family": "S12-KNW",
+          "rule": "canonical-catalog-raw-access",
+          "file": "server/modules/knowledge/parameterReferences.test.ts",
+          "line": 291,
+          "column": 25,
+          "byteStart": 11026,
+          "byteEnd": 11068,
+          "token": "canonical:parameter_catalog.legacy_identities",
+          "evidence": "parameter_catalog.legacy_identities: from parameter_catalog.legacy_identities",
+          "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "b937c54bf8c87b73eec4aa3136aedbc14bd7e0cf",
+          "sourceSpanText": "\"from parameter_catalog.legacy_identities\"",
+          "spanSha256": "2c6340cd5cabad6b99da630510b91f1e1f67f4334ac517f141d7303ce8875d23"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Public typed lookupLegacyIdentifier rejection spy; no table-name query interception.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:canonical-catalog-raw-access:84581551cdb6bb78:01b421f58fef58e5",
+          "family": "S12-KNW",
+          "rule": "canonical-catalog-raw-access",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 266,
+          "column": 22,
+          "byteStart": 12756,
+          "byteEnd": 12911,
+          "token": "canonical:parameter_catalog.legacy_identities",
+          "evidence": "parameter_catalog.legacy_identities: insert into parameter_catalog.legacy_identities (id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id) values ($1,$2,$3,$4,$5,$6)",
+          "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "`insert into parameter_catalog.legacy_identities\n      (id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id) values ($1,$2,$3,$4,$5,$6)`",
+          "spanSha256": "40e41514960098656aaeb7f1cd18275576c2e4f5451bfb8e0c93acf3f685737d"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Existing seedPopulatedCutover fixture owns historical identities; no identity INSERT copied.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:canonical-catalog-raw-access:af07d84c391e3edc:6daecf1417e34f6f",
+          "family": "S12-KNW",
+          "rule": "canonical-catalog-raw-access",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 273,
+          "column": 22,
+          "byteStart": 13455,
+          "byteEnd": 13954,
+          "token": "canonical:parameter_catalog.parameter_catalog_archives",
+          "evidence": "parameter_catalog.parameter_catalog_archives: insert into parameter_catalog.parameter_catalog_archives (id,legacy_identity_id,owner_scope_kind,owner_scope_id,r_class,reason,source_checksum,graph_checksum, encrypted_object_ref,protected_ref…",
+          "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "`insert into parameter_catalog.parameter_catalog_archives\n      (id,legacy_identity_id,owner_scope_kind,owner_scope_id,r_class,reason,source_checksum,graph_checksum,\n       encrypted_object_ref,protected_references,cutover_run_id,catalog_release_id,success_audit_ref,retain_until)\n      values ('kb903-legacy-archive',$1,$2,$3,'R1','historical compatibility fixture','sha256:kb903-source',$4,\n        'object://kb903/history','[]','kb903-legacy-run',$5,'audit-kb903-history','2027-10-01T00:00:00Z')`",
+          "spanSha256": "c0cbcf47dada956d449600299e2237427a89ca3ecc81aa330d3c7120e715bcbd"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Archive owner persistArchive writes real encrypted local object and metadata.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:canonical-catalog-raw-access:c1d4e1205066462c:5c02693ff0193311",
+          "family": "S12-KNW",
+          "rule": "canonical-catalog-raw-access",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 269,
+          "column": 22,
+          "byteStart": 13065,
+          "byteEnd": 13376,
+          "token": "canonical:parameter_catalog.parameter_catalog_cutover_runs",
+          "evidence": "parameter_catalog.parameter_catalog_cutover_runs: insert into parameter_catalog.parameter_catalog_cutover_runs (id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current…",
+          "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "`insert into parameter_catalog.parameter_catalog_cutover_runs\n      (id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current_phase,state)\n      values ('kb903-legacy-run',$1,$2,'sha256:kb903-release',$3,'sha256:kb903-plan','P7','running')`",
+          "spanSha256": "2ba159283cfb030d946b956332f967e4084bbede9664f5ea40f5cbff9ca3b9fd"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Existing planCutover plus insertPlannedRun owner; no cutover run INSERT copied.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:canonical-catalog-raw-access:df1393c144f75cc0:d135bf464505201a",
+          "family": "S12-KNW",
+          "rule": "canonical-catalog-raw-access",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 295,
+          "column": 52,
+          "byteStart": 15062,
+          "byteEnd": 15780,
+          "token": "canonical:parameter_catalog.legacy_mapping_heads",
+          "evidence": "parameter_catalog.legacy_mapping_heads: select (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries, (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions, (select jsonb_agg(to_jsonb…",
+          "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "`select\n      (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_parameter_references r) as legacy_refs,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_definition_references r) as definition_refs,\n      (select jsonb_agg(to_jsonb(a) order by id) from audit_events a) as audits,\n      (select jsonb_agg(to_jsonb(h) order by legacy_identity_id) from parameter_catalog.legacy_mapping_heads h) as heads,\n      (select jsonb_agg(to_jsonb(v) order by id) from parameter_catalog.legacy_mapping_versions v) as mappings\n    `",
+          "spanSha256": "edaa2291ffda288fe11c525808f2921adce3f219a2a25c82b86ef27b799f261e"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Owner readCurrentMappingHead captures current full head/version plus captureInventoryDump.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:canonical-catalog-raw-access:fd50ee72393b0ed0:9ca16c4cf211eab1",
+          "family": "S12-KNW",
+          "rule": "canonical-catalog-raw-access",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 295,
+          "column": 52,
+          "byteStart": 15062,
+          "byteEnd": 15780,
+          "token": "canonical:parameter_catalog.legacy_mapping_versions",
+          "evidence": "parameter_catalog.legacy_mapping_versions: select (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries, (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions, (select jsonb_agg(to_js…",
+          "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "`select\n      (select jsonb_agg(to_jsonb(e) order by id) from knowledge_entries e) as entries,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_parameter_references r) as legacy_refs,\n      (select jsonb_agg(to_jsonb(r) order by id) from knowledge_definition_references r) as definition_refs,\n      (select jsonb_agg(to_jsonb(a) order by id) from audit_events a) as audits,\n      (select jsonb_agg(to_jsonb(h) order by legacy_identity_id) from parameter_catalog.legacy_mapping_heads h) as heads,\n      (select jsonb_agg(to_jsonb(v) order by id) from parameter_catalog.legacy_mapping_versions v) as mappings\n    `",
+          "spanSha256": "edaa2291ffda288fe11c525808f2921adce3f219a2a25c82b86ef27b799f261e"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Owner current full immutable version plus countProducerResidue, real Archive restore and encrypted object hashes.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:forbidden-catalog-internal-import:6763158bee4bf118:2df4908d0f84886f",
+          "family": "S12-KNW",
+          "rule": "forbidden-catalog-internal-import",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 23,
+          "column": 1,
+          "byteStart": 1278,
+          "byteEnd": 1378,
+          "token": "../catalog-cutover/classifier/__fixtures__/p0GraphFixture",
+          "evidence": "../catalog-cutover/classifier/__fixtures__/p0GraphFixture",
+          "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "import { FROZEN_P0_GRAPH_FIXTURE } from \"../catalog-cutover/classifier/__fixtures__/p0GraphFixture\";",
+          "spanSha256": "3dc6b6654a9d0d3b3c7723792b0fe75054ae00614482079f71b616e8b1331dba"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Consumer invokes installLegacyReferenceFixture; owner facade uses existing classifier and populated fixture.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:forbidden-catalog-internal-import:8337b7ea13ddc581:dcbcf7414ec65fd1",
+          "family": "S12-KNW",
+          "rule": "forbidden-catalog-internal-import",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 22,
+          "column": 1,
+          "byteStart": 1167,
+          "byteEnd": 1277,
+          "token": "../catalog-cutover/classifier",
+          "evidence": "../catalog-cutover/classifier",
+          "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "import { classifyFrozenP0Graph, CLASSIFIER_VERSION, fingerprintP0Graph } from \"../catalog-cutover/classifier\";",
+          "spanSha256": "6684b01e44d2f8bfd089074e457a6ecdb0d46f90c97e22cbb75fcc57cceae256"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Consumer invokes installLegacyReferenceFixture; existing populatedCutoverGraph replaces private fixture import.",
+        "presentInFinalRaw": false
+      },
+      {
+        "initialObservation": {
+          "id": "S12-KNW:forbidden-catalog-internal-import:aac28a61ab1a47ff:ffcdd916b3bc8ee3",
+          "family": "S12-KNW",
+          "rule": "forbidden-catalog-internal-import",
+          "file": "server/modules/knowledge/definitionReferences.integration.test.ts",
+          "line": 24,
+          "column": 1,
+          "byteStart": 1379,
+          "byteEnd": 1445,
+          "token": "../catalog-cutover/mapping",
+          "evidence": "../catalog-cutover/mapping",
+          "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "364238e3e6ea2c5c0f5d745204bbb6cb187f8114",
+          "sourceSpanText": "import { appendMappingVersion } from \"../catalog-cutover/mapping\";",
+          "spanSha256": "c6fde6daf6597f473bc1815c1746f6d9141790ab7dbb6290f2993ae57293d181"
+        },
+        "disposition": "test-boundary-access-retired",
+        "replacement": "Consumer invokes installLegacyReferenceFixture; existing appendMappingVersion owner performs the mapping.",
+        "presentInFinalRaw": false
+      }
+    ],
+    "hosted": {
+      "run": 36798830922,
+      "eventHead": "15204dd89f4968019212e72aca400801aec51f83",
+      "conclusion": "failure",
+      "actualCheckout": "3312fcec2fdaa2dba4a5dba2fa6f40bc42afecd6",
+      "parents": [
+        "8dd0ea074e6686ba58d773c99c5a387050fb937c",
+        "15204dd89f4968019212e72aca400801aec51f83"
+      ],
+      "tree": "b762db1523c1ed98e4fe7997d53db6fd00a51281",
+      "backend": {
+        "passed": 5066,
+        "failed": 0,
+        "skipped": 0
+      },
+      "scripts": {
+        "passed": 1791,
+        "failed": 2,
+        "skipped": 27
+      },
+      "staticBoundaryTest": {
+        "passed": 23,
+        "failed": 1
+      },
+      "skippedSteps": [
+        "Device bridge tests",
+        "Contract check",
+        "Bridge package consistency",
+        "Log analysis behavior eval"
+      ],
+      "skippedJobs": [
+        "Minimal upgrade terminal probe",
+        "Target synthetic acceptance",
+        "Acceptance local non-HDC"
+      ],
+      "failure": "Knowledge successor proof A source and destination 0; not the old migration tests."
+    }
+  },
+  "nativeEffectiveInventory": null,
+  "nativeStop": "Issue #903 Knowledge successor rejected: A source and destination 0; whole-file successor proof remains unapproved.",
+  "validation": {
+    "focusedServer": {
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0
+    },
+    "contract": "passed",
+    "build": "passed",
+    "faultMode": "Public lookup seam simulated thrown query failure; unmapped/archived and encrypted Archive fixture are real PG/object-store. Not proof of an actual PG outage.",
+    "ownerSnapshot": "Full Knowledge rows/audits; cutover run identity/phase/state via loadRunById; owner inventory/residue/current full mapping head/version; restored encrypted Archive metadata/content and object SHA-256s."
+  },
+  "inheritedReturnedFailure": {
+    "owner": "Catalog legacy lookup",
+    "resultType": "LegacyLookupOutcome = mapped | archived | ambiguous | not-found; no failure variant",
+    "path": [
+      "mapping/persist.ts:242 malformed head -> PCAT-MAP-WRITE-FAILED",
+      "mapping/lookup.ts:56 invalid target -> PCAT-MAP-WRITE-FAILED",
+      "legacy/lookup.ts:98-102 non-CONFLICT -> absent",
+      "legacy/lookup.ts:159-160 no found tuple -> not-found",
+      "knowledge/parameterReferences.ts default -> unmapped/orphaned"
+    ],
+    "minimalSimulatedCounterexample": {
+      "mode": "simulated returned MappingFailure; not a real PostgreSQL corruption",
+      "result": {
+        "kind": "not-found"
+      },
+      "calls": [
+        {
+          "kind": "source-tuple",
+          "sourceSystem": "wiseeff-v1",
+          "sourceKind": "parameter-spec",
+          "ownerScopeKind": "platform",
+          "ownerScopeId": "platform",
+          "sourceId": "spec-reproducer"
+        },
+        {
+          "kind": "source-tuple",
+          "sourceSystem": "wiseeff-v1",
+          "sourceKind": "parameter-spec",
+          "ownerScopeKind": "organization",
+          "ownerScopeId": "org-reproducer",
+          "sourceId": "spec-reproducer"
+        }
+      ]
+    },
+    "productionOwnerUnchanged": true
+  },
+  "independentReview": {
+    "task": "kb903_1008_owner_fixture_readonly_review",
+    "requestedModel": "gpt-6-luna",
+    "requestedReasoningEffort": "max",
+    "forkTurns": "none",
+    "actualRuntimeConfiguration": "not exposed by tool receipt",
+    "initialResult": "No boundary blocker; conditional run phase/state snapshot gap identified, fixed via existing loadRunById, and followup reviewer confirmed closure. Reviewer did not run tests."
   }
 }

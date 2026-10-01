@@ -16,6 +16,7 @@ import {
   removeKnowledgeParameterReference
 } from "./service";
 import { loadParameterReferencesByEntryIds } from "./parameterReferences";
+import * as legacyApi from "../parameter-catalog-api/legacy";
 import { createDefaultKnowledgeTextExtractor } from "./extraction";
 import type { ObjectStore } from "../logs/objectStore";
 
@@ -285,12 +286,8 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     const before = await loadParameterReferencesByEntryIds(db, auth, [entry.id]);
     expect(before.get(entry.id)?.[0]).toMatchObject({ kind: "legacy-spec", specId: SPEC_ORG, mappingStatus: "unmapped" });
 
-    const query = db.query.bind(db);
     const failure = new Error("simulated legacy mapping PostgreSQL transport failure");
-    const injected = vi.spyOn(db, "query").mockImplementation((text, values) => {
-      if (text.includes("from parameter_catalog.legacy_identities")) throw failure;
-      return query(text, values);
-    });
+    const injected = vi.spyOn(legacyApi, "lookupLegacyIdentifier").mockRejectedValue(failure);
     try {
       await expect(loadParameterReferencesByEntryIds(db, auth, [entry.id])).rejects.toBe(failure);
     } finally {

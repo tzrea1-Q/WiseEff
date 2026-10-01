@@ -49,3 +49,4 @@ export {
   knowledgeCatalogBundle,
   installKnowledgeDefinitionReferencesCatalogFixture,
 } from "./registryProjection";
+export { installLegacyReferenceFixture } from "./legacyReferences";

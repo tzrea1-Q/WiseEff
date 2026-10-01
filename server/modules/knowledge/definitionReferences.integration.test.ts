@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
@@ -12,6 +15,7 @@ import { countLegacySpecsById, seedSpecBindingGraph } from "../../testing/fixtur
 import {
   createDisposableParameterCatalogDatabase,
   installKnowledgeDefinitionReferencesCatalogFixture,
+  installLegacyReferenceFixture,
   type ParameterCatalogDatabase
 } from "../../testing/parameterCatalog";
 import { registerParameterCatalogApi } from "../parameter-catalog-api/productionWire";
@@ -19,9 +23,7 @@ import { createDefaultKnowledgeTextExtractor } from "./extraction";
 import type { ObjectStore } from "../logs/objectStore";
 import { registerKnowledgeRoutes } from "./routes";
 import { createKnowledgeTools } from "../agent/tools/knowledgeTools";
-import { classifyFrozenP0Graph, CLASSIFIER_VERSION, fingerprintP0Graph } from "../catalog-cutover/classifier";
-import { FROZEN_P0_GRAPH_FIXTURE } from "../catalog-cutover/classifier/__fixtures__/p0GraphFixture";
-import { appendMappingVersion } from "../catalog-cutover/mapping";
+import * as legacyApi from "../parameter-catalog-api/legacy";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -61,7 +63,8 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   let retiredDefinitionId: string;
   let searchTerm: string;
   let searchableDefinitionCount: number;
-  let catalogReleaseId: string;
+  let catalogRelease: { id: string; digest: string };
+  let archiveRoot: string;
 
   beforeAll(async () => {
     fixture = await createDisposableParameterCatalogDatabase("kbdefref");
@@ -73,7 +76,8 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     retiredDefinitionId = catalogFixture.retiredDefinitionId;
     searchTerm = catalogFixture.searchTerm;
     searchableDefinitionCount = catalogFixture.searchableDefinitionCount;
-    catalogReleaseId = catalogFixture.pin.id;
+    catalogRelease = catalogFixture.pin;
+    archiveRoot = await mkdtemp(join(tmpdir(), "wiseeff-kb903-legacy-archive-"));
     await pool.query("insert into organizations (id,name) values ($1,'Knowledge A'),($2,'Knowledge B')", [ORG_A, ORG_B]);
     for (const [id, organizationId] of [[USER_A, ORG_A], [USER_B, ORG_B], [REFERENCE_CREATOR, ORG_A]] as const) {
       await pool.query(
@@ -113,6 +117,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     }
     await db?.close();
     await fixture?.close();
+    if (archiveRoot) await rm(archiveRoot, { recursive: true, force: true });
   });
 
   async function request(context: AuthContext, method: string, path: string, body?: unknown) {
@@ -236,53 +241,19 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   it("keeps real unmapped and archived history distinct from injected lookup failures on HTTP and Agent reads", async () => {
     const entryId = await createEntry(auth, "Legacy mapping failure boundary");
     const pool = getRootPostgresPool(db)!;
-    const graph = {
-      ...FROZEN_P0_GRAPH_FIXTURE,
-      identities: FROZEN_P0_GRAPH_FIXTURE.identities.map((row) => row.id === "s7cls-lid-r1-status"
-        ? { ...row, ownerScopeKind: "organization" as const, ownerScopeId: ORG_A } : row),
-      specs: FROZEN_P0_GRAPH_FIXTURE.specs.map((row) => row.id === "s7cls-spec-r1-status"
-        ? { ...row, organizationId: ORG_A } : row)
-    };
-    const identity = graph.identities.find((row) => row.id === "s7cls-lid-r1-status")!;
-    await seedSpecBindingGraph(db, {
-      organizationId: ORG_A,
-      specs: [{ id: identity.sourceId, sourceKind: "dts", specificationKey: "s7cls.r1.status" }]
-    });
+    const history = await installLegacyReferenceFixture(pool, archiveRoot, catalogRelease);
     await pool.query(`insert into knowledge_parameter_references
       (id,organization_id,entry_id,parameter_spec_id,created_by_user_id) values ($1,$2,$3,$4,$5)`,
-    [randomUUID(), ORG_A, entryId, identity.sourceId, USER_A]);
+    [randomUUID(), ORG_A, entryId, history.specId, USER_A]);
     const document = createKnowledgeTools({ db }).find((tool) => tool.name === "knowledge.getDocument")!;
     const readDocument = () => document.run({ auth, requestId: "kb903-legacy-read", sessionId: "kb903" }, { entryId });
-    const reference = { kind: "legacy-spec", specId: identity.sourceId };
+    const reference = { kind: "legacy-spec", specId: history.specId };
     const unmapped = await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`);
     expect(unmapped.status).toBe(200);
     expect(unmapped.body.item.parameterReferences).toContainEqual(expect.objectContaining({ ...reference, mappingStatus: "unmapped" }));
     expect((await readDocument()).data.referencedParameters).toContainEqual(expect.objectContaining({ ...reference, mappingStatus: "unmapped" }));
 
-    // Reuse the S7 classifier/append owner for a real Archive mapping, never a lookup substitute.
-    const classified = classifyFrozenP0Graph(graph);
-    if (!classified.ok) throw new Error(JSON.stringify(classified.error));
-    const fingerprint = fingerprintP0Graph(graph);
-    await pool.query(`insert into parameter_catalog.legacy_identities
-      (id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id) values ($1,$2,$3,$4,$5,$6)`,
-    [identity.id, identity.sourceSystem, identity.sourceKind, identity.ownerScopeKind, identity.ownerScopeId, identity.sourceId]);
-    await pool.query(`insert into parameter_catalog.parameter_catalog_cutover_runs
-      (id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current_phase,state)
-      values ('kb903-legacy-run',$1,$2,'sha256:kb903-release',$3,'sha256:kb903-plan','P7','running')`,
-    [fingerprint, "b".repeat(40), CLASSIFIER_VERSION]);
-    await pool.query(`insert into parameter_catalog.parameter_catalog_archives
-      (id,legacy_identity_id,owner_scope_kind,owner_scope_id,r_class,reason,source_checksum,graph_checksum,
-       encrypted_object_ref,protected_references,cutover_run_id,catalog_release_id,success_audit_ref,retain_until)
-      values ('kb903-legacy-archive',$1,$2,$3,'R1','historical compatibility fixture','sha256:kb903-source',$4,
-        'object://kb903/history','[]','kb903-legacy-run',$5,'audit-kb903-history','2027-10-01T00:00:00Z')`,
-    [identity.id, identity.ownerScopeKind, identity.ownerScopeId, fingerprint, catalogReleaseId]);
-    const client = await pool.connect();
-    try {
-      const archived = await appendMappingVersion({ client, cutoverRunId: "kb903-legacy-run",
-        classification: classified.value, identityId: identity.id, sourceChecksum: "sha256:kb903-source",
-        expectedHead: null, outcome: { kind: "archived", archiveId: "kb903-legacy-archive" } });
-      expect(archived.ok).toBe(true);
-    } finally { client.release(); }
+    await history.archive(entryId);
     const archived = await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`);
     expect(archived.status).toBe(200);
     expect(archived.body.item.parameterReferences).toContainEqual(expect.objectContaining({
@@ -297,17 +268,11 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
       (select jsonb_agg(to_jsonb(r) order by id) from knowledge_revisions r) as revisions,
       (select jsonb_agg(to_jsonb(r) order by id) from knowledge_parameter_references r) as legacy_refs,
       (select jsonb_agg(to_jsonb(r) order by id) from knowledge_definition_references r) as definition_refs,
-      (select jsonb_agg(to_jsonb(a) order by id) from audit_events a) as audits,
-      (select jsonb_agg(to_jsonb(h) order by legacy_identity_id) from parameter_catalog.legacy_mapping_heads h) as heads,
-      (select jsonb_agg(to_jsonb(v) order by id) from parameter_catalog.legacy_mapping_versions v) as mappings
+      (select jsonb_agg(to_jsonb(a) order by id) from audit_events a) as audits
     `)).rows;
-    const before = await snapshot();
-    const query = pool.query.bind(pool);
+    const before = { knowledge: await snapshot(), history: await history.snapshot() };
     const failure = new Error("simulated legacy lookup PostgreSQL transport failure");
-    const injected = vi.spyOn(pool, "query").mockImplementation(((text: string, values?: unknown[]) => {
-      if (text.includes("from parameter_catalog.legacy_identities")) throw failure;
-      return query(text, values);
-    }) as typeof pool.query);
+    const injected = vi.spyOn(legacyApi, "lookupLegacyIdentifier").mockRejectedValue(failure);
     try {
       for (const path of [`/api/v1/knowledge/entries/${entryId}`, "/api/v1/knowledge/entries"]) {
         const failed = await request(auth, "GET", path);
@@ -319,7 +284,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
       expect((await request(authB, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(404);
       expect((await request({ ...auth, roles: [], permissions: [] }, "GET", `/api/v1/knowledge/entries/${entryId}`)).status).toBe(403);
     } finally { injected.mockRestore(); }
-    expect(await snapshot()).toEqual(before);
+    expect({ knowledge: await snapshot(), history: await history.snapshot() }).toEqual(before);
     expect((await request(auth, "GET", `/api/v1/knowledge/entries/${entryId}`)).body.item.parameterReferences)
       .toEqual(archived.body.item.parameterReferences);
   });
