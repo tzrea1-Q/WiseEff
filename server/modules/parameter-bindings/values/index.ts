@@ -11,6 +11,7 @@ export {
   loadSourceBindingCohort,
   loadSourceBindingCohortReadOnly,
   hasDeletedCurrentValue,
+  readOwnedCurrentBinding,
   loadOwnedProjectValueSourcePin,
   readOwnedProjectValueIdentity,
   isCurrentGovernedSourceValue,
@@ -20,6 +21,8 @@ export type { ProjectValueService } from "./service";
 export type {
   AppendProjectValueCommand,
   MutateExistingProjectValueCommand,
+  OwnedCurrentBindingRead,
+  PersistedBindingReference,
   ProjectValue,
   ProjectValueConflict,
   ProjectValueHistoryQuery,

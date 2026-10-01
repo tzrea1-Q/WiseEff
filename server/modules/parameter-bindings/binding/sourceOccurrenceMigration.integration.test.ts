@@ -21,8 +21,7 @@ import {
 } from "../../parameter-catalog-contract/index";
 import { createEvidenceIngest, fingerprintCanonical } from "../../parameter-governance/evidence";
 import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
-import { readOwnedCurrentBinding } from "./index";
-import { readOwnedProjectValueIdentity } from "../values";
+import { readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../values";
 import {
   migrationsDir,
   withTempDatabase as withSharedTempDatabase

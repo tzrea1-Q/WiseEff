@@ -3,9 +3,8 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import { createCatalogKernel } from "../catalog-kernel/interface";
-import { readOwnedCurrentBinding } from "../parameter-bindings/binding";
 import { readProtectedReference } from "../parameter-bindings/adapters";
-import { loadOwnedProjectValueSourcePin, readOwnedProjectValueIdentity, type CanonicalValueSourcePin } from "../parameter-bindings/values";
+import { readOwnedCurrentBinding, loadOwnedProjectValueSourcePin, readOwnedProjectValueIdentity, type CanonicalValueSourcePin } from "../parameter-bindings/values";
 import { lockCanonicalSourceCohort } from "../parameter-files/canonicalSource";
 import type { DebugNodeRecord } from "./types";
 

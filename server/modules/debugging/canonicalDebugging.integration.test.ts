@@ -14,8 +14,7 @@ import { seedCanonicalParameterFixture } from "../dts-reload/testing/canonicalRe
 import { createControlledReloadBridge } from "../dts-reload/testing/controlledReloadBridge";
 import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { acquireDebugDeviceLease, releaseDebugDeviceLease } from "./repository";
-import { readOwnedCurrentBinding } from "../parameter-bindings/binding";
-import { loadOwnedProjectValueSourcePin, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
+import { readOwnedCurrentBinding, loadOwnedProjectValueSourcePin, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../testing/labRuntimeLogins";
 import {
   assertDebugHistoryPin, assertDebugNodeCanonicalReferenceCurrent,

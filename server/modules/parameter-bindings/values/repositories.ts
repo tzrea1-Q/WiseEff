@@ -296,6 +296,7 @@ export const loadBindingById = async (
   client: ValueClient,
   bindingId: string,
   lock: "update" | "share" | "none" = "none",
+  scope?: { organizationId: string; projectId: string; currentOnly?: boolean },
 ): Promise<BindingTipRow | null> => {
   // A locked read addresses the *current* Binding, so it goes through the
   // replacement projection: a stale writer then loses its row lock instead of
@@ -303,9 +304,10 @@ export const loadBindingById = async (
   // accepts FOR UPDATE through this view and locks the underlying base row
   // (verified empirically).  The unlocked read stays on the base relation so
   // historical, pinned and revision-addressed callers keep addressing the exact
-  // Binding id.
+  // Binding id. Scoped current readers can also request that projection without
+  // a lock; scope is applied before locking, so foreign rows are never locked.
   const relation =
-    lock === "none"
+    lock === "none" && !scope?.currentOnly
       ? "parameter_catalog.project_parameter_bindings"
       : "parameter_catalog.current_project_parameter_bindings";
   const lockSql = lock === "update" ? " for update" : lock === "share" ? " for share" : "";
@@ -313,8 +315,8 @@ export const loadBindingById = async (
     `select id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
        from ${relation}
-      where id = $1${lockSql}`,
-    [bindingId],
+      where id = $1${scope ? " and organization_id = $2 and project_id = $3" : ""}${lockSql}`,
+    scope ? [bindingId, scope.organizationId, scope.projectId] : [bindingId],
   );
   return result.rows[0] ?? null;
 };
