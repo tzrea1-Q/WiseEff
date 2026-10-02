@@ -17,6 +17,7 @@ export const LEGACY_IDENTITY_CONTRACT = "identity-mapping-v2";
 export const LEGACY_SPEC_WARNING = '299 WiseEff "Legacy ParameterSpec contract is deprecated"';
 export const LEGACY_MODULE_WARNING = '299 WiseEff "Legacy ParameterModule contract is deprecated"';
 export const LEGACY_IDENTITY_WARNING = '299 WiseEff "Legacy identity-mapping contract is deprecated"';
+export const CATALOG_SUNSET_HTTP_DATE = "Fri, 31 Dec 2027 00:00:00 GMT";
 
 export function boundedLegacyHeaders(input: {
   sunsetHttpDate: string;

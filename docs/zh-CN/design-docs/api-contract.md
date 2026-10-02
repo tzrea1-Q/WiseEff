@@ -662,6 +662,16 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 | `POST` | `/api/v2/platform/driver-schemas/promotions` | `platform:schema-promote`。请求体 `{ compatible, documentationSourceOrganizationId? }`。要求贡献方等价。写入平台 overlay（`organization_id IS NULL`），**物化平台拥有且按 subject 作用域隔离的 ParameterSpec 副本**；贡献方定义继续归属各组织且保持不变，贡献方 overlay 标记为 `superseded`，失效各组织 schema 注册表缓存，并扇出平台 + 租户审计。 |
 | `POST` | `/api/v2/platform/driver-schemas/promotions/:promotionId/revert` | `platform:schema-promote`。废弃平台 overlay 并将贡献方 overlay 恢复为 `active`。 |
 
+`GET /api/v2/parameter-modules`、`GET /api/v2/parameter-modules/discovery-hints` 和 `GET /api/v2/parameter-modules/driver-registry` 的成功响应携带以下有界旧读取响应头：
+
+```text
+Deprecation: true
+Sunset: Fri, 31 Dec 2027 00:00:00 GMT
+Link: </api/v2/catalog>; rel="successor-version"
+Warning: 299 WiseEff "Legacy ParameterModule contract is deprecated"
+X-WiseEff-Legacy-Contract: parameter-module-v2
+```
+
 `DriverRegistryParseCoverage` 在已覆盖时含 `scope: "platform" | "organization"` 及可选 `shadowedBy[]`（输给所选层级的低优先级匹配）。
 
 `MappingApplyPreview`：`{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`。

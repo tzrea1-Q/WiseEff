@@ -473,6 +473,16 @@ The default list is the effective catalog projection (ADR-0039). `view=effective
 | `POST` | `/api/v2/platform/driver-schemas/promotions` | `platform:schema-promote`. Body `{ compatible, documentationSourceOrganizationId? }`. Requires equivalent contributors. Writes a platform overlay (`organization_id IS NULL`) and **materializes platform-owned, subject-scoped ParameterSpec copies**; contributor definitions remain organization-owned and immutable, while contributor overlays are marked `superseded`. Invalidates every org schema registry cache and fans out platform + per-tenant audit. |
 | `POST` | `/api/v2/platform/driver-schemas/promotions/:promotionId/revert` | `platform:schema-promote`. Deprecates the platform overlay and restores contributor overlays to `active`. |
 
+Successful `GET /api/v2/parameter-modules`, `GET /api/v2/parameter-modules/discovery-hints`, and `GET /api/v2/parameter-modules/driver-registry` responses carry these bounded legacy read headers:
+
+```text
+Deprecation: true
+Sunset: Fri, 31 Dec 2027 00:00:00 GMT
+Link: </api/v2/catalog>; rel="successor-version"
+Warning: 299 WiseEff "Legacy ParameterModule contract is deprecated"
+X-WiseEff-Legacy-Contract: parameter-module-v2
+```
+
 `DriverRegistryParseCoverage` when covered includes `scope: "platform" | "organization"` and optional `shadowedBy[]` for lower-tier matches that lost to the chosen tier.
 
 `MappingApplyPreview` shape: `{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`.
