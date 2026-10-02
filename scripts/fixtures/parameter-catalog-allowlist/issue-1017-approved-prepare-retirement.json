@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 1,
+  "baseHead": "bfaa2a3ccc745730675dbd4eba2713a819e22ee4",
+  "ownerHead": "d3f66f161c575853b9c52e4f67d4a1c4bd16dce9",
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "source": {
+    "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+    "oldBlob": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c",
+    "currentBlob": "fa0e012d7726b9dfe239124ff510a6a3697cb26c",
+    "oldByteCount": 24861,
+    "currentByteCount": 22250,
+    "oldSha256": "e94db054581aff9becf438a9ba658313dc21fe92be5a664470b1a51cc4f7de13",
+    "currentSha256": "7d70a717ca3123901c1a0febdb676198bb998b2136f2be453a424be84a13b1ee"
+  },
+  "helper": {
+    "file": "server/testing/parameterCatalog/driverSource.ts",
+    "blob": "ebf89d91cf23026de0cbbf1a5a84dbcbe9a324f0",
+    "byteCount": 3677,
+    "sha256": "77b21c3d32cce7ab176115461c5231e698c1419efe5fc98560cadc13bd1138c4"
+  },
+  "retired": [
+    {
+      "old": {
+        "id": "S12-FIL:forbidden-catalog-internal-import:1654f9f1638545a0:32346c6f82704d6f",
+        "family": "S12-FIL",
+        "rule": "forbidden-catalog-internal-import",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 16,
+        "column": 1,
+        "byteStart": 1046,
+        "byteEnd": 1124,
+        "token": "../catalog-kernel/install/installer",
+        "evidence": "../catalog-kernel/install/installer",
+        "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "import { installPublishedRelease } from \"../catalog-kernel/install/installer\";",
+      "sliceSha256": "2875df3f8e49aedaa2236361e4bd42baea6df382091dfe506666ed28e37888f9",
+      "contextByteStart": 866,
+      "contextByteEnd": 1304,
+      "contextUtf8": "ler/__fixtures__/catalogReleaseBundle\";\nimport { jsonCatalogReleaseSource } from \"../catalog-kernel/interface\";\nimport { compileCatalogRelease } from \"../catalog-kernel/compiler\";\nimport { installPublishedRelease } from \"../catalog-kernel/install/installer\";\nimport { writeGuardedRegistration } from \"../parameter-governance/registration/internalGuardedRegistrationWriter\";\nimport { CatalogSubjectId } from \"../parameter-catalog-contract\"",
+      "contextSha256": "4355af0fabf3b743018bf043038efbcacf609e4d61008e1cb0c517f531dba3ab"
+    },
+    {
+      "old": {
+        "id": "S12-FIL:forbidden-catalog-internal-import:2f34f56cfa159846:e1fea8a6fbac2a87",
+        "family": "S12-FIL",
+        "rule": "forbidden-catalog-internal-import",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 15,
+        "column": 1,
+        "byteStart": 978,
+        "byteEnd": 1045,
+        "token": "../catalog-kernel/compiler",
+        "evidence": "../catalog-kernel/compiler",
+        "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "import { compileCatalogRelease } from \"../catalog-kernel/compiler\";",
+      "sliceSha256": "3ca3ee26e25523a986ac8017046e71d433e5763cd0fb61c819ef4ef43db5ce8f",
+      "contextByteStart": 798,
+      "contextByteEnd": 1225,
+      "contextUtf8": ";\nimport { validCatalogReleaseBundle } from \"../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle\";\nimport { jsonCatalogReleaseSource } from \"../catalog-kernel/interface\";\nimport { compileCatalogRelease } from \"../catalog-kernel/compiler\";\nimport { installPublishedRelease } from \"../catalog-kernel/install/installer\";\nimport { writeGuardedRegistration } from \"../parameter-governance/registration/internalGuardedRegist",
+      "contextSha256": "aaf9f15a33d4b8cf4e166374116a7d4ac5b4ef9075315626ca7054a9231076f7"
+    },
+    {
+      "old": {
+        "id": "S12-FIL:forbidden-catalog-internal-import:57da6d8e0536b8f9:8daed7fa35dbf462",
+        "family": "S12-FIL",
+        "rule": "forbidden-catalog-internal-import",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 19,
+        "column": 1,
+        "byteStart": 1306,
+        "byteEnd": 1397,
+        "token": "../parameter-governance/registration/command",
+        "evidence": "../parameter-governance/registration/command",
+        "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "import type { RegisterSubjectCommand } from \"../parameter-governance/registration/command\";",
+      "sliceSha256": "02b6f5f4784773fe7e11839650216bc134a09db0fe150fad3cd6706d6813623c",
+      "contextByteStart": 1126,
+      "contextByteEnd": 1577,
+      "contextUtf8": "mport { writeGuardedRegistration } from \"../parameter-governance/registration/internalGuardedRegistrationWriter\";\nimport { CatalogSubjectId } from \"../parameter-catalog-contract\";\nimport type { RegisterSubjectCommand } from \"../parameter-governance/registration/command\";\nimport { createParameterModuleForAuth } from \"../parameters/service\";\nimport { installConfigurationSourceFixture } from \"../../testing/parameterCatalog/configurationSource\";\nimpor",
+      "contextSha256": "d81fda6d6fb664b713ae7087095fc99fbe731d44ef036912168d0ae3a1f014cd"
+    },
+    {
+      "old": {
+        "id": "S12-FIL:forbidden-catalog-internal-import:71576a3bdc491c6f:1245c361b3d740f8",
+        "family": "S12-FIL",
+        "rule": "forbidden-catalog-internal-import",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 13,
+        "column": 1,
+        "byteStart": 800,
+        "byteEnd": 905,
+        "token": "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle",
+        "evidence": "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle",
+        "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "import { validCatalogReleaseBundle } from \"../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle\";",
+      "sliceSha256": "4c8eb42721cb45886cb6d3641c862c9f392186e8861e6a4c8f911320f67a4cb0",
+      "contextByteStart": 620,
+      "contextByteEnd": 1085,
+      "contextUtf8": "oval, createAgentSession, createAgentToolCall, markAgentApprovalApproved } from \"../agent/repository\";\nimport { createTrustedRefusalAuditSink } from \"../audit/trustedRefusalSink\";\nimport { validCatalogReleaseBundle } from \"../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle\";\nimport { jsonCatalogReleaseSource } from \"../catalog-kernel/interface\";\nimport { compileCatalogRelease } from \"../catalog-kernel/compiler\";\nimport { installPublishedRelease } from",
+      "contextSha256": "e0aff445f579f9a8b1ac73ba22a65c21ba0d8c4e4bd562c626ccd43146963f5a"
+    },
+    {
+      "old": {
+        "id": "S12-FIL:forbidden-catalog-internal-import:c0fce1ed35954ae3:94f2aff32dfd5fc7",
+        "family": "S12-FIL",
+        "rule": "forbidden-catalog-internal-import",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 17,
+        "column": 1,
+        "byteStart": 1125,
+        "byteEnd": 1239,
+        "token": "../parameter-governance/registration/internalGuardedRegistrationWriter",
+        "evidence": "../parameter-governance/registration/internalGuardedRegistrationWriter",
+        "reason": "Consumer code reaches a private Catalog, Governance, or Cutover implementation package.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "import { writeGuardedRegistration } from \"../parameter-governance/registration/internalGuardedRegistrationWriter\";",
+      "sliceSha256": "6e429ee1296be93df885e2bbe56c5b30c7349ab03e6b8fefa09325831bc13a7b",
+      "contextByteStart": 945,
+      "contextByteEnd": 1419,
+      "contextUtf8": "m \"../catalog-kernel/interface\";\nimport { compileCatalogRelease } from \"../catalog-kernel/compiler\";\nimport { installPublishedRelease } from \"../catalog-kernel/install/installer\";\nimport { writeGuardedRegistration } from \"../parameter-governance/registration/internalGuardedRegistrationWriter\";\nimport { CatalogSubjectId } from \"../parameter-catalog-contract\";\nimport type { RegisterSubjectCommand } from \"../parameter-governance/registration/command\";\nimport { createParame",
+      "contextSha256": "3d43f5e8247b347cfbe4305f239dd33753f654f94a0e93dd92fcb68002b7e94b"
+    },
+    {
+      "old": {
+        "id": "S12-FIL:legacy-catalog-sql-write:6eec97ec128b1ab5:c46321c40c17a442",
+        "family": "S12-FIL",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 190,
+        "column": 7,
+        "byteStart": 8815,
+        "byteEnd": 8987,
+        "token": "write:attribution_subjects",
+        "evidence": "write attribution_subjects: insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values ($1,$2,'driver-registration','Acme power','compatible:acme,power')",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "`insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)\n       values ($1,$2,'driver-registration','Acme power','compatible:acme,power')`",
+      "sliceSha256": "c06f23a74d51e3ad4283fe25164f9980b53622325faa00f0ebb4cb2c6deb481b",
+      "contextByteStart": 8635,
+      "contextByteEnd": 9167,
+      "contextUtf8": "rce(bundle),\n      expectedTargetDigest: compiled.value.aggregateDigest,\n    });\n    if (!installed.ok) throw new Error(JSON.stringify(installed.error));\n    await db.query(\n      `insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)\n       values ($1,$2,'driver-registration','Acme power','compatible:acme,power')`,\n      [ATTR, ORG],\n    );\n    await db.query(\n      `insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)\n       values ($1,'physical-devic",
+      "contextSha256": "4e000023c0d6462371a6b8ad8f4fca240d07d8b01a0fc753ca1fb74011526523"
+    },
+    {
+      "old": {
+        "id": "S12-FIL:legacy-catalog-sql-write:cf089a71a15bd5bb:5d6e88d584fee6c5",
+        "family": "S12-FIL",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 200,
+        "column": 7,
+        "byteStart": 9231,
+        "byteEnd": 9397,
+        "token": "write:parameter_modules",
+        "evidence": "write parameter_modules: insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)\n       values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)`",
+      "sliceSha256": "1060c9ff0c721d7f4e2441b9f4765377e85ead092f8c0a0fdbf6a31ee1b58d98",
+      "contextByteStart": 9051,
+      "contextByteEnd": 9577,
+      "contextUtf8": "to driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)\n       values ($1,'physical-device','multiple')`,\n      [ATTR],\n    );\n    await db.query(\n      `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)\n       values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)`,\n      [MODULE, ORG, ATTR],\n    );\n    const releasePin = { id: first.manifest.release.id, digest: first.manifest.release.digest };\n    const registrationCommand: RegisterSubjectC",
+      "contextSha256": "d1b477ce23a91ea6805cf3aaab5e80231c1dc3ffb98df7d20145c6d864d5e253"
+    },
+    {
+      "old": {
+        "id": "S12-FIL:legacy-catalog-sql-write:d48dd5ebfebc7881:2d05501741a8081a",
+        "family": "S12-FIL",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/parameter-files/canonicalApprovedPrepare.integration.test.ts",
+        "line": 195,
+        "column": 7,
+        "byteStart": 9041,
+        "byteEnd": 9182,
+        "token": "write:driver_registrations",
+        "evidence": "write driver_registrations: insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ($1,'physical-device','multiple')",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "7b72c5a3997712a6a2c6f4c25e36f1b6c454341c"
+      },
+      "sourceSliceUtf8": "`insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)\n       values ($1,'physical-device','multiple')`",
+      "sliceSha256": "8731b06d8a0a6c6d16ce951deb89e96cc9dfe76741540a169bc71ae1e70294e7",
+      "contextByteStart": 8861,
+      "contextByteEnd": 9362,
+      "contextUtf8": "ion_id,subject_kind,display_name,source_key)\n       values ($1,$2,'driver-registration','Acme power','compatible:acme,power')`,\n      [ATTR, ORG],\n    );\n    await db.query(\n      `insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)\n       values ($1,'physical-device','multiple')`,\n      [ATTR],\n    );\n    await db.query(\n      `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)\n       values ($1,$2,'Driver'",
+      "contextSha256": "eedaaca0a3d01d781de4edf950be12963ae3f89b5138bc6cf4925d873fc4eacc"
+    }
+  ],
+  "baseInventory": {
+    "summary": {
+      "violations": 3543,
+      "allowlisted": 3380,
+      "unallowlisted": 163,
+      "staleAllowances": 0,
+      "metadataMismatches": 0,
+      "allowlistGrowth": 0
+    },
+    "violationsIdsSha256": "44178c1eb59ee172065bee88bc56010292407c4b08af04cb4c6f27001daf40f8",
+    "violationsMetadataSha256": "e1e98e75ce2ab4dfeab0a17bf48465fdd636c87aacd5b870e3bf8bb341b3b757",
+    "unallowlistedIdsSha256": "284ed105d12a3534f11461d979a6f8226ee686ed89bc6386e99f91dcd4ee1624",
+    "unallowlistedMetadataSha256": "463219d5101f9e53cf3c6cbe1a9bb3465bd4f66daa219358648eaf84083f5558"
+  },
+  "currentInventory": {
+    "summary": {
+      "violations": 3535,
+      "allowlisted": 3380,
+      "unallowlisted": 155,
+      "staleAllowances": 0,
+      "metadataMismatches": 0,
+      "allowlistGrowth": 0
+    },
+    "violationsIdsSha256": "f5ef8351af89f02b7b025f6fb45378bf0f3bb9b906a49194be41b0671cdec320",
+    "violationsMetadataSha256": "44957d196b680886debede4f37aa8150f3b7c2677888b3b9f437663576edcd3f",
+    "unallowlistedIdsSha256": "62937d1ac8eea1f50998d6fc5ca3efd91f8ed08a9738c1a94ec827f9d220962d",
+    "unallowlistedMetadataSha256": "363ce1948d74cfc45ff07e67203120cb168ea197145f107ea1be2806e2a89e30"
+  },
+  "allowancesSha256": "73289375514636f9f2d36946775dcacd8a8a67897a4b118c4085ec9a67a7c935",
+  "relocationsSha256": "0b3a79fc4cc9645d7a2b24dc53b0a96fa6f8d1ff1afec64bf96221ff890b6813",
+  "rawBase": {
+    "idsSha256": "b881b9dcc528e938ba7ba2090110d405a0cddd18b82dd8931e65e0339c8ac2e1",
+    "metadataSha256": "0ad3abb76d531a9b430c2fb9fc0d8a8d8af44dd3cfec56c1b7ad50898fae1027"
+  },
+  "rawCurrent": {
+    "idsSha256": "0e1b31a31bf5d5619f65cd5a4b11465a4f314c670446b7969c7e57ebe9986778",
+    "metadataSha256": "3c23b543e1cdc6b2902034f10da31f9cefbd8a1e03abb876daaae0195d6cb519"
+  },
+  "assertionPreservation": {
+    "fiveItBodies": [
+      {
+        "index": 0,
+        "textSha256": "b53142ac67bded2eb9d42b96a29f27a36a3e8d420c1fef1f4726ed31e4ffb3d7",
+        "identical": true
+      },
+      {
+        "index": 1,
+        "textSha256": "df17b19d955cbe8151e75c983d489f6564a291bc3fbe2b868bf1a8b5220a1fcd",
+        "identical": true
+      },
+      {
+        "index": 2,
+        "textSha256": "a9fb6ac4147566c1fd73dc9ecac7cf55461799c8d73ee07d4ecda182afbc0c01",
+        "identical": true
+      },
+      {
+        "index": 3,
+        "textSha256": "0e7b5acf3693c6058271a654e981111bf904e65744d8742a8ae49be8dd83b5bf",
+        "identical": true
+      },
+      {
+        "index": 4,
+        "textSha256": "f3d6d22d91c2ba35572856a27ab8ba00d145189e7cd45c5976206afc9cce89fc",
+        "identical": true
+      }
+    ],
+    "jsonBeforeAll": true,
+    "afterAll": true
+  },
+  "semanticReview": "Only DTS private setup is replaced by the unchanged public driverSource owner fixture; five product cases, JSON setup, cleanup, approval, provenance and permission guards retain exact source bytes."
+}

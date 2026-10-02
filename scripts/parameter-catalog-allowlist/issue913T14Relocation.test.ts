@@ -43,6 +43,8 @@ import { registerT14FamilySuccessorRelocationProof } from "./t14FamilySuccessorR
 import { applyReviewedIssue1016ModuleReadHeadersSuccessor, issue1016ModuleRoutesFile,
   issue1016ModuleReadHeadersSuccessorConfig, historicalIssue1016ModuleReport } from "./issue1016ModuleReadHeadersSuccessor";
 import { compareBoundaryInventory } from "./deterministicOutput";
+import { issue1017RetirementRecordPath, verifyIssue1017RawRetirement,
+  type Issue1017RetirementRecord } from "./issue1017ApprovedPrepareRetirement.proof";
 
 const repoRoot = process.cwd();
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
@@ -113,6 +115,107 @@ async function copyStaleSuccessorProofFixture() {
 }
 
 describe("Issue #913 T1.4 successor relocation", () => {
+  it("#1017 retires only eight unlicensed fixture sources using the complete same-tree scan", async () => {
+    const record = await verifyIssue1017RawRetirement(repoRoot, allowances, discovered);
+    expect(record.retired).toHaveLength(8);
+    expect(new Set(record.retired.map(({ old }) => old.id)).size).toBe(8);
+    expect(record.retired.filter(({ old }) => old.rule === "forbidden-catalog-internal-import")).toHaveLength(5);
+    expect(record.retired.filter(({ old }) => old.rule === "legacy-catalog-sql-write")).toHaveLength(3);
+    expect(discovered.filter(({ file }) => file === record.source.file)).toHaveLength(0);
+    expect(record.baseInventory.summary.unallowlisted).toBe(163);
+    expect(record.currentInventory.summary.unallowlisted).toBe(155);
+  });
+
+  it("#1017 rejects revived sources or permissions, missing, duplicate, reordered, substituted and forged raw metadata", async () => {
+    const record = await verifyIssue1017RawRetirement(repoRoot, allowances, discovered);
+    const apply = (raw: readonly BoundaryViolation[], permissions = allowances) =>
+      verifyIssue1017RawRetirement(repoRoot, permissions, raw);
+    for (const { old } of record.retired) {
+      await expect(apply([...discovered, old])).rejects.toThrow(/complete current raw/);
+      await expect(apply(discovered, [...allowances, { id: old.id, file: old.file, rule: old.rule, reason: old.reason }]))
+        .rejects.toThrow(/complete allowances/);
+    }
+    for (const changed of [discovered.slice(1), [...discovered, discovered[0]!], [...discovered].reverse(),
+      discovered.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-changed` } : entry),
+      discovered.map((entry, index) => index === 1 ? discovered[0]! : entry),
+      discovered.map((entry, index) => index === 0 ? { ...entry, trustedBlobOid: "0".repeat(40) } : entry),
+      discovered.map((entry, index) => index === 0 ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+      discovered.map((entry, index) => index === 0 ? { ...entry, reason: `${entry.reason}-changed` } : entry)]) {
+      await expect(apply(changed)).rejects.toThrow(/complete current raw/);
+    }
+    for (const permissions of [allowances.slice(1), [...allowances, allowances[0]!],
+      allowances.map((entry, index) => index === 0 ? { ...entry, reason: `${entry.reason}-changed` } : entry),
+      [...allowances.slice(1), { ...allowances[0]!, id: `${allowances[0]!.id}-changed` }]]) {
+      await expect(apply(discovered, permissions)).rejects.toThrow(/complete allowances/);
+    }
+  });
+
+  it("#1017 rejects record, source, helper, product-case, approval, provenance, JSON and cleanup tampering", async () => {
+    const recordBytes = await readFile(join(repoRoot, issue1017RetirementRecordPath));
+    const record = JSON.parse(recordBytes.toString()) as Issue1017RetirementRecord;
+    const root = await mkdtemp(join(tmpdir(), "issue1017-prepare-proof-"));
+    temporaryRoots.push(root);
+    for (const file of [issue1017RetirementRecordPath, record.source.file, record.helper.file]) {
+      await mkdir(dirname(join(root, file)), { recursive: true });
+      await writeFile(join(root, file), await readFile(join(repoRoot, file)));
+    }
+    await writeFile(join(root, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd: repoRoot, encoding: "utf8",
+    }).trim()}\n`);
+    const apply = () => verifyIssue1017RawRetirement(root, allowances, discovered);
+    for (const mutate of [
+      (value: typeof record) => { value.retired.pop(); },
+      (value: typeof record) => { value.retired[1] = structuredClone(value.retired[0]!); },
+      (value: typeof record) => { value.retired.reverse(); },
+      (value: typeof record) => { value.retired[0]!.old.id += "-changed"; },
+      (value: typeof record) => { value.retired[0]!.old.trustedBlobOid = "0".repeat(40); },
+      (value: typeof record) => { value.retired[0]!.old.byteEnd += 1; },
+      (value: typeof record) => { value.retired[0]!.contextByteStart += 1; },
+      (value: typeof record) => { value.retired[0]!.contextUtf8 += "-changed"; },
+      (value: typeof record) => { value.retired[0]!.sliceSha256 = "0".repeat(64); },
+      (value: typeof record) => { value.currentInventory.unallowlistedIdsSha256 = "0".repeat(64); },
+    ]) {
+      const changed = structuredClone(record); mutate(changed);
+      await writeFile(join(root, issue1017RetirementRecordPath), `${JSON.stringify(changed, null, 2)}\n`);
+      await expect(apply()).rejects.toThrow(/record integrity/);
+    }
+    await writeFile(join(root, issue1017RetirementRecordPath), recordBytes);
+    const source = await readFile(join(repoRoot, record.source.file));
+    const text = source.toString();
+    const old = execFileSync("git", ["show", `${record.baseHead}:${record.source.file}`], { cwd: repoRoot });
+    for (const changed of [old, Buffer.concat([source, Buffer.from("\n// outside-slice change\n")]),
+      ...record.retired.map(({ sourceSliceUtf8 }) => Buffer.concat([source, Buffer.from(`\n${sourceSliceUtf8}\n`)]))]) {
+      await writeFile(join(root, record.source.file), changed);
+      await expect(apply()).rejects.toThrow(/whole-file approved fixture/);
+    }
+    const starts = [...text.matchAll(/\n  it\(/gu)].map((match) => match.index);
+    expect(starts).toHaveLength(5);
+    for (const [index, start] of starts.entries()) {
+      await writeFile(join(root, record.source.file), text.slice(0, start)
+        + text.slice(starts[index + 1] ?? text.lastIndexOf("\n});")));
+      await expect(apply()).rejects.toThrow(/whole-file approved fixture/);
+    }
+    for (const [from, to] of [["approval: { required: true, approvalId }", "approval: { required: false, approvalId }"],
+      ["initiator_type: \"agent\"", "initiator_type: \"user\""],
+      ["\"parameter:review\"", "\"parameter:edit-critical\""],
+      ["const JSON_SOURCE =", "const JSON_SOURCE_CHANGED ="],
+      ["csub_acme_power", "csub_wrong_subject"],
+      ["await database?.drop()", "await Promise.resolve()"],
+      ["await db?.close()", "await Promise.resolve()"],
+      ["await rm(storageDirectory, { recursive: true, force: true })", "await Promise.resolve()"]]) {
+      const changed = text.replace(from, to);
+      expect(changed).not.toBe(text);
+      await writeFile(join(root, record.source.file), changed);
+      await expect(apply()).rejects.toThrow(/whole-file approved fixture/);
+    }
+    await writeFile(join(root, record.source.file), source);
+    const helper = await readFile(join(repoRoot, record.helper.file));
+    await writeFile(join(root, record.helper.file), Buffer.concat([helper, Buffer.from("\n// altered owner\n")]));
+    await expect(apply()).rejects.toThrow(/public fixture owner/);
+    await writeFile(join(root, record.helper.file), helper);
+    expect((await apply()).retired).toHaveLength(8);
+  });
+
   it("#1016 preserves all thirteen live Module identities as a separate current partition", async () => {
     const result = await applyReviewedIssue1016ModuleReadHeadersSuccessor(repoRoot, fixture, allowances, discovered);
     expect(result.relocations).toHaveLength(13);

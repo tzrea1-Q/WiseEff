@@ -22,6 +22,7 @@ import {
 } from "./parameter-catalog-allowlist/index";
 import { exactRelocationRecordPath } from "./parameter-catalog-allowlist/exactRelocation";
 import { historicalIssue1016ModuleReport } from "./parameter-catalog-allowlist/issue1016ModuleReadHeadersSuccessor";
+import { historicalIssue1017ApprovedPrepareReport } from "./parameter-catalog-allowlist/issue1017ApprovedPrepareRetirement.proof";
 import {
   postCutoverRelocationRecordPath,
   runtimeTopologyRelocationRecordPath,
@@ -978,21 +979,54 @@ describe("parameter catalog boundary checker", () => {
     "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
-      const [nativeReport, fixture] = await Promise.all([
+      const [actualNativeReport, fixture] = await Promise.all([
         checkParameterCatalogBoundaries(repoRoot, "9b3ba7df7e21f5589684bc92c872da593ad4c246"),
         loadBoundaryViolationFixture(repoRoot),
       ]);
       const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
-      // Only the proved pre-#1016/A5d views enter the unchanged #1013/#1009 historical assertions.
-      // The independent native report below contains no restored sources or permissions.
-      const moduleStage = await historicalIssue1016ModuleReport(repoRoot, fixture, nativeAllowances, nativeReport);
+      const nativeBeforeProjection = structuredClone(actualNativeReport);
+      const historicalPrepareStage = await historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, actualNativeReport);
+      expect(actualNativeReport).toEqual(nativeBeforeProjection);
+      expect(actualNativeReport.summary).toEqual({
+        violations: 3_535, allowlisted: 3_380, unallowlisted: 155,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      // Only the verified bfaa/pre-#1016/A5d views enter the unchanged historical assertions.
+      // The actual native report above contains no restored sources or permissions.
+      const moduleStage = await historicalIssue1016ModuleReport(repoRoot, fixture, nativeAllowances, historicalPrepareStage);
       const knowledgeStage = await historicalIssue1015KnowledgeReport(repoRoot, fixture, nativeAllowances, moduleStage);
       const currentReport = knowledgeStage.report;
       const currentAllowances = knowledgeStage.allowances;
-      expect(nativeReport.summary).toEqual({
+      expect(historicalPrepareStage.summary).toEqual({
         violations: currentReport.summary.violations - 9, allowlisted: currentReport.summary.allowlisted - 9,
         unallowlisted: 163, staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
       });
+      const first = actualNativeReport.violations[0]!;
+      for (const violations of [actualNativeReport.violations.slice(1),
+        [...actualNativeReport.violations].reverse(),
+        actualNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+        actualNativeReport.violations.map((entry, index) => index === 1 ? first : entry),
+        actualNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, evidence: `${entry.evidence}-changed` } : entry)]) {
+        await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances,
+          { ...actualNativeReport, violations })).rejects.toThrow(/complete current native/);
+      }
+      await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, { ...actualNativeReport,
+        unallowlisted: actualNativeReport.unallowlisted.slice(1) })).rejects.toThrow(/complete current native/);
+      await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, { ...actualNativeReport,
+        relocations: actualNativeReport.relocations.map((entry, index) => index === 0
+          ? { ...entry, observed: { ...entry.observed, byteEnd: entry.observed.byteEnd + 1 } } : entry) }))
+        .rejects.toThrow(/complete current native/);
+      for (const changed of [
+        { ...actualNativeReport, status: "passed" as const },
+        { ...actualNativeReport, summary: { ...actualNativeReport.summary, unallowlisted: 0 } },
+        { ...actualNativeReport, summary: { ...actualNativeReport.summary, allowlistGrowth: 1 } },
+        { ...actualNativeReport, staleAllowances: [nativeAllowances[0]!] },
+        { ...actualNativeReport, allowlistGrowth: [nativeAllowances[0]!] },
+        { ...actualNativeReport, metadataMismatches: [{ id: first.id,
+          expected: { file: first.file, rule: first.rule, reason: first.reason },
+          actual: { file: first.file, rule: first.rule, reason: `${first.reason}-changed` } }] },
+      ]) await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, changed))
+        .rejects.toThrow(/complete current native/);
       const report = await historicalIssue1009Report(repoRoot, currentAllowances, currentReport);
       // The exact #1013 proof restores this accepted historical stage, never the native result.
       expect((await acceptedIssue1009StageReport(repoRoot, currentAllowances, currentReport)).summary).toEqual({
