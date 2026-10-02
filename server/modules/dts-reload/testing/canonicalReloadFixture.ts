@@ -5,6 +5,7 @@ import { getRootPostgresPool } from "../../../shared/database/client";
 import type { ObjectStore } from "../../logs/objectStore";
 import { hashLocalAccountPassword } from "../../auth/localAccountCredentials";
 import type { AuthContext } from "../../auth/types";
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { createCatalogKernel } from "../../catalog-kernel/interface";
 import {
@@ -21,15 +22,13 @@ import {
   syncPublishedCatalogProjectValuesInTransaction,
 } from "../../parameter-bindings/catalogProjectValueSync";
 import type { Binding } from "../../parameter-bindings/binding";
+import { readProjectProtectedParameters } from "../../parameter-bindings/adapters";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 import { withAuditedWrite } from "../../audit/auditedWrite";
 import {
-  DefinitionRevisionId,
   CatalogSubjectId,
   ParameterDefinitionId,
-  ParameterBindingId,
-  SubjectRegistrationId,
   type CatalogReleasePin,
 } from "../../parameter-catalog-contract";
 
@@ -373,42 +372,26 @@ export async function seedCanonicalParameterFixture(
   );
   if (synced !== 1)
     throw new Error(`Issue 898 source sync wrote ${synced} bindings.`);
-  const bindingRow = await pool.query<{
-    id: string;
-    organization_id: string;
-    project_id: string;
-    logical_node_id: string;
-    registration_id: string;
-    subject_id: string;
-    definition_id: string;
-    effective_revision_id: string;
-    catalog_release_id: string;
-    current_value_id: string;
-  }>(
-    `select id,organization_id,project_id,logical_node_id,registration_id,
-            subject_id,definition_id,effective_revision_id,catalog_release_id,
-            current_value_id
-       from parameter_catalog.project_parameter_bindings
-      where organization_id=$1 and project_id=$2
-      limit 1`,
-    [fixture.organizationId, fixture.projectId],
-  );
-  const bindingRecord = bindingRow.rows[0];
-  if (!bindingRecord)
-    throw new Error("Issue 898 source sync created no canonical binding.");
+  const parameters = await readProjectProtectedParameters(pool, {
+    invocation: createUserInvocation(seedAuth),
+    projectId: fixture.projectId,
+  });
+  if (parameters.length !== 1)
+    throw new Error(
+      `Issue 898 source discovery returned ${parameters.length} canonical bindings.`,
+    );
+  const { pin } = parameters[0]!;
   const binding: Binding = {
-    id: ParameterBindingId(bindingRecord.id),
-    organizationId: bindingRecord.organization_id,
-    projectId: bindingRecord.project_id,
-    logicalNodeId: bindingRecord.logical_node_id,
-    registrationId: SubjectRegistrationId(bindingRecord.registration_id),
-    subjectId: bindingRecord.subject_id as Binding["subjectId"],
-    definitionId: ParameterDefinitionId(bindingRecord.definition_id),
-    effectiveRevisionId: DefinitionRevisionId(
-      bindingRecord.effective_revision_id,
-    ),
-    catalogRelease: installed.compiledA.release,
-    currentValueId: bindingRecord.current_value_id as Binding["currentValueId"],
+    id: pin.bindingId,
+    organizationId: pin.organizationId,
+    projectId: pin.projectId,
+    logicalNodeId: pin.logicalNodeId,
+    registrationId: pin.registrationId,
+    subjectId: pin.subjectId,
+    definitionId: pin.definitionId,
+    effectiveRevisionId: pin.definitionRevisionId,
+    catalogRelease: pin.catalogRelease,
+    currentValueId: pin.currentValueId,
   };
   const configRevisionId = revision.id;
 
