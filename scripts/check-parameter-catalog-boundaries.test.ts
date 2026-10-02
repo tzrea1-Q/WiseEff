@@ -24,6 +24,7 @@ import { exactRelocationRecordPath } from "./parameter-catalog-allowlist/exactRe
 import { historicalIssue1016ModuleReport } from "./parameter-catalog-allowlist/issue1016ModuleReadHeadersSuccessor";
 import { historicalIssue1017ApprovedPrepareReport } from "./parameter-catalog-allowlist/issue1017ApprovedPrepareRetirement.proof";
 import { historicalIssue1019DtsReloadCurrentTipReport } from "./parameter-catalog-allowlist/issue1019DtsReloadCurrentTipReadSuccessor.proof";
+import { historicalIssue1020PromoteRollbackTipReport } from "./parameter-catalog-allowlist/issue1020PromoteRollbackTipReadSuccessor.proof";
 import { historicalIssue1018JsonDeletedStateReport } from "./parameter-catalog-allowlist/issue1018JsonDeletedStateReadSuccessor.proof";
 import {
   postCutoverRelocationRecordPath,
@@ -981,11 +982,46 @@ describe("parameter catalog boundary checker", () => {
     "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
-      const [currentNativeReport, fixture] = await Promise.all([
+      const [finalNativeReport, fixture] = await Promise.all([
         checkParameterCatalogBoundaries(repoRoot, "9b3ba7df7e21f5589684bc92c872da593ad4c246"),
         loadBoundaryViolationFixture(repoRoot),
       ]);
       const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
+      const finalBeforeProjection = structuredClone(finalNativeReport);
+      const currentNativeReport = await historicalIssue1020PromoteRollbackTipReport(repoRoot, nativeAllowances, finalNativeReport);
+      expect(finalNativeReport.summary).toEqual({
+        violations: 3_528, allowlisted: 3_380, unallowlisted: 148,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      const promoteFirst = finalNativeReport.violations[0]!;
+      for (const violations of [finalNativeReport.violations.slice(1), [...finalNativeReport.violations].reverse(),
+        [...finalNativeReport.violations, promoteFirst],
+        finalNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+        finalNativeReport.violations.map((entry, index) => index === 1 ? promoteFirst : entry),
+        finalNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+        finalNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, evidence: `${entry.evidence}-changed` } : entry)]) {
+        await expect(historicalIssue1020PromoteRollbackTipReport(repoRoot, nativeAllowances,
+          { ...finalNativeReport, violations })).rejects.toThrow(/complete current native/);
+      }
+      for (const changed of [
+        { ...finalNativeReport, status: "passed" as const },
+        { ...finalNativeReport, summary: { ...finalNativeReport.summary, unallowlisted: 0 } },
+        { ...finalNativeReport, unallowlisted: finalNativeReport.unallowlisted.slice(1) },
+        { ...finalNativeReport, relocations: finalNativeReport.relocations.map((entry, index) => index === 0
+          ? { ...entry, observed: { ...entry.observed, byteEnd: entry.observed.byteEnd + 1 } } : entry) },
+        { ...finalNativeReport, staleAllowances: [nativeAllowances[0]!] },
+        { ...finalNativeReport, allowlistGrowth: [nativeAllowances[0]!] },
+        { ...finalNativeReport, metadataMismatches: [{ id: promoteFirst.id,
+          expected: { file: promoteFirst.file, rule: promoteFirst.rule, reason: promoteFirst.reason },
+          actual: { file: promoteFirst.file, rule: promoteFirst.rule, reason: `${promoteFirst.reason}-changed` } }] },
+      ]) await expect(historicalIssue1020PromoteRollbackTipReport(repoRoot, nativeAllowances, changed))
+        .rejects.toThrow(/complete current native/);
+      for (const permissions of [nativeAllowances.slice(1), [...nativeAllowances, nativeAllowances[0]!],
+        nativeAllowances.map((entry, index) => index === 0 ? { ...entry, reason: `${entry.reason}-changed` } : entry)]) {
+        await expect(historicalIssue1020PromoteRollbackTipReport(repoRoot, permissions, finalNativeReport))
+          .rejects.toThrow(/complete allowances/);
+      }
+      expect(finalNativeReport).toEqual(finalBeforeProjection);
       const currentBeforeProjection = structuredClone(currentNativeReport);
       const actualNativeReport = await historicalIssue1019DtsReloadCurrentTipReport(repoRoot, nativeAllowances, currentNativeReport);
       expect(currentNativeReport.summary).toEqual({
