@@ -40,6 +40,9 @@ import { registerRuntimeTopologyRelocationProof } from "./runtimeTopologyRelocat
 import { registerSourceWorkflowRelocationProof } from "./sourceWorkflowRelocation.proof";
 import { applyReviewedT14FamilySuccessorRelocation, verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
 import { registerT14FamilySuccessorRelocationProof } from "./t14FamilySuccessorRelocation.proof";
+import { applyReviewedIssue1016ModuleReadHeadersSuccessor, issue1016ModuleRoutesFile,
+  issue1016ModuleReadHeadersSuccessorConfig, historicalIssue1016ModuleReport } from "./issue1016ModuleReadHeadersSuccessor";
+import { compareBoundaryInventory } from "./deterministicOutput";
 
 const repoRoot = process.cwd();
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
@@ -110,6 +113,137 @@ async function copyStaleSuccessorProofFixture() {
 }
 
 describe("Issue #913 T1.4 successor relocation", () => {
+  it("#1016 preserves all thirteen live Module identities as a separate current partition", async () => {
+    const result = await applyReviewedIssue1016ModuleReadHeadersSuccessor(repoRoot, fixture, allowances, discovered);
+    expect(result.relocations).toHaveLength(13);
+    expect(result.violations).toHaveLength(discovered.length);
+    const historical = fixture.violations.filter(({ file }) => file === issue1016ModuleRoutesFile);
+    expect(historical).toHaveLength(13);
+    expect(new Set(result.relocations.map(({ id }) => id))).toEqual(new Set(historical.map(({ id }) => id)));
+    expect(result.violations.filter(({ file }) => file === issue1016ModuleRoutesFile).sort((a, b) => a.id.localeCompare(b.id)))
+      .toEqual([...historical].sort((a, b) => a.id.localeCompare(b.id)));
+    expect(result.relocations.every(({ observed }) => discovered.some((item) => item.id === observed.id))).toBe(true);
+    expect(result.relocations.every(({ id, observed }) => allowances.some((entry) => entry.id === id)
+      && !allowances.some((entry) => entry.id === observed.id))).toBe(true);
+  });
+
+  it("#1016 rejects missing, duplicate, substituted, reordered or new current sources and altered permissions", async () => {
+    const watched = discovered.filter(({ file }) => file === issue1016ModuleRoutesFile);
+    const apply = (raw: readonly BoundaryViolation[], permissions = allowances, history = fixture) =>
+      applyReviewedIssue1016ModuleReadHeadersSuccessor(repoRoot, history, permissions, raw);
+    for (const changed of [discovered.filter(({ id }) => id !== watched[0]!.id),
+      [...discovered, watched[0]!], [...discovered].reverse(),
+      discovered.map((entry) => entry.id === watched[0]!.id ? { ...entry, id: `${entry.id}-replaced` } : entry),
+      discovered.map((entry) => entry.id === watched[0]!.id ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+      discovered.map((entry) => entry.id === watched[0]!.id ? { ...entry, evidence: `${entry.evidence}-changed` } : entry),
+      [...discovered, { ...watched[0]!, id: `${watched[0]!.id}-new` }]]) {
+      await expect(apply(changed)).rejects.toThrow(/relocation rejected|Module successor rejected/);
+    }
+    const source = fixture.violations.find(({ file }) => file === issue1016ModuleRoutesFile)!;
+    for (const permissions of [allowances.filter(({ id }) => id !== source.id),
+      allowances.map((entry) => entry.id === source.id ? { ...entry, reason: `${entry.reason}-changed` } : entry),
+      [...allowances, { id: watched[0]!.id, file: watched[0]!.file, rule: watched[0]!.rule, reason: watched[0]!.reason }]]) {
+      await expect(apply(discovered, permissions)).rejects.toThrow(/existing allowance|allowance growth/);
+    }
+    await expect(apply(discovered, allowances, { ...fixture, violations: fixture.violations.map((entry) =>
+      entry.id === source.id ? { ...entry, byteStart: entry.byteStart + 1 } : entry) }))
+      .rejects.toThrow(/original occurrence/);
+    const result = await apply(discovered);
+    await expect(applyReviewedIssue1016ModuleReadHeadersSuccessor(repoRoot, fixture, allowances,
+      discovered, result.relocations)).rejects.toThrow(/cross-record/);
+  });
+
+  it("#1016 rejects record, literal, context, writer, body, auth, scope and outside-slice tampering", async () => {
+    const root = await mkdtemp(join(tmpdir(), "issue1016-module-proof-"));
+    temporaryRoots.push(root);
+    const recordPath = issue1016ModuleReadHeadersSuccessorConfig.recordPath;
+    for (const path of [recordPath, issue1016ModuleRoutesFile]) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), await readFile(join(repoRoot, path)));
+    }
+    await writeFile(join(root, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd: repoRoot, encoding: "utf8",
+    }).trim()}\n`);
+    const apply = () => applyReviewedIssue1016ModuleReadHeadersSuccessor(root, fixture, allowances, discovered);
+    const recordBytes = await readFile(join(repoRoot, recordPath));
+    const record = JSON.parse(recordBytes.toString()) as RuntimeTopologyRelocationRecord;
+    for (const mutate of [
+      (value: typeof record) => { value.files[0]!.pairs.pop(); },
+      (value: typeof record) => { value.files[0]!.pairs[1] = structuredClone(value.files[0]!.pairs[0]!); },
+      (value: typeof record) => { value.files[0]!.pairs.reverse(); },
+      (value: typeof record) => { [value.files[0]!.pairs[0]!.new, value.files[0]!.pairs[1]!.new]
+        = [value.files[0]!.pairs[1]!.new, value.files[0]!.pairs[0]!.new]; },
+      (value: typeof record) => { value.files[0]!.pairs[0]!.new.id += "-changed"; },
+      (value: typeof record) => { value.files[0]!.pairs[0]!.new.evidence += "-changed"; },
+      (value: typeof record) => { value.files[0]!.pairs[0]!.sliceSha256 = "0".repeat(64); },
+    ]) {
+      const changed = structuredClone(record); mutate(changed);
+      await writeFile(join(root, recordPath), `${JSON.stringify(changed, null, 2)}\n`);
+      await expect(apply()).rejects.toThrow(/reviewed record integrity/);
+    }
+    await writeFile(join(root, recordPath), recordBytes);
+    const source = await readFile(join(repoRoot, issue1016ModuleRoutesFile));
+    for (const offset of [0, record.files[0]!.pairs[0]!.new.byteStart,
+      record.files[0]!.pairs[0]!.new.byteStart - 5]) {
+      const changed = Buffer.from(source); changed[offset] ^= 1;
+      await writeFile(join(root, issue1016ModuleRoutesFile), changed);
+      await expect(apply()).rejects.toThrow(/destination whole-file blob/);
+    }
+    for (const [from, to] of [["return { status: 200, headers: legacyReadHeaders, body: result }",
+      "return { status: 410, headers: legacyReadHeaders, body: result }"],
+      ["return { status: 201, body: result }", "return { status: 410, body: result }"],
+      ["return { status: 200, body: result }", "return { status: 410, body: result }"],
+      ["headers: legacyReadHeaders, body: result", "headers: legacyReadHeaders, body: {}"],
+      ["await options.getCurrentAuthContext(request)", "await options.getCurrentAuthContext({ ...request, headers: {} })"],
+      ["getParameterModuleRegistry(db, auth)", "getParameterModuleRegistry(db, { ...auth, organization: null })"]]) {
+      const changed = Buffer.from(source.toString().replace(from, to));
+      expect(changed.equals(source)).toBe(false);
+      await writeFile(join(root, issue1016ModuleRoutesFile), changed);
+      await expect(apply()).rejects.toThrow(/destination whole-file blob/);
+    }
+    await writeFile(join(root, issue1016ModuleRoutesFile), source);
+    expect((await apply()).relocations).toHaveLength(13);
+  });
+
+  it("#1016 copies only the exact current alias partition into a historical view and rejects forged reports", async () => {
+    const current = await applyReviewedIssue913T14Relocation(repoRoot, fixture, allowances, discovered);
+    // A narrow unit-report fixture, not a claimed current native inventory or scan.
+    const ids = new Set(allowances.map(({ id }) => id));
+    const report = { ...compareBoundaryInventory(fixture.violations.filter(({ id }) => ids.has(id)),
+      allowances, fixture.violations), relocations: current.relocations };
+    const before = structuredClone(report);
+    const project = (value = report, permissions = allowances) =>
+      historicalIssue1016ModuleReport(repoRoot, fixture, permissions, value);
+    const history = await project();
+    expect(report).toEqual(before);
+    const module = report.relocations.filter(({ observed }) => observed.file === issue1016ModuleRoutesFile);
+    expect(module).toHaveLength(13);
+    expect(history).toEqual({ ...report, relocations: report.relocations.filter((entry) => !module.includes(entry)) });
+    expect(history.relocations.length).toBe(report.relocations.length - module.length);
+    const first = module[0]!;
+    for (const relocations of [report.relocations.filter((entry) => entry !== first),
+      [...report.relocations, first], [...report.relocations].reverse(),
+      report.relocations.map((entry) => entry === first ? { ...entry, id: `${entry.id}-changed` } : entry),
+      report.relocations.map((entry) => entry === first ? { ...entry, observed: { ...entry.observed,
+        evidence: `${entry.observed.evidence}-changed` } } : entry),
+      report.relocations.map((entry) => entry === first ? { ...entry, observed: fixture.violations.find(({ id }) => id === entry.id)! } : entry)]) {
+      await expect(project({ ...report, relocations })).rejects.toThrow(/relocation rejected|Module successor rejected/);
+    }
+    for (const violations of [report.violations.filter(({ id }) => id !== first.id),
+      [...report.violations, report.violations[0]!],
+      report.violations.map((entry) => entry.id === first.id ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+      [...report.violations, { ...report.violations[0]!, id: `${report.violations[0]!.id}-new` }]]) {
+      await expect(project({ ...report, violations })).rejects.toThrow(/relocation rejected|Module successor rejected/);
+    }
+    await expect(project({ ...report, summary: { ...report.summary, allowlistGrowth: 1 } }))
+      .rejects.toThrow(/exact current report/);
+    const old = fixture.violations.find(({ id }) => !ids.has(id))!;
+    await expect(project(report, [...allowances, { id: old.id, file: old.file, rule: old.rule, reason: old.reason }]))
+      .rejects.toThrow(/exact current report/);
+    await expect(project(report, [...allowances.slice(1), { id: old.id, file: old.file, rule: old.rule, reason: old.reason }]))
+      .rejects.toThrow(/existing allowance|exact current report/);
+  });
+
   it("#1015 retires only nine licensed test sources and preserves every current endpoint", async () => {
     const proof = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
     expect(proof.oldPairs).toHaveLength(13);
@@ -233,9 +367,15 @@ describe("Issue #913 T1.4 successor relocation", () => {
     expect(issue913T14SuccessorPairCount).toBe(45);
     expect(issue913T14ExpectedActiveRelocationCount).toBe(252);
     const knowledge = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
-    expect(result.relocations.length + knowledge.retired.length).toBe(252);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size + knowledge.retired.length).toBe(252);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size + knowledge.retired.length).toBe(252);
+    const historicalPartition = result.relocations.filter(({ observed }) => observed.file !== issue1016ModuleRoutesFile);
+    expect(historicalPartition.length + knowledge.retired.length).toBe(252);
+    expect(new Set(historicalPartition.map((entry) => entry.id)).size + knowledge.retired.length).toBe(252);
+    expect(new Set(historicalPartition.map((entry) => entry.observed.id)).size + knowledge.retired.length).toBe(252);
+    const moduleHeaders = await applyReviewedIssue1016ModuleReadHeadersSuccessor(repoRoot, fixture, allowances, discovered);
+    expect(result.relocations.filter(({ observed }) => observed.file === issue1016ModuleRoutesFile))
+      .toEqual(moduleHeaders.relocations);
+    expect(moduleHeaders.relocations).toHaveLength(13);
+    expect(result.relocations.length).toBe(historicalPartition.length + moduleHeaders.relocations.length);
     expect(changedRelocations).toHaveLength(45);
     expect(changedRelocations.filter((entry) => entry.observed.file === repositoryFile)).toHaveLength(20);
     expect(changedRelocations.filter((entry) => entry.observed.file === serviceTestFile)).toHaveLength(25);

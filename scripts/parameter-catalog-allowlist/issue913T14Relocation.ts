@@ -11,6 +11,7 @@ import { applyReviewedT14FamilySuccessorRelocation, t14FamilySuccessorRelocation
 import { t14RewrittenSliceSuccessorRelocationConfig } from "./t14RewrittenSliceSuccessorRelocation";
 import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
 import { loadIssue853DRetiredSourceIds } from "./issue853DRelocation";
+import { applyReviewedIssue1016ModuleReadHeadersSuccessor } from "./issue1016ModuleReadHeadersSuccessor";
 
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
 const serviceTestFile = "server/modules/parameter-modules/service.test.ts";
@@ -115,6 +116,9 @@ export async function applyReviewedIssue913T14Relocation(
   );
 
   const knowledgeProof = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
+  const moduleHeaders = await applyReviewedIssue1016ModuleReadHeadersSuccessor(
+    repoRoot, fixture, allowances, discovered, existingRelocations,
+  );
   const historicalAllowances = withRetiredHistoricalAllowances(
     fixture, knowledgeProof.historicalAllowances, [...remainderRetiredIds, ...dRetiredIds],
   );
@@ -139,7 +143,7 @@ export async function applyReviewedIssue913T14Relocation(
     repoRoot,
     fixture,
     allowances,
-    discovered,
+    moduleHeaders.violations,
     existingRelocations,
     activeUnchangedFiles(t14FamilySuccessorRelocationConfig),
   );
@@ -234,7 +238,9 @@ export async function applyReviewedIssue913T14Relocation(
     relocations.length + knowledgeProof.retired.length === issue913T14ExpectedActiveRelocationCount,
     "complete active relocation inventory",
   );
-  return { violations: service.violations, relocations };
+  // Keep the frozen 252-source partition above separate from this new current-only partition.
+  requireT14(moduleHeaders.relocations.length === 13, "current Module header successor partition");
+  return { violations: service.violations, relocations: [...relocations, ...moduleHeaders.relocations] };
 }
 
 /** The historical 49 sources must be exactly the active 45 plus the four named retirements. */

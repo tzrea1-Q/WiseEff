@@ -21,6 +21,7 @@ import {
   loadBoundaryViolationFixture,
 } from "./parameter-catalog-allowlist/index";
 import { exactRelocationRecordPath } from "./parameter-catalog-allowlist/exactRelocation";
+import { historicalIssue1016ModuleReport } from "./parameter-catalog-allowlist/issue1016ModuleReadHeadersSuccessor";
 import {
   postCutoverRelocationRecordPath,
   runtimeTopologyRelocationRecordPath,
@@ -982,9 +983,10 @@ describe("parameter catalog boundary checker", () => {
         loadBoundaryViolationFixture(repoRoot),
       ]);
       const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
-      // Only the proved A5d view enters the unchanged #1013/#1009 historical assertions.
+      // Only the proved pre-#1016/A5d views enter the unchanged #1013/#1009 historical assertions.
       // The independent native report below contains no restored sources or permissions.
-      const knowledgeStage = await historicalIssue1015KnowledgeReport(repoRoot, fixture, nativeAllowances, nativeReport);
+      const moduleStage = await historicalIssue1016ModuleReport(repoRoot, fixture, nativeAllowances, nativeReport);
+      const knowledgeStage = await historicalIssue1015KnowledgeReport(repoRoot, fixture, nativeAllowances, moduleStage);
       const currentReport = knowledgeStage.report;
       const currentAllowances = knowledgeStage.allowances;
       expect(nativeReport.summary).toEqual({
