@@ -10,14 +10,7 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { createAgentInvocation, createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { createAgentApproval, createAgentSession, createAgentToolCall, markAgentApprovalApproved } from "../agent/repository";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
-import { validCatalogReleaseBundle } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
-import { compileCatalogRelease } from "../catalog-kernel/compiler";
-import { installPublishedRelease } from "../catalog-kernel/install/installer";
-import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
-import { CatalogSubjectId } from "../parameter-catalog-contract";
-import type { RegisterSubjectCommand } from "../parameter-governance/registration/command";
-import { createParameterModuleForAuth } from "../parameters/service";
+import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { loadPublishedCatalog, listCatalogBindingRowsForProject, syncPublishedCatalogProjectValues } from "../parameter-bindings/catalogProjectValueSync";
 import { loadCanonicalBindingPins } from "../parameter-bindings/drafts/repository";
@@ -41,8 +34,6 @@ const PROJECT = "project-agent-source-prepare";
 const USER = "user-agent-source-prepare";
 const REVIEWER = "reviewer-agent-source-prepare";
 const DRIVER_SUBJECT = "csub_acme_power";
-const ATTR = "attr-agent-source-prepare";
-const MODULE = "pmod-agent-source-prepare";
 const SCHEMA = "wiseeff.agent.source.prepare";
 const DEFINITION = "pdef_acme_power_iin_max";
 const DTS = `/dts-v1/;
@@ -171,56 +162,13 @@ describe("approved Agent canonical source preparation", () => {
     await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values
       ('agent-source-admin-role',$1,$2,null,'admin'),
       ('agent-source-reviewer-role',$3,$2,$4,'software-committer')`, [USER, ORG, REVIEWER, PROJECT]);
-    const full = validCatalogReleaseBundle();
-    const first = structuredClone(full.releases[0]!);
-    const bundle = {
-      schemaVersion: full.schemaVersion,
-      targetReleaseId: first.manifest.release.id,
-      releases: [first],
-    };
-    const compiled = compileCatalogRelease(bundle);
-    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
-    const installed = await installPublishedRelease(getRootPostgresPool(db)!, {
-      mode: "bootstrap",
-      source: jsonCatalogReleaseSource(bundle),
-      expectedTargetDigest: compiled.value.aggregateDigest,
-    });
-    if (!installed.ok) throw new Error(JSON.stringify(installed.error));
-    await db.query(
-      `insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
-       values ($1,$2,'driver-registration','Acme power','compatible:acme,power')`,
-      [ATTR, ORG],
-    );
-    await db.query(
-      `insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
-       values ($1,'physical-device','multiple')`,
-      [ATTR],
-    );
-    await db.query(
-      `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-       values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)`,
-      [MODULE, ORG, ATTR],
-    );
-    const releasePin = { id: first.manifest.release.id, digest: first.manifest.release.digest };
-    const registrationCommand: RegisterSubjectCommand = {
-      kind: "register",
-      organizationId: ORG,
-      subjectId: CatalogSubjectId(DRIVER_SUBJECT),
-      subjectKind: "driver",
-      expectedRelease: releasePin,
-      placement: { mode: "use-default" },
-      destinationModuleId: MODULE,
-      method: "explicit",
-      proof: { reason: "approved Agent source prepare" },
+    await installDriverSourceFixture(db, auth, {
+      subjectId: DRIVER_SUBJECT,
+      compatible: "acme,power",
+      businessName: "Agent source prepare",
+      driverName: "Driver",
+      reason: "approved Agent source prepare",
       idempotencyKey: `agent-source-registration:${randomUUID()}`,
-      context: { actorKind: "org-admin", principalId: USER },
-    };
-    await db.transaction(async (tx) => {
-      await tx.query("set constraints all deferred");
-      const result = await writeGuardedRegistration(tx, registrationCommand);
-      if (!result.ok) throw new Error(JSON.stringify(result.error));
-      await tx.query("set constraints all immediate");
-      return result.value;
     });
     snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Published fixture is unavailable");
