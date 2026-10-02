@@ -23,6 +23,7 @@ import {
 import { exactRelocationRecordPath } from "./parameter-catalog-allowlist/exactRelocation";
 import { historicalIssue1016ModuleReport } from "./parameter-catalog-allowlist/issue1016ModuleReadHeadersSuccessor";
 import { historicalIssue1017ApprovedPrepareReport } from "./parameter-catalog-allowlist/issue1017ApprovedPrepareRetirement.proof";
+import { historicalIssue1018JsonDeletedStateReport } from "./parameter-catalog-allowlist/issue1018JsonDeletedStateReadSuccessor.proof";
 import {
   postCutoverRelocationRecordPath,
   runtimeTopologyRelocationRecordPath,
@@ -985,12 +986,42 @@ describe("parameter catalog boundary checker", () => {
       ]);
       const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
       const nativeBeforeProjection = structuredClone(actualNativeReport);
-      const historicalPrepareStage = await historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, actualNativeReport);
+      const preparedNativeReport = await historicalIssue1018JsonDeletedStateReport(repoRoot, nativeAllowances, actualNativeReport);
+      const historicalPrepareStage = await historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, preparedNativeReport);
       expect(actualNativeReport).toEqual(nativeBeforeProjection);
       expect(actualNativeReport.summary).toEqual({
+        violations: 3_532, allowlisted: 3_380, unallowlisted: 152,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      expect(preparedNativeReport.summary).toEqual({
         violations: 3_535, allowlisted: 3_380, unallowlisted: 155,
         staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
       });
+      const currentFirst = actualNativeReport.violations[0]!;
+      for (const violations of [actualNativeReport.violations.slice(1), [...actualNativeReport.violations].reverse(),
+        [...actualNativeReport.violations, currentFirst],
+        actualNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+        actualNativeReport.violations.map((entry, index) => index === 1 ? currentFirst : entry),
+        actualNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+        actualNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, evidence: `${entry.evidence}-changed` } : entry)]) {
+        await expect(historicalIssue1018JsonDeletedStateReport(repoRoot, nativeAllowances,
+          { ...actualNativeReport, violations })).rejects.toThrow(/complete current native/);
+      }
+      for (const changed of [
+        { ...actualNativeReport, status: "passed" as const },
+        { ...actualNativeReport, summary: { ...actualNativeReport.summary, unallowlisted: 0 } },
+        { ...actualNativeReport, unallowlisted: actualNativeReport.unallowlisted.slice(1) },
+        { ...actualNativeReport, relocations: actualNativeReport.relocations.map((entry, index) => index === 0
+          ? { ...entry, observed: { ...entry.observed, byteEnd: entry.observed.byteEnd + 1 } } : entry) },
+        { ...actualNativeReport, summary: { ...actualNativeReport.summary, allowlistGrowth: 1 } },
+        { ...actualNativeReport, staleAllowances: [nativeAllowances[0]!] },
+        { ...actualNativeReport, allowlistGrowth: [nativeAllowances[0]!] },
+        { ...actualNativeReport, metadataMismatches: [{ id: currentFirst.id,
+          expected: { file: currentFirst.file, rule: currentFirst.rule, reason: currentFirst.reason },
+          actual: { file: currentFirst.file, rule: currentFirst.rule, reason: `${currentFirst.reason}-changed` } }] },
+      ]) await expect(historicalIssue1018JsonDeletedStateReport(repoRoot, nativeAllowances, changed))
+        .rejects.toThrow(/complete current native/);
+      expect(actualNativeReport).toEqual(nativeBeforeProjection);
       // Only the verified bfaa/pre-#1016/A5d views enter the unchanged historical assertions.
       // The actual native report above contains no restored sources or permissions.
       const moduleStage = await historicalIssue1016ModuleReport(repoRoot, fixture, nativeAllowances, historicalPrepareStage);
@@ -1001,28 +1032,28 @@ describe("parameter catalog boundary checker", () => {
         violations: currentReport.summary.violations - 9, allowlisted: currentReport.summary.allowlisted - 9,
         unallowlisted: 163, staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
       });
-      const first = actualNativeReport.violations[0]!;
-      for (const violations of [actualNativeReport.violations.slice(1),
-        [...actualNativeReport.violations].reverse(),
-        actualNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
-        actualNativeReport.violations.map((entry, index) => index === 1 ? first : entry),
-        actualNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, evidence: `${entry.evidence}-changed` } : entry)]) {
+      const first = preparedNativeReport.violations[0]!;
+      for (const violations of [preparedNativeReport.violations.slice(1),
+        [...preparedNativeReport.violations].reverse(),
+        preparedNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+        preparedNativeReport.violations.map((entry, index) => index === 1 ? first : entry),
+        preparedNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, evidence: `${entry.evidence}-changed` } : entry)]) {
         await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances,
-          { ...actualNativeReport, violations })).rejects.toThrow(/complete current native/);
+          { ...preparedNativeReport, violations })).rejects.toThrow(/complete current native/);
       }
-      await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, { ...actualNativeReport,
-        unallowlisted: actualNativeReport.unallowlisted.slice(1) })).rejects.toThrow(/complete current native/);
-      await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, { ...actualNativeReport,
-        relocations: actualNativeReport.relocations.map((entry, index) => index === 0
+      await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, { ...preparedNativeReport,
+        unallowlisted: preparedNativeReport.unallowlisted.slice(1) })).rejects.toThrow(/complete current native/);
+      await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, { ...preparedNativeReport,
+        relocations: preparedNativeReport.relocations.map((entry, index) => index === 0
           ? { ...entry, observed: { ...entry.observed, byteEnd: entry.observed.byteEnd + 1 } } : entry) }))
         .rejects.toThrow(/complete current native/);
       for (const changed of [
-        { ...actualNativeReport, status: "passed" as const },
-        { ...actualNativeReport, summary: { ...actualNativeReport.summary, unallowlisted: 0 } },
-        { ...actualNativeReport, summary: { ...actualNativeReport.summary, allowlistGrowth: 1 } },
-        { ...actualNativeReport, staleAllowances: [nativeAllowances[0]!] },
-        { ...actualNativeReport, allowlistGrowth: [nativeAllowances[0]!] },
-        { ...actualNativeReport, metadataMismatches: [{ id: first.id,
+        { ...preparedNativeReport, status: "passed" as const },
+        { ...preparedNativeReport, summary: { ...preparedNativeReport.summary, unallowlisted: 0 } },
+        { ...preparedNativeReport, summary: { ...preparedNativeReport.summary, allowlistGrowth: 1 } },
+        { ...preparedNativeReport, staleAllowances: [nativeAllowances[0]!] },
+        { ...preparedNativeReport, allowlistGrowth: [nativeAllowances[0]!] },
+        { ...preparedNativeReport, metadataMismatches: [{ id: first.id,
           expected: { file: first.file, rule: first.rule, reason: first.reason },
           actual: { file: first.file, rule: first.rule, reason: `${first.reason}-changed` } }] },
       ]) await expect(historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, changed))
