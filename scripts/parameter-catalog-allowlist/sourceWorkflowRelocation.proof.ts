@@ -22,6 +22,8 @@ import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
 import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
 import { issue904LogRetiredIds } from "./issue904LogRetirement";
 import * as historicalExports from "./runtimeTopologyRelocation";
+import { issue1021SpecRecordPath, issue1021SpecRelocationRecordPath,
+  type Issue1021StructuralSpecRecord } from "./issue1021TopologyStructuralSpecIdentitySuccessor.proof";
 
 const repoRoot = process.cwd();
 const record: RuntimeTopologyRelocationRecord = JSON.parse(await readFile(join(repoRoot, sourceWorkflowRelocationRecordPath), "utf8"));
@@ -90,9 +92,11 @@ export function registerSourceWorkflowRelocationProof(getRaw: () => readonly Bou
   async function copyProofFixture(withHistory = true) {
     const root = await mkdtemp(join(tmpdir(), "source-workflow-identity-"));
     temporaryRoots.push(root);
+    const currentTopology = JSON.parse(await readFile(join(repoRoot, issue1021SpecRecordPath), "utf8")) as Issue1021StructuralSpecRecord;
     for (const file of [sourceWorkflowRelocationRecordPath, runtimeTopologyRelocationRecordPath,
       editServiceVersionIndexRelocationRecordPath, sourceWorkflowConsumerRelocationRecordPath,
-      issue911RelocationRecordPath,
+      issue911RelocationRecordPath, issue1021SpecRecordPath, issue1021SpecRelocationRecordPath,
+      ...currentTopology.anchors.map(({ path }) => path), ...currentTopology.frozenReferences.map(({ path }) => path),
       ...record.files.map((section) => section.file), ...consumerRecord.files.map((section) => section.file),
       ...issue911Record.files.map((section) => section.file)]) {
       await mkdir(dirname(join(root, file)), { recursive: true });

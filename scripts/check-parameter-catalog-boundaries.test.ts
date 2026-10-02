@@ -25,6 +25,7 @@ import { historicalIssue1016ModuleReport } from "./parameter-catalog-allowlist/i
 import { historicalIssue1017ApprovedPrepareReport } from "./parameter-catalog-allowlist/issue1017ApprovedPrepareRetirement.proof";
 import { historicalIssue1019DtsReloadCurrentTipReport } from "./parameter-catalog-allowlist/issue1019DtsReloadCurrentTipReadSuccessor.proof";
 import { historicalIssue1020PromoteRollbackTipReport } from "./parameter-catalog-allowlist/issue1020PromoteRollbackTipReadSuccessor.proof";
+import { historicalIssue1021StructuralSpecReport } from "./parameter-catalog-allowlist/issue1021TopologyStructuralSpecIdentitySuccessor.proof";
 import { historicalIssue1018JsonDeletedStateReport } from "./parameter-catalog-allowlist/issue1018JsonDeletedStateReadSuccessor.proof";
 import {
   postCutoverRelocationRecordPath,
@@ -982,11 +983,51 @@ describe("parameter catalog boundary checker", () => {
     "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
-      const [finalNativeReport, fixture] = await Promise.all([
+      const [actual1021NativeReport, fixture] = await Promise.all([
         checkParameterCatalogBoundaries(repoRoot, "9b3ba7df7e21f5589684bc92c872da593ad4c246"),
         loadBoundaryViolationFixture(repoRoot),
       ]);
       const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
+      const actual1021Before = structuredClone(actual1021NativeReport);
+      const finalNativeReport = await historicalIssue1021StructuralSpecReport(repoRoot, nativeAllowances, actual1021NativeReport);
+      expect(actual1021NativeReport.summary).toEqual({
+        violations: 3_524, allowlisted: 3_380, unallowlisted: 144,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      const topologyFirst = actual1021NativeReport.violations[0]!;
+      for (const violations of [actual1021NativeReport.violations.slice(1), [...actual1021NativeReport.violations].reverse(),
+        [...actual1021NativeReport.violations, topologyFirst],
+        actual1021NativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+        actual1021NativeReport.violations.map((entry, index) => index === 1 ? topologyFirst : entry)]) {
+        await expect(historicalIssue1021StructuralSpecReport(repoRoot, nativeAllowances,
+          { ...actual1021NativeReport, violations })).rejects.toThrow(/complete current native/);
+      }
+      for (const changed of [
+        { ...actual1021NativeReport, status: "passed" as const },
+        { ...actual1021NativeReport, summary: { ...actual1021NativeReport.summary, unallowlisted: 0 } },
+        { ...actual1021NativeReport, unallowlisted: actual1021NativeReport.unallowlisted.slice(1) },
+        { ...actual1021NativeReport, relocations: actual1021NativeReport.relocations.slice(1) },
+        { ...actual1021NativeReport, relocations: [...actual1021NativeReport.relocations].reverse() },
+        { ...actual1021NativeReport, relocations: actual1021NativeReport.relocations.map((entry, index) => index === 0
+          ? { ...entry, observed: { ...entry.observed, byteStart: entry.observed.byteStart + 1 } } : entry) },
+        { ...actual1021NativeReport, summary: { ...actual1021NativeReport.summary, allowlistGrowth: 1 } },
+        { ...actual1021NativeReport, staleAllowances: [nativeAllowances[0]!] },
+        { ...actual1021NativeReport, allowlistGrowth: [nativeAllowances[0]!] },
+        { ...actual1021NativeReport, metadataMismatches: [{ id: topologyFirst.id,
+          file: topologyFirst.file, rule: topologyFirst.rule, expectedReason: topologyFirst.reason, actualReason: "changed" }] },
+      ]) await expect(historicalIssue1021StructuralSpecReport(repoRoot, nativeAllowances, changed))
+        .rejects.toThrow(/complete current native/);
+      const topWriters = actual1021NativeReport.unallowlisted.filter(({ file }) => file === "server/modules/parameter-topology/editService.test.ts");
+      expect(topWriters).toHaveLength(4);
+      for (const writer of topWriters) {
+        await expect(historicalIssue1021StructuralSpecReport(repoRoot, nativeAllowances, { ...actual1021NativeReport,
+          violations: actual1021NativeReport.violations.filter(({ id }) => id !== writer.id) }))
+          .rejects.toThrow(/complete current native/);
+        await expect(historicalIssue1021StructuralSpecReport(repoRoot, [...nativeAllowances,
+          { id: writer.id, file: writer.file, rule: writer.rule, reason: writer.reason }], actual1021NativeReport))
+          .rejects.toThrow(/complete allowances/);
+      }
+      expect(actual1021NativeReport).toEqual(actual1021Before);
       const finalBeforeProjection = structuredClone(finalNativeReport);
       const currentNativeReport = await historicalIssue1020PromoteRollbackTipReport(repoRoot, nativeAllowances, finalNativeReport);
       expect(finalNativeReport.summary).toEqual({
