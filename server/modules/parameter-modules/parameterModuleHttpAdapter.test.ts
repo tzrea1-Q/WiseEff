@@ -10,7 +10,7 @@ import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createManagedInstanceTestDatabase, isTestDatabaseAvailable, withTestClusterRoleCatalogLock } from "../../testing/testDatabase";
 import { installParameterModuleRegistryProjectionFixture } from "../../testing/parameterCatalog/registryProjection";
-import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime";
+import { captureCurrentCatalogPin, dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime";
 import { getAuthContextForExternalIdentity } from "../auth/repository";
 import { createTokenVerifier } from "../auth/tokenVerifier";
 import { createParameterModule } from "../parameters/parameterModuleRepository";
@@ -64,8 +64,11 @@ describe("parameter module HTTP adapter", () => {
           ["parameterModules.discoveryHints", getModuleDiscoveryHints],
           ["parameterModules.listDriverRegistry", listDriverRegistry],
         ] as const;
-        const snapshot = () => bootstrap.query("select (select jsonb_agg(pm order by id) from parameter_modules pm) as modules,(select jsonb_agg(mapping order by id) from parameter_module_mappings mapping) as mappings,(select jsonb_agg(dismissal order by id) from parameter_module_dismissed_compatibles dismissal) as dismissals,(select jsonb_agg(state) from parameter_catalog.catalog_state state) as catalog");
-        const before = (await snapshot()).rows;
+        const snapshot = () => Promise.all([
+          ...reads.map(([, read]) => read(api!, auth)),
+          captureCurrentCatalogPin(pool),
+        ]);
+        const before = await snapshot();
         expect((await getParameterModuleRegistry(api, auth)).item.modules).toEqual(expect.arrayContaining([expect.objectContaining({ id: module.id })]));
         for (const [id, read] of reads) {
           const route = routeManifest.find((item) => item.id === id);
@@ -79,7 +82,7 @@ describe("parameter module HTTP adapter", () => {
           }
           expect((await requestJson(server, route!.path)).status, `${id} missing authentication`).toBe(401);
         }
-        expect((await snapshot()).rows).toEqual(before);
+        expect(await snapshot()).toEqual(before);
         const dismissal = routeManifest.find((route) => route.id === "parameterModules.dismissCompatible");
         expect(dismissal).toBeDefined();
         const dismissed = await requestJson<{ item: { dismissedCompatibles: Array<{ compatible: string }> } }>(server, dismissal!.path, {
