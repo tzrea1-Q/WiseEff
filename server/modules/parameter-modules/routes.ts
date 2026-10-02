@@ -5,6 +5,12 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
+  boundedLegacyHeaders,
+  CATALOG_SUNSET_HTTP_DATE,
+  LEGACY_MODULE_CONTRACT,
+  LEGACY_MODULE_WARNING,
+} from "../parameter-catalog-api/legacy/headers";
+import {
   createModuleMappingBodySchema,
   dismissCompatibleBodySchema,
   dismissedCompatibleParamsSchema,
@@ -30,6 +36,12 @@ import {
   updateDriverRegistration,
   updateDriverRegistrationDefaultBusinessCategory
 } from "./service";
+
+const legacyReadHeaders = boundedLegacyHeaders({
+  sunsetHttpDate: CATALOG_SUNSET_HTTP_DATE,
+  contract: LEGACY_MODULE_CONTRACT,
+  warning: LEGACY_MODULE_WARNING,
+});
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -63,14 +75,14 @@ export function registerParameterModuleRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const result = await getParameterModuleRegistry(db, auth);
-    return { status: 200, body: result };
+    return { status: 200, headers: legacyReadHeaders, body: result };
   });
 
   router.get("/api/v2/parameter-modules/discovery-hints", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const result = await getModuleDiscoveryHints(db, auth);
-    return { status: 200, body: result };
+    return { status: 200, headers: legacyReadHeaders, body: result };
   });
 
   router.post("/api/v2/parameter-modules/discovery-hints/dismissals", async (request) => {
@@ -130,7 +142,7 @@ export function registerParameterModuleRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const result = await listDriverRegistry(db, auth);
-    return { status: 200, body: result };
+    return { status: 200, headers: legacyReadHeaders, body: result };
   });
 
   router.post("/api/v2/parameter-modules/driver-registry", async (request) => {

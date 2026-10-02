@@ -82,6 +82,7 @@ import type {
   TrustedGovernanceScope,
 } from "./governance/types";
 import { registerCatalogLegacyRoutes } from "./legacy/routes";
+import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
 import { registerCatalogReadRoutes } from "./read/routes";
 import { handleCatalogRead } from "./read/handlers";
@@ -102,7 +103,6 @@ import type {
   TrustedCatalogScope,
 } from "./read/types";
 
-const CATALOG_SUNSET_HTTP_DATE = "Fri, 31 Dec 2027 00:00:00 GMT";
 const UNAVAILABLE_RELEASE_ID = "catalog-unready";
 const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
 
