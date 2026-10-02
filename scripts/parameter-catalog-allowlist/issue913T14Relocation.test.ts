@@ -57,6 +57,9 @@ import { historicalIssue1020PromoteRollbackTipRaw, acceptedIssue1020PromoteRemai
 import { historicalIssue1021StructuralSpecRaw, issue1021SpecRecordPath, issue1021SpecRelocationRecordPath,
   verifyIssue1021StructuralSpecSource, type Issue1021StructuralSpecRecord } from "./issue1021TopologyStructuralSpecIdentitySuccessor.proof";
 
+import { historicalIssue1022DtsFixtureRaw, verifyIssue1022DtsFixtureSource, acceptedIssue1022DtsFixtureReaderSource, issue1022DtsFixtureRecordPath,
+  type Issue1022DtsFixtureRecord } from "./issue1022DtsFixturePublicDiscoverySuccessor.proof";
+
 const repoRoot = process.cwd();
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
 const serviceTestFile = "server/modules/parameter-modules/service.test.ts";
@@ -126,61 +129,54 @@ async function copyStaleSuccessorProofFixture() {
 }
 
 describe("Issue #913 T1.4 successor relocation", () => {
-  it("#1021 proves four retired reads, 28 original licensed aliases and four still-unlicensed same-row writes", async () => {
+  it("#1022 proves two query-tag retirements and six still-unlicensed identities without replacing the actual scan", async () => {
     const before = structuredClone(discovered);
-    const { record, historical } = await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered);
-    const { standard, originalSection } = await verifyIssue1021StructuralSpecSource(repoRoot, allowances);
-    expect(record.retired).toHaveLength(4);
-    expect(record.writers).toHaveLength(4);
-    expect(record.currentInventory.summary.unallowlisted).toBe(144);
-    expect(record.baseInventory.summary.unallowlisted).toBe(148);
-    expect(standard.files[0]!.pairs).toHaveLength(28);
-    expect(historical).toHaveLength(discovered.length + 4);
-    for (const [index, pair] of standard.files[0]!.pairs.entries()) {
-      expect(discovered).toContainEqual(pair.new);
-      expect(historical).toContainEqual(originalSection.pairs[index]!.new);
-      expect(allowances.find(({ id }) => id === pair.old.id)).toEqual({
-        id: pair.old.id, file: pair.old.file, rule: pair.old.rule, reason: pair.old.reason,
-      });
-      expect(allowances.some(({ id }) => id === pair.new.id)).toBe(false);
-    }
-    for (const pair of record.writers) {
-      expect(discovered).toContainEqual(pair.current);
-      expect(historical).toContainEqual(pair.old);
-      expect(allowances.some(({ id }) => id === pair.current.id || id === pair.old.id)).toBe(false);
-    }
+    const permissionsBefore = structuredClone(allowances);
+    const { record, historical } = await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered);
+    expect(record.retired).toHaveLength(2);
+    expect(record.pairs).toHaveLength(6);
+    expect(record.currentInventory?.summary.unallowlisted).toBe(142);
+    expect(record.baseInventory.summary.unallowlisted).toBe(144);
+    expect(historical).toHaveLength(discovered.length + 2);
     for (const { endpoint } of record.retired) {
       expect(discovered.some(({ id }) => id === endpoint.id)).toBe(false);
       expect(historical).toContainEqual(endpoint);
+      expect(allowances.some(({ id }) => id === endpoint.id)).toBe(false);
     }
+    for (const { old, current } of record.pairs) {
+      expect(discovered).toContainEqual(current.endpoint);
+      expect(historical).toContainEqual(old.endpoint);
+      expect(allowances.some(({ id }) => id === old.endpoint.id || id === current.endpoint.id)).toBe(false);
+    }
+    expect(await acceptedIssue1022DtsFixtureReaderSource(repoRoot, allowances))
+      .toEqual(execFileSync("git", ["show", `${record.baseHead}:${record.source.file}`], { cwd: repoRoot }));
+    expect((await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, historical))
+      .record.currentInventory.summary.unallowlisted).toBe(144);
     expect(discovered).toEqual(before);
-    expect((await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, historical))
-      .record.currentInventory.summary.unallowlisted).toBe(148);
+    expect(allowances).toEqual(permissionsBefore);
   });
 
-  it("#1021 rejects revived reads, false writer retirement/licensing, missing, duplicate, reordered or forged raw evidence", async () => {
-    const { record, standard } = await verifyIssue1021StructuralSpecSource(repoRoot, allowances);
+  it("#1022 rejects revived query tags, false import/write retirement, licensing and forged full raw identity or metadata", async () => {
+    const { record } = await verifyIssue1022DtsFixtureSource(repoRoot, allowances);
     const apply = (raw: readonly BoundaryViolation[], permissions = allowances) =>
-      historicalIssue1021StructuralSpecRaw(repoRoot, permissions, raw);
-    const endpoints = [...record.retired.map(({ endpoint }) => endpoint), ...record.writers.flatMap(({ old, current }) => [old, current]),
-      ...standard.files[0]!.pairs.flatMap(({ old, new: current }) => [old, current])];
-    for (const endpoint of endpoints) {
+      historicalIssue1022DtsFixtureRaw(repoRoot, permissions, raw);
+    for (const { endpoint } of [...record.retired, ...record.pairs.flatMap(({ old, current }) => [old, current])]) {
       await expect(apply([...discovered, endpoint])).rejects.toThrow(/complete current raw/);
-      if (!allowances.some(({ id }) => id === endpoint.id)) await expect(apply(discovered,
-        [...allowances, { id: endpoint.id, file: endpoint.file, rule: endpoint.rule, reason: endpoint.reason }]))
+      await expect(apply(discovered, [...allowances,
+        { id: endpoint.id, file: endpoint.file, rule: endpoint.rule, reason: endpoint.reason }]))
         .rejects.toThrow(/complete allowances/);
+    }
+    for (const { current } of record.pairs) {
+      await expect(apply(discovered.filter(({ id }) => id !== current.endpoint.id))).rejects.toThrow(/complete current raw/);
     }
     for (const raw of [discovered.slice(1), [...discovered, discovered[0]!], [...discovered].reverse(),
       discovered.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
       discovered.map((entry, index) => index === 1 ? discovered[0]! : entry)]) {
       await expect(apply(raw)).rejects.toThrow(/complete current raw/);
     }
-    for (const pair of record.writers) {
-      await expect(apply(discovered.filter(({ id }) => id !== pair.current.id))).rejects.toThrow(/complete current raw/);
-    }
     for (const property of ["id", "file", "family", "rule", "reason", "token", "evidence", "trustedBaseSha", "trustedBlobOid",
       "byteStart", "byteEnd", "line", "column"] as const) {
-      await expect(apply(discovered.map((entry, index) => index === 0
+      await expect(apply(discovered.map((entry) => entry.id === record.pairs[0]!.current.endpoint.id
         ? { ...entry, [property]: typeof entry[property] === "number" ? Number(entry[property]) + 1 : `${entry[property]}-changed` }
         : entry))).rejects.toThrow(/complete current raw/);
     }
@@ -191,7 +187,155 @@ describe("Issue #913 T1.4 successor relocation", () => {
     }
   });
 
+  it("#1022 rejects source, pin, context, protected seam, consumer and frozen-reader weakening", async () => {
+    const recordBytes = await readFile(join(repoRoot, issue1022DtsFixtureRecordPath));
+    const record = JSON.parse(recordBytes.toString()) as Issue1022DtsFixtureRecord;
+    const root = await mkdtemp(join(tmpdir(), "issue1022-dts-source-proof-"));
+    temporaryRoots.push(root);
+    for (const file of [issue1022DtsFixtureRecordPath, record.source.file, record.oldReaderRecord.path,
+      ...record.anchors.map(({ path }) => path)]) {
+      await mkdir(dirname(join(root, file)), { recursive: true });
+      await writeFile(join(root, file), await readFile(join(repoRoot, file)));
+    }
+    await writeFile(join(root, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd: repoRoot, encoding: "utf8",
+    }).trim()}\n`);
+    const apply = () => historicalIssue1022DtsFixtureRaw(root, allowances, discovered);
+    for (const mutate of [
+      (value: typeof record) => { value.retired.pop(); },
+      (value: typeof record) => { value.retired[0] = structuredClone(value.retired[1]!); },
+      (value: typeof record) => { value.pairs.pop(); },
+      (value: typeof record) => { value.pairs[0]!.current.endpoint.byteStart += 1; },
+      (value: typeof record) => { value.retired[0]!.context.sha256 = "0".repeat(64); },
+      (value: typeof record) => { value.pairs[0]!.current.sliceSha256 = "0".repeat(64); },
+      (value: typeof record) => { value.source.newBlob = "0".repeat(40); },
+      (value: typeof record) => { value.rawCurrent.metadataSha256 = "0".repeat(64); },
+      (value: typeof record) => { value.currentInventory!.summary.unallowlisted = 0; },
+      (value: typeof record) => { value.relocationsSha256 = "0".repeat(64); },
+      (value: typeof record) => { value.anchors.pop(); },
+      (value: typeof record) => { value.oldReaderRecord.readers -= 1; },
+    ]) {
+      const changed = structuredClone(record); mutate(changed);
+      await writeFile(join(root, issue1022DtsFixtureRecordPath), `${JSON.stringify(changed, null, 2)}\n`);
+      await expect(apply()).rejects.toThrow(/record integrity/);
+    }
+    await writeFile(join(root, issue1022DtsFixtureRecordPath), recordBytes);
+    const source = await readFile(join(repoRoot, record.source.file));
+    const old = execFileSync("git", ["show", `${record.baseHead}:${record.source.file}`], { cwd: repoRoot });
+    for (const part of record.changes) {
+      await writeFile(join(root, record.source.file), Buffer.concat([source.subarray(0, part.currentStart),
+        old.subarray(part.oldStart, part.oldEnd), source.subarray(part.currentEnd)]));
+      await expect(apply()).rejects.toThrow(/destination whole-file blob/);
+    }
+    const text = source.toString();
+    for (const [from, to] of [["parameters.length !== 1", "parameters.length === 0"],
+      ["createUserInvocation(seedAuth)", "createUserInvocation(fixture.otherAuth)"],
+      ["projectId: fixture.projectId,", "projectId: otherProject,"],
+      ["catalogRelease: pin.catalogRelease", "catalogRelease: installed.compiledA.release"],
+      ["currentValueId: pin.currentValueId", "currentValueId: guessedValueId"],
+      ...["id: pin.bindingId", "organizationId: pin.organizationId", "logicalNodeId: pin.logicalNodeId",
+        "registrationId: pin.registrationId", "subjectId: pin.subjectId", "definitionId: pin.definitionId",
+        "effectiveRevisionId: pin.definitionRevisionId", "projectId: pin.projectId"].map((field) => [field, `${field}-changed`]),
+      ["await withAuditedWrite", "await bypassAuditedWrite"],
+      ["readProjectProtectedParameters(pool", "readProjectProtectedParameters(otherPool"],
+    ]) {
+      const changed = text.replace(from!, to!);
+      expect(changed).not.toBe(text);
+      await writeFile(join(root, record.source.file), changed);
+      await expect(apply()).rejects.toThrow(/destination whole-file blob/);
+    }
+    for (const changed of [old, Buffer.concat([source, Buffer.from("\n// outside all reviewed regions\n")]),
+      ...record.retired.map(({ sliceUtf8 }) => Buffer.concat([source, Buffer.from(sliceUtf8)]))]) {
+      await writeFile(join(root, record.source.file), changed);
+      await expect(apply()).rejects.toThrow(/destination whole-file blob/);
+    }
+    await writeFile(join(root, record.source.file), source);
+    for (const { path } of record.anchors) {
+      const content = await readFile(join(repoRoot, path));
+      await writeFile(join(root, path), Buffer.concat([content, Buffer.from("\n// altered protected reader or consumer assertion\n")]));
+      await expect(apply()).rejects.toThrow(/unchanged public owner reader/);
+      await writeFile(join(root, path), content);
+    }
+    const original = await readFile(join(repoRoot, record.oldReaderRecord.path));
+    await writeFile(join(root, record.oldReaderRecord.path), Buffer.concat([original, Buffer.from("\n")]));
+    await expect(apply()).rejects.toThrow(/record integrity/);
+    await writeFile(join(root, record.oldReaderRecord.path), original);
+    await rm(join(root, issue1022DtsFixtureRecordPath));
+    await expect(apply()).rejects.toThrow();
+    await writeFile(join(root, issue1022DtsFixtureRecordPath), recordBytes);
+    await expect(apply()).resolves.toMatchObject({ historical: expect.any(Array) });
+  });
+
+  it("#1021 proves four retired reads, 28 original licensed aliases and four still-unlicensed same-row writes", async () => {
+    const afbRaw = (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical;
+    const before = structuredClone(afbRaw);
+    const { record, historical } = await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      afbRaw);
+    const { standard, originalSection } = await verifyIssue1021StructuralSpecSource(repoRoot, allowances);
+    expect(record.retired).toHaveLength(4);
+    expect(record.writers).toHaveLength(4);
+    expect(record.currentInventory.summary.unallowlisted).toBe(144);
+    expect(record.baseInventory.summary.unallowlisted).toBe(148);
+    expect(standard.files[0]!.pairs).toHaveLength(28);
+    expect(historical).toHaveLength(afbRaw.length + 4);
+    for (const [index, pair] of standard.files[0]!.pairs.entries()) {
+      expect(afbRaw).toContainEqual(pair.new);
+      expect(historical).toContainEqual(originalSection.pairs[index]!.new);
+      expect(allowances.find(({ id }) => id === pair.old.id)).toEqual({
+        id: pair.old.id, file: pair.old.file, rule: pair.old.rule, reason: pair.old.reason,
+      });
+      expect(allowances.some(({ id }) => id === pair.new.id)).toBe(false);
+    }
+    for (const pair of record.writers) {
+      expect(afbRaw).toContainEqual(pair.current);
+      expect(historical).toContainEqual(pair.old);
+      expect(allowances.some(({ id }) => id === pair.current.id || id === pair.old.id)).toBe(false);
+    }
+    for (const { endpoint } of record.retired) {
+      expect(afbRaw.some(({ id }) => id === endpoint.id)).toBe(false);
+      expect(historical).toContainEqual(endpoint);
+    }
+    expect(afbRaw).toEqual(before);
+    expect((await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, historical))
+      .record.currentInventory.summary.unallowlisted).toBe(148);
+  });
+
+  it("#1021 rejects revived reads, false writer retirement/licensing, missing, duplicate, reordered or forged raw evidence", async () => {
+    const afbRaw = (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical;
+    const { record, standard } = await verifyIssue1021StructuralSpecSource(repoRoot, allowances);
+    const apply = (raw: readonly BoundaryViolation[], permissions = allowances) =>
+      historicalIssue1021StructuralSpecRaw(repoRoot, permissions, raw);
+    const endpoints = [...record.retired.map(({ endpoint }) => endpoint), ...record.writers.flatMap(({ old, current }) => [old, current]),
+      ...standard.files[0]!.pairs.flatMap(({ old, new: current }) => [old, current])];
+    for (const endpoint of endpoints) {
+      await expect(apply([...afbRaw, endpoint])).rejects.toThrow(/complete current raw/);
+      if (!allowances.some(({ id }) => id === endpoint.id)) await expect(apply(afbRaw,
+        [...allowances, { id: endpoint.id, file: endpoint.file, rule: endpoint.rule, reason: endpoint.reason }]))
+        .rejects.toThrow(/complete allowances/);
+    }
+    for (const raw of [afbRaw.slice(1), [...afbRaw, afbRaw[0]!], [...afbRaw].reverse(),
+      afbRaw.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+      afbRaw.map((entry, index) => index === 1 ? afbRaw[0]! : entry)]) {
+      await expect(apply(raw)).rejects.toThrow(/complete current raw/);
+    }
+    for (const pair of record.writers) {
+      await expect(apply(afbRaw.filter(({ id }) => id !== pair.current.id))).rejects.toThrow(/complete current raw/);
+    }
+    for (const property of ["id", "file", "family", "rule", "reason", "token", "evidence", "trustedBaseSha", "trustedBlobOid",
+      "byteStart", "byteEnd", "line", "column"] as const) {
+      await expect(apply(afbRaw.map((entry, index) => index === 0
+        ? { ...entry, [property]: typeof entry[property] === "number" ? Number(entry[property]) + 1 : `${entry[property]}-changed` }
+        : entry))).rejects.toThrow(/complete current raw/);
+    }
+    for (const permissions of [allowances.slice(1), [...allowances, allowances[0]!], [...allowances].reverse(),
+      allowances.map((entry, index) => index === 0 ? { ...entry, reason: `${entry.reason}-changed` } : entry),
+      [...allowances.slice(1), { ...allowances[0]!, id: `${allowances[0]!.id}-changed` }]]) {
+      await expect(apply(afbRaw, permissions)).rejects.toThrow(/complete allowances/);
+    }
+  });
+
   it("#1021 rejects record/source/anchor/history drift and weakening of any original case, identity or lifecycle", async () => {
+    const afbRaw = (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical;
     const recordBytes = await readFile(join(repoRoot, issue1021SpecRecordPath));
     const record = JSON.parse(recordBytes.toString()) as Issue1021StructuralSpecRecord;
     const root = await mkdtemp(join(tmpdir(), "issue1021-top-source-proof-"));
@@ -204,7 +348,7 @@ describe("Issue #913 T1.4 successor relocation", () => {
     await writeFile(join(root, ".git"), `gitdir: ${execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
       cwd: repoRoot, encoding: "utf8",
     }).trim()}\n`);
-    const apply = () => historicalIssue1021StructuralSpecRaw(root, allowances, discovered);
+    const apply = () => historicalIssue1021StructuralSpecRaw(root, allowances, afbRaw);
     for (const mutate of [
       (value: typeof record) => { value.retired.pop(); },
       (value: typeof record) => { value.retired[0] = structuredClone(value.retired[1]!); },
@@ -257,7 +401,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1020 proves two retired tags, all seven old C sources and the unchanged full 1e raw stage", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const before = structuredClone(b695Raw);
     const { record, historical } = await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw);
     expect(record.retired).toHaveLength(2);
@@ -274,7 +419,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1020 rejects revival, new permission, missing, duplicate, reordered or substituted full raw metadata", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const { record } = await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw);
     const apply = (raw: readonly BoundaryViolation[], permissions = allowances) =>
       historicalIssue1020PromoteRollbackTipRaw(repoRoot, permissions, raw);
@@ -314,13 +460,16 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1020 rejects record/source/reader drift, old C record edits and weakened rollback or lifecycle assertions", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const recordBytes = await readFile(join(repoRoot, issue1020ReadSuccessorRecordPath));
     const record = JSON.parse(recordBytes.toString()) as Issue1020ReadSuccessorRecord;
     const root = await mkdtemp(join(tmpdir(), "issue1020-promote-source-proof-"));
     temporaryRoots.push(root);
+    const fixtureSuccessor = JSON.parse(await readFile(join(repoRoot, issue1022DtsFixtureRecordPath), "utf8")) as Issue1022DtsFixtureRecord;
     for (const file of [issue1020ReadSuccessorRecordPath, record.oldCRecord.file, record.source.file,
-      ...record.readers.map(({ file }) => file)]) {
+      ...record.readers.map(({ file }) => file), issue1022DtsFixtureRecordPath,
+      ...fixtureSuccessor.anchors.map(({ path }) => path)]) {
       await mkdir(dirname(join(root, file)), { recursive: true });
       await writeFile(join(root, file), await readFile(join(repoRoot, file)));
     }
@@ -402,7 +551,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1019 proves two retired tags and one still-unlicensed organization count with the existing complete scan", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const oneEHistoricalRaw = (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical;
     const before = structuredClone(oneEHistoricalRaw);
     const { record, historical } = await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances, oneEHistoricalRaw);
@@ -426,7 +576,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1019 rejects source revival, false SQL retirement, allowance growth and complete raw identity or metadata tampering", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const oneEHistoricalRaw = (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical;
     const { record } = await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances, oneEHistoricalRaw);
     const apply = (raw: readonly BoundaryViolation[], permissions = allowances) =>
@@ -460,7 +611,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1019 rejects endpoint/record/reader changes, revival and weakening of every original case or protected boundary", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const oneEHistoricalRaw = (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical;
     const recordBytes = await readFile(join(repoRoot, issue1019ReadSuccessorRecordPath));
     const record = JSON.parse(recordBytes.toString()) as Issue1019ReadSuccessorRecord;
@@ -543,7 +695,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
 
 
   it("#1018 proves three retired reads and four still-unlicensed SQL successors with the existing complete scan", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const a8HistoricalRaw = (await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances,
       (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical)).historical;
     const before = structuredClone(a8HistoricalRaw);
@@ -570,7 +723,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1018 rejects source revival, false SQL retirement, allowance growth and complete raw identity or metadata tampering", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const a8HistoricalRaw = (await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances,
       (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical)).historical;
     const { record } = await historicalIssue1018JsonDeletedStateRaw(repoRoot, allowances, a8HistoricalRaw);
@@ -605,7 +759,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1018 rejects endpoint/record/reader changes, revival and weakening of every original case or protected boundary", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const a8HistoricalRaw = (await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances,
       (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical)).historical;
     const recordBytes = await readFile(join(repoRoot, issue1018ReadSuccessorRecordPath));
@@ -683,7 +838,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1017 retires only eight unlicensed fixture sources using the complete same-tree scan", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const prepareHistoricalRaw = (await historicalIssue1018JsonDeletedStateRaw(repoRoot, allowances,
       (await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances,
       (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical)).historical)).historical;
@@ -698,7 +854,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1017 rejects revived sources or permissions, missing, duplicate, reordered, substituted and forged raw metadata", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const prepareHistoricalRaw = (await historicalIssue1018JsonDeletedStateRaw(repoRoot, allowances,
       (await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances,
       (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical)).historical)).historical;
@@ -726,7 +883,8 @@ describe("Issue #913 T1.4 successor relocation", () => {
   });
 
   it("#1017 rejects record, source, helper, product-case, approval, provenance, JSON and cleanup tampering", async () => {
-    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances, discovered)).historical;
+    const b695Raw = (await historicalIssue1021StructuralSpecRaw(repoRoot, allowances,
+      (await historicalIssue1022DtsFixtureRaw(repoRoot, allowances, discovered)).historical)).historical;
     const prepareHistoricalRaw = (await historicalIssue1018JsonDeletedStateRaw(repoRoot, allowances,
       (await historicalIssue1019DtsReloadCurrentTipRaw(repoRoot, allowances,
       (await historicalIssue1020PromoteRollbackTipRaw(repoRoot, allowances, b695Raw)).historical)).historical)).historical;

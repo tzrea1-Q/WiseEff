@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { checkParameterCatalogBoundaries } from "../check-parameter-catalog-boundaries";
 import type { AllowlistEntry, BoundaryViolation, BoundaryViolationFixture } from "./schema";
+import { acceptedIssue1022DtsFixtureReaderSource, issue1022DtsFixtureSourceFile } from "./issue1022DtsFixturePublicDiscoverySuccessor.proof";
 
 type Report = Awaited<ReturnType<typeof checkParameterCatalogBoundaries>>;
 type Inventory = { summary: Report["summary"]; violationsIdsSha256: string; violationsMetadataSha256: string;
@@ -70,7 +71,9 @@ async function verifiedSource(repoRoot: string, allowances: readonly AllowlistEn
       && sha(current.subarray(part.currentStart, part.currentEnd)) === part.currentSha256),
   "only the complete public import and scoped current-tip helper changed");
   for (const reader of record.readers) {
-    const content = await readFile(join(repoRoot, reader.file));
+    const content = reader.file === issue1022DtsFixtureSourceFile
+      ? await acceptedIssue1022DtsFixtureReaderSource(repoRoot, allowances)
+      : await readFile(join(repoRoot, reader.file));
     check(blob(content) === reader.blob && content.length === reader.byteCount && sha(content) === reader.sha256
       && git(baseHead, reader.file).equals(content) && git(ownerHead, reader.file).equals(content),
     "unchanged public owner reader bytes");

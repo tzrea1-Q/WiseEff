@@ -26,6 +26,7 @@ import { historicalIssue1017ApprovedPrepareReport } from "./parameter-catalog-al
 import { historicalIssue1019DtsReloadCurrentTipReport } from "./parameter-catalog-allowlist/issue1019DtsReloadCurrentTipReadSuccessor.proof";
 import { historicalIssue1020PromoteRollbackTipReport } from "./parameter-catalog-allowlist/issue1020PromoteRollbackTipReadSuccessor.proof";
 import { historicalIssue1021StructuralSpecReport } from "./parameter-catalog-allowlist/issue1021TopologyStructuralSpecIdentitySuccessor.proof";
+import { historicalIssue1022DtsFixtureReport } from "./parameter-catalog-allowlist/issue1022DtsFixturePublicDiscoverySuccessor.proof";
 import { historicalIssue1018JsonDeletedStateReport } from "./parameter-catalog-allowlist/issue1018JsonDeletedStateReadSuccessor.proof";
 import {
   postCutoverRelocationRecordPath,
@@ -983,11 +984,45 @@ describe("parameter catalog boundary checker", () => {
     "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
-      const [actual1021NativeReport, fixture] = await Promise.all([
+      const [actual1022NativeReport, fixture] = await Promise.all([
         checkParameterCatalogBoundaries(repoRoot, "9b3ba7df7e21f5589684bc92c872da593ad4c246"),
         loadBoundaryViolationFixture(repoRoot),
       ]);
       const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
+      const actual1022Before = structuredClone(actual1022NativeReport);
+      const actual1021NativeReport = await historicalIssue1022DtsFixtureReport(repoRoot, nativeAllowances, actual1022NativeReport);
+      expect(actual1022NativeReport.summary).toEqual({
+        violations: 3_522, allowlisted: 3_380, unallowlisted: 142,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      const discoveryFirst = actual1022NativeReport.violations[0]!;
+      for (const violations of [actual1022NativeReport.violations.slice(1), [...actual1022NativeReport.violations].reverse(),
+        [...actual1022NativeReport.violations, discoveryFirst],
+        actual1022NativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+        actual1022NativeReport.violations.map((entry, index) => index === 1 ? discoveryFirst : entry)]) {
+        await expect(historicalIssue1022DtsFixtureReport(repoRoot, nativeAllowances,
+          { ...actual1022NativeReport, violations })).rejects.toThrow(/complete current native/);
+      }
+      for (const changed of [
+        { ...actual1022NativeReport, status: "passed" as const },
+        { ...actual1022NativeReport, summary: { ...actual1022NativeReport.summary, unallowlisted: 0 } },
+        { ...actual1022NativeReport, unallowlisted: actual1022NativeReport.unallowlisted.slice(1) },
+        { ...actual1022NativeReport, relocations: actual1022NativeReport.relocations.slice(1) },
+        { ...actual1022NativeReport, relocations: [...actual1022NativeReport.relocations].reverse() },
+        { ...actual1022NativeReport, relocations: actual1022NativeReport.relocations.map((entry, index) => index === 0
+          ? { ...entry, observed: { ...entry.observed, byteStart: entry.observed.byteStart + 1 } } : entry) },
+        { ...actual1022NativeReport, staleAllowances: [nativeAllowances[0]!] },
+        { ...actual1022NativeReport, allowlistGrowth: [nativeAllowances[0]!] },
+        { ...actual1022NativeReport, metadataMismatches: [{ id: discoveryFirst.id,
+          file: discoveryFirst.file, rule: discoveryFirst.rule, expectedReason: discoveryFirst.reason, actualReason: "changed" }] },
+      ]) await expect(historicalIssue1022DtsFixtureReport(repoRoot, nativeAllowances, changed))
+        .rejects.toThrow(/complete current native/);
+      for (const permissions of [nativeAllowances.slice(1), [...nativeAllowances].reverse(), [...nativeAllowances, nativeAllowances[0]!],
+        nativeAllowances.map((entry, index) => index === 0 ? { ...entry, reason: `${entry.reason}-changed` } : entry)]) {
+        await expect(historicalIssue1022DtsFixtureReport(repoRoot, permissions, actual1022NativeReport))
+          .rejects.toThrow(/complete allowances/);
+      }
+      expect(actual1022NativeReport).toEqual(actual1022Before);
       const actual1021Before = structuredClone(actual1021NativeReport);
       const finalNativeReport = await historicalIssue1021StructuralSpecReport(repoRoot, nativeAllowances, actual1021NativeReport);
       expect(actual1021NativeReport.summary).toEqual({
