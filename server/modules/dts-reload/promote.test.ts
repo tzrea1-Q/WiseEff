@@ -11,6 +11,7 @@ import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { AuthContext } from "../auth/types";
 import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
 import { submitCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
+import { readOwnedCurrentBinding } from "../parameter-bindings/values";
 import { parseDtsValue } from "../dts";
 import { seedCanonicalParameterFixture } from "./testing/canonicalReloadFixture";
 import { getReloadCandidateRow, insertReloadRun, insertReloadRunTarget, readLibraryFingerprint } from "./repository";
@@ -176,6 +177,12 @@ describe("canonical reload promotion", () => {
     await expect(promote(runId)).rejects.toThrow("issue898 controlled audit failure");
     expect(await pendingCounts()).toEqual({ drafts: 0, requests: 0 });
     expect((await db.query("select id from project_parameter_file_candidates")).rows).toEqual(candidatesBefore);
-    expect((await db.query<{ current_value_id: string }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [fixture.bindingId])).rows[0]!.current_value_id).toBe(fixture.currentValueId);
+    const current = await readOwnedCurrentBinding(db, {
+      organizationId: fixture.organizationId,
+      projectId: fixture.projectId,
+      bindingId: fixture.bindingId,
+    });
+    if (current.status !== "current") throw new Error("Canonical rollback binding is not current");
+    expect(current.binding.currentValueId).toBe(fixture.currentValueId);
   });
 });
