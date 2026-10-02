@@ -23,6 +23,7 @@ import {
 import { exactRelocationRecordPath } from "./parameter-catalog-allowlist/exactRelocation";
 import { historicalIssue1016ModuleReport } from "./parameter-catalog-allowlist/issue1016ModuleReadHeadersSuccessor";
 import { historicalIssue1017ApprovedPrepareReport } from "./parameter-catalog-allowlist/issue1017ApprovedPrepareRetirement.proof";
+import { historicalIssue1019DtsReloadCurrentTipReport } from "./parameter-catalog-allowlist/issue1019DtsReloadCurrentTipReadSuccessor.proof";
 import { historicalIssue1018JsonDeletedStateReport } from "./parameter-catalog-allowlist/issue1018JsonDeletedStateReadSuccessor.proof";
 import {
   postCutoverRelocationRecordPath,
@@ -980,11 +981,58 @@ describe("parameter catalog boundary checker", () => {
     "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
-      const [actualNativeReport, fixture] = await Promise.all([
+      const [currentNativeReport, fixture] = await Promise.all([
         checkParameterCatalogBoundaries(repoRoot, "9b3ba7df7e21f5589684bc92c872da593ad4c246"),
         loadBoundaryViolationFixture(repoRoot),
       ]);
       const nativeAllowances = (await loadAllowlistIndex(repoRoot)).entries;
+      const currentBeforeProjection = structuredClone(currentNativeReport);
+      const actualNativeReport = await historicalIssue1019DtsReloadCurrentTipReport(repoRoot, nativeAllowances, currentNativeReport);
+      expect(currentNativeReport.summary).toEqual({
+        violations: 3_530, allowlisted: 3_380, unallowlisted: 150,
+        staleAllowances: 0, metadataMismatches: 0, allowlistGrowth: 0,
+      });
+      const finalFirst = currentNativeReport.violations[0]!;
+      for (const violations of [currentNativeReport.violations.slice(1), [...currentNativeReport.violations].reverse(),
+        [...currentNativeReport.violations, finalFirst],
+        currentNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, id: `${entry.id}-substituted` } : entry),
+        currentNativeReport.violations.map((entry, index) => index === 1 ? finalFirst : entry),
+        currentNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, byteStart: entry.byteStart + 1 } : entry),
+        currentNativeReport.violations.map((entry, index) => index === 0 ? { ...entry, evidence: `${entry.evidence}-changed` } : entry)]) {
+        await expect(historicalIssue1019DtsReloadCurrentTipReport(repoRoot, nativeAllowances,
+          { ...currentNativeReport, violations })).rejects.toThrow(/complete current native/);
+      }
+      for (const changed of [
+        { ...currentNativeReport, status: "passed" as const },
+        { ...currentNativeReport, summary: { ...currentNativeReport.summary, unallowlisted: 0 } },
+        { ...currentNativeReport, unallowlisted: currentNativeReport.unallowlisted.slice(1) },
+        { ...currentNativeReport, relocations: currentNativeReport.relocations.map((entry, index) => index === 0
+          ? { ...entry, observed: { ...entry.observed, byteEnd: entry.observed.byteEnd + 1 } } : entry) },
+        { ...currentNativeReport, summary: { ...currentNativeReport.summary, allowlistGrowth: 1 } },
+        { ...currentNativeReport, staleAllowances: [nativeAllowances[0]!] },
+        { ...currentNativeReport, allowlistGrowth: [nativeAllowances[0]!] },
+        { ...currentNativeReport, metadataMismatches: [{ id: finalFirst.id,
+          expected: { file: finalFirst.file, rule: finalFirst.rule, reason: finalFirst.reason },
+          actual: { file: finalFirst.file, rule: finalFirst.rule, reason: `${finalFirst.reason}-changed` } }] },
+      ]) await expect(historicalIssue1019DtsReloadCurrentTipReport(repoRoot, nativeAllowances, changed))
+        .rejects.toThrow(/complete current native/);
+      for (const entry of currentNativeReport.violations.filter(({ file }) =>
+        file === "server/modules/dts-reload/canonicalReload.integration.test.ts")) {
+        for (const property of ["file", "family", "rule", "reason", "token", "evidence", "trustedBaseSha", "trustedBlobOid", "byteStart", "byteEnd", "line", "column"] as const) {
+          const violations = currentNativeReport.violations.map((item) => item.id === entry.id
+            ? { ...item, [property]: typeof item[property] === "number" ? Number(item[property]) + 1 : `${item[property]}-changed` }
+            : item);
+          await expect(historicalIssue1019DtsReloadCurrentTipReport(repoRoot, nativeAllowances,
+            { ...currentNativeReport, violations })).rejects.toThrow(/complete current native/);
+        }
+      }
+      for (const permissions of [nativeAllowances.slice(1), [...nativeAllowances, nativeAllowances[0]!],
+        nativeAllowances.map((entry, index) => index === 0 ? { ...entry, reason: `${entry.reason}-changed` } : entry)]) {
+        await expect(historicalIssue1019DtsReloadCurrentTipReport(repoRoot, permissions, currentNativeReport))
+          .rejects.toThrow(/complete allowances/);
+      }
+      expect(currentNativeReport).toEqual(currentBeforeProjection);
+
       const nativeBeforeProjection = structuredClone(actualNativeReport);
       const preparedNativeReport = await historicalIssue1018JsonDeletedStateReport(repoRoot, nativeAllowances, actualNativeReport);
       const historicalPrepareStage = await historicalIssue1017ApprovedPrepareReport(repoRoot, nativeAllowances, preparedNativeReport);

@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "baseHead": "a8cfc2d3411dfa2d3055f5e7d970a4cbf819edc1",
+  "ownerHead": "99c8a0ad639d39c04fb183e16cd09868c0313a8e",
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "source": {
+    "file": "server/modules/dts-reload/canonicalReload.integration.test.ts",
+    "oldBlob": "df01553dc596f607331583dabaa41a4eb5539094",
+    "currentBlob": "f6905e78e243e738c59f705aa5a3bdd46f5858ed",
+    "oldByteCount": 20161,
+    "currentByteCount": 20332,
+    "oldSha256": "5c5679330b600af12496eb584de2e84804a18c8cf0e4ba71d3d4bb3b29564654",
+    "currentSha256": "a0e07a7f03dfce8961334d4a3430b16765645c6b821389449956ce73a9387d14"
+  },
+  "readers": [
+    {
+      "file": "server/modules/parameter-bindings/values/index.ts",
+      "blob": "3c67f2d9e6ce163103e2dd7ab1990cb7276485a0",
+      "byteCount": 1103,
+      "sha256": "ed3e85936f885c685710493818f8c4371b808b4940cbf9d7defa47296c956e5b"
+    },
+    {
+      "file": "server/modules/parameter-bindings/values/service.ts",
+      "blob": "193ef4a78709b4ad3ce4226f052eea4fa0a077fa",
+      "byteCount": 27514,
+      "sha256": "438d899fcb9ca6ff39ce446a4d071e96449dcf526c47b0d1e83815f3929ac72e"
+    },
+    {
+      "file": "server/modules/parameter-bindings/values/repositories.ts",
+      "blob": "8cfc870064f4e7b9376d1d87db8752cfb694c18b",
+      "byteCount": 29988,
+      "sha256": "197130e591a48b4030caa47247dcb9da76d25c6501c38b5449a5bafd217b5e47"
+    },
+    {
+      "file": "server/modules/dts-reload/testing/canonicalServiceFixture.ts",
+      "blob": "58fd8740fabc54acd4cf4284b3895328cc255605",
+      "byteCount": 21276,
+      "sha256": "f2c905541c5c97a0e4c80979948830e369e9b381a40ce4a7fe9101a7bf14d853"
+    },
+    {
+      "file": "server/modules/dts-reload/testing/controlledReloadBridge.ts",
+      "blob": "25c3f7aa4e453c76f3059854e1a4c506fe322b27",
+      "byteCount": 4384,
+      "sha256": "3e0adc495d61f1cec3709e5d4c3ee2f30f43f7236ca37c9f2e60da70f223aaf5"
+    }
+  ],
+  "changes": [
+    {
+      "oldStart": 788,
+      "oldEnd": 788,
+      "currentStart": 788,
+      "currentEnd": 860,
+      "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "currentSha256": "f33e1916eb0f925d0d9f0933175f194142da9a652d0493aff821f769291cf40f"
+    },
+    {
+      "oldStart": 2213,
+      "oldEnd": 2457,
+      "currentStart": 2285,
+      "currentEnd": 2628,
+      "oldSha256": "24a8d8ed9a544e1e3c96a89f62558554995ca27e2b2a295e168e3f3b6986287b",
+      "currentSha256": "36edd4557fd778d27168c3034db4d4c9c65769e01fc3c5c1dd4842be9ea9078f"
+    }
+  ],
+  "unchangedRegionsSha256": [
+    "cd885e19473d0c8b3b84325b615e3373c1706a759035860af38e8344c354facb",
+    "2e4f4cbd677fbc1f1c2bc7d26a7b13485753dfff34ddab35d8698d55ce784716",
+    "37d307c2d9d6b554eb2e1299c3535333bf6e3d40ee0fb186e10732e35b8ae741"
+  ],
+  "retired": [
+    {
+      "id": "S12-DTS:canonical-catalog-raw-access:fa2a05f28cd0b0d5:4cf985c1774f882a",
+      "family": "S12-DTS",
+      "rule": "canonical-catalog-raw-access",
+      "file": "server/modules/dts-reload/canonicalReload.integration.test.ts",
+      "line": 48,
+      "column": 7,
+      "byteStart": 2311,
+      "byteEnd": 2398,
+      "token": "canonical:parameter_catalog.project_parameter_bindings",
+      "evidence": "parameter_catalog.project_parameter_bindings: select current_value_id from parameter_catalog.project_parameter_bindings where id=$1",
+      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      "trustedBlobOid": "df01553dc596f607331583dabaa41a4eb5539094"
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:27fe112a5742ad5d:4a6d679ca53a93db",
+      "family": "S12-DTS",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/canonicalReload.integration.test.ts",
+      "line": 48,
+      "column": 7,
+      "byteStart": 2311,
+      "byteEnd": 2398,
+      "token": "read:project_parameter_bindings",
+      "evidence": "read project_parameter_bindings: select current_value_id from parameter_catalog.project_parameter_bindings where id=$1",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      "trustedBlobOid": "df01553dc596f607331583dabaa41a4eb5539094"
+    }
+  ],
+  "pairs": [
+    {
+      "old": {
+        "id": "S12-DTS:legacy-catalog-raw-read:2dde3978fe6a6b0a:093880eb952a4645",
+        "family": "S12-DTS",
+        "rule": "legacy-catalog-raw-read",
+        "file": "server/modules/dts-reload/canonicalReload.integration.test.ts",
+        "line": 119,
+        "column": 7,
+        "byteStart": 5933,
+        "byteEnd": 6144,
+        "token": "read:project_parameter_bindings",
+        "evidence": "read project_parameter_bindings: select (select count(*) from public.project_parameter_bindings where organization_id=$1)::text as bindings, (select count(*) from public.parameter_drafts where organization_id=$1)::text as drafts",
+        "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "df01553dc596f607331583dabaa41a4eb5539094"
+      },
+      "current": {
+        "id": "S12-DTS:legacy-catalog-raw-read:2dde3978fe6a6b0a:c16f0ba86c1f8a8e",
+        "family": "S12-DTS",
+        "rule": "legacy-catalog-raw-read",
+        "file": "server/modules/dts-reload/canonicalReload.integration.test.ts",
+        "line": 122,
+        "column": 7,
+        "byteStart": 6104,
+        "byteEnd": 6315,
+        "token": "read:project_parameter_bindings",
+        "evidence": "read project_parameter_bindings: select (select count(*) from public.project_parameter_bindings where organization_id=$1)::text as bindings, (select count(*) from public.parameter_drafts where organization_id=$1)::text as drafts",
+        "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "f6905e78e243e738c59f705aa5a3bdd46f5858ed"
+      }
+    }
+  ],
+  "spans": [
+    {
+      "oldStart": 2311,
+      "oldEnd": 2398,
+      "currentStart": null,
+      "currentEnd": null,
+      "sliceUtf8": "\"select current_value_id from parameter_catalog.project_parameter_bindings where id=$1\"",
+      "sliceSha256": "33c61427c0606a3f8e6c0edfaf0358d94d7002269a8ceb38a5574eac8a420dfc",
+      "oldContextStart": 2071,
+      "oldContextEnd": 2638,
+      "contextUtf8": "=== undefined ? {} : { body: JSON.stringify(body) })\n    });\n    return { status: response.status, body: await response.json() as T };\n  }\n\n  async function currentValueId() {\n    return (await db.query<{ current_value_id: string }>(\n      \"select current_value_id from parameter_catalog.project_parameter_bindings where id=$1\", [fixture.bindingId]\n    )).rows[0]!.current_value_id;\n  }\n\n  beforeAll(async () => {\n    database = await createManagedInstanceTestDatabase(\"898rel\");\n    db = createPostgresDatabase(database.url);\n    lease = await getRootPostgresPool(db",
+      "contextSha256": "a21cb9bc9bcf01cdccf338c29953d6613988d5eb5c7907783a57d64835998782"
+    },
+    {
+      "oldStart": 5933,
+      "oldEnd": 6144,
+      "currentStart": 6104,
+      "currentEnd": 6315,
+      "sliceUtf8": "`select (select count(*) from public.project_parameter_bindings where organization_id=$1)::text as bindings,\n              (select count(*) from public.parameter_drafts where organization_id=$1)::text as drafts`",
+      "sliceSha256": "68c6490b0cc1f79d730a584daa2191e06fec636e1bad906c5e524bc21a23ecbf",
+      "oldContextStart": 5693,
+      "oldContextEnd": 6384,
+      "contextUtf8": "nId: fixture.configRevisionId\n      }\n    });\n    expect(candidate?.writebackSourcePin).not.toMatchObject({ sourceRef: `reload-binding:${fixture.bindingId}` });\n    const legacy = await db.query<{ bindings: string; drafts: string }>(\n      `select (select count(*) from public.project_parameter_bindings where organization_id=$1)::text as bindings,\n              (select count(*) from public.parameter_drafts where organization_id=$1)::text as drafts`,\n      [fixture.organizationId]\n    );\n    expect(legacy.rows[0]).toEqual({ bindings: \"0\", drafts: \"0\" });\n  });\n\n  it(\"runs real preflight and controlled deploy, promotes idempotently, and changes formal value only after User review\", asy",
+      "contextSha256": "55fdd9c494a650efb8c3a62fc2ef5aa6737b90b44cda73a764b24aa65dc3f6eb"
+    }
+  ],
+  "baseInventory": {
+    "summary": {
+      "violations": 3532,
+      "allowlisted": 3380,
+      "unallowlisted": 152,
+      "staleAllowances": 0,
+      "metadataMismatches": 0,
+      "allowlistGrowth": 0
+    },
+    "violationsIdsSha256": "622970f4178a46b16a1ac3bb426fbafd47da00400b62ab73bc4086b88083edd7",
+    "violationsMetadataSha256": "55714425bc9f8dece0441f31fde5e7c6c890a34838e28ef9da3c72dc55d4ed1d",
+    "unallowlistedIdsSha256": "8579ebc76712a57e3e662e2836cf63ab1e42fb6c27018855d5daa5cd958543e5",
+    "unallowlistedMetadataSha256": "672805d998d53e50fac430b940dc121b77633a2632bf393c0acd2b1e42cbae8a"
+  },
+  "currentInventory": {
+    "summary": {
+      "violations": 3530,
+      "allowlisted": 3380,
+      "unallowlisted": 150,
+      "staleAllowances": 0,
+      "metadataMismatches": 0,
+      "allowlistGrowth": 0
+    },
+    "violationsIdsSha256": "4439dea47d70df336f5b2fb871be3bec0886da32ff545792ea25df4f0ce510c5",
+    "violationsMetadataSha256": "8d16830e0bbc47ddc7f7a6128e5e588f88a8796bd6e2d1197a9c9471928f3cd9",
+    "unallowlistedIdsSha256": "9c7d1e150c524776f9952d77c8a3e73b7b1de3f81e5f1d86a85f0e71e6fd2615",
+    "unallowlistedMetadataSha256": "9b3c8690a6a0ec74156f2b2dd161217cd323800caa5f0f40ad2598e7352a4f7f"
+  },
+  "allowancesSha256": "73289375514636f9f2d36946775dcacd8a8a67897a4b118c4085ec9a67a7c935",
+  "relocationsSha256": "0b3a79fc4cc9645d7a2b24dc53b0a96fa6f8d1ff1afec64bf96221ff890b6813",
+  "rawBase": {
+    "idsSha256": "c233c47f29cf5dae2274c9c764cd51335b76c30e4b60f3940e10be033eda40dd",
+    "metadataSha256": "48f9a887c2f642e353ec51bd9982afe6e10fb56af3e5d9b37d58c6efb0491bae"
+  },
+  "rawCurrent": {
+    "idsSha256": "d134ef27145a1e679931686601cd435136fba7608d34d664a10f8d8e724f86a2",
+    "metadataSha256": "9436a1476152a935a9b023b47725edaed76879ff40969e8faaaf8d9ccc5843d0"
+  }
+}
