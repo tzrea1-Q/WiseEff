@@ -38,6 +38,7 @@ export type LogRecordDto = {
   updatedAt: string;
   submittedBy: string;
   relatedParameterId?: string;
+  relatedParameterProjectId?: string;
   relatedParameterPin?: {
     kind: "canonical-pin";
     bindingId: string;
@@ -111,6 +112,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     updatedAtIso: dto.updatedAt,
     submittedBy: dto.submittedBy,
     relatedParameterId: dto.relatedParameterId,
+    relatedParameterProjectId: dto.relatedParameterProjectId,
     device: dto.device,
     failureReason: dto.failureReason,
     analysisQuestion: dto.analysisQuestion,

@@ -8,6 +8,7 @@ import { getLogRecord } from "../logs/service";
 import { getReloadRunRecord } from "../dts-reload/service";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
 import { buildLogDistillationDraft } from "./distillation";
 import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
@@ -22,8 +23,12 @@ import {
 } from "./indexing/repository";
 import {
   countParameterReferencesForEntry,
+  deleteDefinitionReference,
   deleteParameterReference,
-  insertParameterReference,
+  hasDefinitionReference,
+  hasParameterReference,
+  insertDefinitionReference,
+  listPublishedEntriesReferencingDefinition,
   listPublishedEntriesReferencingSpec,
   resolveReferenceableSpec
 } from "./parameterReferences";
@@ -933,35 +938,58 @@ export async function addKnowledgeParameterReference(
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
   await db.transaction(async (tx) => {
+    await requireReferenceEditableEntry(tx, auth, input.entryId);
+    if (await hasParameterReference(tx, auth, input)) return;
+    throw new ApiError("CONFLICT", "Legacy Spec references are read-only; add a Catalog Definition reference instead.", {
+      reason: "legacy-reference-write-disabled",
+      entryId: input.entryId,
+      specId: input.specId,
+      requestId: context.requestId
+    });
+  });
+  const entry = await getEntryById(db, auth, input.entryId);
+  if (!entry) throw knowledgeEntryNotFound(input.entryId);
+  return entry;
+}
+
+export async function addKnowledgeDefinitionReference(
+  db: Database,
+  auth: AuthContext,
+  input: { entryId: string; definitionId: string },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  await db.transaction(async (tx) => {
     const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
-
-    const spec = await resolveReferenceableSpec(tx, auth.organization.id, input.specId);
-    if (!spec) {
-      throw new ApiError("NOT_FOUND", "Parameter definition was not found.", { specId: input.specId });
+    if (await hasDefinitionReference(tx, auth, input)) return;
+    // Read through the authenticated Catalog boundary using the root Database.
+    const definition = await readCatalogDefinitionForKnowledge(db, auth, input.definitionId, context.requestId);
+    if (definition.lifecycle === "retired") {
+      throw new ApiError("CONFLICT", "Retired Catalog Definitions cannot receive new knowledge references.", {
+        reason: "definition-retired",
+        definitionId: input.definitionId,
+        requestId: context.requestId
+      });
     }
-
-    const inserted = await insertParameterReference(tx, auth, {
+    const inserted = await insertDefinitionReference(tx, auth, {
       id: randomUUID(),
       entryId: input.entryId,
-      specId: spec.specId
+      definitionId: input.definitionId
     });
-    if (!inserted) {
-      return; // Already referenced — nothing changed, nothing to audit.
-    }
+    if (!inserted) return;
 
     await writeKnowledgeAudit(
       asAuditTx(tx),
       auth,
       {
-        kind: "knowledge-parameter-reference-add",
-        action: "parameter-reference-add",
+        kind: "knowledge-definition-reference-add",
+        action: "definition-reference-add",
         entryId: input.entryId,
         metadata: {
           title: entry.title,
-          specId: spec.specId,
-          propertyKey: spec.propertyKey,
-          driverModule: spec.driverModule,
-          lifecycle: spec.lifecycle
+          definitionId: input.definitionId,
+          propertyKey: definition.propertyKey,
+          driverModule: definition.subject.canonicalName,
+          lifecycle: definition.lifecycle
         }
       },
       context
@@ -1011,6 +1039,35 @@ export async function removeKnowledgeParameterReference(
   return entry;
 }
 
+export async function removeKnowledgeDefinitionReference(
+  db: Database,
+  auth: AuthContext,
+  input: { entryId: string; definitionId: string },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  await db.transaction(async (tx) => {
+    const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
+    const removed = await deleteDefinitionReference(tx, auth, input);
+    if (!removed) return;
+
+    await writeKnowledgeAudit(
+      asAuditTx(tx),
+      auth,
+      {
+        kind: "knowledge-definition-reference-remove",
+        action: "definition-reference-remove",
+        entryId: input.entryId,
+        metadata: { title: entry.title, definitionId: input.definitionId }
+      },
+      context
+    );
+  });
+
+  const entry = await getEntryById(db, auth, input.entryId);
+  if (!entry) throw knowledgeEntryNotFound(input.entryId);
+  return entry;
+}
+
 /**
  * Parameter-side read (定义详情 相关知识): published entries referencing one
  * definition. Published-only invariant — drafts/archived never appear here
@@ -1032,6 +1089,21 @@ export async function findRelatedKnowledgeForSpec(
 
   return {
     items: await listPublishedEntriesReferencingSpec(db, auth, { specId: spec.specId, limit: input.limit })
+  };
+}
+
+export async function findRelatedKnowledgeForDefinition(
+  db: Database,
+  auth: AuthContext,
+  input: { definitionId: string; limit?: number }
+): Promise<{ items: KnowledgeSearchResultDto[] }> {
+  requireKnowledgeView(auth);
+  await readCatalogDefinitionForKnowledge(db, auth, input.definitionId);
+  return {
+    items: await listPublishedEntriesReferencingDefinition(db, auth, {
+      definitionId: input.definitionId,
+      limit: input.limit
+    })
   };
 }
 

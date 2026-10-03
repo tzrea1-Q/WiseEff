@@ -87,6 +87,8 @@ export function ModuleEditDialog({
   defaultBusinessCategoryId = null,
   onUpdateDefaultBusinessCategory,
   onReplayPlacement,
+  onManageCanonicalPlacement,
+  legacyControlsAreHistorical = false,
 }: {
   module: EditableModule;
   existingNames: readonly string[];
@@ -120,6 +122,8 @@ export function ModuleEditDialog({
   defaultBusinessCategoryId?: string | null;
   onUpdateDefaultBusinessCategory?: (defaultBusinessCategoryId: string) => void | Promise<void>;
   onReplayPlacement?: () => void | Promise<DriverPlacementReplayCounts>;
+  onManageCanonicalPlacement?: () => void;
+  legacyControlsAreHistorical?: boolean;
 }) {
   const addFieldId = useId();
   const defaultCategoryLabelId = useId();
@@ -157,6 +161,8 @@ export function ModuleEditDialog({
     module.kind === "driver-group" &&
     canAdmin &&
     (onUpdateDefaultBusinessCategory !== undefined || onReplayPlacement !== undefined);
+  const showCanonicalPlacementEntry =
+    module.kind === "driver-group" && canAdmin && onManageCanonicalPlacement !== undefined;
 
   useEffect(() => {
     setDraft({
@@ -325,11 +331,17 @@ export function ModuleEditDialog({
           {showPlacementControls ? (
             <section
               className="module-edit-section module-edit-placement-controls"
-              aria-label="业务归属"
+              aria-label={legacyControlsAreHistorical ? "历史驱动登记" : "业务归属"}
             >
               <div className="module-edit-section__head">
-                <h3>业务归属</h3>
-                <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategoryHint}</p>
+                <h3>{legacyControlsAreHistorical ? "历史驱动登记" : "业务归属"}</h3>
+                {legacyControlsAreHistorical ? (
+                  <p className="muted">
+                    以下控件只作用于旧版驱动登记，不会修改规范主体归属。
+                  </p>
+                ) : (
+                  <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategoryHint}</p>
+                )}
               </div>
               {onUpdateDefaultBusinessCategory ? (
                 <div className="module-edit-placement-controls__field">
@@ -378,6 +390,22 @@ export function ModuleEditDialog({
                 </div>
               ) : null}
               {replayMessage ? <p role="status">{replayMessage}</p> : null}
+            </section>
+          ) : null}
+
+          {showCanonicalPlacementEntry ? (
+            <section className="module-edit-section" aria-label="规范主体放置">
+              <div className="module-edit-section__head">
+                <h3>规范主体放置</h3>
+                <p className="muted">规范主体登记与模块归属请在页面上方的规范主体面板中管理。</p>
+              </div>
+              <button
+                type="button"
+                className="button subtle"
+                onClick={onManageCanonicalPlacement}
+              >
+                管理规范主体与归属
+              </button>
             </section>
           ) : null}
 

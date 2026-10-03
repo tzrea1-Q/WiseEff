@@ -65,6 +65,139 @@ const mappings: ParameterModuleMapping[] = [
 ];
 
 describe("ModuleAttributionTree", () => {
+  it("routes canonical-only driver groups to canonical placement without legacy actions", () => {
+    const onUpdateDriverRegistrationDefault = vi.fn();
+    const onReplayDriverPlacement = vi.fn();
+    const onOpenCanonicalPlacement = vi.fn();
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        driverRegistrationByModuleId={new Map([
+          ["mod-group", {
+            driverNature: null,
+            instanceCardinality: null,
+            defaultBusinessCategoryId: null
+          }]
+        ])}
+        canonicalModeEnabled
+        canonicalPlacementAvailable
+        onOpenCanonicalPlacement={onOpenCanonicalPlacement}
+        onUpdateModule={vi.fn()}
+        onUpdateDriverRegistrationDefault={onUpdateDriverRegistrationDefault}
+        onReplayDriverPlacement={onReplayDriverPlacement}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
+    expect(within(dialog).queryByRole("region", { name: "业务归属" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "管理规范主体与归属" }));
+    expect(onOpenCanonicalPlacement).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog", { name: "SC8562" })).not.toBeInTheDocument();
+    expect(onUpdateDriverRegistrationDefault).not.toHaveBeenCalled();
+    expect(onReplayDriverPlacement).not.toHaveBeenCalled();
+  });
+
+  it("labels historical driver controls while keeping canonical placement available", () => {
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        driverRegistrationByModuleId={new Map([
+          ["mod-group", {
+            driverNature: "physical-device",
+            instanceCardinality: "multiple",
+            defaultBusinessCategoryId: null
+          }]
+        ])}
+        canonicalModeEnabled
+        canonicalPlacementAvailable
+        onOpenCanonicalPlacement={vi.fn()}
+        onUpdateModule={vi.fn()}
+        onUpdateDriverRegistrationDefault={vi.fn()}
+        onReplayDriverPlacement={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
+    expect(within(dialog).getByRole("region", { name: "历史驱动登记" })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("默认业务分类")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "从注册回放放置" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "规范主体放置" })).toBeInTheDocument();
+  });
+
+  it("keeps legacy placement controls when canonical mode is disabled", () => {
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        driverRegistrationByModuleId={new Map([
+          ["mod-group", {
+            driverNature: null,
+            instanceCardinality: null,
+            defaultBusinessCategoryId: null
+          }]
+        ])}
+        onUpdateModule={vi.fn()}
+        onUpdateDriverRegistrationDefault={vi.fn()}
+        onReplayDriverPlacement={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
+    expect(within(dialog).getByRole("region", { name: "业务归属" })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("默认业务分类")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "从注册回放放置" })).toBeInTheDocument();
+  });
+
+  it("suppresses legacy placement actions if canonical mode is enabled but its panel is unavailable", () => {
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        driverRegistrationByModuleId={new Map([
+          ["mod-group", {
+            driverNature: null,
+            instanceCardinality: null,
+            defaultBusinessCategoryId: null
+          }]
+        ])}
+        canonicalModeEnabled
+        onUpdateModule={vi.fn()}
+        onUpdateDriverRegistrationDefault={vi.fn()}
+        onReplayDriverPlacement={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
+    expect(within(dialog).queryByRole("region", { name: "业务归属" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("region", { name: "规范主体放置" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
+  });
+
   it("scopes actions by kind and shows compatible rule summary on the driver-group row", () => {
     const onDelete = vi.fn();
     const onRemoveMapping = vi.fn();

@@ -181,6 +181,7 @@ describe("createParameterFileClient", () => {
           bindingId: "binding-1",
           sourcePinId: "pin-1",
           proofToken: "proof-1",
+          request: { id: "receipt-1", status: "withdrawn", kind: "batch" },
           before: "old",
           after: "new"
         }
@@ -193,7 +194,7 @@ describe("createParameterFileClient", () => {
 
     await expect(client.getSourceWorkflow("project/1", "file/1")).resolves.toMatchObject({ canonical: true });
     await expect(client.getCandidateSourcePreview("project/1", "candidate/1")).resolves.toMatchObject({
-      sourcePinId: "pin-1"
+      sourcePinId: "pin-1", request: { id: "receipt-1", status: "withdrawn", kind: "batch" }
     });
     await client.submitCandidateSourceReview("project/1", "candidate/1", {
       expectedCurrentVersionId: "version-1",

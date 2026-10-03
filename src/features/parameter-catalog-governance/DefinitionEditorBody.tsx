@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { SpecRelatedKnowledgeSection, type SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
@@ -43,6 +44,7 @@ export type DefinitionEditorBodyProps = {
   catalog: ParameterCatalogRepository;
   catalogReleaseId: string;
   definition: CatalogDefinitionResponse["item"];
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
   subjects: readonly CatalogSubjectResponse["item"][];
   /**
    * Authorized projects of the current organization. Selection is explicit: the
@@ -198,6 +200,7 @@ export function DefinitionEditorBody({
   catalog,
   catalogReleaseId,
   definition,
+  relatedKnowledge,
   subjects,
   createIdempotencyKey,
   onCompleted,
@@ -467,6 +470,7 @@ export function DefinitionEditorBody({
           <span className="parameter-catalog__muted">{`修订 #${definition.currentRevision.revisionNumber}`}</span>
           <code className="definition-editor__id">{definition.id}</code>
         </header>
+        {relatedKnowledge ? <SpecRelatedKnowledgeSection specId={definition.id} source={relatedKnowledge} /> : null}
 
         {authoringAllowed ? (
           <div className="definition-editor__form">

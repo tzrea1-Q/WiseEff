@@ -336,7 +336,8 @@ describe("log routes", () => {
           fileObjectId: "file-1",
           fileName: "charging-foldback.log",
           analysisQuestion: "Why did fast charging fold back?",
-          relatedParameterId: "param-1"
+          relatedParameterId: "param-1",
+          relatedParameterPin: { kind: "canonical-pin", projectId: "project-1", bindingId: "param-1" }
         })
       }
     );
@@ -350,7 +351,8 @@ describe("log routes", () => {
         fileObjectId: "file-1",
         fileName: "charging-foldback.log",
         analysisQuestion: "Why did fast charging fold back?",
-        relatedParameterId: "param-1"
+        relatedParameterId: "param-1",
+        relatedParameterPin: { kind: "canonical-pin", projectId: "project-1", bindingId: "param-1" }
       },
       { requestId: "test-request" }
     );

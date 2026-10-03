@@ -3,10 +3,13 @@ import type { Queryable } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 
 import {
+  CatalogReleaseId,
+  CatalogSubjectId,
   DefinitionRevisionId,
   ParameterBindingId,
   ParameterDefinitionId,
   ProjectValueId,
+  SubjectRegistrationId,
 } from "../../parameter-catalog-contract/index";
 import type { Binding } from "../binding";
 
@@ -41,6 +44,7 @@ import {
 import type {
   AppendProjectValueCommand,
   MutateExistingProjectValueCommand,
+  OwnedCurrentBindingRead,
   ProjectValue,
   ProjectValueConflict,
   ProjectValueHistoryQuery,
@@ -119,10 +123,53 @@ export async function hasDeletedCurrentValue(tx: Queryable, input: { organizatio
   return (await loadProjectValueById(tx as ValueClient, binding.current_value_id))?.value_state === "deleted";
 }
 
-export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+/** Exact scoped identity, not replacement-following lookup. A retained base
+ * row is never current. Locks use the caller's Queryable, without a new connection. */
+export async function readOwnedCurrentBinding(
+  tx: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string; lock?: boolean },
+): Promise<OwnedCurrentBindingRead> {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId)) return { status: "missing" };
+  const row = await loadBindingById(tx as ValueClient, input.bindingId, input.lock ? "update" : "none", { ...input, currentOnly: true });
+  if (!row) {
+    const retained = await loadBindingById(tx as ValueClient, input.bindingId, "none", input);
+    return { status: retained ? "replaced" : "missing" };
+  }
+  return {
+    status: "current",
+    binding: {
+      id: ParameterBindingId(row.id),
+      organizationId: row.organization_id,
+      projectId: row.project_id,
+      logicalNodeId: row.logical_node_id,
+      sourceOccurrenceId: row.source_occurrence_id,
+      registrationId: SubjectRegistrationId(row.registration_id),
+      subjectId: CatalogSubjectId(row.subject_id),
+      definitionId: ParameterDefinitionId(row.definition_id),
+      effectiveRevisionId: DefinitionRevisionId(row.effective_revision_id),
+      currentValueId: ProjectValueId(row.current_value_id),
+      catalogReleaseId: CatalogReleaseId(row.catalog_release_id),
+    },
+  };
+}
+
+export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string; lock?: boolean }) {
   assertSourceReadScope(input);
   if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return null;
   return queryOwnedProjectValueSourcePin(tx,input);
+}
+
+/** Exact historical identity, including replaced Bindings and non-current
+ * values. Never substitute a current tip for the caller's immutable value ID. */
+export async function readOwnedProjectValueIdentity(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return null;
+  const binding = await loadBindingById(tx as ValueClient, input.bindingId, "none", input);
+  if (!binding || binding.organization_id !== input.organizationId || binding.project_id !== input.projectId) return null;
+  const value = await loadProjectValueById(tx as ValueClient, input.projectValueId);
+  if (!value || value.binding_id !== binding.id) return null;
+  return { bindingId: binding.id, definitionId: binding.definition_id, definitionRevisionId: value.definition_revision_id };
 }
 
 export async function isCurrentGovernedSourceValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {

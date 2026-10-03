@@ -11,6 +11,7 @@ import { createManagedInstanceTestDatabase, type EphemeralTestDatabase } from ".
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createLocalAuthService } from "../auth/localAuth";
 import { createDebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";
+import { readOwnedCurrentBinding } from "../parameter-bindings/values";
 import { seedCanonicalParameterFixture } from "./testing/canonicalReloadFixture";
 import { createControlledReloadBridge } from "./testing/controlledReloadBridge";
 import type { ReloadCandidateDto, ReloadRunDto } from "./types";
@@ -44,9 +45,11 @@ describe("canonical-only DTS reload HTTP acceptance (#898)", () => {
   }
 
   async function currentValueId() {
-    return (await db.query<{ current_value_id: string }>(
-      "select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [fixture.bindingId]
-    )).rows[0]!.current_value_id;
+    const current = await readOwnedCurrentBinding(db, {
+      organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId
+    });
+    if (current.status !== "current") throw new Error("Reload Binding must remain current.");
+    return current.binding.currentValueId;
   }
 
   beforeAll(async () => {

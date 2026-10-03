@@ -6,16 +6,20 @@ import {
   type RelocationOutcome,
   type RuntimeTopologyRelocation,
 } from "./runtimeTopologyRelocation";
-import { t14FamilySuccessorRelocationConfig } from "./t14FamilySuccessorRelocation";
+import { applyReviewedT14FamilySuccessorRelocation, t14FamilySuccessorRelocationConfig,
+  verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
 import { t14RewrittenSliceSuccessorRelocationConfig } from "./t14RewrittenSliceSuccessorRelocation";
 import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
 import { loadIssue853DRetiredSourceIds } from "./issue853DRelocation";
+import { applyReviewedIssue1016ModuleReadHeadersSuccessor } from "./issue1016ModuleReadHeadersSuccessor";
 
 const repositoryFile = "server/modules/parameter-modules/repository.ts";
 const serviceTestFile = "server/modules/parameter-modules/service.test.ts";
 
 export const issue913T14SuccessorPairCount = 45;
-export const issue913T14ExpectedActiveRelocationCount = 267;
+// Fifteen Knowledge aliases are now authenticated against the #903 successor below.
+// The full frozen T14 historical record is still checked before this active subset runs.
+export const issue913T14ExpectedActiveRelocationCount = 252;
 export const issue913T14RetiredSourceIds = [
   "S12-MOD:legacy-catalog-table-name:860a2404dfe5c6b4:8cd263657607ec3e",
   "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:7d4a0c6f2bb42f1c",
@@ -33,6 +37,7 @@ export const issue913T14ServiceSuccessorRelocationRecordPath =
 const changedFiles = [repositoryFile, serviceTestFile] as const;
 const changedFileSet = new Set<string>(changedFiles);
 const issue853ChangedFiles = new Set([
+  "server/modules/knowledge/parameterReferences.ts",
   "server/modules/agent/tools/actionTools.ts",
   "server/modules/debugging/repository.ts",
   "server/modules/dts-reload/behaviouralVerify.ts",
@@ -110,8 +115,12 @@ export async function applyReviewedIssue913T14Relocation(
     "retired source reappeared in the current scan",
   );
 
+  const knowledgeProof = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
+  const moduleHeaders = await applyReviewedIssue1016ModuleReadHeadersSuccessor(
+    repoRoot, fixture, allowances, discovered, existingRelocations,
+  );
   const historicalAllowances = withRetiredHistoricalAllowances(
-    fixture, allowances, [...remainderRetiredIds, ...dRetiredIds],
+    fixture, knowledgeProof.historicalAllowances, [...remainderRetiredIds, ...dRetiredIds],
   );
   const [familyProof, rewrittenProof] = await Promise.all([
     verifyHistoricalRelocationProof(
@@ -130,18 +139,17 @@ export async function applyReviewedIssue913T14Relocation(
     ),
   ]);
 
-  const family = await runReviewedRelocationRecord(
+  const family = await applyReviewedT14FamilySuccessorRelocation(
     repoRoot,
     fixture,
     allowances,
-    discovered,
+    moduleHeaders.violations,
     existingRelocations,
-    {
-      ...t14FamilySuccessorRelocationConfig,
-      activeFiles: activeUnchangedFiles(t14FamilySuccessorRelocationConfig),
-    },
+    activeUnchangedFiles(t14FamilySuccessorRelocationConfig),
   );
-  requireT14(family.relocations.length === 199, "active family historical subset");
+  requireT14(familyProof.pairs.filter(({ old }) => activeUnchangedFiles(t14FamilySuccessorRelocationConfig)
+    .includes(old.file)).length === 193, "active family historical subset");
+  requireT14(family.relocations.length + knowledgeProof.retired.length === 193, "current family exact retirement partition");
 
   const familyAndPrior = [...existingRelocations, ...family.relocations];
   const rewritten = await runReviewedRelocationRecord(
@@ -155,7 +163,7 @@ export async function applyReviewedIssue913T14Relocation(
       activeFiles: activeUnchangedFiles(t14RewrittenSliceSuccessorRelocationConfig),
     },
   );
-  requireT14(rewritten.relocations.length === 23, "active rewritten historical subset");
+  requireT14(rewritten.relocations.length === 14, "active rewritten historical subset");
 
   const familyChangedPairs = familyProof.pairs.filter((pair) => changedFileSet.has(pair.old.file));
   const rewrittenChangedPairs = rewrittenProof.pairs.filter((pair) => changedFileSet.has(pair.old.file));
@@ -227,10 +235,12 @@ export async function applyReviewedIssue913T14Relocation(
     ...successorRelocations,
   ];
   requireT14(
-    relocations.length === issue913T14ExpectedActiveRelocationCount,
+    relocations.length + knowledgeProof.retired.length === issue913T14ExpectedActiveRelocationCount,
     "complete active relocation inventory",
   );
-  return { violations: service.violations, relocations };
+  // Keep the frozen 252-source partition above separate from this new current-only partition.
+  requireT14(moduleHeaders.relocations.length === 13, "current Module header successor partition");
+  return { violations: service.violations, relocations: [...relocations, ...moduleHeaders.relocations] };
 }
 
 /** The historical 49 sources must be exactly the active 45 plus the four named retirements. */
@@ -289,6 +299,14 @@ function requireExactSourceIds(
 function activeUnchangedFiles(config: RelocationConfig) {
   return config.files.map(({ file }) => file)
     .filter((file) => !changedFileSet.has(file) && !issue853ChangedFiles.has(file));
+}
+
+export async function historicalIssue913T14Allowances(
+  repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
+) {
+  const proof = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowances);
+  return withRetiredHistoricalAllowances(fixture, proof.historicalAllowances,
+    [...await loadIssue853CRemainderRetiredSourceIds(repoRoot), ...await loadIssue853DRetiredSourceIds(repoRoot)]);
 }
 
 function withRetiredHistoricalAllowances(

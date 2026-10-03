@@ -12,12 +12,14 @@ import * as service from "./service";
 import type { KnowledgeEntryDto } from "./types";
 
 vi.mock("./service", () => ({
+  addKnowledgeDefinitionReference: vi.fn(),
   addKnowledgeParameterReference: vi.fn(),
   archiveKnowledgeEntry: vi.fn(),
   createKnowledgeEntry: vi.fn(),
   distillKnowledgeFromLog: vi.fn(),
   distillKnowledgeFromReloadRun: vi.fn(),
   findRelatedKnowledgeForLog: vi.fn(),
+  findRelatedKnowledgeForDefinition: vi.fn(),
   findRelatedKnowledgeForSpec: vi.fn(),
   getKnowledgeEntry: vi.fn(),
   getKnowledgeFileContent: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock("./service", () => ({
   publishKnowledgeEntry: vi.fn(),
   rejectAgentKnowledgeDraft: vi.fn(),
   removeKnowledgeParameterReference: vi.fn(),
+  removeKnowledgeDefinitionReference: vi.fn(),
   restoreKnowledgeEntry: vi.fn(),
   restoreKnowledgeRevision: vi.fn(),
   searchKnowledge: vi.fn(),
@@ -232,11 +235,35 @@ describe("knowledge routes", () => {
     });
   });
 
+  it("GET /api/v1/knowledge/related-to-definition requires definitionId and delegates", async () => {
+    const db = makeDb();
+    vi.mocked(service.findRelatedKnowledgeForDefinition).mockResolvedValue({ items: [] });
+
+    const missing = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/related-to-definition"
+    );
+    expect(missing.status).toBe(400);
+    expect(service.findRelatedKnowledgeForDefinition).not.toHaveBeenCalled();
+
+    const response = await requestJson<{ items: unknown[] }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/related-to-definition?definitionId=pdef%3Aabc&limit=5"
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [] });
+    expect(service.findRelatedKnowledgeForDefinition).toHaveBeenCalledWith(db, makeAuth(), {
+      definitionId: "pdef:abc",
+      limit: 5
+    });
+  });
+
   it("PUT and DELETE /api/v1/knowledge/entries/:entryId/parameter-references/:specId delegate with the raw spec id", async () => {
     const db = makeDb();
     const item = entryRecord({
       parameterReferences: [
         {
+          kind: "legacy-spec",
           specId: "pspec:abc",
           propertyKey: "charge_pump_ratio",
           displayName: "充电泵比率",
@@ -247,7 +274,9 @@ describe("knowledge routes", () => {
         }
       ]
     });
-    vi.mocked(service.addKnowledgeParameterReference).mockResolvedValue(item);
+    vi.mocked(service.addKnowledgeParameterReference).mockRejectedValue(
+      new ApiError("CONFLICT", "Legacy Spec references are read-only.", { reason: "legacy-reference-write-disabled" })
+    );
     vi.mocked(service.removeKnowledgeParameterReference).mockResolvedValue(entryRecord());
 
     const added = await requestJson<{ item: typeof item }>(
@@ -255,8 +284,7 @@ describe("knowledge routes", () => {
       `/api/v1/knowledge/entries/${ENTRY_ID}/parameter-references/pspec%3Aabc`,
       { method: "PUT", body: JSON.stringify({}) }
     );
-    expect(added.status).toBe(200);
-    expect(added.body.item.parameterReferences).toHaveLength(1);
+    expect(added.status).toBe(409);
     expect(service.addKnowledgeParameterReference).toHaveBeenCalledWith(
       db,
       makeAuth(),
@@ -274,6 +302,52 @@ describe("knowledge routes", () => {
       db,
       makeAuth(),
       { entryId: ENTRY_ID, specId: "pspec:abc" },
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
+  });
+
+  it("PUT and DELETE /api/v1/knowledge/entries/:entryId/definition-references/:definitionId delegate canonical identity", async () => {
+    const db = makeDb();
+    const item = entryRecord({
+      parameterReferences: [{
+        kind: "definition",
+        definitionId: "pdef:abc",
+        availability: "current",
+        propertyKey: "charge_pump_ratio",
+        displayName: "充电泵比率",
+        driverModule: "driver:acme,sc8562",
+        lifecycle: "active",
+        createdByUserId: "user-1",
+        createdAt: "2026-08-13T00:00:00.000Z"
+      }]
+    });
+    vi.mocked(service.addKnowledgeDefinitionReference).mockResolvedValue(item);
+    vi.mocked(service.removeKnowledgeDefinitionReference).mockResolvedValue(entryRecord());
+
+    const added = await requestJson<{ item: typeof item }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      `/api/v1/knowledge/entries/${ENTRY_ID}/definition-references/pdef%3Aabc`,
+      { method: "PUT", body: JSON.stringify({}) }
+    );
+    expect(added.status).toBe(200);
+    expect(added.body.item.parameterReferences[0]).toMatchObject({ kind: "definition", definitionId: "pdef:abc" });
+    expect(service.addKnowledgeDefinitionReference).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { entryId: ENTRY_ID, definitionId: "pdef:abc" },
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
+
+    const removed = await requestJson<{ item: typeof item }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      `/api/v1/knowledge/entries/${ENTRY_ID}/definition-references/pdef%3Aabc`,
+      { method: "DELETE" }
+    );
+    expect(removed.status).toBe(200);
+    expect(service.removeKnowledgeDefinitionReference).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { entryId: ENTRY_ID, definitionId: "pdef:abc" },
       expect.objectContaining({ requestId: expect.any(String) })
     );
   });

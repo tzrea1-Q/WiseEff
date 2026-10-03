@@ -59,18 +59,6 @@
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/logs/domainsRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:1a70b383ae7e6440",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/logs/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:60440b5438bb4a26",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/logs/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]
 }

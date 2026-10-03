@@ -1,5 +1,6 @@
 import type { CatalogSnapshot } from "../../catalog-kernel/interface";
 import type {
+  CatalogReleaseId,
   ContractJsonValue,
   DefinitionRevisionId,
   ParameterBindingId,
@@ -8,6 +9,14 @@ import type {
   Result as ContractResult,
 } from "../../parameter-catalog-contract/index";
 import type { Binding } from "../binding";
+
+export type PersistedBindingReference = Omit<Binding, "catalogRelease"> & {
+  readonly catalogReleaseId: CatalogReleaseId;
+};
+
+export type OwnedCurrentBindingRead =
+  | { readonly status: "current"; readonly binding: PersistedBindingReference }
+  | { readonly status: "replaced" | "missing" };
 
 export type CanonicalValueSourcePin = {
   organizationId: string; projectId: string; bindingId: string; definitionId: string;

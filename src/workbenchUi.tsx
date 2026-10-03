@@ -14,6 +14,7 @@ export function getContextQuery(search: string) {
     projectId: params.get("project") ?? "",
     module: params.get("module") ?? "",
     parameterId: params.get("parameter") ?? "",
+    bindingId: params.get("bindingId") ?? "",
     logId: params.get("logId") ?? ""
   };
 }

@@ -18,8 +18,9 @@ import {
 describe("generateComparisonReport", () => {
   it("binds phase, pins, eleven family checksums, and a deterministic report checksum", () => {
     const context = aggregationContext("fresh", "pre-activation", FRESH_PRE_SHA);
-    const corpus = aggregateComparisonCorpus(makeFamilyContributions(context), context);
-    const report = generateComparisonReport(corpus);
+    const contributions = makeFamilyContributions(context);
+    const corpus = aggregateComparisonCorpus(contributions, context);
+    const report = generateComparisonReport(corpus, contributions, context);
     expect(report.phase).toBe("pre-activation");
     expect(report.inventoryMode).toBe("fresh");
     expect(report.candidateSha).toBe(FRESH_PRE_SHA);
@@ -33,13 +34,14 @@ describe("generateComparisonReport", () => {
     expect(report.unexplainedDifferenceCount).toBe(0);
     expect(report.unqueryableProtectedReferenceCount).toBe(0);
     expect(report.failureCodes).toEqual([]);
-    expect(generateComparisonReport(corpus).checksum).toBe(report.checksum);
+    expect(generateComparisonReport(corpus, contributions, context).checksum).toBe(report.checksum);
   });
 
   it("reused-pre-activation-after-p13 refuses identical phase reports", () => {
     const context = aggregationContext("populated", "pre-activation", POP_PRE_SHA);
+    const contributions = makeFamilyContributions(context);
     const report = generateComparisonReport(
-      aggregateComparisonCorpus(makeFamilyContributions(context), context),
+      aggregateComparisonCorpus(contributions, context), contributions, context,
     );
     try {
       assertIndependentPhaseReports(report, report);
@@ -53,11 +55,13 @@ describe("generateComparisonReport", () => {
   it("accepts independently bound pre-activation and post-p13 reports", () => {
     const preContext = aggregationContext("fresh", "pre-activation", FRESH_PRE_SHA);
     const postContext = aggregationContext("fresh", "post-p13", FRESH_POST_SHA);
+    const preContributions = makeFamilyContributions(preContext);
+    const postContributions = makeFamilyContributions(postContext);
     const pre = generateComparisonReport(
-      aggregateComparisonCorpus(makeFamilyContributions(preContext), preContext),
+      aggregateComparisonCorpus(preContributions, preContext), preContributions, preContext,
     );
     const post = generateComparisonReport(
-      aggregateComparisonCorpus(makeFamilyContributions(postContext), postContext),
+      aggregateComparisonCorpus(postContributions, postContext), postContributions, postContext,
     );
     assertIndependentPhaseReports(pre, post);
     expect(pre.checksum).not.toBe(post.checksum);
@@ -66,9 +70,11 @@ describe("generateComparisonReport", () => {
 
     const popPre = aggregationContext("populated", "pre-activation", POP_PRE_SHA);
     const popPost = aggregationContext("populated", "post-p13", POP_POST_SHA);
+    const popPreContributions = makeFamilyContributions(popPre);
+    const popPostContributions = makeFamilyContributions(popPost);
     assertIndependentPhaseReports(
-      generateComparisonReport(aggregateComparisonCorpus(makeFamilyContributions(popPre), popPre)),
-      generateComparisonReport(aggregateComparisonCorpus(makeFamilyContributions(popPost), popPost)),
+      generateComparisonReport(aggregateComparisonCorpus(popPreContributions, popPre), popPreContributions, popPre),
+      generateComparisonReport(aggregateComparisonCorpus(popPostContributions, popPost), popPostContributions, popPost),
     );
   });
 });

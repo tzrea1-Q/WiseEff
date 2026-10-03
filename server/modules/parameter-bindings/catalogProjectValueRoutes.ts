@@ -4,7 +4,7 @@
  * fingerprints. Registers the Hosted page-loop paths first so they win.
  */
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
@@ -20,6 +20,13 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { readCanonicalBatchSourceDiff, readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff";
+import { getParameterFileCandidateById } from "../parameter-files/candidateRepository";
+import { MAX_PARAMETER_SOURCE_BYTES } from "../parameter-files/jsonSource";
+import { digestCanonicalBatchDraftCompositionProof } from "./drafts/batchChangeService";
+import { getCanonicalMemberRemovalForAuth, listCanonicalMemberRemovalsForAuth,
+  reviewCanonicalMemberRemoval, submitCanonicalMemberRemoval,
+  withdrawCanonicalMemberRemoval } from "./drafts/memberRemovalChangeService";
+import { assertSingleRequestReview } from "./drafts/changeService";
 import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
@@ -38,10 +45,15 @@ import {
   createCanonicalValueDraft,
   approveCanonicalBatchValueChange,
   getCanonicalBatchValueChangeForReviewer,
+  getCanonicalBatchValueChangeForAuth,
+  listCanonicalBatchValueChangesForAuth,
   listCanonicalValueChangesForAuth,
   listCanonicalValueDraftsForUser,
   removeCanonicalValueDraft,
+  rejectCanonicalBatchValueChange,
   reviewCanonicalValueChange,
+  submitCanonicalBatchValueChange,
+  withdrawCanonicalBatchValueChange,
   submitCanonicalValueChange,
   withdrawCanonicalValueChange,
   type CanonicalValueDraftDto
@@ -107,9 +119,67 @@ async function visibleValueChangeRequests(
       organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
     });
   if (!canReadReviewQueue) return items.filter((item) => item.submitterUserId === auth.user.id);
-  return input.status === "pending"
-    ? items.filter((item) => item.submitterUserId !== auth.user.id)
-    : items;
+  const conflictIds = await db.query<{ id: string }>(`
+    select distinct target_id as id from audit_events
+     where organization_id=$1 and project_id=$2 and action='value-change-submitted'
+       and metadata ? 'decisionProofDigest'
+    union
+    select impact->'canonicalSourceWorkflow'->>'requestId' as id
+      from project_parameter_file_candidates
+     where organization_id=$1 and project_id=$2
+       and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null`,
+    [auth.organization.id, input.projectId]);
+  const frozenConflictIds = new Set(conflictIds.rows.map((row) => row.id));
+  return items.filter((item) => (!frozenConflictIds.has(item.id)
+    || item.assignedToUserId === auth.user.id || item.submitterUserId === auth.user.id)
+    && (input.status !== "pending" || item.submitterUserId !== auth.user.id));
+}
+
+async function visibleConflictDecision(
+  db: Database, auth: AuthContext, input: { projectId: string; requestId: string }
+) {
+  const links = await db.query<{ candidate_id: string; link: {
+    requestId: string; preparedCandidateId: string; bindingId: string; fingerprint: string;
+    conflictDecision: { choice: "file" | "draft"; selectedDraftId: string; decisionProofDigest: string }
+  } }>(`select id as candidate_id, impact->'canonicalSourceWorkflow' as link
+      from project_parameter_file_candidates
+     where organization_id=$1 and project_id=$2
+       and impact->'canonicalSourceWorkflow'->>'requestId'=$3
+      and impact->'canonicalSourceWorkflow'->'conflictDecision' is not null`,
+    [auth.organization.id, input.projectId, input.requestId]);
+  const receipts = await db.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+     where organization_id=$1 and project_id=$2 and target_id=$3
+       and action='value-change-submitted' and metadata ? 'decisionProofDigest'`,
+    [auth.organization.id, input.projectId, input.requestId]);
+  if (!links.rows.length && !receipts.rows.length) return null;
+  const requests = await visibleValueChangeRequests(db, auth, { projectId: input.projectId }, true);
+  const visible = requests.find((item) => item.id === input.requestId);
+  const mayRead = visible && (visible.submitterUserId === auth.user.id
+    || (visible.assignedToUserId === auth.user.id && canReviewParameters(auth)
+      && canReviewParameterStage(auth, input.projectId, "software_review")
+      && await hasCurrentCanonicalReviewRole(db, {
+        organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+      })));
+  if (!mayRead) throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
+  if (links.rows.length !== 1) throw new ApiError("CONFLICT", "Source conflict decision link is missing or duplicated.", {
+    reason: "conflict-decision-stale"
+  });
+  const { candidate_id: sourceCandidateId, link } = links.rows[0]!;
+  const decision = link?.conflictDecision;
+  const receipt = receipts.rows[0]?.metadata;
+  if (!decision || receipts.rows.length !== 1 || link.requestId !== visible.id
+    || link.preparedCandidateId !== visible.candidateId || link.bindingId !== visible.bindingId
+    || link.fingerprint !== decision.decisionProofDigest
+    || receipt?.sourceCandidateId !== sourceCandidateId
+    || receipt?.decisionProofDigest !== decision.decisionProofDigest
+    || receipt?.choice !== decision.choice || receipt?.selectedDraftId !== decision.selectedDraftId) {
+    throw new ApiError("CONFLICT", "Frozen source conflict decision is inconsistent.", {
+      reason: "conflict-decision-stale"
+    });
+  }
+  return { request: visible, sourceCandidateId, selectedBindingId: link.bindingId,
+    selectedDraftId: decision.selectedDraftId, choice: decision.choice,
+    decisionProofDigest: decision.decisionProofDigest };
 }
 
 function topologyDraftToValueDraftDto(draft: ParameterDraftDto): CanonicalValueDraftDto | null {
@@ -654,7 +724,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         fileName: body.fileName.trim(),
         bytes: decodeContentBase64(body.contentBase64)
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      undefined,
+      db
     );
     await syncLatestPublishedValues(db, auth, params.projectId, { requestId: request.requestId });
     return {
@@ -842,11 +914,85 @@ export function registerCatalogProjectValueConsumerRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.post("/api/v2/projects/:projectId/parameter-value-change-requests/batches", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
+    const body = parseWithSchema(z.object({
+      candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
+      reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
+      selectedDrafts: z.array(z.object({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
+      targetDecisions: z.array(z.object({ bindingId: z.string().min(1),
+        choice: z.enum(["file", "draft"]), draftId: z.string().min(1).optional(),
+        expectedConflictProofs: z.array(z.object({ draftId: z.string().min(1),
+          decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/) })).optional() })).optional()
+    }), request.body ?? {});
+    if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical batch submit requires root database.");
+    const item = await submitCanonicalBatchValueChange(db, options.objectStore, auth, {
+      projectId, ...body, invocation: createUserInvocation(auth), requestId: request.requestId,
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v2/projects/:projectId/parameter-value-change-requests/batches", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
+    const query = parseWithSchema(z.object({
+      status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional(),
+      mine: z.enum(["true", "false"]).optional()
+    }), flattenQuery(request.query));
+    const items = await listCanonicalBatchValueChangesForAuth(db, auth, {
+      projectId, status: query.status, mine: query.mine === "true"
+    });
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v2/projects/:projectId/parameter-value-change-requests/member-removals", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
+    const body = parseWithSchema(z.object({
+      configSetId: z.string().min(1), fileId: z.string().min(1),
+      reason: z.string().trim().min(1), assignedToUserId: z.string().min(1)
+    }), request.body ?? {});
+    if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical member removal requires root database.");
+    const item = await submitCanonicalMemberRemoval(db, options.objectStore, auth, {
+      projectId, ...body, invocation: createUserInvocation(auth), traceId: request.requestId,
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v2/projects/:projectId/parameter-value-change-requests/member-removals", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const { projectId } = parseWithSchema(projectBindingsParamsSchema, request.params);
+    const query = parseWithSchema(z.object({
+      status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional(),
+      mine: z.enum(["true", "false"]).optional()
+    }), flattenQuery(request.query));
+    const items = await listCanonicalMemberRemovalsForAuth(db, auth, {
+      projectId, status: query.status, mine: query.mine === "true"
+    });
+    return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/member-removal", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
+    const item = await getCanonicalMemberRemovalForAuth(db, auth, params);
+    if (!item) throw new ApiError("NOT_FOUND", "Member removal request was not found.");
+    return { status: 200, body: { item } };
+  });
+
   router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/batch", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
-    const item = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
+    const item = await getCanonicalBatchValueChangeForAuth(db, auth, params);
     if (!item) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
     return { status: 200, body: { item } };
   });
@@ -860,25 +1006,72 @@ export function registerCatalogProjectValueConsumerRoutes(
        where id=$1 and organization_id=$2 and project_id=$3`,
       [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
     if (kind === "batch") {
-      const frozen = await getCanonicalBatchValueChangeForReviewer(db, auth, params);
-      if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
-      if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
-      const item = await readCanonicalBatchSourceDiff(db, options.objectStore, auth, params);
-      if (item.requestId !== frozen.id || item.candidateId !== frozen.candidateId
-        || item.batchProofDigest !== frozen.batchProofDigest
-        || item.targets.length !== frozen.targets.length
-        || item.targets.some((target, ordinal) => {
-          const expected = frozen.targets[ordinal];
-          return !expected || target.ordinal !== ordinal || target.bindingId !== expected.bindingId
-            || target.sourcePinId !== expected.sourcePinId || target.action !== expected.action;
-        })) {
-        throw new ApiError("CONFLICT", "Batch source diff disagrees with the frozen reviewer targets.", {
-          reason: "canonical-batch-proof-mismatch"
-        });
-      }
+      const item = await db.transaction(async (tx) => {
+        const frozen = await getCanonicalBatchValueChangeForAuth(tx, auth, params);
+        if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+        if (!frozen.compositionProof && (frozen.uploadCandidateId || frozen.decisionProofDigest
+          || frozen.targets.some((target) => target.draftId !== null))) {
+          throw new ApiError("CONFLICT", "Mixed draft and file source diff needs a whole-batch composition proof.", {
+            reason: "canonical-batch-draft-composition-unavailable"
+          });
+        }
+        if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+        const source = await readCanonicalBatchSourceDiff(tx, options.objectStore, auth, params);
+        let uploadAfter: string | null = null;
+        if (frozen.compositionProof) {
+          const { decisionProofDigest, ...facts } = frozen.compositionProof;
+          const upload = await getParameterFileCandidateById(tx, {
+            organizationId: auth.organization.id, projectId: params.projectId,
+            candidateId: frozen.compositionProof.uploadCandidateId
+          });
+          const object = frozen.compositionProof.uploadObject;
+          if (decisionProofDigest !== frozen.decisionProofDigest
+            || digestCanonicalBatchDraftCompositionProof(facts) !== decisionProofDigest
+            || !upload?.storageKey || upload.storageKey !== object.storageKey
+            || upload.checksum?.replace(/^sha256:/, "") !== object.sha256
+            || upload.sizeBytes !== object.sizeBytes || upload.fileId !== frozen.fileId
+            || upload.baseVersionId !== frozen.baseVersionId || upload.format !== source.format
+            || !options.objectStore.getBounded) {
+            throw new ApiError("CONFLICT", "Frozen original upload proof is incomplete.", {
+              reason: "canonical-batch-proof-mismatch"
+            });
+          }
+          const bytes = await options.objectStore.getBounded(object.storageKey, MAX_PARAMETER_SOURCE_BYTES);
+          if (bytes.length !== object.sizeBytes
+            || createHash("sha256").update(bytes).digest("hex") !== object.sha256) {
+            throw new ApiError("CONFLICT", "Original upload bytes changed after submission.", {
+              reason: "canonical-batch-object-drift"
+            });
+          }
+          uploadAfter = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+        }
+        if (source.requestId !== frozen.id || source.candidateId !== frozen.candidateId
+          || source.batchProofDigest !== frozen.batchProofDigest
+          || source.targets.length !== frozen.targets.length
+          || source.targets.some((target, ordinal) => {
+            const expected = frozen.targets[ordinal];
+            return !expected || target.ordinal !== ordinal || target.bindingId !== expected.bindingId
+              || target.sourcePinId !== expected.sourcePinId || target.action !== expected.action;
+          })) {
+          throw new ApiError("CONFLICT", "Batch source diff disagrees with the frozen reviewer targets.", {
+            reason: "canonical-batch-proof-mismatch"
+          });
+        }
+        return {
+          ...source,
+          uploadCandidateId: frozen.uploadCandidateId,
+          decisionProofDigest: frozen.decisionProofDigest,
+          ...(frozen.compositionProof ? { uploadAfter, draftImpact: frozen.draftImpact } : {}),
+          targets: source.targets.map((target, ordinal) => ({
+            ...target, decision: frozen.targets[ordinal]!.decision,
+            draftId: frozen.targets[ordinal]!.draftId
+          }))
+        };
+      });
       return { status: 200, body: { item } };
     }
     const item = await db.transaction(async (tx) => {
+      await visibleConflictDecision(tx, auth, params);
       // Keep the current-review-role lock through the frozen single-source object read.
       const visible = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
       if (!visible.some((request) => request.id === params.requestId)) {
@@ -888,6 +1081,24 @@ export function registerCatalogProjectValueConsumerRoutes(
       return readCanonicalSourceDiff(tx, options.objectStore, auth, params);
     });
     return { status: 200,body: { item } };
+  });
+
+  router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/conflict-decision", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
+    const item = await db.transaction(async (tx) => {
+      const decision = await visibleConflictDecision(tx, auth, params);
+      if (!decision) throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
+      if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+      const sourceDiff = await readCanonicalSourceDiff(tx, options.objectStore, auth, params);
+      if (sourceDiff.bindingId !== decision.selectedBindingId
+        || sourceDiff.candidateId !== decision.request.candidateId) {
+        throw new ApiError("CONFLICT", "Frozen source conflict target disagrees with its source diff.");
+      }
+      return { ...decision, sourceDiff };
+    });
+    return { status: 200, body: { item } };
   });
 
   /**
@@ -908,7 +1119,10 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({
           decision: z.enum(["approve", "reject"]),
           note: z.string().nullable().optional(),
-          batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
+          batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+          memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
         }),
         request.body ?? {}
       );
@@ -922,20 +1136,33 @@ export function registerCatalogProjectValueConsumerRoutes(
          where id=$1 and organization_id=$2 and project_id=$3`,
         [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
       if (!requestKind) throw new ApiError("NOT_FOUND", "Canonical value request was not found.");
+      if (requestKind === "member-removal") {
+        const item = await reviewCanonicalMemberRemoval(db, options.objectStore, auth, {
+          ...params, decision: body.decision, proofDigest: body.memberProofDigest ?? "",
+          note: body.note ?? null, invocation: createUserInvocation(auth),
+          traceId: request.requestId, refusalSink: refusalAuditSink
+        });
+        return { status: 200, body: { item } };
+      }
       if (requestKind === "batch") {
         const visibleBatch = await getCanonicalBatchValueChangeForReviewer(db, auth, params, {
           invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink: refusalAuditSink
         });
         if (!visibleBatch) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
-        if (body.decision !== "approve") {
-          throw new ApiError("CONFLICT", "Batch rejection is not available through this reviewer entry.", {
-            reason: "canonical-batch-reject-unavailable"
-          });
-        }
         if (!body.batchProofDigest) {
           throw new ApiError("VALIDATION_FAILED", "The frozen batch proof digest is required.", {
             reason: "canonical-batch-proof-required"
           });
+        }
+        if (body.decision === "reject") {
+          const item = await rejectCanonicalBatchValueChange(db, auth, {
+            ...params, batchProofDigest: body.batchProofDigest,
+            draftImpactDigest: body.draftImpactDigest,
+            decisionProofDigest: body.decisionProofDigest, note: body.note ?? null,
+            invocation: createUserInvocation(auth), traceId: request.requestId,
+            refusalSink: refusalAuditSink
+          });
+          return { status: 200, body: { item } };
         }
         if (!pool || !options.objectStore) {
           throw new ApiError("INTERNAL_ERROR", "Canonical batch approval requires the root database and object storage.");
@@ -945,7 +1172,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => ({
           result: await approveCanonicalBatchValueChange(tx, options.objectStore!, auth, batchSnapshot, {
             projectId: params.projectId, requestId: params.requestId,
-            batchProofDigest: body.batchProofDigest!, note: body.note ?? null,
+            batchProofDigest: body.batchProofDigest!, draftImpactDigest: body.draftImpactDigest,
+            decisionProofDigest: body.decisionProofDigest,
+            note: body.note ?? null,
             invocation: createUserInvocation(auth), traceId: request.requestId,
             refusalSink: refusalAuditSink
           }),
@@ -953,6 +1182,8 @@ export function registerCatalogProjectValueConsumerRoutes(
         }));
         return { status: 200, body: { item } };
       }
+      // Conceal conflict requests from non-assignees before source storage or Catalog checks.
+      await assertSingleRequestReview(db, auth, params.projectId, params.requestId, true);
       let snapshot: Awaited<ReturnType<typeof loadPublishedCatalog>> = null;
       if (body.decision === "approve") {
         if (!pool) {
@@ -1097,6 +1328,24 @@ export function registerCatalogProjectValueConsumerRoutes(
       const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
       if (!refusalAuditSink) {
         throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical value withdrawal.");
+      }
+      const requestKind = (await db.query<{ request_kind: string }>(`
+        select request_kind from public.project_parameter_value_change_requests
+         where id=$1 and organization_id=$2 and project_id=$3`,
+        [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+      if (requestKind === "member-removal") {
+        const item = await withdrawCanonicalMemberRemoval(db, auth, {
+          ...params, invocation: createUserInvocation(auth), traceId: request.requestId,
+          refusalSink: refusalAuditSink
+        });
+        return { status: 200, body: { item } };
+      }
+      if (requestKind === "batch") {
+        const item = await withdrawCanonicalBatchValueChange(db, auth, {
+          ...params, invocation: createUserInvocation(auth), traceId: request.requestId,
+          refusalSink: refusalAuditSink
+        });
+        return { status: 200, body: { item } };
       }
       const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
         const withdrawn = await withdrawCanonicalValueChange(tx, auth, {

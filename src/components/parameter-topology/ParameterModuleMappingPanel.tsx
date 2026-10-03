@@ -43,6 +43,7 @@ import {
 } from "@/domain/parameter-topology/moduleRegistry";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
 import { CanonicalSubjectPlacementPanel } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
+import { CanonicalDriverDiscovery } from "@/components/parameter-admin-next/CanonicalDriverDiscovery";
 
 export type { UnmappedCompatibleHint };
 
@@ -112,6 +113,7 @@ export function ParameterModuleMappingPanel({
   const [organizationDriverSchemas, setOrganizationDriverSchemas] = useState<
     OrganizationDriverSchema[]
   >([]);
+  const [canonicalDiscoveryRefresh, setCanonicalDiscoveryRefresh] = useState(0);
 
   const refreshDiscoveryHints = async () => {
     const hints = await client.getDiscoveryHints();
@@ -147,7 +149,7 @@ export function ParameterModuleMappingPanel({
     setError(null);
     Promise.all([
       client.getRegistry(),
-      client.getDiscoveryHints(),
+      canonicalEnabled ? Promise.resolve(null) : client.getDiscoveryHints(),
       client.listDriverRegistry(),
       client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])
     ])
@@ -157,7 +159,7 @@ export function ParameterModuleMappingPanel({
         setDriverRegistry(driverList.items);
         setOrganizationDriverSchemas(schemas);
         setObservedCompatibles(
-          hints.compatibles.map((hint) =>
+          (hints?.compatibles ?? []).map((hint) =>
             toUnmappedCompatibleHint({
               compatible: hint.compatible,
               bindingCount: hint.bindingCount,
@@ -167,7 +169,7 @@ export function ParameterModuleMappingPanel({
           )
         );
         setDismissedCompatibles(
-          hints.dismissedCompatibles.map((hint) =>
+          (hints?.dismissedCompatibles ?? []).map((hint) =>
             toUnmappedCompatibleHint({
               compatible: hint.compatible,
               bindingCount: hint.bindingCount,
@@ -192,7 +194,7 @@ export function ParameterModuleMappingPanel({
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, canonicalEnabled]);
 
   const unmappedCompatibles = useMemo(
     () => filterUnmappedCompatibles(observedCompatibles, registry.mappings),
@@ -555,9 +557,10 @@ export function ParameterModuleMappingPanel({
     return ids;
   }, [overlayLinkedSpecs]);
 
-  const refreshLegacyAfterCanonicalChange = async () => {
+  const refreshAfterCanonicalChange = async () => {
+    setCanonicalDiscoveryRefresh((value) => value + 1);
     setRegistry(await client.getRegistry());
-    await Promise.all([refreshDiscoveryHints(), refreshDriverRegistry()]);
+    await refreshDriverRegistry();
   };
 
   if (loading) {
@@ -672,6 +675,18 @@ export function ParameterModuleMappingPanel({
           canonicalEnabled ? " parameter-module-mapping-panel__stack--canonical" : ""
         }`}
       >
+        {canonicalEnabled && (!canonicalCatalog || !canonicalGovernance || !canonicalOrganizationId) ? (
+          <p role="alert">规范目录发现服务不可用，请检查组织与治理接口。</p>
+        ) : null}
+        {canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? (
+          <CanonicalDriverDiscovery
+            governance={canonicalGovernance}
+            organizationId={canonicalOrganizationId}
+            onNavigate={onNavigate}
+            onAuthorOverlay={canAdmin ? (compatible) => openOverlaySchemaDraft({ compatible }) : undefined}
+            refreshKey={canonicalDiscoveryRefresh}
+          />
+        ) : null}
         {canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? (
           <CanonicalSubjectPlacementPanel
             catalog={canonicalCatalog}
@@ -681,7 +696,7 @@ export function ParameterModuleMappingPanel({
             sessionPermissions={canonicalSessionPermissions}
             canAdmin={canAdmin}
             modules={registry.modules}
-            onChanged={refreshLegacyAfterCanonicalChange}
+            onChanged={refreshAfterCanonicalChange}
           />
         ) : null}
         {activeSubView === "queue" && !canonicalEnabled ? (
@@ -710,6 +725,21 @@ export function ParameterModuleMappingPanel({
             driverCoverage={driverCoverage}
             driverCoverageDetails={driverCoverageDetails}
             driverRegistrationByModuleId={driverRegistrationByModuleId}
+            canonicalModeEnabled={canonicalEnabled}
+            canonicalPlacementAvailable={Boolean(
+              canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId
+            )}
+            onOpenCanonicalPlacement={
+              canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId
+                ? () => {
+                    window.requestAnimationFrame(() => {
+                      const panel = document.getElementById("canonical-subject-placement");
+                      panel?.scrollIntoView({ block: "start" });
+                      panel?.focus({ preventScroll: true });
+                    });
+                  }
+                : undefined
+            }
             canAdmin={canAdmin}
             busy={busy}
             hasUnclassifiedQueue={legacyQueueVisible}
@@ -819,7 +849,7 @@ export function ParameterModuleMappingPanel({
               setError(null);
               try {
                 setRegistry(await client.deleteModule(moduleId));
-                await refreshDiscoveryHints();
+                if (!canonicalEnabled) await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (deleteError) {
                 setError(presentError(deleteError, "删除模块失败，请稍后重试。"));
@@ -827,13 +857,13 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onRemoveMapping={async (mappingId) => {
+            onRemoveMapping={canonicalEnabled ? undefined : async (mappingId) => {
               setBusy(true);
               setError(null);
               try {
                 const result = await client.deleteMapping(mappingId);
                 setRegistry(result.registry);
-                await refreshDiscoveryHints();
+                if (!canonicalEnabled) await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (mappingError) {
                 setError(presentError(mappingError, "删除归属失败，请稍后重试。"));
@@ -841,7 +871,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onAddCompatibleMapping={async ({ moduleId, matchValue }) => {
+            onAddCompatibleMapping={canonicalEnabled ? undefined : async ({ moduleId, matchValue }) => {
               setBusy(true);
               setError(null);
               try {
@@ -851,7 +881,7 @@ export function ParameterModuleMappingPanel({
                   matchValue
                 });
                 setRegistry(result.registry);
-                await refreshDiscoveryHints();
+                if (!canonicalEnabled) await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (mappingError) {
                 setError(presentError(mappingError, "添加 compatible 规则失败，请稍后重试。"));
@@ -878,7 +908,7 @@ export function ParameterModuleMappingPanel({
                   });
                   setRegistry(await client.getRegistry());
                   await refreshDriverRegistry();
-                  await refreshDiscoveryHints();
+                  if (!canonicalEnabled) await refreshDiscoveryHints();
                 } else {
                   setRegistry(
                     await client.createModule({

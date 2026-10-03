@@ -10,6 +10,7 @@ import {
   type ComparisonFamily,
   type ComparisonId,
 } from "./corpusContributionSchema";
+import { checksumComparisonCorpus } from "./corpusResultSchema";
 import { ComparisonCorpusError } from "./errors";
 import {
   FRESH_POST_SHA,
@@ -139,6 +140,114 @@ describe("aggregateComparisonCorpus adversarial refusals", () => {
     );
   });
 
+  it.each([
+    ["wrong target kind", (item: ReturnType<typeof makeCase>) => ({
+      ...item, expectedDifference: { ...item.expectedDifference!, typedTarget: { kind: "subject-placement", id: "csub_ref-1" } },
+    })],
+    ["missing Subject", (item: ReturnType<typeof makeCase>) => ({
+      ...item, canonicalObservation: { status: "value" as const, value: { source: "no-subject" } },
+    })],
+    ["failed Subject observation", (item: ReturnType<typeof makeCase>) => ({
+      ...item, canonicalObservation: { status: "query-failure" as const,
+        code: "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE", detail: "source unavailable" },
+    })],
+    ["invalid Subject ID", (item: ReturnType<typeof makeCase>) => ({
+      ...item, canonicalObservation: { status: "value" as const, value: { subject: { id: " bad " } } },
+    })],
+    ["missing typed target", (item: ReturnType<typeof makeCase>) => ({
+      ...item, expectedDifference: { ...item.expectedDifference!, typedTarget: undefined, Archive: { id: "archive-ref" } },
+    })],
+  ])("refuses MOD D02 %s after a fresh contribution checksum", (_label, change) => {
+    const item = change(makeCase("MOD", "PCAT-CMP-D02-SUBJECT-IDENTITY", populated));
+    const mod = makeContribution("MOD", populated, { cases: [item], sourceInventoryCount: 1 });
+    const contributions = makeFamilyContributions(populated).map((entry) => entry.family === "MOD" ? mod : entry);
+    expectCode(() => aggregateComparisonCorpus(contributions, populated), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
+  });
+
+  it("rejects a rechecksummed forged MOD D02 target at the direct report entry", () => {
+    const contributions = makeFamilyContributions(populated);
+    const corpus = aggregateComparisonCorpus(contributions, populated);
+    const cases = corpus.cases.map((item) => item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+      ? { ...item, expectedDifference: { ...item.expectedDifference!, typedTarget: { kind: "catalog-subject", id: "csub_other" } } }
+      : item);
+    const unsigned = { ...corpus, cases };
+    const forged = { ...unsigned, checksum: checksumComparisonCorpus(unsigned) };
+    expect(forged.checksum).not.toBe(corpus.checksum);
+    expectCode(() => generateComparisonReport(forged, contributions, populated), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
+  });
+
+  it.each([true, false])("rejects a forged MOD D02 exact-equivalent at the direct report entry (target retained: %s)", (retainTarget) => {
+    const contributions = makeFamilyContributions(populated);
+    const corpus = aggregateComparisonCorpus(contributions, populated);
+    const cases = corpus.cases.map((item) => item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+      ? { ...item, result: "exact-equivalent" as const,
+          expectedDifference: retainTarget ? item.expectedDifference : null }
+      : item);
+    const unsigned = { ...corpus, cases };
+    const forged = { ...unsigned, checksum: checksumComparisonCorpus(unsigned) };
+    expectCode(() => generateComparisonReport(forged, contributions, populated), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
+  });
+
+  it("rejects a rechecksummed MOD D02 case relabeled as TOP at the direct report entry", () => {
+    const contributions = makeFamilyContributions(populated);
+    const corpus = aggregateComparisonCorpus(contributions, populated);
+    const cases = corpus.cases.map((item) => item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+      ? { ...item, family: "TOP" as const,
+          expectedDifference: { ...item.expectedDifference!, typedTarget: { kind: "catalog-subject", id: "csub_other" } } }
+      : item);
+    const unsigned = { ...corpus, cases };
+    const forged = { ...unsigned, checksum: checksumComparisonCorpus(unsigned) };
+    expectCode(() => generateComparisonReport(forged, contributions, populated), "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE");
+  });
+
+  it("rejects a fully relabeled MOD D02 case even with a fresh corpus checksum", () => {
+    const contributions = makeFamilyContributions(populated);
+    const corpus = aggregateComparisonCorpus(contributions, populated);
+    const cases = corpus.cases.map((item) => item.family === "MOD" && item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY"
+      ? { ...item, family: "TOP" as const,
+          caseId: `TOP:${item.comparisonId}:${item.protectedReference.kind}:${item.protectedReference.id}`,
+          expectedDifference: { ...item.expectedDifference!, typedTarget: { kind: "catalog-subject", id: "csub_other" } } }
+      : item);
+    const unsigned = { ...corpus, cases };
+    const forged = { ...unsigned, checksum: checksumComparisonCorpus(unsigned) };
+    expect(forged.checksum).not.toBe(corpus.checksum);
+    expectCode(() => generateComparisonReport(forged, contributions, populated), "PCAT-CMP-REPORT-INTEGRITY");
+  });
+
+  it.each(["deleted", "replaced", "duplicated"])("rejects a %s case with a fresh corpus checksum", (change) => {
+    const contributions = makeFamilyContributions(populated);
+    const corpus = aggregateComparisonCorpus(contributions, populated);
+    const cases = change === "deleted" ? corpus.cases.slice(1)
+      : change === "duplicated" ? [...corpus.cases, corpus.cases[0]!]
+        : corpus.cases.map((item, index) =>
+          index === 0 ? { ...item, caseId: `${item.caseId}-replacement` } : item);
+    const unsigned = { ...corpus, cases };
+    expectCode(
+      () => generateComparisonReport({ ...unsigned, checksum: checksumComparisonCorpus(unsigned) }, contributions, populated),
+      "PCAT-CMP-REPORT-INTEGRITY",
+    );
+  });
+
+  it("refuses missing and duplicate source families at the report entry", () => {
+    const contributions = makeFamilyContributions(populated);
+    const corpus = aggregateComparisonCorpus(contributions, populated);
+    expectCode(() => generateComparisonReport(corpus, contributions.slice(1), populated), "PCAT-CMP-MISSING-FAMILY");
+    expectCode(() => generateComparisonReport(corpus, [...contributions, contributions[0]!], populated), "PCAT-CMP-DUPLICATE-FAMILY");
+  });
+
+  it.each(["missing", "duplicate"])("rejects %s corpus family bindings after a fresh checksum", (change) => {
+    const contributions = makeFamilyContributions(populated);
+    const corpus = aggregateComparisonCorpus(contributions, populated);
+    const familyBindings = change === "missing"
+      ? corpus.familyBindings.slice(1)
+      : [...corpus.familyBindings, corpus.familyBindings[0]!];
+    const unsigned = { ...corpus, familyBindings };
+    expectCode(
+      () => generateComparisonReport({ ...unsigned, checksum: checksumComparisonCorpus(unsigned) }, contributions, populated),
+      "PCAT-CMP-REPORT-INTEGRITY",
+    );
+  });
+
   it("fresh-phase-without-real-postgres-zero-inventory refuses nonzero fresh cases", () => {
     const contributions = makeFamilyContributions(fresh).map((item) =>
       item.family === "MOD"
@@ -169,7 +278,7 @@ describe("aggregateComparisonCorpus adversarial refusals", () => {
     const corpus = aggregateComparisonCorpus(contributions, populated);
     expect(corpus.resultCounts["unexplained-difference"]).toBe(1);
     expectCode(
-      () => generateComparisonReport(corpus),
+      () => generateComparisonReport(corpus, contributions, populated),
       "PCAT-CMP-UNEXPLAINED-DIFFERENCE",
     );
   });
@@ -194,7 +303,7 @@ describe("aggregateComparisonCorpus adversarial refusals", () => {
     const corpus = aggregateComparisonCorpus(contributions, populated);
     expect(corpus.resultCounts["unqueryable/protected-reference-missing"]).toBe(1);
     expectCode(
-      () => generateComparisonReport(corpus),
+      () => generateComparisonReport(corpus, contributions, populated),
       "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
     );
   });
@@ -203,11 +312,12 @@ describe("aggregateComparisonCorpus adversarial refusals", () => {
 describe("aggregateComparisonCorpus green path", () => {
   it("aggregates eleven fresh families into a zero-case corpus and passing report", () => {
     const context = aggregationContext("fresh", "pre-activation", FRESH_PRE_SHA);
-    const corpus = aggregateComparisonCorpus(makeFamilyContributions(context), context);
+    const contributions = makeFamilyContributions(context);
+    const corpus = aggregateComparisonCorpus(contributions, context);
     expect(corpus.cases).toEqual([]);
     expect(corpus.sourceInventoryCount).toBe(0);
     expect(Object.keys(corpus.familyChecksums)).toEqual([...COMPARISON_FAMILIES]);
-    const report = generateComparisonReport(corpus);
+    const report = generateComparisonReport(corpus, contributions, context);
     expect(report.decision).toBe("passed");
     expect(report.unexplainedDifferenceCount).toBe(0);
     expect(report.unqueryableProtectedReferenceCount).toBe(0);
@@ -218,7 +328,8 @@ describe("aggregateComparisonCorpus green path", () => {
 
   it("aggregates populated families covering D01-D09 with zero unexplained and unqueryable", () => {
     const context = aggregationContext("populated", "pre-activation", POP_PRE_SHA);
-    const corpus = aggregateComparisonCorpus(makeFamilyContributions(context), context);
+    const contributions = makeFamilyContributions(context);
+    const corpus = aggregateComparisonCorpus(contributions, context);
     expect(corpus.cases.length).toBeGreaterThan(0);
     const covered = new Set(corpus.cases.map((item) => item.comparisonId));
     for (const comparisonId of [
@@ -234,7 +345,7 @@ describe("aggregateComparisonCorpus green path", () => {
     ] as const) {
       expect(covered.has(comparisonId)).toBe(true);
     }
-    const report = generateComparisonReport(corpus);
+    const report = generateComparisonReport(corpus, contributions, context);
     expect(report.unexplainedDifferenceCount).toBe(0);
     expect(report.unqueryableProtectedReferenceCount).toBe(0);
     expect(report.resultCounts["unexplained-difference"]).toBe(0);

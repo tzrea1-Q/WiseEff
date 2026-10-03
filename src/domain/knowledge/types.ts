@@ -19,21 +19,33 @@ export type KnowledgeFileMeta = {
 
 export type ParameterSpecReferenceLifecycle = "draft" | "active" | "deprecated";
 
-/**
- * Structural reference to a parameter definition. Bound to the stable
- * `parameter_specs.id` surrogate — identity corrections never break it, and a
- * deprecated definition keeps the reference with an honest 已废弃 badge.
- */
-export type KnowledgeParameterReference = {
-  specId: string;
-  propertyKey: string;
+type KnowledgeReferenceFields = {
+  propertyKey: string | null;
   displayName: string | null;
   /** Attribution-subject display name (the module humans know the definition by). */
   driverModule: string | null;
-  lifecycle: ParameterSpecReferenceLifecycle;
   createdByUserId: string | null;
   createdAt: string;
 };
+
+/** Existing Spec references remain historical identities, never canonical aliases. */
+export type KnowledgeParameterReference = KnowledgeReferenceFields & (
+  | {
+      kind?: "legacy-spec";
+      specId: string;
+      definitionId?: never;
+      lifecycle: ParameterSpecReferenceLifecycle;
+      historicalOnly?: boolean;
+      mappingStatus?: "current" | "historical" | "orphaned" | "archived" | "unmapped";
+    }
+  | {
+      kind: "definition";
+      definitionId: string;
+      specId?: never;
+      availability: "current" | "unavailable";
+      lifecycle: "active" | "deprecated" | "retired" | null;
+    }
+);
 
 export type KnowledgeEntry = {
   id: string;
@@ -159,3 +171,9 @@ export const parameterSpecReferenceLifecycleLabels: Record<ParameterSpecReferenc
   active: "已启用",
   deprecated: "已废弃"
 };
+
+export const definitionReferenceLifecycleLabels = {
+  active: "已启用",
+  deprecated: "已废弃",
+  retired: "已退役"
+} as const;

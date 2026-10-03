@@ -386,7 +386,7 @@ test.describe("canonical value workflow on real sources", () => {
       files: [expect.objectContaining({ name: "charger.dts", content: source.replace("<1000>", "<1200>") })]
     });
     await openReview("software-committer");
-    await page.getByRole("tab", { name: "历史", exact: true }).click();
+    await page.getByRole("region", { name: "软件配置审核" }).getByRole("tab", { name: "历史", exact: true }).click();
     await expect(page.getByRole("table", { name: "软件配置审核请求" })).toContainText("已批准");
     await openParameters();
     await createDraft("delete");
@@ -422,7 +422,7 @@ test.describe("canonical value workflow on real sources", () => {
     await openParameters();
     await expect(page.locator(`[data-binding-id="${bindingId}"]`)).toHaveCount(0);
     await openReview("software-committer");
-    await page.getByRole("tab", { name: "历史", exact: true }).click();
+    await page.getByRole("region", { name: "软件配置审核" }).getByRole("tab", { name: "历史", exact: true }).click();
     await expect(page.getByRole("table", { name: "软件配置审核请求" })).toContainText("已批准");
     await recordOperationEvidence({
       operationId: "PARAM-CANONICAL-VALUE-WORKFLOW-001",

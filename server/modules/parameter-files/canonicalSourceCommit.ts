@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
+import { recheckCanonicalConflictDecisionForReview } from "./canonicalFileWorkflow";
 import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
@@ -60,7 +61,7 @@ export async function assertDeletedAnchorsRemainAbsent(
   }
 }
 
-async function loadFinalDtsDeleteProof(
+export async function loadFinalDtsDeleteProof(
   db: Queryable,
   input: { configRevisionId: string; logicalNodeId: string; nodeOccurrenceId?: string; fileVersionId: string; propertyName: string },
 ) {
@@ -214,6 +215,10 @@ export async function commitCanonicalSourceRevision(
     return initial;
   }
   if (initial.status !== "pending" || !["set", "delete"].includes(initial.action) || !initial.source_pin_id || !initial.candidate_id) conflict("A pending prepared source request is required.");
+  await recheckCanonicalConflictDecisionForReview(db, storage, auth, {
+    projectId: input.projectId, requestId: initial.id, preparedCandidateId: initial.candidate_id,
+    bindingId: initial.binding_id, sourcePinId: initial.source_pin_id
+  });
   const sourceIdentity = await loadOwnedProjectValueSourcePin(db, {
     organizationId: auth.organization.id,projectId: input.projectId,bindingId: initial.binding_id,projectValueId: initial.base_current_value_id,
   });

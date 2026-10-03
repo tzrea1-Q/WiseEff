@@ -14,6 +14,12 @@ import { seedCanonicalParameterFixture } from "../dts-reload/testing/canonicalRe
 import { createControlledReloadBridge } from "../dts-reload/testing/controlledReloadBridge";
 import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { acquireDebugDeviceLease, releaseDebugDeviceLease } from "./repository";
+import { readOwnedCurrentBinding, loadOwnedProjectValueSourcePin, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
+import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../testing/labRuntimeLogins";
+import {
+  assertDebugHistoryPin, assertDebugNodeCanonicalReferenceCurrent,
+  resolveDebugNodeCanonicalReference, type CanonicalDebugReference,
+} from "./canonicalProtectedReference";
 
 // Real HTTP/auth, DB, node/snapshot/lease/audit owners; only device RPC responses
 // are controlled. The fixture has no legacy semantic parameter/binding rows.
@@ -161,15 +167,23 @@ describe("canonical-only node debugging HTTP acceptance (#898)", () => {
       decision: "approve", note: "Independent product reviewer"
     }, adminToken);
     expect(reviewed.status, JSON.stringify(reviewed.body)).toBe(200);
-    const reviewedValueId = (await db.query<{ current_value_id: string }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [fixture.bindingId])).rows[0]!.current_value_id;
+    const scope = { organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId };
+    const reviewedBinding = await readOwnedCurrentBinding(db, scope);
+    expect(reviewedBinding.status).toBe("current");
+    if (reviewedBinding.status !== "current") throw new Error("Reviewed Binding must be current.");
+    expect(reviewedBinding.binding).toMatchObject({ id: scope.bindingId, organizationId: scope.organizationId, projectId: scope.projectId });
+    const reviewedValueId = reviewedBinding.binding.currentValueId;
     expect(reviewedValueId).not.toBe(fixture.currentValueId);
     const rolledBack = await json("POST", `/api/v1/debugging/snapshots/${written.body.snapshot.id}/rollback`, { confirmationToken: "confirm-rollback" });
     expect(rolledBack.status, JSON.stringify(rolledBack.body)).toBe(200);
     expect(bridge.values.get(nodePath)).toBe("5");
     const rollback = (await db.query<{ canonical_pin: unknown }>("select canonical_pin from node_operations where id=$1", [rolledBack.body.operations[0].id])).rows[0]!;
     expect(rollback.canonical_pin).toEqual(pin);
-    const current = (await db.query<{ current_value_id: string }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [fixture.bindingId])).rows[0]!;
-    expect(current.current_value_id).toBe(reviewedValueId);
+    const current = await readOwnedCurrentBinding(db, scope);
+    expect(current.status).toBe("current");
+    if (current.status !== "current") throw new Error("Rolled-back Binding must remain current.");
+    expect(current.binding).toMatchObject({ id: scope.bindingId, organizationId: scope.organizationId, projectId: scope.projectId });
+    expect(current.binding.currentValueId).toBe(reviewedValueId);
     const calls = bridge.calls.length;
     const repeat = await json("POST", `/api/v1/debugging/snapshots/${written.body.snapshot.id}/rollback`, { confirmationToken: "confirm-rollback" });
     expect(repeat.status, JSON.stringify(repeat.body)).toBe(400);
@@ -209,5 +223,86 @@ describe("canonical-only node debugging HTTP acceptance (#898)", () => {
     expect(foreignEvents.status).toBe(200);
     expect(foreignEvents.body.items.map((item: { id: string }) => item.id)).toEqual([result.body.operation.id]);
     expect(JSON.stringify(foreignEvents.body)).not.toContain(fixture.bindingId);
+  });
+
+  it("keeps owner reads and locks on the caller transaction, while history retains the old value", async () => {
+    const scope = { organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId };
+    const before = await readOwnedCurrentBinding(db, scope);
+    expect(before.status).toBe("current");
+    const current = await resolveDebugNodeCanonicalReference(db, fixture.editorAuth, { ...scope, mode: "read" });
+    expect(current.protectedReferenceKind).toBe("canonical-pin");
+    const reference = current as CanonicalDebugReference;
+    expect(reference.currentValueId).not.toBe(fixture.currentValueId);
+    const calls = bridge.calls.length;
+    const connectionIds = new Set<number>();
+    await db.transaction(async (tx) => {
+      const sameConnection = { query: tx.query };
+      connectionIds.add((await tx.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid);
+      expect(await readOwnedCurrentBinding(sameConnection, { ...scope, lock: true })).toEqual(before);
+      // Prove the owner lock before source-cohort locking can affect a rival.
+      await expect(db.transaction(async (other) => {
+        await other.query("set local lock_timeout = '100ms'");
+        await readOwnedCurrentBinding(other, { ...scope, lock: true });
+      })).rejects.toMatchObject({ code: "55P03" });
+      await assertDebugNodeCanonicalReferenceCurrent(sameConnection, fixture.editorAuth, reference);
+      await expect(assertDebugNodeCanonicalReferenceCurrent(sameConnection, fixture.editorAuth, pin as CanonicalDebugReference))
+        .rejects.toMatchObject({ code: "CONFLICT" });
+      for (const altered of [
+        { ...reference, definitionId: "different-definition" },
+        { ...reference, effectiveRevisionId: "different-revision" },
+        { ...reference, currentValueId: fixture.currentValueId },
+      ]) {
+        await expect(assertDebugNodeCanonicalReferenceCurrent(sameConnection, fixture.editorAuth, altered))
+          .rejects.toMatchObject({ code: "CONFLICT", details: { reason: "version-drift" } });
+      }
+      await expect(assertDebugNodeCanonicalReferenceCurrent(sameConnection, fixture.editorAuth,
+        { ...reference, sourcePinId: "different-source-pin" }))
+        .rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-drift" } });
+      const historical = await assertDebugHistoryPin(sameConnection, fixture.editorAuth, pin as CanonicalDebugReference);
+      expect(historical).toEqual(pin);
+      expect(historical!.currentValueId).toBe(fixture.currentValueId);
+      expect(await readOwnedProjectValueIdentity(sameConnection, { ...scope, projectValueId: fixture.currentValueId }))
+        .toMatchObject({ definitionId: fixture.definitionId, definitionRevisionId: fixture.definitionRevisionId });
+      for (const foreign of [
+        { ...scope, organizationId: fixture.otherAuth.organization.id },
+        { ...scope, projectId: fixture.otherProjectId },
+      ]) {
+        expect(await readOwnedCurrentBinding(sameConnection, foreign)).toEqual({ status: "missing" });
+        expect(await readOwnedProjectValueIdentity(sameConnection, { ...foreign, projectValueId: fixture.currentValueId })).toBeNull();
+      }
+      connectionIds.add((await tx.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid);
+    });
+    expect(connectionIds.size).toBe(1);
+    expect(await readOwnedCurrentBinding(db, scope)).toEqual(before);
+    expect(bridge.calls).toHaveLength(calls);
+  });
+
+  it("measures the existing API LOGIN read and lock boundary without adding grants", async () => {
+    const runToken = `dbg898${process.pid}`;
+    const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken });
+    const runtimeDb = createPostgresDatabase(runtime.apiUrl);
+    const scope = { organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId };
+    try {
+      const identity = (await runtimeDb.query<{ currentUser: string; sessionUser: string; superuser: boolean; bypassRls: boolean }>(
+        `select current_user as "currentUser",session_user as "sessionUser",rolsuper as superuser,rolbypassrls as "bypassRls"
+         from pg_roles where rolname=current_user`,
+      )).rows[0]!;
+      expect(identity).toEqual({ currentUser: runtime.apiRole, sessionUser: runtime.apiRole, superuser: false, bypassRls: false });
+      console.info("DBG SQL identity", JSON.stringify(identity));
+      expect(await readOwnedCurrentBinding(runtimeDb, scope)).toEqual(await readOwnedCurrentBinding(db, scope));
+      const current = await resolveDebugNodeCanonicalReference(runtimeDb, fixture.editorAuth, { ...scope, mode: "read" });
+      expect(current.protectedReferenceKind).toBe("canonical-pin");
+      expect(await runtimeDb.transaction((tx) => assertDebugHistoryPin(tx, fixture.editorAuth, pin as CanonicalDebugReference))).toEqual(pin);
+      // The existing API role can SELECT but cannot lock this view or immutable
+      // source pins. Do not grant UPDATE or remove locks to turn this green.
+      await expect(runtimeDb.transaction((tx) => assertDebugNodeCanonicalReferenceCurrent(tx, fixture.editorAuth, current as CanonicalDebugReference)))
+        .rejects.toMatchObject({ code: "42501", message: "permission denied for view current_project_parameter_bindings" });
+      await expect(runtimeDb.transaction((tx) => loadOwnedProjectValueSourcePin(tx, { ...scope,
+        projectValueId: (current as CanonicalDebugReference).currentValueId, lock: true })))
+        .rejects.toMatchObject({ code: "42501", message: "permission denied for table project_value_source_pins" });
+    } finally {
+      await runtimeDb.close();
+      await dropLabRuntimeLogins(database.url, runToken);
+    }
   });
 });

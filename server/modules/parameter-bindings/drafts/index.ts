@@ -47,6 +47,10 @@ export {
 export {
   approveCanonicalBatchValueChange,
   getCanonicalBatchValueChangeForReviewer,
+  getCanonicalBatchValueChangeForAuth,
+  listCanonicalBatchValueChangesForAuth,
+  rejectCanonicalBatchValueChange,
   submitCanonicalBatchValueChange,
+  withdrawCanonicalBatchValueChange,
   type CanonicalBatchChangeRequestDto
 } from "./batchChangeService";

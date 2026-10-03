@@ -1,10 +1,16 @@
 import type pg from "pg";
 
+import { getAuthContextForExternalIdentity } from "../auth/repository";
 import type { AuthContext } from "../auth/types";
+import {
+  assertTrustedInvocationContext,
+  assertTrustedInvocationMatchesAuth,
+  type TrustedInvocationContext,
+} from "../auth/trustedInvocation";
 import { permissionsForRoles } from "../auth/policy";
 import type { UsageProjectScope } from "../parameter-bindings/usage";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { createCatalogKernel, type CatalogKernel } from "../catalog-kernel/interface";
+import { createCatalogKernel, type CatalogKernel, type CatalogSubjectDetailSnapshot } from "../catalog-kernel/interface";
 import { isCatalogProjectionEmpty, readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
   captureCurrentCatalogPin,
@@ -25,7 +31,8 @@ import {
 } from "../parameter-catalog-contract/index";
 import { canViewParameters } from "../parameter-kernel/policy";
 import { executeProposal } from "../parameter-governance/proposals";
-import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
+import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../parameter-governance/queries";
+import type { GovernanceRegistrationRecord } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
 import { resolveReviewItem } from "../parameter-governance/resolveReviewItem";
 import { createReviewQueueReader } from "../parameter-governance/review";
@@ -33,10 +40,21 @@ import { createUsageQueries } from "../parameter-bindings/usage";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { Database } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import type { MappingQueryable } from "../catalog-cutover/mapping";
+import {
+  readCompletedCutoverMappingManifest,
+  type CompletedMappingManifest,
+} from "../catalog-cutover/completedMappingManifest";
+export type { CompletedMappingManifest } from "../catalog-cutover/completedMappingManifest";
 import type { ObjectStore } from "../logs/objectStore";
+import {
+  catalogDefinitionResponseSchema,
+  catalogRegistrationDtoSchema,
+} from "../contracts/dtoSchemas/parameterCatalog";
 
 import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
+import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
 import { createParameterCatalogMigrationService } from "../parameter-catalog-migration/service";
 import type { ReplacementPublicationPorts } from "../parameter-catalog-migration/types";
 import { enqueuePublicationJob } from "../catalog-publication/enqueue";
@@ -64,8 +82,10 @@ import type {
   TrustedGovernanceScope,
 } from "./governance/types";
 import { registerCatalogLegacyRoutes } from "./legacy/routes";
+import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
 import { registerCatalogReadRoutes } from "./read/routes";
+import { handleCatalogRead } from "./read/handlers";
 import {
   createRegistrationProjectionFromQueries,
   createUsageProjectionFromQueries,
@@ -83,11 +103,41 @@ import type {
   TrustedCatalogScope,
 } from "./read/types";
 
-const CATALOG_SUNSET_HTTP_DATE = "Fri, 31 Dec 2027 00:00:00 GMT";
 const UNAVAILABLE_RELEASE_ID = "catalog-unready";
 const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
 
 export type CatalogApiAuthResolver = (request: RouteRequest) => Promise<AuthContext> | AuthContext;
+
+/** The Knowledge writer uses the same authenticated Definition read as Catalog HTTP. */
+export async function readCatalogDefinitionForKnowledge(
+  db: Database,
+  auth: AuthContext,
+  definitionId: string,
+  requestId = "knowledge-definition-reference",
+) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new ApiError("CONFLICT", "Catalog read is unavailable.", { reason: "catalog-unavailable" });
+  const response = await handleCatalogRead(
+    createReadPorts(pool, async () => auth, db, { env: process.env }),
+    {
+      method: "GET",
+      path: `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`,
+      params: {}, query: {}, headers: {}, requestId,
+    },
+  );
+  if (response.status === 404) throw new ApiError("NOT_FOUND", "Parameter definition was not found.");
+  if (response.status === 401 || response.status === 403) {
+    throw new ApiError("FORBIDDEN", "Parameter definition is not visible.");
+  }
+  if (response.status !== 200) {
+    throw new ApiError("CONFLICT", "Catalog definition read is unavailable.", {
+      reason: (response.body as { error?: { details?: { reason?: string } } }).error?.details?.reason ?? "catalog-unavailable",
+    });
+  }
+  const parsed = catalogDefinitionResponseSchema.safeParse(response.body);
+  if (!parsed.success) throw new ApiError("CONFLICT", "Catalog definition proof is invalid.", { reason: "catalog-proof-invalid" });
+  return parsed.data.item;
+}
 
 const unavailableRuntime: CatalogReadPorts["runtime"] = {
   async loadCurrentCatalog() {
@@ -102,6 +152,195 @@ const pinOf = (id: string, digest: string): CatalogReleasePin => ({
   id: CatalogReleaseId(id),
   digest: CatalogReleaseDigest(digest),
 });
+
+/** Complete, read-only Governance projection for a release comparison snapshot. */
+export type ComparisonGovernanceRegistration = GovernanceRegistrationRecord;
+export type ComparisonCatalogSubject = CatalogSubjectDetailSnapshot;
+
+export type CompletedModComparisonManifestScope = {
+  readonly auth: AuthContext;
+  readonly manifest: CompletedMappingManifest;
+};
+
+/** Revalidates persisted organization authority and the immutable P7 manifest for MOD comparison reads. */
+export async function readCompletedModComparisonManifestForComparison(input: {
+  readonly database: Database;
+  readonly pool: pg.Pool;
+  readonly runId: string;
+  readonly invocation: TrustedInvocationContext;
+}): Promise<CompletedModComparisonManifestScope> {
+  if (getRootPostgresPool(input.database) !== input.pool) {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison manifest database and pool differ");
+  }
+  const invocation = assertTrustedInvocationContext(input.invocation);
+  if (invocation.initiator !== "user") {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison requires a user invocation");
+  }
+  const organizationId = invocation.principal.organization.id;
+  const principalId = invocation.principal.user.id;
+  const auth = await getAuthContextForExternalIdentity(input.database, {
+    organizationId,
+    subject: principalId,
+  });
+  assertTrustedInvocationMatchesAuth(auth, invocation, "MOD comparison manifest read");
+  if (auth.organization.id !== organizationId || auth.user.id !== principalId ||
+      auth.user.organizationId !== organizationId || !auth.user.isActive) {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison manifest persisted principal scope is invalid");
+  }
+  const result = await readCompletedCutoverMappingManifest({
+    pool: input.pool,
+    runId: input.runId,
+    auth,
+  });
+  if (!result.ok) {
+    throw new Error(`PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison completed manifest is unavailable: ${result.error.detail}`);
+  }
+  const manifest = result.value;
+  if (manifest.projection.organizationId !== organizationId ||
+      manifest.projection.principalId !== principalId) {
+    throw new Error("PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE: MOD comparison completed manifest returned a different organization or principal");
+  }
+  return { auth, manifest };
+}
+
+/** Exact current-release Subject identities through the production read composition. */
+export async function readPinnedCatalogSubjectsForComparison(
+  pool: pg.Pool,
+  db: Database,
+  scopes: readonly {
+    readonly organizationId: string;
+    readonly auth: AuthContext;
+    readonly subjectIds: readonly CatalogSubjectId[];
+  }[],
+  expectedPin: CatalogReleasePin,
+): Promise<Map<string, ReadonlyMap<string, ComparisonCatalogSubject | null>>> {
+  const matches = (pin: CatalogReleasePin | null) =>
+    pin?.id === expectedPin.id && pin.digest === expectedPin.digest;
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release differs from comparison input");
+  }
+  const byOrganization = new Map<string, ReadonlyMap<string, ComparisonCatalogSubject | null>>();
+  for (const { organizationId, auth, subjectIds } of scopes) {
+    if (byOrganization.has(organizationId)) throw new Error(`Duplicate Subject scope for ${organizationId}`);
+    const ports = createReadPorts(pool, async () => auth, db, { env: process.env });
+    const authenticated = await ports.authenticate({
+      method: "GET", path: "/api/v2/catalog/subjects", params: {}, query: {}, headers: {},
+      requestId: "mod-comparison-subject-read",
+    });
+    if (!authenticated.ok || !authenticated.scope.canReadCatalog ||
+        authenticated.scope.organizationId !== organizationId ||
+        auth.user.organizationId !== organizationId) {
+      throw new Error(`Catalog Subject read unauthorized for ${organizationId}`);
+    }
+    const readiness = await ports.readiness.current();
+    if (readiness.status !== "ready" || !matches(readiness.document.pin)) {
+      throw new Error(`Catalog Subject read not ready for ${organizationId}: ${readiness.status}`);
+    }
+    const loaded = await ports.runtime.loadCurrentCatalog(expectedPin);
+    if (!loaded.ok || !matches({ id: loaded.value.release.id, digest: loaded.value.release.digest })) {
+      throw new Error(`Catalog Subject snapshot unavailable for ${organizationId}`);
+    }
+    const subjects = new Map<string, ComparisonCatalogSubject | null>();
+    for (const id of subjectIds) {
+      if (authenticated.scope.subjects.kind === "only" && !authenticated.scope.subjects.ids.includes(id)) {
+        throw new Error(`Catalog Subject outside authorized scope for ${organizationId}`);
+      }
+      const found = loaded.value.getSubject(id);
+      subjects.set(id, found.status === "found" || found.status === "retired" ? found.subject : null);
+    }
+    byOrganization.set(organizationId, subjects);
+  }
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release changed during Subject comparison read");
+  }
+  return byOrganization;
+}
+
+export async function readPinnedGovernanceRegistrationsForComparison(
+  pool: pg.Pool,
+  organizationIds: readonly string[],
+  expectedPin: CatalogReleasePin,
+  principalId = "mod-comparison-reader",
+): Promise<Map<string, readonly ComparisonGovernanceRegistration[]>> {
+  if (!principalId || principalId.trim() !== principalId) {
+    throw new Error("Governance comparison principal is invalid");
+  }
+  const matches = (pin: CatalogReleasePin | null) =>
+    pin?.id === expectedPin.id && pin.digest === expectedPin.digest;
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release differs from comparison input");
+  }
+  const client = await pool.connect();
+  const byOrganization = new Map<string, readonly GovernanceRegistrationRecord[]>();
+  const seenRegistrationIds = new Set<string>();
+  const seenPlacementIds = new Set<string>();
+  try {
+    await client.query("begin transaction isolation level repeatable read read only");
+    const pointer = await readCurrentCatalogPointer(client);
+    if (pointer.kind !== "installed" || !matches(pointer.current)) {
+      throw new Error("Catalog release changed before snapshot");
+    }
+    const queries = createGovernanceCatalogQueries(client);
+    for (const organizationId of organizationIds) {
+      const items: GovernanceRegistrationRecord[] = [];
+      const seenCursors = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const result = await queries.listRegistrations({
+          organizationId,
+          observedCatalogReleaseId: expectedPin.id,
+          authScope: { organizationId, principalId },
+          limit: 100,
+          cursor,
+        });
+        if (!result.ok) throw new Error(`Registration query failed for ${organizationId}: ${JSON.stringify(result.error)}`);
+        const page = result.value;
+        if (page?.semantics !== GOVERNANCE_CURRENT_PROJECTION_SEMANTICS || !Array.isArray(page.items) ||
+            page.items.length > 100 || (page.nextCursor !== null &&
+              (typeof page.nextCursor !== "string" || !page.nextCursor))) {
+          throw new Error(`Registration response malformed for ${organizationId}`);
+        }
+        for (const item of page.items) {
+          if (!item || typeof item.id !== "string" || !item.id ||
+              item.organizationId !== organizationId || item.catalogReleaseId !== expectedPin.id ||
+              typeof item.subjectId !== "string" || !item.subjectId ||
+              !item.placement || typeof item.placement.id !== "string" || !item.placement.id ||
+              !catalogRegistrationDtoSchema.safeParse({
+                id: item.id, organizationId: item.organizationId, subjectId: item.subjectId,
+                status: item.status, method: item.method,
+                placement: {
+                  id: item.placement.id, displayName: item.placement.displayName,
+                  parentPlacementId: item.placement.parentPlacementId,
+                  ...(item.placement.moduleId ? { moduleId: item.placement.moduleId } : {}),
+                },
+                catalogReleaseId: item.catalogReleaseId,
+              }).success || seenRegistrationIds.has(item.id) || seenPlacementIds.has(item.placement.id)) {
+            throw new Error(`Registration identity or shape invalid for ${organizationId}`);
+          }
+          seenRegistrationIds.add(item.id);
+          seenPlacementIds.add(item.placement.id);
+          items.push(item);
+        }
+        cursor = page.nextCursor ?? undefined;
+        if (cursor && (page.items.length === 0 || seenCursors.has(cursor))) {
+          throw new Error(`Registration pagination did not advance for ${organizationId}`);
+        }
+        if (cursor) seenCursors.add(cursor);
+      } while (cursor);
+      byOrganization.set(organizationId, items);
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  if (!matches(await captureCurrentCatalogPin(pool))) {
+    throw new Error("Catalog release changed during comparison read");
+  }
+  return byOrganization;
+}
 
 const wrapMappingQueryable = (
   query: (text: string, values?: unknown[]) => Promise<unknown>,
@@ -659,6 +898,9 @@ export const registerParameterCatalogApi = (
     router,
     createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
   );
+  registerCatalogDriverCompatibleDiscoveryRoute(router, {
+    db: options.db, objectStore: options.objectStore, resolveAuth: options.resolveAuth,
+  });
   registerCatalogDefinitionReplacementRoutes(
     router,
     createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),

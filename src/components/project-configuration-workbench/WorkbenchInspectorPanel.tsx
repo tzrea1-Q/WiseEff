@@ -22,6 +22,7 @@ import type {
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionPropertyDraft } from "@/application/project-configuration/sessionDrafts";
 import { sourceReviewReason } from "@/application/project-configuration/sourceReviewReason";
+import { candidateReceiptMessage } from "@/application/project-configuration/candidateRequestReceipt";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@/components/parameters/StructuredValueEditor";
 import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
 import { WorkbenchBaselineDock } from "./WorkbenchBaselineDock";
+import { WorkbenchCanonicalConflictDecision } from "./WorkbenchCanonicalConflictDecision";
 import { workbenchReadinessAllowsRelease } from "./WorkbenchReleaseReadiness";
 import type { WorkbenchActivityRow } from "./workbenchActivityModel";
 import {
@@ -85,10 +87,14 @@ export type WorkbenchInspectorPanelProps = {
   onExitBaselineCompare: () => void;
   onSelectBaselineCompareMember: (member: DtsBaselineMemberComparison) => void;
   activeCandidate: ParameterFileCandidate | null;
+  projectId: string;
+  currentUserId: string;
+  onConflictSubmitted: (requestId: string) => void;
   sourcePreview: ParameterFileSourcePreview | null;
   sourcePreviewLoading: boolean;
   sourcePreviewError: string;
   canSubmitSourceReview: boolean;
+  canSubmitBatchReview: boolean;
   submittingSourceReview: boolean;
   sourceReviewError: string;
   sourceReviewResult: ParameterFileSourceReviewResult | null;
@@ -117,7 +123,9 @@ export type WorkbenchInspectorPanelProps = {
   onMemberSortOrderChange: (sortOrder: number) => void;
   onAddMember: () => void;
   onRequestRemoveMember: (member: DtsConfigSetMemberFile) => void;
+  canRequestReviewedMemberRemoval?: boolean;
   onSyncFile: () => void;
+  onOpenManualSync?: () => void;
   sourceWorkflow: ParameterFileSourceWorkflow | null;
   sourceWorkflowLoading: boolean;
   sourceWorkflowError: string;
@@ -175,10 +183,14 @@ export function WorkbenchInspectorPanel({
   onExitBaselineCompare,
   onSelectBaselineCompareMember,
   activeCandidate,
+  projectId,
+  currentUserId,
+  onConflictSubmitted,
   sourcePreview,
   sourcePreviewLoading,
   sourcePreviewError,
   canSubmitSourceReview,
+  canSubmitBatchReview,
   submittingSourceReview,
   sourceReviewResult,
   onSubmitSourceReview,
@@ -206,7 +218,9 @@ export function WorkbenchInspectorPanel({
   onMemberSortOrderChange,
   onAddMember,
   onRequestRemoveMember,
+  canRequestReviewedMemberRemoval = false,
   onSyncFile,
+  onOpenManualSync,
   sourceWorkflow,
   sourceWorkflowLoading,
   sourceWorkflowError,
@@ -236,21 +250,29 @@ export function WorkbenchInspectorPanel({
   const sourceWorkflowUnknown = Boolean(selectedMember) && !sourceWorkflow && !sourceWorkflowError;
   const sourceMutationBlocked = sourceWorkflowLoading || Boolean(sourceWorkflowError) || sourceWorkflowUnknown;
   const selectedSourceCanonical = sourceWorkflow?.canonical === true;
+  const canonicalAddReason = "canonical 成员新增尚无受审入口，当前不能添加或编入文件。";
+  const dtsRemovalReason = "DTS 成员删除尚无受审入口，当前不能移除。";
+  const selectedDtsRemovalBlocked = sourceWorkflowSetCanonical && selectedMember?.format === "dts";
   const sourceSetMutationBlocked =
     sourceWorkflowSetLoading ||
     !sourceWorkflowSetReady ||
     Boolean(sourceWorkflowSetError) ||
     sourceWorkflowSetCanonical;
+  const reviewedRemovalReady = (member: DtsConfigSetMemberFile) =>
+    canRequestReviewedMemberRemoval && member.format === "json" && sourceWorkflowSetReady
+    && !sourceWorkflowSetLoading && !sourceWorkflowSetError;
   const sourceMutationReason = sourceWorkflowError
     ? sourceWorkflowError
     : sourceWorkflow?.reason ?? "canonical 来源成员必须通过来源审核流程。";
   const sourceSetMutationReason = sourceWorkflowSetError
     ? sourceWorkflowSetError
     : sourceWorkflowSetCanonical
-      ? "当前配置集包含 canonical 来源成员，成员变更必须通过来源审核流程。"
+      ? canonicalAddReason
       : selectedMembers.length === 0
         ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
       : "配置集来源一致性尚未完成校验，成员变更已禁用。";
+  const batchPreview = sourcePreview?.kind === "canonical"
+    && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && (sourcePreview.bindings?.length ?? 0) > 1;
 
   return (
     <aside
@@ -319,6 +341,13 @@ export function WorkbenchInspectorPanel({
           onSelectCompareMember={onSelectBaselineCompareMember}
         />
         {revisionGate}
+        {canAdmin && canEdit && activeCandidate?.status === "ready" && canvasMode === "candidate"
+          && sourcePreview?.kind === "canonical" && !sourcePreview.request ? (
+            <WorkbenchCanonicalConflictDecision key={activeCandidate.id}
+              projectId={projectId} currentUserId={currentUserId} candidate={activeCandidate}
+              preview={sourcePreview} allowed
+              onSubmitted={onConflictSubmitted} />
+          ) : null}
         <dl>
           <div>
             <dt>检查层级</dt>
@@ -380,8 +409,9 @@ export function WorkbenchInspectorPanel({
                   <div>
                     <dt>来源工作流</dt>
                     <dd>
-                      {sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
-                      {sourcePreview.reason ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
+                      {sourcePreview.request ? "已关联来源审核" : sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
+                      {sourcePreview.reason && !(batchPreview && sourcePreview.reason === "canonical-batch-writer-unavailable")
+                        ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
                     </dd>
                   </div>
                   {sourcePreview.kind === "canonical" ? (
@@ -432,20 +462,21 @@ export function WorkbenchInspectorPanel({
                           {sourcePreview.after != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.after}</pre> : null}
                         </dd>
                       </div>
-                      {sourcePreview.request || sourceReviewResult ? (
-                        <div>
-                          <dt>来源审核</dt>
-                          <dd>
-                            <span>
-                              请求 {sourcePreview.request?.id ?? sourceReviewResult?.requestId} · 状态 {sourcePreview.request?.status ?? sourceReviewResult?.status}
-                            </span>
-                            <button className="button subtle" type="button" onClick={onOpenReview}>
-                              查看审核
-                            </button>
-                          </dd>
-                        </div>
-                      ) : null}
                     </>
+                  ) : null}
+                  {sourcePreview.request || sourceReviewResult ? (
+                    <div>
+                      <dt>来源审核</dt>
+                      <dd>
+                        <span>
+                          请求 {sourcePreview.request?.id ?? sourceReviewResult?.requestId} · 状态 {sourcePreview.request?.status ?? sourceReviewResult?.status}
+                          {sourcePreview.request ? ` · ${sourcePreview.request.kind === "batch" ? "批量" : "单目标"}` : ""}
+                        </span>
+                        <button className="button subtle" type="button" onClick={onOpenReview}>
+                          查看审核
+                        </button>
+                      </dd>
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -532,11 +563,16 @@ export function WorkbenchInspectorPanel({
                   <button
                     className="button primary"
                     type="button"
-                    disabled={!canSubmitSourceReview || submittingSourceReview}
-                    title={!canSubmitSourceReview ? sourceReviewReason(sourcePreview.reason) : undefined}
+                    disabled={!(canSubmitSourceReview || canSubmitBatchReview) || submittingSourceReview}
+                    title={!(canSubmitSourceReview || canSubmitBatchReview)
+                      ? sourcePreview.request
+                        ? candidateReceiptMessage(sourcePreview.request)
+                        : batchPreview
+                        ? "候选状态、完整来源证明或当前权限不满足批量提交条件。"
+                        : sourceReviewReason(sourcePreview.reason) : undefined}
                     onClick={onSubmitSourceReview}
                   >
-                    {submittingSourceReview ? "提交中…" : "提交来源变更审核"}
+                    {submittingSourceReview ? "提交中…" : batchPreview ? `提交 ${sourcePreview.format.toUpperCase()} 批量审核` : "提交来源变更审核"}
                   </button>
                 ) : null}
                 {canAbandon ? (
@@ -550,6 +586,9 @@ export function WorkbenchInspectorPanel({
                       ? "已有待处理的来源审核，请等待审核完成后再放弃或重算候选。"
                       : "来源审核已通过，候选仍保留审核关联，不能放弃或重算。"}
                   </p>
+                ) : null}
+                {sourcePreview?.request?.status === "rejected" || sourcePreview?.request?.status === "withdrawn" ? (
+                  <p className="configuration-workbench__locked" role="note">{candidateReceiptMessage(sourcePreview.request)}</p>
                 ) : null}
               </div>
             </>
@@ -648,7 +687,7 @@ export function WorkbenchInspectorPanel({
                   </div>
                 ) : null}
                 {sourceWorkflowSetCanonical ? (
-                  <p role="note">{sourceSetMutationReason} 当前配置集成员不能直接增删。</p>
+                  <p role="note">当前配置集包含 canonical 来源成员。仅符合条件的 JSON 成员删除可提交人工审核；其他操作请查看按钮旁的限制说明。</p>
                 ) : null}
                 {!sourceWorkflowSetReady && !sourceWorkflowSetLoading && !sourceWorkflowSetError ? (
                   <p role="note">{sourceSetMutationReason}</p>
@@ -669,12 +708,17 @@ export function WorkbenchInspectorPanel({
                             aria-label={`移除 ${member.fileName}`}
                             disabled={
                               pendingAction !== null ||
-                              sourceSetMutationBlocked
+                              (sourceSetMutationBlocked && !reviewedRemovalReady(member))
                             }
+                            aria-describedby={sourceWorkflowSetCanonical && member.format === "dts"
+                              ? `member-removal-reason-${member.fileId}` : undefined}
                             onClick={() => onRequestRemoveMember(member)}
                           >
                             移除
                           </button>
+                        ) : null}
+                        {sourceWorkflowSetCanonical && member.format === "dts" ? (
+                          <small id={`member-removal-reason-${member.fileId}`}>{dtsRemovalReason}</small>
                         ) : null}
                       </li>
                     ))}
@@ -728,10 +772,12 @@ export function WorkbenchInspectorPanel({
                       type="button"
                       disabled={!memberFileId || pendingAction !== null || sourceSetMutationBlocked}
                       title={sourceSetMutationBlocked ? sourceSetMutationReason : undefined}
+                      aria-describedby={sourceWorkflowSetCanonical ? "canonical-member-add-reason" : undefined}
                       onClick={onAddMember}
                     >
                       添加成员
                     </button>
+                    {sourceWorkflowSetCanonical ? <p id="canonical-member-add-reason" role="note">{canonicalAddReason}</p> : null}
                   </div>
                 ) : null}
               </section>
@@ -776,7 +822,8 @@ export function WorkbenchInspectorPanel({
                 </dd>
               </div>
               {canAdmin ? (
-                <div className="configuration-workbench__inspector-actions">
+                <>
+                  <div className="configuration-workbench__inspector-actions">
                   <button
                     className="button subtle"
                     type="button"
@@ -790,16 +837,32 @@ export function WorkbenchInspectorPanel({
                         ? "来源一致性校验"
                         : "手动同步"}
                   </button>
+                  {sourceWorkflow?.canonical && sourceWorkflow.bindingCount >= 2 && onOpenManualSync ? <button
+                    className="button subtle" type="button"
+                    disabled={pendingAction !== null || sourceWorkflowLoading || Boolean(sourceWorkflowError)
+                      || !sourceWorkflow.proofToken || !selectedMember.currentVersionId}
+                    onClick={onOpenManualSync}
+                  >上传来源并预览批量候选</button> : null}
                   <button
                     className="button subtle"
                     type="button"
-                    disabled={pendingAction !== null || sourceSetMutationBlocked || selectedSourceCanonical}
-                    title={sourceSetMutationBlocked ? sourceSetMutationReason : selectedSourceCanonical ? sourceMutationReason : undefined}
+                    disabled={pendingAction !== null || (!reviewedRemovalReady(selectedMember)
+                      && (sourceSetMutationBlocked || selectedSourceCanonical))}
+                    title={reviewedRemovalReady(selectedMember) ? "提交成员删除审核"
+                      : selectedDtsRemovalBlocked ? dtsRemovalReason
+                      : sourceSetMutationBlocked ? sourceSetMutationReason
+                      : selectedSourceCanonical ? sourceMutationReason : undefined}
+                    aria-describedby={selectedDtsRemovalBlocked
+                      ? "canonical-dts-member-removal-reason" : undefined}
                     onClick={() => onRequestRemoveMember(selectedMember)}
                   >
                     从配置集移除
                   </button>
-                </div>
+                  </div>
+                  {selectedDtsRemovalBlocked ? (
+                    <p id="canonical-dts-member-removal-reason" role="note">{dtsRemovalReason}</p>
+                  ) : null}
+                </>
               ) : null}
             </>
           ) : null}

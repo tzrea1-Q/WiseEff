@@ -55,6 +55,7 @@ type PrimaryDtsSource = {
 
 export type DtsParameterWorkbenchProps = {
   projectId?: string;
+  requestedBindingId?: string;
   configSetId?: string;
   revisionId?: string;
   layoutMode?: "desktop" | "tablet" | "mobile";
@@ -167,6 +168,7 @@ function treeContainsNode(roots: DtsWorkbenchTreeNode[], nodeId: string): boolea
 
 export function DtsParameterWorkbench({
   projectId,
+  requestedBindingId,
   configSetId,
   revisionId,
   layoutMode = "desktop",
@@ -222,6 +224,20 @@ export function DtsParameterWorkbench({
   useHorizontalDragScroll(listScrollXRef);
 
   const currentRows = effectiveRows;
+  const handledRequest = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${projectId ?? ""}:${requestedBindingId ?? ""}`;
+    if (!requestedBindingId || handledRequest.current === key
+      || !currentRows.some((row) => row.bindingId === requestedBindingId)) return;
+    handledRequest.current = key;
+    setQuery("");
+    setModuleFilter([]);
+    setSelectedNodeId(null);
+    setResultsMode("parameters");
+    setSelectedBindingId(requestedBindingId);
+    setDetailIntent("view");
+    onSelectBinding(requestedBindingId);
+  }, [currentRows, onSelectBinding, projectId, requestedBindingId]);
   const moduleTree = useMemo(
     () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules, groupByDevice: true }),
     [currentRows, moduleRegistry],

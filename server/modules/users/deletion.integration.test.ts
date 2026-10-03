@@ -30,9 +30,53 @@ type UserForeignKeyRow = {
   table_name: string;
   constraint_name: string;
   column_names: string;
+  delete_column_names: string;
   delete_action: "CASCADE" | "NO ACTION" | "RESTRICT" | "SET DEFAULT" | "SET NULL";
-  all_columns_nullable: boolean;
+  delete_columns_nullable: boolean | null;
 };
+
+const userForeignKeyPolicyQuery = `
+  select
+    child.relname as table_name,
+    constraint_row.conname as constraint_name,
+    string_agg(attribute_row.attname, ',' order by key_row.ordinality) as column_names,
+    string_agg(attribute_row.attname, ',' order by key_row.ordinality)
+      filter (where key_row.attnum = any(coalesce(constraint_row.confdelsetcols, constraint_row.conkey))) as delete_column_names,
+    case constraint_row.confdeltype
+      when 'a' then 'NO ACTION'
+      when 'r' then 'RESTRICT'
+      when 'c' then 'CASCADE'
+      when 'n' then 'SET NULL'
+      when 'd' then 'SET DEFAULT'
+    end as delete_action,
+    bool_and(not attribute_row.attnotnull)
+      filter (where key_row.attnum = any(coalesce(constraint_row.confdelsetcols, constraint_row.conkey))) as delete_columns_nullable
+  from pg_constraint constraint_row
+  join pg_class child on child.oid = constraint_row.conrelid
+  join unnest(constraint_row.conkey) with ordinality as key_row(attnum, ordinality) on true
+  join pg_attribute attribute_row
+    on attribute_row.attrelid = constraint_row.conrelid
+   and attribute_row.attnum = key_row.attnum
+  where constraint_row.contype = 'f'
+    and constraint_row.confrelid = 'users'::regclass
+  group by child.relname, constraint_row.conname, constraint_row.confdeltype, constraint_row.confdelsetcols, constraint_row.conkey
+  order by child.relname, constraint_row.conname
+`;
+
+function userForeignKeyPolicyViolations(rows: UserForeignKeyRow[]) {
+  return rows.flatMap((row) => {
+    const reference = `${row.table_name}.${row.column_names}`;
+    if (accountOwnedReferences.has(reference)) {
+      return row.delete_action === "CASCADE" ? [] : [`${row.table_name}.${row.constraint_name}: expected CASCADE, got ${row.delete_action}`];
+    }
+    if (row.delete_action !== "SET NULL") {
+      return [`${row.table_name}.${row.constraint_name}: expected SET NULL, got ${row.delete_action}`];
+    }
+    return row.delete_columns_nullable
+      ? []
+      : [`${row.table_name}.${row.constraint_name}: SET NULL columns must be nullable (${row.delete_column_names})`];
+  });
+}
 
 const adminAuth: AuthContext = {
   user: {
@@ -240,48 +284,47 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
   });
 
   it("gives every users foreign key an explicit cascade or nullable history policy", async () => {
-    const result = await db.query<UserForeignKeyRow>(
-      `
-      select
-        child.relname as table_name,
-        constraint_row.conname as constraint_name,
-        string_agg(attribute_row.attname, ',' order by key_row.ordinality) as column_names,
-        case constraint_row.confdeltype
-          when 'a' then 'NO ACTION'
-          when 'r' then 'RESTRICT'
-          when 'c' then 'CASCADE'
-          when 'n' then 'SET NULL'
-          when 'd' then 'SET DEFAULT'
-        end as delete_action,
-        bool_and(not attribute_row.attnotnull) as all_columns_nullable
-      from pg_constraint constraint_row
-      join pg_class child on child.oid = constraint_row.conrelid
-      join unnest(constraint_row.conkey) with ordinality as key_row(attnum, ordinality) on true
-      join pg_attribute attribute_row
-        on attribute_row.attrelid = constraint_row.conrelid
-       and attribute_row.attnum = key_row.attnum
-      where constraint_row.contype = 'f'
-        and constraint_row.confrelid = 'users'::regclass
-      group by child.relname, constraint_row.conname, constraint_row.confdeltype
-      order by child.relname, constraint_row.conname
-      `
-    );
+    const result = await db.query<UserForeignKeyRow>(userForeignKeyPolicyQuery);
 
     expect(result.rows.length).toBeGreaterThan(0);
-    const violations = result.rows.flatMap((row) => {
-      const reference = `${row.table_name}.${row.column_names}`;
-      if (accountOwnedReferences.has(reference)) {
-        return row.delete_action === "CASCADE" ? [] : [`${row.table_name}.${row.constraint_name}: expected CASCADE, got ${row.delete_action}`];
-      }
-      if (row.delete_action !== "SET NULL") {
-        return [`${row.table_name}.${row.constraint_name}: expected SET NULL, got ${row.delete_action}`];
-      }
-      return row.all_columns_nullable
-        ? []
-        : [`${row.table_name}.${row.constraint_name}: SET NULL columns must be nullable (${row.column_names})`];
-    });
+    expect(userForeignKeyPolicyViolations(result.rows)).toEqual([]);
+  });
 
-    expect(violations).toEqual([]);
+  it("checks only selected SET NULL columns and rejects a required selected column", async () => {
+    await db.query(`
+      create table users_fk_subset_valid (
+        user_id text,
+        organization_id text not null,
+        constraint users_fk_subset_valid_fk
+          foreign key (user_id, organization_id) references users (id, organization_id)
+          on delete set null (user_id)
+      )
+    `);
+    await db.query(`
+      create table users_fk_subset_invalid (
+        user_id text,
+        organization_id text not null,
+        constraint users_fk_subset_invalid_fk
+          foreign key (user_id, organization_id) references users (id, organization_id)
+          on delete set null (organization_id)
+      )
+    `);
+    await db.query(`
+      create table users_fk_subset_no_policy (
+        user_id text references users(id)
+      )
+    `);
+
+    const result = await db.query<UserForeignKeyRow>(userForeignKeyPolicyQuery);
+    const probeRows = result.rows.filter((row) => row.table_name.startsWith("users_fk_subset_"));
+    expect(probeRows).toHaveLength(3);
+    expect(userForeignKeyPolicyViolations(probeRows.filter((row) => row.table_name === "users_fk_subset_valid"))).toEqual([]);
+    expect(userForeignKeyPolicyViolations(probeRows.filter((row) => row.table_name === "users_fk_subset_invalid"))).toEqual([
+      "users_fk_subset_invalid.users_fk_subset_invalid_fk: SET NULL columns must be nullable (organization_id)"
+    ]);
+    expect(userForeignKeyPolicyViolations(probeRows.filter((row) => row.table_name === "users_fk_subset_no_policy"))).toEqual([
+      "users_fk_subset_no_policy.users_fk_subset_no_policy_user_id_fkey: expected SET NULL, got NO ACTION"
+    ]);
   });
 
   it("deletes account-owned rows, nulls retained history, and writes a non-PII audit", async () => {

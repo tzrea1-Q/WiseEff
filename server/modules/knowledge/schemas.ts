@@ -95,6 +95,11 @@ export const relatedKnowledgeForSpecQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional()
 });
 
+export const relatedKnowledgeForDefinitionQuerySchema = z.object({
+  definitionId: nonEmptyString.max(300),
+  limit: z.coerce.number().int().min(1).max(50).optional()
+});
+
 export type CreateKnowledgeEntryBody = z.infer<typeof createKnowledgeEntryBodySchema>;
 export type DistillKnowledgeFromLogBody = z.infer<typeof distillKnowledgeFromLogBodySchema>;
 export type DistillKnowledgeFromReloadRunBody = z.infer<typeof distillKnowledgeFromReloadRunBodySchema>;
@@ -104,3 +109,4 @@ export type ListKnowledgeEntriesQueryBody = z.infer<typeof listKnowledgeEntriesQ
 export type SearchKnowledgeQueryBody = z.infer<typeof searchKnowledgeQuerySchema>;
 export type RelatedKnowledgeForLogQuery = z.infer<typeof relatedKnowledgeForLogQuerySchema>;
 export type RelatedKnowledgeForSpecQuery = z.infer<typeof relatedKnowledgeForSpecQuerySchema>;
+export type RelatedKnowledgeForDefinitionQuery = z.infer<typeof relatedKnowledgeForDefinitionQuerySchema>;

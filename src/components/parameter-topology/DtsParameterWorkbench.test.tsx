@@ -615,6 +615,14 @@ describe("DtsParameterWorkbench", () => {
     expect(document.querySelector('[data-binding-id="binding-gpio-int"]')).toHaveAttribute("aria-selected", "true");
   });
 
+  it("selects an exact Binding deep link after rows load", async () => {
+    const { props } = renderWorkbench({ projectId: "aurora", requestedBindingId: "binding-watchdog", canEdit: false });
+
+    await waitFor(() => expect(document.querySelector('[data-binding-id="binding-watchdog"]'))
+      .toHaveAttribute("aria-selected", "true"));
+    expect(props.onSelectBinding).toHaveBeenCalledWith("binding-watchdog");
+  });
+
   it("opens the selected semantic binding in the read-only detail dialog", () => {
     renderWorkbench({ canEdit: false });
 

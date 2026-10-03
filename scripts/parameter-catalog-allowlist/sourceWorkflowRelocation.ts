@@ -8,6 +8,7 @@ import {
   type RuntimeTopologyRelocation,
 } from "./runtimeTopologyRelocation";
 import { verifyHistoricalEditServiceVersionIndexRelocation } from "./editServiceVersionIndexRelocation";
+import { applyReviewedIssue1021StructuralSpecRelocation } from "./issue1021TopologyStructuralSpecIdentitySuccessor.proof";
 
 export const sourceWorkflowRelocationRecordPath =
   "scripts/fixtures/parameter-catalog-allowlist/source-workflow-relocation.json";
@@ -154,16 +155,26 @@ export async function applyReviewedSourceWorkflowRelocation(
     allowances,
     discovered,
     existingRelocations,
-    { ...sourceWorkflowConfig, activeFiles: sourceWorkflowActiveFiles },
+    { ...sourceWorkflowConfig, activeFiles: sourceWorkflowActiveFiles
+      .filter((file) => file !== "server/modules/parameter-topology/editService.test.ts") },
   );
+  const topology = await applyReviewedIssue1021StructuralSpecRelocation(
+    repoRoot, fixture, allowances, current.violations, [...existingRelocations, ...current.relocations],
+  );
+  // Keep original canonical coverage/order; only the 28 current observed endpoints change.
+  const byId = new Map([...current.relocations, ...topology.relocations].map((entry) => [entry.id, entry]));
+  const currentRelocations = historical.pairs.flatMap(({ old }) => {
+    const entry = byId.get(old.id);
+    return entry ? [entry] : [];
+  });
   const successor = await applyReviewedIssue911Relocation(
     repoRoot,
     fixture,
     allowances,
-    current.violations,
-    [...existingRelocations, ...current.relocations],
+    topology.violations,
+    [...existingRelocations, ...currentRelocations],
   );
-  const relocations = [...current.relocations, ...successor.relocations];
+  const relocations = [...currentRelocations, ...successor.relocations];
   const activeIds = new Set(relocations.map((entry) => entry.id));
   const boundById = new Map(successor.violations.map((entry) => [entry.id, entry]));
   const historicIds = new Map<string, BoundaryViolation>();

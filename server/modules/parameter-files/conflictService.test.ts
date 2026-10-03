@@ -186,7 +186,7 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
     const guard = vi.spyOn(sourceRepository, "assertLegacySourceMutationAllowed").mockRejectedValue(
       new ApiError("CONFLICT", "Canonical source changes require a prepared and approved source transaction.")
     );
-    await expect(resolveParameterFileConflict(db, reviewerAuth(), { conflictId: conflict.id, resolution })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(resolveParameterFileConflict(db, reviewerAuth(), { projectId: "project-1", conflictId: conflict.id, resolution })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(guard).toHaveBeenCalledWith(expect.anything(), "file-1");
     expect(await draftIds("ppv-1")).toEqual(beforeDrafts);
     expect(await conflictRows("ppv-1")).toEqual(beforeConflicts);
@@ -310,6 +310,7 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
     });
 
     const resolved = await resolveParameterFileConflict(db, reviewerAuth(), {
+      projectId: "project-1",
       conflictId: conflict.id,
       resolution: "file"
     });
@@ -340,7 +341,7 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
           ...reviewerAuth(),
           permissions: ["parameter:view"]
         },
-        { conflictId: "conflict-1", resolution: "ui" }
+        { projectId: "project-1", conflictId: "conflict-1", resolution: "ui" }
       )
     ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter review permission is required."));
   });
@@ -362,11 +363,13 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
     });
 
     await resolveParameterFileConflict(db, reviewerAuth(), {
+      projectId: "project-1",
       conflictId: withReason.conflict.id,
       resolution: "file",
       reason: "  keep file after review  "
     });
     await resolveParameterFileConflict(db, reviewerAuth(), {
+      projectId: "project-1",
       conflictId: blankReason.conflict.id,
       resolution: "file",
       reason: "   "

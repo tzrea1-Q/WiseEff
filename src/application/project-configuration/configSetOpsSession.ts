@@ -12,6 +12,7 @@ import type {
   ParameterFileSyncConflict,
   ProjectParameterFile
 } from "@/application/ports/ParameterFileRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 export type ConfigSetOpsStructuredRepository = Pick<
   DtsStructuredRepository,
@@ -102,11 +103,16 @@ const ROLE_LABELS: Record<ConfigSetRole, string> = {
   misc: "其他"
 };
 
+const CANONICAL_SYNC_CONFLICT_COPY = new Map([
+  ["source-membership-drift", "配置集成员、文件版本或参数绑定的来源记录与固定修订不一致，校验已停止。请刷新并核对成员、版本和来源记录；可从页面顶部「上传候选」查看差异，仅在来源证明完整且基版本有效时提交人工审核。"],
+  ["mixed-source-revisions", "同一配置集的参数绑定指向不同的来源修订，无法证明统一来源，校验已停止。请刷新并让配置管理员核对各绑定的当前值与来源固定记录，通过受审来源修复统一修订后再校验；上传候选不能直接解除此冲突。"],
+  ["source-pin-missing", "当前配置集缺少可验证的活动来源固定记录，校验已停止。请刷新并核对参数绑定、当前值和来源固定记录；仍缺失时请配置管理员先修复来源，再重新校验，不要直接提交候选审核。"],
+  ["source-proof-busy", "校验期间来源记录正在变化，暂时无法取得稳定证明。请等待相关操作完成后刷新重试；若持续出现，请配置管理员检查并发来源事务。"]
+]);
+
 export function formatSyncSummary(result: FileSyncSummary): string {
   if (result.sourceWorkflow === "canonical") {
-    return result.message?.trim()
-      ? `来源一致性校验：${result.message.trim()}`
-      : "来源一致性校验已完成。";
+    return "来源一致性校验：已检查当前文件版本；存在可用固定来源时，已与其中一份来源修订核对配置集成员及文件版本。未逐项证明全部参数绑定一致，也未同步参数、创建草稿或审核请求。";
   }
   if (result.skipped) return "已跳过（无活跃版本）";
   if (typeof result.draftsCreated === "number") {
@@ -263,7 +269,12 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
         emit();
         return { ok: true, summary, evidence, files, conflicts };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "手动同步失败。";
+        const reason = err instanceof WiseEffApiError && err.code === "CONFLICT"
+          && typeof err.details.reason === "string" ? err.details.reason : "";
+        const conflictCopy = CANONICAL_SYNC_CONFLICT_COPY.get(reason);
+        const message = conflictCopy
+          ? `${conflictCopy}本次未同步参数或创建审核请求。`
+          : err instanceof Error ? err.message : "手动同步失败。";
         lastError = message;
         lastMessage = "";
         emit();

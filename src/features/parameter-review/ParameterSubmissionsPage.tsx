@@ -12,6 +12,7 @@ import { type User } from "@/domain/prototype/types";
 import { MetricCard, StatusBadge, formatWorkflowDisplayText, getUserName } from "@/features/parameter-review/reviewUi";
 import { SubmissionHistoryDiffCard } from "@/features/parameter-review/submissionHistoryDiff";
 import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
+import { CanonicalMemberRemovalReviewPanel } from "./CanonicalMemberRemovalReviewPanel";
 import { EmptyState, PanelHeader } from "@/workbenchUi";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ArrowRight, RotateCcw } from "lucide-react";
@@ -51,6 +52,7 @@ export function ParameterSubmissionsPage({
   const contextProjectId = new URLSearchParams(search).get("project") ?? "";
   const canonicalProjectId = contextProjectId || state.activeProjectId;
   const canonicalRequestId = new URLSearchParams(search).get("request") ?? undefined;
+  const memberRequestId = new URLSearchParams(search).get("memberRequest") ?? undefined;
   const canonicalProject = state.configDraft.projects.find((project) => project.id === canonicalProjectId);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const submitterAliases = new Set(
@@ -203,6 +205,13 @@ export function ParameterSubmissionsPage({
     window.history.replaceState(null, "", `/parameter-submissions${query ? `?${query}` : ""}`);
   };
 
+  const selectMemberRequest = (requestId: string) => {
+    const params = new URLSearchParams(window.location.search);
+    if (canonicalProjectId) params.set("project", canonicalProjectId);
+    params.set("memberRequest", requestId);
+    window.history.replaceState(null, "", `/parameter-submissions?${params.toString()}`);
+  };
+
   const withdrawSelectedRound = async () => {
     if (!selectedRound || !canWithdrawSubmissionRound(selectedRound.status) || withdrawingRound) {
       return;
@@ -232,7 +241,7 @@ export function ParameterSubmissionsPage({
           {canonicalRepository ? (
             <div className="canonical-submission-tracking">
               {canonicalProject ? (
-                <CanonicalProjectValueReviewPanel
+                <><CanonicalProjectValueReviewPanel
                   projectId={canonicalProject.id}
                   repository={canonicalRepository}
                   currentUserId={state.currentUserId}
@@ -241,6 +250,15 @@ export function ParameterSubmissionsPage({
                   onSelectRequest={selectCanonicalRequest}
                   mineOnly
                 />
+                <CanonicalMemberRemovalReviewPanel
+                  projectId={canonicalProject.id}
+                  repository={canonicalRepository}
+                  currentUserId={state.currentUserId}
+                  canReview={false}
+                  mineOnly
+                  initialRequestId={memberRequestId}
+                  onSelectRequest={selectMemberRequest}
+                /></>
               ) : (
                 <p role="alert">项目链接无效，未加载其他项目的提交。</p>
               )}

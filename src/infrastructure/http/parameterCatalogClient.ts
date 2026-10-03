@@ -2,6 +2,7 @@ import type { ZodTypeAny, z } from "zod";
 
 import {
   bindingDraftResponseSchema,
+  canonicalSourceConflictDecisionResponseSchema,
   bindingCompareListResponseSchema,
   bindingHistoryListResponseSchema,
   catalogBindingExportResponseSchema,
@@ -34,6 +35,7 @@ import {
   catalogLegacyIdentifierResponseSchema,
   catalogLegacyIdentifierTypeSchema,
   catalogObservationListResponseSchema,
+  catalogDriverCompatibleDiscoveryResponseSchema,
   catalogObservationResponseSchema,
   catalogPlacementResponseSchema,
   catalogProposalListResponseSchema,
@@ -65,8 +67,17 @@ import {
   projectValueDraftRemovedResponseSchema,
   catalogSubmitValueChangeRequestSchema,
   catalogReviewValueChangeRequestSchema,
+  catalogBatchValueChangeRequestResponseSchema,
+  catalogBatchValueChangeRequestListResponseSchema,
+  catalogSubmitBatchValueChangeRequestSchema,
+  catalogValueChangeReviewResponseSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
+  catalogValueChangeWithdrawalResponseSchema,
+  catalogMemberRemovalRequestResponseSchema,
+  catalogMemberRemovalRequestListResponseSchema,
+  catalogSubmitMemberRemovalRequestSchema,
+  catalogReviewMemberRemovalRequestSchema,
   catalogValueChangeSourceDiffResponseSchema,
   catalogBindingChangeHistoryListResponseSchema,
   type CatalogApiFailureReason,
@@ -88,6 +99,7 @@ import type {
   CatalogCreatePublicationCandidateRequest,
   CatalogPublishPublicationCandidateRequest,
   CatalogListQuery,
+  CatalogDriverCompatibleDiscoveryQuery,
   CatalogRegisterSubjectRequest,
   CatalogRejectProposalRequest,
   CatalogResolveReviewItemRequest,
@@ -162,6 +174,17 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   if (query.placementModuleId) params.set("placementModuleId", query.placementModuleId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
   if (query.catalogReleaseId) params.set("catalogReleaseId", query.catalogReleaseId);
+  const encoded = params.toString();
+  return encoded ? `${path}?${encoded}` : path;
+}
+
+function appendDiscoveryQuery(path: string, query?: CatalogDriverCompatibleDiscoveryQuery) {
+  if (!query) return path;
+  const params = new URLSearchParams();
+  if (query.projectId !== undefined) params.set("projectId", query.projectId);
+  if (query.observationId !== undefined) params.set("observationId", query.observationId);
+  if (query.cursor !== undefined) params.set("cursor", query.cursor);
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
   const encoded = params.toString();
   return encoded ? `${path}?${encoded}` : path;
 }
@@ -416,6 +439,28 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogObservationListResponseSchema,
         "CatalogObservationListResponse"
       ),
+    listDriverCompatibleDiscovery: async (
+      organizationId: string,
+      query?: CatalogDriverCompatibleDiscoveryQuery,
+      expectedRelease?: { id: string; digest: string }
+    ) => {
+      if (query?.cursor !== undefined && !expectedRelease) {
+        throw new WiseEffApiError("VALIDATION_FAILED", "A discovery cursor requires its catalog release pin.",
+          { reason: "release-pin-required" }, "");
+      }
+      const page = await request("GET",
+        appendDiscoveryQuery(canonical("catalog.listDriverCompatibleDiscovery", { organizationId }), query),
+        catalogDriverCompatibleDiscoveryResponseSchema,
+        "CatalogDriverCompatibleDiscoveryResponse",
+        { context: expectedRelease ? { catalogReleaseId: expectedRelease.id } : undefined });
+      if (expectedRelease && page.status === "ready" &&
+          (page.catalogRelease.id !== expectedRelease.id || page.catalogRelease.digest !== expectedRelease.digest)) {
+        throw new WiseEffApiError("CONFLICT", "The catalog release changed. Refresh before continuing.",
+          { reason: "release-drift", expectedCatalogReleaseId: expectedRelease.id,
+            currentCatalogReleaseId: page.catalogRelease.id }, "");
+      }
+      return page;
+    },
     getObservation: (organizationId: string, observationId: string) =>
       request(
         "GET",
@@ -668,17 +713,90 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogValueChangeRequestListResponseSchema,
         "ProjectValueChangeRequestListResponse"
       ),
+    submitProjectValueBatchChangeRequest: (
+      projectId: string,
+      body: z.infer<typeof catalogSubmitBatchValueChangeRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches`,
+      catalogBatchValueChangeRequestResponseSchema,
+      "ProjectValueBatchChangeRequestResponse",
+      { body: catalogSubmitBatchValueChangeRequestSchema.parse(body), context }
+    ),
+    listProjectValueBatchChangeRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
+        catalogBatchValueChangeRequestListResponseSchema,
+        "ProjectValueBatchChangeRequestListResponse"
+      ),
+    getProjectValueBatchChangeRequest: (projectId: string, requestId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/batch`,
+        catalogBatchValueChangeRequestResponseSchema,
+        "ProjectValueBatchChangeRequestResponse"
+      ),
+    submitMemberRemovalRequest: (
+      projectId: string,
+      body: z.infer<typeof catalogSubmitMemberRemovalRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/member-removals`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { body: catalogSubmitMemberRemovalRequestSchema.parse(body), context }
+    ),
+    listMemberRemovalRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/member-removals${query?.status || query?.mine !== undefined ? `?${new URLSearchParams({ ...(query?.status ? { status: query.status } : {}), ...(query?.mine !== undefined ? { mine: String(query.mine) } : {}) })}` : ""}`,
+        catalogMemberRemovalRequestListResponseSchema,
+        "MemberRemovalRequestListResponse"
+      ),
+    getMemberRemovalRequest: (projectId: string, requestId: string) => request(
+      "GET",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/member-removal`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse"
+    ),
+    reviewMemberRemovalRequest: (
+      projectId: string,
+      requestId: string,
+      body: z.infer<typeof catalogReviewMemberRemovalRequestSchema>,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { body: catalogReviewMemberRemovalRequestSchema.parse(body), context }
+    ),
+    withdrawMemberRemovalRequest: (
+      projectId: string,
+      requestId: string,
+      context: CatalogWriteContext
+    ) => request(
+      "POST",
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/withdraw`,
+      catalogMemberRemovalRequestResponseSchema,
+      "MemberRemovalRequestResponse",
+      { context }
+    ),
     reviewProjectValueChangeRequest: (
       projectId: string,
       requestId: string,
-      body: { decision: "approve" | "reject"; note?: string | null },
+      body: { decision: "approve" | "reject"; note?: string | null; batchProofDigest?: string;
+        draftImpactDigest?: string; decisionProofDigest?: string },
       context: CatalogWriteContext
     ) =>
       request(
         "POST",
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`,
-        catalogValueChangeRequestResponseSchema,
-        "ProjectValueChangeRequestResponse",
+        catalogValueChangeReviewResponseSchema,
+        "ProjectValueChangeReviewResponse",
         { body: catalogReviewValueChangeRequestSchema.parse(body), context }
       ),
     getProjectValueChangeSourceDiff: (projectId: string, requestId: string) =>
@@ -688,6 +806,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogValueChangeSourceDiffResponseSchema,
         "CatalogValueChangeSourceDiffResponse"
       ),
+    getProjectValueConflictDecision: (projectId: string, requestId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/conflict-decision`,
+        canonicalSourceConflictDecisionResponseSchema,
+        "CanonicalSourceConflictDecisionResponse"
+      ),
     withdrawProjectValueChangeRequest: (
       projectId: string,
       requestId: string,
@@ -696,8 +821,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       request(
         "POST",
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/withdraw`,
-        catalogValueChangeRequestResponseSchema,
-        "ProjectValueChangeRequestResponse",
+        catalogValueChangeWithdrawalResponseSchema,
+        "ProjectValueChangeWithdrawalResponse",
         { context }
       ),
     getCanonicalBindingChangeHistory: (projectId: string, bindingId: string, limit?: number) =>
@@ -836,6 +961,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.getPlacement": "getPlacement",
     "catalog.updatePlacement": "updatePlacement",
     "catalog.listObservations": "listObservations",
+    "catalog.listDriverCompatibleDiscovery": "listDriverCompatibleDiscovery",
     "catalog.getObservation": "getObservation",
     "catalog.listReviewItems": "listReviewItems",
     "catalog.getReviewItem": "getReviewItem",

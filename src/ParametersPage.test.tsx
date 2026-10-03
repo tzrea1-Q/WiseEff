@@ -785,6 +785,24 @@ describe("ParametersPage parameter detail modal", () => {
     expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
   });
 
+  it("does not turn an exact Binding log link into a legacy parameter draft", () => {
+    const { container } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search={`?project=aurora&bindingId=binding-exact&logId=${initialState.logs[0].id}`}
+          effectiveProjectId="aurora"
+          canEdit
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
+  });
+
   it("shows initialization-specific disabled reasons when initialization is locked even if canEdit is false", () => {
     render(
       <TopBarActionsHarness>

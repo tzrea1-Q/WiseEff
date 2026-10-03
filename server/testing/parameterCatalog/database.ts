@@ -17,12 +17,29 @@ export const S2_SCH_0137_FINGERPRINT =
 export const S2_SCH_CONTRACT_FINGERPRINT =
   "7bc944915eabc1689a9976332864bae3bc602fd9c407e91ed826340dbe0f69e1";
 
-/**
- * Current schema through 0170, including the restored subject-placement
- * SECURITY DEFINER guard. Historical S2-SCH pins are unchanged.
- */
+/** 0171 historical live pin, before the forward batch draft/composition migrations. */
+export const S2_SCH_0171_FINGERPRINT =
+  "40db30e5fecec0de3a34e6ca34db8aaf51e70c3c57fe7154dd78b2e1f827df59";
+
+/** Historical Catalog schema through 0178; 0177/0178 only change public tables. */
+export const S2_SCH_0176_FINGERPRINT =
+  "6093c85dff61c592bfa48f9d19c38fa74c737418307f70062f68a17959a186ce";
+
+/** Historical 0179 comparison-manifest binding stage. */
+export const S2_SCH_0179_FINGERPRINT =
+  "79320ab6d68c846b7e75ff9e2627fe80b1abcb4d0e700fc4ca7848573580a981";
+
+/** Historical 0180 offline capture functions, before readiness revalidation. */
+export const S2_SCH_0180_FINGERPRINT =
+  "1a2daa7314974e1203ea3100725f408009d2c9d69289caa4f9ea38e544ba0f3a";
+
+/** Historical 0181 readiness-revalidation stage, retained unchanged. */
+export const S2_SCH_0181_FINGERPRINT =
+  "bd79fcababc6baa972d0935d1e837a5dc78195a225563d92be7a717af4e97797";
+
+/** Current 0182 retained-identity reader stage, measured on fresh and upgraded PostgreSQL. */
 export const S2_SCH_LIVE_FINGERPRINT =
-  "fe4de098f5607bd48b1955c45dbd27a451f53ffe92374eab24ef10eae3ede769";
+  "2ab9046e3ceb66ab9f91b1d7eb96e5d929f9b25f8b3fda0bb0c190fcac761fd5";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

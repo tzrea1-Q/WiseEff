@@ -314,7 +314,7 @@ export type ParameterSpecDetailProps = {
   relatedKnowledge?: SpecRelatedKnowledgeSource;
 };
 
-function SpecRelatedKnowledgeSection({
+export function SpecRelatedKnowledgeSection({
   specId,
   source,
 }: {

@@ -46,8 +46,10 @@ export type CatalogGovernanceCommandName =
 const GOVERNANCE_GATES = new Set(["PCAT-API-04", "PCAT-API-05", "PCAT-API-06"]);
 const DEFINITION_REPLACEMENT_GATES = new Set(["PCAT-API-13"]);
 
+// Keep the frozen governance command set separate from C1's project-scoped discovery read.
 export const catalogGovernanceRoutes = parameterCatalogCanonicalRoutes.filter((route) =>
-  parameterCatalogRouteGates[route.id].some((gate) => GOVERNANCE_GATES.has(gate)),
+  route.id in catalogGovernanceCommandByRouteId &&
+    parameterCatalogRouteGates[route.id].some((gate) => GOVERNANCE_GATES.has(gate)),
 );
 
 /** Definition identity correction migration routes (`PCAT-API-13`). */

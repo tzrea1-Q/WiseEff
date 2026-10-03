@@ -40,6 +40,7 @@ export const logRecordDtoSchema = z.object({
   updatedAt: z.string(),
   submittedBy: z.string(),
   relatedParameterId: z.string().optional(),
+  relatedParameterProjectId: z.string().optional(),
   device: z.string().optional(),
   failureReason: z.string().optional(),
   analysisQuestion: z.string().optional(),

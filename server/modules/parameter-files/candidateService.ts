@@ -118,12 +118,14 @@ async function assertNoCanonicalWorkflowMutation(
 ) {
   const linkedRequestId = candidate.impact?.canonicalSourceWorkflow?.requestId;
   const result = await db.query<{ id: string; status: string }>(
-    `select id
+    `select id, status
        from project_parameter_value_change_requests
       where organization_id = $1
         and project_id = $2
         and status not in ('rejected', 'withdrawn')
-        and (candidate_id = $3 or ($4::text is not null and id = $4))
+        and (candidate_id = $3 or batch_upload_candidate_id = $3
+          or ($4::text is not null and id = $4))
+      order by (status <> 'pending')
       limit 1`,
     [organizationId, projectId, candidate.id, linkedRequestId ?? null]
   );
@@ -348,6 +350,28 @@ export async function createCandidate(
   input: CreateCandidateInput,
   context: CandidateCreationContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
+  return createCandidateInScope(db, objectStore, auth, input, context, false);
+}
+
+/** Caller holds the outer source transaction and owns its attempt object store. */
+export async function createCandidateInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: CreateCandidateInput,
+  context: CandidateCreationContext = {}
+): Promise<ProjectParameterFileCandidateDto> {
+  return createCandidateInScope(tx, objectStore, auth, input, context, true);
+}
+
+async function createCandidateInScope(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: CreateCandidateInput,
+  context: CandidateCreationContext,
+  callerOwnsTransaction: boolean
+): Promise<ProjectParameterFileCandidateDto> {
   const trustedContext = normalizeCandidateCreationContext(auth, context, "parameter file candidate creation");
   requireCandidateAdmin(auth);
 
@@ -428,7 +452,7 @@ export async function createCandidate(
     bytes: input.bytes
   });
 
-  return db.transaction(async (tx) => {
+  const persist = async (tx: Database) => {
     const uploading = await insertParameterFileCandidate(tx, {
       id: candidateId,
       organizationId: auth.organization.id,
@@ -531,7 +555,8 @@ export async function createCandidate(
       trustedContext
     );
     return updated;
-  });
+  };
+  return callerOwnsTransaction ? persist(db) : db.transaction(persist);
 }
 
 export async function getCandidate(
@@ -795,7 +820,8 @@ export async function activateCandidate(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: ActivateCandidateInput,
-  context: CandidateServiceContext = {}
+  context: CandidateServiceContext = {},
+  producerRoot?: Database,
 ): Promise<ActivateCandidateResult> {
   const trustedContext = rejectTrustedContextForUnmigratedCandidateMutation(
     context,
@@ -994,12 +1020,12 @@ export async function activateCandidate(
       await ingestDtsFileVersion(tx, version.id, source);
     }
     if (locked.format === "dts") {
+      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
       await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source
-      });
-      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
+      }, undefined, producerRoot);
     }
 
     const activated = await markParameterFileCandidateActive(tx, {

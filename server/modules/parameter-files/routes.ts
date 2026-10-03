@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  canonicalBatchRollbackPrepareRequestSchema,
+  canonicalBatchRollbackSubmitRequestSchema
+} from "../contracts/dtoSchemas/canonicalBatchRollback";
+import { canonicalManualSyncPrepareRequestSchema } from "../contracts/dtoSchemas/canonicalManualSync";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
@@ -69,8 +74,13 @@ import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./ty
 import { configSetRoleSchema } from "./schemas";
 import {
   getCanonicalSourceWorkflow,
+  prepareCanonicalBatchRollbackCandidate,
+  prepareCanonicalManualSyncBatchCandidate,
+  prepareCanonicalConflictDecision,
   previewCanonicalCandidate,
   rollbackCanonicalSource,
+  submitCanonicalConflictDecision,
+  submitCanonicalBatchRollback,
   submitCanonicalCandidate,
   syncCanonicalSource
 } from "./canonicalFileWorkflow";
@@ -151,6 +161,15 @@ const canonicalSourceRollbackBodySchema = z.object({
   expectedCurrentVersionId: z.string().min(1),
   expectedProofToken: z.string().min(1),
   reason: z.string().trim().min(1).max(2000)
+}).strict();
+
+const canonicalConflictSubmitBodySchema = z.object({
+  selectedBindingId: z.string().min(1),
+  selectedDraftId: z.string().min(1),
+  choice: z.enum(["file", "draft"]),
+  expectedDecisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  reason: z.string().trim().min(1).max(2000),
+  assignedToUserId: z.string().min(1)
 }).strict();
 
 const resolveConflictBodySchema = z.object({
@@ -338,7 +357,9 @@ export function registerParameterFileRoutes(
         fileName: body.fileName.trim(),
         bytes: decodeContentBase64(body.contentBase64)
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      undefined,
+      db
     );
 
     return {
@@ -375,7 +396,9 @@ export function registerParameterFileRoutes(
         fileName: file.fileName,
         bytes: decodeContentBase64(body.contentBase64)
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      undefined,
+      db
     );
 
     return {
@@ -570,6 +593,7 @@ export function registerParameterFileRoutes(
     const params = parseWithSchema(paramsWithConflictIdSchema, request.params);
     const body = parseWithSchema(resolveConflictBodySchema, request.body, "Invalid parameter file conflict resolve payload.");
     const item = await resolveParameterFileConflict(db, auth, {
+      projectId: params.projectId,
       conflictId: params.conflictId,
       resolution: body.resolution,
       reason: body.reason
@@ -898,6 +922,88 @@ export function registerParameterFileRoutes(
     return { status: 200, body: { item } };
   });
 
+  router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflicts", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    if (!canAdminParameters(auth) || !canEditParameters(auth, params.projectId)) {
+      throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+    }
+    const objectStore = requireObjectStore(options.objectStore);
+    const preview = await previewCanonicalCandidate(db, objectStore, auth, params);
+    const bindings = preview.bindings ?? (preview.bindingId && preview.sourcePinId && preview.baseCurrentValueId
+      ? [{ bindingId: preview.bindingId, sourcePinId: preview.sourcePinId,
+        baseCurrentValueId: preview.baseCurrentValueId, configRevisionId: preview.configRevisionId }]
+      : []);
+    const receipt = preview.request ? { request: preview.request } : {};
+    const terminalBatch = preview.request?.kind === "batch"
+      && ["rejected", "withdrawn"].includes(preview.request.status);
+    if (preview.kind !== "canonical" || bindings.length === 0
+      || (preview.request && !terminalBatch)) {
+      return { status: 200, body: { ...receipt, items: [], ineligible: [] } };
+    }
+    const rows = await db.query<{ id: string; binding_id: string; user_id: string;
+      source_pin_id: string; base_current_value_id: string; config_revision_id: string;
+      candidate_id: string | null; has_pending_request: boolean }>(
+      `select draft.id,draft.binding_id,draft.user_id,draft.source_pin_id,
+              draft.base_current_value_id,draft.config_revision_id,draft.candidate_id,
+              exists (select 1 from project_parameter_value_change_requests request
+                       where request.organization_id=draft.organization_id and request.project_id=draft.project_id
+                         and request.draft_id=draft.id and request.status='pending') as has_pending_request
+         from project_parameter_value_drafts draft
+        where draft.organization_id=$1 and draft.project_id=$2 and draft.binding_id=any($3::text[])
+        order by draft.binding_id,draft.id`,
+      [auth.organization.id, params.projectId, bindings.map((binding) => binding.bindingId)]
+    );
+    const items = [];
+    const ineligible = [];
+    for (const draft of rows.rows) {
+      const binding = bindings.find((item) => item.bindingId === draft.binding_id);
+      if (!binding) continue;
+      if (binding.sourcePinId !== draft.source_pin_id
+        || binding.baseCurrentValueId !== draft.base_current_value_id
+        || binding.configRevisionId !== draft.config_revision_id) {
+        ineligible.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          reason: "selected-draft-stale" });
+        continue;
+      }
+      if (draft.has_pending_request || !draft.candidate_id) {
+        ineligible.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          reason: draft.has_pending_request ? "selected-draft-pending" : "selected-draft-source-proof-missing" });
+        continue;
+      }
+      try {
+        const file = await prepareCanonicalConflictDecision(db, objectStore, auth, {
+          ...params, selectedBindingId: draft.binding_id, selectedDraftId: draft.id, choice: "file"
+        });
+        const draftChoice = await prepareCanonicalConflictDecision(db, objectStore, auth, {
+          ...params, selectedBindingId: draft.binding_id, selectedDraftId: draft.id, choice: "draft"
+        });
+        items.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          authorUserId: draft.user_id, choices: { file, draft: draftChoice } });
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.code !== "CONFLICT") throw error;
+        ineligible.push({ selectedBindingId: draft.binding_id, selectedDraftId: draft.id,
+          reason: typeof error.details?.reason === "string" ? error.details.reason : "source-proof-stale" });
+      }
+    }
+    return { status: 200, body: { ...receipt, items, ineligible } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/source-conflict-submit", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const body = parseWithSchema(canonicalConflictSubmitBodySchema, request.body,
+      "Invalid canonical source conflict decision payload.");
+    if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Canonical source conflict submit requires root database.");
+    const item = await submitCanonicalConflictDecision(db, requireObjectStore(options.objectStore), auth, {
+      ...params, ...body, requestId: request.requestId,
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    return { status: 201, body: { item } };
+  });
+
   router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
@@ -964,7 +1070,8 @@ export function registerParameterFileRoutes(
         configSetId: body.configSetId,
         role: body.role
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      db
     );
     return {
       status: 200,
@@ -1013,5 +1120,49 @@ export function registerParameterFileRoutes(
       refusalSink: requireSubmissionRefusalSink()
     });
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/prepare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const body = parseWithSchema(canonicalBatchRollbackPrepareRequestSchema, request.body,
+      "Invalid canonical batch rollback preparation payload.");
+    const item = await prepareCanonicalBatchRollbackCandidate(db, requireObjectStore(options.objectStore), auth, {
+      projectId: params.projectId, fileId: params.fileId, ...body, requestId: request.requestId
+    });
+    return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-manual-sync/prepare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const body = parseWithSchema(canonicalManualSyncPrepareRequestSchema, request.body,
+      "Invalid canonical manual sync preparation payload.");
+    const item = await prepareCanonicalManualSyncBatchCandidate(db, requireObjectStore(options.objectStore), auth, {
+      projectId: params.projectId, fileId: params.fileId,
+      bytes: decodeContentBase64(body.contentBase64),
+      expectedCurrentVersionId: body.expectedCurrentVersionId,
+      expectedWorkflowProofToken: body.expectedWorkflowProofToken,
+      requestId: request.requestId
+    });
+    return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/source-batch-rollback/submit", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithFileIdSchema, request.params);
+    const body = parseWithSchema(canonicalBatchRollbackSubmitRequestSchema, request.body,
+      "Invalid canonical batch rollback submission payload.");
+    const item = await submitCanonicalBatchRollback(db, requireObjectStore(options.objectStore), auth, {
+      projectId: params.projectId, fileId: params.fileId, ...body, requestId: request.requestId,
+      refusalSink: requireSubmissionRefusalSink()
+    });
+    return { status: 201, body: { item } };
   });
 }

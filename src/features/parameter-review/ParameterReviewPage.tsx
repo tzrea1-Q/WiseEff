@@ -52,6 +52,7 @@ import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import "./parameter-review.css";
 import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
+import { CanonicalMemberRemovalReviewPanel } from "./CanonicalMemberRemovalReviewPanel";
 
 type ParameterReviewMode = "pending" | "history";
 type ParameterInitializationReviewRow = {
@@ -82,6 +83,7 @@ export function ParameterReviewPage({
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
   const searchParams = new URLSearchParams(search);
   const requestedUrlRequestId = searchParams.get("request") ?? "";
+  const requestedMemberRequestId = searchParams.get("memberRequest") ?? "";
   const requestedLegacyQueryId = searchParams.get("legacyRequest") ?? "";
   const reviewerRoleId = migrateLegacyRoleId(state.activeRoleId);
   const requestedLegacyStateId = requestedLegacyQueryId || (
@@ -741,10 +743,17 @@ export function ParameterReviewPage({
     window.history.replaceState(null, "", `/parameter-review${query ? `?${query}` : ""}`);
   }, [canonicalProjectId]);
 
+  const selectMemberRequest = useCallback((requestId: string) => {
+    const params = new URLSearchParams(window.location.search);
+    if (canonicalProjectId) params.set("project", canonicalProjectId);
+    params.set("memberRequest", requestId);
+    window.history.replaceState(null, "", `/parameter-review?${params.toString()}`);
+  }, [canonicalProjectId]);
+
   return (
     <WorkbenchLayout title={reviewPageTitle}>
       {runtimeMode === "api" && canonicalProjectId ? (
-        <CanonicalProjectValueReviewPanel
+        <><CanonicalProjectValueReviewPanel
           key={canonicalProjectId}
           projectId={canonicalProjectId}
           repository={runtime?.parameterCatalogRepository}
@@ -753,6 +762,15 @@ export function ParameterReviewPage({
           initialRequestId={requestedRequestId || undefined}
           onSelectRequest={selectCanonicalRequest}
         />
+        <CanonicalMemberRemovalReviewPanel
+          key={`member:${canonicalProjectId}`}
+          projectId={canonicalProjectId}
+          repository={runtime?.parameterCatalogRepository}
+          currentUserId={state.currentUserId}
+          canReview={canReviewCanonical}
+          initialRequestId={requestedMemberRequestId || undefined}
+          onSelectRequest={selectMemberRequest}
+        /></>
       ) : null}
       <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby="review-queue-heading">
         <div className="review-queue-header">

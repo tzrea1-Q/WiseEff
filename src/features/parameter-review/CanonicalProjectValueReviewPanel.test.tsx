@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
 
 const request = {
@@ -32,6 +33,21 @@ const request = {
 };
 
 describe("CanonicalProjectValueReviewPanel", () => {
+  it("keeps a non-reviewer's single-target request available without reading the reviewer batch queue", async () => {
+    const listProjectValueBatchChangeRequests = vi.fn().mockRejectedValue(new Error("403"));
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
+      listProjectValueBatchChangeRequests,
+      reviewProjectValueChangeRequest: vi.fn(),
+      withdrawProjectValueChangeRequest: vi.fn(),
+      getProjectValueChangeSourceDiff: vi.fn().mockRejectedValue(new Error("source unavailable"))
+    } as unknown as ParameterCatalogRepository;
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      currentUserId="user-1" canReview={false} />);
+    expect(await screen.findByRole("button", { name: "撤回我的提交" })).toBeEnabled();
+    expect(listProjectValueBatchChangeRequests).not.toHaveBeenCalled();
+  });
+
   it("does not replace the new project's selection when an earlier withdrawal finishes", async () => {
     let finishWithdrawal!: (value: unknown) => void;
     const withdrawProjectValueChangeRequest = vi.fn().mockImplementation(() => new Promise((resolve) => { finishWithdrawal = resolve; }));
@@ -321,5 +337,52 @@ describe("CanonicalProjectValueReviewPanel", () => {
     expect(await within(panel).findByRole("alert")).toHaveTextContent("request-missing");
     expect(within(panel).queryByRole("article", { name: "源文件请求详情" })).not.toBeInTheDocument();
     expect(repository.getProjectValueChangeSourceDiff).not.toHaveBeenCalled();
+  });
+
+  it("shows one frozen conflict choice and blocks approval when its target or source order disagrees", async () => {
+    const assigned = { ...request, candidateId: "prepared-candidate", assignedToUserId: "reviewer-1" };
+    const source = { requestId: assigned.id, bindingId: assigned.bindingId, candidateId: assigned.candidateId,
+      sourcePinId: assigned.sourcePinId, format: "json", sourceName: "config.json",
+      baseDigest: "a".repeat(64), proposedDigest: "b".repeat(64), diffDigest: "c".repeat(64),
+      before: "before", after: "after", bindings: [{ bindingId: assigned.bindingId }] };
+    const frozen = { request: assigned, sourceCandidateId: "uploaded-candidate",
+      selectedBindingId: assigned.bindingId, selectedDraftId: "selected-draft", choice: "draft",
+      decisionProofDigest: "d".repeat(64), sourceDiff: source };
+    const getProjectValueConflictDecision = vi.fn().mockResolvedValue({ item: frozen });
+    const reviewProjectValueChangeRequest = vi.fn();
+    const repository = { listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [assigned] }),
+      getProjectValueChangeSourceDiff: vi.fn().mockResolvedValue({ item: source }),
+      getProjectValueConflictDecision, reviewProjectValueChangeRequest,
+      getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } }) } as unknown as ParameterCatalogRepository;
+    const { rerender } = render(<CanonicalProjectValueReviewPanel projectId="project-1"
+      currentUserId="reviewer-1" repository={repository} />);
+    expect(await screen.findByRole("heading", { name: "单项来源冲突决策" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批准软件配置" })).toBeEnabled();
+    expect(screen.getByText("界面草稿值")).toBeInTheDocument();
+    getProjectValueConflictDecision.mockResolvedValue({ item: { ...frozen, sourceDiff: { ...source,
+      bindings: [{ bindingId: "other-binding" }] } } });
+    rerender(<CanonicalProjectValueReviewPanel projectId="project-2" currentUserId="reviewer-1"
+      repository={{ ...repository, listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [{ ...assigned,
+        projectId: "project-2" }] }) } as ParameterCatalogRepository} />);
+    expect(await screen.findByRole("alert", { name: "" })).toHaveTextContent("冲突详情、目标、顺序或证明与请求来源不符");
+    expect(screen.getByRole("button", { name: "批准软件配置" })).toBeDisabled();
+    expect(reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+  });
+
+  it("blocks review when the frozen conflict detail reports missing proof", async () => {
+    const assigned = { ...request, assignedToUserId: "reviewer-1" };
+    const reviewProjectValueChangeRequest = vi.fn();
+    const repository = { listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [assigned] }),
+      getProjectValueChangeSourceDiff: vi.fn().mockResolvedValue({ item: { requestId: assigned.id,
+        bindingId: assigned.bindingId, candidateId: assigned.candidateId, format: "json",
+        sourcePinId: assigned.sourcePinId, bindings: [] } }),
+      getProjectValueConflictDecision: vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT",
+        "Frozen source conflict decision is inconsistent.", { reason: "conflict-decision-stale" }, "request-id")),
+      reviewProjectValueChangeRequest } as unknown as ParameterCatalogRepository;
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" currentUserId="reviewer-1"
+      repository={repository} />);
+    expect(await screen.findByRole("alert", { name: "" })).toHaveTextContent("冲突决策来源或证明已过期（409）");
+    expect(screen.queryByRole("button", { name: "批准软件配置" })).not.toBeInTheDocument();
+    expect(reviewProjectValueChangeRequest).not.toHaveBeenCalled();
   });
 });

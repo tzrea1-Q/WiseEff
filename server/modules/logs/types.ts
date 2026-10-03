@@ -32,6 +32,8 @@ export type LogRecordDto = {
   updatedAt: string;
   submittedBy: string;
   relatedParameterId?: string;
+  /** Present only when this canonical Binding association is visible to the caller. */
+  relatedParameterProjectId?: string;
   device?: string;
   failureReason?: string;
   analysisQuestion?: string;

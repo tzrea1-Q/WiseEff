@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "priorHead": "a51ba55c955cb0852819bc49d95ea26404093b73",
+  "cHead": "5f8a05f8bfbc9374c64a8b147653170894db2a1b",
+  "dHead": "fbec1bd5134fc0256205f6fcfb40d0ccf6fa48f5",
+  "blobs": {
+    "server/modules/parameter-files/conflictService.test.ts": {
+      "before": "3c98456a40d04929888c860e972a281b440cc69e",
+      "after": "660c62ef3cb910d8f4f59f5030775652e96d9d0e"
+    },
+    "server/modules/parameter-files/conflictService.ts": {
+      "before": "9c8e50361cdeafd9adf42a63c5aae53a87498e01",
+      "after": "01f41a174ffd054934018c1c137918eea4d5cfd7"
+    }
+  },
+  "moved": [
+    {
+      "oldId": "S12-FIL:legacy-parameter-spec-identifier:33112c839be81779:c1b17ee60ab63c11",
+      "newId": "S12-FIL:legacy-parameter-spec-identifier:33112c839be81779:5e44d58cd28e0ec2",
+      "file": "server/modules/parameter-files/conflictService.test.ts",
+      "oldByteStart": 10856,
+      "oldByteEnd": 10871,
+      "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+    },
+    {
+      "oldId": "S12-FIL:legacy-parameter-spec-identifier:67aefab892891aa4:dd17e92284959a7d",
+      "newId": "S12-FIL:legacy-parameter-spec-identifier:67aefab892891aa4:7cafdea8ef014734",
+      "file": "server/modules/parameter-files/conflictService.test.ts",
+      "oldByteStart": 11684,
+      "oldByteEnd": 11701,
+      "sliceSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed"
+    },
+    {
+      "oldId": "S12-FIL:legacy-parameter-spec-identifier:fa34eea6b38bc692:da1ec889c440fc60",
+      "newId": "S12-FIL:legacy-parameter-spec-identifier:fa34eea6b38bc692:e52a44955c1e5e75",
+      "file": "server/modules/parameter-files/conflictService.ts",
+      "oldByteStart": 2701,
+      "oldByteEnd": 2716,
+      "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+    }
+  ]
+}

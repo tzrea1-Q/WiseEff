@@ -118,6 +118,7 @@ function deriveGates(
     sourcePreviewReady &&
     (sourcePreview?.request?.status === "pending" ||
       sourcePreview?.request?.status === "approved");
+  const canStartRequest = !sourcePreview?.request;
   return {
     canActivate:
       status === "ready" &&
@@ -129,7 +130,7 @@ function deriveGates(
       sourcePreview?.kind === "canonical" &&
       sourcePreview.canSubmit === true &&
       Boolean(sourcePreview.proofToken) &&
-      !sourceReviewLinked,
+      canStartRequest,
     canRecompute:
       sourcePreviewReady &&
       !sourceReviewLinked &&
@@ -538,6 +539,13 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         emit();
         throw new Error(message);
       }
+      if (sourcePreview.request) {
+        const message = `候选已有 ${sourcePreview.request.kind === "single" ? "单目标" : "批量"}审核请求（${sourcePreview.request.status}）；不能在单目标入口重复提交。`;
+        sourceReviewError = message;
+        error = message;
+        emit();
+        throw new Error(message);
+      }
       const expectedCurrentVersionId = sourcePreview.baseVersionId ?? candidate.baseVersionId;
       if (!expectedCurrentVersionId || !sourcePreview.proofToken || !reason.trim()) {
         const message = !expectedCurrentVersionId
@@ -564,7 +572,7 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         sourcePreview = {
           ...sourcePreview,
           canSubmit: false,
-          request: { id: result.requestId, status: result.status }
+          request: { id: result.requestId, status: result.status, kind: "single" }
         };
         emit();
         return result;

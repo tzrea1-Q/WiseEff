@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "baseHead": "1e442e14fcbf38cb076a342fffb510c12a80aed1",
+  "ownerHead": "eafb5a1579ff56cd659bd31390afe44c1f340a16",
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "source": {
+    "file": "server/modules/dts-reload/promote.test.ts",
+    "oldBlob": "68c9390212bacbf9bf3b17853d4e2e39eaaffaa0",
+    "currentBlob": "ce86c97e73e47bf9c21fd30098f8df3bee9868b1",
+    "oldByteCount": 13235,
+    "currentByteCount": 13437,
+    "oldSha256": "317fefce81ae5c58623c1baa83f18cf57aa36906b65be3d33abca2805b7df81e",
+    "currentSha256": "debcae394e6917aeec33164d465c9dd156b95ad113126f9285265ed2c560cc35"
+  },
+  "readers": [
+    {
+      "file": "server/modules/parameter-bindings/values/index.ts",
+      "blob": "3c67f2d9e6ce163103e2dd7ab1990cb7276485a0",
+      "byteCount": 1103,
+      "sha256": "ed3e85936f885c685710493818f8c4371b808b4940cbf9d7defa47296c956e5b"
+    },
+    {
+      "file": "server/modules/parameter-bindings/values/service.ts",
+      "blob": "193ef4a78709b4ad3ce4226f052eea4fa0a077fa",
+      "byteCount": 27514,
+      "sha256": "438d899fcb9ca6ff39ce446a4d071e96449dcf526c47b0d1e83815f3929ac72e"
+    },
+    {
+      "file": "server/modules/parameter-bindings/values/repositories.ts",
+      "blob": "8cfc870064f4e7b9376d1d87db8752cfb694c18b",
+      "byteCount": 29988,
+      "sha256": "197130e591a48b4030caa47247dcb9da76d25c6501c38b5449a5bafd217b5e47"
+    },
+    {
+      "file": "server/modules/dts-reload/testing/canonicalReloadFixture.ts",
+      "blob": "a0377b0a919517403c052ccc14964701b2539868",
+      "byteCount": 16807,
+      "sha256": "3993c25c7f5db10e071af1777655d6beac8b4bc57965e5a4c438a78525b7e4cd"
+    }
+  ],
+  "changes": [
+    {
+      "oldStart": 875,
+      "oldEnd": 875,
+      "currentStart": 875,
+      "currentEnd": 947,
+      "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "currentSha256": "f33e1916eb0f925d0d9f0933175f194142da9a652d0493aff821f769291cf40f"
+    },
+    {
+      "oldStart": 13000,
+      "oldEnd": 13224,
+      "currentStart": 13072,
+      "currentEnd": 13426,
+      "oldSha256": "b5474a6544626f41fa49ec7910eba6a99df1a21cd65a4bac8099575d4455857f",
+      "currentSha256": "0e0fdc9ab4ce620c1579be08dfd6153219abdac94206071fbf50a46b5e157fa2"
+    }
+  ],
+  "unchangedRegionsSha256": [
+    "fa0d8d47954cb32e7f752a7d0b050c54c92c9a855ab114bd7f1ca1af4aaf14c7",
+    "20076fac491d004709a00d0f6a9416f05d280f878c446ff15147f4babd6b1e65",
+    "494bdc6035aa5e298ac0a9be142429174dcbdc3867e539652fb0167101546fd9"
+  ],
+  "retired": [
+    {
+      "id": "S12-DTS:canonical-catalog-raw-access:6c622dc3afc58145:dc8e3e3771946e71",
+      "family": "S12-DTS",
+      "rule": "canonical-catalog-raw-access",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "line": 179,
+      "column": 58,
+      "byteStart": 13057,
+      "byteEnd": 13144,
+      "token": "canonical:parameter_catalog.project_parameter_bindings",
+      "evidence": "parameter_catalog.project_parameter_bindings: select current_value_id from parameter_catalog.project_parameter_bindings where id=$1",
+      "reason": "Consumer code must use the typed Catalog seam instead of a raw canonical Catalog table.",
+      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      "trustedBlobOid": "68c9390212bacbf9bf3b17853d4e2e39eaaffaa0"
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:ebdefe5860a8241c:490df2d7267e00bf",
+      "family": "S12-DTS",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "line": 179,
+      "column": 58,
+      "byteStart": 13057,
+      "byteEnd": 13144,
+      "token": "read:project_parameter_bindings",
+      "evidence": "read project_parameter_bindings: select current_value_id from parameter_catalog.project_parameter_bindings where id=$1",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+      "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      "trustedBlobOid": "68c9390212bacbf9bf3b17853d4e2e39eaaffaa0"
+    }
+  ],
+  "spans": [
+    {
+      "oldStart": 13057,
+      "oldEnd": 13144,
+      "sliceUtf8": "\"select current_value_id from parameter_catalog.project_parameter_bindings where id=$1\"",
+      "sliceSha256": "33c61427c0606a3f8e6c0edfaf0358d94d7002269a8ceb38a5574eac8a420dfc",
+      "oldContextStart": 13000,
+      "oldContextEnd": 13225,
+      "contextUtf8": "    expect((await db.query<{ current_value_id: string }>(\"select current_value_id from parameter_catalog.project_parameter_bindings where id=$1\", [fixture.bindingId])).rows[0]!.current_value_id).toBe(fixture.currentValueId);\n",
+      "contextSha256": "c8bfdee116ac7745e68d5c895056b415635d1726928250e8f823f56487255b49"
+    }
+  ],
+  "oldCRecord": {
+    "file": "scripts/fixtures/parameter-catalog-allowlist/issue-853-c-remainder-retired.json",
+    "sha256": "3b00dbbf9ffe8ec945e15fd734669e6442fda3eaf7acfa915ec4607b112fd00a",
+    "files": 6,
+    "total": 42,
+    "promote": 7,
+    "sourceBlob": "a52213a7ad637b88b47aa21c7f14969abc970264",
+    "destinationBlob": "68c9390212bacbf9bf3b17853d4e2e39eaaffaa0"
+  },
+  "allowancesSha256": "73289375514636f9f2d36946775dcacd8a8a67897a4b118c4085ec9a67a7c935",
+  "relocationsSha256": "0b3a79fc4cc9645d7a2b24dc53b0a96fa6f8d1ff1afec64bf96221ff890b6813",
+  "baseInventory": {
+    "summary": {
+      "violations": 3530,
+      "allowlisted": 3380,
+      "unallowlisted": 150,
+      "staleAllowances": 0,
+      "metadataMismatches": 0,
+      "allowlistGrowth": 0
+    },
+    "violationsIdsSha256": "4439dea47d70df336f5b2fb871be3bec0886da32ff545792ea25df4f0ce510c5",
+    "violationsMetadataSha256": "8d16830e0bbc47ddc7f7a6128e5e588f88a8796bd6e2d1197a9c9471928f3cd9",
+    "unallowlistedIdsSha256": "9c7d1e150c524776f9952d77c8a3e73b7b1de3f81e5f1d86a85f0e71e6fd2615",
+    "unallowlistedMetadataSha256": "9b3c8690a6a0ec74156f2b2dd161217cd323800caa5f0f40ad2598e7352a4f7f"
+  },
+  "currentInventory": {
+    "summary": {
+      "violations": 3528,
+      "allowlisted": 3380,
+      "unallowlisted": 148,
+      "staleAllowances": 0,
+      "metadataMismatches": 0,
+      "allowlistGrowth": 0
+    },
+    "violationsIdsSha256": "cd9163788fd79814e2842e237a3734fda2ba3d2e501c5cf248660fbf70246a7d",
+    "violationsMetadataSha256": "b83b7e9ba039e1cfebb44266f5001444996b02fb2044f4ed2600c20596b99d55",
+    "unallowlistedIdsSha256": "9ad48cae0b54c6ef4a9b4718b0ca3b76c7c6702afa250ee1f60d5cf5ec7a5d64",
+    "unallowlistedMetadataSha256": "f69cd9f5e3fc073310743523b977f62a7c8bec90207ce1226c112d8156743302"
+  },
+  "rawBase": {
+    "idsSha256": "d134ef27145a1e679931686601cd435136fba7608d34d664a10f8d8e724f86a2",
+    "metadataSha256": "9436a1476152a935a9b023b47725edaed76879ff40969e8faaaf8d9ccc5843d0"
+  },
+  "rawCurrent": {
+    "idsSha256": "3409517a236850508da32d398d6e0ef47e18d4cf11d49f7fc74afb151e051a92",
+    "metadataSha256": "6c3aaefd5adc46a00376d09fb782a5e987b6f476021ab26d7052c016d621d4fe"
+  }
+}

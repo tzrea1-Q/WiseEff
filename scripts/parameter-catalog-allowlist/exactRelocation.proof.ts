@@ -1,0 +1,174 @@
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
+import { verifyIssue1015KnowledgeSuccessor } from "./t14FamilySuccessorRelocation";
+import { applyReviewedExactRelocation, exactRelocationRecordPath, validateExactRelocation } from "./exactRelocation";
+import { compareBoundaryInventory } from "./deterministicOutput";
+import type { BoundaryViolation } from "./schema";
+import { issue913StaleRetiredSourceIds } from "./issue913StaleSuccessorRelocation";
+import { issue913T14RetiredSourceIds } from "./issue913T14Relocation";
+import { issue853CActionRetiredSourceIds, loadIssue853CRemainderRetiredSourceIds } from "./issue853CRelocation";
+import { issue904LogRetiredIds } from "./issue904LogRetirement";
+
+const repoRoot = process.cwd();
+const record: {
+  schemaVersion: number; file: string; trustedBaseSha: string; fixtureSha256: string;
+  sourceBlobOid: string; destinationBlobOid: string;
+  pairs: Array<{ old: BoundaryViolation; new: BoundaryViolation; sliceSha256: string }>;
+} = JSON.parse(await readFile(`${repoRoot}/${exactRelocationRecordPath}`, "utf8"));
+const fixture = await loadBoundaryViolationFixture(repoRoot);
+const allowlist = await loadAllowlistIndex(repoRoot);
+const source = execFileSync("git", ["show", `${record.trustedBaseSha}:${record.file}`], { cwd: repoRoot });
+const destination = await readFile(`${repoRoot}/${record.file}`);
+let discovered: BoundaryViolation[];
+const issue913RetiredSourceIds = [...issue913StaleRetiredSourceIds, ...issue913T14RetiredSourceIds];
+const issue900RetiredIds = new Set((JSON.parse(await readFile(
+  `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-900-dashboard-retirement.json`, "utf8",
+)) as { retiredAllowlistEntries: Array<{ id: string }> }).retiredAllowlistEntries.map((entry) => entry.id));
+const issue853CRemainderRetiredIds = await loadIssue853CRemainderRetiredSourceIds(repoRoot);
+const issue853DRetiredIds = (JSON.parse(await readFile(
+  `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json`, "utf8",
+)) as { retiredIds: string[] }).retiredIds;
+
+const knowledgeHistoricalView = await verifyIssue1015KnowledgeSuccessor(repoRoot, fixture, allowlist.entries);
+const knowledgeRetiredIds = new Set(knowledgeHistoricalView.retired.map(({ old }) => old.id));
+
+function expectCurrentRemovedPartition(currentRemoved: readonly BoundaryViolation[]) {
+  const removed = currentRemoved.filter(({ id }) => !knowledgeRetiredIds.has(id)); // old 130-entry historical stage only
+  expect(currentRemoved.filter(({ id }) => knowledgeRetiredIds.has(id)))
+    .toEqual(fixture.violations.filter(({ id }) => knowledgeRetiredIds.has(id)));
+  expect(currentRemoved.length).toBe(removed.length + knowledgeHistoricalView.retired.length);
+  expect(allowlist.entries.map(({ id }) => id).sort()).toEqual(knowledgeHistoricalView.historicalAllowances
+    .filter(({ id }) => !knowledgeRetiredIds.has(id)).map(({ id }) => id).sort());
+  const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
+    ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds,
+    ...issue904LogRetiredIds]);
+  expect(issue900RetiredIds.size).toBe(13);
+  expect(issue913StaleRetiredSourceIds).toHaveLength(17);
+  expect(issue913T14RetiredSourceIds).toHaveLength(4);
+  expect(issue853CRemainderRetiredIds).toHaveLength(42);
+  expect(issue853DRetiredIds).toHaveLength(22);
+  expect(issue904LogRetiredIds).toHaveLength(2);
+  expect(retired.size).toBe(102);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(102);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2 + 42 + 22 + issue904LogRetiredIds.length);
+  expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
+    .toEqual([...retired].sort());
+  expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
+}
+
+/** Register all exact relocation assertions beside #913's same-tree, same-base live scan. */
+export function registerExactRelocationProof(getRaw: () => readonly BoundaryViolation[]) {
+beforeAll(() => {
+  const all = getRaw();
+  const targets = new Set(record.pairs.map((pair) => pair.new.id));
+  discovered = all.filter((violation) => targets.has(violation.id));
+}, 60_000);
+
+function input() {
+  return {
+    fixture: structuredClone(fixture), allowances: structuredClone(allowlist.entries),
+    source: Buffer.from(source), destination: Buffer.from(destination), discovered: structuredClone(discovered),
+  };
+}
+
+describe("exact reviewed Catalog occurrence relocation", () => {
+  it("binds all 23 exact destinations to existing IDs without changing historical records", () => {
+    const result = validateExactRelocation(record, input());
+    expect(result).toHaveLength(23);
+    expect(result[0]).toEqual(record.pairs[0]);
+    expect(fixture.violations).toHaveLength(3519);
+    expect(fixture.violations.length - 28).toBe(3491);
+    expect(knowledgeHistoricalView.historicalAllowances).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42 - 22 - issue904LogRetiredIds.length);
+    expect(allowlist.entries.length + knowledgeHistoricalView.retired.length).toBe(knowledgeHistoricalView.historicalAllowances.length);
+  });
+
+  it.each([
+    ["file", (value: typeof record) => { value.file = "server/modules/parameter-specs/other.ts"; }],
+    ["base", (value: typeof record) => { value.trustedBaseSha = "0".repeat(40); }],
+    ["source blob", (value: typeof record) => { value.sourceBlobOid = "0".repeat(40); }],
+    ["destination blob", (value: typeof record) => { value.destinationBlobOid = "0".repeat(40); }],
+    ["fixture digest", (value: typeof record) => { value.fixtureSha256 = "0".repeat(64); }],
+    ["omitted pair", (value: typeof record) => { value.pairs.pop(); }],
+    ["duplicate pair", (value: typeof record) => { value.pairs[1] = structuredClone(value.pairs[0]); }],
+    ["reused destination", (value: typeof record) => { value.pairs[1].new = structuredClone(value.pairs[0].new); }],
+    ["slice digest", (value: typeof record) => { value.pairs[0].sliceSha256 = "0".repeat(64); }],
+    ["old identity", (value: typeof record) => { value.pairs[0].old.id = value.pairs[1].old.id; }],
+    ["new identity", (value: typeof record) => { value.pairs[0].new.id = value.pairs[1].new.id; }],
+    ["rule", (value: typeof record) => { value.pairs[0].new.rule = "legacy-catalog-sql-write"; }],
+    ["token", (value: typeof record) => { value.pairs[0].new.token += " changed"; }],
+    ["evidence", (value: typeof record) => { value.pairs[0].new.evidence += " changed"; }],
+    ["reason", (value: typeof record) => { value.pairs[0].new.reason += " changed"; }],
+    ["cross-file occurrence", (value: typeof record) => { value.pairs[0].new.file += ".other"; }],
+    ["position", (value: typeof record) => { value.pairs[0].new.byteStart += 1; }],
+    ["extra self-approval", (value: typeof record) => { Object.assign(value, { approved: true }); }],
+  ])("rejects altered %s", (_name, mutate) => {
+    const altered = structuredClone(record);
+    mutate(altered);
+    expect(() => validateExactRelocation(altered, input())).toThrow();
+  });
+
+  it.each(["source", "destination"] as const)("rejects any future or dirty %s bytes outside mapped slices", (key) => {
+    const altered = input();
+    altered[key][0] ^= 1;
+    expect(() => validateExactRelocation(record, altered)).toThrow("whole-file blob");
+  });
+
+  it("rejects swapped destinations even for identical repeated SQL slices", () => {
+    const altered = structuredClone(record);
+    const first = altered.pairs.findIndex((pair, index) => altered.pairs.some((other, j) =>
+      j > index && other.sliceSha256 === pair.sliceSha256 && other.old.byteStart !== pair.old.byteStart));
+    expect(first).toBeGreaterThanOrEqual(0);
+    const second = altered.pairs.findIndex((pair, index) => index > first &&
+      pair.sliceSha256 === altered.pairs[first].sliceSha256 && pair.old.byteStart !== altered.pairs[first].old.byteStart);
+    [altered.pairs[first].new, altered.pairs[second].new] = [altered.pairs[second].new, altered.pairs[first].new];
+    expect(() => validateExactRelocation(altered, input())).toThrow();
+  });
+
+  it.each(["missing discovery", "duplicate discovery", "already bound", "missing allowance", "changed allowance", "missing original", "wrong fixture base"])("rejects %s", (kind) => {
+    const altered = input();
+    const id = record.pairs[0].old.id;
+    if (kind === "missing discovery") altered.discovered.shift();
+    if (kind === "duplicate discovery") altered.discovered.push(altered.discovered[0]);
+    if (kind === "already bound") altered.discovered.push(record.pairs[0].old);
+    if (kind === "missing allowance") altered.allowances = altered.allowances.filter((entry) => entry.id !== id);
+    if (kind === "changed allowance") altered.allowances.find((entry) => entry.id === id)!.reason += " changed";
+    if (kind === "missing original") altered.fixture.violations = altered.fixture.violations.filter((entry) => entry.id !== id);
+    if (kind === "wrong fixture base") altered.fixture.trustedBaseSha = "0".repeat(40);
+    expect(() => validateExactRelocation(record, altered)).toThrow();
+  });
+
+  it("does not absorb unmapped new debt or restore historical and issue-specific retirements", () => {
+    const ids = new Set(allowlist.entries.map((entry) => entry.id));
+    const removed = fixture.violations.filter((entry) => !ids.has(entry.id));
+    expectCurrentRemovedPartition(removed);
+    const unrelated = { ...record.pairs[0].new, id: `${record.pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
+    const pairs = validateExactRelocation(record, { ...input(), discovered: [...discovered, unrelated] });
+    const mapped = pairs.map((pair) => pair.old);
+    expect(compareBoundaryInventory([...mapped, unrelated], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(unrelated);
+    for (const deleted of removed) {
+      expect(compareBoundaryInventory([deleted], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(deleted);
+    }
+  });
+
+  it.each(["missing", "changed", "partial"])("rejects a %s record at the filesystem entry", async (kind) => {
+    const root = await mkdtemp(join(tmpdir(), "catalog-relocation-"));
+    try {
+      if (kind !== "missing") {
+        const path = join(root, exactRelocationRecordPath);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, kind === "partial" ? "{" : `${JSON.stringify(record)}\n`);
+      }
+      await expect(applyReviewedExactRelocation(root, fixture, allowlist.entries, discovered)).rejects.toThrow(
+        kind === "missing" ? "ENOENT" : "reviewed record integrity",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+}

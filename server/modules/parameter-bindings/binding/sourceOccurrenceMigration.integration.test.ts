@@ -21,6 +21,7 @@ import {
 } from "../../parameter-catalog-contract/index";
 import { createEvidenceIngest, fingerprintCanonical } from "../../parameter-governance/evidence";
 import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import { readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../values";
 import {
   migrationsDir,
   withTempDatabase as withSharedTempDatabase
@@ -479,7 +480,9 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       } });
       const olderInventory = await mkdtemp(join(tmpdir(), "wiseeff-t11-older-inventory-"));
       try {
-        expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([
+        expect(await applyMigrations(resumedDb, migrationsDir, {
+          through: "0181_mod_d02_capture_revalidation.sql",
+        })).toEqual([
           "0151_source_occurrence_identity.sql",
           "0152_pinned_source_graph_immutability.sql",
           "0153_source_occurrence_integrity.sql",
@@ -500,7 +503,22 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           "0168_pinned_file_version_trigger_guard.sql",
           "0169_reviewed_source_member_cohort.sql",
           "0170_restore_subject_placement_definer.sql",
+          "0171_canonical_dts_batch_target_contract.sql",
+          "0172_canonical_batch_draft_impact.sql",
+          "0173_canonical_batch_draft_impact_pair.sql",
+          "0174_canonical_batch_composition_proof.sql",
+          "0175_canonical_batch_frozen_draft_choice.sql",
+          "0176_dts_observation_source_occurrence.sql",
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
+          "0179_parameter_catalog_comparison_manifest_binding.sql",
+          "0180_mod_d02_offline_capture.sql",
+          "0181_mod_d02_capture_revalidation.sql",
         ]);
+        const through0181 = (await resumedDb.query("select * from schema_migrations order by name")).rows;
+        expect(await applyMigrations(resumedDb, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+        expect((await resumedDb.query("select * from schema_migrations order by name")).rows.slice(0, -1))
+          .toEqual(through0181);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
         const bindings = (await resumedDb.query("select * from parameter_catalog.project_parameter_bindings order by id")).rows;
@@ -568,7 +586,9 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       await seedPopulatedGraph(db, connectionString);
       await seedPopulatedObservations(db);
 
-      await expect(applyMigrations(db, migrationsDir)).resolves.toEqual([
+      await expect(applyMigrations(db, migrationsDir, {
+        through: "0181_mod_d02_capture_revalidation.sql",
+      })).resolves.toEqual([
         "0151_source_occurrence_identity.sql",
         "0152_pinned_source_graph_immutability.sql",
         "0153_source_occurrence_integrity.sql",
@@ -589,7 +609,22 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         "0168_pinned_file_version_trigger_guard.sql",
         "0169_reviewed_source_member_cohort.sql",
         "0170_restore_subject_placement_definer.sql",
+        "0171_canonical_dts_batch_target_contract.sql",
+        "0172_canonical_batch_draft_impact.sql",
+        "0173_canonical_batch_draft_impact_pair.sql",
+        "0174_canonical_batch_composition_proof.sql",
+        "0175_canonical_batch_frozen_draft_choice.sql",
+        "0176_dts_observation_source_occurrence.sql",
+        "0177_knowledge_definition_references.sql",
+        "0178_log_related_parameter_snapshots.sql",
+        "0179_parameter_catalog_comparison_manifest_binding.sql",
+        "0180_mod_d02_offline_capture.sql",
+        "0181_mod_d02_capture_revalidation.sql",
       ]);
+      const through0181 = (await db.query("select * from schema_migrations order by name")).rows;
+      await expect(applyMigrations(db, migrationsDir)).resolves.toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+      expect((await db.query("select * from schema_migrations order by name")).rows.slice(0, -1))
+        .toEqual(through0181);
 
       const rows = await db.query<{
         observation_id: string;
@@ -1840,6 +1875,15 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       expect(resolved.rows).toEqual([
         { logical_id: newBinding, occurrence_id: newBinding }
       ]);
+      const scope = { organizationId: "org-src-occ-0151", projectId: "project-src-occ-0151" };
+      expect(await readOwnedCurrentBinding(db, { ...scope, bindingId: "binding-src-occ-0151" }))
+        .toEqual({ status: "replaced" });
+      expect(await readOwnedCurrentBinding(db, { ...scope, bindingId: newBinding }))
+        .toMatchObject({ status: "current", binding: { id: newBinding, definitionId: newDefinition } });
+      expect(await readOwnedCurrentBinding(db, { ...scope, projectId: "foreign-project", bindingId: "binding-src-occ-0151" }))
+        .toEqual({ status: "missing" });
+      expect(await readOwnedProjectValueIdentity(db, { ...scope, bindingId: "binding-src-occ-0151", projectValueId: "value-src-occ-0151" }))
+        .toMatchObject({ bindingId: "binding-src-occ-0151", definitionId: old.definition_id, definitionRevisionId: old.revision_id });
       const occurrenceResolverDefinition = await db.query<{ definition: string }>(
         `select pg_get_functiondef(
            'parameter_catalog.resolve_current_binding_by_source_occurrence(text,text,text)'::regprocedure

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "priorAHead": "9cb26cd44fafda3094431bb9787d7f9bde090932",
+  "cHead": "a9217f5dba30c8933bfab2a6d272cc3c522be59b",
+  "dHead": "aac4619864170ad1169ced71b7560d06a5eeb0c3",
+  "cMergeHead": "faae06371117ac6cdec40c8350c4bf8b8ea69e49",
+  "dMergeHead": "1c1f1caf04bd9226a231bc8e07faba88776b7848",
+  "cChangedBlob": {
+    "file": "server/modules/parameter-files/canonicalConflictHttp.integration.test.ts",
+    "before": "cfb77ac60c52d1856f058fad3663a0e6290bd691",
+    "after": "3d5bb1844f71ff3a4abf5000543fcac10fceab33"
+  },
+  "dChangedBlobs": {
+    "server/modules/parameter-files/canonicalBatchRollback.integration.test.ts": {
+      "before": null,
+      "after": "675cb5279aacdf87faabceed71bf3bbb61e96c36"
+    },
+    "server/modules/parameter-files/canonicalFileWorkflow.ts": {
+      "before": "290a346eb352a032428f52ce87687ff84c7ed0d8",
+      "after": "46c527510e7cda40b449f119f171cc4f2df38bfb"
+    },
+    "server/modules/parameter-files/canonicalSourceBatchCommit.ts": {
+      "before": "16c4de82a8b2156043bfc0654d88b9eee458b71a",
+      "after": "6ef39cd84b048e831d19b08bd0f7d9c41fba0994"
+    },
+    "server/modules/parameter-files/types.ts": {
+      "before": "ce6a4509e2fc4c9982918ad57c5c9eba2d3367f2",
+      "after": "132d2433ee621d9165afea2d113acd324b3b0866"
+    }
+  },
+  "priorUnallowlistedCount": 174,
+  "priorUnallowlistedIdsSha256": "01b9ffcb0cc0dfd92efc26539432fe33a6e6f42a069cdc9164b0f833dcc7af13",
+  "retired": {
+    "id": "S12-FIL:legacy-catalog-sql-write:8cadc432e7cb8c7b:725ec50795941e96",
+    "file": "server/modules/parameter-files/canonicalConflictHttp.integration.test.ts",
+    "rule": "legacy-catalog-sql-write",
+    "line": 455,
+    "byteStart": 32883,
+    "byteEnd": 33104,
+    "sliceSha256": "d5fbd9653e8d4db907cdf8b9e4bd729647c731b795a83f9851429070ce6a0362"
+  },
+  "currentUnallowlistedCount": 173,
+  "currentUnallowlistedIdsSha256": "e4d61c03087651a29cf8b039db4d302c54df73fefc51412ce118bff5579d9a40"
+}

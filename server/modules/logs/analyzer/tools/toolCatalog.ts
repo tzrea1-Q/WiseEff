@@ -210,14 +210,15 @@ export async function getRelatedParameterContext(context: LogAnalysisToolContext
       result: { available: false, note: "The related parameter could not be found in this organization." }
     };
   }
+  const { recentChanges, ...contextWithoutHistory } = parameter;
 
   return {
     ok: true,
     result: {
       available: true,
       parameter: {
-        ...parameter,
-        recentChanges: parameter.recentChanges.slice(0, 5)
+        ...contextWithoutHistory,
+        ...(recentChanges ? { recentChanges: recentChanges.slice(0, 5) } : {})
       }
     }
   };

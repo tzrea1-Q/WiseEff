@@ -418,6 +418,7 @@ describe.skipIf(!databaseAvailable)("parameter file integration", () => {
     expect(first.conflict.fileVersionNumber).toBe(first.versionNumber);
 
     const resolved = await resolveParameterFileConflict(db!, auth, {
+      projectId: "project-pf-int",
       conflictId: first.conflict.id,
       resolution: "file",
       reason: "  integration keep file  "
@@ -479,5 +480,76 @@ describe.skipIf(!databaseAvailable)("parameter file integration", () => {
       projectId: "project-pf-int"
     });
     expect(remaining).toHaveLength(0);
+  });
+
+  it("hides another project's conflict before changing its drafts or audit", async () => {
+    const { insertFileSyncConflict } = await import("../parameters/fileSyncConflictRepository");
+    await seedCoreGraph(db!, {
+      organization: { id: "org-pf-int", name: "ChargeLab PF" },
+      projects: [{ id: "project-pf-int-other", name: "Borealis", code: "BOR" }]
+    });
+    await db!.query(`insert into project_parameter_values
+      (id, organization_id, project_id, parameter_definition_id, current_value,
+       recommended_value, value_version, updated_by_user_id)
+      values ('ppv-pf-int-other', 'org-pf-int', 'project-pf-int-other', 'pd-pf-int',
+              '80', '80', 1, 'user-pf-int')`);
+    const server = makeServer(db!, createMemoryObjectStore());
+    const upload = await requestJson<{ version: { id: string } }>(
+      server, "/api/v1/projects/project-pf-int-other/parameter-files", {
+        method: "POST",
+        body: JSON.stringify({
+          fileName: "other-project.json",
+          contentBase64: Buffer.from('{"battery":{"temp_max":85}}').toString("base64")
+        })
+      }
+    );
+    expect(upload.status).toBe(201);
+    await db!.query(`insert into users (id, organization_id, name, email, title, is_active)
+      values ('user-pf-int-other-ui', 'org-pf-int', 'UI Editor',
+              'other-ui-pf-int@example.com', 'Editor', true)`);
+    await db!.query(`insert into parameter_drafts
+      (id, organization_id, project_id, project_parameter_value_id, user_id,
+       target_value, reason, origin, origin_file_version_id)
+      values
+      ('draft-pf-int-other-file', 'org-pf-int', 'project-pf-int-other', 'ppv-pf-int-other',
+       'user-pf-int', '85', 'file', 'file_sync', $1),
+      ('draft-pf-int-other-ui', 'org-pf-int', 'project-pf-int-other', 'ppv-pf-int-other',
+       'user-pf-int-other-ui', '90', 'ui', 'manual', null)`, [upload.body.version.id]);
+    const conflict = await insertFileSyncConflict(db!, {
+      id: randomUUID(), organizationId: "org-pf-int", projectId: "project-pf-int-other",
+      projectParameterValueId: "ppv-pf-int-other", parameterDefinitionId: "pd-pf-int",
+      fileVersionId: upload.body.version.id,
+      fileDraftId: "draft-pf-int-other-file", uiDraftId: "draft-pf-int-other-ui",
+      fileValue: "85", uiDraftValue: "90"
+    });
+    const state = async () => ({
+      conflict: (await db!.query<{ status: string; resolved_by_user_id: string | null }>(
+        "select status, resolved_by_user_id from parameter_file_sync_conflicts where id=$1",
+        [conflict.id])).rows[0],
+      drafts: (await db!.query<{ id: string }>(
+        "select id from parameter_drafts where project_id='project-pf-int-other' order by id"
+      )).rows.map((row) => row.id),
+      audits: (await db!.query<{ id: string }>(
+        "select id from audit_events where project_id='project-pf-int-other' order by id"
+      )).rows.map((row) => row.id)
+    });
+    const before = await state();
+    const wrongProject = await requestJson<{ error: { code: string } }>(server,
+      `/api/v1/projects/project-pf-int/parameter-file-conflicts/${conflict.id}/resolve`, {
+        method: "POST", body: JSON.stringify({ resolution: "file", reason: "wrong project" })
+      });
+    expect({ status: wrongProject.status, state: await state() }).toEqual({ status: 404, state: before });
+    expect(wrongProject.body.error.code).toBe("NOT_FOUND");
+
+    const correctProject = await requestJson<{ item: { status: string } }>(server,
+      `/api/v1/projects/project-pf-int-other/parameter-file-conflicts/${conflict.id}/resolve`, {
+        method: "POST", body: JSON.stringify({ resolution: "file", reason: "correct project" })
+      });
+    expect(correctProject.status).toBe(200);
+    expect(correctProject.body.item.status).toBe("resolved_file");
+    const after = await state();
+    expect(after.conflict).toBeUndefined();
+    expect(after.drafts).toEqual(["draft-pf-int-other-file"]);
+    expect(after.audits).toHaveLength(before.audits.length + 1);
   });
 });

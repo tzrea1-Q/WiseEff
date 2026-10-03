@@ -7,13 +7,13 @@ import { trustedDomainAttribution, type TrustedInvocationContext } from "../auth
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
-import { PARAMETER_GOVERNANCE_WRITER_ROLE, quoteIdent } from "../catalog-kernel/security/catalogRoleManifest";
 import type { ObjectStore } from "../logs/objectStore";
 import { DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
 import { asValueClient } from "../parameter-bindings/catalogProjectValueSync";
+import { loadSourceBindingCohortReadOnly } from "../parameter-bindings/values";
 import { digestProjectValuePayload, deriveHistoryEventId, deriveProjectValueId,
-  insertBindingHistoryEvent, insertProjectValue, loadBindingById, loadProjectValueById,
+  casCurrentTip, insertBindingHistoryEvent, insertProjectValue, loadBindingById, loadProjectValueById,
   loadOwnedProjectValueSourcePin } from "../parameter-bindings/values/repositories";
 import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
@@ -82,17 +82,22 @@ async function inspectMemberRemoval(
     join public.project_parameter_files file on file.id=version.file_id and file.current_version_id=version.id
     where file.organization_id=$1 and file.project_id=$2 and file.config_set_id=$3
     order by version.id for update of version nowait`, [organizationId, input.projectId, input.configSetId]);
-  const seed = (await tx.query<{ binding_id: string; value_id: string }>(`
-    select binding.id as binding_id,binding.current_value_id as value_id
-    from parameter_catalog.current_project_parameter_bindings binding
-    join parameter_catalog.project_parameter_source_occurrences occurrence
-      on occurrence.id=binding.source_occurrence_id
-    where binding.organization_id=$1 and binding.project_id=$2
-      and occurrence.config_set_id=$3 and occurrence.file_id=$4 order by binding.id limit 1`,
-  [organizationId, input.projectId, input.configSetId, input.fileId])).rows[0];
+  let seed: { bindingId: string; valueId: string } | undefined;
+  for (const entry of await loadSourceBindingCohortReadOnly(tx, {
+    organizationId, projectId: input.projectId, configSetId: input.configSetId
+  })) {
+    const pin = await loadOwnedProjectValueSourcePin(tx, {
+      organizationId, projectId: input.projectId,
+      bindingId: entry.bindingId, projectValueId: entry.oldValueId
+    });
+    if (pin?.fileId === input.fileId) {
+      seed = { bindingId: entry.bindingId, valueId: entry.oldValueId };
+      break;
+    }
+  }
   if (!seed) conflict("Removed source member has no current Binding cohort.");
   const sourcePin = await loadOwnedProjectValueSourcePin(tx, {
-    organizationId, projectId: input.projectId, bindingId: seed.binding_id, projectValueId: seed.value_id
+    organizationId, projectId: input.projectId, bindingId: seed.bindingId, projectValueId: seed.valueId
   });
   if (!sourcePin) conflict("Removed source member has no exact source pin.");
   await lockCanonicalSourceCohort(tx, sourcePin);
@@ -100,7 +105,7 @@ async function inspectMemberRemoval(
     organizationId, projectId: input.projectId, configSetId: input.configSetId
   });
   const snapshot = await loadCanonicalSourceSnapshot(tx, storage, {
-    organizationId, projectId: input.projectId, bindingId: seed.binding_id, projectValueId: seed.value_id
+    organizationId, projectId: input.projectId, bindingId: seed.bindingId, projectValueId: seed.valueId
   });
   if (snapshot.manifest.configSetId !== input.configSetId
     || snapshot.manifest.members.length !== files.length
@@ -312,13 +317,6 @@ export async function applyReviewedCanonicalMemberRemoval(
         valueJson: JSON.stringify(payload.value), valueState: "present"
       });
       if (!inserted) conflict("Surviving Value revision already exists.");
-      const moved = await tx.query(`update parameter_catalog.project_parameter_bindings
-        set current_value_id=$3,updated_at=now() where id=$1 and current_value_id=$2
-          and organization_id=$4 and project_id=$5 and source_occurrence_id=$6
-          and not parameter_catalog.is_replaced_current_binding(id)`,
-      [entry.bindingId, entry.oldValueId, newValueId,
-        auth.organization.id, frozen.projectId, entry.sourceOccurrenceId]);
-      if (moved.rowCount !== 1) conflict("Surviving Binding lost its exact Value tip.");
       const sourcePinId = randomUUID();
       await tx.query(`insert into parameter_catalog.project_value_source_pins
         (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,
@@ -328,6 +326,10 @@ export async function applyReviewedCanonicalMemberRemoval(
         auth.organization.id, frozen.projectId, entry.sourceOccurrenceId,
         successorConfigRevisionId, entry.fileId, entry.fileVersionId,
         JSON.stringify(entry.locator), `sha256:${digest(serializeContract(entry.locator))}`]);
+      if (!await casCurrentTip(asValueClient(tx), {
+        bindingId: entry.bindingId, expectedTip: entry.oldValueId, nextTip: newValueId,
+        sourceCommitRequestId: review.requestId
+      })) conflict("Surviving Binding lost its exact Value tip.");
       const historyEventId = deriveHistoryEventId({
         bindingId: entry.bindingId, oldCurrentValueId: entry.oldValueId, newCurrentValueId: newValueId
       });
@@ -357,7 +359,7 @@ export async function applyReviewedCanonicalMemberRemoval(
         proofDigest: frozen.proofDigest
       }, traceId: context.traceId
     });
-    await tx.query(`set local role ${quoteIdent(PARAMETER_GOVERNANCE_WRITER_ROLE)}`);
+    await tx.query("set local role parameter_governance_writer_role");
     await tx.query(`select parameter_catalog.insert_reviewed_member_tombstone(
       $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11)`,
     [tombstoneId, auth.organization.id, frozen.projectId, frozen.configSetId,

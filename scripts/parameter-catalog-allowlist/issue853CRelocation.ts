@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { AllowlistEntry, BoundaryViolation, BoundaryViolationFixture } from "./schema";
+import { acceptedIssue1020PromoteRemainderSource } from "./issue1020PromoteRollbackTipReadSuccessor.proof";
 import {
   runReviewedRelocationRecord,
   type RelocationConfig,
@@ -196,7 +197,9 @@ export async function verifyIssue853CRemainderRetirement(
       throw new Error("Issue #853 C retirement rejected: fixed file partition.");
     }
     const source = execFileSync("git", ["show", `${fixture.trustedBaseSha}:${file}`], { cwd: repoRoot });
-    const destination = await readFile(resolve(repoRoot, file));
+    const destination = file === "server/modules/dts-reload/promote.test.ts"
+      ? await acceptedIssue1020PromoteRemainderSource(repoRoot, fixture, allowances, discovered)
+      : await readFile(resolve(repoRoot, file));
     if (blobOid(source) !== section.sourceBlobOid || blobOid(destination) !== section.destinationBlobOid) {
       throw new Error(`Issue #853 C retirement rejected: whole-file blob ${file}.`);
     }

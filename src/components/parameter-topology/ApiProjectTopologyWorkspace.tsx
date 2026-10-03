@@ -72,6 +72,7 @@ import {
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
+  requestedBindingId?: string;
   canEdit?: boolean;
   layoutMode?: TopologyLayoutMode;
   runtimeMode?: WiseEffRuntimeMode;
@@ -317,6 +318,7 @@ async function loadWorkspace(
  */
 export function ApiProjectTopologyWorkspace({
   projectId,
+  requestedBindingId,
   canEdit = true,
   layoutMode = "desktop",
   runtimeMode = "api",
@@ -1223,6 +1225,14 @@ export function ApiProjectTopologyWorkspace({
     [canonicalRepository, projectId]
   );
 
+  const requestedBinding = requestedBindingId && loadState.kind === "ready"
+    ? loadState.bindings.find((binding) => binding.id === requestedBindingId)
+    : undefined;
+
+  useEffect(() => {
+    if (requestedBinding) setActiveFormatTab(requestedBinding.effectiveValue.kind === "json" ? "json" : "dts");
+  }, [requestedBinding]);
+
   if (loadState.kind === "loading") {
     return (
       <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
@@ -1356,11 +1366,13 @@ export function ApiProjectTopologyWorkspace({
 
   return (
     <div className="api-project-topology-workspace">
+      {requestedBindingId && !requestedBinding ? <p role="status">关联参数在当前项目中不可用。</p> : null}
       {formatSwitcher}
       {activeFormatTab === "json" && jsonBindingCount > 0 ? (
         <div id="format-panel-json" role="tabpanel" aria-labelledby="format-tab-json">
           <JsonBindingPanel
             bindings={loadState.bindings}
+            requestedBindingId={requestedBinding?.effectiveValue.kind === "json" ? requestedBindingId : undefined}
             moduleRegistry={moduleRegistry}
             canEdit={canEditSemantic}
             draftBindingIds={draftBindingIds}
@@ -1382,6 +1394,7 @@ export function ApiProjectTopologyWorkspace({
         <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts">
           <DtsParameterWorkbench
             projectId={projectId}
+            requestedBindingId={requestedBinding?.effectiveValue.kind !== "json" ? requestedBindingId : undefined}
             configSetId={loadState.configSetId}
             revisionId={loadState.revisionId}
             layoutMode={layoutMode}

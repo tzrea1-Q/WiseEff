@@ -16,7 +16,8 @@ import { createConfigSet, addConfigSetFile, removeConfigSetFile } from "./config
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { uploadProjectParameterFile } from "./service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
-import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, readCanonicalBindingChangeHistory, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import { loadBindingById } from "../parameter-bindings/values/repositories";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { loadCanonicalSourceSnapshot, readPinnedDtsSourceBatchChanges } from "./canonicalSource";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly } from "../parameter-bindings/values";
@@ -873,9 +874,14 @@ describe("#906 canonical JSON candidate workflow", () => {
       "delete from project_parameter_file_versions where id=$1", [currentVersionId]
     )).rejects.toMatchObject({ code: "55000" });
     const manifest = before.map((row) => ({ bindingId: row.id, valueId: row.current_value_id, sourcePinId: row.pin_id }));
-    const historyCount = (await db.query<{ count: number }>(`
-      select count(*)::int as count from parameter_catalog.binding_history_events
-      where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count;
+    const historyCount = async () => (await Promise.all(before.map(async (row) => {
+      const events = await readCanonicalBindingChangeHistory(getRootPostgresPool(db)!, {
+        organizationId: ORG, projectId: JSON_PROJECT, bindingId: row.id, limit: 200
+      });
+      expect(events?.length).toBeLessThan(200);
+      return events!.length;
+    }))).reduce((sum, count) => sum + count, 0);
+    const initialHistoryCount = await historyCount();
     const pinCount = (await db.query<{ count: number }>(`
       select count(*)::int as count from parameter_catalog.project_value_source_pins
       where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count;
@@ -935,16 +941,14 @@ describe("#906 canonical JSON candidate workflow", () => {
     )).rows[0]!.config_set_id).toBe(configSetId);
 
     const committed = await writeRemoval(false);
-    expect((await db.query<{ id: string; current_value_id: string }>(`
-      select id,current_value_id from parameter_catalog.project_parameter_bindings
-      where id=any($1::text[]) order by id`, [before.map((row) => row.id)])).rows)
-      .toEqual(before.map((row) => ({ id: row.id, current_value_id: row.current_value_id })));
+    expect(await Promise.all(before.map(async (row) => ({
+      id: row.id,
+      current_value_id: (await loadBindingById(asValueClient(db), row.id))?.current_value_id
+    })))).toEqual(before.map((row) => ({ id: row.id, current_value_id: row.current_value_id })));
     expect((await db.query<{ count: number }>(`
       select count(*)::int as count from parameter_catalog.project_value_source_pins
       where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count).toBe(pinCount);
-    expect((await db.query<{ count: number }>(`
-      select count(*)::int as count from parameter_catalog.binding_history_events
-      where binding_id=any($1::text[])`, [before.map((row) => row.id)])).rows[0]!.count).toBe(historyCount);
+    expect(await historyCount()).toBe(initialHistoryCount);
     expect((await db.query<{ id: string }>(`
       select id from audit_events where id=$1`, [committed.auditId])).rows).toHaveLength(1);
     await expect(db.transaction(async (tx) => {

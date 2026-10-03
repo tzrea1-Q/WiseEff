@@ -806,6 +806,8 @@ describe.skipIf(!postgresAvailable)("user governance registration concurrency", 
       const deadline = Date.now() + 5_000;
       let sawApprovalWaitingForUser = false;
       while (Date.now() < deadline) {
+        // The holding transaction otherwise reuses its first pg_stat_activity snapshot.
+        await roleClient.query("select pg_stat_clear_snapshot()");
         const active = await roleClient.query<{ query: string }>(
           `select query
              from pg_stat_activity

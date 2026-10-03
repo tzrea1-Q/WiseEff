@@ -8,12 +8,14 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createDefaultKnowledgeTextExtractor, type KnowledgeTextExtractor } from "./extraction";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
+  addKnowledgeDefinitionReference,
   addKnowledgeParameterReference,
   archiveKnowledgeEntry,
   createKnowledgeEntry,
   distillKnowledgeFromLog,
   distillKnowledgeFromReloadRun,
   findRelatedKnowledgeForLog,
+  findRelatedKnowledgeForDefinition,
   findRelatedKnowledgeForSpec,
   getKnowledgeEntry,
   getKnowledgeFileContent,
@@ -25,6 +27,7 @@ import {
   rebuildKnowledgeIndex,
   rejectAgentKnowledgeDraft,
   removeKnowledgeParameterReference,
+  removeKnowledgeDefinitionReference,
   restoreKnowledgeEntry,
   restoreKnowledgeRevision,
   retryKnowledgeEntryIndex,
@@ -37,6 +40,7 @@ import {
   distillKnowledgeFromReloadRunBodySchema,
   listKnowledgeEntriesQuerySchema,
   relatedKnowledgeForLogQuerySchema,
+  relatedKnowledgeForDefinitionQuerySchema,
   relatedKnowledgeForSpecQuerySchema,
   restoreKnowledgeRevisionBodySchema,
   searchKnowledgeQuerySchema,
@@ -54,6 +58,10 @@ const paramsWithRevisionIdSchema = paramsWithEntryIdSchema.extend({
 // parameter_specs.id is a text surrogate (e.g. "pspec:…"), not a uuid.
 const paramsWithSpecIdSchema = paramsWithEntryIdSchema.extend({
   specId: z.string().min(1)
+});
+
+const paramsWithDefinitionIdSchema = paramsWithEntryIdSchema.extend({
+  definitionId: z.string().min(1)
 });
 
 function requireDb(db: Database | undefined) {
@@ -164,6 +172,15 @@ export function registerKnowledgeRoutes(
     return { status: 200, body: { items: result.items } };
   });
 
+  router.get("/api/v1/knowledge/related-to-definition", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(relatedKnowledgeForDefinitionQuerySchema, flattenQuery(request.query));
+    const result = await findRelatedKnowledgeForDefinition(db, auth, query);
+
+    return { status: 200, body: { items: result.items } };
+  });
+
   router.get("/api/v1/knowledge/index/status", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -270,6 +287,20 @@ export function registerKnowledgeRoutes(
     return { status: 200, body: { item } };
   });
 
+  router.put("/api/v1/knowledge/entries/:entryId/definition-references/:definitionId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
+    const item = await addKnowledgeDefinitionReference(
+      db,
+      auth,
+      { entryId: params.entryId, definitionId: params.definitionId },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  });
+
   router.delete("/api/v1/knowledge/entries/:entryId/parameter-references/:specId", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -278,6 +309,20 @@ export function registerKnowledgeRoutes(
       db,
       auth,
       { entryId: params.entryId, specId: params.specId },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  });
+
+  router.delete("/api/v1/knowledge/entries/:entryId/definition-references/:definitionId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithDefinitionIdSchema, request.params);
+    const item = await removeKnowledgeDefinitionReference(
+      db,
+      auth,
+      { entryId: params.entryId, definitionId: params.definitionId },
       { requestId: request.requestId }
     );
 

@@ -2,13 +2,50 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createDatabase, type Database } from "../shared/database/client";
-import { applyMigrations } from "../shared/database/migrations";
-import { createSerializedTestQueryable } from "./testDatabase";
+import { applyMigrations as applyRepositoryMigrations, type ApplyMigrationsOptions } from "../shared/database/migrations";
+import { createEphemeralTestDatabase, createSerializedTestQueryable, dropTestDatabase, hasTestClusterRoleCatalogLock, withTestClusterRoleCatalogLock } from "./testDatabase";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 
 /** Absolute path to `server/migrations`, shared by suites that replay migrations manually. */
 export const migrationsDir = path.join(projectRoot, "server", "migrations");
+
+const ROLE_DDL_MIGRATIONS = [
+  "0138_canonical_parameter_catalog_roles.sql",
+  "0139_parameter_catalog_verification_core.sql",
+  "0140_catalog_publication_control_plane.sql",
+  "0180_mod_d02_offline_capture.sql",
+  "0182_legacy_dismissed_identity_reader.sql",
+];
+
+/** Test-only wrapper: hold the cluster lease before the runner's target-DB locks. */
+export async function applyTestMigrations(
+  db: Database,
+  directory: string,
+  options: ApplyMigrationsOptions = {},
+): Promise<string[]> {
+  const selectedRoleDdl = directory === migrationsDir ? ROLE_DDL_MIGRATIONS.filter(
+    (file) => (options.before === undefined || file < options.before)
+      && (options.through === undefined || file <= options.through),
+  ) : [];
+  if (selectedRoleDdl.length === 0) return applyRepositoryMigrations(db, directory, options);
+  // A role-sensitive fixture can hold the outer lease across multiple replays.
+  if (hasTestClusterRoleCatalogLock()) return applyRepositoryMigrations(db, directory, options);
+  const exists = await db.query<{ exists: boolean }>(
+    "select to_regclass('public.schema_migrations') is not null as exists",
+  );
+  const applied = exists.rows[0]?.exists
+    ? (await db.query<{ name: string }>(
+      "select name from schema_migrations where name = any($1::text[])",
+      [selectedRoleDdl],
+    )).rows.map(({ name }) => name)
+    : [];
+  return selectedRoleDdl.every((file) => applied.includes(file))
+    ? applyRepositoryMigrations(db, directory, options)
+    : withTestClusterRoleCatalogLock(() => applyRepositoryMigrations(db, directory, options));
+}
+
+export { applyTestMigrations as applyMigrations };
 
 export function resolveTestDatabaseUrl(): string {
   return (
@@ -43,11 +80,13 @@ export type WithTempDatabaseOptions = {
   /** Identifier fragment baked into the generated database name: `wiseeff_<prefix>_<ts>_<rand>`. */
   prefix: string;
   /**
-   * Apply every repository migration before the callback runs. Defaults to true.
+   * Execute every repository migration on a fresh database. Defaults to true.
    * Suites that replay migrations selectively (upgrade/backfill tests) pass false
    * and drive `applyMigrations`/their own subset against `migrationsDir` themselves.
+   * Ordinary fixtures may explicitly choose "template" for an exclusively cloned,
+   * fully migrated database. This does not replay cluster-shared role guards.
    */
-  migrate?: boolean;
+  migrate?: boolean | "template";
 };
 
 /**
@@ -63,13 +102,16 @@ export async function withTempDatabase<T>(
     /[^a-z0-9_]/gi,
     ""
   );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
+  const template = options.migrate === "template"
+    ? await createEphemeralTestDatabase(options.prefix)
+    : undefined;
+  if (!template) {
+    await withAdminClient(async (admin) => {
+      await admin.query(`create database ${dbName}`);
+    });
+  }
+  const connectionString = template?.url ?? adminConnectionString(dbName);
   const client = new pg.Client({ connectionString });
-  await client.connect();
   // FIFO-serialize queries on the single client so route handlers that fan out
   // concurrent queries stay deterministic (see testing-strategy: transactional FIFO).
   const db = createDatabase(
@@ -80,14 +122,16 @@ export async function withTempDatabase<T>(
   );
 
   try {
-    if (options.migrate !== false) {
-      await applyMigrations(db, migrationsDir);
+    await client.connect();
+    if (!template && options.migrate !== false) {
+      await applyTestMigrations(db, migrationsDir);
     }
     return await fn({ db, connectionString });
   } finally {
     await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
+    if (template) await template.drop();
+    else await withAdminClient(async (admin) => {
+      await dropTestDatabase(admin, dbName);
     });
   }
 }

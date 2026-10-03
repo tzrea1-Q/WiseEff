@@ -10,11 +10,12 @@ import { createPostgresDatabase, type Database } from "../server/shared/database
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const organizationId = "org-chargelab";
 const seedUserId = "u-xu-yun";
-const completedLogId = "log-aurora-charging-foldback";
+// New IDs keep this unassociated layout fixture separate from legacy linked rows.
+const completedLogId = "log-aurora-charging-foldback-unassociated";
 const completedFileObjectId = "log-file-aurora-charging-foldback";
-const completedRunId = "run-aurora-charging-foldback";
-const completedReportId = "report-aurora-charging-foldback";
-const completedJobId = "job-aurora-charging-foldback";
+const completedRunId = "run-aurora-charging-foldback-unassociated";
+const completedReportId = "report-aurora-charging-foldback-unassociated";
+const completedJobId = "job-aurora-charging-foldback-unassociated";
 const failedLogId = "log-aurora-unsupported";
 const failedFileObjectId = "log-file-aurora-unsupported";
 
@@ -123,6 +124,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         archive_state = excluded.archive_state,
         analysis_question = excluded.analysis_question,
         related_parameter_id = excluded.related_parameter_id,
+        related_parameter_project_id = null,
         submitted_by_user_id = excluded.submitted_by_user_id,
         failure_reason = null,
         updated_at = excluded.updated_at
@@ -133,7 +135,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         completedFileObjectId,
         "charging-foldback.log",
         "Why did fast charging fold back?",
-        "aurora-fast-charge-current",
+        null,
         seedUserId,
         "2026-05-25T10:03:29.500Z"
       ]
@@ -277,7 +279,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         rule_hit = excluded.rule_hit
       `,
       [
-        "evidence-aurora-thermal-foldback",
+        "evidence-aurora-thermal-foldback-unassociated",
         organizationId,
         completedLogId,
         completedRunId,

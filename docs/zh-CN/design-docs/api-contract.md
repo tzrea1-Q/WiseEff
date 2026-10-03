@@ -94,7 +94,7 @@ M6.2 adds OIDC-backed production auth and durable user-governance contract entri
 
 ## 调试参数语义
 
-M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id` 为边界，不接受 `projectId` 查询参数或请求体字段。日志记录可含可选 `relatedParameterId` 作为指向 M1 定义的软链接。
+M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id` 为边界。新日志关联必须提供 `relatedParameterPin: { kind: "canonical-pin", projectId, bindingId, definitionId?, definitionRevisionId? }`；服务端鉴权该精确项目 Binding，并为每次分析冻结 canonical Value、DefinitionRevision 与来源 pin。重新分析再次解析当前 Binding；旧 run 快照及报告保留为历史。新上传不能只传 `relatedParameterId`，存量缺少已验证项目范围的软链接不得当作当前值。无关联日志上传与调试 API 不接受顶层 `projectId` 字段。
 
 `GET /api/v1/debugging/parameters?protocol=adb` 返回 enabled、未 archived 且所选协议 binding 启用的组织 catalog 行。鉴权仅使用组织级调试权限。
 
@@ -378,7 +378,11 @@ GET  /api/v1/jobs/:jobId/events
   "contentType": "text/plain",
   "contentBase64": "V0FSTiB0ZW1wPTc1",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current",
+  "relatedParameterPin": {
+    "kind": "canonical-pin",
+    "projectId": "project_123",
+    "bindingId": "binding_123"
+  },
   "logDomainId": "domain_123"
 }
 ```
@@ -390,7 +394,11 @@ GET  /api/v1/jobs/:jobId/events
   "fileObjectId": "file_123",
   "fileName": "charging_thermal_trace.log",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current",
+  "relatedParameterPin": {
+    "kind": "canonical-pin",
+    "projectId": "project_123",
+    "bindingId": "binding_123"
+  },
   "logDomainId": "domain_123"
 }
 ```
@@ -447,9 +455,9 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `POST` | `/api/v1/knowledge/distill-from-reload-run` | 把一次**终态** DTS 重载运行（`verified` / `unverifiable` / `contradicted` / `failed`）沉淀为预填 markdown **草稿**（`{ runId }` → `201 { item }`）：标题取运行目的 + 设备上下文;正文组装参数集（基线 → 调试值）、每参数行为验证结局、诚实陈述的运行终态（不可验证/矛盾/失败绝不读作成功）、产物摘要与内核日志摘录引用（绝不内联整段采集——运行仍是证据主体）;标签预置（`参数调试`、`DTS重载` + 终态标签）;来源关联存入 `sourceReloadRunId`。要求 `knowledge:edit`,且对来源运行要求重载读取门（`debugging:view` 或 `debugging:dts-reload`）加组织隔离;非终态运行返回 `400`。审计 kind `knowledge-entry-distill`。 |
 | `GET` | `/api/v1/knowledge/search` | 仅检索 **published** 条目（`q`、可选 `limit`）。混合检索：配置了 `EMBEDDING_API_*` 且 pgvector 可用时,chunk 向量相似度与 FTS/trigram 排名做 RRF 融合;否则 FTS-only 路径保持不变。结果携带可引用字段（`entryId`、`title`、`revisionId`、`excerpt`）,响应携带诚实的 `retrieval` 报告：`{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`。 |
 | `GET` | `/api/v1/knowledge/related-to-log` | 一条**已完成**日志分析记录的相关**已发布**知识（`logId`、可选 `limit`,默认 5）：相似度查询只从存储的结论/影响文本推导（绝不读分析器内部或规则 ID）,走同一套混合检索并施加相关度截断（trigram `word_similarity` ≥ 0.2;向量余弦距离 ≤ 0.75）,不相关条目被丢弃而非凑数。要求 `knowledge:view`,且对来源记录要求 `logs:view` 加组织隔离;未完成的分析返回 `400`,跨组织记录 `404`。响应形状与 search 相同（`items` + 诚实 `retrieval`）。纯读端点,与 search 一样不写审计。 |
-| `GET` | `/api/v1/knowledge/related-to-spec` | 结构化引用某参数定义的**已发布**条目（`specId`、可选 `limit`）,服务定义详情的「相关知识」列表。不是相似检索——是对 `knowledge_parameter_references` 的结构化读取。要求 `knowledge:view`;组织隔离;published-only 不变量（草稿/已归档对任何人都不出现）;调用者范围外的定义（未知或他租户）与定义详情 API 一样返回 `404`。条目携带与 search 相同的引用字段。纯读端点,不写审计。 |
-| `PUT` | `/api/v1/knowledge/entries/:entryId/parameter-references/:specId` | 为条目添加对参数定义的结构化引用。绑定 `parameter_specs.id` **代理键**（ADR-0017）,身份纠错不会破坏引用;允许引用已废弃定义（生命周期如实呈现,ADR-0011）。幂等——重复添加已存在的引用不产生变化也不写审计。条目拥有者（`knowledge:edit`）或 `knowledge:manage`;归档条目与内容编辑一样返回 `400`;调用者范围外（本组织所有或平台全局之外）的定义返回 `404`。返回带更新后 `parameterReferences` 的 `{ item }`。审计 kind `knowledge-parameter-reference-add`。 |
-| `DELETE` | `/api/v1/knowledge/entries/:entryId/parameter-references/:specId` | 移除结构化定义引用。治理规则与添加相同;不存在的引用返回 `404`。返回 `{ item }`。审计 kind `knowledge-parameter-reference-remove`。 |
+| `GET` | `/api/v1/knowledge/related-to-definition` | 按精确且可见的 Catalog `definitionId` 反查**已发布**知识（可选 `limit`）。须具备 `knowledge:view` 并通过受保护的 Catalog 定义读取；未知或不可见定义返回 `404`。草稿、归档条目不出现；纯读。 |
+| `PUT` / `DELETE` | `/api/v1/knowledge/entries/:entryId/definition-references/:definitionId` | 对精确 Catalog Definition 添加或删除引用。条目作者持 `knowledge:edit` 或持 `knowledge:manage` 才可编辑非归档条目。新增校验 Catalog 可见性并拒绝退役定义；已存在添加与不存在删除幂等且不新增审计。实际变化写审计并返回 `{ item }`。 |
+| `GET` / `PUT` / `DELETE` | `/api/v1/knowledge/related-to-spec`; `/api/v1/knowledge/entries/:entryId/parameter-references/:specId` | 历史 Spec 引用保留读取和删除。PUT 仅回放已保存的同一引用，拒绝新建旧模型行；不把 Spec ID 推断为 Definition ID。 |
 | `GET` | `/api/v1/knowledge/index/status` | 逐条目检索索引健康（仅 `knowledge:manage`）：`{ retrieval, items }`,每项含 `status`（`pending` \| `processing` \| `succeeded` \| `failed`）、`error`、已索引修订与 chunk 计数。 |
 | `POST` | `/api/v1/knowledge/index/rebuild` | 把全部已发布条目重新入队重建索引（仅 `knowledge:manage`;如更换 `EMBEDDING_MODEL` 后）。返回 `{ enqueued }`。写审计。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/index/retry` | 单条目重新入队索引刷新（仅 `knowledge:manage`）。返回 `{ enqueued: true }`。写审计。 |
@@ -468,7 +476,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 发布、编辑已发布、归档与恢复会把该条目的索引刷新异步入队（分块 + 可选嵌入）;索引 worker 只物化 **published** 修订,草稿与已归档条目永远不可检索。小泽通过注册的只读工具 `knowledge.search` / `knowledge.getDocument` 落地知识问题,工具在调用用户的 AuthContext 下执行（`knowledge:view` + 组织隔离）,返回可深链到 `/knowledge?entryId=…` 的引用负载。审批门控写工具 `action.createKnowledgeDraft`（入参:`title`、`contentMarkdown`、`tags`、可选 `sourceLogId`）经 DB 落库审批链创建**新的** Agent 来源草稿——先中断等待人工明确批准,再在调用用户的 AuthContext 下执行（`knowledge:edit`）,创建会话记录在 `sourceSessionId` 上;草稿在 `/knowledge-admin` 队列或由沉淀工程师本人发布前不进入检索。
 
-条目负载（列表 + 详情）携带 `parameterReferences`:条目的结构化定义引用,每项含 `specId`（`parameter_specs.id` 代理键）、`propertyKey`、`displayName`、`driverModule`（归属主体显示名）与如实呈现的定义 `lifecycle`（`draft` / `active` / `deprecated`——废弃永不移除引用,ADR-0011）。`knowledge.getDocument` 以 `referencedParameters`（`specId` + `name` + `lifecycle`）镜像它们,让 grounding 回答能点名参数。
+条目负载的 `parameterReferences` 按 `kind` 区分身份：canonical 引用携带 `definitionId`、`availability`、Catalog 生命周期与已授权显示字段；不可用定义保留精确 ID，显示字段可为空。历史 `legacy-spec` 引用保留 `specId` 和 S7 映射状态，不猜测改指向。`knowledge.getDocument` 的 `referencedParameters` 同样区分两类身份，不把不可用 ID 或历史映射说成当前定义名称。
 
 ## 项目参数初始化
 
@@ -653,6 +661,16 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 | `GET` | `/api/v2/platform/driver-schemas/promotion-candidates` | 仅 `platform:schema-promote`。按 `lower(compatible)` 聚合跨组织活跃 overlay 的固定投影：compatible、贡献组织 id、属性键/形状、等价判定、分歧（如有）、既有平台 overlay id。**不**返回完整 overlay 记录。 |
 | `POST` | `/api/v2/platform/driver-schemas/promotions` | `platform:schema-promote`。请求体 `{ compatible, documentationSourceOrganizationId? }`。要求贡献方等价。写入平台 overlay（`organization_id IS NULL`），**物化平台拥有且按 subject 作用域隔离的 ParameterSpec 副本**；贡献方定义继续归属各组织且保持不变，贡献方 overlay 标记为 `superseded`，失效各组织 schema 注册表缓存，并扇出平台 + 租户审计。 |
 | `POST` | `/api/v2/platform/driver-schemas/promotions/:promotionId/revert` | `platform:schema-promote`。废弃平台 overlay 并将贡献方 overlay 恢复为 `active`。 |
+
+`GET /api/v2/parameter-modules`、`GET /api/v2/parameter-modules/discovery-hints` 和 `GET /api/v2/parameter-modules/driver-registry` 的成功响应携带以下有界旧读取响应头：
+
+```text
+Deprecation: true
+Sunset: Fri, 31 Dec 2027 00:00:00 GMT
+Link: </api/v2/catalog>; rel="successor-version"
+Warning: 299 WiseEff "Legacy ParameterModule contract is deprecated"
+X-WiseEff-Legacy-Contract: parameter-module-v2
+```
 
 `DriverRegistryParseCoverage` 在已覆盖时含 `scope: "platform" | "organization"` 及可选 `shadowedBy[]`（输给所选层级的低优先级匹配）。
 

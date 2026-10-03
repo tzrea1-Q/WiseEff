@@ -30,6 +30,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 
 import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -41,6 +42,7 @@ export type CatalogOrganizationSurfaceProps = {
   onAnchorChange: (href: string, mode: "push" | "replace") => void;
   organizationId?: string;
   currentPersonId: string;
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
 };
 
 export function CatalogOrganizationSurface({
@@ -52,7 +54,8 @@ export function CatalogOrganizationSurface({
   search,
   onAnchorChange,
   organizationId,
-  currentPersonId
+  currentPersonId,
+  relatedKnowledge
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
   const anchor = parseCatalogUrlAnchor(search);
@@ -60,7 +63,7 @@ export function CatalogOrganizationSurface({
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
-  const [pendingWorkOpen, setPendingWorkOpen] = useState(false);
+  const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId));
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
   const [lifecycle, setLifecycle] = useState<{
@@ -68,6 +71,10 @@ export function CatalogOrganizationSurface({
     definition: CatalogDefinitionResponse["item"];
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
+
+  useEffect(() => {
+    if (anchor.reviewItemId) setPendingWorkOpen(true);
+  }, [anchor.reviewItemId]);
   const subjectId = anchor.subjectId ?? "";
   const [catalogSubjects, setCatalogSubjects] = useState<
     Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]
@@ -192,6 +199,7 @@ export function CatalogOrganizationSurface({
             catalog={catalog}
             catalogReleaseId={catalogReleaseId}
             definition={definition}
+            relatedKnowledge={relatedKnowledge}
             subjects={catalogSubjects}
             createIdempotencyKey={createGovernanceIdempotencyKey}
             // The catalog refreshes when the dialog closes, so a written result

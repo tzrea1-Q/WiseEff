@@ -207,7 +207,7 @@ export function OrganizationModuleGovernancePanel({
 
   return (
     <ParameterModuleMappingPanel
-      canAdmin
+      canAdmin={!canonicalEnabled || actor === "org-admin"}
       repository={repository}
       listLibrarySpecs={() =>
         listModuleOverlayLibrarySpecs({

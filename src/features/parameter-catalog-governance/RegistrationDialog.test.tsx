@@ -7,6 +7,7 @@ import {
   CATALOG_PLACEMENT_ID,
   CATALOG_REGISTRATION_ID,
   CATALOG_RELEASE_ID,
+  CATALOG_REVIEW_ITEM_ID,
   CATALOG_SUBJECT_ID,
   readyCatalogDocument,
   unregisteredSubject
@@ -79,6 +80,14 @@ async function confirmWrite(confirmName: string) {
 }
 
 describe("RegistrationDialog", () => {
+  it("opens the exact Review Item when the module discovery link carries its ID", async () => {
+    const ports = createMockCatalogPorts();
+    render(<CatalogOrganizationSurface {...ports} actor="org-admin"
+      search={`?reviewItemId=${CATALOG_REVIEW_ITEM_ID}`}
+      onAnchorChange={vi.fn()} organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="person-admin" />);
+    expect(await screen.findByRole("dialog", { name: "待处理工作" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "处理审核" })).toBeVisible();
+  });
   it("refreshes the organization surface after first registration succeeds", async () => {
     const ports = createMockCatalogPorts({ scenario: "unregistered" });
     const read = vi.spyOn(ports.catalog, "getCatalog");

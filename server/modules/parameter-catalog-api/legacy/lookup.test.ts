@@ -47,6 +47,41 @@ const mappedResult = {
 } as const satisfies Extract<ProtectedLookupResult, { outcome: "mapped" }>;
 
 describe("S8-LEG exact lookup", () => {
+  it.each([
+    ["both tuples fail", true, true],
+    ["platform maps then organization fails", false, true],
+    ["platform fails before organization maps", true, false],
+  ] as const)("refuses returned failures: %s", async (_name, platformFails, organizationFails) => {
+    const lookup: LegacyLookupFn = async (input) => {
+      const fails = input.identity.kind === "source-tuple" && input.identity.ownerScopeKind === "platform"
+        ? platformFails : organizationFails;
+      return fails
+        ? { ok: false, error: { code: "PCAT-MAP-WRITE-FAILED", detail: "private mapping failure details" } }
+        : { ok: true, value: mappedResult };
+    };
+    await expect(lookupLegacyIdentifier({ client, lookup, legacyType: "parameter-spec",
+      legacyId: "spec-failure", organizationId: "org_acme" }))
+      .rejects.toMatchObject({ code: "INTERNAL_ERROR", message: "Internal server error.", details: {} });
+  });
+
+  it.each([
+    "PCAT-MAP-BLOCKED", "PCAT-MAP-APPEND-ONLY", "PCAT-MAP-CLASSIFICATION-GAP",
+    "PCAT-MAP-TARGET-MISSING", "PCAT-MAP-TARGET-INCOMPATIBLE", "PCAT-MAP-WRITE-FAILED",
+  ] as const)("does not reinterpret returned %s as absence", async (code) => {
+    await expect(lookupLegacyIdentifier({ client, lookup: async () => ({ ok: false,
+      error: { code, detail: "private mapping failure details" } }), legacyType: "parameter-spec",
+      legacyId: "spec-failure", organizationId: null }))
+      .rejects.toMatchObject({ code: "INTERNAL_ERROR", message: "Internal server error.", details: {} });
+  });
+
+  it.each(["PCAT-MAP-UNKNOWN-IDENTITY", "PCAT-MAP-UNMAPPED"] as const)(
+    "keeps contractual %s as absence", async (code) => {
+      expect(await lookupLegacyIdentifier({ client, lookup: async () => ({ ok: false,
+        error: { code, detail: "no exact mapping" } }), legacyType: "parameter-spec",
+        legacyId: "spec-unmapped", organizationId: "org_acme" })).toEqual({ kind: "not-found" });
+    },
+  );
+
   it("projects an allow-listed mapped head without reverse search", async () => {
     const calls: unknown[] = [];
     const lookup: LegacyLookupFn = async (input) => {
