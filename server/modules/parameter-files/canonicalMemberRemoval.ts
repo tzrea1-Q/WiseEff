@@ -65,7 +65,7 @@ type DtsMemberRemovalGeometry = Readonly<{
   node: DtsGeometryNode;
   parent: DtsGeometryNode | null;
   logical: Readonly<{ logicalNodeId: string; locator: string; name: string; unitAddress: string | null;
-    compatible: readonly string[] | null; driverSchemaVersionId: string | null; parentLogicalNodeId: string | null }>;
+    compatible: string | null; driverSchemaVersionId: string | null; parentLogicalNodeId: string | null }>;
 }>;
 type DtsMemberRemovalCohortEntry = Readonly<{
   bindingId: string; oldValueId: string; sourcePinId: string; sourceOccurrenceId: string;
@@ -345,9 +345,9 @@ function assertResolverMatchesNative(
       conflict("DTS resolver node identity differs from its native logical identity.");
     }
     const compatible = resolvedNode.properties.get("compatible");
-    const compatibleList = compatible && !compatible.deleted
-      ? [...compatible.rawText.matchAll(/"([^"]+)"/g)].map((match) => match[1]!) : [];
-    if (!same(logical.compatible ?? [], compatibleList)) conflict("DTS resolver compatible metadata differs from its native logical identity.");
+    const compatibleMetadata = compatible && !compatible.deleted
+      ? compatible.normalizedValue || compatible.rawText : null;
+    if (!same(logical.compatible, compatibleMetadata)) conflict("DTS resolver compatible metadata differs from its native logical identity.");
   }
   const expected = new Set<string>();
   for (const resolvedNode of resolver.nodesByLocator.values()) {
@@ -1067,7 +1067,7 @@ async function verifyDtsMemberRemovalReplay(
     const binding = await loadBindingById(asValueClient(tx), frozen.bindingId);
     const history = (await tx.query<{ id: string; binding_id: string; effective_revision_id: string;
       old_current_value_id: string; new_current_value_id: string; success_audit_ref: string; catalog_release_id: string;
-      reason: string }>(`select id,binding_id,effective_revision_id,old_current_value_id,new_current_value_id,
+      reason: string }>(`select id,binding_id,new_effective_revision_id as effective_revision_id,old_current_value_id,new_current_value_id,
         success_audit_ref,catalog_release_id,reason from parameter_catalog.binding_history_events where id=$1`,
     [receipt.historyEventId])).rows[0];
     const newPinMeta = newPin && (await tx.query<{ locator_digest: string; property_occurrence_id: string | null;

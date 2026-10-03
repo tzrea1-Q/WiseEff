@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -51,8 +51,9 @@ const MIXED_ORG = "org-906-member-dts-mixed";
 const MIXED_PROJECT = "project-906-member-dts-mixed";
 const MIXED_ADMIN_ID = "user-906-member-dts-admin";
 const MIXED_REVIEWER_ID = "user-906-member-dts-reviewer";
-const MIXED_SCHEMA = "wiseeff.906.member.mixed-json";
+const MIXED_SCHEMA = "wiseeff.mixed906";
 const MIXED_JSON_DEFINITION = "pdef_member_dts_json_limit";
+const MIXED_EVIDENCE_EXPORT_PATH = "/tmp/wiseeff-member-dts-removal-transaction-implementation-20261003/mixed-success-fixture.json";
 const mixedAdmin = makeTestAuthContext({ userId: MIXED_ADMIN_ID, organizationId: MIXED_ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }] });
@@ -67,8 +68,9 @@ async function objectInventory(directory: string) {
   const files = (await readdir(directory, { recursive: true, withFileTypes: true }))
     .filter((entry) => entry.isFile());
   return Promise.all(files.map(async (entry) => {
-    const bytes = await readFile(join(directory, entry.parentPath, entry.name));
-    return { key: relative(directory, join(entry.parentPath, entry.name)),
+    const filePath = join(directory, relative(directory, entry.parentPath), entry.name);
+    const bytes = await readFile(filePath);
+    return { key: relative(directory, filePath),
       size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
   })).then((rows) => rows.sort((left, right) => left.key.localeCompare(right.key)));
 }
@@ -316,7 +318,7 @@ describe("#906 reviewed mixed DTS member removal", () => {
     expect(survivors.filter((entry) => entry.format === "json")).toHaveLength(1);
     expect(frozen.members.map((member) => member.format).sort()).toEqual(["dts", "dts", "json"]);
     const oldGraph = await mixedEffectiveGraph(created.db, frozen.configRevisionId);
-    expect(oldGraph.nodes).toHaveLength(3);
+    expect(oldGraph.nodes).toHaveLength(4); // The complete native set includes `/` and all three device nodes.
     expect(oldGraph.properties.some((row) => row.property_name === "status")).toBe(true);
     expect(oldGraph.properties.some((row) => row.property_name === "model")).toBe(true);
     const value = await review(created, frozen);
@@ -402,6 +404,50 @@ describe("#906 reviewed mixed DTS member removal", () => {
       "select config_set_id from project_parameter_files where id=$1", [created.removedFileId])).rows[0]!.config_set_id).toBeNull();
     expect((await created.db.query<{ count: number }>(`select count(*)::int as count from public.project_parameter_value_change_requests
       where id=$1 and status='approved' and applied_audit_ref=$2`, [value.requestId, tombstone.audit_event_id])).rows[0]!.count).toBe(1);
+    if (process.env.WISEEFF_MEMBER_DTS_PROOF_EXPORT === "1") {
+      const bindingIds = frozen.cohort.map((entry) => entry.bindingId);
+      const [sourceRows, values, pins, history, requestRows, auditRows] = await Promise.all([
+        created.db.query<{ file_id: string; file_name: string; file_version_id: string; storage_key: string; checksum: string; size_bytes: number }>(`
+          select file.id as file_id,file.file_name,version.id as file_version_id,version.storage_key,version.checksum,version.size_bytes
+          from project_parameter_files file join project_parameter_file_versions version on version.file_id=file.id
+          where file.id=any($1::text[]) order by file.id,version.id`, [frozen.members.map((member) => member.fileId)]),
+        created.db.query(`select id,binding_id,definition_id,definition_revision_id,source_ref,config_revision_id,
+          value_kind,value_digest,value_state,value from parameter_catalog.project_parameter_values
+          where binding_id=any($1::text[]) order by binding_id,id`, [bindingIds]),
+        created.db.query(`select pin.id,pin.project_value_id,pin.binding_id,pin.source_occurrence_id,pin.config_revision_id,
+          pin.file_id,pin.file_version_id,pin.format,pin.locator,pin.locator_digest,pin.property_occurrence_id,
+          occurrence.occurrence_kind,occurrence.logical_node_id,occurrence.configuration_instance_id,
+          occurrence.configuration_schema_subject_id,occurrence.root_pointer,occurrence.root_pointer_digest
+          from parameter_catalog.project_value_source_pins pin
+          join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
+          where pin.binding_id=any($1::text[]) order by pin.binding_id,pin.project_value_id`, [bindingIds]),
+        created.db.query(`select id,binding_id,old_effective_revision_id,new_effective_revision_id,
+          old_current_value_id,new_current_value_id,reason,success_audit_ref,catalog_release_id,applied_request_id
+          from parameter_catalog.binding_history_events where binding_id=any($1::text[]) order by binding_id,id`, [bindingIds]),
+        created.db.query(`select id,status,submitter_user_id,assigned_to_user_id,reviewer_user_id,member_proof_digest,
+          applied_at,applied_audit_ref,applied_source_result from project_parameter_value_change_requests where id=$1`,
+        [value.requestId]),
+        created.db.query("select id,action,metadata from audit_events where id=$1", [tombstone.audit_event_id])
+      ]);
+      const sourceObjects = await Promise.all(sourceRows.rows.map(async (row) => {
+        const bytes = await created.storage.getBounded!(row.storage_key, Number(row.size_bytes));
+        return { fileId: row.file_id, fileName: row.file_name, fileVersionId: row.file_version_id,
+          checksum: row.checksum, sizeBytes: Number(row.size_bytes), bytesBase64: bytes.toString("base64"),
+          bytesSha256: createHash("sha256").update(bytes).digest("hex") };
+      }));
+      await writeFile(MIXED_EVIDENCE_EXPORT_PATH, JSON.stringify({
+        fixture: { organizationId: MIXED_ORG, projectId: MIXED_PROJECT, configSetId: created.configSetId,
+          oldConfigRevisionId: frozen.configRevisionId, successorConfigRevisionId: committed.successorConfigRevisionId,
+          removedFileId: created.removedFileId },
+        proof: frozen, reviewerDecision: { requestId: value.requestId, submitterUserId: value.submitterUserId,
+          reviewerUserId: value.reviewerUserId, decision: value.decision },
+        committedResult: committed, replayResult: { ...committed, replayed: true },
+        sourceObjects, beforeObjects, afterObjects: await objectInventory(created.storageDirectory),
+        oldGraph, successorGraph: afterGraph, tombstone, values: values.rows, pins: pins.rows,
+        history: history.rows, request: requestRows.rows, audit: auditRows.rows,
+        beforeDatabaseState: beforeState, afterDatabaseState: afterState
+      }, null, 2), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    }
   }, 120_000);
 
   it("refuses an overlay removal that would expose a base fallback and rolls back the native successor", async () => {
