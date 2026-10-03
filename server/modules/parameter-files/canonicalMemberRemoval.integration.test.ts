@@ -10,15 +10,17 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { validCatalogReleaseBundle, refreshAuthoritativeSource } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { compileCatalogRelease } from "../catalog-kernel/compiler";
-import type { CatalogReleaseBundle, CatalogReleaseNode } from "../catalog-kernel/compiler/types";
+import type { CatalogReleaseBundle } from "../catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
-import { CatalogSubjectId } from "../parameter-catalog-contract";
+import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, serializeContract, SubjectRegistrationId,
+  type ContractJsonValue } from "../parameter-catalog-contract";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { asValueClient, loadPublishedCatalog, readCanonicalBindingChangeHistory,
   syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import { stabilizeCanonicalBinding } from "../parameter-bindings/binding/service";
 import { loadBindingById, loadHistoryByRevision, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values/repositories";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
@@ -33,6 +35,8 @@ import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
 import { submitCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
+import { submitCanonicalBatchValueChange } from "../parameter-bindings/drafts/batchChangeService";
+import { getCanonicalSourceWorkflow, prepareCanonicalManualSyncBatchCandidate } from "./canonicalFileWorkflow";
 
 const organizationId = "org-906-member-cohort";
 const projectId = "project-906-member-cohort";
@@ -53,7 +57,7 @@ const MIXED_ADMIN_ID = "user-906-member-dts-admin";
 const MIXED_REVIEWER_ID = "user-906-member-dts-reviewer";
 const MIXED_SCHEMA = "wiseeff.mixed906";
 const MIXED_JSON_DEFINITION = "pdef_member_dts_json_limit";
-const MIXED_EVIDENCE_EXPORT_PATH = "/tmp/wiseeff-member-dts-removal-transaction-implementation-20261003/mixed-success-fixture-final.json";
+const MIXED_EVIDENCE_EXPORT_PATH = "/tmp/wiseeff-member-dts-removal-transaction-implementation-20261003/mixed-success-fixture-final-r3-20261003.json";
 const mixedAdmin = makeTestAuthContext({ userId: MIXED_ADMIN_ID, organizationId: MIXED_ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }] });
@@ -78,9 +82,11 @@ async function objectInventory(directory: string) {
 async function installMixedDtsJsonCatalog(db: ReturnType<typeof createPostgresDatabase>) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new Error("Mixed DTS/JSON fixture requires native PostgreSQL");
-  const full = validCatalogReleaseBundle();
-  const release = structuredClone(full.releases[0]!) as Mutable<CatalogReleaseNode>;
-  const source = release.documents[0]!.source;
+  const full = structuredClone(validCatalogReleaseBundle()) as Mutable<CatalogReleaseBundle>;
+  const firstRelease = full.releases.find((release) => release.manifest.release.id === "crel_acme_1");
+  const secondRelease = full.releases.find((release) => release.manifest.release.id === "crel_acme_2");
+  if (!firstRelease || !secondRelease) throw new Error("Mixed Catalog release chain is incomplete");
+  const source = firstRelease.documents[0]!.source;
   const configSubjectId = "csub_member_dts_json";
   const configSubject = {
     source, kind: "subject" as const, normalizedDigest: "",
@@ -103,10 +109,27 @@ async function installMixedDtsJsonCatalog(db: ReturnType<typeof createPostgresDa
         valueSchema: { type: "number", minimum: 0 },
         matching: { sourceProperty: "limit", selectorKind: "configuration-schema-id" as const } } }
   };
-  release.documents.push(configSubject, configAlias, configDefinition);
-  refreshAuthoritativeSource(release);
+  for (const release of full.releases) {
+    release.documents.push(structuredClone(configSubject), structuredClone(configAlias), structuredClone(configDefinition));
+    refreshAuthoritativeSource(release);
+  }
+  secondRelease.manifest.release.predecessor = {
+    id: firstRelease.manifest.release.id, digest: firstRelease.manifest.release.digest
+  };
+  refreshAuthoritativeSource(secondRelease);
+  const successorBundle = structuredClone(full) as Mutable<CatalogReleaseBundle>;
+  const successorRelease = successorBundle.releases.find((release) => release.manifest.release.id === "crel_acme_2");
+  const successorDefinition = successorRelease?.documents.find((document) => document.kind === "definition"
+    && document.content.id === definitionId);
+  if (!successorRelease || !successorDefinition || successorDefinition.kind !== "definition") {
+    throw new Error("Mixed Catalog successor Definition is unavailable");
+  }
+  successorDefinition.content.revision.id = "drev_acme_power_iin_max_2";
+  successorDefinition.content.revision.number = 2;
+  successorDefinition.content.revision.documentation = "Issue #906 successor revision for replay verification.";
+  refreshAuthoritativeSource(successorRelease);
   const bundle: CatalogReleaseBundle = { schemaVersion: full.schemaVersion,
-    targetReleaseId: release.manifest.release.id, releases: [release] };
+    targetReleaseId: firstRelease.manifest.release.id, releases: [firstRelease] };
   const compiled = compileCatalogRelease(bundle);
   if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
   const installed = await installPublishedRelease(pool, { mode: "bootstrap",
@@ -132,10 +155,11 @@ async function installMixedDtsJsonCatalog(db: ReturnType<typeof createPostgresDa
     destinationModuleId: config.id, proof: { reason: "Issue 906 mixed JSON source" },
     idempotencyKey: "906-member-dts-config-registration" });
   if (!configRegistration.ok) throw new Error(JSON.stringify(configRegistration.error));
-  return { configSubjectId };
+  return { configSubjectId, successorBundle };
 }
 
-async function createMixedDtsJsonFixture(input: { chargerBaseFallback?: boolean } = {}) {
+async function createMixedDtsJsonFixture(input: { chargerBaseFallback?: boolean; geometryNestedNode?: boolean;
+  historicalSecondOverlay?: boolean } = {}) {
   const database = await createEphemeralTestDatabase("issue906-member-dts-mixed");
   const db = createPostgresDatabase(database.url);
   const storageDirectory = await mkdtemp(join(tmpdir(), "wiseeff-906-member-dts-mixed-"));
@@ -153,14 +177,18 @@ async function createMixedDtsJsonFixture(input: { chargerBaseFallback?: boolean 
   const configSet = await createConfigSet(db, mixedAdmin, { projectId: MIXED_PROJECT, name: "mixed DTS removal" });
   const baseDts = `/dts-v1/;
 / {
-  charger: device@0 { compatible = "acme,power"; status = "okay"; model = "charger";${input.chargerBaseFallback ? " iin_max = <35>;" : ""} };
-  backup: device@1 { compatible = "acme,power"; iin_max = <48>; status = "okay"; };
+  charger: device@0 { compatible = "acme,power"; status = "okay"; model = "charger";${input.chargerBaseFallback ? " iin_max = <35>;" : ""}${input.geometryNestedNode ? ' diagnostics: monitor@0 { status = "okay"; };' : ""} };
+  backup: device@1 { compatible = "acme,power"; ${input.historicalSecondOverlay ? "" : "iin_max = <48>;"} status = "okay"; };
   reserve: device@2 { compatible = "acme,power"; iin_max = <60>; status = "okay"; };
 };
 `;
-  const removedDts = `/dts-v1/;
+const removedDts = `/dts-v1/;
 /plugin/;
 &charger { iin_max = <36>; };
+`;
+  const survivorDts = `/dts-v1/;
+/plugin/;
+&backup { iin_max = <48>; };
 `;
   const json = '{"limit":72}\n';
   const uploadedBase = await uploadProjectParameterFile(db, storage, mixedAdmin, {
@@ -169,22 +197,37 @@ async function createMixedDtsJsonFixture(input: { chargerBaseFallback?: boolean 
   const uploadedOverlay = await uploadProjectParameterFile(db, storage, mixedAdmin, {
     projectId: MIXED_PROJECT, fileName: "retire.dts", bytes: Buffer.from(removedDts)
   });
+  const uploadedSurvivorOverlay = input.historicalSecondOverlay ? await uploadProjectParameterFile(db, storage, mixedAdmin, {
+    projectId: MIXED_PROJECT, fileName: "survivor.dts", bytes: Buffer.from(survivorDts)
+  }) : undefined;
   const uploadedJson = await uploadProjectParameterFile(db, storage, mixedAdmin, {
     projectId: MIXED_PROJECT, fileName: "settings.json", bytes: Buffer.from(json)
   });
   await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedBase.file.id, role: "base", sortOrder: 0 });
-  await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedOverlay.file.id, role: "overlay", sortOrder: 1 });
-  await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedJson.file.id, role: "overlay", sortOrder: 2 });
+  if (uploadedSurvivorOverlay) {
+    await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedSurvivorOverlay.file.id,
+      role: "overlay", sortOrder: 1 });
+  }
+  await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedOverlay.file.id,
+    role: "overlay", sortOrder: uploadedSurvivorOverlay ? 2 : 1 });
+  await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedJson.file.id,
+    role: "overlay", sortOrder: uploadedSurvivorOverlay ? 3 : 2 });
+  const overlayOrder = uploadedSurvivorOverlay ? ["survivor.dts", "retire.dts"] : ["retire.dts"];
+  const members: ConfigRevisionManifest["members"] = [
+    { fileId: uploadedBase.file.id, fileVersionId: uploadedBase.version.id, fileName: "board.dts",
+      sourceName: "board.dts", role: "base", sortOrder: 0, content: baseDts, format: "dts" },
+    ...(uploadedSurvivorOverlay ? [{ fileId: uploadedSurvivorOverlay.file.id,
+      fileVersionId: uploadedSurvivorOverlay.version.id, fileName: "survivor.dts", sourceName: "survivor.dts",
+      role: "overlay" as const, sortOrder: 1, content: survivorDts, format: "dts" as const }] : []),
+    { fileId: uploadedOverlay.file.id, fileVersionId: uploadedOverlay.version.id, fileName: "retire.dts",
+      sourceName: "retire.dts", role: "overlay", sortOrder: uploadedSurvivorOverlay ? 2 : 1,
+      content: removedDts, format: "dts" },
+    { fileId: uploadedJson.file.id, fileVersionId: uploadedJson.version.id, fileName: "settings.json",
+      sourceName: "settings.json", role: "overlay", sortOrder: uploadedSurvivorOverlay ? 3 : 2,
+      content: json, format: "json" }
+  ];
   const manifest: ConfigRevisionManifest = { organizationId: MIXED_ORG, projectId: MIXED_PROJECT,
-    configSetId: configSet.id, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: ["retire.dts"],
-    members: [
-      { fileId: uploadedBase.file.id, fileVersionId: uploadedBase.version.id, fileName: "board.dts",
-        sourceName: "board.dts", role: "base", sortOrder: 0, content: baseDts, format: "dts" },
-      { fileId: uploadedOverlay.file.id, fileVersionId: uploadedOverlay.version.id, fileName: "retire.dts",
-        sourceName: "retire.dts", role: "overlay", sortOrder: 1, content: removedDts, format: "dts" },
-      { fileId: uploadedJson.file.id, fileVersionId: uploadedJson.version.id, fileName: "settings.json",
-        sourceName: "settings.json", role: "overlay", sortOrder: 2, content: json, format: "json" }
-    ] };
+    configSetId: configSet.id, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder, members };
   const revision = await ingestConfigRevision(db, manifest, mixedAdmin, { legacyProjection: "skip" });
   if (revision.status !== "resolved") throw new Error("Mixed source fixture did not resolve.");
   const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
@@ -203,6 +246,7 @@ async function createMixedDtsJsonFixture(input: { chargerBaseFallback?: boolean 
   if (jsonRegistration.bindings.length !== 1) throw new Error("Expected one JSON Binding survivor.");
   return { database, db, storageDirectory, storage, configSetId: configSet.id, revisionId: revision.id,
     removedFileId: uploadedOverlay.file.id, baseFileId: uploadedBase.file.id, jsonFileId: uploadedJson.file.id,
+    survivorOverlayFileId: uploadedSurvivorOverlay?.file.id ?? null,
     baseVersionId: uploadedBase.version.id, removedVersionId: uploadedOverlay.version.id,
     jsonVersionId: uploadedJson.version.id, catalogFixture, snapshot };
 }
@@ -217,9 +261,23 @@ async function captureMixedState(fixture: Awaited<ReturnType<typeof createMixedD
     db.query("select id,project_value_id,binding_id,config_revision_id,file_id,file_version_id,format,locator,locator_digest from parameter_catalog.project_value_source_pins where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
     db.query("select id,binding_id,old_current_value_id,new_current_value_id,success_audit_ref from parameter_catalog.binding_history_events where binding_id in (select id from parameter_catalog.project_parameter_bindings where organization_id=$1 and project_id=$2) order by id", [MIXED_ORG, MIXED_PROJECT]),
     db.query("select id,config_set_id,current_version_id from project_parameter_files where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select * from project_parameter_file_candidates where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select * from project_parameter_value_drafts where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
     db.query("select id,file_id,binding_manifest,successor_config_revision_id,successor_binding_manifest,audit_event_id from parameter_catalog.project_source_member_tombstones where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
     db.query("select id,status,applied_at,applied_audit_ref,applied_source_result from project_parameter_value_change_requests where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
-    db.query("select id,action,metadata from audit_events where organization_id=$1 and project_id=$2 and ($3::text is null or metadata->>'reviewRequestId'=$3) order by id", [MIXED_ORG, MIXED_PROJECT, requestId ?? null])
+    db.query("select * from project_parameter_value_change_targets where request_id in (select id from project_parameter_value_change_requests where organization_id=$1 and project_id=$2) order by request_id,binding_id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,action,metadata from audit_events where organization_id=$1 and project_id=$2 and ($3::text is null or metadata->>'reviewRequestId'=$3) order by id", [MIXED_ORG, MIXED_PROJECT, requestId ?? null]),
+    db.query(`select id,config_revision_id,file_version_id,parent_occurrence_id,name,unit_address,labels,ref_target,
+        is_overlay_root,start_offset,end_offset,start_line,start_column,end_line,end_column,raw_text,ast_json,source_order,content_hash
+      from public.dts_node_occurrences where config_revision_id in
+        (select id from public.dts_config_revisions where config_set_id=$1) order by id`, [configSetId]),
+    db.query(`select id,config_revision_id,node_occurrence_id,file_version_id,property_name,start_offset,end_offset,
+        start_line,start_column,end_line,end_column,raw_text,ast_json,source_order,content_hash
+      from public.dts_property_occurrences where config_revision_id in
+        (select id from public.dts_config_revisions where config_set_id=$1) order by id`, [configSetId]),
+    db.query(`select id,config_revision_id,logical_node_revision_id,property_name,effect_kind,node_occurrence_id,
+        property_occurrence_id,source_order from public.dts_occurrence_effects where config_revision_id in
+        (select id from public.dts_config_revisions where config_set_id=$1) order by id`, [configSetId])
   ]);
   return queries.map((result) => result.rows);
 }
@@ -262,7 +320,8 @@ describe("#906 reviewed mixed DTS member removal", () => {
   const cleanups: Array<() => Promise<void>> = [];
   afterEach(async () => { await Promise.all(cleanups.splice(0).map((cleanup) => cleanup())); });
 
-  async function fixture(input: { chargerBaseFallback?: boolean } = {}) {
+  async function fixture(input: { chargerBaseFallback?: boolean; geometryNestedNode?: boolean;
+    historicalSecondOverlay?: boolean } = {}) {
     const created = await createMixedDtsJsonFixture(input);
     cleanups.push(async () => {
       await created.db.close(); await created.database.drop();
@@ -271,9 +330,10 @@ describe("#906 reviewed mixed DTS member removal", () => {
     return created;
   }
 
-  async function prepare(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>): Promise<DtsRemovalProof> {
+  async function prepare(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>,
+    fileId = created.removedFileId): Promise<DtsRemovalProof> {
     const proof = await created.db.transaction((tx) => prepareCanonicalMemberRemoval(tx, created.storage, mixedAdmin, {
-      projectId: MIXED_PROJECT, configSetId: created.configSetId, fileId: created.removedFileId,
+      projectId: MIXED_PROJECT, configSetId: created.configSetId, fileId,
       invocation: createUserInvocation(mixedAdmin), traceId: `prepare:${randomUUID()}`,
       refusalSink: createTrustedRefusalAuditSink(created.db)
     }));
@@ -296,12 +356,237 @@ describe("#906 reviewed mixed DTS member removal", () => {
     return value;
   }
 
-  async function apply(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>, value: ReviewedCanonicalMemberRemoval) {
+  async function apply(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>,
+    value: ReviewedCanonicalMemberRemoval, auth = mixedReviewer) {
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(created.db)!);
     if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
-    return created.db.transaction((tx) => applyReviewedCanonicalMemberRemoval(tx, created.storage, mixedReviewer,
-      snapshot, value, { invocation: createUserInvocation(mixedReviewer), traceId: value.requestId,
+    return created.db.transaction((tx) => applyReviewedCanonicalMemberRemoval(tx, created.storage, auth,
+      snapshot, value, { invocation: createUserInvocation(auth), traceId: value.requestId,
         refusalSink: createTrustedRefusalAuditSink(created.db) }));
+  }
+
+  type ReplayReaderFault = "foreign-revision" | "changed-manifest" | "foreign-member" | "missing-file"
+    | "missing-version" | "omitted-member" | "duplicate-member" | "reordered-members" | "version-mismatch"
+    | "bad-checksum" | "bad-size" | "missing-object" | "invalid-utf8" | "object-capacity"
+    | "member-capacity" | "aggregate-capacity" | "metadata-capacity" | "native-geometry"
+    | "history-mismatch" | "typed-value-mismatch";
+
+  async function replayWithReaderFault(
+    created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>,
+    original: ReviewedCanonicalMemberRemoval,
+    successorRevisionId: string,
+    fault: ReplayReaderFault,
+    observed: { hits: number },
+  ) {
+    let value = original;
+    let proofChanged = false;
+    let invalidBytes: Buffer | undefined;
+    let invalidStorageKey: string | undefined;
+    if (fault === "bad-checksum" || fault === "bad-size" || fault === "invalid-utf8") {
+      const changedMember = original.frozen.members.find((member) => member.fileId !== original.frozen.fileId);
+      if (!changedMember) throw new Error("Replay fault fixture has no historical survivor file.");
+      invalidBytes = fault === "invalid-utf8" ? Buffer.from([0xc3, 0x28]) : undefined;
+      const members = original.frozen.members.map((member) => member.fileId !== changedMember.fileId ? member : {
+        ...member,
+        ...(fault === "bad-checksum" ? { checksum: createHash("sha256").update("wrong-checksum").digest("hex") } : {}),
+        ...(fault === "bad-size" ? { sizeBytes: member.sizeBytes + 1 } : {}),
+        ...(fault === "invalid-utf8" ? { sizeBytes: invalidBytes!.length,
+          checksum: createHash("sha256").update(invalidBytes!).digest("hex") } : {})
+      });
+      const { proofDigest: _proofDigest, ...unsigned } = original.frozen;
+      const proofDigest = createHash("sha256").update(serializeContract(unsigned as unknown as ContractJsonValue)).digest("hex");
+      value = { ...original, frozen: { ...unsigned, members, proofDigest } } as ReviewedCanonicalMemberRemoval;
+      proofChanged = true;
+    }
+    const faultStorage = {
+      ...created.storage,
+      getBounded: async (key: string, maxBytes: number) => {
+        if (fault === "missing-object" && key === invalidStorageKey) {
+          observed.hits += 1;
+          throw new Error("injected-missing-historical-object");
+        }
+        if (fault === "invalid-utf8" && key === invalidStorageKey) {
+          observed.hits += 1;
+          return invalidBytes!;
+        }
+        return created.storage.getBounded!(key, maxBytes);
+      }
+    };
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(created.db)!);
+    if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
+    return created.db.transaction((tx) => {
+      const injectedReader = {
+        query: async <Row,>(text: string, values?: unknown[]) => {
+          const result = await tx.query<Row>(text, values);
+          const rows = result.rows as Array<Record<string, unknown>>;
+          const rewrite = (next: Array<Record<string, unknown>>) => ({ ...result, rows: next as Row[] });
+          if (proofChanged && text.includes("member_proof_digest,member_frozen_proof")) {
+            observed.hits += 1;
+            return rewrite(rows.map((row) => ({ ...row, member_proof_digest: value.frozen.proofDigest,
+              member_frozen_proof: value.frozen })));
+          }
+          if (proofChanged && text.includes("from parameter_catalog.project_source_member_tombstones tombstone")) {
+            observed.hits += 1;
+            return rewrite(rows.map((row) => ({ ...row, metadata: {
+              ...(row.metadata as Record<string, unknown>), proofDigest: value.frozen.proofDigest
+            } })));
+          }
+          if (proofChanged && text.includes("select metadata from public.audit_events where id=$1")) {
+            observed.hits += 1;
+            return rewrite(rows.map((row) => ({ ...row, metadata: {
+              ...(row.metadata as Record<string, unknown>), proofDigest: value.frozen.proofDigest
+            } })));
+          }
+          if ((fault === "foreign-revision" || fault === "changed-manifest" || fault === "metadata-capacity")
+            && text.includes('entry_file as "entryFile"')) {
+            observed.hits += 1;
+            return rewrite(rows.map((row) => fault === "foreign-revision"
+              ? { ...row, projectId: "foreign-project" }
+              : fault === "metadata-capacity" ? { ...row, includeSearchPaths: ["x".repeat(8 * 1024 * 1024)] }
+                : { ...row, overlayOrder: [...(row.overlayOrder as string[]), "missing-overlay.dts"] }));
+          }
+          if (text.includes('from public.dts_config_revision_members member')
+            && text.includes('version.storage_key as "storageKey"')) {
+            if (["foreign-member", "missing-file", "missing-version", "omitted-member", "duplicate-member",
+              "reordered-members", "version-mismatch", "bad-checksum", "bad-size", "invalid-utf8",
+              "object-capacity", "member-capacity", "aggregate-capacity", "missing-object"].includes(fault)) {
+              observed.hits += 1;
+              if (fault === "foreign-member") return rewrite(rows.map((row, index) => index === 0
+                ? { ...row, organizationId: "foreign-organization" } : row));
+              if (fault === "missing-file") return rewrite(rows.map((row, index) => index === 0
+                ? { ...row, ownedFileId: null } : row));
+              if (fault === "missing-version") return rewrite(rows.map((row, index) => index === 0
+                ? { ...row, versionId: null } : row));
+              if (fault === "missing-object") {
+                invalidStorageKey = String(rows[0]!.storageKey);
+                return result;
+              }
+              if (fault === "omitted-member") return rewrite(rows.slice(0, -1));
+              if (fault === "duplicate-member") return rewrite([...rows, { ...rows[0]! }]);
+              if (fault === "reordered-members") return rewrite([...rows].reverse());
+              if (fault === "version-mismatch") return rewrite(rows.map((row, index) => index === 0
+                ? { ...row, versionFileId: "different-file" } : row));
+              if (fault === "bad-checksum" || fault === "bad-size" || fault === "invalid-utf8") {
+                const member = value.frozen.members.find((entry) => entry.fileId !== value.frozen.fileId)!;
+                return rewrite(rows.map((row) => row.fileId !== member.fileId ? row : {
+                  ...row, checksum: member.checksum, sizeBytes: member.sizeBytes,
+                  ...(fault === "invalid-utf8" ? { storageKey: (invalidStorageKey = String(row.storageKey)) } : {})
+                }));
+              }
+              if (fault === "object-capacity") return rewrite(rows.map((row, index) => index === 0
+                ? { ...row, sizeBytes: 2 * 1024 * 1024 + 1 } : row));
+              if (fault === "member-capacity") {
+                const padded = [...rows];
+                while (padded.length <= 128) padded.push({ ...rows[0]!, memberId: `injected-member-${padded.length}` });
+                return rewrite(padded);
+              }
+              if (fault === "aggregate-capacity") {
+                const template = rows[0]!;
+                const extra = Array.from({ length: 16 }, (_, index) => ({ ...template,
+                  memberId: `injected-member-${index}`, fileId: `injected-file-${index}`,
+                  fileVersionId: `injected-version-${index}`, ownedFileId: `injected-file-${index}`,
+                  versionId: `injected-version-${index}`, versionFileId: `injected-file-${index}`,
+                  sourceName: `injected-${index}.dts`, role: "overlay", sortOrder: 20 + index,
+                  checksum: "0".repeat(64), sizeBytes: 2 * 1024 * 1024,
+                  storageKey: `injected-key-${index}` }));
+                return rewrite([...rows, ...extra]);
+              }
+            }
+          }
+          if (fault === "history-mismatch" && text.includes("from parameter_catalog.binding_history_events where id=$1")) {
+            observed.hits += 1;
+            return rewrite(rows.map((row) => ({ ...row, new_current_value_id: "wrong-successor-value" })));
+          }
+          if (fault === "typed-value-mismatch" && text.includes("from parameter_catalog.project_parameter_values")
+            && text.includes("where id = $1")) {
+            observed.hits += 1;
+            return rewrite(rows.map((row) => ({ ...row, value: null })));
+          }
+          if (fault === "native-geometry" && text.includes("as geometry")
+            && String(values?.[0]) === successorRevisionId && rows.length > 0) {
+            observed.hits += 1;
+            return rewrite(rows.map((row) => {
+              const geometry = row.geometry as Record<string, unknown>;
+              const property = geometry.property as Record<string, unknown>;
+              return { ...row, geometry: { ...geometry, property: { ...property, rawText: "forged historical source" } } };
+            }));
+          }
+          return result;
+        },
+        transaction: tx.transaction.bind(tx)
+      } as typeof tx;
+      return applyReviewedCanonicalMemberRemoval(injectedReader, faultStorage, mixedReviewer, snapshot,
+        value, { invocation: createUserInvocation(mixedReviewer), traceId: value.requestId,
+          refusalSink: createTrustedRefusalAuditSink(created.db) });
+    });
+  }
+
+  async function submitPendingFullSourceCandidate(
+    created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>, suffix: string,
+  ) {
+    const workflow = await getCanonicalSourceWorkflow(created.db, mixedAdmin, {
+      projectId: MIXED_PROJECT, fileId: created.baseFileId
+    });
+    if (!workflow.proofToken) throw new Error("Mixed DTS full-source candidate has no current workflow proof.");
+    const source = (await created.db.query<{ storage_key: string; size_bytes: number }>(`
+      select storage_key,size_bytes::float8 as size_bytes from project_parameter_file_versions
+      where id=$1 and file_id=$2`, [created.baseVersionId, created.baseFileId])).rows[0];
+    if (!source) throw new Error("Mixed DTS base source object is unavailable.");
+    const original = await created.storage.getBounded!(source.storage_key, source.size_bytes);
+    const text = original.toString("utf8");
+    if (!text.includes("iin_max = <48>") || !text.includes("iin_max = <60>")) {
+      throw new Error("Mixed DTS source candidate targets are not present in the exact base bytes.");
+    }
+    const bytes = Buffer.from(text.replace("iin_max = <48>", "iin_max = <49>")
+      .replace("iin_max = <60>", "iin_max = <61>"), "utf8");
+    const prepared = await prepareCanonicalManualSyncBatchCandidate(created.db, created.storage, mixedAdmin, {
+      projectId: MIXED_PROJECT, fileId: created.baseFileId, bytes,
+      expectedCurrentVersionId: created.baseVersionId, expectedWorkflowProofToken: workflow.proofToken,
+      requestId: `member-removal-full-source-${suffix}`
+    });
+    if (prepared.targets.length < 2) throw new Error("Full-source candidate did not cover two survivor Bindings.");
+    const pending = await submitCanonicalBatchValueChange(created.db, created.storage, mixedAdmin, {
+      projectId: MIXED_PROJECT, candidateId: prepared.candidateId, expectedProofToken: prepared.proofToken,
+      reason: "Review a full DTS source candidate during member-removal fencing",
+      assignedToUserId: MIXED_REVIEWER_ID, invocation: createUserInvocation(mixedAdmin),
+      requestId: `member-removal-batch-${suffix}`,
+      refusalSink: createTrustedRefusalAuditSink(created.db)
+    });
+    return { prepared, pending };
+  }
+
+  async function advanceMixedCatalogBindings(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>,
+    survivors: CanonicalMemberRemovalProof["cohort"]) {
+    const pool = getRootPostgresPool(created.db);
+    if (!pool) throw new Error("Mixed Catalog upgrade requires native PostgreSQL");
+    const bundle = created.catalogFixture.successorBundle;
+    const compiled = compileCatalogRelease(bundle);
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+    const advanced = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
+      expectedCurrent: { id: created.snapshot.release.id, digest: created.snapshot.release.digest },
+      expectedTargetDigest: compiled.value.aggregateDigest });
+    if (!advanced.ok) throw new Error(JSON.stringify(advanced.error));
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Advanced Catalog snapshot is unavailable");
+    expect(snapshot.release.id).toBe(bundle.targetReleaseId);
+    for (const entry of survivors.filter((row) => row.format === "dts")) {
+      const binding = await loadBindingById(asValueClient(created.db), entry.bindingId);
+      if (!binding || !binding.source_occurrence_id) throw new Error("DTS survivor Binding is unavailable");
+      const result = await stabilizeCanonicalBinding(pool, {
+        snapshot, organizationId: MIXED_ORG, projectId: MIXED_PROJECT,
+        logicalNodeId: binding.logical_node_id,
+        sourceOccurrenceId: binding.source_occurrence_id,
+        registrationId: SubjectRegistrationId(binding.registration_id),
+        definitionId: ParameterDefinitionId(binding.definition_id),
+        effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_2"),
+        expectedEffectiveRevisionId: DefinitionRevisionId(binding.effective_revision_id)
+      });
+      if (!result.ok) throw new Error(JSON.stringify(result.error));
+      expect(result.value.outcome).toBe("committed");
+      expect(result.value.binding.effectiveRevisionId).toBe("drev_acme_power_iin_max_2");
+      expect(result.value.binding.catalogRelease.id).toBe(snapshot.release.id);
+    }
+    return snapshot;
   }
 
   it("removes one exclusive DTS member and re-pins two DTS plus one JSON survivor from actual successor rows", async () => {
@@ -325,6 +610,13 @@ describe("#906 reviewed mixed DTS member removal", () => {
     const beforeState = await captureMixedState(created, value.requestId);
     const committed = await apply(created, value);
     expect(committed).toMatchObject({ replayed: false });
+    const laterSnapshot = await advanceMixedCatalogBindings(created, survivors);
+    const laterTips = await created.db.query<{ id: string; effective_revision_id: string; catalog_release_id: string }>(`
+      select id,effective_revision_id,catalog_release_id from parameter_catalog.project_parameter_bindings
+      where id=any($1::text[]) order by id`, [survivors.filter((entry) => entry.format === "dts").map((entry) => entry.bindingId)]);
+    expect(laterTips.rows).toHaveLength(2);
+    expect(laterTips.rows.every((row) => row.effective_revision_id === "drev_acme_power_iin_max_2"
+      && row.catalog_release_id === laterSnapshot.release.id)).toBe(true);
     const replayed = await apply(created, value);
     expect(replayed).toEqual({ ...committed, replayed: true });
 
@@ -443,6 +735,9 @@ describe("#906 reviewed mixed DTS member removal", () => {
         proof: frozen, reviewerDecision: { requestId: value.requestId, submitterUserId: value.submitterUserId,
           reviewerUserId: value.reviewerUserId, decision: value.decision },
         committedResult: committed, replayResult: replayed,
+        currentBindingTips: (await created.db.query(`select id,definition_id,effective_revision_id,catalog_release_id,current_value_id
+          from parameter_catalog.project_parameter_bindings where organization_id=$1 and project_id=$2 order by id`,
+        [MIXED_ORG, MIXED_PROJECT])).rows,
         sourceObjects, beforeObjects, afterObjects: await objectInventory(created.storageDirectory),
         oldGraph, successorGraph: afterGraph, tombstone, values: values.rows, pins: pins.rows,
         history: history.rows, request: requestRows.rows, audit: auditRows.rows,
@@ -451,18 +746,120 @@ describe("#906 reviewed mixed DTS member removal", () => {
     }
   }, 120_000);
 
-  it("refuses an overlay removal that would expose a base fallback and rolls back the native successor", async () => {
-    const created = await fixture({ chargerBaseFallback: true });
+  it("replays R1 from its immutable source snapshot after legal R2 removes an R1 survivor", async () => {
+    const created = await fixture({ historicalSecondOverlay: true });
+    const r1Proof = await prepare(created);
+    expect(r1Proof.members).toHaveLength(4);
+    const r1Survivors = r1Proof.cohort.filter((entry) => entry.fileId !== created.removedFileId);
+    expect(r1Survivors.filter((entry) => entry.format === "dts")).toHaveLength(2);
+    expect(r1Survivors.filter((entry) => entry.format === "json")).toHaveLength(1);
+    const r1Review = await review(created, r1Proof, `member:r1:${randomUUID()}`);
+    const r1Result = await apply(created, r1Review);
+    expect(r1Result.replayed).toBe(false);
+
+    if (!created.survivorOverlayFileId) throw new Error("Historical replay fixture has no second DTS overlay.");
+    const r2Proof = await prepare(created, created.survivorOverlayFileId);
+    expect(r2Proof.members).toHaveLength(3);
+    expect(r2Proof.cohort.filter((entry) => entry.fileId === created.survivorOverlayFileId)).toHaveLength(1);
+    const r2Review = await review(created, r2Proof, `member:r2:${randomUUID()}`);
+    const r2Result = await apply(created, r2Review);
+    expect(r2Result.replayed).toBe(false);
+    expect((await created.db.query<{ config_set_id: string | null }>(
+      "select config_set_id from project_parameter_files where id=$1", [created.survivorOverlayFileId])).rows[0]!.config_set_id)
+      .toBeNull();
+
+    const beforeReplay = await captureMixedState(created);
+    const objectsBeforeReplay = await objectInventory(created.storageDirectory);
+    expect(await apply(created, r1Review)).toEqual({ ...r1Result, replayed: true });
+    expect(await captureMixedState(created)).toEqual(beforeReplay);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objectsBeforeReplay);
+  }, 120_000);
+
+  it("fails closed on corrupted historical revision, member, bytes, native and receipt reads", async () => {
+    const created = await fixture();
     const frozen = await prepare(created);
-    const value = await review(created, frozen);
-    const before = await captureMixedState(created, value.requestId);
+    const removal = await review(created, frozen, `member:historical-negative:${randomUUID()}`);
+    const applied = await apply(created, removal);
+    const before = await captureMixedState(created, removal.requestId);
     const objects = await objectInventory(created.storageDirectory);
-    await expect(apply(created, value)).rejects.toMatchObject({ code: "CONFLICT" });
-    expect(await captureMixedState(created, value.requestId)).toEqual(before);
+    const faults: ReplayReaderFault[] = ["foreign-revision", "changed-manifest", "foreign-member", "missing-file",
+      "missing-version", "omitted-member", "duplicate-member", "reordered-members", "version-mismatch",
+      "bad-checksum", "bad-size", "missing-object", "invalid-utf8", "object-capacity", "member-capacity",
+      "aggregate-capacity", "metadata-capacity", "native-geometry", "history-mismatch", "typed-value-mismatch"];
+    for (const fault of faults) {
+      const observed = { hits: 0 };
+      const outcome = await replayWithReaderFault(created, removal, applied.successorConfigRevisionId, fault, observed)
+        .then(() => null, (error: unknown) => error);
+      expect(outcome, `${fault} should reject`).not.toBeNull();
+      expect(outcome, fault).toMatchObject({ code: "CONFLICT" });
+      expect(observed.hits, fault).toBeGreaterThan(0);
+      expect(await captureMixedState(created, removal.requestId), fault).toEqual(before);
+      expect(await objectInventory(created.storageDirectory), fault).toEqual(objects);
+    }
+  }, 120_000);
+
+  it("checks current reviewer permission before returning immutable replay", async () => {
+    const created = await fixture();
+    const frozen = await prepare(created);
+    const removal = await review(created, frozen, `member:historical-permission:${randomUUID()}`);
+    await apply(created, removal);
+    const limitedReviewer = makeTestAuthContext({ userId: MIXED_REVIEWER_ID, organizationId: MIXED_ORG,
+      permissions: ["parameter:view", "parameter:edit"], roles: [{ roleId: "software-committer", projectId: MIXED_PROJECT }] });
+    const before = await captureMixedState(created, removal.requestId);
+    const objects = await objectInventory(created.storageDirectory);
+    await expect(apply(created, removal, limitedReviewer)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await captureMixedState(created, removal.requestId)).toEqual(before);
     expect(await objectInventory(created.storageDirectory)).toEqual(objects);
-    expect((await created.db.query<{ status: string; applied_at: Date | null }>(
-      "select status,applied_at from public.project_parameter_value_change_requests where id=$1", [value.requestId])).rows)
-      .toEqual([{ status: "pending", applied_at: null }]);
+  }, 120_000);
+
+  it("rejects at prepare when removing an overlay would expose a base fallback", async () => {
+    const created = await fixture({ chargerBaseFallback: true });
+    const before = await captureMixedState(created);
+    const objects = await objectInventory(created.storageDirectory);
+    await expect(prepare(created)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(created)).toEqual(before);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
+    expect((await created.db.query<{ count: number }>(`select count(*)::int as count
+      from public.project_parameter_value_change_requests where organization_id=$1 and project_id=$2
+        and request_kind='member-removal'`, [MIXED_ORG, MIXED_PROJECT])).rows[0]?.count).toBe(0);
+  }, 120_000);
+
+  it("rejects a property paired with another real node and parent from the same source file", async () => {
+    const created = await fixture({ geometryNestedNode: true });
+    const before = await captureMixedState(created);
+    const objects = await objectInventory(created.storageDirectory);
+    let injected = false;
+    await expect(created.db.transaction(async (tx) => {
+      const injectedReader = {
+        query: async <Row,>(text: string, values?: unknown[]) => {
+          const result = await tx.query<Row>(text, values);
+          if (!text.includes("as geometry") || !text.includes("from public.dts_occurrence_effects effect")) return result;
+          type GeometryRow = { fileId: string; fileVersionId: string; propertyName: string; nodeLocator: string;
+            geometry: { property: { span: readonly number[] }; node: unknown; parent: unknown } };
+          const rows = result.rows as unknown as GeometryRow[];
+          const target = rows.find((row) => row.fileId === created.baseFileId && row.propertyName === "iin_max"
+            && row.nodeLocator === "/device@1");
+          const alternate = rows.find((row) => row.fileId === created.baseFileId && row.propertyName === "status"
+            && row.nodeLocator === "/device@0/monitor@0");
+          if (!target || !alternate || target.fileVersionId !== alternate.fileVersionId) {
+            throw new Error("Same-file physical ownership injection could not find two exact native rows.");
+          }
+          const altered = rows.map((row) => row === target ? { ...row, geometry: {
+            ...row.geometry, node: alternate.geometry.node, parent: alternate.geometry.parent
+          } } : row);
+          injected = true;
+          return { ...result, rows: altered as unknown as Row[] };
+        }
+      } as typeof tx;
+      return prepareCanonicalMemberRemoval(injectedReader, created.storage, mixedAdmin, {
+        projectId: MIXED_PROJECT, configSetId: created.configSetId, fileId: created.removedFileId,
+        invocation: createUserInvocation(mixedAdmin), traceId: `prepare:misowned:${randomUUID()}`,
+        refusalSink: createTrustedRefusalAuditSink(created.db)
+      });
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(injected).toBe(true);
+    expect(await captureMixedState(created)).toEqual(before);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
   }, 120_000);
 
   it("refuses an unsubmitted removed-member draft without changing its row or source objects", async () => {
@@ -527,6 +924,170 @@ describe("#906 reviewed mixed DTS member removal", () => {
     expect(await captureMixedState(created, removal.requestId)).toEqual(before);
     expect((await created.db.query<{ status: string }>("select status from project_parameter_value_change_requests where id=$1",
       [pending.id])).rows).toEqual([{ status: "pending" }]);
+  }, 120_000);
+
+  it("blocks another pending member review at prepare and approval", async () => {
+    const atPrepare = await fixture();
+    const frozenAtPrepare = await prepare(atPrepare);
+    const pendingAtPrepare = await review(atPrepare, frozenAtPrepare, `member:pending:prepare:${randomUUID()}`);
+    const beforePrepare = await captureMixedState(atPrepare, pendingAtPrepare.requestId);
+    const objectsBeforePrepare = await objectInventory(atPrepare.storageDirectory);
+    await expect(prepare(atPrepare)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(atPrepare, pendingAtPrepare.requestId)).toEqual(beforePrepare);
+    expect(await objectInventory(atPrepare.storageDirectory)).toEqual(objectsBeforePrepare);
+
+    const atApproval = await fixture();
+    const frozenAtApproval = await prepare(atApproval);
+    const ownReview = await review(atApproval, frozenAtApproval, `member:own:${randomUUID()}`);
+    const otherReview = await review(atApproval, frozenAtApproval, `member:other:${randomUUID()}`);
+    const beforeApproval = await captureMixedState(atApproval, ownReview.requestId);
+    const objectsBeforeApproval = await objectInventory(atApproval.storageDirectory);
+    await expect(apply(atApproval, ownReview)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(atApproval, ownReview.requestId)).toEqual(beforeApproval);
+    expect(await objectInventory(atApproval.storageDirectory)).toEqual(objectsBeforeApproval);
+    const memberStatuses = (await atApproval.db.query<{ status: string }>(
+      "select status from project_parameter_value_change_requests where id=any($1::text[]) order by id",
+      [[ownReview.requestId, otherReview.requestId]])).rows;
+    expect(memberStatuses).toHaveLength(2);
+    expect(memberStatuses.every((row) => row.status === "pending")).toBe(true);
+  }, 120_000);
+
+  it("blocks a pending full-source batch candidate at prepare and approval", async () => {
+    const atPrepare = await fixture();
+    const pendingAtPrepare = await submitPendingFullSourceCandidate(atPrepare, randomUUID());
+    const beforePrepare = await captureMixedState(atPrepare, pendingAtPrepare.pending.id);
+    const objectsBeforePrepare = await objectInventory(atPrepare.storageDirectory);
+    await expect(prepare(atPrepare)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(atPrepare, pendingAtPrepare.pending.id)).toEqual(beforePrepare);
+    expect(await objectInventory(atPrepare.storageDirectory)).toEqual(objectsBeforePrepare);
+
+    const atApproval = await fixture();
+    const frozen = await prepare(atApproval);
+    const ownReview = await review(atApproval, frozen, `member:batch-race:${randomUUID()}`);
+    const pendingAtApproval = await submitPendingFullSourceCandidate(atApproval, randomUUID());
+    const beforeApproval = await captureMixedState(atApproval, ownReview.requestId);
+    const objectsBeforeApproval = await objectInventory(atApproval.storageDirectory);
+    await expect(apply(atApproval, ownReview)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(atApproval, ownReview.requestId)).toEqual(beforeApproval);
+    expect(await objectInventory(atApproval.storageDirectory)).toEqual(objectsBeforeApproval);
+    const batchStatuses = (await atApproval.db.query<{ status: string }>(
+      "select status from project_parameter_value_change_requests where id=any($1::text[]) order by id",
+      [[ownReview.requestId, pendingAtApproval.pending.id]])).rows;
+    expect(batchStatuses).toHaveLength(2);
+    expect(batchStatuses.every((row) => row.status === "pending")).toBe(true);
+  }, 120_000);
+
+  it("rechecks a removed-member draft created after prepare before committing", async () => {
+    const created = await fixture();
+    const frozen = await prepare(created);
+    const removal = await review(created, frozen, `member:draft-race:${randomUUID()}`);
+    const removed = frozen.cohort.find((entry) => entry.fileId === created.removedFileId)!;
+    const draft = await createCanonicalValueDraft(created.db, mixedAdmin, {
+      projectId: MIXED_PROJECT, bindingId: removed.bindingId,
+      targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "37", value: "37" }]] },
+      reason: "Race an unsubmitted removed-member draft", baseRevisionId: frozen.configRevisionId,
+      baseCurrentValueId: removed.oldValueId
+    }, { objectStore: created.storage, invocation: createUserInvocation(mixedAdmin), requestId: `draft:race:${randomUUID()}`,
+      refusalSink: createTrustedRefusalAuditSink(created.db) });
+    const before = await captureMixedState(created, removal.requestId);
+    const objects = await objectInventory(created.storageDirectory);
+    await expect(apply(created, removal)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(created, removal.requestId)).toEqual(before);
+    expect((await created.db.query<{ id: string }>("select id from project_parameter_value_drafts where id=$1", [draft.id])).rows)
+      .toEqual([{ id: draft.id }]);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
+  }, 120_000);
+
+  it("rolls back earlier successor writes when a later survivor CAS loses its current tip", async () => {
+    const created = await fixture();
+    const frozen = await prepare(created);
+    const removal = await review(created, frozen, `member:partial-cas:${randomUUID()}`);
+    const survivorIds = frozen.cohort.filter((entry) => entry.fileId !== created.removedFileId)
+      .map((entry) => entry.bindingId);
+    expect(survivorIds.length).toBeGreaterThanOrEqual(2);
+    const before = await captureMixedState(created, removal.requestId);
+    const objects = await objectInventory(created.storageDirectory);
+    let successfulBindingIds: string[] = [];
+    let rejectedBindingId: string | undefined;
+    let rejectedCasAttempts = 0;
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(created.db)!);
+    if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
+    await expect(created.db.transaction((tx) => {
+      const casFailure = {
+        query: async <Row,>(text: string, values?: unknown[]) => {
+          const bindingId = String(values?.[0]);
+          if (text.includes("set current_value_id = $3") && survivorIds.includes(bindingId)
+            && successfulBindingIds.length > 0 && bindingId !== successfulBindingIds[0]) {
+            rejectedBindingId = bindingId;
+            rejectedCasAttempts += 1;
+            return { rows: [], rowCount: 0 };
+          }
+          const result = await tx.query<Row>(text, values);
+          if (text.includes("set current_value_id = $3") && survivorIds.includes(bindingId)
+            && result.rowCount === 1 && !successfulBindingIds.includes(bindingId)) {
+            successfulBindingIds = [...successfulBindingIds, bindingId];
+          }
+          return result;
+        }
+      } as typeof tx;
+      return applyReviewedCanonicalMemberRemoval(casFailure, created.storage, mixedReviewer, snapshot,
+        removal, { invocation: createUserInvocation(mixedReviewer), traceId: removal.requestId,
+          refusalSink: createTrustedRefusalAuditSink(created.db) });
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(successfulBindingIds).toHaveLength(1);
+    expect(survivorIds).toContain(rejectedBindingId);
+    expect(rejectedBindingId).not.toBe(successfulBindingIds[0]);
+    expect(rejectedCasAttempts).toBeGreaterThanOrEqual(1);
+    expect(await captureMixedState(created, removal.requestId)).toEqual(before);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
+  }, 120_000);
+
+  it("rolls back the complete mixed successor when a deferred tombstone constraint fails at commit", async () => {
+    const created = await fixture();
+    const frozen = await prepare(created);
+    const removal = await review(created, frozen, `member:deferred-rollback:${randomUUID()}`);
+    const before = await captureMixedState(created, removal.requestId);
+    const objects = await objectInventory(created.storageDirectory);
+    await created.db.query(`create function public.t906_dts_member_deferred_fail() returns trigger
+      language plpgsql as $$ begin raise exception 'injected-dts-deferred-commit-failure'; end $$`);
+    await created.db.query(`create constraint trigger t906_dts_member_deferred_fail after insert
+      on parameter_catalog.project_source_member_tombstones deferrable initially deferred
+      for each row execute function public.t906_dts_member_deferred_fail()`);
+    try {
+      await expect(apply(created, removal)).rejects.toThrow("injected-dts-deferred-commit-failure");
+    } finally {
+      await created.db.query("drop trigger t906_dts_member_deferred_fail on parameter_catalog.project_source_member_tombstones");
+      await created.db.query("drop function public.t906_dts_member_deferred_fail()");
+    }
+    expect(await captureMixedState(created, removal.requestId)).toEqual(before);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
+  }, 120_000);
+
+  it("records a trusted source-permission refusal without changing the mixed cohort", async () => {
+    const created = await fixture();
+    const limited = makeTestAuthContext({ userId: MIXED_REVIEWER_ID, organizationId: MIXED_ORG,
+      permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+      roles: [{ roleId: "software-committer", projectId: MIXED_PROJECT }] });
+    const traceId = `member-refusal:${randomUUID()}`;
+    const before = await captureMixedState(created, traceId);
+    const objects = await objectInventory(created.storageDirectory);
+    await expect(created.db.transaction((tx) => prepareCanonicalMemberRemoval(tx, created.storage, limited, {
+      projectId: MIXED_PROJECT, configSetId: created.configSetId, fileId: created.removedFileId,
+      invocation: createUserInvocation(limited), traceId,
+      refusalSink: createTrustedRefusalAuditSink(created.db)
+    }))).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await captureMixedState(created, traceId)).toEqual(before);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
+    const refusal = (await created.db.query<{ kind: string; action: string; severity: string; target_type: string;
+      target_id: string; trace_id: string; metadata: Record<string, unknown> }>(`
+      select kind,action,severity,target_type,target_id,trace_id,metadata from audit_events where trace_id=$1`,
+    [traceId])).rows;
+    expect(refusal).toHaveLength(1);
+    expect(refusal).toMatchObject([{
+      kind: "parameter-source-permission-denied", action: "deny", severity: "High",
+      target_type: "project-parameter-file", target_id: created.removedFileId, trace_id: traceId,
+      metadata: { code: "parameter-source-permission-denied", operation: "canonical member removal prepare", initiator: "user" }
+    }]);
   }, 120_000);
 });
 const reviewer = makeTestAuthContext({

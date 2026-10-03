@@ -26,7 +26,8 @@ import { parseDts } from "../dts";
 import { canonicalSourceMemberMatchesCurrentFile, loadCanonicalSourceCohort,
   loadCanonicalSourceSnapshot, lockCanonicalSourceCohort, recordCanonicalPermissionRefusal,
   requireCanonicalUserInvocation, type CanonicalSourceManifest, type CanonicalSourceSecurityContext } from "./canonicalSource";
-import { readJsonSourceValue } from "./jsonSource";
+import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
+import { normalizeManifestLogicalPath, normalizePersistedManifest } from "../parameter-topology/configRevisionManifest";
 import { rethrowSourceTransactionError } from "./sourceVersion";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -140,8 +141,12 @@ const childLocator = (parent: string, segment: string) => segment ? (parent ? `$
 const displayLocator = (locator: string) => locator ? `/${locator}` : "/";
 
 function parsedOccurrenceFacts(manifest: SourceGraphManifest, files: readonly SnapshotFile[]) {
-  const nodes = new Map<string, DtsGeometryNode>();
-  const properties = new Map<string, DtsMemberRemovalGeometry["property"]>();
+  const nodeSpans = new Set<string>();
+  const properties = new Map<string, Readonly<{
+    property: DtsMemberRemovalGeometry["property"];
+    node: DtsGeometryNode;
+    parent: DtsGeometryNode | null;
+  }>>();
   const fileById = new Map(manifest.members.map((member, index) => [member.fileId, { member, file: files[index]! }]));
   for (const member of manifest.members.filter((item) => item.format === "dts")) {
     const source = fileById.get(member.fileId);
@@ -163,8 +168,8 @@ function parsedOccurrenceFacts(manifest: SourceGraphManifest, files: readonly Sn
         contentHash: digest(nodeRaw),
       };
       const nodeKey = JSON.stringify([member.fileVersionId, node.span.start, node.span.end]);
-      if (nodes.has(nodeKey)) conflict("DTS source contains an ambiguous native node span.");
-      nodes.set(nodeKey, nodeGeometry);
+      if (nodeSpans.has(nodeKey)) conflict("DTS source contains an ambiguous native node span.");
+      nodeSpans.add(nodeKey);
       for (const child of node.children) {
         if (child.kind === "node") visit(child, nodeGeometry, nodePath.slice(1));
         else if (child.kind === "property") {
@@ -177,15 +182,14 @@ function parsedOccurrenceFacts(manifest: SourceGraphManifest, files: readonly Sn
           } as const;
           const propertyKey = JSON.stringify([member.fileVersionId, child.name, child.span.start, child.span.end]);
           if (properties.has(propertyKey)) conflict("DTS source contains an ambiguous native property span.");
-          properties.set(propertyKey, property);
+          properties.set(propertyKey, { property, node: nodeGeometry, parent });
         }
       }
-      void parent;
     };
     const parsed = parseDts(content);
     for (const root of parsed.topLevel) if (root.kind === "node") visit(root, null, "");
   }
-  return { nodes, properties };
+  return { properties };
 }
 
 function assertGeometryMatchesBytes(
@@ -193,18 +197,11 @@ function assertGeometryMatchesBytes(
   facts: ReturnType<typeof parsedOccurrenceFacts>,
 ) {
   const property = geometry.property;
-  const node = geometry.node;
-  const expectedProperty = facts.properties.get(JSON.stringify([
+  const expected = facts.properties.get(JSON.stringify([
     property.fileVersionId, property.name, property.span[0], property.span[1]
   ]));
-  const expectedNode = facts.nodes.get(JSON.stringify([
-    node.fileVersionId, node.span[0], node.span[1]
-  ]));
-  const expectedParent = geometry.parent && facts.nodes.get(JSON.stringify([
-    geometry.parent.fileVersionId, geometry.parent.span[0], geometry.parent.span[1]
-  ]));
-  if (!expectedProperty || !expectedNode || !same(property, expectedProperty)
-    || !same(node, expectedNode) || (geometry.parent !== null && (!expectedParent || !same(geometry.parent, expectedParent)))) {
+  if (!expected || !same(property, expected.property) || !same(geometry.node, expected.node)
+    || !same(geometry.parent, expected.parent)) {
     conflict("DTS native occurrence geometry does not match the exact UTF-8 source bytes.");
   }
 }
@@ -667,6 +664,15 @@ async function inspectDtsMemberRemoval(
       conflict("Removed DTS Binding is not an exclusive current property contribution.");
     }
   }
+  const successorManifest = {
+    ...manifest,
+    overlayOrder: manifest.overlayOrder.filter((name) => name !== removed.sourceName),
+    members: manifest.members.filter((member) => member.fileId !== input.fileId),
+  };
+  const successorFiles = files.filter((_, index) => manifest.members[index]?.fileId !== input.fileId);
+  const successorResolver = resolverFor(successorManifest, successorFiles);
+  assertResolverRemoval(oldResolver, successorResolver, removedRows.filter(
+    (entry): entry is DtsMemberRemovalCohortEntry => entry.format === "dts"));
   const base = {
     kind: "canonical-member-removal" as const, proofVersion: 2 as const, format: "dts" as const,
     organizationId, projectId: input.projectId, configSetId: input.configSetId,
@@ -995,6 +1001,167 @@ async function applyDtsMemberRemoval(
   return { requestId: review.requestId, tombstoneId, successorConfigRevisionId: revision.id, replayed: false };
 }
 
+async function loadDtsMemberRemovalHistoricalSnapshot(
+  tx: Queryable,
+  storage: ObjectStore,
+  input: { proof: DtsMemberRemovalProof; successorRevisionId: string; receiptPin: NonNullable<Awaited<ReturnType<typeof loadOwnedProjectValueSourcePin>>> },
+) {
+  const { proof, successorRevisionId, receiptPin } = input;
+  if (!storage?.getBounded || receiptPin.organizationId !== proof.organizationId
+    || receiptPin.projectId !== proof.projectId || receiptPin.configSetId !== proof.configSetId
+    || receiptPin.configRevisionId !== successorRevisionId) {
+    conflict("DTS replay receipt is not owned by its immutable successor revision.");
+  }
+  const revisions = await tx.query<{ id: string; organizationId: string; projectId: string; configSetId: string;
+    entryFile: unknown; includeSearchPaths: unknown; overlayOrder: unknown; status: string; manifestState: string }>(`
+    select id,organization_id as "organizationId",project_id as "projectId",config_set_id as "configSetId",
+      entry_file as "entryFile",include_search_paths as "includeSearchPaths",overlay_order as "overlayOrder",
+      status,manifest_state as "manifestState"
+    from public.dts_config_revisions
+    where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4`,
+  [successorRevisionId, proof.organizationId, proof.projectId, proof.configSetId]);
+  const revision = revisions.rows[0];
+  if (revisions.rows.length !== 1 || !revision || revision.id !== successorRevisionId
+    || revision.organizationId !== proof.organizationId || revision.projectId !== proof.projectId
+    || revision.configSetId !== proof.configSetId || revision.status !== "resolved"
+    || revision.manifestState !== "complete") {
+    conflict("DTS replay successor revision is not an exact complete owned revision.");
+  }
+  if ((revision.entryFile !== null && typeof revision.entryFile !== "string")
+    || !Array.isArray(revision.includeSearchPaths)
+    || !revision.includeSearchPaths.every((path) => typeof path === "string" && !/[\u0000-\u001f\u007f]/.test(path))
+    || !Array.isArray(revision.overlayOrder) || !revision.overlayOrder.every((path) => typeof path === "string")) {
+    conflict("DTS replay successor revision manifest metadata is malformed.");
+  }
+  const entryFile = revision.entryFile as string | null;
+  const includeSearchPaths = revision.includeSearchPaths as string[];
+  const overlayOrder = revision.overlayOrder as string[];
+  type HistoricalMember = {
+    memberId: string | null; configRevisionId: string | null; fileId: string | null; fileVersionId: string | null;
+    sourceName: string | null; role: string | null; sortOrder: number | null; ownedFileId: string | null;
+    organizationId: string | null; projectId: string | null; format: string | null;
+    versionId: string | null; versionFileId: string | null; checksum: string | null; sizeBytes: number | null;
+    storageKey: string | null; versionNumber: number | null;
+  };
+  const rows = (await tx.query<HistoricalMember>(`
+    select member.id as "memberId",member.config_revision_id as "configRevisionId",
+      member.file_id as "fileId",member.file_version_id as "fileVersionId",member.source_name as "sourceName",
+      member.role,member.sort_order as "sortOrder",file.id as "ownedFileId",
+      file.organization_id as "organizationId",file.project_id as "projectId",file.format,
+      version.id as "versionId",version.file_id as "versionFileId",version.checksum,
+      version.size_bytes::float8 as "sizeBytes",version.storage_key as "storageKey",
+      version.version_number as "versionNumber"
+    from public.dts_config_revision_members member
+    left join public.project_parameter_files file on file.id=member.file_id
+    left join public.project_parameter_file_versions version
+      on version.id=member.file_version_id and version.file_id=member.file_id
+    where member.config_revision_id=$1
+    order by member.sort_order,member.id limit 129`, [successorRevisionId])).rows;
+  if (rows.length > 128) conflict("DTS replay successor revision exceeds the member limit.");
+  if (Buffer.byteLength(JSON.stringify({ revision, members: rows })) > 8 * 1024 * 1024) {
+    conflict("DTS replay successor revision metadata exceeds the bounded limit.");
+  }
+  const memberIds = new Set<string>();
+  const fileIds = new Set<string>();
+  const versionIds = new Set<string>();
+  const aliases = new Set<string>();
+  const roles = new Set(["base", "overlay", "charging", "thermal", "misc", "include"]);
+  const overlayRoles = new Set(["overlay", "charging", "thermal", "misc"]);
+  let totalBytes = 0;
+  for (const row of rows) {
+    if (!row.memberId || memberIds.has(row.memberId) || row.configRevisionId !== successorRevisionId
+      || !row.fileId || !row.fileVersionId || row.ownedFileId !== row.fileId || row.versionId !== row.fileVersionId
+      || row.versionFileId !== row.fileId || row.organizationId !== proof.organizationId
+      || row.projectId !== proof.projectId || (row.format !== "dts" && row.format !== "json")
+      || !row.sourceName || !roles.has(row.role ?? "") || !Number.isSafeInteger(row.sortOrder) || row.sortOrder! < 0
+      || typeof row.checksum !== "string" || !/^(sha256:)?[a-f0-9]{64}$/.test(row.checksum)
+      || typeof row.sizeBytes !== "number" || !Number.isSafeInteger(row.sizeBytes)
+      || row.sizeBytes < 0 || row.sizeBytes > MAX_PARAMETER_SOURCE_BYTES
+      || typeof row.storageKey !== "string" || !row.storageKey
+      || typeof row.versionNumber !== "number" || !Number.isSafeInteger(row.versionNumber) || row.versionNumber < 1) {
+      conflict("DTS replay successor member has invalid immutable ownership or version metadata.");
+    }
+    const normalizedAlias = normalizeManifestLogicalPath(row.sourceName);
+    if (!normalizedAlias || normalizedAlias !== row.sourceName || aliases.has(normalizedAlias)
+      || fileIds.has(row.fileId) || versionIds.has(row.fileVersionId)) {
+      conflict("DTS replay successor member alias or identity is missing or ambiguous.");
+    }
+    memberIds.add(row.memberId);
+    fileIds.add(row.fileId);
+    versionIds.add(row.fileVersionId);
+    aliases.add(normalizedAlias);
+    totalBytes += row.sizeBytes;
+    if (totalBytes > 32 * 1024 * 1024) conflict("DTS replay successor source bytes exceed the bounded limit.");
+  }
+  const projection = rows.map(({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }) =>
+    ({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }));
+  const expectedMembers = proof.members.filter((member) => member.fileId !== proof.fileId)
+    .map(({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }) =>
+      ({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }));
+  if (!same(projection, expectedMembers)) {
+    conflict("DTS replay successor does not contain the complete frozen member projection.");
+  }
+  if (rows.filter((row) => row.fileId === receiptPin.fileId && row.fileVersionId === receiptPin.fileVersionId
+    && row.format === receiptPin.format).length !== 1) {
+    conflict("DTS replay receipt pin is absent from its exact historical successor member set.");
+  }
+  const dtsMembers = rows.filter((row) => row.format === "dts");
+  if (dtsMembers.length === 0 || entryFile === null
+    || rows.filter((row) => row.role === "base").length !== 1
+    || dtsMembers.filter((row) => row.role === "base").length !== 1) {
+    conflict("DTS replay successor manifest has no unique DTS entry base.");
+  }
+  const normalized = normalizePersistedManifest({ entryFile, includeSearchPaths, overlayOrder,
+    members: dtsMembers.map((member) => ({ fileId: member.fileId!, fileVersionId: member.fileVersionId!,
+      fileName: member.sourceName!, sourceName: member.sourceName!, role: member.role as ConfigRevisionMemberRole,
+      sortOrder: member.sortOrder!, content: "", format: "dts" })) });
+  if (!normalized.ok) conflict("DTS replay successor manifest is not safe or complete.");
+  const normalizedEntry = normalized.manifest.entryFile;
+  const entryMembers = dtsMembers.filter((member) => normalizeManifestLogicalPath(member.sourceName!) === normalizedEntry);
+  if (entryMembers.length !== 1 || entryMembers[0]!.role !== "base") {
+    conflict("DTS replay successor entry does not resolve to its unique base member.");
+  }
+  const seenOverlays = new Set<string>();
+  for (const overlay of normalized.manifest.overlayOrder) {
+    if (seenOverlays.has(overlay)) conflict("DTS replay successor overlay order is not unique.");
+    seenOverlays.add(overlay);
+    const overlayMembers = dtsMembers.filter((member) => normalizeManifestLogicalPath(member.sourceName!) === overlay);
+    if (overlayMembers.length !== 1 || !overlayRoles.has(overlayMembers[0]!.role!)) {
+      conflict("DTS replay successor overlay order is absent or has an invalid role.");
+    }
+  }
+  if (!same(receiptPin.entryFile, entryFile) || !same(receiptPin.includeSearchPaths, includeSearchPaths)
+    || !same(receiptPin.overlayOrder, overlayOrder)) {
+    conflict("DTS replay receipt pin disagrees with its immutable successor revision manifest.");
+  }
+
+  const files: SnapshotFile[] = [];
+  const members: CanonicalSourceManifest["members"] = [];
+  for (const row of rows) {
+    let bytes: Buffer;
+    try { bytes = await storage.getBounded!(row.storageKey!, MAX_PARAMETER_SOURCE_BYTES); }
+    catch { conflict("DTS replay successor source object is missing or unreadable."); }
+    if (!Buffer.isBuffer(bytes!) || bytes!.length !== row.sizeBytes
+      || createHash("sha256").update(bytes!).digest("hex") !== row.checksum!.replace(/^sha256:/, "")) {
+      conflict("DTS replay successor bytes disagree with their immutable version.");
+    }
+    let content: string;
+    try { content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes!); }
+    catch { conflict("DTS replay successor source object is not UTF-8."); }
+    if (row.format === "json") {
+      try { parseJsonSource(bytes!); }
+      catch { conflict("DTS replay successor JSON source is invalid."); }
+    }
+    files.push({ name: row.sourceName!, format: row.format as "dts" | "json",
+      versionNumber: row.versionNumber!, content: content! });
+    members.push({ memberId: row.memberId!, fileId: row.fileId!, fileVersionId: row.fileVersionId!,
+      sourceName: row.sourceName!, format: row.format as "dts" | "json", role: row.role!,
+      sortOrder: row.sortOrder!, checksum: row.checksum!, sizeBytes: row.sizeBytes! });
+  }
+  const manifest: CanonicalSourceManifest = { ...receiptPin, entryFile, includeSearchPaths, overlayOrder, members };
+  return { manifest, files };
+}
+
 async function verifyDtsMemberRemovalReplay(
   tx: Database, storage: ObjectStore,
   review: Omit<ReviewedCanonicalMemberRemoval, "frozen"> & { frozen: DtsMemberRemovalProof },
@@ -1043,7 +1210,7 @@ async function verifyDtsMemberRemovalReplay(
   if (!successorRevision || successorRevision.status !== "resolved"
     || successorRevision.organization_id !== proof.organizationId || successorRevision.project_id !== proof.projectId
     || successorRevision.config_set_id !== proof.configSetId) conflict("DTS replay successor revision is unavailable.");
-  let newSnapshot: Awaited<ReturnType<typeof loadCanonicalSourceSnapshot>> | undefined;
+  let receiptPin: NonNullable<Awaited<ReturnType<typeof loadOwnedProjectValueSourcePin>>> | undefined;
   for (const receipt of receiptRows) {
     const frozen = proof.cohort.find((entry) => entry.bindingId === receipt.bindingId);
     if (!frozen || frozen.fileId === proof.fileId || receipt.oldValueId !== frozen.oldValueId
@@ -1096,7 +1263,6 @@ async function verifyDtsMemberRemovalReplay(
       || newPin.fileId !== frozen.fileId || newPin.fileVersionId !== frozen.fileVersionId
       || newPin.format !== frozen.format || newPin.sourceOccurrenceId !== frozen.sourceOccurrenceId
       || binding.source_occurrence_id !== frozen.sourceOccurrenceId || binding.definition_id !== frozen.definitionId
-      || binding.effective_revision_id !== frozen.effectiveRevisionId || binding.catalog_release_id !== frozen.catalogReleaseId
       || binding.registration_id !== frozen.registrationId || binding.subject_id !== frozen.subjectId
       || oldValue.value_state !== "present" || newValue.value_state !== "present"
       || oldValue.value_kind !== frozen.valueKind || newValue.value_kind !== frozen.valueKind
@@ -1141,11 +1307,11 @@ async function verifyDtsMemberRemovalReplay(
         conflict("DTS replay changed its native successor occurrence locator.");
       }
     } else conflict("DTS replay receipt format does not match the frozen Binding.");
-    if (!newSnapshot) newSnapshot = await loadCanonicalSourceSnapshot(tx, storage, {
-      organizationId: proof.organizationId, projectId: proof.projectId,
-      bindingId: frozen.bindingId, projectValueId: receipt.newValueId,
-    });
+    receiptPin ??= newPin;
   }
+  const newSnapshot = receiptPin && await loadDtsMemberRemovalHistoricalSnapshot(tx, storage, {
+    proof, successorRevisionId: tombstone.successor_config_revision_id, receiptPin,
+  });
   if (!newSnapshot || newSnapshot.manifest.configRevisionId !== tombstone.successor_config_revision_id) {
     conflict("DTS replay cannot reload its immutable successor source bytes.");
   }
@@ -1158,11 +1324,6 @@ async function verifyDtsMemberRemovalReplay(
     || !same(newSnapshot.manifest.includeSearchPaths, oldRevision.include_search_paths)
     || !same(newSnapshot.manifest.overlayOrder, oldRevision.overlay_order.filter((name) => name !== removedSourceName))) {
     conflict("DTS replay successor entry/include/overlay manifest is not the reviewed removal.");
-  }
-  const expectedMembers = proof.members.filter((member) => member.fileId !== proof.fileId);
-  if (!same(newSnapshot.manifest.members.map(({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }) =>
-    ({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes })), expectedMembers)) {
-    conflict("DTS replay successor manifest differs from the frozen full-member identity.");
   }
   const newResolver = resolverFor(newSnapshot.manifest, newSnapshot.files);
   const oldNative = await loadNativeEffectiveGraph(tx, { revisionId: proof.configRevisionId,
