@@ -1751,6 +1751,7 @@ describe("single draft admission after reviewed JSON member retirement", () => {
           waiting = (await f.db.query<{ pid: number; wait_event_type: string; query: string }>(`
             select pid,wait_event_type,query from pg_stat_activity
              where datname=current_database() and $1=any(pg_blocking_pids(pid))
+               and wait_event_type='Lock'
                and query like 'select id from dts_config_set%for update'`, [pid])).rows[0];
         }
         expect(waiting).toMatchObject({ pid: expect.any(Number), wait_event_type: "Lock" });
