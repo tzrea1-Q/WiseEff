@@ -1,17 +1,24 @@
-import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { join, relative } from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
+import { validCatalogReleaseBundle, refreshAuthoritativeSource } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { compileCatalogRelease } from "../catalog-kernel/compiler";
+import type { CatalogReleaseBundle, CatalogReleaseNode } from "../catalog-kernel/compiler/types";
+import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
+import { installPublishedRelease } from "../catalog-kernel/install/installer";
+import { CatalogSubjectId } from "../parameter-catalog-contract";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { asValueClient, loadPublishedCatalog, readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, loadPublishedCatalog, readCanonicalBindingChangeHistory,
+  syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { loadBindingById, loadHistoryByRevision, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values/repositories";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
@@ -20,6 +27,12 @@ import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { applyReviewedCanonicalMemberRemoval, prepareCanonicalMemberRemoval,
   type CanonicalMemberRemovalProof, type ReviewedCanonicalMemberRemoval } from "./canonicalMemberRemoval";
 import { insertFileVersion } from "./repository";
+import { createParameterModuleForAuth } from "../parameters/service";
+import { executeRegistration } from "../parameter-governance/registration";
+import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import type { ConfigRevisionManifest } from "../parameter-topology/types";
+import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
+import { submitCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
 
 const organizationId = "org-906-member-cohort";
 const projectId = "project-906-member-cohort";
@@ -32,6 +45,442 @@ const admin = makeTestAuthContext({
   userId: adminId, organizationId,
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }]
+});
+
+const MIXED_ORG = "org-906-member-dts-mixed";
+const MIXED_PROJECT = "project-906-member-dts-mixed";
+const MIXED_ADMIN_ID = "user-906-member-dts-admin";
+const MIXED_REVIEWER_ID = "user-906-member-dts-reviewer";
+const MIXED_SCHEMA = "wiseeff.906.member.mixed-json";
+const MIXED_JSON_DEFINITION = "pdef_member_dts_json_limit";
+const mixedAdmin = makeTestAuthContext({ userId: MIXED_ADMIN_ID, organizationId: MIXED_ORG,
+  permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
+  roles: [{ roleId: "admin", projectId: null }] });
+const mixedReviewer = makeTestAuthContext({ userId: MIXED_REVIEWER_ID, organizationId: MIXED_ORG,
+  permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+  roles: [{ roleId: "software-committer", projectId: MIXED_PROJECT }] });
+
+type Mutable<Value> = Value extends readonly (infer Item)[] ? Mutable<Item>[]
+  : Value extends object ? { -readonly [Key in keyof Value]: Mutable<Value[Key]> } : Value;
+
+async function objectInventory(directory: string) {
+  const files = (await readdir(directory, { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile());
+  return Promise.all(files.map(async (entry) => {
+    const bytes = await readFile(join(directory, entry.parentPath, entry.name));
+    return { key: relative(directory, join(entry.parentPath, entry.name)),
+      size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+  })).then((rows) => rows.sort((left, right) => left.key.localeCompare(right.key)));
+}
+
+async function installMixedDtsJsonCatalog(db: ReturnType<typeof createPostgresDatabase>) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new Error("Mixed DTS/JSON fixture requires native PostgreSQL");
+  const full = validCatalogReleaseBundle();
+  const release = structuredClone(full.releases[0]!) as Mutable<CatalogReleaseNode>;
+  const source = release.documents[0]!.source;
+  const configSubjectId = "csub_member_dts_json";
+  const configSubject = {
+    source, kind: "subject" as const, normalizedDigest: "",
+    content: { id: configSubjectId, kind: "configuration-schema" as const,
+      canonicalKey: MIXED_SCHEMA, lifecycle: "active" as const,
+      selector: { kind: "configuration-schema-id" as const, value: MIXED_SCHEMA,
+        provenance: { source: "issue-906-mixed-source" } }, subtype: {}, tombstone: null }
+  };
+  const configAlias = {
+    source, kind: "alias" as const, normalizedDigest: "",
+    content: { id: "cali_member_dts_json_v1", subjectId: configSubjectId,
+      selectorKind: "configuration-schema-id" as const, normalizedSelector: `${MIXED_SCHEMA}.v1`,
+      lifecycle: "active" as const, selectorProvenance: { source: "catalog-review" }, tombstone: null }
+  };
+  const configDefinition = {
+    source, kind: "definition" as const, normalizedDigest: "",
+    content: { id: MIXED_JSON_DEFINITION, subjectId: configSubjectId, propertyKey: "limit",
+      revision: { id: "drev_member_dts_json_limit_1", number: 1, contentDigest: "",
+        lifecycle: "active" as const, displayName: "JSON limit", documentation: "Mixed source survivor.",
+        valueSchema: { type: "number", minimum: 0 },
+        matching: { sourceProperty: "limit", selectorKind: "configuration-schema-id" as const } } }
+  };
+  release.documents.push(configSubject, configAlias, configDefinition);
+  refreshAuthoritativeSource(release);
+  const bundle: CatalogReleaseBundle = { schemaVersion: full.schemaVersion,
+    targetReleaseId: release.manifest.release.id, releases: [release] };
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+  const installed = await installPublishedRelease(pool, { mode: "bootstrap",
+    source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.value.aggregateDigest });
+  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+
+  const business = await createParameterModuleForAuth(db, mixedAdmin, { name: "Mixed driver business", kind: "business" });
+  const driver = await createParameterModuleForAuth(db, mixedAdmin, { name: "Mixed driver", kind: "driver-group",
+    parentId: business.id, compatibles: ["acme,power"] });
+  const config = await createParameterModuleForAuth(db, mixedAdmin, { name: "Mixed JSON configuration", kind: "business" });
+  const baseCommand = {
+    kind: "register" as const, organizationId: MIXED_ORG, expectedRelease: compiled.value.release,
+    placement: { mode: "use-default" as const }, method: "explicit" as const,
+    context: { actorKind: "org-admin" as const, principalId: MIXED_ADMIN_ID }
+  };
+  const driverRegistration = await executeRegistration(pool, { ...baseCommand,
+    subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver",
+    destinationModuleId: driver.id, proof: { reason: "Issue 906 mixed DTS source" },
+    idempotencyKey: "906-member-dts-driver-registration" });
+  if (!driverRegistration.ok) throw new Error(JSON.stringify(driverRegistration.error));
+  const configRegistration = await executeRegistration(pool, { ...baseCommand,
+    subjectId: CatalogSubjectId(configSubjectId), subjectKind: "configuration-schema",
+    destinationModuleId: config.id, proof: { reason: "Issue 906 mixed JSON source" },
+    idempotencyKey: "906-member-dts-config-registration" });
+  if (!configRegistration.ok) throw new Error(JSON.stringify(configRegistration.error));
+  return { configSubjectId };
+}
+
+async function createMixedDtsJsonFixture(input: { chargerBaseFallback?: boolean } = {}) {
+  const database = await createEphemeralTestDatabase("issue906-member-dts-mixed");
+  const db = createPostgresDatabase(database.url);
+  const storageDirectory = await mkdtemp(join(tmpdir(), "wiseeff-906-member-dts-mixed-"));
+  const storage = createLocalObjectStore(storageDirectory);
+  await db.query("insert into organizations(id,name) values ($1,'#906 mixed DTS member')", [MIXED_ORG]);
+  await db.query(`insert into users(id,organization_id,name,title,is_active)
+    values ($1,$3,'admin','Admin',true),($2,$3,'reviewer','Reviewer',true)`,
+  [MIXED_ADMIN_ID, MIXED_REVIEWER_ID, MIXED_ORG]);
+  await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Mixed DTS member','M906D','initialized')",
+    [MIXED_PROJECT, MIXED_ORG]);
+  await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+    values ('role-906-member-dts-admin',$1,$2,null,'admin'),('role-906-member-dts-reviewer',$3,$2,$4,'software-committer')`,
+  [MIXED_ADMIN_ID, MIXED_ORG, MIXED_REVIEWER_ID, MIXED_PROJECT]);
+  const catalogFixture = await installMixedDtsJsonCatalog(db);
+  const configSet = await createConfigSet(db, mixedAdmin, { projectId: MIXED_PROJECT, name: "mixed DTS removal" });
+  const baseDts = `/dts-v1/;
+/ {
+  charger: device@0 { compatible = "acme,power"; status = "okay"; model = "charger";${input.chargerBaseFallback ? " iin_max = <35>;" : ""} };
+  backup: device@1 { compatible = "acme,power"; iin_max = <48>; status = "okay"; };
+  reserve: device@2 { compatible = "acme,power"; iin_max = <60>; status = "okay"; };
+};
+`;
+  const removedDts = `/dts-v1/;
+/plugin/;
+&charger { iin_max = <36>; };
+`;
+  const json = '{"limit":72}\n';
+  const uploadedBase = await uploadProjectParameterFile(db, storage, mixedAdmin, {
+    projectId: MIXED_PROJECT, fileName: "board.dts", bytes: Buffer.from(baseDts)
+  });
+  const uploadedOverlay = await uploadProjectParameterFile(db, storage, mixedAdmin, {
+    projectId: MIXED_PROJECT, fileName: "retire.dts", bytes: Buffer.from(removedDts)
+  });
+  const uploadedJson = await uploadProjectParameterFile(db, storage, mixedAdmin, {
+    projectId: MIXED_PROJECT, fileName: "settings.json", bytes: Buffer.from(json)
+  });
+  await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedBase.file.id, role: "base", sortOrder: 0 });
+  await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedOverlay.file.id, role: "overlay", sortOrder: 1 });
+  await addConfigSetFile(db, mixedAdmin, { configSetId: configSet.id, fileId: uploadedJson.file.id, role: "overlay", sortOrder: 2 });
+  const manifest: ConfigRevisionManifest = { organizationId: MIXED_ORG, projectId: MIXED_PROJECT,
+    configSetId: configSet.id, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: ["retire.dts"],
+    members: [
+      { fileId: uploadedBase.file.id, fileVersionId: uploadedBase.version.id, fileName: "board.dts",
+        sourceName: "board.dts", role: "base", sortOrder: 0, content: baseDts, format: "dts" },
+      { fileId: uploadedOverlay.file.id, fileVersionId: uploadedOverlay.version.id, fileName: "retire.dts",
+        sourceName: "retire.dts", role: "overlay", sortOrder: 1, content: removedDts, format: "dts" },
+      { fileId: uploadedJson.file.id, fileVersionId: uploadedJson.version.id, fileName: "settings.json",
+        sourceName: "settings.json", role: "overlay", sortOrder: 2, content: json, format: "json" }
+    ] };
+  const revision = await ingestConfigRevision(db, manifest, mixedAdmin, { legacyProjection: "skip" });
+  if (revision.status !== "resolved") throw new Error("Mixed source fixture did not resolve.");
+  const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+  if (!snapshot) throw new Error("Mixed Catalog fixture is unavailable");
+  const dtsBindings = await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, {
+    organizationId: MIXED_ORG, projectId: MIXED_PROJECT, configSetId: configSet.id, configRevisionId: revision.id
+  }));
+  if (dtsBindings !== 3) throw new Error(`Expected three DTS Bindings, got ${dtsBindings}`);
+  const jsonRegistration = await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, mixedAdmin, snapshot, {
+    projectId: MIXED_PROJECT, configSetId: configSet.id, fileId: uploadedJson.file.id,
+    fileVersionId: uploadedJson.version.id, configurationSchemaId: MIXED_SCHEMA, rootPointer: "",
+    mappings: [{ definitionId: MIXED_JSON_DEFINITION, pointer: "/limit" }],
+    invocation: createUserInvocation(mixedAdmin), requestId: "register:mixed-dts-json",
+    refusalSink: createTrustedRefusalAuditSink(db)
+  }));
+  if (jsonRegistration.bindings.length !== 1) throw new Error("Expected one JSON Binding survivor.");
+  return { database, db, storageDirectory, storage, configSetId: configSet.id, revisionId: revision.id,
+    removedFileId: uploadedOverlay.file.id, baseFileId: uploadedBase.file.id, jsonFileId: uploadedJson.file.id,
+    baseVersionId: uploadedBase.version.id, removedVersionId: uploadedOverlay.version.id,
+    jsonVersionId: uploadedJson.version.id, catalogFixture, snapshot };
+}
+
+async function captureMixedState(fixture: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>, requestId?: string) {
+  const { db, configSetId } = fixture;
+  const queries = await Promise.all([
+    db.query("select id,status,entry_file,include_search_paths,overlay_order from dts_config_revisions where config_set_id=$1 order by id", [configSetId]),
+    db.query("select id,config_revision_id,file_id,file_version_id,role,sort_order,source_name from dts_config_revision_members where config_revision_id in (select id from dts_config_revisions where config_set_id=$1) order by id", [configSetId]),
+    db.query("select id,current_value_id,source_occurrence_id from parameter_catalog.project_parameter_bindings where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,binding_id,config_revision_id,value_digest,value_kind,value from parameter_catalog.project_parameter_values where binding_id in (select id from parameter_catalog.project_parameter_bindings where organization_id=$1 and project_id=$2) order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,project_value_id,binding_id,config_revision_id,file_id,file_version_id,format,locator,locator_digest from parameter_catalog.project_value_source_pins where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,binding_id,old_current_value_id,new_current_value_id,success_audit_ref from parameter_catalog.binding_history_events where binding_id in (select id from parameter_catalog.project_parameter_bindings where organization_id=$1 and project_id=$2) order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,config_set_id,current_version_id from project_parameter_files where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,file_id,binding_manifest,successor_config_revision_id,successor_binding_manifest,audit_event_id from parameter_catalog.project_source_member_tombstones where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,status,applied_at,applied_audit_ref,applied_source_result from project_parameter_value_change_requests where organization_id=$1 and project_id=$2 order by id", [MIXED_ORG, MIXED_PROJECT]),
+    db.query("select id,action,metadata from audit_events where organization_id=$1 and project_id=$2 and ($3::text is null or metadata->>'reviewRequestId'=$3) order by id", [MIXED_ORG, MIXED_PROJECT, requestId ?? null])
+  ]);
+  return queries.map((result) => result.rows);
+}
+
+type MixedGraphNode = { logical_node_id: string; node_locator: string; name: string; [key: string]: unknown };
+type MixedGraphProperty = { logical_node_id: string; file_id: string; property_name: string; [key: string]: unknown };
+
+async function mixedEffectiveGraph(db: ReturnType<typeof createPostgresDatabase>, revisionId: string) {
+  const nodes = await db.query<MixedGraphNode>(`select logical.logical_node_id,logical.node_locator,logical.name,logical.unit_address,
+      logical.compatible,logical.driver_schema_version_id,logical.parent_logical_node_id
+    from dts_logical_node_revisions logical where logical.config_revision_id=$1 order by logical.logical_node_id`, [revisionId]);
+  const properties = await db.query<MixedGraphProperty>(`select logical.logical_node_id,logical.node_locator,member.file_id,property.file_version_id,
+      property.property_name,property.start_offset,property.end_offset,property.start_line,property.start_column,
+      property.end_line,property.end_column,property.raw_text,property.ast_json,property.content_hash,
+      node.node_path,node.name,node.unit_address,node.labels,node.ref_target,node.is_overlay_root,
+      node.start_offset as node_start_offset,node.end_offset as node_end_offset,node.start_line as node_start_line,
+      node.start_column as node_start_column,node.end_line as node_end_line,node.end_column as node_end_column,
+      node.raw_text as node_raw_text,node.ast_json as node_ast_json,node.content_hash as node_content_hash,
+      parent.node_path as parent_path,parent.name as parent_name,parent.unit_address as parent_unit_address,
+      parent.labels as parent_labels,parent.ref_target as parent_ref_target,parent.is_overlay_root as parent_overlay_root,
+      parent.start_offset as parent_start_offset,parent.end_offset as parent_end_offset,parent.start_line as parent_start_line,
+      parent.start_column as parent_start_column,parent.end_line as parent_end_line,parent.end_column as parent_end_column,
+      parent.raw_text as parent_raw_text,parent.ast_json as parent_ast_json,parent.content_hash as parent_content_hash
+    from dts_occurrence_effects effect
+    join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
+    join dts_property_occurrences property on property.id=effect.property_occurrence_id
+    join dts_node_occurrences node on node.id=effect.node_occurrence_id
+    left join dts_node_occurrences parent on parent.id=node.parent_occurrence_id
+    join dts_config_revision_members member on member.config_revision_id=effect.config_revision_id and member.file_version_id=property.file_version_id
+    where effect.config_revision_id=$1 and effect.effect_kind in ('set','override')
+      and not exists (select 1 from dts_occurrence_effects later where later.config_revision_id=effect.config_revision_id
+        and later.logical_node_revision_id=effect.logical_node_revision_id and later.property_name=effect.property_name
+        and later.source_order>effect.source_order)
+    order by logical.logical_node_id,property.property_name`, [revisionId]);
+  return { nodes: nodes.rows, properties: properties.rows };
+}
+
+describe("#906 reviewed mixed DTS member removal", () => {
+  type DtsRemovalProof = Extract<CanonicalMemberRemovalProof, { proofVersion: 2; format: "dts" }>;
+  const cleanups: Array<() => Promise<void>> = [];
+  afterEach(async () => { await Promise.all(cleanups.splice(0).map((cleanup) => cleanup())); });
+
+  async function fixture(input: { chargerBaseFallback?: boolean } = {}) {
+    const created = await createMixedDtsJsonFixture(input);
+    cleanups.push(async () => {
+      await created.db.close(); await created.database.drop();
+      await rm(created.storageDirectory, { recursive: true, force: true });
+    });
+    return created;
+  }
+
+  async function prepare(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>): Promise<DtsRemovalProof> {
+    const proof = await created.db.transaction((tx) => prepareCanonicalMemberRemoval(tx, created.storage, mixedAdmin, {
+      projectId: MIXED_PROJECT, configSetId: created.configSetId, fileId: created.removedFileId,
+      invocation: createUserInvocation(mixedAdmin), traceId: `prepare:${randomUUID()}`,
+      refusalSink: createTrustedRefusalAuditSink(created.db)
+    }));
+    if (!("proofVersion" in proof) || proof.proofVersion !== 2 || proof.format !== "dts") {
+      throw new Error("Expected a typed DTS V2 member-removal proof.");
+    }
+    return proof;
+  }
+
+  async function review(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>, frozen: DtsRemovalProof,
+    requestId = `review:${randomUUID()}`) {
+    const value: ReviewedCanonicalMemberRemoval = { requestId, submitterUserId: MIXED_ADMIN_ID,
+      reviewerUserId: MIXED_REVIEWER_ID, decision: "approve", frozen };
+    await created.db.query(`insert into public.project_parameter_value_change_requests
+      (id,organization_id,project_id,request_kind,reason,status,submitter_user_id,assigned_to_user_id,
+       member_file_id,member_config_set_id,member_file_version_id,member_proof_digest,member_frozen_proof)
+      values ($1,$2,$3,'member-removal','Remove one DTS overlay member','pending',$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+    [requestId, MIXED_ORG, MIXED_PROJECT, value.submitterUserId, value.reviewerUserId,
+      frozen.fileId, frozen.configSetId, frozen.fileVersionId, frozen.proofDigest, JSON.stringify(frozen)]);
+    return value;
+  }
+
+  async function apply(created: Awaited<ReturnType<typeof createMixedDtsJsonFixture>>, value: ReviewedCanonicalMemberRemoval) {
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(created.db)!);
+    if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
+    return created.db.transaction((tx) => applyReviewedCanonicalMemberRemoval(tx, created.storage, mixedReviewer,
+      snapshot, value, { invocation: createUserInvocation(mixedReviewer), traceId: value.requestId,
+        refusalSink: createTrustedRefusalAuditSink(created.db) }));
+  }
+
+  it("removes one exclusive DTS member and re-pins two DTS plus one JSON survivor from actual successor rows", async () => {
+    const created = await fixture();
+    const beforeObjects = await objectInventory(created.storageDirectory);
+    const frozen = await prepare(created);
+    expect(frozen).toMatchObject({ proofVersion: 2, format: "dts", kind: "canonical-member-removal" });
+    expect(frozen.cohort).toHaveLength(4);
+    const removed = frozen.cohort.filter((entry) => entry.fileId === created.removedFileId);
+    const survivors = frozen.cohort.filter((entry) => entry.fileId !== created.removedFileId);
+    expect(removed).toHaveLength(1);
+    expect(removed[0]?.format).toBe("dts");
+    expect(survivors.filter((entry) => entry.format === "dts")).toHaveLength(2);
+    expect(survivors.filter((entry) => entry.format === "json")).toHaveLength(1);
+    expect(frozen.members.map((member) => member.format).sort()).toEqual(["dts", "dts", "json"]);
+    const oldGraph = await mixedEffectiveGraph(created.db, frozen.configRevisionId);
+    expect(oldGraph.nodes).toHaveLength(3);
+    expect(oldGraph.properties.some((row) => row.property_name === "status")).toBe(true);
+    expect(oldGraph.properties.some((row) => row.property_name === "model")).toBe(true);
+    const value = await review(created, frozen);
+    const beforeState = await captureMixedState(created, value.requestId);
+    const committed = await apply(created, value);
+    expect(committed).toMatchObject({ replayed: false });
+    expect(await apply(created, value)).toEqual({ ...committed, replayed: true });
+
+    const afterGraph = await mixedEffectiveGraph(created.db, committed.successorConfigRevisionId);
+    const removedEntry = removed[0];
+    if (!removedEntry || removedEntry.format !== "dts") throw new Error("Expected one removed DTS Binding.");
+    expect(afterGraph.nodes).toEqual(oldGraph.nodes);
+    const expectedProperties = oldGraph.properties.filter((row) => !(row.logical_node_id === removedEntry.dtsGeometry.logical.logicalNodeId
+      && row.file_id === created.removedFileId && row.property_name === removedEntry.dtsGeometry.property.name));
+    expect(afterGraph.properties).toEqual(expectedProperties);
+    expect(afterGraph.properties.some((row) => row.property_name === "status")).toBe(true);
+    expect(afterGraph.properties.some((row) => row.property_name === "model")).toBe(true);
+
+    const tombstone = (await created.db.query<{ binding_manifest: unknown; successor_binding_manifest: unknown; audit_event_id: string }>(`
+      select binding_manifest,successor_binding_manifest,audit_event_id from parameter_catalog.project_source_member_tombstones
+      where organization_id=$1 and project_id=$2 and file_id=$3`, [MIXED_ORG, MIXED_PROJECT, created.removedFileId])).rows[0]!;
+    const receipts = tombstone.successor_binding_manifest as Array<Record<string, unknown>>;
+    expect(receipts.map((row) => row.bindingId)).toEqual(survivors.map((entry) => entry.bindingId).sort());
+    expect(receipts.filter((row) => row.format === "dts")).toHaveLength(2);
+    expect(receipts.filter((row) => row.format === "json")).toHaveLength(1);
+    for (const receipt of receipts) {
+      const keys = Object.keys(receipt).sort();
+      expect(keys).toEqual(receipt.format === "json"
+        ? ["bindingId", "fileId", "fileVersionId", "format", "historyEventId", "newValueId", "oldValueId", "sourcePinId"].sort()
+        : ["bindingId", "effectId", "fileId", "fileVersionId", "format", "historyEventId", "logicalNodeRevisionId",
+          "newValueId", "nodeOccurrenceId", "oldValueId", "propertyOccurrenceId", "sourcePinId"].sort());
+    }
+    const audit = (await created.db.query<{ metadata: Record<string, unknown> }>(
+      "select metadata from audit_events where id=$1", [tombstone.audit_event_id])).rows[0]!;
+    expect(audit.metadata.successorBindings).toEqual(receipts);
+    expect(await objectInventory(created.storageDirectory)).toEqual(beforeObjects);
+    const afterState = await captureMixedState(created, value.requestId);
+    expect(afterState[0]).toHaveLength(beforeState[0]!.length + 1);
+    expect(afterState[1]).toHaveLength(beforeState[1]!.length + 2);
+    const currentValues = await created.db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+      where organization_id=$1 and project_id=$2 order by id`, [MIXED_ORG, MIXED_PROJECT]);
+    for (const entry of frozen.cohort) {
+      const current = currentValues.rows.find((row) => row.id === entry.bindingId)!;
+      if (entry.fileId === created.removedFileId) {
+        expect(current.current_value_id).toBe(entry.oldValueId);
+        expect(await loadOwnedProjectValueSourcePin(created.db, { organizationId: MIXED_ORG,
+          projectId: MIXED_PROJECT, bindingId: entry.bindingId, projectValueId: entry.oldValueId }))
+          .toMatchObject({ sourcePinId: entry.sourcePinId, configRevisionId: frozen.configRevisionId });
+        continue;
+      }
+      expect(current.current_value_id).not.toBe(entry.oldValueId);
+      const receipt = receipts.find((row) => row.bindingId === entry.bindingId)!;
+      const pin = await loadOwnedProjectValueSourcePin(created.db, { organizationId: MIXED_ORG,
+        projectId: MIXED_PROJECT, bindingId: entry.bindingId, projectValueId: current.current_value_id });
+      expect(pin).toMatchObject({ sourcePinId: receipt.sourcePinId, configRevisionId: committed.successorConfigRevisionId,
+        fileId: entry.fileId, fileVersionId: entry.fileVersionId, format: entry.format,
+        sourceOccurrenceId: entry.sourceOccurrenceId });
+      const history = await created.db.query<{ old_current_value_id: string; new_current_value_id: string; success_audit_ref: string }>(`
+        select old_current_value_id,new_current_value_id,success_audit_ref from parameter_catalog.binding_history_events where id=$1`,
+      [receipt.historyEventId]);
+      expect(history.rows).toEqual([{ old_current_value_id: entry.oldValueId,
+        new_current_value_id: current.current_value_id, success_audit_ref: tombstone.audit_event_id }]);
+      if (entry.format === "dts") {
+        expect(pin?.locator).toMatchObject({ kind: "dts-property", propertyOccurrenceId: receipt.propertyOccurrenceId,
+          nodeOccurrenceId: receipt.nodeOccurrenceId });
+        expect(receipt.propertyOccurrenceId).not.toBe(entry.locator.propertyOccurrenceId);
+        expect(receipt.nodeOccurrenceId).not.toBe(entry.locator.nodeOccurrenceId);
+      } else {
+        const identity = (await created.db.query<{ configuration_instance_id: string; configuration_schema_subject_id: string;
+          root_pointer: string; root_pointer_digest: string }>(`select occurrence.configuration_instance_id,
+            occurrence.configuration_schema_subject_id,occurrence.root_pointer,occurrence.root_pointer_digest
+          from parameter_catalog.project_value_source_pins pin
+          join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
+          where pin.id=$1`, [receipt.sourcePinId])).rows[0]!;
+        expect(identity).toEqual({ configuration_instance_id: (entry as Extract<typeof entry, { format: "json" }>).jsonIdentity.configurationInstanceId,
+          configuration_schema_subject_id: (entry as Extract<typeof entry, { format: "json" }>).jsonIdentity.configurationSchemaSubjectId,
+          root_pointer: (entry as Extract<typeof entry, { format: "json" }>).jsonIdentity.rootPointer,
+          root_pointer_digest: (entry as Extract<typeof entry, { format: "json" }>).jsonIdentity.rootPointerDigest });
+      }
+    }
+    expect((await created.db.query<{ config_set_id: string | null }>(
+      "select config_set_id from project_parameter_files where id=$1", [created.removedFileId])).rows[0]!.config_set_id).toBeNull();
+    expect((await created.db.query<{ count: number }>(`select count(*)::int as count from public.project_parameter_value_change_requests
+      where id=$1 and status='approved' and applied_audit_ref=$2`, [value.requestId, tombstone.audit_event_id])).rows[0]!.count).toBe(1);
+  }, 120_000);
+
+  it("refuses an overlay removal that would expose a base fallback and rolls back the native successor", async () => {
+    const created = await fixture({ chargerBaseFallback: true });
+    const frozen = await prepare(created);
+    const value = await review(created, frozen);
+    const before = await captureMixedState(created, value.requestId);
+    const objects = await objectInventory(created.storageDirectory);
+    await expect(apply(created, value)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(created, value.requestId)).toEqual(before);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
+    expect((await created.db.query<{ status: string; applied_at: Date | null }>(
+      "select status,applied_at from public.project_parameter_value_change_requests where id=$1", [value.requestId])).rows)
+      .toEqual([{ status: "pending", applied_at: null }]);
+  }, 120_000);
+
+  it("refuses an unsubmitted removed-member draft without changing its row or source objects", async () => {
+    const created = await fixture();
+    const frozen = await prepare(created);
+    const removed = frozen.cohort.find((entry) => entry.fileId === created.removedFileId)!;
+    const draft = await createCanonicalValueDraft(created.db, mixedAdmin, {
+      projectId: MIXED_PROJECT, bindingId: removed.bindingId, targetValue: {
+        kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "37", value: "37" }]]
+      }, reason: "Keep an unsubmitted source draft", baseRevisionId: frozen.configRevisionId,
+      baseCurrentValueId: removed.oldValueId
+    }, { objectStore: created.storage, invocation: createUserInvocation(mixedAdmin), requestId: "draft:removed-dts",
+      refusalSink: createTrustedRefusalAuditSink(created.db) });
+    const storedDraft = (await created.db.query("select * from project_parameter_value_drafts where id=$1", [draft.id])).rows[0];
+    const objects = await objectInventory(created.storageDirectory);
+    await expect(prepare(created)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await created.db.query("select * from project_parameter_value_drafts where id=$1", [draft.id])).rows[0]).toEqual(storedDraft);
+    expect(await objectInventory(created.storageDirectory)).toEqual(objects);
+  }, 120_000);
+
+  it("blocks a pending single change before removal preparation", async () => {
+    const created = await fixture();
+    const initial = await created.db.query<{ binding_id: string; current_value_id: string; config_revision_id: string }>(`
+      select binding.id as binding_id,binding.current_value_id,pin.config_revision_id
+      from parameter_catalog.project_parameter_bindings binding
+      join parameter_catalog.project_value_source_pins pin on pin.binding_id=binding.id and pin.project_value_id=binding.current_value_id
+      where binding.organization_id=$1 and binding.project_id=$2 and pin.file_id=$3`,
+    [MIXED_ORG, MIXED_PROJECT, created.baseFileId]);
+    const survivor = initial.rows[0]!;
+    const draft = await createCanonicalValueDraft(created.db, mixedAdmin, {
+      projectId: MIXED_PROJECT, bindingId: survivor.binding_id,
+      targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "49", value: "49" }]] },
+      reason: "Reserve a current DTS value", baseRevisionId: survivor.config_revision_id,
+      baseCurrentValueId: survivor.current_value_id
+    }, { objectStore: created.storage, invocation: createUserInvocation(mixedAdmin), requestId: "draft:pending-dts",
+      refusalSink: createTrustedRefusalAuditSink(created.db) });
+    const pending = await submitCanonicalValueChange(created.db, mixedAdmin, { projectId: MIXED_PROJECT,
+      draftId: draft.id, assignedToUserId: MIXED_REVIEWER_ID, invocation: createUserInvocation(mixedAdmin),
+      requestId: "single:pending-dts", refusalSink: createTrustedRefusalAuditSink(created.db) });
+    await expect(prepare(created)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await created.db.query<{ status: string }>("select status from project_parameter_value_change_requests where id=$1",
+      [pending.id])).rows).toEqual([{ status: "pending" }]);
+  }, 120_000);
+
+  it("rechecks a single request inserted after removal preparation before committing", async () => {
+    const created = await fixture();
+    const frozen = await prepare(created);
+    const removal = await review(created, frozen);
+    const survivor = frozen.cohort.find((entry) => entry.fileId !== created.removedFileId && entry.format === "dts")!;
+    const draft = await createCanonicalValueDraft(created.db, mixedAdmin, {
+      projectId: MIXED_PROJECT, bindingId: survivor.bindingId,
+      targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "49", value: "49" }]] },
+      reason: "Race a single DTS value review", baseRevisionId: frozen.configRevisionId,
+      baseCurrentValueId: survivor.oldValueId
+    }, { objectStore: created.storage, invocation: createUserInvocation(mixedAdmin), requestId: "draft:race-dts",
+      refusalSink: createTrustedRefusalAuditSink(created.db) });
+    const pending = await submitCanonicalValueChange(created.db, mixedAdmin, { projectId: MIXED_PROJECT,
+      draftId: draft.id, assignedToUserId: MIXED_REVIEWER_ID, invocation: createUserInvocation(mixedAdmin),
+      requestId: "single:race-dts", refusalSink: createTrustedRefusalAuditSink(created.db) });
+    const before = await captureMixedState(created, removal.requestId);
+    await expect(apply(created, removal)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureMixedState(created, removal.requestId)).toEqual(before);
+    expect((await created.db.query<{ status: string }>("select status from project_parameter_value_change_requests where id=$1",
+      [pending.id])).rows).toEqual([{ status: "pending" }]);
+  }, 120_000);
 });
 const reviewer = makeTestAuthContext({
   userId: reviewerId, organizationId,
