@@ -491,6 +491,8 @@ export const casCurrentTip = async (
              and next_pin.format=base_pin.format and next_pin.locator=base_pin.locator
              and next_pin.locator_digest=base_pin.locator_digest and next_pin.value_state='present'
             where request.id=$4 and request.request_kind='member-removal'
+              and not (request.member_frozen_proof ? 'proofVersion')
+              and not (request.member_frozen_proof ? 'format')
               and request.status='pending' and request.organization_id=binding.organization_id
               and request.project_id=binding.project_id
               and request.member_config_set_id=occurrence.config_set_id
@@ -508,7 +510,293 @@ export const casCurrentTip = async (
         )`,
     [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null],
   );
-  return (result.rowCount ?? 0) === 1;
+  if ((result.rowCount ?? 0) === 1) return true;
+  // Keep ordinary initialization/single/batch/JSON V1 plans unchanged. Only a
+  // refused tip reaches the typed member pair, still under the same exact CAS.
+  const typedResult = await client.query(
+    `update parameter_catalog.project_parameter_bindings binding
+        set current_value_id = $3, updated_at = now()
+      where id = $1 and current_value_id = $2
+        and not parameter_catalog.is_replaced_current_binding(id)
+        and (
+          exists (
+            WITH pair AS MATERIALIZED (
+              SELECT request.id AS request_id, binding.id AS binding_id,
+                request.member_frozen_proof AS proof,
+                binding.organization_id, binding.project_id, occurrence.config_set_id,
+                occurrence.id AS source_occurrence_id, occurrence.logical_node_id,
+                binding.definition_id, binding.effective_revision_id,
+                binding.catalog_release_id, binding.registration_id, binding.subject_id,
+                old_value.id AS old_value_id, next_value.id AS new_value_id,
+                base_pin.id AS old_pin_id, next_pin.id AS new_pin_id,
+                base_pin.config_revision_id AS old_revision_id,
+                next_pin.config_revision_id AS new_revision_id,
+                base_pin.file_id, base_pin.file_version_id,
+                old_value.value_kind, old_value.value_digest, old_value.value,
+                base_pin.locator AS old_locator, base_pin.locator_digest AS old_locator_digest,
+                next_pin.locator AS new_locator, next_pin.locator_digest AS new_locator_digest,
+                base_pin.property_occurrence_id AS old_property_id,
+                next_pin.property_occurrence_id AS new_property_id,
+                definition.property_key
+              FROM public.project_parameter_value_change_requests request
+              JOIN parameter_catalog.project_parameter_bindings binding ON binding.id=$1
+              JOIN parameter_catalog.project_parameter_source_occurrences occurrence
+                ON occurrence.id=binding.source_occurrence_id
+               AND occurrence.organization_id=binding.organization_id
+               AND occurrence.project_id=binding.project_id AND occurrence.occurrence_kind='dts'
+              JOIN parameter_catalog.parameter_definitions definition ON definition.id=binding.definition_id
+              JOIN parameter_catalog.organization_subject_registrations registration
+                ON registration.id=binding.registration_id
+               AND registration.organization_id=binding.organization_id
+               AND registration.subject_id=binding.subject_id AND registration.status='active'
+              JOIN parameter_catalog.project_parameter_values old_value
+                ON old_value.id=$2 AND old_value.binding_id=binding.id
+               AND old_value.definition_id=binding.definition_id
+               AND old_value.definition_revision_id=binding.effective_revision_id
+               AND old_value.value_state='present'
+              JOIN parameter_catalog.project_parameter_values next_value
+                ON next_value.id=$3 AND next_value.binding_id=binding.id
+               AND next_value.definition_id=binding.definition_id
+               AND next_value.definition_revision_id=binding.effective_revision_id
+               AND next_value.value_state='present'
+               AND next_value.value_kind=old_value.value_kind
+               AND next_value.value_digest=old_value.value_digest
+               AND next_value.value=old_value.value AND next_value.source_ref=old_value.source_ref
+              JOIN parameter_catalog.project_value_source_pins base_pin
+                ON base_pin.project_value_id=old_value.id AND base_pin.binding_id=binding.id
+               AND base_pin.organization_id=binding.organization_id AND base_pin.project_id=binding.project_id
+               AND base_pin.source_occurrence_id=occurrence.id AND base_pin.definition_id=binding.definition_id
+               AND base_pin.config_revision_id=old_value.config_revision_id
+               AND base_pin.file_id=occurrence.file_id AND base_pin.format='dts' AND base_pin.value_state='present'
+              JOIN parameter_catalog.project_value_source_pins next_pin
+                ON next_pin.project_value_id=next_value.id AND next_pin.binding_id=binding.id
+               AND next_pin.organization_id=binding.organization_id AND next_pin.project_id=binding.project_id
+               AND next_pin.source_occurrence_id=occurrence.id AND next_pin.definition_id=binding.definition_id
+               AND next_pin.config_revision_id=next_value.config_revision_id
+               AND next_pin.file_id=base_pin.file_id AND next_pin.file_version_id=base_pin.file_version_id
+               AND next_pin.format='dts' AND next_pin.value_state='present'
+              JOIN public.dts_config_revisions predecessor ON predecessor.id=base_pin.config_revision_id
+               AND predecessor.organization_id=binding.organization_id AND predecessor.project_id=binding.project_id
+               AND predecessor.config_set_id=occurrence.config_set_id
+              JOIN public.dts_config_revisions successor ON successor.id=next_pin.config_revision_id
+               AND successor.organization_id=binding.organization_id AND successor.project_id=binding.project_id
+               AND successor.config_set_id=occurrence.config_set_id AND successor.status='resolved'
+              WHERE request.id=$4 AND request.request_kind='member-removal' AND request.status='pending'
+                AND request.organization_id=binding.organization_id AND request.project_id=binding.project_id
+                AND request.member_config_set_id=occurrence.config_set_id
+                AND request.member_file_id<>base_pin.file_id
+                AND request.member_frozen_proof->>'kind'='canonical-member-removal'
+                AND request.member_frozen_proof->'proofVersion'='2'::jsonb
+                AND request.member_frozen_proof->>'format'='dts'
+                AND request.member_frozen_proof->>'proofDigest'=request.member_proof_digest
+                AND base_pin.config_revision_id=request.member_frozen_proof->>'configRevisionId'
+                AND next_pin.config_revision_id<>base_pin.config_revision_id
+            ), endpoints AS MATERIALIZED (
+              SELECT pair.*, endpoint.phase, property.id AS property_id, node.id AS node_id,
+                logical_revision.id AS logical_revision_id, effect.id AS effect_id,
+                jsonb_build_object(
+                  'property',jsonb_build_object('name',property.property_name,
+                    'fileVersionId',property.file_version_id,
+                    'span',jsonb_build_array(property.start_offset,property.end_offset,property.start_line,
+                      property.start_column,property.end_line,property.end_column),
+                    'rawText',property.raw_text,'ast',property.ast_json,'contentHash',property.content_hash),
+                  'node',jsonb_build_object('fileVersionId',node.file_version_id,'path',node.node_path,
+                    'name',node.name,'unitAddress',node.unit_address,'labels',node.labels,
+                    'refTarget',node.ref_target,'overlayRoot',node.is_overlay_root,
+                    'span',jsonb_build_array(node.start_offset,node.end_offset,node.start_line,
+                      node.start_column,node.end_line,node.end_column),
+                    'rawText',node.raw_text,'ast',node.ast_json,'contentHash',node.content_hash),
+                  'parent',CASE WHEN node.parent_occurrence_id IS NULL THEN 'null'::jsonb ELSE
+                    jsonb_build_object('fileVersionId',parent.file_version_id,'path',parent.node_path,
+                      'name',parent.name,'unitAddress',parent.unit_address,'labels',parent.labels,
+                      'refTarget',parent.ref_target,'overlayRoot',parent.is_overlay_root,
+                      'span',jsonb_build_array(parent.start_offset,parent.end_offset,parent.start_line,
+                        parent.start_column,parent.end_line,parent.end_column),
+                      'rawText',parent.raw_text,'ast',parent.ast_json,'contentHash',parent.content_hash) END,
+                  'logical',jsonb_build_object('logicalNodeId',logical_revision.logical_node_id,
+                    'locator',logical_revision.node_locator,'name',logical_revision.name,
+                    'unitAddress',logical_revision.unit_address,'compatible',logical_revision.compatible,
+                    'driverSchemaVersionId',logical_revision.driver_schema_version_id,
+                    'parentLogicalNodeId',logical_revision.parent_logical_node_id)
+                ) AS geometry
+              FROM pair
+              CROSS JOIN LATERAL (VALUES
+                ('old',pair.old_revision_id,pair.old_property_id,pair.old_locator,pair.old_locator_digest),
+                ('new',pair.new_revision_id,pair.new_property_id,pair.new_locator,pair.new_locator_digest)
+              ) AS endpoint(phase,revision_id,property_id,locator,locator_digest)
+              JOIN public.dts_property_occurrences property ON property.id=endpoint.property_id
+               AND property.config_revision_id=endpoint.revision_id
+               AND property.file_version_id=pair.file_version_id AND property.property_name=pair.property_key
+              JOIN public.dts_node_occurrences node ON node.id=property.node_occurrence_id
+               AND node.config_revision_id=property.config_revision_id AND node.file_version_id=property.file_version_id
+              LEFT JOIN public.dts_node_occurrences parent ON parent.id=node.parent_occurrence_id
+               AND parent.config_revision_id=node.config_revision_id AND parent.file_version_id=node.file_version_id
+              JOIN public.dts_occurrence_effects effect ON effect.config_revision_id=property.config_revision_id
+               AND effect.property_occurrence_id=property.id AND effect.node_occurrence_id=node.id
+               AND effect.property_name=property.property_name AND effect.effect_kind IN ('set','override')
+              JOIN public.dts_logical_node_revisions logical_revision ON logical_revision.id=effect.logical_node_revision_id
+               AND logical_revision.config_revision_id=property.config_revision_id
+               AND logical_revision.logical_node_id=pair.logical_node_id
+              JOIN public.dts_logical_nodes logical_node ON logical_node.id=logical_revision.logical_node_id
+               AND logical_node.organization_id=pair.organization_id AND logical_node.project_id=pair.project_id
+               AND logical_node.config_set_id=pair.config_set_id
+              JOIN public.dts_config_revision_members member ON member.config_revision_id=property.config_revision_id
+               AND member.file_id=pair.file_id AND member.file_version_id=property.file_version_id
+              WHERE (node.parent_occurrence_id IS NULL OR parent.id IS NOT NULL)
+                AND endpoint.locator=jsonb_build_object('kind','dts-property','fileVersionId',property.file_version_id,
+                  'propertyName',property.property_name,'propertyOccurrenceId',property.id,'nodeOccurrenceId',node.id)
+                AND endpoint.locator_digest='sha256:' || pg_catalog.encode(
+                pg_catalog.sha256(pg_catalog.convert_to(
+                  pg_catalog.concat(
+                    '{', pg_catalog.chr(10),
+                    '  "fileVersionId": ', pg_catalog.to_json(endpoint.locator ->> 'fileVersionId')::text, ',', pg_catalog.chr(10),
+                    '  "kind": ', pg_catalog.to_json(endpoint.locator ->> 'kind')::text, ',', pg_catalog.chr(10),
+                    '  "nodeOccurrenceId": ', pg_catalog.to_json(endpoint.locator ->> 'nodeOccurrenceId')::text, ',', pg_catalog.chr(10),
+                    '  "propertyName": ', pg_catalog.to_json(endpoint.locator ->> 'propertyName')::text, ',', pg_catalog.chr(10),
+                    '  "propertyOccurrenceId": ', pg_catalog.to_json(endpoint.locator ->> 'propertyOccurrenceId')::text, pg_catalog.chr(10),
+                    '}', pg_catalog.chr(10)
+                  ),
+                  'UTF8'
+                )),
+                'hex'
+              )
+                AND NOT EXISTS (SELECT 1 FROM public.dts_occurrence_effects competing
+                  WHERE competing.config_revision_id=effect.config_revision_id
+                    AND competing.logical_node_revision_id=effect.logical_node_revision_id
+                    AND competing.property_name=effect.property_name AND competing.id<>effect.id
+                    AND competing.source_order>=effect.source_order)
+            ), matching_pair AS MATERIALIZED (
+              SELECT old_endpoint.*, next_endpoint.node_id AS next_node_id,
+                next_endpoint.property_id AS next_property_id,
+                next_endpoint.logical_revision_id AS next_logical_revision_id,
+                next_endpoint.effect_id AS next_effect_id
+              FROM endpoints old_endpoint
+              JOIN endpoints next_endpoint ON next_endpoint.binding_id=old_endpoint.binding_id
+               AND next_endpoint.request_id=old_endpoint.request_id
+               AND next_endpoint.phase='new' AND next_endpoint.geometry=old_endpoint.geometry
+              WHERE old_endpoint.phase='old'
+                AND (SELECT count(*) FROM endpoints WHERE phase='old')=1
+                AND (SELECT count(*) FROM endpoints WHERE phase='new')=1
+            ), frozen_match AS MATERIALIZED (
+              SELECT matching_pair.* FROM matching_pair
+              CROSS JOIN LATERAL jsonb_array_elements(matching_pair.proof->'cohort') WITH ORDINALITY frozen(entry,ordinal)
+              WHERE frozen.entry->>'format'='dts'
+                AND frozen.entry->>'bindingId'=matching_pair.binding_id
+                AND frozen.entry->>'oldValueId'=matching_pair.old_value_id
+                AND frozen.entry->>'sourcePinId'=matching_pair.old_pin_id
+                AND frozen.entry->>'sourceOccurrenceId'=matching_pair.source_occurrence_id
+                AND frozen.entry->>'definitionId'=matching_pair.definition_id
+                AND frozen.entry->>'effectiveRevisionId'=matching_pair.effective_revision_id
+                AND frozen.entry->>'catalogReleaseId'=matching_pair.catalog_release_id
+                AND frozen.entry->>'registrationId'=matching_pair.registration_id
+                AND frozen.entry->>'subjectId'=matching_pair.subject_id
+                AND frozen.entry->>'fileId'=matching_pair.file_id
+                AND frozen.entry->>'fileVersionId'=matching_pair.file_version_id
+                AND frozen.entry->'locator'=matching_pair.old_locator
+                AND frozen.entry->>'locatorDigest'=matching_pair.old_locator_digest
+                AND frozen.entry->>'valueKind'=matching_pair.value_kind
+                AND frozen.entry->>'valueDigest'=matching_pair.value_digest
+                AND frozen.entry->'value'=matching_pair.value
+                AND frozen.entry->'dtsGeometry'=matching_pair.geometry
+            )
+            SELECT 1 FROM frozen_match HAVING count(*)=1
+          )
+          or exists (
+            WITH json_pair AS MATERIALIZED (
+             SELECT request.member_frozen_proof proof,binding.id binding_id,
+               binding.subject_id,binding.registration_id,binding.definition_id,
+               binding.effective_revision_id,binding.catalog_release_id,
+               occurrence.id source_occurrence_id,occurrence.configuration_instance_id,
+               occurrence.configuration_schema_subject_id,occurrence.root_pointer,occurrence.root_pointer_digest,
+               old_value.id old_value_id,old_value.value_kind,old_value.value_digest,old_value.value,
+               base_pin.id old_pin_id,base_pin.file_id,base_pin.file_version_id,
+               base_pin.locator,base_pin.locator_digest
+             FROM public.project_parameter_value_change_requests request
+             JOIN parameter_catalog.project_parameter_bindings binding ON binding.id=$1
+             JOIN parameter_catalog.project_parameter_source_occurrences occurrence
+               ON occurrence.id=binding.source_occurrence_id AND occurrence.occurrence_kind='json'
+               AND occurrence.organization_id=binding.organization_id AND occurrence.project_id=binding.project_id
+               AND occurrence.configuration_schema_subject_id=binding.subject_id
+             JOIN parameter_catalog.organization_subject_registrations registration
+               ON registration.id=binding.registration_id AND registration.organization_id=binding.organization_id
+               AND registration.subject_id=binding.subject_id AND registration.status='active'
+             JOIN parameter_catalog.project_parameter_values old_value
+               ON old_value.id=$2 AND old_value.binding_id=binding.id AND old_value.definition_id=binding.definition_id
+               AND old_value.definition_revision_id=binding.effective_revision_id AND old_value.value_state='present'
+             JOIN parameter_catalog.project_parameter_values next_value
+               ON next_value.id=$3 AND next_value.binding_id=binding.id AND next_value.definition_id=binding.definition_id
+               AND next_value.definition_revision_id=binding.effective_revision_id AND next_value.value_state='present'
+               AND next_value.value_kind=old_value.value_kind AND next_value.value_digest=old_value.value_digest
+               AND next_value.value=old_value.value AND next_value.source_ref=old_value.source_ref
+             JOIN parameter_catalog.project_value_source_pins base_pin
+               ON base_pin.project_value_id=old_value.id AND base_pin.binding_id=binding.id
+               AND base_pin.organization_id=binding.organization_id AND base_pin.project_id=binding.project_id
+               AND base_pin.definition_id=binding.definition_id AND base_pin.source_occurrence_id=occurrence.id
+               AND base_pin.config_revision_id=old_value.config_revision_id AND base_pin.file_id=occurrence.file_id
+               AND base_pin.format='json' AND base_pin.property_occurrence_id IS NULL AND base_pin.value_state='present'
+             JOIN parameter_catalog.project_value_source_pins next_pin
+               ON next_pin.project_value_id=next_value.id AND next_pin.binding_id=binding.id
+               AND next_pin.organization_id=binding.organization_id AND next_pin.project_id=binding.project_id
+               AND next_pin.definition_id=binding.definition_id AND next_pin.source_occurrence_id=occurrence.id
+               AND next_pin.config_revision_id=next_value.config_revision_id
+               AND next_pin.file_id=base_pin.file_id AND next_pin.file_version_id=base_pin.file_version_id
+               AND next_pin.format='json' AND next_pin.property_occurrence_id IS NULL AND next_pin.value_state='present'
+               AND next_pin.locator=base_pin.locator AND next_pin.locator_digest=base_pin.locator_digest
+             JOIN public.dts_config_revisions predecessor ON predecessor.id=base_pin.config_revision_id
+               AND predecessor.organization_id=binding.organization_id AND predecessor.project_id=binding.project_id
+               AND predecessor.config_set_id=occurrence.config_set_id
+             JOIN public.dts_config_revisions successor ON successor.id=next_pin.config_revision_id
+               AND successor.organization_id=binding.organization_id AND successor.project_id=binding.project_id
+               AND successor.config_set_id=occurrence.config_set_id AND successor.status='resolved'
+             JOIN public.dts_config_revision_members old_member ON old_member.config_revision_id=predecessor.id
+               AND old_member.file_id=base_pin.file_id AND old_member.file_version_id=base_pin.file_version_id
+             JOIN public.dts_config_revision_members new_member ON new_member.config_revision_id=successor.id
+               AND new_member.file_id=old_member.file_id AND new_member.file_version_id=old_member.file_version_id
+               AND new_member.source_name=old_member.source_name AND new_member.role=old_member.role
+               AND new_member.sort_order=old_member.sort_order
+             WHERE request.id=$4 AND request.request_kind='member-removal' AND request.status='pending'
+               AND request.organization_id=binding.organization_id AND request.project_id=binding.project_id
+               AND request.member_config_set_id=occurrence.config_set_id AND request.member_file_id<>base_pin.file_id
+               AND request.member_frozen_proof->>'kind'='canonical-member-removal'
+               AND request.member_frozen_proof->'proofVersion'='2'::jsonb
+               AND request.member_frozen_proof->>'format'='dts'
+               AND request.member_frozen_proof->>'proofDigest'=request.member_proof_digest
+               AND base_pin.config_revision_id=request.member_frozen_proof->>'configRevisionId'
+               AND next_pin.config_revision_id<>base_pin.config_revision_id
+               AND base_pin.locator=jsonb_build_object('kind','json-pointer','pointer',base_pin.locator->>'pointer')
+               AND base_pin.locator->>'pointer' IS NOT NULL
+            ), frozen_match AS MATERIALIZED (
+             SELECT json_pair.* FROM json_pair
+             CROSS JOIN LATERAL jsonb_array_elements(json_pair.proof->'cohort') frozen(entry)
+             WHERE frozen.entry->>'format'='json'
+               AND frozen.entry->>'bindingId'=json_pair.binding_id
+               AND frozen.entry->>'oldValueId'=json_pair.old_value_id
+               AND frozen.entry->>'sourcePinId'=json_pair.old_pin_id
+               AND frozen.entry->>'sourceOccurrenceId'=json_pair.source_occurrence_id
+               AND frozen.entry->>'definitionId'=json_pair.definition_id
+               AND frozen.entry->>'effectiveRevisionId'=json_pair.effective_revision_id
+               AND frozen.entry->>'catalogReleaseId'=json_pair.catalog_release_id
+               AND frozen.entry->>'registrationId'=json_pair.registration_id
+               AND frozen.entry->>'subjectId'=json_pair.subject_id
+               AND frozen.entry->>'fileId'=json_pair.file_id
+               AND frozen.entry->>'fileVersionId'=json_pair.file_version_id
+               AND frozen.entry->'locator'=json_pair.locator
+               AND frozen.entry->>'locatorDigest'=json_pair.locator_digest
+               AND frozen.entry->>'valueKind'=json_pair.value_kind
+               AND frozen.entry->>'valueDigest'=json_pair.value_digest
+               AND frozen.entry->'value'=json_pair.value
+               AND frozen.entry->'jsonIdentity'=jsonb_build_object(
+                 'configurationInstanceId',json_pair.configuration_instance_id,
+                 'configurationSchemaSubjectId',json_pair.configuration_schema_subject_id,
+                 'rootPointer',json_pair.root_pointer,'rootPointerDigest',json_pair.root_pointer_digest)
+               AND NOT(frozen.entry ? 'dtsGeometry')
+            )
+            SELECT 1 FROM frozen_match HAVING count(*)=1
+          )
+        )`,
+    [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null],
+  );
+  return (typedResult.rowCount ?? 0) === 1;
 };
 
 export const insertSuccessAudit = async (
