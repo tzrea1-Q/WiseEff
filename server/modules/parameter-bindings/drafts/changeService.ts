@@ -43,6 +43,7 @@ import {
 } from "../../agent/approvedParameterInvocation";
 import { commitCanonicalSourceRevision } from "../../parameter-files/canonicalSourceCommit";
 import { loadCanonicalSourceCohort, recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
+import { isCurrentGovernedSourceValue } from "../values";
 import {
   hasCurrentCanonicalReviewRole,
   hasEligibleWorkflowAssignee,
@@ -419,6 +420,14 @@ export async function submitCanonicalValueChange(
     if (staleReason) {
       throw new ApiError("CONFLICT", "Draft source base changed before submission.", {
         reason: staleReason, bindingId: draft.binding_id
+      });
+    }
+    if (!await isCurrentGovernedSourceValue(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId,
+      bindingId: draft.binding_id, projectValueId: draft.base_current_value_id
+    })) {
+      throw new ApiError("CONFLICT", "Draft source is no longer current.", {
+        reason: "source-retired-or-stale", bindingId: draft.binding_id
       });
     }
     const inserted = await insertCanonicalValueChangeRequest(tx, {
