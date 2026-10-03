@@ -53,7 +53,7 @@ const MIXED_ADMIN_ID = "user-906-member-dts-admin";
 const MIXED_REVIEWER_ID = "user-906-member-dts-reviewer";
 const MIXED_SCHEMA = "wiseeff.mixed906";
 const MIXED_JSON_DEFINITION = "pdef_member_dts_json_limit";
-const MIXED_EVIDENCE_EXPORT_PATH = "/tmp/wiseeff-member-dts-removal-transaction-implementation-20261003/mixed-success-fixture.json";
+const MIXED_EVIDENCE_EXPORT_PATH = "/tmp/wiseeff-member-dts-removal-transaction-implementation-20261003/mixed-success-fixture-final.json";
 const mixedAdmin = makeTestAuthContext({ userId: MIXED_ADMIN_ID, organizationId: MIXED_ORG,
   permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
   roles: [{ roleId: "admin", projectId: null }] });
@@ -325,7 +325,8 @@ describe("#906 reviewed mixed DTS member removal", () => {
     const beforeState = await captureMixedState(created, value.requestId);
     const committed = await apply(created, value);
     expect(committed).toMatchObject({ replayed: false });
-    expect(await apply(created, value)).toEqual({ ...committed, replayed: true });
+    const replayed = await apply(created, value);
+    expect(replayed).toEqual({ ...committed, replayed: true });
 
     const afterGraph = await mixedEffectiveGraph(created.db, committed.successorConfigRevisionId);
     const removedEntry = removed[0];
@@ -441,7 +442,7 @@ describe("#906 reviewed mixed DTS member removal", () => {
           removedFileId: created.removedFileId },
         proof: frozen, reviewerDecision: { requestId: value.requestId, submitterUserId: value.submitterUserId,
           reviewerUserId: value.reviewerUserId, decision: value.decision },
-        committedResult: committed, replayResult: { ...committed, replayed: true },
+        committedResult: committed, replayResult: replayed,
         sourceObjects, beforeObjects, afterObjects: await objectInventory(created.storageDirectory),
         oldGraph, successorGraph: afterGraph, tombstone, values: values.rows, pins: pins.rows,
         history: history.rows, request: requestRows.rows, audit: auditRows.rows,
