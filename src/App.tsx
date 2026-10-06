@@ -490,11 +490,13 @@ function AppShell({
         {...props}
         runtimeMode={runtimeMode}
         debuggingAdminClient={debuggingAdminCatalogClient}
+        parameterRepository={parameterRepositoryClient}
+        parameterCatalogRepository={appRuntime.parameterCatalogRepository}
         dtsReloadRepository={dtsReloadRepositoryClient}
         apiAuthPermissions={apiAuthPermissions}
       />
     ),
-    [apiAuthPermissions, debuggingAdminCatalogClient, dtsReloadRepositoryClient, runtimeMode]
+    [apiAuthPermissions, appRuntime.parameterCatalogRepository, debuggingAdminCatalogClient, dtsReloadRepositoryClient, parameterRepositoryClient, runtimeMode]
   );
   const refreshParameterInitializationFromApi = useCallback(async () => {
     if (runtimeMode !== "api" || pageKeyRef.current === "home") {

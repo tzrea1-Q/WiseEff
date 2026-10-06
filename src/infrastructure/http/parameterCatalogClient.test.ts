@@ -21,6 +21,36 @@ function jsonResponse(body: unknown, status = 200, headers: Record<string, strin
   });
 }
 
+describe("protected project Binding client", () => {
+  // Observed public JSON row shape, plus a synthetic DTS value codec variant; no database acceptance.
+  const binding = {
+    id: "pbind_6b6714303ae7c1781f7b56a45ee6dac66b4ef5c935b431ecfb0b81eec78e43f4",
+    projectId: "page-8f791044-f5bd-4d31-bc4e-fb0e5734e188", parameterSpecId: "pdef_acme_power_iin_max",
+    parameterSpecVersionId: "drev_acme_power_iin_max_1", definitionId: "pdef_acme_power_iin_max",
+    effectiveRevisionId: "drev_acme_power_iin_max_1", currentValueId: "pval_590c9cf0634dc079ba3876d18b2114feb507439f053220fc3acb6f647fe9c520",
+    propertyKey: "iin_max", driverModule: "Configuration", logicalNodeId: null, instanceName: null, locator: "/limit",
+    effectiveValue: { kind: "json", value: 36.5 }, rawValue: "36.5\n", schemaState: "valid", policyState: "not_applicable",
+    moduleId: "10b210eb-bb98-413d-9d87-961128adae59", displayName: "Input current limit", description: null,
+    documentation: "Maximum accepted input current."
+  };
+  it.each([
+    { kind: "json", value: 36.5 },
+    { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "36", value: "36" }]] }
+  ])("validates the existing public $kind row and preserves exact current pins", async (effectiveValue) => {
+    const body = { items: [{ ...binding, effectiveValue }] };
+    const fetchImpl = vi.fn(async () => jsonResponse(body));
+    const client = createParameterCatalogClient({ fetchImpl });
+    expect(await client.listProtectedProjectBindings(binding.projectId)).toEqual(body);
+    expect(fetchImpl).toHaveBeenCalledExactlyOnceWith(`/api/v2/projects/${binding.projectId}/parameter-bindings`, expect.objectContaining({ method: "GET" }));
+  });
+  it("refuses malformed public rows without repairing the payload", async () => {
+    const client = createParameterCatalogClient({ fetchImpl: vi.fn(async () => jsonResponse({ items: [{ ...binding, rawValue: 36.5 }] })) });
+    await expect(client.listProtectedProjectBindings(binding.projectId)).rejects.toMatchObject({
+      code: "INTERNAL_ERROR", details: { reason: "contract-drift", schemaName: "CatalogProtectedProjectBindingListResponse" }
+    });
+  });
+});
+
 const catalogDocument = {
   item: {
     catalogReleaseId: "crel_01K42",

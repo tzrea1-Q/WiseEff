@@ -25,6 +25,7 @@ import type {
   CatalogDocumentResponse,
   CatalogLegacyIdentifierResponse,
   CatalogListQuery,
+  CatalogProtectedProjectBindingListResponse,
   CatalogPublicationCandidateResponse,
   CatalogPublicationJobResponse,
   CatalogPublishPublicationCandidateRequest,
@@ -80,6 +81,7 @@ export type CatalogReplacementWriteContext = CatalogPublicationWriteContext & {
 
 /** CatalogRead + DefinitionTimeline + LegacyLink + frozen publication commands. */
 export interface ParameterCatalogRepository {
+  listProtectedProjectBindings?(projectId: string): Promise<CatalogProtectedProjectBindingListResponse>;
   getCatalog(query?: CatalogListQuery): Promise<CatalogDocumentResponse>;
   listSubjects(query?: CatalogListQuery): Promise<CatalogSubjectListResponse>;
   getSubject(subjectId: string, query?: CatalogListQuery): Promise<CatalogSubjectResponse>;

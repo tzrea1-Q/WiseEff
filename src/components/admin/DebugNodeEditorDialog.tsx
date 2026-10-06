@@ -9,6 +9,8 @@ import { debugNodeModuleId } from "@/debugAdminModules";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugNodeRegistryEntry } from "@/domain/debugging/types";
 import type { ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type DebugNodeDraft = {
   name: string;
@@ -29,7 +31,8 @@ export type DebugNodeEditorDialogProps = {
   moduleNodes: readonly FlatModuleNode[];
   loading: boolean;
   canEdit: boolean;
-  parameterRepository?: Pick<ParameterRepository, "listProjects" | "listParameters">;
+  parameterRepository?: Pick<ParameterRepository, "listProjects">;
+  parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   onSave: (draft: DebugNodeDraft) => void;
   onClose: () => void;
 };
@@ -70,13 +73,14 @@ export function DebugNodeEditorDialog({
   loading,
   canEdit,
   parameterRepository,
+  parameterCatalogRepository,
   onSave,
   onClose
 }: DebugNodeEditorDialogProps) {
   const [draft, setDraft] = useState<DebugNodeDraft>(() => emptyDraft(moduleNodes));
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectId, setProjectId] = useState("");
-  const [parameters, setParameters] = useState<Awaited<ReturnType<ParameterRepository["listParameters"]>>>([]);
+  const [parameters, setParameters] = useState<CatalogProtectedProjectBindingListResponse["items"]>([]);
   const [associationLoading, setAssociationLoading] = useState(false);
   const [associationError, setAssociationError] = useState("");
 
@@ -96,18 +100,18 @@ export function DebugNodeEditorDialog({
     setParameters([]);
     Promise.all([
       parameterRepository.listProjects(),
-      projectId ? parameterRepository.listParameters({ projectId }) : Promise.resolve([])
+      projectId ? parameterCatalogRepository?.listProtectedProjectBindings?.(projectId) ?? Promise.reject(new Error("Canonical binding reader unavailable")) : Promise.resolve({ items: [] })
     ]).then(([loadedProjects, loadedParameters]) => {
       if (cancelled) return;
       setProjects(loadedProjects);
-      setParameters(loadedParameters.filter((item) => item.projectId === projectId && item.bindingId && item.effectiveRevisionId && item.currentValueId));
+      setParameters(loadedParameters.items.filter((item) => item.projectId === projectId && item.id && item.effectiveRevisionId && item.currentValueId));
     }).catch(() => {
       if (!cancelled) setAssociationError("无法加载可关联的项目参数，请重新选择项目重试。");
     }).finally(() => {
       if (!cancelled) setAssociationLoading(false);
     });
     return () => { cancelled = true; };
-  }, [open, parameterRepository, projectId]);
+  }, [open, parameterRepository, parameterCatalogRepository, projectId]);
 
   const fieldsDisabled = !canEdit || loading;
   const selectedModuleId = draft.moduleId ?? "";
@@ -179,17 +183,17 @@ export function DebugNodeEditorDialog({
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">关联参数</span>
                     <select aria-label="关联参数" aria-describedby="debug-node-association-help" value={draft.canonicalBinding?.bindingId ?? ""} disabled={fieldsDisabled || associationLoading} onChange={(event) => {
-                      const selected = parameters.find((item) => item.bindingId === event.target.value);
+                      const selected = parameters.find((item) => item.id === event.target.value);
                       setDraft((current) => ({ ...current, canonicalBinding: selected ? {
-                        projectId: selected.projectId,
-                        bindingId: selected.bindingId!,
+                        projectId: selected.projectId!,
+                        bindingId: selected.id,
                         expectedEffectiveRevisionId: selected.effectiveRevisionId!,
                         expectedCurrentValueId: selected.currentValueId!
                       } : null }));
                     }}>
                       <option value="">请选择项目参数</option>
-                      {draft.canonicalBinding && !parameters.some((item) => item.bindingId === draft.canonicalBinding?.bindingId) ? <option value={draft.canonicalBinding.bindingId}>当前关联参数</option> : null}
-                      {parameters.map((item) => <option key={item.bindingId} value={item.bindingId}>{item.name} · {item.sourceNodePath || item.module}</option>)}
+                      {draft.canonicalBinding && !parameters.some((item) => item.id === draft.canonicalBinding?.bindingId) ? <option value={draft.canonicalBinding.bindingId}>当前关联参数</option> : null}
+                      {parameters.map((item) => <option key={item.id} value={item.id}>{item.displayName ?? item.propertyKey} · {item.locator || item.driverModule}</option>)}
                     </select>
                   </label>
                 ) : null}

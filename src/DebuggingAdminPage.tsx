@@ -34,6 +34,7 @@ import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/ht
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 
 function readFileText(file: File) {
   if (typeof file.text === "function") {
@@ -227,13 +228,15 @@ export function DebuggingAdminPage({
   runtimeMode = wiseEffRuntimeMode,
   debuggingAdminClient,
   parameterRepository: injectedParameterRepository,
+  parameterCatalogRepository,
   dtsReloadRepository,
   apiAuthPermissions = []
 }: PageProps & {
   area?: "parameter" | "nodes";
   runtimeMode?: WiseEffRuntimeMode;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
-  parameterRepository?: Pick<ParameterRepository, "listProjects" | "listParameters">;
+  parameterRepository?: Pick<ParameterRepository, "listProjects">;
+  parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   dtsReloadRepository?: DtsReloadRepository;
   apiAuthPermissions?: string[];
 }) {
@@ -1033,6 +1036,7 @@ export function DebuggingAdminPage({
             loading={adminLoading}
             canEdit={canEditAdminCatalog}
             parameterRepository={parameterRepository}
+            parameterCatalogRepository={parameterCatalogRepository}
             onSave={(draft) => void saveNode(draft)}
             onClose={() => {
               setEditorMode(null);

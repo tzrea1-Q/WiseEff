@@ -41,3 +41,4 @@ export * from "./parameterCatalog";
 export * from "./canonicalConflict";
 export * from "./canonicalBatchRollback";
 export * from "./canonicalManualSync";
+export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
