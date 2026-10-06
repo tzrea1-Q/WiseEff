@@ -357,6 +357,7 @@ export async function aggregateWorkbenchSignals(
          from public.project_parameter_value_change_requests request
         where request.status = 'pending'
           and request.submitter_user_id is distinct from $4
+          and (request.request_kind not in ('batch', 'member-addition', 'member-removal') or request.assigned_to_user_id = $4)
           and request.project_id = any($5::text[])
           and request.organization_id = $1
           and ($2::text is null or request.project_id = $2)
