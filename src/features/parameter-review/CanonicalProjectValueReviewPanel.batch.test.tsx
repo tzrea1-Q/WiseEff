@@ -325,6 +325,38 @@ describe("canonical batch reviewer", () => {
     await waitFor(() => expect(detail).toHaveTextContent("已撤回"));
   });
 
+  it("shows the owner's immutable batch source diff in personal history without review actions", async () => {
+    const terminal = { ...batch, status: "approved" as const };
+    const repo = repository();
+    vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValue({ items: [terminal] } as never);
+    vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValue({ item: terminal } as never);
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
+      currentUserId="author-1" mineOnly initialRequestId={batch.id} />);
+    const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
+    expect(await within(detail).findByLabelText("批量固定源变更前")).toHaveTextContent(diff.before);
+    expect(within(detail).getByLabelText("批量固定源变更后")).toHaveTextContent(diff.after);
+    expect(repo.getProjectValueBatchChangeRequest).toHaveBeenCalledWith("project-1", batch.id);
+    expect(repo.getProjectValueChangeSourceDiff).toHaveBeenCalledWith("project-1", batch.id);
+    expect(within(detail).queryByRole("button", { name: /批准全部|驳回全部/ })).not.toBeInTheDocument();
+    expect(repo.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ...batch, projectId: "foreign-project" },
+    { ...batch, submitterUserId: "other-author" }
+  ])("refuses a mismatched owner detail in personal history", async (item) => {
+    const repo = repository();
+    vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValue({ items: [batch] } as never);
+    vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValue({ item } as never);
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
+      currentUserId="author-1" mineOnly initialRequestId={batch.id} />);
+    await waitFor(() => expect(repo.getProjectValueBatchChangeRequest).toHaveBeenCalled());
+    expect(await screen.findByRole("alert")).toHaveTextContent("不一致");
+    expect(screen.queryByLabelText("批量固定源变更前")).not.toBeInTheDocument();
+    expect(repo.getProjectValueChangeSourceDiff).not.toHaveBeenCalled();
+    expect(repo.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+  });
+
   it("does not offer approval to a reviewer who is not assigned", async () => {
     const repo = repository();
     vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValue({ items: [batch] } as never);

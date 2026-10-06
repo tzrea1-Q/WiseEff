@@ -46,7 +46,7 @@ function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): Lo
   });
 }
 
-function renderApiLogs(repository = createLogRepository(), initialPath = "/logs") {
+function renderApiLogs(repository = createLogRepository(), initialPath = "/logs", parameters = createTestParameterRepository()) {
   renderApp({
     path: initialPath,
     initialAppState: userState,
@@ -55,7 +55,7 @@ function renderApiLogs(repository = createLogRepository(), initialPath = "/logs"
       authClient: createAuthClient(),
       debuggingGateway: createTestDebuggingGateway(),
       logAnalysisRepository: repository,
-      parameterRepository: createTestParameterRepository()
+      parameterRepository: parameters
     }
   });
   return repository;
@@ -195,6 +195,85 @@ describe("LogsPage api upload wiring", () => {
         logDomainId: "domain-charging"
       })
     );
+  });
+
+  it("uploads the exact selected project Binding and Definition revision, excluding foreign and incomplete pins", async () => {
+    const project = { id: "canonical-project", code: "CAN", name: "Canonical project" };
+    const binding = { ...initialState.parameters[0], projectId: project.id, name: "Canonical current parameter",
+      bindingId: "binding-current", effectiveRevisionId: "definition-revision-current", currentValueId: "value-current" };
+    const parameters = createTestParameterRepository({
+      listProjects: vi.fn().mockResolvedValue([project]),
+      listParameters: vi.fn().mockResolvedValue([binding,
+        { ...binding, name: "Foreign parameter", projectId: "foreign-project", bindingId: "binding-foreign" },
+        { ...binding, name: "Incomplete parameter", bindingId: "binding-incomplete", currentValueId: undefined }])
+    });
+    const repository = renderApiLogs(createLogRepository(), "/logs", parameters);
+    await waitForApiRuntime(repository);
+    openUploadDialog();
+    await screen.findByRole("option", { name: "CAN · Canonical project" });
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
+    await screen.findByRole("option", { name: "Canonical current parameter · binding-current" });
+    expect(screen.queryByRole("option", { name: /Foreign parameter|Incomplete parameter/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("项目参数"), { target: { value: binding.bindingId } });
+    vi.useFakeTimers();
+    const file = new File(["line"], "canonical.log", { type: "text/plain" });
+    chooseFile(file);
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "",
+      relatedParameterPin: { kind: "canonical-pin", projectId: project.id, bindingId: binding.bindingId,
+        definitionRevisionId: binding.effectiveRevisionId } });
+  });
+
+  it("blocks a requested association after a project read failure and allows explicit unassociated upload", async () => {
+    const project = { id: "unavailable-project", code: "ERR", name: "Unavailable project" };
+    const parameters = createTestParameterRepository({ listProjects: vi.fn().mockResolvedValue([project]),
+      listParameters: vi.fn().mockRejectedValue(new Error("Parameter reader unavailable")) });
+    const repository = renderApiLogs(createLogRepository(), "/logs", parameters);
+    await waitForApiRuntime(repository);
+    openUploadDialog();
+    await screen.findByRole("option", { name: "ERR · Unavailable project" });
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
+    await screen.findByRole("button", { name: "重试加载关联参数" });
+    vi.useFakeTimers();
+    const file = new File(["line"], "unassociated.log", { type: "text/plain" });
+    chooseFile(file);
+    await act(async () => { vi.advanceTimersByTime(250); });
+    expect(screen.getByRole("button", { name: "确认上传" })).toBeDisabled();
+    expect(repository.uploadLog).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: "" } });
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "" });
+  });
+
+  it("ignores a delayed parameter response after switching projects", async () => {
+    const projects = [{ id: "project-a", code: "A", name: "First project" },
+      { id: "project-b", code: "B", name: "Second project" }];
+    const first = { ...initialState.parameters[0], projectId: "project-a", name: "Old project parameter",
+      bindingId: "binding-a", effectiveRevisionId: "revision-a", currentValueId: "value-a" };
+    const second = { ...first, projectId: "project-b", name: "Selected project parameter",
+      bindingId: "binding-b", effectiveRevisionId: "revision-b", currentValueId: "value-b" };
+    const parameters = createTestParameterRepository({ listProjects: vi.fn().mockResolvedValue(projects),
+      listParameters: vi.fn().mockResolvedValue([]) });
+    const repository = renderApiLogs(createLogRepository(), "/logs", parameters);
+    await waitForApiRuntime(repository);
+    const delayed = deferred<typeof first[]>();
+    vi.mocked(parameters.listParameters).mockImplementation(({ projectId } = {}) =>
+      projectId === "project-a" ? delayed.promise : Promise.resolve([second]));
+    openUploadDialog();
+    await screen.findByRole("option", { name: "A · First project" });
+    const projectSelect = screen.getByLabelText("关联参数的项目（可选）");
+    fireEvent.change(projectSelect, { target: { value: "project-a" } });
+    fireEvent.change(projectSelect, { target: { value: "project-b" } });
+    await screen.findByRole("option", { name: "Selected project parameter · binding-b" });
+    await act(async () => { delayed.resolve([first]); await delayed.promise; });
+    expect(screen.queryByRole("option", { name: /Old project parameter/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("项目参数"), { target: { value: "binding-b" } });
+    vi.useFakeTimers();
+    chooseFile(new File(["line"], "second-project.log", { type: "text/plain" }));
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ relatedParameterPin: {
+      kind: "canonical-pin", projectId: "project-b", bindingId: "binding-b", definitionRevisionId: "revision-b"
+    } }));
   });
 
   it("allows unsupported extensions to reach the runtime", async () => {
