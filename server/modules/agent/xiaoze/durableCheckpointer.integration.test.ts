@@ -29,6 +29,7 @@ afterEach(async () => {
 
 function buildPlanningAgent(checkpointer: ReturnType<typeof createXiaozeCheckpointer>) {
   const approvalResolver = {
+    preflightApproval: vi.fn().mockResolvedValue(undefined),
     resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
   };
   const model = fakeModelSequence([

@@ -182,6 +182,7 @@ async function post(handler: ReturnType<typeof createXiaozeAgUiHandler>, input: 
   requestId: string;
   approvalId?: string;
   bodyThreadId?: string;
+  decision?: "approve" | "reject";
 }) {
   const body: Record<string, unknown> = input.approvalId
     ? {
@@ -192,7 +193,7 @@ async function post(handler: ReturnType<typeof createXiaozeAgUiHandler>, input: 
           {
             interruptId: input.approvalId,
             status: "resolved",
-            payload: { approvalId: input.approvalId, decision: "approve" }
+            payload: { approvalId: input.approvalId, decision: input.decision ?? "approve" }
           }
         ]
       }
@@ -251,6 +252,100 @@ const initialActionModel = () =>
   ]);
 
 describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL durable resume", () => {
+  it("keeps denied substitutions out of durable task writes and accepts a later genuine reject", async () => {
+    resetSharedPostgresCheckpointerSaverForTests();
+    const savers: PostgresCheckpointerHandle["saver"][] = [];
+    try {
+      await withTempDatabase({ prefix: "xiaoze_resume_admission" }, async ({ db, connectionString }) => {
+        try {
+        const auth = authFor("resume-admission-user");
+        await db.query("insert into organizations (id, name) values ($1, 'Resume admission')", [auth.organization.id]);
+        await db.query(
+          "insert into users (id, organization_id, name, email, title) values ($1, $2, 'Requester', 'admission@example.com', 'Engineer')",
+          [auth.user.id, auth.organization.id]
+        );
+        const domainWrites = { count: 0 };
+        const observed: ObservedExecution[] = [];
+        const fresh = async (model = initialActionModel()) => {
+          const instance = await createInstance({ db, connectionString, auth, model, domainWrites, observed,
+            registerSaver: (saver) => savers.push(saver) });
+          return { ...instance, handler: createHandler({ db, auth, factory: instance.factory, orchestrator: instance.orchestrator }) };
+        };
+        const initial = await fresh();
+        const threadA = `admission-a-${randomUUID()}`;
+        const threadB = `admission-b-${randomUUID()}`;
+        const a = await interruptAction({ handler: initial.handler, db, auth, threadId: threadA, requestId: "admission-start-a" });
+        const b = await interruptAction({ handler: initial.handler, db, auth, threadId: threadB, requestId: "admission-start-b" });
+        await initial.saverHandle.saver.end();
+        savers.splice(savers.indexOf(initial.saverHandle.saver), 1);
+        const resumed = await fresh();
+        const tuple = async (threadId: string, expectedToolCallId: string) => {
+          const saved = await resumed.saverHandle.saver.getTuple({ configurable: {
+            thread_id: `${auth.organization.id}:${auth.user.id}:${threadId}`
+          } });
+          expect(saved).toBeDefined();
+          expect(saved!.checkpoint.channel_values.pendingMutatingToolCallId).toBe(expectedToolCallId);
+          return { checkpointId: saved!.checkpoint.id, pendingWrites: saved!.pendingWrites };
+        };
+        const beforeA = await tuple(threadA, a.toolCallId);
+        const beforeB = await tuple(threadB, b.toolCallId);
+        for (const saved of [beforeA, beforeB]) {
+          expect(saved.pendingWrites).toHaveLength(1);
+          expect(saved.pendingWrites![0]).toEqual([expect.any(String), "__interrupt__", expect.objectContaining({
+            id: expect.any(String), value: expect.objectContaining({ toolCallId: expect.any(String) })
+          })]);
+        }
+        const rows = async () => ({
+          a: await getAgentApproval(db, auth.organization.id, a.approvalId),
+          b: await getAgentApproval(db, auth.organization.id, b.approvalId),
+          toolA: await getAgentToolCall(db, auth.organization.id, a.toolCallId),
+          toolB: await getAgentToolCall(db, auth.organization.id, b.toolCallId)
+        });
+        const beforeRows = await rows();
+        expect(beforeRows.a).toMatchObject({ sessionId: threadA, toolCallId: a.toolCallId, requestedByUserId: auth.user.id });
+        expect(beforeRows.b).toMatchObject({ sessionId: threadB, toolCallId: b.toolCallId, requestedByUserId: auth.user.id });
+        console.info("resume-admission-before", JSON.stringify({ a: beforeA, b: beforeB }));
+        for (const [threadId, approvalId] of [[threadA, b.approvalId], [threadB, a.approvalId]]) {
+          const events = await post(resumed.handler, { auth, threadId, approvalId, decision: "reject", requestId: `admission-deny-${threadId}` });
+          expect(JSON.stringify(events)).toContain("操作与当前状态冲突");
+          expect(await rows()).toEqual(beforeRows);
+          expect(domainWrites.count).toBe(0);
+          expect(observed).toEqual([]);
+          const afterA = await tuple(threadA, a.toolCallId);
+          const afterB = await tuple(threadB, b.toolCallId);
+          console.info("resume-admission-after-denial", JSON.stringify({ threadId, a: afterA, b: afterB }));
+          expect.soft(afterA).toEqual(beforeA);
+          expect.soft(afterB).toEqual(beforeB);
+        }
+        const legitimate = await fresh();
+        await post(legitimate.handler, { auth, threadId: threadA, approvalId: a.approvalId, decision: "reject", requestId: "admission-valid-reject" });
+        const final = await rows();
+        console.info("resume-admission-final", JSON.stringify({ approvalA: final.a?.status, toolA: final.toolA?.status }));
+        expect.soft(final.a).toMatchObject({ status: "rejected", decidedByUserId: auth.user.id });
+        expect.soft(final.toolA).toMatchObject({ status: "rejected" });
+        expect(final.b).toEqual(beforeRows.b);
+        expect(final.toolB).toEqual(beforeRows.toolB);
+        expect.soft(await tuple(threadB, b.toolCallId)).toEqual(beforeB);
+        const rejectedAudits = await db.query<{ count: string }>(
+          "select count(*)::text as count from audit_events where action = 'approval-rejected' and target_id = $1", [a.toolCallId]
+        );
+        expect.soft(rejectedAudits.rows[0].count).toBe("1");
+        expect(domainWrites.count).toBe(0);
+        expect(observed).toEqual([]);
+        expect(legitimate.run).not.toHaveBeenCalled();
+        expect(legitimate.authorize).not.toHaveBeenCalled();
+        } finally {
+          await Promise.all(savers.splice(0).map((saver) => saver.end()));
+          await closeSharedPostgresCheckpointerSaversForTests();
+        }
+      });
+    } finally {
+      await Promise.all(savers.map((saver) => saver.end()));
+      await closeSharedPostgresCheckpointerSaversForTests();
+      resetSharedPostgresCheckpointerSaverForTests();
+    }
+  });
+
   it("cleans instance A when failure occurs before instance B is created", async () => {
     resetSharedPostgresCheckpointerSaverForTests();
     const originalError = new Error("instance B setup was intentionally not reached");
