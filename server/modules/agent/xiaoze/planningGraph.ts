@@ -534,6 +534,7 @@ export function createPlanningAgent(options: {
       const checkpointThreadId = input.requestContext
         ? `${input.requestContext.auth.organization.id}:${input.requestContext.auth.user.id}:${input.threadId}`
         : input.threadId;
+      return checkpointer.withNamespaceLease(checkpointThreadId, async () => {
       const config = { configurable: { thread_id: checkpointThreadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
       const tools = options.listTools();
       const buildPromptDebug = (llmMessages: unknown[]) =>
@@ -653,6 +654,7 @@ export function createPlanningAgent(options: {
         }
         throw error;
       }
+      });
     }
   };
 }

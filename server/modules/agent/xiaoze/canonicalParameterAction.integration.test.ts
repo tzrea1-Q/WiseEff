@@ -114,6 +114,8 @@ async function createInstance(input: {
     mode: "postgres",
     connectionString: input.connectionString,
     saver: saverHandle.saver,
+    withNamespaceLease: saverHandle.withNamespaceLease,
+    ensureReady: saverHandle.ensureSetup,
   });
   const toolRegistry = createAgentToolRegistry({
     db: input.db,

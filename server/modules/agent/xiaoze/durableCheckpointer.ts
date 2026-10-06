@@ -1,7 +1,9 @@
 import type { BaseCheckpointSaver, CheckpointTuple } from "@langchain/langgraph-checkpoint";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { createRequire } from "node:module";
+import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
+import { ApiError } from "../../../shared/http/errors";
 
 // ponytail: only the reviewed 1.0.4 public schema; review this contract on upgrade.
 const checkpointPackageVersion = createRequire(import.meta.url)("@langchain/langgraph-checkpoint-postgres/package.json").version;
@@ -161,7 +163,14 @@ export async function waitForInterruptCheckpointDurable(options: {
 export type PostgresCheckpointerHandle = {
   saver: PostgresSaver;
   ensureSetup: () => Promise<void>;
+  withNamespaceLease: NamespaceLease;
 };
+
+export type NamespaceLease = <T>(threadId: string, work: () => Promise<T>) => Promise<T>;
+const leaseOwners = new WeakMap<BaseCheckpointSaver, NamespaceLease>();
+export function isPostgresNamespaceLeaseOwner(saver: BaseCheckpointSaver, lease: NamespaceLease | undefined): boolean {
+  return Boolean(lease && leaseOwners.get(saver) === lease);
+}
 
 let sharedPostgresCheckpointer: PostgresCheckpointerHandle | undefined;
 let interruptDurabilityProbe: PostgresCheckpointerHandle | undefined;
@@ -170,13 +179,182 @@ export function createPostgresCheckpointerSaver(options: {
   connectionString: string;
   initialization?: "bootstrap" | "runtime";
 }): PostgresCheckpointerHandle {
-  const pool = options.initialization === "runtime" ? new pg.Pool({ connectionString: options.connectionString }) : undefined;
+  const poolOptions = { connectionString: options.connectionString, connectionTimeoutMillis: 2000 };
+  const pool = options.initialization === "runtime" ? new pg.Pool(poolOptions) : undefined;
   const saver = pool ? new PostgresSaver(pool) : PostgresSaver.fromConnString(options.connectionString);
   let hasSetup = false;
   let setupPromise: Promise<void> | undefined;
+  let runPool = pool;
+  let closing = false;
+  let endPromise: Promise<void> | undefined;
+  type Run = {
+    threadId: string; client: pg.PoolClient; saver: PostgresSaver;
+    phase: "active" | "closing" | "dead" | "closed";
+    tail: Promise<void>; slots: Set<() => void>; failure?: unknown;
+    termination?: Promise<void>;
+    released?: boolean;
+  };
+  const context = new AsyncLocalStorage<Run>();
+  const runs = new Set<Run>();
+  const originalGetTuple = saver.getTuple.bind(saver);
+  const originalList = saver.list?.bind(saver);
+  const originalEnd = saver.end.bind(saver);
+  const refused = () => new ApiError("CONFLICT", "Xiaoze checkpoint writer lease is not active.", { reason: "xiaoze-writer-lease-inactive" });
+  const active = (run: Run) => { if (run.phase !== "active") throw run.failure ?? refused(); };
+  const releasePhysical = (run: Run, discard: boolean) => {
+    if (run.released) return;
+    run.released = true;
+    run.client.release(discard ? true : undefined);
+  };
+  const terminate = (run: Run, error: unknown): Promise<void> => {
+    run.failure ??= error;
+    run.phase = "dead";
+    return run.termination ??= (async () => {
+      // pg's pooled client exposes Client.end at runtime, omitted by PoolClient's type.
+      try { await (run.client as unknown as Pick<pg.Client, "end">).end(); }
+      finally {
+        releasePhysical(run, true);
+        for (const release of run.slots) release();
+      }
+    })();
+  };
+  const reserve = async (run: Run) => {
+    active(run);
+    const previous = run.tail;
+    let resolve!: () => void;
+    const slot = new Promise<void>((done) => { resolve = done; });
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      run.slots.delete(release);
+      resolve();
+    };
+    run.slots.add(release);
+    run.tail = previous.then(() => slot);
+    await previous;
+    try { active(run); } catch (error) { release(); throw error; }
+    return release;
+  };
+  const writer = (threadId: unknown, checkpointNs: unknown = "") => {
+    const run = context.getStore();
+    if (!run) throw refused();
+    active(run);
+    if (threadId !== run.threadId || checkpointNs !== "") throw refused();
+    return run.saver;
+  };
+  saver.getTuple = (...args) => {
+    const run = context.getStore();
+    return run ? run.saver.getTuple(...args) : originalGetTuple(...args);
+  };
+  // Capture at call time: an async generator may first be consumed in another context.
+  saver.list = (...args) => {
+    const run = context.getStore();
+    if (run) return run.saver.list(...args);
+    if (!originalList) throw refused();
+    return originalList(...args);
+  };
+  saver.put = async (...args) => writer(args[0].configurable?.thread_id, args[0].configurable?.checkpoint_ns).put(...args);
+  saver.putWrites = async (...args) => writer(args[0].configurable?.thread_id, args[0].configurable?.checkpoint_ns).putWrites(...args);
+  saver.deleteThread = async (threadId) => writer(threadId).deleteThread(threadId);
+  saver.end = () => {
+    closing = true;
+    return endPromise ??= (async () => {
+      await Promise.all([...runs].map((run) => terminate(run, refused())));
+      await originalEnd();
+      if (runPool && runPool !== pool) await runPool.end();
+    })();
+  };
+  const withNamespaceLease: NamespaceLease = async (threadId, work) => {
+    if (closing || context.getStore() || !threadId) throw refused();
+    // ponytail: one client per active namespace; measure capacity before changing this ceiling.
+    runPool ??= new pg.Pool(poolOptions);
+    const client = await runPool.connect();
+    const run: Run = { threadId, client, saver: undefined as unknown as PostgresSaver, phase: "active", tail: Promise.resolve(), slots: new Set() };
+    runs.add(run);
+    const lost = (error?: unknown) => { run.failure ??= error ?? refused(); run.phase = "dead"; };
+    client.on("error", lost);
+    client.on("end", lost);
+    let locked = false;
+    let lockUncertain = false;
+    let callbackFailure: unknown;
+    let callbackFailed = false;
+    let result: Awaited<ReturnType<typeof work>> | undefined;
+    const key = JSON.stringify(["wiseeff:xiaoze-writer:v1", threadId, ""]);
+    try {
+      if (closing) throw refused();
+      active(run);
+      lockUncertain = true;
+      const lock = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked", [key]);
+      lockUncertain = false;
+      locked = lock.rows[0]?.locked === true;
+      active(run);
+      if (!locked) throw new ApiError("CONFLICT", "Xiaoze thread is busy.", { reason: "xiaoze-thread-busy" });
+      const connect = async () => {
+        const release = await reserve(run);
+        let released = false;
+        let firstFailure: unknown;
+        return {
+          async query(...args: Parameters<pg.PoolClient["query"]>) {
+            if (released || run.phase === "dead" || run.phase === "closed") throw run.failure ?? refused();
+            try { return await client.query(...args); }
+            catch (error) {
+              firstFailure ??= error;
+              const sql = args[0];
+              const code = (error as { code?: string })?.code;
+              if (sql === "COMMIT" || sql === "ROLLBACK" || !code || code.startsWith("08") || code === "57P01") lost(firstFailure);
+              throw firstFailure;
+            }
+          },
+          release() { released = true; release(); }
+        };
+      };
+      const adapter = {
+        connect,
+        async query(...args: Parameters<pg.PoolClient["query"]>) {
+          const borrower = await connect();
+          try { return await borrower.query(...args); } finally { borrower.release(); }
+        },
+        async end() { throw refused(); }
+      };
+      // The reviewed official saver uses only query/connect/end, never a general pool API.
+      run.saver = new PostgresSaver(adapter as unknown as pg.Pool, saver.serde);
+      run.saver.setup = async () => { throw refused(); };
+      result = await context.run(run, work);
+    } catch (error) { callbackFailed = true; callbackFailure = error; if (lockUncertain) lost(error); }
+    finally {
+      if (run.phase === "active") run.phase = "closing";
+      // A stuck granted SQL interval loses its physical session before any unlock.
+      const timer = setTimeout(() => { void terminate(run, refused()).catch(lost); }, 2000);
+      try {
+        await run.tail;
+        if (run.termination) await run.termination;
+        if (run.phase !== "dead" && locked) {
+          const unlock = await client.query<{ unlocked: boolean }>("SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked", [key]);
+          if (unlock.rows[0]?.unlocked !== true) throw refused();
+        }
+      } catch (error) { lost(error); }
+      finally {
+        clearTimeout(timer);
+        if (run.termination) await run.termination.catch(lost);
+        client.removeListener("end", lost);
+        // Retain the error listener through discard: pg may emit after release.
+        const discard = run.phase === "dead";
+        if (!discard) client.removeListener("error", lost);
+        run.phase = "closed";
+        releasePhysical(run, discard);
+        runs.delete(run);
+      }
+    }
+    if (callbackFailed) throw callbackFailure;
+    if (run.failure !== undefined) throw run.failure;
+    return result as Awaited<ReturnType<typeof work>>;
+  };
+  leaseOwners.set(saver, withNamespaceLease);
 
   return {
     saver,
+    withNamespaceLease,
     async ensureSetup() {
       if (hasSetup) {
         return;
