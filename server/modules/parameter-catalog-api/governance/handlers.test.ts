@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { decodeCatalogCursor, encodeCatalogCursor, fingerprintCatalogQuery } from "../../catalog-kernel/runtime/cursors";
+import { GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../../parameter-governance/queries/index";
 
 import {
   CATALOG_IDEMPOTENCY_HEADER,
@@ -186,7 +188,7 @@ function createHarness(
     },
     listRegistrations: async () => {
       calls.push("listRegistrations");
-      return [];
+      return { semantics: GOVERNANCE_CURRENT_PROJECTION_SEMANTICS, items: [], nextCursor: null, totalCount: 0, emptyReason: "no-registrations" };
     },
     getRegistration: async () => {
       calls.push("getRegistration");
@@ -240,6 +242,32 @@ const writeHeaders = {
 };
 
 describe("S8-GOV one-command HTTP mapping", () => {
+  it("forwards registration page inputs and preserves whole count and the public cursor", async () => {
+    const { ports } = createHarness();
+    const fingerprint = fingerprintCatalogQuery({ route: "catalog.listRegistrations", organizationId: orgAdmin.organizationId, principalId: orgAdmin.principalId });
+    const cursor = encodeCatalogCursor({ releaseId: pin.id, digest: pin.digest, queryFingerprint: fingerprint, last: ["inner-before"] });
+    const response = await handleCatalogGovernance({ ...ports, listRegistrations: async (input) => {
+      expect(input).toMatchObject({ organizationId: orgAdmin.organizationId, principalId: orgAdmin.principalId,
+        catalogReleaseId: pin.id, limit: 100, cursor: "inner-before" });
+      return { semantics: GOVERNANCE_CURRENT_PROJECTION_SEMANTICS, items: [], nextCursor: "inner-after", totalCount: 101 };
+    } }, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, { query: { limit: "100", cursor } }));
+    expect(response.status).toBe(200);
+    const body = response.body as { totalCount: number; hasMore: boolean; nextCursor: string; catalogReleaseId: string };
+    expect(body).toMatchObject({ totalCount: 101, hasMore: true, catalogReleaseId: pin.id });
+    expect(decodeCatalogCursor(body.nextCursor)).toEqual({ releaseId: pin.id, digest: pin.digest, queryFingerprint: fingerprint, last: ["inner-after"] });
+  });
+
+  it("rejects invalid registration paging and stale query release before calling its port", async () => {
+    for (const limit of ["0", "-1", "1.5", "101", "nope", ""]) {
+      const { ports, calls } = createHarness();
+      expect((await handleCatalogGovernance(ports, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, { query: { limit } }))).status).toBe(400);
+      expect(calls).not.toContain("listRegistrations");
+    }
+    const { ports, calls } = createHarness();
+    expect((await handleCatalogGovernance(ports, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, { query: { catalogReleaseId: "crel_stale" } }))).status).toBe(409);
+    expect(calls).not.toContain("listRegistrations");
+  });
+
   it("passes an explicit module identity to the destination resolver without guessing a default", async () => {
     const { ports, commands } = createHarness();
     const response = await handleCatalogGovernance({

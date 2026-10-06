@@ -15,6 +15,7 @@ import type { ProposalCommand } from "../../parameter-governance/proposals/comma
 import type { ProposalFailure } from "../../parameter-governance/proposals/failures";
 import type { ProposalResult } from "../../parameter-governance/proposals/result";
 import type { GovernanceCatalogQueries } from "../../parameter-governance/queries";
+import { GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../../parameter-governance/queries";
 import type { Result } from "../../parameter-catalog-contract/index";
 import { CatalogGovernanceQueryError } from "./errors";
 import type { CatalogGovernancePorts, CatalogGovernanceQueryScope } from "./types";
@@ -82,7 +83,7 @@ export const emptyGovernanceQueryPortsForTests: Pick<
   | "listProposals"
   | "getProposal"
 > = {
-  listRegistrations: emptyList,
+  listRegistrations: async () => ({ semantics: GOVERNANCE_CURRENT_PROJECTION_SEMANTICS, items: [], nextCursor: null, totalCount: 0, emptyReason: "no-registrations" }),
   getRegistration: missing,
   getPlacement: missing,
   listObservations: emptyList,
@@ -135,9 +136,11 @@ export function bindGovernanceCatalogQueryPorts(
         organizationId: input.organizationId,
         observedCatalogReleaseId: input.catalogReleaseId,
         authScope: authScope(input, "listRegistrations"),
+        cursor: input.cursor,
+        limit: input.limit,
       });
       if (!result.ok) throw new CatalogGovernanceQueryError(result.error);
-      return result.value.items;
+      return result.value;
     },
     async getRegistration(input) {
       const result = await queries.getRegistration({

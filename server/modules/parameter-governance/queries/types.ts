@@ -101,6 +101,7 @@ export type RegistrationList = {
   readonly semantics: GovernanceCurrentProjectionSemantics;
   readonly items: readonly GovernanceRegistrationRecord[];
   readonly nextCursor: string | null;
+  readonly totalCount: number;
   readonly emptyReason?: CatalogQueryEmptyReason;
 };
 

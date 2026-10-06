@@ -4,7 +4,8 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
-import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { refreshAuthoritativeSource, validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { decodeCatalogCursor, encodeCatalogCursor } from "../../catalog-kernel/runtime/cursors";
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
@@ -14,6 +15,7 @@ import {
   CATALOG_RELEASE_HEADER,
   catalogProposalResponseSchema,
   catalogRegistrationResponseSchema,
+  catalogRegistrationListResponseSchema,
   catalogReviewResolutionResponseSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import { CatalogSubjectId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
@@ -21,6 +23,7 @@ import { createEvidenceIngest } from "../../parameter-governance/evidence/index"
 import type { IngestEvidenceCommand } from "../../parameter-governance/evidence/types";
 import { executeProposal } from "../../parameter-governance/proposals/index";
 import { executeRegistration } from "../../parameter-governance/registration/index";
+import { createGovernanceCatalogQueries } from "../../parameter-governance/queries/index";
 import { resolveReviewItem } from "../../parameter-governance/resolveReviewItem/index";
 import { createReviewQueueReader } from "../../parameter-governance/review/index";
 import {
@@ -31,7 +34,7 @@ import {
 } from "../../../testing/testDatabase";
 
 import { listenCatalogGovernanceHttpServer } from "./http";
-import { bindCatalogGovernanceCommands, emptyGovernanceQueryPorts } from "./ports";
+import { bindCatalogGovernanceCommands, bindGovernanceCatalogQueryPorts, emptyGovernanceQueryPorts } from "./ports";
 import type { CatalogGovernancePorts, TrustedGovernanceScope } from "./types";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -339,5 +342,164 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     });
     expect(result.status).toBe(200);
     expect(result.headers.get(CATALOG_RELEASE_HEADER)).toBe(pin.id);
+  });
+});
+
+describe("registration pagination through public HTTP and real PostgreSQL", () => {
+  let database: EphemeralTestDatabase;
+  let pool: pg.Pool;
+  let pin: CatalogReleasePin;
+  let scope: TrustedGovernanceScope;
+  let baseUrl = "";
+  let close: () => Promise<void> = async () => undefined;
+  const organizationId = "org-registration-pages";
+  const emptyOrganizationId = "org-registration-pages-empty";
+  const expected = new Map<string, { subjectId: string; placementId: string }>();
+  const path = (org = organizationId) => `/api/v2/organizations/${org}/subject-registrations`;
+  const get = async (query: Record<string, string> = {}, org = organizationId, headers: Record<string, string> = {}) => {
+    const response = await fetch(`${baseUrl}${path(org)}?${new URLSearchParams(query)}`, { headers });
+    return { status: response.status, body: await response.json() };
+  };
+
+  beforeAll(async () => {
+    database = await createEphemeralTestDatabase("registration_pages");
+    pool = new pg.Pool({ connectionString: database.url, max: 4 });
+    const bundle = firstReleaseBundle();
+    const release = structuredClone(bundle.releases[0]!) as Parameters<typeof refreshAuthoritativeSource>[0];
+    const subject = release.documents.find((document) => document.kind === "subject")!;
+    if (subject.kind !== "subject") throw new Error("missing fixture subject");
+    for (let index = 1; index <= 100; index += 1) {
+      const document = structuredClone(subject);
+      document.content.id = `csub_page_${index}`;
+      document.content.canonicalKey = `driver:acme,page-${index}`;
+      document.content.selector.value = `acme,page-${index}`;
+      release.documents.push(document);
+    }
+    refreshAuthoritativeSource(release);
+    const expanded = { ...bundle, releases: [release] };
+    const compiled = compileOrThrow(expanded);
+    const installed = await installPublishedRelease(pool, {
+      mode: "bootstrap", source: jsonCatalogReleaseSource(expanded), expectedTargetDigest: compiled.aggregateDigest,
+    });
+    expect(installed.ok).toBe(true);
+    pin = { id: compiled.release.id, digest: compiled.release.digest };
+    await pool.query(`insert into public.organizations (id, name) values ($1, 'Pagination'), ($2, 'Empty')`, [organizationId, emptyOrganizationId]);
+    await pool.query(`insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, source_key)
+      values ('attr-registration-pages', $1, 'driver-registration', 'Pages', 'compatible:acme,pages')`, [organizationId]);
+    await pool.query(`insert into public.driver_registrations (attribution_subject_id, driver_nature, instance_cardinality)
+      values ('attr-registration-pages', 'physical-device', 'multiple')`);
+    await pool.query(`insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
+      values ('pmod-registration-pages', $1, 'Pages', 'pmod-registration-pages', 1, 'driver-group', 'curated', 'attr-registration-pages')`, [organizationId]);
+    scope = { principalId: "user-registration-pages", organizationId, actorKind: "org-admin", canReadGovernance: true,
+      canMutateOrganization: true, canReviewProposals: false, defaultDestinationModuleId: "pmod-registration-pages", defaultSubjectKind: "driver" };
+    for (const document of release.documents) {
+      if (document.kind !== "subject") continue;
+      const moduleId = `pmod_${document.content.id}`;
+      await pool.query(`insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
+        values ($1, $2, $1, $1, 1, 'driver-group', 'curated', 'attr-registration-pages')`, [moduleId, organizationId]);
+      const result = await executeRegistration(pool, {
+        kind: "register", organizationId, subjectId: CatalogSubjectId(document.content.id), subjectKind: "driver",
+        expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId,
+        method: "explicit", proof: {}, idempotencyKey: `page:${document.content.id}`,
+        context: { actorKind: "org-admin", principalId: scope.principalId },
+      });
+      expect(result.ok, JSON.stringify(result)).toBe(true);
+      if (!result.ok) throw new Error("registration failed");
+      expected.set(result.value.registrationId, { subjectId: result.value.subjectId, placementId: result.value.placementId });
+    }
+    const reader = createReviewQueueReader(pool);
+    const server = await listenCatalogGovernanceHttpServer({
+      authenticate: async () => ({ ok: true, scope }), currentRelease: async () => pin,
+      ...bindCatalogGovernanceCommands({ executeRegistration: (command) => executeRegistration(pool, command),
+        executeProposal: (command) => executeProposal(pool, command), resolveReviewItem: (command) => resolveReviewItem(pool, command),
+        listReviewQueue: (query) => reader.list(query), getReviewItem: (query) => reader.get(query) }),
+      ...bindGovernanceCatalogQueryPorts(createGovernanceCatalogQueries(pool)),
+    });
+    baseUrl = server.baseUrl;
+    close = server.close;
+  }, 60_000);
+
+  afterAll(async () => { await close(); await pool?.end(); await database?.drop(); });
+
+  it("returns all 101 guarded registrations with truthful bounded pages and bound public cursors", async () => {
+    expect(expected.size).toBe(101);
+    const first100 = await get({ limit: "100", catalogReleaseId: pin.id });
+    expect(first100.status, JSON.stringify(first100.body)).toBe(200);
+    const page100 = catalogRegistrationListResponseSchema.parse(first100.body);
+    expect(page100.items).toHaveLength(100);
+    expect(page100.totalCount).toBe(101);
+    expect(page100.hasMore).toBe(true);
+    expect(page100.nextCursor).toBeTruthy();
+    const tail = catalogRegistrationListResponseSchema.parse((await get({ limit: "100", cursor: page100.nextCursor! })).body);
+    expect(tail.items).toHaveLength(1);
+    expect(tail.totalCount).toBe(101);
+    expect(tail.hasMore).toBe(false);
+    expect(tail.nextCursor).toBeNull();
+    const all = [...page100.items, ...tail.items];
+    expect(new Set(all.map((item) => item.id)).size).toBe(101);
+    expect(all.map((item) => item.id).sort()).toEqual([...expected.keys()].sort());
+    for (const item of all) expect({ subjectId: item.subjectId, placementId: item.placement.id }).toEqual(expected.get(item.id));
+    const defaultPages = [];
+    let cursor: string | undefined;
+    do {
+      const response = await get(cursor ? { cursor } : {});
+      expect(response.status).toBe(200);
+      const page = catalogRegistrationListResponseSchema.parse(response.body);
+      expect(page.totalCount).toBe(101);
+      expect(page.hasMore).toBe(page.nextCursor !== null);
+      defaultPages.push(page);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(defaultPages.map((page) => page.items.length)).toEqual([50, 50, 1]);
+    expect(defaultPages.flatMap((page) => page.items.map((item) => item.id))).toEqual(all.map((item) => item.id));
+    const last = all.at(-1)!;
+    const detail = await fetch(`${baseUrl}${path()}/${last.id}`);
+    expect(detail.status).toBe(200);
+    expect(catalogRegistrationResponseSchema.parse(await detail.json()).item).toEqual({ ...last, impact: { bindingCount: 0, projectCount: 0 } });
+    const placement = await fetch(`${baseUrl}${path()}/${last.id}/placement`);
+    expect(placement.status).toBe(200);
+    expect((await placement.json()).item.id).toBe(last.placement.id);
+    const decoded = decodeCatalogCursor(page100.nextCursor!);
+    if ("malformed" in decoded) throw new Error("public cursor malformed");
+    expect(decoded.releaseId).toBe(pin.id);
+    expect(decoded.digest).toBe(pin.digest);
+    expect(decoded.last).toHaveLength(1);
+    const changedPageSize = catalogRegistrationListResponseSchema.parse((await get({ cursor: defaultPages[0]!.nextCursor!, limit: "100" })).body);
+    expect(changedPageSize.items).toHaveLength(51);
+    expect(changedPageSize.totalCount).toBe(101);
+    for (const limit of ["0", "-1", "1.5", "nope", "101", ""]) expect((await get({ limit })).status).toBe(400);
+    for (const bad of ["malformed", String(decoded.last[0]), encodeCatalogCursor({ ...decoded, queryFingerprint: "wrong" }),
+      encodeCatalogCursor({ ...decoded, last: [] }), encodeCatalogCursor({ ...decoded, last: [""] })]) {
+      expect((await get({ cursor: bad })).status).toBe(400);
+    }
+    for (const bad of [encodeCatalogCursor({ ...decoded, releaseId: "crel_stale" }), encodeCatalogCursor({ ...decoded, digest: "sha256:wrong" })]) {
+      expect((await get({ cursor: bad })).status).toBe(409);
+    }
+    expect((await get({ catalogReleaseId: "crel_stale" })).status).toBe(409);
+    expect((await get({}, organizationId, { [CATALOG_RELEASE_HEADER]: "crel_stale" })).status).toBe(409);
+    expect((await get({ catalogReleaseId: "crel_stale" }, organizationId, { [CATALOG_RELEASE_HEADER]: pin.id })).status).toBe(409);
+    expect((await get({ catalogReleaseId: pin.id }, organizationId, { [CATALOG_RELEASE_HEADER]: pin.id })).status).toBe(200);
+    const originalPin = pin;
+    pin = { ...pin, digest: `${pin.digest}-changed` as CatalogReleasePin["digest"] };
+    expect((await get({ cursor: page100.nextCursor! })).status).toBe(409);
+    pin = { ...originalPin, id: "crel_changed" as CatalogReleasePin["id"] };
+    expect((await get({ cursor: page100.nextCursor! })).status).toBe(409);
+    pin = originalPin;
+    expect((await get({}, emptyOrganizationId)).status).toBe(404);
+    const originalScope = scope;
+    scope = { ...scope, principalId: "user-other" };
+    expect((await get({ cursor: page100.nextCursor! })).status).toBe(400);
+    scope = { ...originalScope, organizationId: emptyOrganizationId };
+    expect((await get({ cursor: page100.nextCursor! }, emptyOrganizationId)).status).toBe(400);
+    const empty = catalogRegistrationListResponseSchema.parse((await get({}, emptyOrganizationId)).body);
+    expect(empty).toMatchObject({ items: [], totalCount: 0, nextCursor: null, hasMore: false, emptyReason: "no-registrations" });
+    scope = originalScope;
+    const inner = JSON.parse(Buffer.from(String(decoded.last[0]), "base64url").toString("utf8"));
+    const foreignInner = Buffer.from(JSON.stringify({ ...inner, principalId: "user-other" })).toString("base64url");
+    expect((await get({ cursor: encodeCatalogCursor({ ...decoded, last: [foreignInner] }) })).status).toBe(400);
+    inner.lastId = last.id;
+    const exhausted = catalogRegistrationListResponseSchema.parse((await get({ cursor: encodeCatalogCursor({ ...decoded,
+      last: [Buffer.from(JSON.stringify(inner)).toString("base64url")] }) })).body);
+    expect(exhausted).toMatchObject({ items: [], totalCount: 101, nextCursor: null, hasMore: false, emptyReason: "no-filter-match" });
   });
 });
