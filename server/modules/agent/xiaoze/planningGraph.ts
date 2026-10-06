@@ -522,6 +522,7 @@ export function createPlanningAgent(options: {
   return {
     listTools: options.listTools,
     async run(input: PlanningAgentRunInput): Promise<PerceptionAgentRunResult & { threadId: string }> {
+      await checkpointer.ensureReady();
       const runScope: XiaozeRunScope = {
         sink: input.sink,
         requestContext: input.requestContext

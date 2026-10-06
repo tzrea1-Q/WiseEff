@@ -11,6 +11,20 @@ const anyAuth = {
 } as never;
 
 describe("createPlanningAgent", () => {
+  it.each([false, true])("blocks first checkpoint I/O when readiness fails (resume=%s)", async (resume) => {
+    const checkpointer = createXiaozeCheckpointer();
+    const failure = new Error("runtime not ready");
+    vi.spyOn(checkpointer, "ensureReady").mockRejectedValue(failure);
+    const getTuple = vi.spyOn(checkpointer.saver, "getTuple");
+    const put = vi.spyOn(checkpointer.saver, "put");
+    const auxiliaryPut = vi.spyOn(checkpointer, "put");
+    const agent = createPlanningAgent({ model: fakeModelSequence([{ content: "unused" }]), runTool: vi.fn(), listTools: () => [], checkpointer });
+    await expect(agent.run({ message: "hi", context: {}, threadId: "not-ready", ...(resume ? { resume: { approvalId: "a1", decision: "reject" as const } } : {}) })).rejects.toBe(failure);
+    expect(getTuple).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+    expect(auxiliaryPut).not.toHaveBeenCalled();
+  });
+
   it("grounds a read-only answer (P0 parity)", async () => {
     const runTool = vi.fn().mockResolvedValue({ summary: "12 parameters", data: {}, citations: [] });
     const model = fakeModelSequence([

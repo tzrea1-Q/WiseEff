@@ -17,6 +17,7 @@ export type XiaozeCheckpointer = {
   put(threadId: string, state: XiaozeCheckpointSnapshot): Promise<void>;
   get(threadId: string): Promise<XiaozeCheckpointSnapshot | undefined>;
   saver: BaseCheckpointSaver;
+  ensureReady(): Promise<void>;
   ensureInterruptCheckpointDurable(threadId: string): Promise<void>;
 };
 
@@ -38,6 +39,9 @@ export function createXiaozeCheckpointer(options?: XiaozeCheckpointerOptions): X
   const auxiliary = new Map<string, XiaozeCheckpointSnapshot>();
 
   return {
+    async ensureReady() {
+      if (connectionString) await getSharedPostgresCheckpointerSaver(connectionString).ensureSetup();
+    },
     async put(threadId, state) {
       auxiliary.set(threadId, { ...state });
     },

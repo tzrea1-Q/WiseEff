@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { emptyCheckpoint, ERROR } from "@langchain/langgraph-checkpoint";
 import { MemorySaver } from "@langchain/langgraph";
 import { createXiaozeCheckpointer } from "./checkpointer";
 import { createPlanningAgent } from "./planningGraph";
 import { fakeModelSequence, toolCall } from "./testing/fakeModel";
 import {
   createPostgresCheckpointerSaver,
+  closeSharedPostgresCheckpointerSaversForTests,
   resetSharedPostgresCheckpointerSaverForTests
 } from "./durableCheckpointer";
 
@@ -18,6 +20,12 @@ const anyAuth = {
 
 const testDatabaseUrl =
   process.env.XIAOZE_CHECKPOINTER_TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
+const runtimeDatabaseUrl = process.env.XIAOZE_CHECKPOINTER_RUNTIME_TEST_DATABASE_URL?.trim() || "";
+const ownedHandles: ReturnType<typeof createPostgresCheckpointerSaver>[] = [];
+afterEach(async () => {
+  await Promise.all(ownedHandles.splice(0).map((handle) => handle.saver.end()));
+  await closeSharedPostgresCheckpointerSaversForTests();
+});
 
 function buildPlanningAgent(checkpointer: ReturnType<typeof createXiaozeCheckpointer>) {
   const approvalResolver = {
@@ -53,6 +61,7 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
   it("resumes an interrupted plan from a fresh agent instance on the same thread", async () => {
     resetSharedPostgresCheckpointerSaverForTests();
     const handle = createPostgresCheckpointerSaver({ connectionString: testDatabaseUrl });
+    ownedHandles.push(handle);
     await handle.ensureSetup();
 
     const threadId = `durability-${randomUUID()}`;
@@ -76,6 +85,7 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
     expect(interrupted.interrupt?.toolName).toBe("action.submitParameterChange");
 
     const secondHandle = createPostgresCheckpointerSaver({ connectionString: testDatabaseUrl });
+    ownedHandles.push(secondHandle);
     await secondHandle.ensureSetup();
     const second = buildPlanningAgent(
       createXiaozeCheckpointer({
@@ -97,6 +107,28 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
 
     expect(second.approvalResolver.resolveApproval).toHaveBeenCalledOnce();
     expect(resumed.text).toContain("cr-1");
+  });
+});
+
+describe.skipIf(!runtimeDatabaseUrl)("runtime checkpointer under explicit least privilege LOGIN", () => {
+  it("validates concurrently and persists writes, updates and deletion through an independent reader", async () => {
+    const writer = createPostgresCheckpointerSaver({ connectionString: runtimeDatabaseUrl, initialization: "runtime" });
+    const reader = createPostgresCheckpointerSaver({ connectionString: runtimeDatabaseUrl, initialization: "runtime" });
+    ownedHandles.push(writer, reader);
+    await Promise.all([writer.ensureSetup(), writer.ensureSetup(), reader.ensureSetup()]);
+    const threadId = `runtime-${randomUUID()}`;
+    const checkpoint = { ...emptyCheckpoint(), channel_values: { answer: "first" }, channel_versions: { answer: 1 } };
+    const config = await writer.saver.put({ configurable: { thread_id: threadId } }, checkpoint, { source: "input", step: 0, parents: {} }, { answer: 1 });
+    await writer.saver.putWrites(config, [["answer", "pending"]], "normal-task");
+    await writer.saver.putWrites(config, [[ERROR, "old-error"]], "error-task");
+    await writer.saver.putWrites(config, [[ERROR, "new-error"]], "error-task");
+    const tuple = await reader.saver.getTuple(config);
+    expect(tuple?.checkpoint.channel_values).toEqual({ answer: "first" });
+    expect(tuple?.pendingWrites).toEqual(expect.arrayContaining([["normal-task", "answer", "pending"], ["error-task", ERROR, "new-error"]]));
+    await writer.saver.put(config, { ...checkpoint, channel_values: { answer: "updated" }, channel_versions: { answer: 2 } }, { source: "update", step: 1, parents: {} }, { answer: 2 });
+    expect((await reader.saver.getTuple(config))?.checkpoint.channel_values).toEqual({ answer: "updated" });
+    await writer.saver.deleteThread(threadId);
+    expect(await reader.saver.getTuple(config)).toBeUndefined();
   });
 });
 
