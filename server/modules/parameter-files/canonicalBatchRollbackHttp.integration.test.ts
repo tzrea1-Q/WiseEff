@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
@@ -29,10 +29,12 @@ import { uploadProjectParameterFile } from "./service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { createCandidate } from "./candidateService";
-import { getCanonicalSourceWorkflow, previewCanonicalCandidate } from "./canonicalFileWorkflow";
+import { getCanonicalSourceWorkflow, previewCanonicalCandidate, submitCanonicalCandidate } from "./canonicalFileWorkflow";
+import { createHash } from "node:crypto";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { canonicalBatchRollbackPrepareResponseSchema, canonicalBatchRollbackSubmitResponseSchema } from "../contracts/dtoSchemas/canonicalBatchRollback";
 import { canonicalManualSyncPrepareResponseSchema } from "../contracts/dtoSchemas/canonicalManualSync";
+import { canonicalSourceConflictListResponseSchema } from "../contracts/dtoSchemas/canonicalConflict";
 import { registerParameterFileRoutes } from "./routes";
 
 const ORG = "org-906-batch-rollback";
@@ -71,7 +73,7 @@ async function objects(directory: string) {
   }))).then((rows) => rows.sort((a, b) => a.key.localeCompare(b.key)));
 }
 
-async function fixture(format: Format, withOtherDraft = true) {
+async function fixture(format: Format, withOtherDraft = true, thirdSibling = false) {
   const lane = await createEphemeralTestDatabase(`issue906-${format}-batch-rollback`);
   const db = createPostgresDatabase(lane.url);
   const directory = await mkdtemp(join(tmpdir(), `wiseeff-906-${format}-rollback-`));
@@ -89,8 +91,10 @@ async function fixture(format: Format, withOtherDraft = true) {
   }
   const set = await createConfigSet(db, admin, { projectId: PROJECT, name: "Rollback" });
   const fileName = format === "json" ? "settings.json" : "board.dts";
-  const before = format === "json" ? jsonBefore : dtsBefore;
-  const after = format === "json" ? jsonAfter : dtsAfter;
+  const before = format === "json" ? thirdSibling ? jsonBefore.replace(' } }\n', ', "third": { "limit": 72 } } }\n') : jsonBefore
+    : thirdSibling ? dtsBefore.replace(/};\n$/, '  third: device@2 { compatible = "acme,power"; iin_max = <72>; };\n};\n') : dtsBefore;
+  const after = format === "json" ? before.replace('36.5', '50').replace('48', '60')
+    : before.replace("iin_max = <36>", "iin_max = <50>").replace("iin_max = <36>", "iin_max = <60>");
   const uploaded = await uploadProjectParameterFile(db, storage, admin, { projectId: PROJECT, fileName, bytes: Buffer.from(before) });
   await addConfigSetFile(db, admin, { configSetId: set.id, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
   const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
@@ -108,6 +112,12 @@ async function fixture(format: Format, withOtherDraft = true) {
       mappings: [{ definitionId: DEF, pointer: "/other/limit" }],
       invocation: createUserInvocation(admin), requestId: "906-rollback-register-second", refusalSink: createTrustedRefusalAuditSink(db)
     }));
+    if (thirdSibling) await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, admin, catalog, {
+      projectId: PROJECT, configSetId: set.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+      configurationSchemaId: "wiseeff.906.batch-rollback", rootPointer: "/other/third",
+      mappings: [{ definitionId: DEF, pointer: "/other/third/limit" }],
+      invocation: createUserInvocation(admin), requestId: "906-single-register-third", refusalSink: createTrustedRefusalAuditSink(db)
+    }));
   } else {
     const manifest: ConfigRevisionManifest = { organizationId: ORG, projectId: PROJECT, configSetId: set.id,
       entryFile: fileName, includeSearchPaths: ["."], overlayOrder: [],
@@ -119,9 +129,10 @@ async function fixture(format: Format, withOtherDraft = true) {
     }));
   }
   const bindings = await listCatalogBindingRowsForProject(db, admin, { projectId: PROJECT });
-  expect(bindings).toHaveLength(2);
+  if (thirdSibling) expect(bindings).toHaveLength(3);
+  else expect(bindings).toHaveLength(2);
   expect(await Promise.all(bindings.map((binding) => loadLegacyBindingIdentity(getRootPostgresPool(db)!, binding.id))))
-    .toEqual([null, null]);
+    .toEqual(thirdSibling ? [null, null, null] : [null, null]);
   const candidate = await createCandidate(db, storage, admin, {
     projectId: PROJECT, fileId: uploaded.file.id, fileName, bytes: Buffer.from(after)
   });
@@ -214,6 +225,306 @@ describe("#906 canonical manual sync HTTP preparation", () => {
     decision: "approve" | "reject", auth = reviewer) => requestJson<{ item: { status: string } }>(
       route(f, auth), `${reviewPath(submitted.id)}/review`, { method: "POST",
         body: JSON.stringify({ decision, batchProofDigest: submitted.batchProofDigest }) });
+
+  it.each(["json", "dts"] as const)("keeps governed %s U→P and unmarked same-byte L from weaker replay", async (format) => {
+    const f = await fixture(format, false, true);
+    const bytes = Buffer.from(format === "json" ? f.after.replace('50', '51') : f.after.replace('<50>', '<51>'));
+    const preparation = await prepareManual(f, `alias-${format}`, bytes);
+    expect(preparation.status).toBe(201);
+    const u = canonicalManualSyncPrepareResponseSchema.parse(preparation.body).item;
+    const input = { projectId: PROJECT, candidateId: u.candidateId, expectedCurrentVersionId: f.activeVersionId,
+      expectedProofToken: u.proofToken, expectedWorkflowProofToken: u.cohortProofToken,
+      assignedToUserId: REVIEWER, reason: "governed R1", requestId: `alias-${format}-submit`,
+      refusalSink: createTrustedRefusalAuditSink(f.db) };
+    const r = await submitCanonicalCandidate(f.db, f.storage, admin, input);
+    const p = (await f.db.query<{ candidate_id: string }>(
+      "select candidate_id from project_parameter_value_change_requests where id=$1", [r.requestId])).rows[0]!.candidate_id;
+    const l = await createCandidate(f.db, f.storage, admin, {
+      projectId: PROJECT, fileId: f.fileId, fileName: f.fileName, bytes
+    }, { invocation: createUserInvocation(admin), requestId: `alias-${format}-unmarked` });
+    const preview = await previewCanonicalCandidate(f.db, f.storage, admin, { projectId: PROJECT, candidateId: l.id });
+    for (const [candidateId, proof] of [[p, u.proofToken], [l.id, preview.proofToken!]]) {
+      for (const change of [{ reason: "R2" }, { assignedToUserId: undefined }, { assignedToUserId: OTHER_REVIEWER }]) {
+        const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+        const beforeObjects = await objects(f.directory);
+        await expect(submitCanonicalCandidate(f.db, f.storage, admin, {
+          ...input, candidateId, expectedProofToken: proof, ...change
+        })).rejects.toMatchObject({ code: "CONFLICT" });
+        expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+        expect(await objects(f.directory)).toEqual(beforeObjects);
+      }
+    }
+    const metadata = (await f.db.query<{ metadata: Record<string, unknown> }>(
+      "select metadata from audit_events where target_id=$1 and metadata ? 'sourceSubmissionProof'", [r.requestId])).rows;
+    expect(metadata).toHaveLength(1);
+    expect(metadata[0]!.metadata.manualSyncPreparationCandidateId).toBe(u.candidateId);
+    const restoreLink = new Error("rollback unlinked original upload probe");
+    await expect(f.db.transaction(async (tx) => {
+      await tx.query("update project_parameter_file_candidates set impact=impact-'canonicalSourceWorkflow' where id=$1", [u.candidateId]);
+      const before = await captureConfigurationSourceState(tx, { organizationId: ORG, projectId: PROJECT });
+      const beforeObjects = await objects(f.directory);
+      expect(await submitCanonicalCandidate(tx, f.storage, admin, input))
+        .toMatchObject({ requestId: r.requestId, status: "pending", replayed: true });
+      const after = await captureConfigurationSourceState(tx, { organizationId: ORG, projectId: PROJECT });
+      expect(after.requests).toEqual(before.requests);
+      expect(after.drafts).toEqual(before.drafts);
+      expect(after.values).toEqual(before.values);
+      expect(await objects(f.directory)).toEqual(beforeObjects);
+      throw restoreLink;
+    })).rejects.toBe(restoreLink);
+    const beforePoison = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const poison = { ...f.storage, get: async () => Buffer.from("changed retained object"),
+      getBounded: async () => Buffer.from("changed retained object") };
+    await expect(submitCanonicalCandidate(f.db, poison, admin, input)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforePoison);
+    const auditLost = new Error("rollback missing-origin probe");
+    await expect(f.db.transaction(async (tx) => {
+      await tx.query("delete from audit_events where target_id=$1 and metadata->>'manualSyncPreparation'='true'", [u.candidateId]);
+      await expect(submitCanonicalCandidate(tx, f.storage, admin, { ...input, candidateId: p, reason: "R2" }))
+        .rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-receipt-origin-unavailable" } });
+      throw auditLost;
+    })).rejects.toBe(auditLost);
+  });
+
+  it("preserves legacy unsubmitted stored R1 when the caller submits R2 and records actual R1", async () => {
+    const f = await fixture("json", false, true);
+    const candidate = await createCandidate(f.db, f.storage, admin, {
+      projectId: PROJECT, fileId: f.fileId, fileName: f.fileName, bytes: Buffer.from(f.after.replace('50', '51'))
+    });
+    const preview = await previewCanonicalCandidate(f.db, f.storage, admin, { projectId: PROJECT, candidateId: candidate.id });
+    const target = preview.bindings![0]!;
+    const draft = await createCanonicalValueDraft(f.db, admin, { projectId: PROJECT, bindingId: target.bindingId,
+      sourceTarget: { format: "json", sourceText: "51" }, reason: "R1",
+      baseRevisionId: target.configRevisionId, baseCurrentValueId: target.baseCurrentValueId
+    }, { objectStore: f.storage, invocation: createUserInvocation(admin), requestId: "legacy-R1",
+      refusalSink: createTrustedRefusalAuditSink(f.db) });
+    const input = { projectId: PROJECT, candidateId: candidate.id, expectedCurrentVersionId: f.activeVersionId,
+      expectedProofToken: preview.proofToken!, reason: "R2", requestId: "legacy-R2",
+      refusalSink: createTrustedRefusalAuditSink(f.db) };
+    const result = await submitCanonicalCandidate(f.db, f.storage, admin, input);
+    expect((await f.db.query("select reason,draft_id,assigned_to_user_id from project_parameter_value_change_requests where id=$1", [result.requestId])).rows)
+      .toEqual([{ reason: "R1", draft_id: draft.id, assigned_to_user_id: null }]);
+    const proof = (await f.db.query<{ metadata: { sourceSubmissionProof: { reasonDigest: string } } }>(
+      "select metadata from audit_events where target_id=$1 and metadata ? 'sourceSubmissionProof'", [result.requestId])).rows[0]!.metadata;
+    expect(proof.sourceSubmissionProof.reasonDigest).toBe(createHash("sha256").update("R1").digest("hex"));
+    expect(await submitCanonicalCandidate(f.db, f.storage, admin, { ...input, reason: "R3" }))
+      .toMatchObject({ requestId: result.requestId, replayed: true });
+    await expect(submitCanonicalCandidate(f.db, f.storage, admin, { ...input, assignedToUserId: REVIEWER }))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await f.db.query("select reason from project_parameter_value_drafts where id=$1", [draft.id])).rows).toEqual([{ reason: "R1" }]);
+  });
+
+  it.each(["reject", "withdraw"] as const)("requires fresh manual preparation after single %s", async (decision) => {
+    const f = await fixture("json", false, true);
+    const bytes = Buffer.from(f.after.replace('50', '51'));
+    const prepared = canonicalManualSyncPrepareResponseSchema.parse((await prepareManual(f, `terminal-${decision}`, bytes)).body).item;
+    const input = { projectId: PROJECT, candidateId: prepared.candidateId, expectedCurrentVersionId: f.activeVersionId,
+      expectedProofToken: prepared.proofToken, expectedWorkflowProofToken: prepared.cohortProofToken,
+      assignedToUserId: REVIEWER, reason: "terminal R1", requestId: `terminal-${decision}-submit`, refusalSink: createTrustedRefusalAuditSink(f.db) };
+    const r = await submitCanonicalCandidate(f.db, f.storage, admin, input);
+    const response = await requestJson(route(f, decision === "reject" ? reviewer : admin),
+      `${reviewPath(r.requestId)}/${decision === "reject" ? "review" : "withdraw"}`, {
+        method: "POST", body: JSON.stringify(decision === "reject" ? { decision: "reject" } : {})
+      });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeObjects = await objects(f.directory);
+    await expect(submitCanonicalCandidate(f.db, f.storage, admin, input)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objects(f.directory)).toEqual(beforeObjects);
+    const next = canonicalManualSyncPrepareResponseSchema.parse((await prepareManual(f, `terminal-${decision}-fresh`, bytes)).body).item;
+    expect(next.candidateId).not.toBe(prepared.candidateId);
+    expect(await submitCanonicalCandidate(f.db, f.storage, admin, {
+      ...input, candidateId: next.candidateId, expectedProofToken: next.proofToken, requestId: `terminal-${decision}-new-submit`
+    })).toMatchObject({ status: "pending", replayed: false });
+  });
+
+  it("refuses a revoked selected manual reviewer without source or object mutation", async () => {
+    const f = await fixture("json", false, true);
+    const prepared = canonicalManualSyncPrepareResponseSchema.parse((await prepareManual(f, "revoked-single",
+      Buffer.from(f.after.replace('50', '51')))).body).item;
+    await f.db.query("delete from user_role_bindings where user_id=$1 and project_id=$2 and role_id='software-committer'", [REVIEWER, PROJECT]);
+    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeObjects = await objects(f.directory);
+    await expect(submitCanonicalCandidate(f.db, f.storage, admin, { projectId: PROJECT, candidateId: prepared.candidateId,
+      expectedCurrentVersionId: f.activeVersionId, expectedProofToken: prepared.proofToken,
+      expectedWorkflowProofToken: prepared.cohortProofToken, reason: "revoked", assignedToUserId: REVIEWER,
+      requestId: "revoked-submit", refusalSink: createTrustedRefusalAuditSink(f.db)
+    })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objects(f.directory)).toEqual(beforeObjects);
+  });
+
+  it.each([['json', 'file'], ['json', 'draft'], ['dts', 'file'], ['dts', 'draft']] as const)(
+    "keeps governed %s %s conflict decision identical through approval", async (format, choice) => {
+    const f = await fixture(format, false, true);
+    const bytes = Buffer.from(format === "json" ? f.after.replace('50', '51') : f.after.replace('<50>', '<51>'));
+    const prepared = canonicalManualSyncPrepareResponseSchema.parse((await prepareManual(f, `conflict-${format}-${choice}`, bytes)).body).item;
+    const target = prepared.targets[0]!;
+    const draft = await createCanonicalValueDraft(f.db, admin, { projectId: PROJECT, bindingId: target.bindingId,
+      ...(format === "json" ? { sourceTarget: { format: "json" as const, sourceText: "88" } }
+        : { targetValue: parseDtsValue("iin_max", "<88>").value }),
+      reason: "Selected original draft", baseRevisionId: target.configRevisionId,
+      baseCurrentValueId: target.baseCurrentValueId
+    }, { objectStore: f.storage, invocation: createUserInvocation(admin),
+      requestId: `conflict-${format}-${choice}-draft`, refusalSink: createTrustedRefusalAuditSink(f.db) });
+    const conflicts = await requestJson(route(f), `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-conflicts`);
+    expect(conflicts.status, JSON.stringify(conflicts.body)).toBe(200);
+    const list = canonicalSourceConflictListResponseSchema.parse(conflicts.body);
+    expect(list.ineligible).toEqual([]);
+    expect(list.items).toHaveLength(1);
+    const selected = list.items[0]!.choices[choice];
+    const submission = { selectedBindingId: target.bindingId, selectedDraftId: draft.id, choice,
+      expectedDecisionProofDigest: selected.decisionProofDigest, reason: "Governed conflict R1", assignedToUserId: REVIEWER };
+    const post = (changes: Record<string, unknown> = {}, auth = admin) => requestJson<{ item: {
+      requestId: string; status: string; replayed: boolean } }>(route(f, auth),
+      `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-conflict-submit`, {
+        method: "POST", headers: { "X-Request-Id": `conflict-${format}-${choice}-submit` },
+        body: JSON.stringify({ ...submission, ...changes }) });
+    const submitted = await post();
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    expect((await post()).body.item).toEqual({ ...submitted.body.item, replayed: true });
+    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeObjects = await objects(f.directory);
+    for (const changes of [{ reason: "R2" }, { assignedToUserId: OTHER_REVIEWER },
+      { choice: choice === "file" ? "draft" : "file" }, { selectedDraftId: "other-draft" },
+      { expectedDecisionProofDigest: "0".repeat(64) }]) {
+      expect((await post(changes)).status).toBeGreaterThanOrEqual(400);
+      expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+      expect(await objects(f.directory)).toEqual(beforeObjects);
+    }
+    expect((await post({}, reviewer)).status).toBeGreaterThanOrEqual(400);
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    const approved = await requestJson(route(f, reviewer), `${reviewPath(submitted.body.item.requestId)}/review`, {
+      method: "POST", body: JSON.stringify({ decision: "approve" }) });
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect((await post()).body.item).toEqual({ requestId: submitted.body.item.requestId, status: "approved", replayed: true });
+    expect((await f.db.query<{ draft_id: string | null }>(
+      "select draft_id from project_parameter_value_change_requests where id=$1", [submitted.body.item.requestId])).rows[0]!.draft_id).toBeNull();
+    const bindings = await listCatalogBindingRowsForProject(f.db, admin, { projectId: PROJECT });
+    const pins = await Promise.all(bindings.map((binding) => loadOwnedProjectValueSourcePin(f.db, {
+      organizationId: ORG, projectId: PROJECT, bindingId: binding.id, projectValueId: binding.currentValueId
+    })));
+    expect(pins).toHaveLength(3);
+    expect(new Set(pins.map((pin) => pin?.fileVersionId)).size).toBe(1);
+    expect(pins.every((pin) => pin && pin.fileVersionId !== f.activeVersionId)).toBe(true);
+  });
+
+  it.each(["commit", "rollback", "put"] as const)("retains own source object after uncertain %s acknowledgement", async (failure) => {
+    const f = await fixture("json", false, true);
+    const preparation = canonicalManualSyncPrepareResponseSchema.parse((await prepareManual(f, `uncertain-${failure}`,
+      Buffer.from(f.after.replace('50', '51')))).body).item;
+    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeObjects = await objects(f.directory);
+    const acknowledged: string[] = [];
+    const deleted: string[] = [];
+    const uncertain = new Error(`unknown ${failure} acknowledgement`);
+    const store = { ...f.storage, put: async (input: Parameters<typeof f.storage.put>[0]) => {
+      const stored = await f.storage.put(input);
+      acknowledged.push(stored.storageKey);
+      if (failure === "put") throw uncertain;
+      return failure === "rollback" ? { ...stored, checksumSha256: "wrong acknowledgement" } : stored;
+    }, delete: async (key: string) => { deleted.push(key); await f.storage.delete!(key); } };
+    // The wrapper injects an unknown acknowledgement after real PostgreSQL work;
+    // it deliberately remains a non-root adapter, never impersonating a pool root.
+    const db: Database = failure === "put" ? f.db : { query: f.db.query, transaction: async (callback) => {
+      if (failure === "commit") {
+        await f.db.transaction(callback);
+        throw uncertain;
+      }
+      try { return await f.db.transaction(callback); } catch { throw uncertain; }
+    } };
+      await expect(submitCanonicalCandidate(db, store, admin, { projectId: PROJECT, candidateId: preparation.candidateId,
+        expectedCurrentVersionId: f.activeVersionId, expectedProofToken: preparation.proofToken,
+        expectedWorkflowProofToken: preparation.cohortProofToken, assignedToUserId: REVIEWER,
+        reason: "uncertain", requestId: `uncertain-${failure}-submit`, refusalSink: createTrustedRefusalAuditSink(f.db)
+      })).rejects.toBe(uncertain);
+    expect(acknowledged).toHaveLength(1);
+    expect(deleted).toEqual([]);
+    expect(await f.storage.get(acknowledged[0]!)).toEqual(Buffer.from(f.after.replace('50', '51')));
+    const afterObjects = await objects(f.directory);
+    expect(afterObjects).toHaveLength(beforeObjects.length + 1);
+    expect(afterObjects).toEqual(expect.arrayContaining(beforeObjects));
+    const after = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    if (failure === "commit") {
+      expect(after.requests).toHaveLength(before.requests.length + 1);
+      expect(after.values).toEqual(before.values);
+      expect(after.pins).toEqual(before.pins);
+    } else expect(after).toEqual(before);
+  });
+
+  it.each(["json", "dts"] as const)("cleans only own %s single source object after late submission audit failure", async (format) => {
+    const f = await fixture(format, false, true);
+    const bytes = Buffer.from(format === "json" ? f.after.replace('50', '51') : f.after.replace('<50>', '<51>'));
+    const prepared = canonicalManualSyncPrepareResponseSchema.parse((await prepareManual(f, `late-single-${format}`, bytes)).body).item;
+    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeObjects = await objects(f.directory);
+    await f.db.query(`create function public.reject_single_source_receipt() returns trigger language plpgsql as $$
+      begin if new.action='value-change-submitted' and new.metadata ? 'sourceSubmissionProof'
+      then raise exception 'late single source receipt failure'; end if; return new; end $$`);
+    await f.db.query("create trigger reject_single_source_receipt before insert on audit_events for each row execute function public.reject_single_source_receipt()");
+    const input = { projectId: PROJECT, candidateId: prepared.candidateId, expectedCurrentVersionId: f.activeVersionId,
+      expectedProofToken: prepared.proofToken, expectedWorkflowProofToken: prepared.cohortProofToken,
+      assignedToUserId: REVIEWER, reason: "Late single R1", requestId: `late-single-${format}-submit`,
+      refusalSink: createTrustedRefusalAuditSink(f.db) };
+    await expect(submitCanonicalCandidate(f.db, f.storage, admin, input)).rejects.toThrow("late single source receipt failure");
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await objects(f.directory)).toEqual(beforeObjects);
+    await f.db.query("drop trigger reject_single_source_receipt on audit_events");
+    await f.db.query("drop function public.reject_single_source_receipt()");
+    expect(await submitCanonicalCandidate(f.db, f.storage, admin, input)).toMatchObject({ status: "pending", replayed: false });
+  });
+
+  it.each(["json", "dts"] as const)("submits one %s target among three siblings with identical owned replay", async (format) => {
+    const f = await fixture(format, false, true);
+    const bytes = Buffer.from(format === "json" ? f.after.replace('50', '51') : f.after.replace('<50>', '<51>'));
+    const response = await prepareManual(f, `single-${format}-prepare`, bytes);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const prepared = canonicalManualSyncPrepareResponseSchema.parse(response.body).item;
+    expect(prepared.kind).toBe("canonical-source-single");
+    expect(prepared.targets).toHaveLength(1);
+    expect(prepared.cohort).toHaveLength(3);
+    const sourceBody = { expectedCurrentVersionId: f.activeVersionId, expectedProofToken: prepared.proofToken,
+      expectedWorkflowProofToken: prepared.cohortProofToken, reason: "single R1", assignedToUserId: REVIEWER };
+    const sourcePath = `/api/v1/projects/${PROJECT}/parameter-file-candidates/${prepared.candidateId}/source-submit`;
+    const post = (changes: Record<string, unknown> = {}, auth = admin) => requestJson<{ item: {
+      requestId: string; status: string; replayed: boolean } }>(route(f, auth), sourcePath, {
+      method: "POST", headers: { "X-Request-Id": `single-${format}-submit` }, body: JSON.stringify({ ...sourceBody, ...changes })
+    });
+    for (const changes of [{ assignedToUserId: undefined }, { assignedToUserId: ADMIN },
+      { assignedToUserId: "missing-reviewer" }, { expectedWorkflowProofToken: "stale" }]) {
+      const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+      const beforeObjects = await objects(f.directory);
+      expect((await post(changes)).status).not.toBe(200);
+      expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+      expect(await objects(f.directory)).toEqual(beforeObjects);
+    }
+    const submitted = await post();
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(200);
+    expect(submitted.body.item).toMatchObject({ status: "pending", replayed: false });
+    expect((await post()).body.item).toEqual({ ...submitted.body.item, replayed: true });
+    for (const changes of [{ reason: "single R2" }, { assignedToUserId: OTHER_REVIEWER },
+      { expectedProofToken: "changed" }, { expectedCurrentVersionId: "changed" }]) {
+      const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+      expect((await post(changes)).status).toBe(409);
+      expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    }
+    expect((await post({}, makeTestAuthContext({ ...admin, userId: OTHER_REVIEWER,
+      organizationId: ORG, permissions: ["parameter:view", "parameter:edit", "admin:access"],
+      roles: [{ roleId: "admin", projectId: null }] }))).status).toBe(409);
+    const approved = await requestJson<{ item: { status: string } }>(route(f, reviewer),
+      `${reviewPath(submitted.body.item.requestId)}/review`, { method: "POST", body: JSON.stringify({ decision: "approve" }) });
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect(approved.body.item.status).toBe("approved");
+    expect((await post()).body.item).toMatchObject({ requestId: submitted.body.item.requestId, status: "approved", replayed: true });
+    const bindings = await listCatalogBindingRowsForProject(f.db, admin, { projectId: PROJECT });
+    expect(bindings).toHaveLength(3);
+    const pins = await Promise.all(bindings.map((binding) => loadOwnedProjectValueSourcePin(f.db, {
+      organizationId: ORG, projectId: PROJECT, bindingId: binding.id, projectValueId: binding.currentValueId
+    })));
+    expect(new Set(pins.map((pin) => pin?.fileVersionId)).size).toBe(1);
+    expect(pins.every((pin) => pin && pin.fileVersionId !== f.activeVersionId)).toBe(true);
+  });
 
   it("bounds production manual sync uploads before route writes", async () => {
     const f = await fixture("json", false);

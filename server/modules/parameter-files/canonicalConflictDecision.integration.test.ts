@@ -362,6 +362,25 @@ describe("#906 selected canonical file/UI conflict source transaction", () => {
       reason: "use file", assignedToUserId: REVIEWER, requestId: "906-conflict-file-retry",
       refusalSink: createTrustedRefusalAuditSink(f.db)
     })).toMatchObject({ requestId: submitted.requestId, replayed: true });
+    for (const changes of [{ assignedToUserId: ADMIN },
+      { expectedDecisionProofDigest: "b".repeat(64) }]) {
+      const frozen = await state(f);
+      await expect(submitCanonicalConflictDecision(f.db, f.storage, admin, {
+        projectId: PROJECT, candidateId: f.candidate.id, selectedBindingId: f.bindingId,
+        selectedDraftId: f.uiDraft.id, choice: "file", expectedDecisionProofDigest: prepared.decisionProofDigest,
+        reason: "use file", assignedToUserId: REVIEWER, requestId: "single-conflict-altered-retry",
+        refusalSink: createTrustedRefusalAuditSink(f.db), ...changes
+      })).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await state(f)).toEqual(frozen);
+    }
+    await expect(submitCanonicalConflictDecision(f.db, f.storage,
+      makeTestAuthContext({ userId: REVIEWER, organizationId: ORG,
+        permissions: ["parameter:view", "parameter:edit", "admin:access"], roles: [{ roleId: "admin", projectId: null }] }), {
+        projectId: PROJECT, candidateId: f.candidate.id, selectedBindingId: f.bindingId,
+        selectedDraftId: f.uiDraft.id, choice: "file", expectedDecisionProofDigest: prepared.decisionProofDigest,
+        reason: "use file", assignedToUserId: REVIEWER, requestId: "single-conflict-foreign-author",
+        refusalSink: createTrustedRefusalAuditSink(f.db)
+      })).rejects.toMatchObject({ code: "CONFLICT" });
     const pending = (await f.db.query<{ candidate_id: string; binding_id: string }>(
       "select candidate_id,binding_id from project_parameter_value_change_requests where id=$1", [submitted.requestId])).rows[0]!;
     expect(pending.binding_id).toBe(f.bindingId);

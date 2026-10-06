@@ -10,7 +10,7 @@ import { asAuditTx } from "../audit/auditedWrite";
 import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
-import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
+import { hasCurrentCanonicalReviewRole, hasEligibleWorkflowAssignee } from "../parameters/reviewWorkflowRepository";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import {
@@ -176,6 +176,10 @@ export type CanonicalSourceSubmitDto = {
   replayed: boolean;
 };
 
+type CanonicalSourceSinglePrepareDto = Omit<CanonicalSourceBatchPrepareDto, "kind" | "batchProofDigest"> & {
+  kind: "canonical-source-single"; configRevisionId: string; before: string; after: string;
+};
+
 type SourceAction = "set" | "delete";
 
 type SourceChange = {
@@ -207,7 +211,7 @@ type SourceInspection = {
   reason?: string;
 };
 
-type RequestRecord = Pick<CanonicalValueChangeRequestRow, "id" | "status" | "candidate_id" | "draft_id">;
+type RequestRecord = CanonicalValueChangeRequestRow;
 
 function digest(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -374,6 +378,135 @@ async function loadRequestForWorkflowLink(
     projectId: candidate.projectId,
     requestId: linked
   });
+}
+
+function sourceSubmissionProof(input: { expectedCurrentVersionId: string; expectedProofToken: string;
+  expectedWorkflowProofToken?: string; assignedToUserId?: string; reason: string }) {
+  return { expectedCurrentVersionId: input.expectedCurrentVersionId, expectedProofToken: input.expectedProofToken,
+    expectedWorkflowProofToken: input.expectedWorkflowProofToken ?? null,
+    assignedToUserId: input.assignedToUserId ?? null, reasonDigest: digest(Buffer.from(input.reason.trim())) };
+}
+
+async function sourceSubmissionPolicy(db: Queryable, auth: AuthContext,
+  candidate: ProjectParameterFileCandidateDto, request?: RequestRecord) {
+  const submissions = request ? (await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
+    `select actor_type,actor_user_id,metadata from audit_events where organization_id=$1 and project_id=$2
+      and target_type='project-parameter-value-change-request' and target_id=$3
+      and kind='parameter-topology-governance' and action='value-change-submitted'
+      and metadata ? 'sourceCandidateId'`, [auth.organization.id, candidate.projectId, request.id])).rows : [];
+  const origins = new Set([candidate.id, ...submissions.map((row) => row.metadata.sourceCandidateId)
+    .filter((id): id is string => typeof id === "string")]);
+  let manual = false;
+  for (const id of origins) {
+    const markers = (await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
+      `select actor_type,actor_user_id,metadata from audit_events where organization_id=$1 and project_id=$2
+        and target_type='project-parameter-file-candidate' and target_id=$3
+        and kind='parameter-topology-governance' and action='value-drafted'
+        and metadata->>'manualSyncPreparation'='true'`, [auth.organization.id, candidate.projectId, id])).rows;
+    const declared = submissions.filter((row) => row.metadata.manualSyncPreparationCandidateId === id);
+    if (!markers.length && !declared.length) continue;
+    const origin = id === candidate.id ? candidate : await getParameterFileCandidateById(db, {
+      organizationId: auth.organization.id, projectId: candidate.projectId, candidateId: id
+    });
+    if (!origin || !markers.length || markers.some((row) => row.actor_type !== "user"
+      || row.actor_user_id !== origin.createdByUserId || !row.metadata.sourceProofToken)
+      || submissions.filter((row) => row.metadata.sourceCandidateId === id).some((row) => {
+        const proof = row.metadata.sourceSubmissionProof as Record<string, unknown> | undefined;
+        return row.actor_type !== "user" || row.actor_user_id !== origin.createdByUserId
+          || request?.submitter_user_id !== origin.createdByUserId
+          || (row.metadata.manualSyncPreparationCandidateId && !proof)
+          || (proof && (row.metadata.sourceCandidateDigest !== origin.checksum
+            || !markers.some((marker) => marker.metadata.sourceProofToken
+              === (row.metadata.manualSyncPreparationProofToken ?? proof.expectedProofToken))));
+      })) {
+      throw new ApiError("CONFLICT", "Manual source submission lost its authenticated original preparation.", {
+        reason: "source-receipt-origin-unavailable"
+      });
+    }
+    manual = true;
+  }
+  if (submissions.some((row) => typeof row.metadata.manualSyncPreparationCandidateId === "string"
+    && !origins.has(row.metadata.manualSyncPreparationCandidateId))) {
+    throw new ApiError("CONFLICT", "Manual source origin is inconsistent.", { reason: "source-receipt-origin-unavailable" });
+  }
+  return manual;
+}
+
+async function requireOwnedSourceReceipt(db: Queryable, objectStore: ObjectStore, auth: AuthContext,
+  candidate: ProjectParameterFileCandidateDto, request: RequestRecord, attemptProof: Record<string, unknown>) {
+  const manual = await sourceSubmissionPolicy(db, auth, candidate, request);
+  if (candidate.createdByUserId !== auth.user.id || request.submitter_user_id !== auth.user.id
+    || request.status === "rejected" || request.status === "withdrawn"
+    || (manual && digest(Buffer.from(request.reason.trim())) !== attemptProof.reasonDigest)
+    || ((manual || attemptProof.assignedToUserId != null)
+      && request.assigned_to_user_id !== (attemptProof.assignedToUserId ?? null))) {
+    throw new ApiError("CONFLICT", "Source receipt does not belong to this identical attempt.", { reason: "source-receipt-replay-mismatch" });
+  }
+  const receipts = await db.query<{ metadata: Record<string, unknown> }>(`select metadata from audit_events
+    where organization_id=$1 and project_id=$2 and target_id=$3 and target_type='project-parameter-value-change-request'
+      and kind='parameter-topology-governance' and action='value-change-submitted'
+      and actor_type='user' and actor_user_id=$5
+      and metadata->>'sourceCandidateId'=$4 and metadata ? 'sourceSubmissionProof'`,
+  [auth.organization.id, candidate.projectId, request.id, candidate.id, auth.user.id]);
+  const comparableProof = (proof: Record<string, unknown>) => manual ? proof : {
+    ...proof, reasonDigest: null, ...(attemptProof.assignedToUserId == null ? { assignedToUserId: null } : {})
+  };
+  if (!receipts.rows.some((row) => isDeepStrictEqual(comparableProof(row.metadata.sourceSubmissionProof as Record<string, unknown>), comparableProof(attemptProof))
+    && row.metadata.sourceCandidateDigest === candidate.checksum
+    && (!candidate.impact?.canonicalSourceWorkflow || (candidate.impact.canonicalSourceWorkflow.requestId === request.id
+      && candidate.impact.canonicalSourceWorkflow.preparedCandidateId === request.candidate_id
+      && candidate.impact.canonicalSourceWorkflow.draftId === row.metadata.sourceDraftId
+      && candidate.impact.canonicalSourceWorkflow.bindingId === request.binding_id
+      && candidate.impact.canonicalSourceWorkflow.sourcePinId === request.source_pin_id))
+    && row.metadata.sourceReceiptProof === proofDigest(requestSourceReceipt(request)))) {
+    throw new ApiError("CONFLICT", "The immutable original source attempt proof is unavailable or different.", {
+      reason: "source-receipt-replay-mismatch"
+    });
+  }
+  const prepared = request.candidate_id && await getParameterFileCandidateById(db, {
+    organizationId: auth.organization.id, projectId: candidate.projectId, candidateId: request.candidate_id
+  });
+  if (!prepared || prepared.createdByUserId !== auth.user.id || !prepared.storageKey || !candidate.storageKey
+    || candidate.baseVersionId !== attemptProof.expectedCurrentVersionId
+    || digest(await getBoundedObject(objectStore, candidate.storageKey)) !== candidate.checksum?.replace(/^sha256:/, "")
+    || digest(await getBoundedObject(objectStore, prepared.storageKey)) !== request.candidate_proposed_digest?.replace(/^sha256:/, "")
+    || (!attemptProof.decisionProofDigest && !(await getBoundedObject(objectStore, candidate.storageKey))
+      .equals(await getBoundedObject(objectStore, prepared.storageKey)))) {
+    throw new ApiError("CONFLICT", "Receipt source bytes or candidate ownership changed.", { reason: "source-receipt-replay-mismatch" });
+  }
+}
+
+function requestSourceReceipt(request: RequestRecord) {
+  return { candidateId: request.candidate_id, bindingId: request.binding_id,
+    definitionId: request.definition_id, sourcePinId: request.source_pin_id, baseValueId: request.base_current_value_id,
+    configRevisionId: request.config_revision_id, action: request.action, targetValue: request.target_value,
+    baseDigest: request.candidate_base_digest, proposedDigest: request.candidate_proposed_digest,
+    diffDigest: request.candidate_diff_digest, members: request.candidate_member_manifest, cohort: request.candidate_binding_manifest };
+}
+
+async function recordSourceSubmission(db: Database, auth: AuthContext, candidate: ProjectParameterFileCandidateDto,
+  request: RequestRecord, attemptProof: Record<string, unknown>, traceId: string, preparationProofToken?: string) {
+  const manual = await sourceSubmissionPolicy(db, auth, candidate);
+  await writeTrustedGovernanceAudit(asAuditTx(db), createUserInvocation(auth), {
+    action: "value-change-submitted", organizationId: auth.organization.id, projectId: request.project_id,
+    targetType: "project-parameter-value-change-request", targetId: request.id,
+    metadata: { sourceCandidateId: candidate.id, sourceCandidateDigest: candidate.checksum, sourceDraftId: request.draft_id,
+      sourceSubmissionProof: { ...attemptProof, reasonDigest: digest(Buffer.from(request.reason.trim())) },
+      ...(manual ? { manualSyncPreparationCandidateId: candidate.id,
+        manualSyncPreparationProofToken: preparationProofToken
+          ?? attemptProof.expectedProofToken } : {}),
+      sourceReceiptProof: proofDigest(requestSourceReceipt(request)) }
+  }, traceId);
+}
+
+async function lockSourceReviewer(db: Database, auth: AuthContext, projectId: string, reviewerId?: string) {
+  if (reviewerId === undefined) return;
+  if (reviewerId === auth.user.id || !await lockUserById(db, { organizationId: auth.organization.id, userId: reviewerId })
+    || !await hasEligibleWorkflowAssignee(db, {
+      organizationId: auth.organization.id, projectId, userId: reviewerId, roleId: "software-committer"
+    })) {
+    throw new ApiError("VALIDATION_FAILED", "A separate active project software committer is required.");
+  }
 }
 
 async function fileWorkflow(
@@ -979,11 +1112,11 @@ async function findExistingDraft(
   input: { organizationId: string; projectId: string; bindingId: string; sourcePinId: string; baseValueId: string; configRevisionId: string; baseDigest: string; proposedDigest: string; action: SourceAction }
 ) {
   const result = await db.query<{
-    id: string; user_id: string | null; source_pin_id: string | null; base_current_value_id: string;
+    id: string; reason: string; user_id: string | null; source_pin_id: string | null; base_current_value_id: string;
     config_revision_id: string; action: SourceAction; candidate_id: string | null;
     candidate_base_digest: string | null; candidate_proposed_digest: string | null; pending_request_id: string | null;
   }>(
-    `select draft.id,draft.user_id,draft.source_pin_id,draft.base_current_value_id,draft.config_revision_id,draft.action,
+    `select draft.id,draft.reason,draft.user_id,draft.source_pin_id,draft.base_current_value_id,draft.config_revision_id,draft.action,
             draft.candidate_id,draft.candidate_base_digest,draft.candidate_proposed_digest,
             pending.id as pending_request_id
        from project_parameter_value_drafts draft
@@ -1013,7 +1146,9 @@ async function ensureNoConflictingDraft(
   db: Queryable,
   auth: AuthContext,
   objectStore: ObjectStore,
-  change: SourceChange
+  change: SourceChange,
+  reason: string,
+  manual: boolean
 ): Promise<{ draftId?: string; request?: RequestRecord }> {
   const rows = await findExistingDraft(db, {
     organizationId: auth.organization.id,
@@ -1048,7 +1183,9 @@ async function ensureNoConflictingDraft(
       projectId: change.pin.projectId,
       candidateId: pending.candidate_id
     });
-    if (!prepared?.storageKey) throw new ApiError("CONFLICT", "The existing canonical draft has no prepared content.");
+    if (!prepared?.storageKey || prepared.createdByUserId !== auth.user.id) {
+      throw new ApiError("CONFLICT", "The existing canonical draft has no owned prepared content.");
+    }
     const preparedBytes = await getBoundedObject(objectStore, prepared.storageKey);
     if (!preparedBytes.equals(change.candidateBytes)) {
       throw new ApiError("CONFLICT", "The Binding already has a different pending canonical review.", {
@@ -1065,6 +1202,9 @@ async function ensureNoConflictingDraft(
     });
   }
   if (exact) {
+    if (manual && exact.reason.trim() !== reason.trim()) {
+      throw new ApiError("CONFLICT", "The existing draft has a different reason.", { reason: "existing-canonical-draft" });
+    }
     if (!exact.candidate_id) {
       throw new ApiError("CONFLICT", "The existing canonical draft has no prepared candidate.", {
         reason: "existing-canonical-draft",
@@ -1076,7 +1216,7 @@ async function ensureNoConflictingDraft(
       projectId: change.pin.projectId,
       candidateId: exact.candidate_id
     });
-    if (!prepared?.storageKey) {
+    if (!prepared?.storageKey || prepared.createdByUserId !== auth.user.id) {
       throw new ApiError("CONFLICT", "The existing canonical draft has no prepared content.", {
         reason: "existing-canonical-draft",
         bindingId: change.binding.bindingId
@@ -1101,7 +1241,9 @@ async function submitInspectedCandidate(
   change: SourceChange,
   reason: string,
   requestId: string,
-  refusalSink: TrustedRefusalAuditSink
+  refusalSink: TrustedRefusalAuditSink,
+  submissionProof: ReturnType<typeof sourceSubmissionProof>,
+  assignedToUserId?: string
 ): Promise<CanonicalSourceSubmitDto> {
   // Match the existing submitter lock order before reading any draft row. This
   // keeps a concurrent author from winning a same-Binding draft race.
@@ -1116,8 +1258,10 @@ async function submitInspectedCandidate(
     projectId: change.pin.projectId,
     configSetId: change.configSetId
   });
-  const reused = await ensureNoConflictingDraft(db, auth, objectStore, change);
+  const manual = await sourceSubmissionPolicy(db, auth, change.candidate);
+  const reused = await ensureNoConflictingDraft(db, auth, objectStore, change, reason, manual);
   if (reused.request) {
+    await requireOwnedSourceReceipt(db, objectStore, auth, change.candidate, reused.request, submissionProof);
     const linked = await linkParameterFileCandidateToCanonicalWorkflow(db, {
       organizationId: auth.organization.id,
       projectId: change.pin.projectId,
@@ -1169,10 +1313,16 @@ async function submitInspectedCandidate(
     const submitted = await submitCanonicalValueChange(db, auth, {
       projectId: change.pin.projectId,
       draftId: draft.id,
+      assignedToUserId,
       invocation,
       requestId,
       refusalSink
     });
+    const frozen = await getCanonicalValueChangeRequest(db, {
+      organizationId: auth.organization.id, projectId: change.pin.projectId, requestId: submitted.id
+    });
+    if (!frozen) throw new ApiError("CONFLICT", "Submitted source request was not retained.");
+    await recordSourceSubmission(db, auth, change.candidate, frozen, submissionProof, requestId);
     const linked = await linkParameterFileCandidateToCanonicalWorkflow(db, {
       organizationId: auth.organization.id,
       projectId: change.pin.projectId,
@@ -1221,6 +1371,7 @@ export async function submitCanonicalCandidate(
     expectedCurrentVersionId: string;
     expectedProofToken: string;
     expectedWorkflowProofToken?: string;
+    assignedToUserId?: string;
     reason: string;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
@@ -1240,13 +1391,25 @@ export async function submitCanonicalCandidate(
     });
     if (!candidate) throw new ApiError("NOT_FOUND", "Candidate file version was not found.", { candidateId: input.candidateId });
     const linked = await loadRequestForWorkflowLink(tx, auth, candidate);
-    if (linked) return { requestId: linked.id, status: linked.status, replayed: true };
+    if (linked) {
+      await requireOwnedSourceReceipt(tx, objectStore, auth, candidate, linked, sourceSubmissionProof(input));
+      return { requestId: linked.id, status: linked.status, replayed: true };
+    }
     const preparedRequest = await loadRequestForCandidate(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
       candidateId: candidate.id
     });
-    if (preparedRequest) return { requestId: preparedRequest.id, status: preparedRequest.status, replayed: true };
+    if (preparedRequest) {
+      await requireOwnedSourceReceipt(tx, objectStore, auth, candidate, preparedRequest, sourceSubmissionProof(input));
+      return { requestId: preparedRequest.id, status: preparedRequest.status, replayed: true };
+    }
+    if (candidate.createdByUserId !== auth.user.id) throw new ApiError("FORBIDDEN", "Only the candidate author can submit source work.");
+    const manual = await sourceSubmissionPolicy(tx, auth, candidate);
+    if (manual && (!input.assignedToUserId || !input.expectedWorkflowProofToken)) {
+      throw new ApiError("VALIDATION_FAILED", "Manual source submission requires an assigned reviewer and workflow proof.");
+    }
+    await lockSourceReviewer(tx, auth, input.projectId, input.assignedToUserId);
     const file = candidate.fileId
       ? await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: candidate.fileId })
       : null;
@@ -1292,7 +1455,8 @@ export async function submitCanonicalCandidate(
         reason: "source-proof-stale"
       });
     }
-    return submitInspectedCandidate(tx, attempt.objectStore, auth, lockedInspection.change, input.reason.trim(), input.requestId, input.refusalSink);
+    return submitInspectedCandidate(tx, attempt.objectStore, auth, lockedInspection.change, input.reason.trim(), input.requestId,
+      input.refusalSink, sourceSubmissionProof(input), input.assignedToUserId);
   };
   return (parentAttempt
     ? submit(db, parentAttempt)
@@ -1505,11 +1669,17 @@ export async function submitCanonicalConflictDecision(
   }
   return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
     // Match the existing request owner's reviewer-before-source lock order.
-    await lockUserById(tx, { organizationId: auth.organization.id, userId: input.assignedToUserId });
     const candidate = await getParameterFileCandidateByIdForUpdate(tx, {
       organizationId: auth.organization.id, projectId: input.projectId, candidateId: input.candidateId
     });
     if (!candidate) throw new ApiError("NOT_FOUND", "File candidate was not found.");
+    if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+      throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+    }
+    const attemptProof = { expectedCurrentVersionId: candidate.baseVersionId!,
+      assignedToUserId: input.assignedToUserId, reasonDigest: digest(Buffer.from(input.reason.trim())),
+      selectedBindingId: input.selectedBindingId, selectedDraftId: input.selectedDraftId,
+      choice: input.choice, decisionProofDigest: input.expectedDecisionProofDigest };
     const existing = candidate.impact?.canonicalSourceWorkflow;
     if (existing) {
       if (existing.conflictDecision?.decisionProofDigest !== input.expectedDecisionProofDigest
@@ -1520,8 +1690,11 @@ export async function submitCanonicalConflictDecision(
       }
       const request = await loadRequestForWorkflowLink(tx, auth, candidate);
       if (!request) throw new ApiError("CONFLICT", "Conflict decision receipt is unavailable.");
+      await requireOwnedSourceReceipt(tx, objectStore, auth, candidate, request, attemptProof);
       return { requestId: request.id, status: request.status, replayed: true };
     }
+    if (candidate.createdByUserId !== auth.user.id) throw new ApiError("FORBIDDEN", "Only the candidate author can submit source work.");
+    await lockSourceReviewer(tx, auth, input.projectId, input.assignedToUserId);
     const decision = await prepareCanonicalConflictDecision(tx, objectStore, auth, input);
     if (decision.decisionProofDigest !== input.expectedDecisionProofDigest) {
       throw new ApiError("CONFLICT", "Canonical conflict decision proof is stale.", { reason: "source-proof-stale" });
@@ -1601,6 +1774,11 @@ export async function submitCanonicalConflictDecision(
       }
     });
     if (!linked) throw new ApiError("CONFLICT", "Conflict decision link was not retained.");
+    const frozen = await getCanonicalValueChangeRequest(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, requestId: request.id
+    });
+    if (!frozen) throw new ApiError("CONFLICT", "Submitted conflict request was not retained.");
+    await recordSourceSubmission(tx, auth, candidate, frozen, attemptProof, input.requestId, decision.sourceProofToken);
     await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
       action: "value-change-submitted",
       organizationId: auth.organization.id,
@@ -2032,12 +2210,19 @@ export async function rollbackCanonicalSource(
       includeAbandoned: true
     })).filter((candidate) =>
       candidate.baseVersionId === input.expectedCurrentVersionId
+      && candidate.createdByUserId === auth.user.id
       && candidate.checksum === targetDigest
       && Boolean(candidate.storageKey)
     );
     for (const candidate of priorCandidates) {
       const linked = await loadRequestForWorkflowLink(tx, auth, candidate);
-      if (linked) return { requestId: linked.id, status: linked.status, replayed: true };
+      if (linked) {
+        await requireOwnedSourceReceipt(tx, objectStore, auth, candidate, linked, sourceSubmissionProof({
+          ...input, expectedProofToken: candidateProofToken(input.expectedProofToken, candidate, targetDigest),
+          expectedWorkflowProofToken: input.expectedProofToken
+        }));
+        return { requestId: linked.id, status: linked.status, replayed: true };
+      }
     }
     const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: file.id });
     if (!workflow.canonical || !workflow.configSetId || !workflow.proofToken || workflow.proofToken !== input.expectedProofToken) {
@@ -2054,6 +2239,7 @@ export async function rollbackCanonicalSource(
       includeAbandoned: false
     })).filter((candidate) =>
       candidate.baseVersionId === input.expectedCurrentVersionId
+      && candidate.createdByUserId === auth.user.id
       && candidate.checksum === targetDigest
       && candidate.status !== "abandoned"
       && Boolean(candidate.storageKey)
@@ -2114,7 +2300,7 @@ export async function prepareCanonicalManualSyncBatchCandidate(
   auth: AuthContext,
   input: { projectId: string; fileId: string; bytes: Buffer; expectedCurrentVersionId: string;
     expectedWorkflowProofToken: string; requestId: string }
-): Promise<CanonicalSourceBatchPrepareDto & { replayed: boolean }> {
+): Promise<(CanonicalSourceBatchPrepareDto | CanonicalSourceSinglePrepareDto) & { replayed: boolean }> {
   if (!isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "Manual sync preparation requires a root database transaction.");
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
@@ -2175,6 +2361,43 @@ export async function prepareCanonicalManualSyncBatchCandidate(
     if (!preview.proofToken) throw new ApiError("CONFLICT", "Manual sync candidate has no exact source proof.", {
       reason: preview.reason ?? "source-proof-missing"
     });
+    if (preview.bindingId && preview.bindings?.length === 1) {
+      const inspection = await inspectCandidate(tx, objectStore, auth, { projectId: input.projectId, candidateId: candidate.id });
+      if (!inspection.change) throw new ApiError("CONFLICT", "Single source proof is unavailable.");
+      await lockCanonicalSourceForMutation(tx, inspection.change);
+      const locked = await inspectCandidate(tx, objectStore, auth, { projectId: input.projectId, candidateId: candidate.id });
+      const change = locked.change;
+      if (!change || locked.proofToken !== preview.proofToken || locked.workflow.proofToken !== input.expectedWorkflowProofToken) {
+        throw new ApiError("CONFLICT", "Manual single source proof changed.", { reason: "source-proof-stale" });
+      }
+      const source = await loadCanonicalSourceSnapshot(tx, objectStore, {
+        organizationId: auth.organization.id, projectId: input.projectId,
+        bindingId: change.binding.bindingId, projectValueId: change.pin.projectValueId
+      });
+      const cohort = await loadCanonicalSourceCohort(tx, {
+        organizationId: auth.organization.id, projectId: input.projectId, configSetId: change.configSetId
+      });
+      if (source.manifest.configRevisionId !== change.pin.configRevisionId) {
+        throw new ApiError("CONFLICT", "Manual single source revision changed.", { reason: "source-proof-stale" });
+      }
+      await writeTrustedGovernanceAudit(asAuditTx(tx), createUserInvocation(auth), {
+        action: "value-drafted", organizationId: auth.organization.id, projectId: input.projectId,
+        targetType: "project-parameter-file-candidate", targetId: candidate.id,
+        metadata: { manualSyncPreparation: true, sourceProofToken: locked.proofToken }
+      }, requestId);
+      return { kind: "canonical-source-single" as const, organizationId: auth.organization.id,
+        projectId: input.projectId, candidateId: candidate.id, fileId: input.fileId, format: change.format,
+        baseVersionId: input.expectedCurrentVersionId, configSetId: change.configSetId,
+        configRevisionId: source.manifest.configRevisionId,
+        baseDigest: change.baseDigest, proposedDigest: change.proposedDigest,
+        cohortProofToken: input.expectedWorkflowProofToken, proofToken: locked.proofToken!,
+        members: source.manifest.members.map((member) => ({ ...member, configSetId: change.configSetId,
+          isCandidateFile: member.fileId === input.fileId })).sort((a, b) => a.fileId.localeCompare(b.fileId)),
+        cohort, targets: [{ ...previewBinding(change), locator: change.pin.locator,
+          ...(change.targetText === undefined ? {} : { targetText: change.targetText }) }],
+        before: change.baseText, after: change.candidateText, replayed: Boolean(prior.length)
+      };
+    }
     const proof = await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, objectStore, auth, {
       projectId: input.projectId, candidateId: candidate.id, expectedProofToken: preview.proofToken
     });

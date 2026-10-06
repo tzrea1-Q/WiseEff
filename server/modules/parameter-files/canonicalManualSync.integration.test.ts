@@ -15,7 +15,8 @@ import { uploadProjectParameterFile } from "./service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
-import { getCanonicalSourceWorkflow, prepareCanonicalManualSyncBatchCandidate } from "./canonicalFileWorkflow";
+import { getCanonicalSourceWorkflow, prepareCanonicalManualSyncBatchCandidate, submitCanonicalCandidate } from "./canonicalFileWorkflow";
+import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadLegacyBindingIdentity } from "../parameter-bindings/binding/migrationAdapter";
 import { submitCanonicalBatchValueChange, approveCanonicalBatchValueChange } from "../parameter-bindings/drafts/batchChangeService";
@@ -252,6 +253,36 @@ describe("#906 canonical JSON candidate workflow", () => {
     expect(new Set(applied.targets.map((target) => target.appliedFileVersionId)).size).toBe(1);
   });
 
+  it("refuses R2 when reusing an owned unsubmitted R1 draft without changing it", async () => {
+    const current = (await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId])).rows[0]!.current_version_id;
+    const workflow = await getCanonicalSourceWorkflow(db, admin, { projectId: JSON_PROJECT, fileId });
+    const prepared = await prepareCanonicalManualSyncBatchCandidate(db, storage, admin, {
+      projectId: JSON_PROJECT, fileId, bytes: Buffer.from('{ "settings": { "limit": 65, "keep": true }, "other": { "limit": 60 } }\n'),
+      expectedCurrentVersionId: current, expectedWorkflowProofToken: workflow.proofToken!, requestId: "single-reason-prepare"
+    });
+    expect(prepared.kind).toBe("canonical-source-single");
+    const target = prepared.targets[0]!;
+    const draft = await createCanonicalValueDraft(db, admin, {
+      projectId: JSON_PROJECT, bindingId: target.bindingId, sourceTarget: { format: "json", sourceText: "65" },
+      reason: "R1", baseRevisionId: target.configRevisionId, baseCurrentValueId: target.baseCurrentValueId
+    }, { objectStore: storage, invocation: createUserInvocation(admin), requestId: "single-reason-draft",
+      refusalSink: createTrustedRefusalAuditSink(db) });
+    const input = { projectId: JSON_PROJECT, candidateId: prepared.candidateId,
+      expectedCurrentVersionId: current, expectedProofToken: prepared.proofToken,
+      expectedWorkflowProofToken: prepared.cohortProofToken, assignedToUserId: REVIEWER,
+      reason: "R2", requestId: "single-reason-submit", refusalSink: createTrustedRefusalAuditSink(db) };
+    const before = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: JSON_PROJECT });
+    const beforeObjects = await readdir(join(storageDirectory, ORG));
+    await expect(submitCanonicalCandidate(db, storage, admin, input))
+      .rejects.toMatchObject({ code: "CONFLICT", details: { reason: "existing-canonical-draft" } });
+    expect(await captureConfigurationSourceState(db, { organizationId: ORG, projectId: JSON_PROJECT })).toEqual(before);
+    expect(await readdir(join(storageDirectory, ORG))).toEqual(beforeObjects);
+    const submitted = await submitCanonicalCandidate(db, storage, admin, { ...input, reason: " R1 " });
+    expect(submitted).toMatchObject({ status: "pending", replayed: false });
+    expect((await db.query("select reason,draft_id,assigned_to_user_id from project_parameter_value_change_requests where id=$1", [submitted.requestId])).rows)
+      .toEqual([{ reason: "R1", draft_id: draft.id, assigned_to_user_id: REVIEWER }]);
+  });
 });
 
 describe("#906 canonical DTS candidate workflow", () => {

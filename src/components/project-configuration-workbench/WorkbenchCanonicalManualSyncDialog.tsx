@@ -6,6 +6,7 @@ import { createUserGovernanceClient } from "@/infrastructure/http/userGovernance
 import { canonicalBatchConflictReady, createCanonicalConflictClient, type CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
 import type { ManualSyncPreparation, createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 import { candidateReceiptMessage, permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
+import { serializeContract } from "../../../server/modules/parameter-catalog-contract";
 
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
@@ -23,23 +24,32 @@ export function manualSyncProofReady(proof: ManualSyncPreparation,
   context: Pick<ManualSyncContext, "projectId" | "fileId" | "format" | "currentVersionId" | "workflowProofToken">): boolean {
   const ids = proof.targets.map((target) => target.bindingId);
   const cohort = new Map(proof.cohort.map((item) => [item.bindingId, item]));
-  return proof.kind === "canonical-source-batch" && proof.projectId === context.projectId
+  return (proof.kind === "canonical-source-batch"
+    ? /^[0-9a-f]{64}$/.test(proof.batchProofDigest) && proof.targets.length >= 2
+    : proof.kind === "canonical-source-single" && proof.targets.length === 1
+      && Boolean(proof.configRevisionId) && proof.targets[0]?.configRevisionId === proof.configRevisionId)
+    && proof.projectId === context.projectId
     && proof.fileId === context.fileId && proof.format === context.format
     && proof.baseVersionId === context.currentVersionId
     && proof.cohortProofToken === context.workflowProofToken
     && Boolean(proof.candidateId && proof.proofToken)
-    && /^[0-9a-f]{64}$/.test(proof.batchProofDigest)
-    && proof.targets.length >= 2 && proof.cohort.length >= proof.targets.length
+    && proof.cohort.length >= proof.targets.length
     && new Set(ids).size === ids.length && cohort.size === proof.cohort.length
     && ids.every((id, index) => index === 0 || ids[index - 1]! < id)
     && proof.members.length > 0
     && new Set(proof.members.map((member) => member.memberId)).size === proof.members.length
     && proof.members.some((member) => member.isCandidateFile && member.fileId === context.fileId)
+    && (proof.kind === "canonical-source-batch" || (proof.members.filter((member) => member.isCandidateFile).length === 1
+      && proof.members.every((member) => member.configSetId === proof.configSetId)
+      && proof.members.some((member) => member.isCandidateFile && member.fileId === context.fileId
+        && member.fileVersionId === proof.baseVersionId && member.format === context.format)))
     && proof.targets.every((target) => {
       const source = cohort.get(target.bindingId);
       return source?.sourcePinId === target.sourcePinId
         && source.oldValueId === target.baseCurrentValueId
         && source.definitionId === target.definitionId
+        && (proof.kind === "canonical-source-batch" || (source.configSetId === proof.configSetId
+          && JSON.stringify(source.locator) === JSON.stringify(target.locator)))
         && (target.action === "delete" ? target.afterText === undefined
           : target.afterText !== undefined && (target.targetText === undefined || target.targetText === target.afterText));
     });
@@ -76,6 +86,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
   const submitRequestId = useRef(crypto.randomUUID());
   const prepareBody = useRef<Parameters<ManualSyncContext["client"]["prepare"]>[2] | null>(null);
   const submitBody = useRef<Parameters<ManualSyncContext["client"]["submit"]>[1] | null>(null);
+  const singleBody = useRef<{ source: Parameters<ManualSyncContext["client"]["submitSingle"]>[2];
+    conflict?: Parameters<ReturnType<typeof createCanonicalConflictClient>["submitCandidateSourceConflict"]>[2] } | null>(null);
   const governance = useMemo(() => context.governanceClient ?? createUserGovernanceClient(), [context.governanceClient]);
   const conflictClient = useMemo(() => context.conflictClient ?? createCanonicalConflictClient(), [context.conflictClient]);
   const sourceChanged = Boolean(sourceState && !sourceState.loading && (
@@ -93,6 +105,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
   const resetSubmit = () => {
     submitRequestId.current = crypto.randomUUID();
     submitBody.current = null;
+    singleBody.current = null;
   };
 
   const chooseDecision = (bindingId: string, choice: "file" | "draft", draftId?: string) => {
@@ -188,11 +201,60 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
       candidateId: prepared.candidateId, expectedProofToken: prepared.proofToken,
       reason: reason.trim(), assignedToUserId: reviewerId, targetDecisions
     };
-    submitBody.current = body;
+    if (prepared.kind === "canonical-source-batch") submitBody.current = body;
     setSubmitAttempted(true);
     setBusy(true);
     setError("");
     try {
+      if (prepared.kind === "canonical-source-single") {
+        const target = prepared.targets[0]!;
+        const decision = decisions[target.bindingId]!;
+        const options = conflicts.items.filter((item) => item.selectedBindingId === target.bindingId);
+        const selected = decision.choice === "draft"
+          ? options.find((item) => item.selectedDraftId === decision.draftId) : options[0];
+        if (options.length > 1 && decision.choice === "file") {
+          throw new Error("单目标有多个竞争草稿；请选择一个具体草稿，刷新来源后重试。");
+        }
+        if (decision.choice === "draft" && !selected) throw new Error("所选草稿证明不可用，请重新准备。");
+        const frozen = singleBody.current ?? { source: {
+          expectedCurrentVersionId: prepared.baseVersionId, expectedProofToken: prepared.proofToken,
+          expectedWorkflowProofToken: prepared.cohortProofToken, reason: reason.trim(), assignedToUserId: reviewerId
+        }, ...(selected ? { conflict: {
+          selectedBindingId: target.bindingId, selectedDraftId: selected.selectedDraftId,
+          choice: decision.choice, expectedDecisionProofDigest: selected.choices[decision.choice].decisionProofDigest,
+          reason: reason.trim(), assignedToUserId: reviewerId
+        } } : {}) };
+        singleBody.current = frozen;
+        const result = frozen.conflict
+          ? await conflictClient.submitCandidateSourceConflict(context.projectId, prepared.candidateId, frozen.conflict, submitRequestId.current)
+          : await context.client.submitSingle(context.projectId, prepared.candidateId, frozen.source, submitRequestId.current);
+        const { receipt, diff } = await context.client.readSingleReceipt(context.projectId, result.requestId);
+        const chosen = selected?.choices[frozen.conflict?.choice ?? "file"];
+        if ((result.status !== "pending" && result.status !== "approved") || receipt.status !== result.status
+          || receipt.projectId !== context.projectId || receipt.submitterUserId !== context.currentUserId
+          || receipt.assignedToUserId !== frozen.source.assignedToUserId || receipt.reason.trim() !== frozen.source.reason
+          || receipt.bindingId !== target.bindingId || receipt.definitionId !== target.definitionId
+          || receipt.sourcePinId !== target.sourcePinId || receipt.baseCurrentValueId !== target.baseCurrentValueId
+          || receipt.baseRevisionId !== target.configRevisionId || receipt.sourceFormat !== prepared.format
+          || receipt.action !== (chosen?.action ?? target.action)
+          || (receipt.action === "set" && (prepared.format === "json"
+            ? serializeContract(JSON.parse(receipt.sourceTarget?.sourceText ?? receipt.targetValue))
+              !== serializeContract(JSON.parse(chosen?.targetText ?? target.afterText!))
+            : receipt.targetValue !== (chosen?.targetText ?? target.afterText)))
+          || "kind" in diff || diff.requestId !== result.requestId || diff.candidateId !== receipt.candidateId
+          || diff.bindingId !== target.bindingId || diff.sourcePinId !== target.sourcePinId
+          || diff.format !== prepared.format || diff.baseDigest.replace(/^sha256:/, "") !== prepared.baseDigest
+          || JSON.stringify(diff.bindings) !== JSON.stringify(prepared.cohort)
+          || diff.before !== prepared.before
+          || diff.proposedDigest.replace(/^sha256:/, "") !== (chosen?.choice === "draft"
+            ? chosen.selectedDraftCandidateDigest.replace(/^sha256:/, "") : prepared.proposedDigest)
+          || (decision.choice === "file" && diff.after !== prepared.after)) {
+          setConflicted(true);
+          throw new Error("服务端单目标请求与冻结的来源、作者或审核人证明不一致；请从提交记录核对。");
+        }
+        context.onSubmitted(result.requestId);
+        return;
+      }
       const result = await context.client.submit(context.projectId, body, submitRequestId.current);
       const mixed = body.targetDecisions.some((decision) => decision.choice === "draft");
       const composition = result.compositionProof;
@@ -273,8 +335,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
 
   return <ModalDialog open className="submission-dialog canonical-batch-submit-dialog canonical-manual-sync-dialog" onDismiss={busy ? undefined : onDismiss} describedBy>
     {({ titleId, descriptionId }) => <>
-      <h2 id={titleId}>上传 {context.format.toUpperCase()} 来源并准备批量审核</h2>
-      <p id={descriptionId}>选择「{context.fileName}」的新内容；本文件须产生至少两个可验证目标。准备候选及提交待审请求不会改写当前 Value、来源 pin 或活跃文件版本；另一名审核人批准后才一次应用全部目标。</p>
+      <h2 id={titleId}>上传 {context.format.toUpperCase()} 来源并准备审核</h2>
+      <p id={descriptionId}>选择「{context.fileName}」的新内容；本文件须产生至少一个可验证目标。准备候选及提交待审请求不会改写当前 Value、来源 pin 或活跃文件版本；另一名审核人批准后才一次应用全部目标。</p>
       {sourceState?.loading ? <p role="status">正在重新核对文件版本与来源证明；已暂时阻止提交，上传和选择会保留。</p> : null}
       {sourceState?.error ? <p role="alert">当前来源核对失败，已阻止提交：{sourceState.error}。请关闭弹窗并刷新工作台。</p> : null}
       {sourceChanged ? <p role="alert">文件版本或来源证明已变化，旧候选不能继续提交；请关闭弹窗、刷新工作台后重新预览。</p> : null}
@@ -290,7 +352,12 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
         {conflicts?.request && !receiptAllowsSubmit && context.onOpenExisting ?
           <button type="button" className="button subtle" onClick={() => context.onOpenExisting?.(conflicts.request!.id)}>查看已有审核</button> : null}
         <p>候选 ID：<code>{prepared.candidateId}</code>；格式：{prepared.format.toUpperCase()}；完整有序目标 {prepared.targets.length} 项；来源 cohort {prepared.cohort.length} 项。</p>
-        <p>候选证明：<code>{prepared.proofToken}</code>；批量证明摘要：<code>{prepared.batchProofDigest}</code></p>
+        <p>候选证明：<code>{prepared.proofToken}</code>{prepared.kind === "canonical-source-batch"
+          ? <>；批量证明摘要：<code>{prepared.batchProofDigest}</code></> : null}</p>
+        {prepared.kind === "canonical-source-single" ? <details><summary>完整来源变更与关联 Binding</summary>
+          <pre>{prepared.before}</pre><pre>{prepared.after}</pre>
+          <ul>{prepared.cohort.map((entry) => <li key={entry.bindingId}><code>{entry.bindingId}</code> · <code>{entry.sourcePinId}</code></li>)}</ul>
+        </details> : null}
         {prepared.baseDigest === prepared.proposedDigest ? <p role="status">上传文件与当前版本内容相同；如只需核查来源，可使用“来源一致性校验”。</p> : null}
         <ol aria-label="手动同步完整有序目标">{prepared.targets.map((target, index) => {
           const options = conflicts?.items.filter((item) => item.selectedBindingId === target.bindingId) ?? [];
