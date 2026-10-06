@@ -10,6 +10,7 @@ import {
 } from "./topologyTeachingFixtures";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 import { driverFallbackModuleId } from "@/domain/parameter-topology/moduleRegistry";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { ApiProjectTopologyWorkspace as ProductionApiProjectTopologyWorkspace } from "./ApiProjectTopologyWorkspace";
 import {
   createTestModuleRegistryRepository,
@@ -228,6 +229,192 @@ async function createGpioDraftFromWorkbench(
 }
 
 describe("ApiProjectTopologyWorkspace", () => {
+  const protectedJsonBinding = (projectId = "aurora", id = "json-current") => ({
+    ...TOPOLOGY_TEACHING_BINDINGS[0],
+    id,
+    projectId,
+    definitionId: "shared-definition",
+    currentValueId: `${projectId}-${id}-current-value`,
+    effectiveRevisionId: `${projectId}-json-source-revision`,
+    propertyKey: `${projectId}_json_current`,
+    locator: "/camera/tuning",
+    effectiveValue: { kind: "json" as const, value: { exposure: 321 } },
+    rawValue: '{"exposure":321}',
+    displayName: null,
+    description: null,
+    documentation: null
+  });
+
+  const protectedRepository = (
+    listProtectedProjectBindings: NonNullable<ParameterCatalogRepository["listProtectedProjectBindings"]>
+  ) => ({ listProtectedProjectBindings } as ParameterCatalogRepository);
+
+  it.each(["no config set", "no semantic revision"])("opens the exact protected JSON current value read-only with %s", async (absence) => {
+    const binding = protectedJsonBinding();
+    const repository = createRepository({
+      getTopology: vi.fn().mockRejectedValue(new WiseEffApiError("NOT_FOUND", "no semantic revision", {}, "test"))
+    });
+    const sibling = { ...binding, id: "same-definition-other-binding", currentValueId: "other-current-value",
+      propertyKey: "other_json_current", rawValue: '{"exposure":999}',
+      effectiveValue: { kind: "json" as const, value: { exposure: 999 } } };
+    const listProtectedProjectBindings = vi.fn().mockResolvedValue({ items: [sibling, binding] });
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id} canEdit
+      topologyRepository={repository}
+      listConfigSets={vi.fn().mockResolvedValue(absence === "no config set" ? [] : [{ id: "config", name: "default" }])}
+      canonicalRepository={protectedRepository(listProtectedProjectBindings)} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText(/321/).length).toBeGreaterThan(0);
+    expect(within(dialog).getByText(binding.locator)).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "当前取值" })).toHaveTextContent(binding.rawValue);
+    expect(within(dialog).queryByText(sibling.rawValue)).not.toBeInTheDocument();
+    expect(repository.getTopology).toHaveBeenCalledTimes(absence === "no config set" ? 0 : 1);
+    expect(within(dialog).queryByRole("button", { name: /编辑/ })).not.toBeInTheDocument();
+    expect(listProtectedProjectBindings).toHaveBeenCalledWith("aurora");
+    expect(repository.createBindingDraft).not.toHaveBeenCalled();
+  });
+
+  it("discovers an independent JSON source revision alongside ready DTS without inheriting DTS editing", async () => {
+    const binding = protectedJsonBinding();
+    const repository = createRepository();
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id} canEdit
+      topologyRepository={repository} listConfigSets={vi.fn().mockResolvedValue([{ id: "config", name: "default" }])}
+      canonicalRepository={protectedRepository(vi.fn().mockResolvedValue({ items: [binding] }))} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText(/321/).length).toBeGreaterThan(0);
+    expect(within(dialog).queryByRole("button", { name: /编辑/ })).not.toBeInTheDocument();
+    expect(repository.listBindings).toHaveBeenCalledWith("aurora", "rev-real-1");
+    expect(repository.createBindingDraft).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("retains same-revision protected JSON editing only with the existing canEdit=%s prerequisite", async (canEdit) => {
+    const binding = protectedJsonBinding();
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id} canEdit={canEdit}
+      topologyRepository={createRepository({ listBindings: vi.fn().mockResolvedValue([binding]) })}
+      listConfigSets={vi.fn().mockResolvedValue([{ id: "config", name: "default" }])}
+      canonicalRepository={protectedRepository(vi.fn().mockResolvedValue({ items: [binding] }))} />);
+    const dialog = await screen.findByRole("dialog");
+    if (canEdit) expect(within(dialog).getByRole("button", { name: "编辑此参数" })).toBeInTheDocument();
+    else expect(within(dialog).queryByRole("button", { name: "编辑此参数" })).not.toBeInTheDocument();
+  });
+
+  it("preserves eligible JSON editing beside a distinct independent JSON source", async () => {
+    const eligible = protectedJsonBinding("aurora", "eligible-json");
+    const independent = { ...protectedJsonBinding("aurora", "independent-json"), propertyKey: "independent_json" };
+    const props = { projectId: "aurora", canEdit: true,
+      topologyRepository: createRepository({ listBindings: vi.fn().mockResolvedValue([eligible]) }),
+      listConfigSets: vi.fn().mockResolvedValue([{ id: "config", name: "default" }]),
+      canonicalRepository: protectedRepository(vi.fn().mockResolvedValue({ items: [eligible, independent] })) };
+    const rendered = render(<ApiProjectTopologyWorkspace {...props} requestedBindingId={eligible.id} />);
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("button", { name: "编辑此参数" })).toBeInTheDocument());
+    rendered.rerender(<ApiProjectTopologyWorkspace {...props} requestedBindingId={independent.id} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(independent.propertyKey);
+    expect(within(dialog).queryByRole("button", { name: "编辑此参数" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(props.topologyRepository.createBindingDraft).not.toHaveBeenCalled();
+  });
+
+  it("keeps the same protected JSON Binding read-only when its currentValue differs from the semantic row", async () => {
+    const binding = protectedJsonBinding();
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id} canEdit
+      topologyRepository={createRepository({ listBindings: vi.fn().mockResolvedValue([{ ...binding, currentValueId: "older-current-value" }]) })}
+      listConfigSets={vi.fn().mockResolvedValue([{ id: "config", name: "default" }])}
+      canonicalRepository={protectedRepository(vi.fn().mockResolvedValue({ items: [binding] }))} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: "编辑此参数" })).not.toBeInTheDocument();
+  });
+
+  it("keeps protected JSON failure visible even when the revision-filtered topology contains a JSON row", async () => {
+    const binding = protectedJsonBinding();
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id}
+      topologyRepository={createRepository({ listBindings: vi.fn().mockResolvedValue([binding]) })}
+      listConfigSets={vi.fn().mockResolvedValue([{ id: "config", name: "default" }])}
+      canonicalRepository={protectedRepository(vi.fn().mockRejectedValue(new WiseEffApiError("FORBIDDEN", "denied", {}, "test")))} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("没有权限执行该操作。");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens distinct exact Bindings across projects sharing the same Definition", async () => {
+    const a = protectedJsonBinding("aurora", "binding-a");
+    const b = { ...protectedJsonBinding("nebula", "binding-b"), rawValue: '{"exposure":654}',
+      effectiveValue: { kind: "json" as const, value: { exposure: 654 } } };
+    const read = vi.fn(async (projectId: string) => ({ items: projectId === "aurora" ? [a] : [b] }));
+    const props = { topologyRepository: createRepository(), listConfigSets: vi.fn().mockResolvedValue([]),
+      canonicalRepository: protectedRepository(read) };
+    const rendered = render(<ApiProjectTopologyWorkspace {...props} projectId="aurora" requestedBindingId={a.id} />);
+    expect(await screen.findByRole("dialog")).toHaveTextContent(a.propertyKey);
+    rendered.rerender(<ApiProjectTopologyWorkspace {...props} projectId="nebula" requestedBindingId={b.id} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(b.propertyKey);
+    expect(within(dialog).getByRole("region", { name: "当前取值" })).toHaveTextContent(b.rawValue);
+    expect(dialog).not.toHaveTextContent(a.propertyKey);
+    expect(read.mock.calls).toEqual([["aurora"], ["nebula"]]);
+  });
+
+  it.each(["missing", "wrong project", "archived"])("reports an unavailable exact requested JSON Binding for %s", async (reason) => {
+    const binding = protectedJsonBinding();
+    const items = reason === "archived" ? [] : [reason === "wrong project" ? { ...binding, projectId: "other" } : binding];
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={reason === "missing" ? "other-binding" : binding.id}
+      topologyRepository={createRepository()} listConfigSets={vi.fn().mockResolvedValue([])}
+      canonicalRepository={protectedRepository(vi.fn().mockResolvedValue({ items }))} />);
+    expect(await screen.findByText("关联参数在当前项目中不可用。")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("reports a missing protected Binding port instead of masking it as DTS empty", async () => {
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId="json-current"
+      topologyRepository={createRepository()} listConfigSets={vi.fn().mockResolvedValue([])} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前未配置受保护项目 JSON 绑定读取能力");
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it.each(["FORBIDDEN", "NOT_FOUND", "CONFLICT", "transient"])("keeps protected JSON %s failure visible and retries read-only", async (code) => {
+    const binding = protectedJsonBinding();
+    const error = code === "transient" ? new TypeError("Failed to fetch")
+      : new WiseEffApiError(code, "protected read failed", {}, "test");
+    const messages: Record<string, string> = {
+      FORBIDDEN: "没有权限执行该操作。", NOT_FOUND: "请求的内容不存在或已被移除。",
+      CONFLICT: "操作与当前状态冲突，请刷新后重试。", transient: "网络连接失败，请稍后重试。"
+    };
+    const read = vi.fn().mockRejectedValueOnce(error).mockResolvedValue({ items: [binding] });
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id}
+      topologyRepository={createRepository()} listConfigSets={vi.fn().mockResolvedValue([])}
+      canonicalRepository={protectedRepository(read)} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(messages[code]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: /编辑/ })).not.toBeInTheDocument();
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["success", "failure"])("hides old project details immediately and ignores stale protected JSON %s", async (completion) => {
+    const a = protectedJsonBinding("aurora", "binding-a");
+    const b = protectedJsonBinding("nebula", "binding-b");
+    const stale = createDeferred<{ items: typeof a[] }>();
+    const next = createDeferred<{ items: typeof a[] }>();
+    const read = vi.fn().mockResolvedValueOnce({ items: [a] }).mockReturnValueOnce(stale.promise).mockReturnValueOnce(next.promise);
+    const canonicalRepository = protectedRepository(read);
+    const repository = createRepository();
+    const listConfigSets = vi.fn().mockResolvedValue([]);
+    const props = { topologyRepository: repository, listConfigSets, canonicalRepository };
+    const rendered = render(<ApiProjectTopologyWorkspace {...props} projectId="aurora" requestedBindingId={a.id} />);
+    expect(await screen.findByRole("dialog")).toHaveTextContent(a.propertyKey);
+    rendered.rerender(<ApiProjectTopologyWorkspace {...props} projectId="nebula" requestedBindingId={b.id} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(read).toHaveBeenCalledWith("nebula"));
+    rendered.rerender(<ApiProjectTopologyWorkspace {...props} projectId="aurora" requestedBindingId={a.id} />);
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+    next.resolve({ items: [a] });
+    expect(await screen.findByRole("dialog")).toHaveTextContent(a.propertyKey);
+    if (completion === "success") stale.resolve({ items: [b] });
+    else stale.reject(new Error("stale-nebula-error"));
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent(a.propertyKey));
+    expect(screen.queryByText("stale-nebula-error")).not.toBeInTheDocument();
+    expect(screen.queryByText(b.propertyKey)).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     httpTestSeams.fetchCalls.length = 0;
     httpTestSeams.fetchSentinel.mockClear();
