@@ -6,8 +6,9 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogRelatedParameterPin } from "@/application/ports/LogAnalysisRepository";
-import type { CanonicalParameterPin, ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
-import type { ParameterRecord } from "@/domain/parameters/types";
+import type { ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { LogDomain } from "@/domain/logs/types";
 import { isSupportedLogUploadFileName, mockLogUploadAccept } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
@@ -477,6 +478,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           archivesSupported={!!logActions}
           domains={uploadLogDomains}
           parameterRepository={logActions ? runtime?.parameterRepository : undefined}
+          parameterCatalogRepository={logActions ? runtime?.parameterCatalogRepository : undefined}
           onClose={() => setUploadDialogOpen(false)}
           onUpload={handleUploadLog}
         />
@@ -542,13 +544,15 @@ function UploadLogDialog({
   archivesSupported = false,
   domains = [],
   parameterRepository,
+  parameterCatalogRepository,
   onClose,
   onUpload
 }: {
   accept?: string | null;
   archivesSupported?: boolean;
   domains?: LogDomain[];
-  parameterRepository?: ParameterRepository;
+  parameterRepository?: Pick<ParameterRepository, "listProjects">;
+  parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   onClose: () => void;
   onUpload: (file: File, supported: boolean, question?: string, logDomainId?: string,
     relatedParameterPin?: LogRelatedParameterPin) => Promise<void> | void;
@@ -563,7 +567,7 @@ function UploadLogDialog({
   const [uploading, setUploading] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectId, setProjectId] = useState("");
-  const [bindings, setBindings] = useState<Array<ParameterRecord & CanonicalParameterPin>>([]);
+  const [bindings, setBindings] = useState<CatalogProtectedProjectBindingListResponse["items"]>([]);
   const [bindingId, setBindingId] = useState("");
   const [bindingLoading, setBindingLoading] = useState(false);
   const [bindingError, setBindingError] = useState("");
@@ -571,9 +575,9 @@ function UploadLogDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const resolvedDomainId = selectedDomainId === UNCATEGORIZED_LOG_DOMAIN_VALUE ? undefined : selectedDomainId;
-  const binding = bindings.find((item) => item.projectId === projectId && item.bindingId === bindingId);
+  const binding = bindings.find((item) => item.projectId === projectId && item.id === bindingId);
   const relatedParameterPin: LogRelatedParameterPin | undefined = binding ? {
-    kind: "canonical-pin", projectId, bindingId: binding.bindingId!,
+    kind: "canonical-pin", projectId, bindingId: binding.id,
     definitionRevisionId: binding.effectiveRevisionId!
   } : undefined;
   const associationReady = !projectId || Boolean(!bindingLoading && !bindingError && relatedParameterPin);
@@ -600,15 +604,16 @@ function UploadLogDialog({
     let cancelled = false;
     setBindingLoading(true);
     setBindingError("");
-    void parameterRepository.listParameters({ projectId, limit: 500 }).then((items) => {
+    void (parameterCatalogRepository?.listProtectedProjectBindings?.(projectId)
+      ?? Promise.reject(new Error("Canonical binding reader unavailable"))).then(({ items }) => {
       if (cancelled) return;
       setBindings(items.filter((item) =>
-        item.projectId === projectId && item.bindingId && item.effectiveRevisionId && item.currentValueId));
+        item.projectId === projectId && item.id && item.effectiveRevisionId && item.currentValueId));
     }).catch((cause) => {
       if (!cancelled) setBindingError(presentError(cause, "加载项目参数失败；请重试或取消关联。"));
     }).finally(() => { if (!cancelled) setBindingLoading(false); });
     return () => { cancelled = true; };
-  }, [parameterRepository, projectId, bindingRefresh]);
+  }, [parameterRepository, parameterCatalogRepository, projectId, bindingRefresh]);
 
   useEffect(() => {
     return () => {
@@ -748,7 +753,7 @@ function UploadLogDialog({
                 <select id="upload-parameter-binding" value={bindingId} disabled={uploading || bindingLoading}
                   onChange={(event) => setBindingId(event.target.value)}>
                   <option value="">{bindingLoading ? "正在加载参数…" : "请选择项目参数"}</option>
-                  {bindings.map((item) => <option key={item.bindingId} value={item.bindingId}>{item.name} · {item.bindingId}</option>)}
+                  {bindings.map((item) => <option key={item.id} value={item.id}>{item.displayName ?? item.propertyKey} · {item.locator || item.driverModule} · {item.id}</option>)}
                 </select>
                 {!bindingLoading && !bindingError && !bindings.length ? <span>该项目暂无可关联的当前参数。</span> : null}
               </label>
