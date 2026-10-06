@@ -27,6 +27,7 @@ import { createAgentToolRegistry } from "../toolRegistry";
 import { createAgentInvocation } from "../../auth/trustedInvocation";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { createPerceptionTools } from "./perceptionTools";
+import { getContextQuery } from "../../../../src/workbenchUi";
 
 const fakeDb = { query: async () => ({ rows: [], rowCount: 0 }) };
 
@@ -84,7 +85,22 @@ describe("createPerceptionTools", () => {
     }]);
     const tool = createPerceptionTools({ db: testRoot }).find((item) => item.name === "perception.searchParameters")!;
     const result = await tool.run(readOnlyContext as any, { projectId: "p1" });
-    expect(result.citations[0]).toMatchObject({ id: "binding/&", href: "/parameters?projectId=project%2F%26&bindingId=binding%2F%26" });
+    expect(result.citations[0]).toMatchObject({ id: "binding/&", href: "/parameters?project=project%2F%26&bindingId=binding%2F%26" });
+  });
+  it("resolves a cross-project search citation through the real context query consumer", async () => {
+    const citedProjectId = "project-B/&?=+# 空间";
+    const citedBindingId = "binding-B/&?=+# 空间";
+    mockedReadProjectProtectedParameters.mockResolvedValue([{
+      propertyKey: "temperature", revision: { content: { displayName: "温度", description: { kind: "absent" }, documentation: { kind: "absent" }, unit: { kind: "absent" }, schemaDefault: { kind: "absent" } } },
+      pin: { bindingId: citedBindingId, projectId: citedProjectId, payload: { value: 35 } }
+    }]);
+    const tool = createPerceptionTools({ db: testRoot }).find((item) => item.name === "perception.searchParameters")!;
+    const result = await tool.run(readOnlyContext as any, { projectId: readOnlyContext.projectId });
+    const contextQuery = getContextQuery(new URL(result.citations[0].href!, "https://wiseeff.test").search);
+
+    expect(citedProjectId).not.toBe(readOnlyContext.projectId);
+    expect(contextQuery.projectId).toBe(citedProjectId);
+    expect(contextQuery.bindingId).toBe(citedBindingId);
   });
   it("are all read-only", () => {
     for (const tool of createPerceptionTools({ db })) {
