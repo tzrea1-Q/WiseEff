@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import pg from "pg";
+import { describe, expect, it, vi } from "vitest";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import {
   createDatabase,
@@ -253,6 +254,85 @@ describe("createDatabase", () => {
       expect(getRootPostgresPool(undefined)).toBeUndefined();
     } finally {
       await poolRoot.close();
+    }
+  });
+});
+
+describe("transaction error preservation", () => {
+  it.each([
+    { owner: "root", failure: "none", rollback: "ok" },
+    { owner: "root", failure: "body", rollback: "ok" },
+    { owner: "root", failure: "commit", rollback: "ok" },
+    { owner: "root", failure: "commit", rollback: "error" },
+    { owner: "root", failure: "body", rollback: "error" },
+    { owner: "root", failure: "begin", rollback: "ok" },
+    { owner: "root", failure: "begin", rollback: "non-error" },
+    { owner: "root", failure: "nested", rollback: "error" },
+    { owner: "session", failure: "none", rollback: "ok" },
+    { owner: "session", failure: "body", rollback: "ok" },
+    { owner: "session", failure: "commit", rollback: "ok" },
+    { owner: "session", failure: "commit", rollback: "error" },
+    { owner: "session", failure: "body", rollback: "error" },
+    { owner: "session", failure: "nested", rollback: "error" }
+  ] as const)("$owner $failure failure with $rollback rollback", async ({ owner, failure, rollback }) => {
+    const initiatingError = Object.assign(new Error("initiating failure"), { code: "ECONNRESET" });
+    const nestedRollbackError = Object.assign(new Error("savepoint rollback failure"), { code: "3B001" });
+    const cleanupError = new Error("root rollback failure");
+    const calls: string[] = [];
+    const release = vi.fn();
+    const client = {
+      query: async <Row,>(text: string) => {
+        calls.push(text);
+        if ((failure === "begin" || failure === "commit") && text === failure) throw initiatingError;
+        if (text === "rollback to savepoint wiseeff_sp_1") throw nestedRollbackError;
+        if (text === "rollback" && rollback !== "ok") {
+          throw rollback === "non-error" ? "cleanup failure" : cleanupError;
+        }
+        return { rows: [] as Row[], rowCount: null };
+      },
+      release
+    };
+    const connect = vi.spyOn(pg.Pool.prototype, "connect").mockResolvedValue(client as unknown as pg.PoolClient);
+    const end = vi.spyOn(pg.Pool.prototype, "end").mockResolvedValue(undefined);
+    const db = owner === "root" ? createPostgresDatabase("postgres://unused/unused") : createDatabase(client);
+
+    try {
+      const result = db.transaction(async (tx) => {
+        await tx.query("body");
+        if (failure === "body") throw initiatingError;
+        if (failure === "nested") {
+          await tx.transaction(async (inner) => {
+            await inner.query("inner body");
+            throw initiatingError;
+          });
+        }
+        return "callback value";
+      });
+      if (failure === "none") {
+        await expect(result).resolves.toBe("callback value");
+      } else {
+        const expectedError = failure === "nested" ? nestedRollbackError : initiatingError;
+        await expect(result).rejects.toBe(expectedError);
+        expect(expectedError.code).toBe(failure === "nested" ? "3B001" : "ECONNRESET");
+      }
+      const expectedQueries = failure === "begin" ? ["begin", "rollback"]
+        : failure === "nested" ? ["begin", "body", "savepoint wiseeff_sp_1", "inner body", "rollback to savepoint wiseeff_sp_1", "rollback"]
+        : failure === "body" ? ["begin", "body", "rollback"]
+        : failure === "commit" ? ["begin", "body", "commit", "rollback"]
+        : ["begin", "body", "commit"];
+      expect(calls).toEqual(expectedQueries);
+      expect(connect).toHaveBeenCalledTimes(owner === "root" ? 1 : 0);
+      expect(release.mock.calls).toEqual(owner === "session" ? []
+        : rollback === "ok" ? [[]]
+        : [[rollback === "non-error" ? true : cleanupError]]);
+    } finally {
+      try {
+        if (isRootDatabase(db)) await db.close();
+        expect(end).toHaveBeenCalledTimes(owner === "root" ? 1 : 0);
+      } finally {
+        connect.mockRestore();
+        end.mockRestore();
+      }
     }
   });
 });
