@@ -8,6 +8,7 @@ import type {
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { deletePreCutoverProjectParameterValues } from "../parameter-kernel/legacyParameterIdentityAdapter";
+import { countSourceBackedBindingsByProject } from "../parameter-bindings/dashboardRead";
 import { dateTimeToIso } from "../../shared/database/sqlUtil";
 
 type ProjectRow = {
@@ -159,7 +160,12 @@ export async function listProjectAdminSummaries(db: Queryable, query: { organiza
     [query.organizationId]
   );
 
-  return result.rows.map(toProjectAdminSummaryDto);
+  const canonicalCounts = semantic
+    ? await countSourceBackedBindingsByProject(db, query.organizationId)
+    : null;
+  return result.rows.map((row) => toProjectAdminSummaryDto(canonicalCounts
+    ? { ...row, parameter_count: canonicalCounts.get(row.id) ?? 0 }
+    : row));
 }
 
 export async function getProjectAdminDetail(
