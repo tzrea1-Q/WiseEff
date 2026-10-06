@@ -8,6 +8,7 @@ import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import { debugNodeModuleId } from "@/debugAdminModules";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugNodeRegistryEntry } from "@/domain/debugging/types";
+import type { ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 
 export type DebugNodeDraft = {
   name: string;
@@ -18,6 +19,7 @@ export type DebugNodeDraft = {
   module: string;
   moduleId?: string;
   enabled: boolean;
+  canonicalBinding?: DebugNodeRegistryEntry["canonicalBinding"];
 };
 
 export type DebugNodeEditorDialogProps = {
@@ -27,6 +29,7 @@ export type DebugNodeEditorDialogProps = {
   moduleNodes: readonly FlatModuleNode[];
   loading: boolean;
   canEdit: boolean;
+  parameterRepository?: Pick<ParameterRepository, "listProjects" | "listParameters">;
   onSave: (draft: DebugNodeDraft) => void;
   onClose: () => void;
 };
@@ -54,7 +57,8 @@ function draftFromNode(node: DebugNodeRegistryEntry): DebugNodeDraft {
     writeFormatHint: node.writeFormatHint,
     module: node.module,
     moduleId: debugNodeModuleId(node),
-    enabled: node.enabled
+    enabled: node.enabled,
+    canonicalBinding: node.canonicalBinding
   };
 }
 
@@ -65,20 +69,50 @@ export function DebugNodeEditorDialog({
   moduleNodes,
   loading,
   canEdit,
+  parameterRepository,
   onSave,
   onClose
 }: DebugNodeEditorDialogProps) {
   const [draft, setDraft] = useState<DebugNodeDraft>(() => emptyDraft(moduleNodes));
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [parameters, setParameters] = useState<Awaited<ReturnType<ParameterRepository["listParameters"]>>>([]);
+  const [associationLoading, setAssociationLoading] = useState(false);
+  const [associationError, setAssociationError] = useState("");
 
   useEffect(() => {
     if (open) {
       setDraft(mode === "edit" && node ? draftFromNode(node) : emptyDraft(moduleNodes));
+      setProjectId(mode === "edit" ? node?.canonicalBinding?.projectId ?? "" : "");
     }
   }, [mode, moduleNodes, node, open]);
 
+  useEffect(() => {
+    if (!open || !parameterRepository) return;
+    let cancelled = false;
+    setAssociationLoading(true);
+    setAssociationError("");
+    setProjects([]);
+    setParameters([]);
+    Promise.all([
+      parameterRepository.listProjects(),
+      projectId ? parameterRepository.listParameters({ projectId }) : Promise.resolve([])
+    ]).then(([loadedProjects, loadedParameters]) => {
+      if (cancelled) return;
+      setProjects(loadedProjects);
+      setParameters(loadedParameters.filter((item) => item.projectId === projectId && item.bindingId && item.effectiveRevisionId && item.currentValueId));
+    }).catch(() => {
+      if (!cancelled) setAssociationError("无法加载可关联的项目参数，请重新选择项目重试。");
+    }).finally(() => {
+      if (!cancelled) setAssociationLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [open, parameterRepository, projectId]);
+
   const fieldsDisabled = !canEdit || loading;
   const selectedModuleId = draft.moduleId ?? "";
-  const canSubmit = draft.name.trim().length > 0 && selectedModuleId.length > 0 && !fieldsDisabled;
+  const canSubmit = draft.name.trim().length > 0 && selectedModuleId.length > 0 && !fieldsDisabled &&
+    (!projectId || draft.canonicalBinding?.projectId === projectId);
 
   return (
     <ModalDialog
@@ -127,6 +161,43 @@ export function DebugNodeEditorDialog({
                 }}
               />
             </div>
+            {parameterRepository ? (
+              <div className="debug-admin-field debug-admin-field--stack debug-admin-field--full">
+                <label className="debug-admin-field">
+                  <span className="debug-admin-field-label">关联项目</span>
+                  <select aria-label="关联项目" aria-describedby="debug-node-association-help" value={projectId} disabled={fieldsDisabled || associationLoading} onChange={(event) => {
+                    setProjectId(event.target.value);
+                    setParameters([]);
+                    setDraft((current) => ({ ...current, canonicalBinding: null }));
+                  }}>
+                    <option value="">不关联项目参数</option>
+                    {projectId && !projects.some((project) => project.id === projectId) ? <option value={projectId}>当前关联项目</option> : null}
+                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                  </select>
+                </label>
+                {projectId ? (
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">关联参数</span>
+                    <select aria-label="关联参数" aria-describedby="debug-node-association-help" value={draft.canonicalBinding?.bindingId ?? ""} disabled={fieldsDisabled || associationLoading} onChange={(event) => {
+                      const selected = parameters.find((item) => item.bindingId === event.target.value);
+                      setDraft((current) => ({ ...current, canonicalBinding: selected ? {
+                        projectId: selected.projectId,
+                        bindingId: selected.bindingId!,
+                        expectedEffectiveRevisionId: selected.effectiveRevisionId!,
+                        expectedCurrentValueId: selected.currentValueId!
+                      } : null }));
+                    }}>
+                      <option value="">请选择项目参数</option>
+                      {draft.canonicalBinding && !parameters.some((item) => item.bindingId === draft.canonicalBinding?.bindingId) ? <option value={draft.canonicalBinding.bindingId}>当前关联参数</option> : null}
+                      {parameters.map((item) => <option key={item.bindingId} value={item.bindingId}>{item.name} · {item.sourceNodePath || item.module}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+                <p id="debug-node-association-help">
+                  {associationLoading ? "正在加载项目参数…" : associationError || (projectId && parameters.length === 0 ? "该项目暂无可关联参数；可保留当前关联，或选择不关联项目参数。" : "可选：关联项目参数后按其当前版本校验；独立节点可不关联。")}
+                </p>
+              </div>
+            ) : null}
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">简述</span>
               <Input

@@ -77,6 +77,15 @@ describe("perception tools registration", () => {
 });
 
 describe("createPerceptionTools", () => {
+  it("links canonical search citations to their protected project scope and binding", async () => {
+    mockedReadProjectProtectedParameters.mockResolvedValue([{
+      propertyKey: "temperature", revision: { content: { displayName: "温度", description: { kind: "absent" }, documentation: { kind: "absent" }, unit: { kind: "absent" }, schemaDefault: { kind: "absent" } } },
+      pin: { bindingId: "binding/&", projectId: "project/&", payload: { value: 35 } }
+    }]);
+    const tool = createPerceptionTools({ db: testRoot }).find((item) => item.name === "perception.searchParameters")!;
+    const result = await tool.run(readOnlyContext as any, { projectId: "p1" });
+    expect(result.citations[0]).toMatchObject({ id: "binding/&", href: "/parameters?projectId=project%2F%26&bindingId=binding%2F%26" });
+  });
   it("are all read-only", () => {
     for (const tool of createPerceptionTools({ db })) {
       expect(tool.kind).toBe("read");

@@ -32,6 +32,8 @@ import {
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 
 function readFileText(file: File) {
   if (typeof file.text === "function") {
@@ -124,7 +126,8 @@ function nodeWriteBodyFromDraft(draft: DebugNodeDraft) {
     writeFormatHint: draft.writeFormatHint,
     moduleId: draft.moduleId,
     module: draft.module,
-    enabled: draft.enabled
+    enabled: draft.enabled,
+    ...(draft.canonicalBinding !== undefined ? { canonicalBinding: draft.canonicalBinding } : {})
   };
 }
 
@@ -223,12 +226,14 @@ export function DebuggingAdminPage({
   area = "parameter",
   runtimeMode = wiseEffRuntimeMode,
   debuggingAdminClient,
+  parameterRepository: injectedParameterRepository,
   dtsReloadRepository,
   apiAuthPermissions = []
 }: PageProps & {
   area?: "parameter" | "nodes";
   runtimeMode?: WiseEffRuntimeMode;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
+  parameterRepository?: Pick<ParameterRepository, "listProjects" | "listParameters">;
   dtsReloadRepository?: DtsReloadRepository;
   apiAuthPermissions?: string[];
 }) {
@@ -271,6 +276,7 @@ export function DebuggingAdminPage({
   const [catalogImportNotice, setCatalogImportNotice] = useState("");
 
   const isApiMode = runtimeMode === "api";
+  const parameterRepository = useMemo(() => isApiMode ? injectedParameterRepository ?? createHttpParameterRepository() : undefined, [injectedParameterRepository, isApiMode]);
   const canEditAdminCatalog = !isApiMode || apiAuthPermissions.includes("debugging:admin");
   const library = useMemo(() => {
     if (isApiMode) {
@@ -1026,6 +1032,7 @@ export function DebuggingAdminPage({
             moduleNodes={moduleNodes}
             loading={adminLoading}
             canEdit={canEditAdminCatalog}
+            parameterRepository={parameterRepository}
             onSave={(draft) => void saveNode(draft)}
             onClose={() => {
               setEditorMode(null);

@@ -5,6 +5,7 @@ import { DebuggingAdminPage } from "./DebuggingAdminPage";
 import { WiseEffApiError } from "./infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "./infrastructure/http/debuggingAdminClient";
 import { initialState } from "./mockData";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 
 const adminState = { ...initialState, activeRoleId: "admin" };
 
@@ -71,7 +72,7 @@ function createDebuggingAdminApiMock() {
   };
 }
 
-function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), apiAuthPermissions = ["debugging:admin"]) {
+function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), apiAuthPermissions = ["debugging:admin"], parameterRepository?: Pick<ParameterRepository, "listProjects" | "listParameters">) {
   render(
     <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
       <DebuggingAdminPage
@@ -82,6 +83,7 @@ function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), api
         area="nodes"
         runtimeMode="api"
         debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
+        parameterRepository={parameterRepository}
         apiAuthPermissions={apiAuthPermissions}
       />
     </TopBarActionsContext.Provider>
@@ -102,6 +104,30 @@ afterEach(() => {
 });
 
 describe("/debugging-admin API mode", () => {
+  it.each(["create", "edit"])("sends protected Binding pins through the %s node API writer", async (mode) => {
+    const reader = {
+      listProjects: vi.fn().mockResolvedValue([{ id: "project-a", name: "项目甲" }]),
+      listParameters: vi.fn().mockResolvedValue([{ projectId: "project-a", bindingId: "binding-a", effectiveRevisionId: "revision-a", currentValueId: "value-a", name: "温度", module: "电池" }])
+    } as unknown as Pick<ParameterRepository, "listProjects" | "listParameters">;
+    const apiClient = renderDebuggingAdminPage(createDebuggingAdminApiMock(), ["debugging:admin"], reader);
+    await screen.findByText("Fast charge current");
+    if (mode === "create") {
+      fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
+      fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Temperature" } });
+    } else {
+      fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑" }));
+    }
+    await waitFor(() => expect(screen.getByLabelText("关联项目")).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("关联项目"), { target: { value: "project-a" } });
+    await screen.findByRole("option", { name: "温度 · 电池" });
+    fireEvent.change(screen.getByLabelText("关联参数"), { target: { value: "binding-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    const writer = mode === "create" ? apiClient.post : apiClient.patch;
+    await waitFor(() => expect(writer).toHaveBeenCalledWith(
+      mode === "create" ? "/api/v1/debugging/admin/nodes" : "/api/v1/debugging/admin/nodes/node-1",
+      expect.objectContaining({ canonicalBinding: { projectId: "project-a", bindingId: "binding-a", expectedEffectiveRevisionId: "revision-a", expectedCurrentValueId: "value-a" } })
+    ));
+  });
   it("switches scope peers between parameter reload config and node catalog", async () => {
     const onNavigate = vi.fn();
     render(
