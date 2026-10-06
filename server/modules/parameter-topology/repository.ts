@@ -407,7 +407,7 @@ export async function listConfigRevisionMembers(
       m.file_version_id,
       m.role,
       m.sort_order,
-      f.file_name,
+      coalesce(m.source_name, f.file_name) as file_name,
       v.checksum,
       v.storage_key,
       v.parsed_index
