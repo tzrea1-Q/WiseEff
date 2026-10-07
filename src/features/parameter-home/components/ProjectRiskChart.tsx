@@ -7,14 +7,47 @@ import {
   chartTooltipItemStyle,
   chartTooltipLabelStyle
 } from "@/domain/format/chartTheme";
-import type { ProjectRiskBucket } from "@/domain/parameters/dashboardTypes";
+import type { DashboardRiskBucket } from "@/domain/parameters/dashboardTypes";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type ProjectRiskChartProps = {
-  buckets: ProjectRiskBucket[];
+  buckets: DashboardRiskBucket[];
 };
 
 export function ProjectRiskChart({ buckets }: ProjectRiskChartProps) {
+  const riskUnavailable = buckets.some(
+    (bucket) =>
+      bucket.riskAvailability === "unavailable" ||
+      bucket.high === null ||
+      bucket.medium === null ||
+      bucket.low === null ||
+      bucket.total === null
+  );
+  if (riskUnavailable) {
+    return (
+      <figure role="img" aria-label="各项目参数风险分布" className="parameter-home__chart-shell">
+        <p className="parameter-home__section-empty">当前参数目录未提供风险分类数据（不可用）。</p>
+        <table className="parameter-home__chart-fallback">
+          <caption>各项目参数风险分布</caption>
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>风险分类</th>
+            </tr>
+          </thead>
+          <tbody>
+            {buckets.map((bucket) => (
+              <tr key={bucket.projectId}>
+                <td>{bucket.projectCode}</td>
+                <td>不可用</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </figure>
+    );
+  }
+
   const data = buckets.map((bucket) => ({
     label: bucket.projectCode,
     high: bucket.high,

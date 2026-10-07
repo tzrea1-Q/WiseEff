@@ -1,4 +1,6 @@
 import type pg from "pg";
+import type { CatalogReleasePin } from "../../parameter-catalog-contract";
+import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
 
 import { provideAgtParameterCatalogComparisonContribution } from "../../agent/parameterCatalogComparisonContribution";
 import { provideDbgParameterCatalogComparisonContribution } from "../../debugging/parameterCatalogComparisonContribution";
@@ -7,7 +9,10 @@ import { provideKnwParameterCatalogComparisonContribution } from "../../knowledg
 import { provideLogParameterCatalogComparisonContribution } from "../../logs/parameterCatalogComparisonContribution";
 import { provideOpsParameterCatalogComparisonContribution } from "../../operations/parameterCatalogComparisonContribution";
 import { provideFilParameterCatalogComparisonContribution } from "../../parameter-files/parameterCatalogComparisonContribution";
-import { provideModParameterCatalogComparisonContribution } from "../../parameter-modules/parameterCatalogComparisonContribution";
+import {
+  provideModParameterCatalogComparisonContribution,
+  provideModParameterCatalogComparisonCaseBatchV2,
+} from "../../parameter-modules/parameterCatalogComparisonContribution";
 import { provideCghParameterCatalogComparisonContribution } from "../../parameter-specs/parameterCatalogComparisonContribution";
 import { provideTopParameterCatalogComparisonContribution } from "../../parameter-topology/parameterCatalogComparisonContribution";
 import { providePrjParameterCatalogComparisonContribution } from "../../parameters/parameterCatalogComparisonContribution";
@@ -18,11 +23,14 @@ import {
   type ComparisonContribution,
   type ComparisonFamily,
   type ComparisonId,
+  type ComparisonCaseBatchV2,
 } from "./corpusContributionSchema";
 
 export type ComparisonProviderInput = AggregationContext & {
   readonly database: Database;
   readonly pool: pg.Pool;
+  /** The comparison input's captured release identity; MOD rejects absence or drift. */
+  readonly expectedCatalogReleasePin?: CatalogReleasePin;
 };
 
 export type ComparisonProvider = {
@@ -30,6 +38,30 @@ export type ComparisonProvider = {
   readonly comparisonIds: readonly ComparisonId[];
   readonly provide: (input: ComparisonProviderInput) => Promise<ComparisonContribution>;
 };
+
+/** Scoped v2 intentionally exposes only the MOD D02 organization projection. */
+export type ComparisonCaseProviderInputV2 = {
+  readonly database: Database;
+  readonly pool: pg.Pool;
+  readonly runId: string;
+  readonly invocation: TrustedInvocationContext;
+};
+
+export type ComparisonCaseProviderV2 = {
+  readonly family: "MOD";
+  readonly comparisonIds: readonly ["PCAT-CMP-D02-SUBJECT-IDENTITY"];
+  readonly coverage: "organization-projection";
+  readonly provide: (input: ComparisonCaseProviderInputV2) => Promise<ComparisonCaseBatchV2>;
+};
+
+export const createProductionComparisonCaseProvidersV2 = (): readonly ComparisonCaseProviderV2[] => [
+  {
+    family: "MOD",
+    comparisonIds: ["PCAT-CMP-D02-SUBJECT-IDENTITY"],
+    coverage: "organization-projection",
+    provide: provideModParameterCatalogComparisonCaseBatchV2,
+  },
+];
 
 const sharedPins = (input: ComparisonProviderInput) => ({
   phase: input.phase,
@@ -139,6 +171,7 @@ export const createProductionComparisonProviders = (): readonly ComparisonProvid
       provideModParameterCatalogComparisonContribution({
         database: input.database,
         pool: input.pool,
+        expectedCatalogReleasePin: input.expectedCatalogReleasePin,
         ...sharedPins(input),
       }),
   },

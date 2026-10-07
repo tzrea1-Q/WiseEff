@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { Queryable } from "../../shared/database/client";
 
 import {
   aggregateBehaviouralStatus,
+  resolveDebugNodeBindingForReloadTarget,
   type ParameterVerificationRecord
 } from "./behaviouralVerify";
 
@@ -63,5 +65,32 @@ describe("aggregateBehaviouralStatus", () => {
         outcome({ bindingId: "b", outcome: "read-failed" })
       ])
     ).toBe("unverifiable");
+  });
+});
+
+describe("resolveDebugNodeBindingForReloadTarget", () => {
+  it("fails closed when canonical association resolves more than one debug node", async () => {
+    const query = vi.fn(async () => ({ rows: [{}, {}], rowCount: 2 }));
+    const db = { query } as unknown as Queryable;
+
+    await expect(
+      resolveDebugNodeBindingForReloadTarget(db, {
+        organizationId: "org-1",
+        projectId: "project-1",
+        bindingId: "binding-1",
+        definitionId: "definition-1",
+        definitionRevisionId: "revision-1",
+        currentValueId: "value-1",
+        catalogReleaseId: "release-1",
+        configRevisionId: "config-1",
+        sourcePinId: "source-pin-1",
+        sourceOccurrenceId: "source-occurrence-1",
+        sourceRef: "vendor.dts",
+        sourceFormat: "dts",
+        sourceLocator: { nodePath: "/soc/watchdog" },
+        protocol: "hdc"
+      })
+    ).resolves.toBeNull();
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("limit 2"), expect.any(Array));
   });
 });

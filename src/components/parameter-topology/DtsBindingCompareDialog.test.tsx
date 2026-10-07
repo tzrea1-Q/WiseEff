@@ -48,7 +48,7 @@ describe("DtsBindingCompareDialog", () => {
     expect(dialog.parentElement).toHaveClass("modal-backdrop", "dts-binding-compare-dialog__overlay");
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAccessibleDescription(
-      "选择目标项目，查看与当前项目的参数差异，并可将其配置加入草稿。"
+      "选择要比较的配置实例，查看与当前项目的参数差异，并可将其配置加入草稿。"
     );
     expect(dialog.querySelector(".dts-binding-compare-dialog__content")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "关闭跨项目对比" })).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe("DtsBindingCompareDialog", () => {
     fireEvent.click(trigger);
 
     const dialog = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
-    expect(within(dialog).getByLabelText("对比目标项目")).toHaveFocus();
+    expect(within(dialog).getByLabelText("对比目标配置实例")).toHaveFocus();
 
     const last = within(dialog).getByRole("button", { name: "关闭" });
     const first = within(dialog).getByRole("button", { name: "关闭跨项目对比" });
@@ -112,12 +112,13 @@ describe("DtsBindingCompareDialog", () => {
     const { onUseCompareAsDraft } = renderCompare();
 
     const compare = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
-    expect(within(compare).getByLabelText("基准与目标项目")).toBeInTheDocument();
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("");
+    expect(within(compare).getAllByText("请选择要比较的配置实例")).toHaveLength(2);
 
     const overview = within(compare).getByRole("list", { name: "跨项目对比" });
     const entries = within(overview).getAllByRole("listitem").filter((item) => item.hasAttribute("data-kind"));
     fireEvent.click(within(entries[1]!).getByRole("button", { name: /Nebula 高频调试项目/ }));
-    expect(within(compare).getByLabelText("对比目标项目")).toHaveValue("proj-nebula");
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("proj-nebula");
 
     fireEvent.click(within(compare).getByRole("button", { name: "使用该项目配置加入草稿" }));
     expect(onUseCompareAsDraft).toHaveBeenCalledWith({
@@ -130,5 +131,33 @@ describe("DtsBindingCompareDialog", () => {
     renderCompare({ canEdit: false, onUseCompareAsDraft: vi.fn() });
 
     expect(screen.getByRole("button", { name: "使用该项目配置加入草稿" })).toBeDisabled();
+  });
+
+  it("reports no comparable instance only when the compare response is empty", () => {
+    renderCompare({ peers: [] });
+
+    const compare = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
+    expect(within(compare).getAllByText("暂无可比较实例")).toHaveLength(2);
+    expect(within(compare).queryByText("请选择要比较的配置实例")).not.toBeInTheDocument();
+  });
+
+  it("shows both exact revisions when the selected target has a pinned/effective mismatch", () => {
+    renderCompare({
+      peers: [
+        {
+          bindingId: "binding-nebula",
+          projectId: "proj-nebula",
+          projectName: "Nebula 高频调试项目",
+          rawValue: "<3500>",
+          definitionRevisionId: "definition-revision-fixed",
+          effectiveRevisionId: "binding-revision-effective"
+        }
+      ]
+    });
+
+    const compare = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
+    expect(within(compare).getByText("值的固定修订与当前有效修订不同")).toBeInTheDocument();
+    expect(within(compare).getByText("definition-revision-fixed")).toBeInTheDocument();
+    expect(within(compare).getByText("binding-revision-effective")).toBeInTheDocument();
   });
 });

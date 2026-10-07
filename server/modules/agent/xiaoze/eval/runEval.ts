@@ -53,6 +53,7 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
 
   const approvalResolver: PlanningApprovalResolver | undefined = scenario.needsApprovalBridge
     ? {
+        preflightApproval: async () => {},
         resolveApproval: async (input) => {
           if (input.decision === "approve") {
             executedMutatingTools.push(scenario.approvalToolName ?? "action.submitParameterChange");

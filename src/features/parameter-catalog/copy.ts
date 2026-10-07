@@ -80,7 +80,8 @@ export const catalogActionLabels = {
 
 export const catalogSubjectTypeLabels = {
   driver: "驱动",
-  "node-type": "节点类型"
+  "node-type": "节点类型",
+  "configuration-schema": "配置模型"
 } as const;
 
 export const catalogLifecycleLabels = {

@@ -1,15 +1,10 @@
 import { X } from "lucide-react";
 
 import type { KnowledgeParameterReference } from "@/domain/knowledge/types";
-import { parameterSpecReferenceLifecycleLabels } from "@/domain/knowledge/types";
-
-type KnowledgeReferenceChip = KnowledgeParameterReference & {
-  historicalOnly?: boolean;
-  mappingStatus?: "current" | "historical" | "orphaned" | "archived" | "unmapped";
-};
+import { definitionReferenceLifecycleLabels, parameterSpecReferenceLifecycleLabels } from "@/domain/knowledge/types";
 
 export function referenceDisplayName(reference: Pick<KnowledgeParameterReference, "displayName" | "propertyKey">) {
-  return reference.displayName?.trim() || reference.propertyKey;
+  return reference.displayName?.trim() || reference.propertyKey || "定义不可用";
 }
 
 /**
@@ -19,14 +14,14 @@ export function referenceDisplayName(reference: Pick<KnowledgeParameterReference
  */
 export function KnowledgeParameterReferenceChips({
   references,
-  onOpenSpec,
+  onOpenDefinition,
   onRemove,
   removePendingSpecId = null
 }: {
-  references: KnowledgeReferenceChip[];
-  onOpenSpec?: (specId: string) => void;
+  references: KnowledgeParameterReference[];
+  onOpenDefinition?: (definitionId: string) => void;
   /** Present in the editor: renders a per-chip remove control. */
-  onRemove?: (specId: string) => void;
+  onRemove?: (reference: KnowledgeParameterReference) => void;
   removePendingSpecId?: string | null;
 }) {
   if (references.length === 0) {
@@ -35,38 +30,46 @@ export function KnowledgeParameterReferenceChips({
   return (
     <ul className="knowledge-parameter-reference-chips">
       {references.map((reference) => {
+        const canonical = reference.kind === "definition";
+        const identity = canonical ? reference.definitionId : reference.specId;
         const name = referenceDisplayName(reference);
         const label = reference.driverModule ? `${name} · ${reference.driverModule}` : name;
-        const mappingStatus = reference.mappingStatus;
-        const historicalOnly = Boolean(reference.historicalOnly || mappingStatus === "historical");
-        const orphaned = mappingStatus === "orphaned";
+        const mappingStatus = canonical ? undefined : reference.mappingStatus;
+        const historicalOnly = !canonical && Boolean(reference.historicalOnly || mappingStatus === "historical");
+        const orphaned = mappingStatus === "orphaned" || mappingStatus === "unmapped";
         const archived = mappingStatus === "archived";
-        const statusLabel = orphaned
-          ? "缺失映射"
+        const unavailable = canonical && reference.availability === "unavailable";
+        const statusLabel = unavailable
+          ? "不可用"
+          : orphaned
+          ? "旧引用不可用"
           : archived
             ? "已归档"
             : historicalOnly
               ? "历史"
-              : parameterSpecReferenceLifecycleLabels[reference.lifecycle];
-        const statusClass = orphaned || archived
+              : canonical
+                ? definitionReferenceLifecycleLabels[reference.lifecycle!]
+                : parameterSpecReferenceLifecycleLabels[reference.lifecycle];
+        const statusClass = unavailable || orphaned || archived
           ? "is-deprecated"
           : historicalOnly
             ? "is-draft"
             : `is-${reference.lifecycle}`;
         return (
           <li
-            key={reference.specId}
+            key={`${canonical ? "definition" : "legacy-spec"}:${identity}`}
             className="knowledge-parameter-reference-chip"
-            data-spec-id={reference.specId}
-            data-mapping-status={mappingStatus ?? (historicalOnly ? "historical" : "current")}
+            data-definition-id={canonical ? identity : undefined}
+            data-spec-id={canonical ? undefined : identity}
+            data-mapping-status={unavailable ? "unavailable" : mappingStatus ?? (historicalOnly ? "historical" : canonical ? "current" : "legacy-spec")}
             data-historical={historicalOnly ? "true" : "false"}
           >
-            {onOpenSpec ? (
+            {canonical && !unavailable && onOpenDefinition ? (
               <button
                 type="button"
                 className="knowledge-parameter-reference-chip__link"
                 title={`查看参数定义 ${reference.propertyKey}`}
-                onClick={() => onOpenSpec(reference.specId)}
+                onClick={() => onOpenDefinition(identity)}
               >
                 {label}
               </button>
@@ -84,8 +87,8 @@ export function KnowledgeParameterReferenceChips({
                 type="button"
                 className="knowledge-parameter-reference-chip__remove"
                 aria-label={`移除引用 ${name}`}
-                disabled={removePendingSpecId === reference.specId}
-                onClick={() => onRemove(reference.specId)}
+                disabled={removePendingSpecId === identity}
+                onClick={() => onRemove(reference)}
               >
                 <X size={12} strokeWidth={2} aria-hidden="true" />
               </button>

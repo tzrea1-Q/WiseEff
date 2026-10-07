@@ -58,10 +58,10 @@ function assertCanonicalChecksum(contribution: DbgComparisonContribution) {
 }
 
 describe("debug pins from stored binding", () => {
-  it("pins a stored binding id and typed-blocks missing links without a values intercept", () => {
+  it("typed-blocks legacy ids and missing links until the canonical owner resolves them", () => {
     expect(pinFromStoredBinding("binding-1")).toEqual({
-      protectedReferenceKind: "canonical-pin",
-      bindingId: "binding-1"
+      protectedReferenceKind: "typed-block",
+      protectedReferenceReason: "legacy-binding-id"
     });
     expect(pinFromStoredBinding(null)).toEqual({
       protectedReferenceKind: "typed-block",
@@ -73,8 +73,8 @@ describe("debug pins from stored binding", () => {
     ]);
     expect(pinned[0]).toMatchObject({
       id: "p-bound",
-      protectedReferenceKind: "canonical-pin",
-      bindingId: "binding-1"
+      protectedReferenceKind: "typed-block",
+      protectedReferenceReason: "legacy-binding-id"
     });
     expect(pinned[1]).toMatchObject({
       id: "p-unbound",

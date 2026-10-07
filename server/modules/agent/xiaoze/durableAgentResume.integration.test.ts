@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../../auth/types";
 import { developmentAuthContext } from "../../auth/routes";
@@ -131,7 +132,8 @@ async function createInstance(options: {
   const checkpointer = createXiaozeCheckpointer({
     mode: "postgres",
     connectionString: options.connectionString,
-    saver: saverHandle.saver
+    saver: saverHandle.saver,
+    ...saverHandle.withNamespaceLease && { withNamespaceLease: saverHandle.withNamespaceLease, ensureReady: saverHandle.ensureSetup }
   });
   const execution = createActionRegistry(options.domainWrites, options.observed);
   const orchestrator = createAgentOrchestrator({ db: options.db, toolRegistry: execution.registry });
@@ -182,6 +184,7 @@ async function post(handler: ReturnType<typeof createXiaozeAgUiHandler>, input: 
   requestId: string;
   approvalId?: string;
   bodyThreadId?: string;
+  decision?: "approve" | "reject";
 }) {
   const body: Record<string, unknown> = input.approvalId
     ? {
@@ -192,7 +195,7 @@ async function post(handler: ReturnType<typeof createXiaozeAgUiHandler>, input: 
           {
             interruptId: input.approvalId,
             status: "resolved",
-            payload: { approvalId: input.approvalId, decision: "approve" }
+            payload: { approvalId: input.approvalId, decision: input.decision ?? "approve" }
           }
         ]
       }
@@ -250,7 +253,337 @@ const initialActionModel = () =>
     }
   ]);
 
+function admissionBarrier() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL concurrent namespace admission", () => {
+  it.each(["reject", "approve"] as const)("refuses a concurrent ordinary writer after genuine %s preflight", async (decision) => {
+    resetSharedPostgresCheckpointerSaverForTests();
+    await withTempDatabase({ prefix: "xiaoze_concurrent_admission" }, async ({ db, connectionString }) => {
+      const savers: PostgresCheckpointerHandle["saver"][] = [];
+      const connections: ReturnType<typeof openDatabaseConnection>[] = [];
+      const release = admissionBarrier();
+      let held: ReturnType<typeof post> | undefined;
+      try {
+        const auth = authFor(`concurrent-${decision}`);
+        await db.query("insert into organizations (id, name) values ($1, 'Concurrent admission')", [auth.organization.id]);
+        await db.query("insert into users (id, organization_id, name, email, title) values ($1, $2, 'Requester', $3, 'Engineer')", [auth.user.id, auth.organization.id, `${decision}@example.com`]);
+        const domainWrites = { count: 0 }; const observed: ObservedExecution[] = [];
+        const fresh = async (model = initialActionModel()) => {
+          const connection = openDatabaseConnection(connectionString); connections.push(connection);
+          const instance = await createInstance({ db: connection.db, connectionString, auth, model, domainWrites, observed, registerSaver: (saver) => savers.push(saver) });
+          const errors: unknown[] = [];
+          const factory: typeof instance.factory = (context) => {
+            const agent = instance.factory(context);
+            return { ...agent, async run(input) {
+              try { return await agent.run(input); } catch (error) { errors.push(error); throw error; }
+            } };
+          };
+          return { ...instance, model, errors, handler: createHandler({ db: connection.db, auth, factory, orchestrator: instance.orchestrator }) };
+        };
+        const initial = await fresh();
+        const threadId = `concurrent-${decision}-${randomUUID()}`;
+        const original = await interruptAction({ handler: initial.handler, db, auth, threadId, requestId: `start-${decision}` });
+        const r1 = await fresh(fakeModelSequence([{ content: "Decision completed." }]));
+        const r2 = await fresh();
+        expect(r1.saverHandle.saver).not.toBe(r2.saverHandle.saver);
+        const reader = await fresh();
+        const namespace = `${auth.organization.id}:${auth.user.id}:${threadId}`;
+        const snapshot = async () => {
+          const checkpointRows: Record<string, unknown> = {};
+          for (const table of ["checkpoints", "checkpoint_blobs", "checkpoint_writes"]) {
+            checkpointRows[table] = (await db.query(`select * from ${table} where thread_id = $1 order by row_to_json(${table})::text`, [namespace])).rows;
+          }
+          const tools = await listAgentToolCalls(db, auth.organization.id, threadId);
+          return JSON.parse(JSON.stringify({ tuple: await reader.saverHandle.saver.getTuple({ configurable: { thread_id: namespace } }), checkpointRows,
+            approvals: await listAgentApprovals(db, auth.organization.id, threadId), tools,
+            audits: (await db.query("select * from audit_events where target_id = any($1::text[]) order by id", [tools.map((tool) => tool.id)])).rows,
+            executions: domainWrites.count, observed, authorizations: r1.authorize.mock.calls.length + r2.authorize.mock.calls.length,
+            registryCalls: r1.run.mock.calls.length + r2.run.mock.calls.length }));
+        };
+        const before = await snapshot();
+        const reached = admissionBarrier();
+        const genuinePreflight = r1.orchestrator.preflightApproval.bind(r1.orchestrator);
+        vi.spyOn(r1.orchestrator, "preflightApproval").mockImplementation(async (input) => {
+          await genuinePreflight(input);
+          reached.resolve();
+          await release.promise;
+        });
+        const stream = vi.spyOn(r2.model, "stream"); const invoke = vi.spyOn(r2.model, "invoke");
+        held = post(r1.handler, { auth, threadId, approvalId: original.approvalId, decision, requestId: `r1-${decision}` });
+        await reached.promise;
+        const contender = await post(r2.handler, { auth, threadId, requestId: `r2-${decision}` });
+        const during = await snapshot();
+        console.info("concurrent-admission-held", JSON.stringify({ decision, before, during, contender, errors: r2.errors, modelStreamCalls: stream.mock.calls.length, modelInvokeCalls: invoke.mock.calls.length }));
+        expect.soft(JSON.stringify(contender)).toContain("操作与当前状态冲突");
+        expect.soft(r2.errors).toContainEqual(expect.objectContaining({ code: "CONFLICT", details: { reason: "xiaoze-thread-busy" } }));
+        expect.soft(stream).not.toHaveBeenCalled(); expect.soft(invoke).not.toHaveBeenCalled();
+        expect.soft(during).toEqual(before);
+        const otherThread = `independent-${randomUUID()}`;
+        await interruptAction({ handler: r2.handler, db, auth, threadId: otherThread, requestId: `other-${decision}` });
+        expect(await reader.saverHandle.saver.getTuple({ configurable: { thread_id: `${auth.organization.id}:${auth.user.id}:${otherThread}` } })).toBeDefined();
+        release.resolve();
+        const completion = await held;
+        const after = await snapshot();
+        const originalApproval = await getAgentApproval(db, auth.organization.id, original.approvalId);
+        const originalTool = await getAgentToolCall(db, auth.organization.id, original.toolCallId);
+        const audit = await db.query<{ count: string }>("select count(*)::text as count from audit_events where action = 'approval-rejected' and target_id = $1", [original.toolCallId]);
+        console.info("concurrent-admission-completed", JSON.stringify({ decision, completion, after, originalApproval, originalTool, rejectionAudits: audit.rows[0].count }));
+        expect.soft(originalApproval).toMatchObject({ status: decision === "reject" ? "rejected" : "approved", decidedByUserId: auth.user.id });
+        expect.soft(originalTool).toMatchObject({ status: decision === "reject" ? "rejected" : "succeeded" });
+        expect.soft(domainWrites.count).toBe(decision === "reject" ? 0 : 1);
+        expect.soft(audit.rows[0].count).toBe(decision === "reject" ? "1" : "0");
+        // Preserve baseline B's actual later result even when the original A oracle failed.
+        const pending = (await listAgentApprovals(db, auth.organization.id, threadId)).find((approval) => approval.id !== original.approvalId && approval.status === "pending");
+        if (pending) {
+          const bEvents = await post(r2.handler, { auth, threadId, approvalId: pending.id, decision: "reject", requestId: `baseline-b-${decision}` });
+          console.info("concurrent-admission-baseline-b", JSON.stringify({ bEvents, state: await snapshot() }));
+        }
+        const reacquired = await post(r2.handler, { auth, threadId, requestId: `reacquire-${decision}` });
+        expect.soft(reacquired.some((event) => event.event === "RUN_ERROR")).toBe(false);
+      } finally {
+        release.resolve(); await held?.catch(() => undefined);
+        await Promise.all(connections.map((connection) => connection.close()));
+        await Promise.all(savers.map((saver) => saver.end()));
+        await closeSharedPostgresCheckpointerSaversForTests();
+      }
+    });
+  });
+
+  it("preserves complete state after genuine preflight succeeds then throws and permits reacquisition", async () => {
+    await withTempDatabase({ prefix: "xiaoze_preflight_throw" }, async ({ db, connectionString }) => {
+      const savers: PostgresCheckpointerHandle["saver"][] = [];
+      try {
+        const auth = authFor("preflight-throw");
+        await db.query("insert into organizations (id, name) values ($1, 'Preflight throw')", [auth.organization.id]);
+        await db.query("insert into users (id, organization_id, name, email, title) values ($1, $2, 'Requester', 'throw@example.com', 'Engineer')", [auth.user.id, auth.organization.id]);
+        const domainWrites = { count: 0 }; const observed: ObservedExecution[] = [];
+        const fresh = async () => {
+          const instance = await createInstance({ db, connectionString, auth, model: initialActionModel(), domainWrites, observed, registerSaver: (saver) => savers.push(saver) });
+          return { ...instance, handler: createHandler({ db, auth, factory: instance.factory, orchestrator: instance.orchestrator }) };
+        };
+        const initial = await fresh(); const r1 = await fresh(); const r2 = await fresh();
+        const threadId = `preflight-throw-${randomUUID()}`;
+        const a = await interruptAction({ handler: initial.handler, db, auth, threadId, requestId: "throw-start" });
+        const namespace = `${auth.organization.id}:${auth.user.id}:${threadId}`;
+        const snapshot = async () => {
+          const rows = {} as Record<string, unknown>;
+          for (const table of ["checkpoints", "checkpoint_blobs", "checkpoint_writes"]) rows[table] = (await db.query(`select * from ${table} where thread_id = $1 order by row_to_json(${table})::text`, [namespace])).rows;
+          return JSON.parse(JSON.stringify({ tuple: await r2.saverHandle.saver.getTuple({ configurable: { thread_id: namespace } }), rows,
+            approvals: await listAgentApprovals(db, auth.organization.id, threadId), tools: await listAgentToolCalls(db, auth.organization.id, threadId),
+            audits: (await db.query("select * from audit_events where target_id = $1 order by id", [a.toolCallId])).rows, executions: domainWrites.count }));
+        };
+        const before = await snapshot();
+        const preflight = r1.orchestrator.preflightApproval.bind(r1.orchestrator);
+        const failure = new Error("deterministic-after-genuine-preflight");
+        const spy = vi.spyOn(r1.orchestrator, "preflightApproval").mockImplementation(async (input) => { await preflight(input); throw failure; });
+        const events = await post(r1.handler, { auth, threadId, approvalId: a.approvalId, decision: "reject", requestId: "throw-decision" });
+        const after = await snapshot();
+        console.info("preflight-throw-state", JSON.stringify({ before, after, events }));
+        expect(spy).toHaveBeenCalledOnce(); expect(events.some((event) => event.event === "RUN_ERROR")).toBe(true);
+        expect(after).toEqual(before); expect(r1.run).not.toHaveBeenCalled(); expect(r1.authorize).not.toHaveBeenCalled();
+        await post(r2.handler, { auth, threadId, approvalId: a.approvalId, decision: "reject", requestId: "throw-reacquire" });
+        expect(await getAgentApproval(db, auth.organization.id, a.approvalId)).toMatchObject({ status: "rejected" });
+      } finally {
+        await Promise.all(savers.map((saver) => saver.end())); await closeSharedPostgresCheckpointerSaversForTests();
+      }
+    });
+  });
+});
+
+describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL physical backend loss", () => {
+  it("a delayed preflight owner cannot write after its disposable backend is terminated and R2 reacquires", async () => {
+    await withTempDatabase({ prefix: "xiaoze_owned_backend_loss" }, async ({ db, connectionString }) => {
+      const savers: PostgresCheckpointerHandle["saver"][] = [];
+      const connections: ReturnType<typeof openDatabaseConnection>[] = [];
+      const release = admissionBarrier(); let held: ReturnType<typeof post> | undefined;
+      const trace: Array<{ pid: number; sql: string; key?: string }> = [];
+      const originals = new Map<pg.PoolClient, pg.PoolClient["query"]>();
+      const connect = pg.Pool.prototype.connect;
+      const spy = vi.spyOn(pg.Pool.prototype, "connect").mockImplementation(function (this: pg.Pool, ...args: unknown[]) {
+        // Outside-read Pool.query uses callback connect/query; leave that public API intact.
+        if (args.length) return Reflect.apply(connect, this, args);
+        return (Reflect.apply(connect, this, []) as Promise<pg.PoolClient>).then(async (client) => {
+          if (!originals.has(client)) {
+            const query = client.query.bind(client); originals.set(client, client.query);
+            const pid = (await query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid;
+            client.query = function (...queryArgs: unknown[]) {
+              if (typeof queryArgs.at(-1) === "function") return Reflect.apply(query, client, queryArgs);
+              trace.push({ pid, sql: String(queryArgs[0]), key: String(queryArgs[0]).includes("advisory") ? (queryArgs[1] as string[] | undefined)?.[0] : undefined });
+              return Reflect.apply(query, client, queryArgs);
+            } as pg.PoolClient["query"];
+          }
+          return client;
+        });
+      });
+      try {
+        const auth = authFor("owned-backend-loss");
+        await db.query("insert into organizations (id, name) values ($1, 'Backend loss')", [auth.organization.id]);
+        await db.query("insert into users (id, organization_id, name, email, title) values ($1, $2, 'Requester', 'backend-loss@example.com', 'Engineer')", [auth.user.id, auth.organization.id]);
+        const domainWrites = { count: 0 }; const observed: ObservedExecution[] = [];
+        const fresh = async () => {
+          const connection = openDatabaseConnection(connectionString); connections.push(connection);
+          const instance = await createInstance({ db: connection.db, connectionString, auth, model: initialActionModel(), domainWrites, observed, registerSaver: (saver) => savers.push(saver) });
+          const errors: unknown[] = [];
+          const factory: typeof instance.factory = (context) => {
+            const agent = instance.factory(context);
+            return { ...agent, async run(input) { try { return await agent.run(input); } catch (error) { errors.push(error); throw error; } } };
+          };
+          return { ...instance, errors, handler: createHandler({ db: connection.db, auth, factory, orchestrator: instance.orchestrator }) };
+        };
+        const initial = await fresh(); const r1 = await fresh(); const r2 = await fresh(); const reader = await fresh();
+        const threadId = `owned-backend-loss-${randomUUID()}`;
+        const namespace = `${auth.organization.id}:${auth.user.id}:${threadId}`;
+        const a = await interruptAction({ handler: initial.handler, db, auth, threadId, requestId: "loss-start-a" });
+        const checkpointSql = trace.filter((entry) => entry.sql.startsWith("INSERT") || entry.sql === "BEGIN");
+        const initialOwner = trace.find((entry) => entry.sql.includes("pg_try_advisory_lock") && entry.key?.includes(namespace))!.pid;
+        expect(checkpointSql.filter((entry) => entry.pid === initialOwner).some((entry) => entry.sql.startsWith("INSERT"))).toBe(true);
+        const preflight = r1.orchestrator.preflightApproval.bind(r1.orchestrator);
+        const reached = admissionBarrier();
+        vi.spyOn(r1.orchestrator, "preflightApproval").mockImplementation(async (input) => { await preflight(input); reached.resolve(); await release.promise; });
+        held = post(r1.handler, { auth, threadId, approvalId: a.approvalId, decision: "reject", requestId: "loss-r1" });
+        await reached.promise;
+        const lockEntry = trace.filter((entry) => entry.sql.includes("pg_try_advisory_lock") && entry.key?.includes(namespace)).at(-1)!;
+        const owner = lockEntry.pid;
+        expect(trace.filter((entry) => entry.pid === owner).some((entry) => entry.sql.includes("checkpoint_writes"))).toBe(true);
+        const current = (await db.query<{ datname: string; usename: string }>(
+          "select current_database() as datname, session_user as usename"
+        )).rows[0];
+        const backend = await db.query<{ datname: string; usename: string }>("select datname, usename from pg_stat_activity where pid = $1", [owner]);
+        expect(backend.rows).toEqual([current]);
+        const terminated = await db.query<{ terminated: boolean }>("select pg_terminate_backend($1, 2000) as terminated", [owner]);
+        expect(terminated.rows[0].terminated).toBe(true);
+        expect((await db.query("select pid from pg_stat_activity where pid = $1", [owner])).rows).toEqual([]);
+        const r2Events = await post(r2.handler, { auth, threadId, requestId: "loss-r2" });
+        const r2Tuple = await reader.saverHandle.saver.getTuple({ configurable: { thread_id: namespace } });
+        const b = (await listAgentApprovals(db, auth.organization.id, threadId)).find((approval) => approval.toolCallId === r2Tuple?.checkpoint.channel_values.pendingMutatingToolCallId);
+        expect(b).toMatchObject({ status: "pending" });
+        const r2Owner = trace.filter((entry) => entry.sql.includes("pg_try_advisory_lock") && entry.key?.includes(namespace)).at(-1)!.pid;
+        expect(r2Owner).not.toBe(owner);
+        const snapshot = async () => {
+          const rows = {} as Record<string, unknown>;
+          for (const table of ["checkpoints", "checkpoint_blobs", "checkpoint_writes"]) rows[table] = (await db.query(`select * from ${table} where thread_id = $1 order by row_to_json(${table})::text`, [namespace])).rows;
+          const tools = await listAgentToolCalls(db, auth.organization.id, threadId);
+          return JSON.parse(JSON.stringify({ tuple: await reader.saverHandle.saver.getTuple({ configurable: { thread_id: namespace } }), rows,
+            approvals: await listAgentApprovals(db, auth.organization.id, threadId), tools,
+            audits: (await db.query("select * from audit_events where target_id = any($1::text[]) order by id", [tools.map((tool) => tool.id)])).rows, executions: domainWrites.count }));
+        };
+        const before = await snapshot(); const traceBefore = trace.length;
+        release.resolve(); const r1Events = await held; const after = await snapshot();
+        expect(r1.errors).toHaveLength(1); expect(after).toEqual(before);
+        expect(trace.slice(traceBefore).some((entry) => entry.pid === owner && entry.sql.startsWith("INSERT"))).toBe(false);
+        expect(r1.run).not.toHaveBeenCalled(); expect(r1.authorize).not.toHaveBeenCalled();
+        console.info("physical-owned-backend-loss", JSON.stringify({ initialOwner, owner, r2Owner, backend: backend.rows, terminated: terminated.rows, before, after, r1Events, r2Events, r1Errors: r1.errors.map((error) => String(error)), trace }));
+        await post(r2.handler, { auth, threadId, approvalId: b!.id, decision: "reject", requestId: "loss-r2-reject" });
+        expect(await getAgentApproval(db, auth.organization.id, b!.id)).toMatchObject({ status: "rejected" });
+      } finally {
+        release.resolve(); await held?.catch(() => undefined);
+        spy.mockRestore(); for (const [client, query] of originals) client.query = query;
+        await Promise.all(connections.map((connection) => connection.close()));
+        await Promise.all(savers.map((saver) => saver.end())); await closeSharedPostgresCheckpointerSaversForTests();
+      }
+    });
+  });
+});
+
 describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL durable resume", () => {
+  it("keeps denied substitutions out of durable task writes and accepts a later genuine reject", async () => {
+    resetSharedPostgresCheckpointerSaverForTests();
+    const savers: PostgresCheckpointerHandle["saver"][] = [];
+    try {
+      await withTempDatabase({ prefix: "xiaoze_resume_admission" }, async ({ db, connectionString }) => {
+        try {
+        const auth = authFor("resume-admission-user");
+        await db.query("insert into organizations (id, name) values ($1, 'Resume admission')", [auth.organization.id]);
+        await db.query(
+          "insert into users (id, organization_id, name, email, title) values ($1, $2, 'Requester', 'admission@example.com', 'Engineer')",
+          [auth.user.id, auth.organization.id]
+        );
+        const domainWrites = { count: 0 };
+        const observed: ObservedExecution[] = [];
+        const fresh = async (model = initialActionModel()) => {
+          const instance = await createInstance({ db, connectionString, auth, model, domainWrites, observed,
+            registerSaver: (saver) => savers.push(saver) });
+          return { ...instance, handler: createHandler({ db, auth, factory: instance.factory, orchestrator: instance.orchestrator }) };
+        };
+        const initial = await fresh();
+        const threadA = `admission-a-${randomUUID()}`;
+        const threadB = `admission-b-${randomUUID()}`;
+        const a = await interruptAction({ handler: initial.handler, db, auth, threadId: threadA, requestId: "admission-start-a" });
+        const b = await interruptAction({ handler: initial.handler, db, auth, threadId: threadB, requestId: "admission-start-b" });
+        await initial.saverHandle.saver.end();
+        savers.splice(savers.indexOf(initial.saverHandle.saver), 1);
+        const resumed = await fresh();
+        const tuple = async (threadId: string, expectedToolCallId: string) => {
+          const saved = await resumed.saverHandle.saver.getTuple({ configurable: {
+            thread_id: `${auth.organization.id}:${auth.user.id}:${threadId}`
+          } });
+          expect(saved).toBeDefined();
+          expect(saved!.checkpoint.channel_values.pendingMutatingToolCallId).toBe(expectedToolCallId);
+          return { checkpointId: saved!.checkpoint.id, pendingWrites: saved!.pendingWrites };
+        };
+        const beforeA = await tuple(threadA, a.toolCallId);
+        const beforeB = await tuple(threadB, b.toolCallId);
+        for (const saved of [beforeA, beforeB]) {
+          expect(saved.pendingWrites).toHaveLength(1);
+          expect(saved.pendingWrites![0]).toEqual([expect.any(String), "__interrupt__", expect.objectContaining({
+            id: expect.any(String), value: expect.objectContaining({ toolCallId: expect.any(String) })
+          })]);
+        }
+        const rows = async () => ({
+          a: await getAgentApproval(db, auth.organization.id, a.approvalId),
+          b: await getAgentApproval(db, auth.organization.id, b.approvalId),
+          toolA: await getAgentToolCall(db, auth.organization.id, a.toolCallId),
+          toolB: await getAgentToolCall(db, auth.organization.id, b.toolCallId)
+        });
+        const beforeRows = await rows();
+        expect(beforeRows.a).toMatchObject({ sessionId: threadA, toolCallId: a.toolCallId, requestedByUserId: auth.user.id });
+        expect(beforeRows.b).toMatchObject({ sessionId: threadB, toolCallId: b.toolCallId, requestedByUserId: auth.user.id });
+        console.info("resume-admission-before", JSON.stringify({ a: beforeA, b: beforeB }));
+        for (const [threadId, approvalId] of [[threadA, b.approvalId], [threadB, a.approvalId]]) {
+          const events = await post(resumed.handler, { auth, threadId, approvalId, decision: "reject", requestId: `admission-deny-${threadId}` });
+          expect(JSON.stringify(events)).toContain("操作与当前状态冲突");
+          expect(await rows()).toEqual(beforeRows);
+          expect(domainWrites.count).toBe(0);
+          expect(observed).toEqual([]);
+          const afterA = await tuple(threadA, a.toolCallId);
+          const afterB = await tuple(threadB, b.toolCallId);
+          console.info("resume-admission-after-denial", JSON.stringify({ threadId, a: afterA, b: afterB }));
+          expect.soft(afterA).toEqual(beforeA);
+          expect.soft(afterB).toEqual(beforeB);
+        }
+        const legitimate = await fresh();
+        await post(legitimate.handler, { auth, threadId: threadA, approvalId: a.approvalId, decision: "reject", requestId: "admission-valid-reject" });
+        const final = await rows();
+        console.info("resume-admission-final", JSON.stringify({ approvalA: final.a?.status, toolA: final.toolA?.status }));
+        expect.soft(final.a).toMatchObject({ status: "rejected", decidedByUserId: auth.user.id });
+        expect.soft(final.toolA).toMatchObject({ status: "rejected" });
+        expect(final.b).toEqual(beforeRows.b);
+        expect(final.toolB).toEqual(beforeRows.toolB);
+        expect.soft(await tuple(threadB, b.toolCallId)).toEqual(beforeB);
+        const rejectedAudits = await db.query<{ count: string }>(
+          "select count(*)::text as count from audit_events where action = 'approval-rejected' and target_id = $1", [a.toolCallId]
+        );
+        expect.soft(rejectedAudits.rows[0].count).toBe("1");
+        expect(domainWrites.count).toBe(0);
+        expect(observed).toEqual([]);
+        expect(legitimate.run).not.toHaveBeenCalled();
+        expect(legitimate.authorize).not.toHaveBeenCalled();
+        } finally {
+          await Promise.all(savers.splice(0).map((saver) => saver.end()));
+          await closeSharedPostgresCheckpointerSaversForTests();
+        }
+      });
+    } finally {
+      await Promise.all(savers.map((saver) => saver.end()));
+      await closeSharedPostgresCheckpointerSaversForTests();
+      resetSharedPostgresCheckpointerSaverForTests();
+    }
+  });
+
   it("cleans instance A when failure occurs before instance B is created", async () => {
     resetSharedPostgresCheckpointerSaverForTests();
     const originalError = new Error("instance B setup was intentionally not reached");

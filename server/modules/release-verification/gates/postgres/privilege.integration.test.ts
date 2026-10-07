@@ -184,6 +184,62 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
     expect(attempt.results.find((result) => result.gateId === "PCAT-DB-P02")?.status).toBe("passed");
   }, 60_000);
 
+  it("rejects reviewed tombstone definer body or grant drift", async () => {
+    const identity = "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)";
+    const definition = await db.query<{ sql: string }>(
+      `select pg_catalog.pg_get_functiondef($1::regprocedure) as sql`, [identity],
+    );
+    const original = definition.rows[0]!.sql;
+    const edited = original.replace(
+      "Reviewed member removal has no exact user audit receipt",
+      "Altered reviewed member removal has no exact user audit receipt",
+    );
+    expect(edited).not.toBe(original);
+
+    for (const drift of [
+      edited,
+      `grant execute on function ${identity} to public`,
+    ]) {
+      await db.query("savepoint p02_reviewed_definer_drift");
+      try {
+        await db.query(drift);
+        const result = await runP02(db);
+        expect(result.status).toBe("failed");
+        expect(result.failureCode).toBe("PCAT-PRIV-LEGACY-WRITER-BYPASS");
+      } finally {
+        await db.query("rollback to savepoint p02_reviewed_definer_drift");
+        await db.query("release savepoint p02_reviewed_definer_drift");
+      }
+    }
+  }, 60_000);
+
+  it("rejects missing or broadened 0176 occurrence EXECUTE grants", async () => {
+    const identity = "parameter_catalog.ensure_dts_observation_source_occurrence(text,text,text,text,text,text,text,text)";
+    const definition = (await db.query<{ sql: string }>(
+      "select pg_catalog.pg_get_functiondef($1::regprocedure) as sql", [identity],
+    )).rows[0]!.sql;
+    const changedBody = definition.replace("DTS observation source is not an exact current revision member",
+      "Altered DTS observation source proof");
+    expect(changedBody).not.toBe(definition);
+    for (const drift of [
+      `revoke execute on function ${identity} from ${PARAMETER_GOVERNANCE_WRITER_ROLE}`,
+      `grant execute on function ${identity} to catalog_verification_writer_role`,
+      `grant execute on function ${identity} to catalog_verifier_role`,
+      changedBody,
+    ]) {
+      await db.query("savepoint p02_dts_occurrence_drift");
+      try {
+        await db.query(drift);
+        const result = await runP02(db);
+        expect(result.status).toBe("failed");
+        expect(result.failureCode).toBe("PCAT-PRIV-LEGACY-WRITER-BYPASS");
+      } finally {
+        await db.query("rollback to savepoint p02_dts_occurrence_drift");
+        await db.query("release savepoint p02_dts_occurrence_drift");
+      }
+    }
+  }, 60_000);
+
   /**
    * The documented role model (`docs/SECURITY.md`) gives the API login a NOINHERIT
    * membership in `parameter_governance_writer_role` and the publication manager one in

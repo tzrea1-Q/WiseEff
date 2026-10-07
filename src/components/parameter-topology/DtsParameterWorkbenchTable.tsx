@@ -6,6 +6,7 @@ import {
   CircleX,
   Eye,
   Pencil,
+  FlaskConical,
   TriangleAlert
 } from "lucide-react";
 
@@ -39,6 +40,7 @@ export type DtsParameterWorkbenchTableProps = {
   canEdit: boolean;
   onSelectBinding: (bindingId: string) => void;
   onEditBinding?: (bindingId: string) => void;
+  onStartDtsReload?: (bindingId: string) => void;
   onSelectedBindingIdsChange?: (next: Set<string>) => void;
 };
 
@@ -171,6 +173,7 @@ export function DtsParameterWorkbenchTable({
   canEdit,
   onSelectBinding,
   onEditBinding,
+  onStartDtsReload,
   onSelectedBindingIdsChange
 }: DtsParameterWorkbenchTableProps) {
   const [sort, setSort] = useState<DtsWorkbenchSort | null>({
@@ -423,6 +426,17 @@ export function DtsParameterWorkbenchTable({
                 >
                   <Eye size={16} strokeWidth={1.9} aria-hidden="true" />
                 </button>
+                {onStartDtsReload ? (
+                  <button
+                    type="button"
+                    className="button subtle dts-parameter-workbench-table__icon-action"
+                    aria-label={`带入 DTS 调试 ${actionContext}`}
+                    title="带入 DTS 调试"
+                    onClick={() => onStartDtsReload(row.bindingId)}
+                  >
+                    <FlaskConical size={16} strokeWidth={1.9} aria-hidden="true" />
+                  </button>
+                ) : null}
                 {canEdit && onEditBinding ? (
                   <button
                     type="button"

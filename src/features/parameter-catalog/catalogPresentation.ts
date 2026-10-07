@@ -79,7 +79,7 @@ export function catalogEmptyMessage(reason: CatalogEmptyReason): string {
 }
 
 export function catalogSubjectTypeLabel(type: string): string {
-  if (type === "driver" || type === "node-type") {
+  if (type === "driver" || type === "node-type" || type === "configuration-schema") {
     return catalogSubjectTypeLabels[type];
   }
   return "主体";

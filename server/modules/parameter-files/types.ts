@@ -117,6 +117,37 @@ export type CandidateImpact = {
   coverage?: CandidateCoverageEffect;
   conflicts?: CandidateConflictEvidence[];
   blockers?: CandidateBlocker[];
+  canonicalSourceWorkflow?: CanonicalSourceWorkflowLink;
+  canonicalBatchRollback?: {
+    prepareRequestId: string;
+    historicalVersionId: string;
+    historicalDigest: string;
+    historicalSizeBytes: number;
+    expectedCurrentVersionId: string;
+    expectedWorkflowProofToken: string;
+    candidateProofToken: string;
+    batchProofDigest: string;
+  };
+};
+
+export type CanonicalSourceWorkflowLink = {
+  kind: "canonical-source";
+  fingerprint: string;
+  bindingId: string;
+  sourcePinId: string;
+  preparedCandidateId: string;
+  draftId: string;
+  requestId: string;
+  conflictDecision?: {
+    choice: "file" | "draft";
+    selectedDraftId: string;
+    selectedDraftCandidateId: string;
+    selectedDraftCandidateDigest: string;
+    sourceProofToken: string;
+    sourceCandidateDigest: string;
+    decisionProofDigest: string;
+  };
+  status: "pending" | "approved" | "rejected" | "withdrawn";
 };
 
 export type ProjectParameterFileCandidateDto = {

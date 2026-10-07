@@ -20,6 +20,7 @@ import { normalizeBridgeProtocol } from "@/application/bridge/bridgeTargetSessio
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
 import { formatDebuggingRuntimeError } from "@/application/debugging/debuggingRuntime";
 import type {
+  CanonicalDebugPin,
   DebugReadbackOutcome,
   DebugWriteOutcome,
   DeviceTarget,
@@ -49,7 +50,7 @@ export type NodeRuntimeStatus =
   | "写入结果未知"
   | "不可用";
 
-export type ProtocolAwareDebugParameter = DebugParameter & {
+export type ProtocolAwareDebugParameter = DebugParameter & CanonicalDebugPin & {
   selectedProtocol?: DebugConnectionProtocol;
   bindingStatus?: DebugParameterBindingStatus;
   bindingDisabledReason?: string;

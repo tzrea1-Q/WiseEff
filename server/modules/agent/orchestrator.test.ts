@@ -5,10 +5,11 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { developmentAuthContext } from "../auth/routes";
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
 import { createAgentSession, updateAgentToolCall } from "./repository";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import { createAgentOrchestrator, type ApprovalBeginInput } from "./orchestrator";
-import type { AgentToolDefinition } from "./toolRegistry";
+import type { AgentToolDefinition, AgentToolRegistry } from "./toolRegistry";
 import type { AgentToolName, AgentToolResult } from "./types";
 import { createMemoryAgentDb as createMemoryDb } from "./testing/memoryAgentDb";
 
@@ -17,7 +18,7 @@ function createToolDefinition(input: {
   requiresApproval: boolean;
   kind?: AgentToolDefinition["kind"];
 }): AgentToolDefinition {
-  return {
+  const definition: AgentToolDefinition = {
     name: input.name,
     label: input.name,
     kind: input.kind ?? "read",
@@ -25,6 +26,10 @@ function createToolDefinition(input: {
     requiresApproval: input.requiresApproval,
     run: vi.fn()
   };
+  if (input.name === "action.submitParameterChange") {
+    definition.prepareApproval = async (_context, payload) => payload;
+  }
+  return definition;
 }
 
 function createRegistry(
@@ -52,6 +57,42 @@ function createRegistry(
     authorize: vi.fn(),
     run: vi.fn(run)
   };
+}
+
+function createTrackedSourceRegistry() {
+  const stored = new Set<string>();
+  const store: ObjectStore = {
+    async put(input) {
+      stored.add(input.fileName);
+      return {
+        storageKey: input.fileName, fileName: input.fileName,
+        contentType: input.contentType, fileSizeBytes: input.bytes.length,
+        checksumSha256: "a".repeat(64)
+      };
+    },
+    async get(key) {
+      if (!stored.has(key)) throw new Error("Object missing");
+      return Buffer.from("candidate");
+    },
+    async delete(key) { stored.delete(key); }
+  };
+  const base = createRegistry(
+    [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+    async () => { throw new Error("Unbound registry"); }
+  );
+  const scoped = (objectStore: ObjectStore): AgentToolRegistry => ({
+    ...base,
+    sourceObjectStore: store,
+    forDatabase: (_db, override) => scoped(override ?? store),
+    async run() {
+      await objectStore.put({
+        organizationId: "org", fileName: "candidate.dts",
+        contentType: "text/plain", bytes: Buffer.from("candidate")
+      });
+      return { summary: "Submitted for review", data: {}, citations: [] };
+    }
+  });
+  return { registry: scoped(store), stored };
 }
 
 function createAgentMetricsSpy() {
@@ -444,7 +485,11 @@ describe("agent orchestrator", () => {
 
   it("runToolCall rejects pending approval calls with an approval-required ApiError", async () => {
     const { db } = createMemoryDb();
-    const orchestrator = createAgentOrchestrator({ db });
+    const registry = createRegistry(
+      [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+      async () => ({ summary: "should not run", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
     const sessionId = await createTestSession(db);
     const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
@@ -633,7 +678,7 @@ describe("agent orchestrator", () => {
       [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
     );
-    registry.authorize.mockImplementationOnce(() => {
+    registry.authorize.mockImplementationOnce(() => undefined).mockImplementationOnce(() => {
       throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", { permission: "parameter:edit" });
     });
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
@@ -658,7 +703,7 @@ describe("agent orchestrator", () => {
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
 
-    expect(registry.authorize).toHaveBeenCalledTimes(1);
+    expect(registry.authorize).toHaveBeenCalledTimes(2);
     expect(registry.run).not.toHaveBeenCalled();
     expect(tables.approvals[0]).toMatchObject({ status: "pending", decided_by_user_id: null });
     expect(tables.toolCalls[0]).toMatchObject({ status: "pending_approval", error_message: null });
@@ -755,6 +800,55 @@ describe("agent orchestrator", () => {
       action: "approval-executed",
       targetType: "agent_tool_call"
     });
+  });
+
+  it("removes a prepared source object after confirmed outer approval rollback", async () => {
+    const { db } = createMemoryDb({ failAuditActions: ["approval-executed"] });
+    const { registry, stored } = createTrackedSourceRegistry();
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    const toolCall = await orchestrator.recordToolRequest({
+      auth: developmentAuthContext, requestId: "source-rollback", sessionId,
+      request: {
+        name: "action.submitParameterChange", label: "Submit parameter change",
+        payload: { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" }
+      }
+    });
+
+    await expect(orchestrator.approveToolCall({
+      auth: developmentAuthContext, requestId: "source-rollback-approve",
+      approvalId: toolCall.approvalId ?? "", reason: "Looks safe"
+    })).rejects.toThrow("Audit sink unavailable");
+    expect(stored.size).toBe(0);
+  });
+
+  it("retains a prepared source object when the outer commit result is unknown", async () => {
+    const { db } = createMemoryDb();
+    const { registry, stored } = createTrackedSourceRegistry();
+    const setup = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    const toolCall = await setup.recordToolRequest({
+      auth: developmentAuthContext, requestId: "source-commit", sessionId,
+      request: {
+        name: "action.submitParameterChange", label: "Submit parameter change",
+        payload: { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" }
+      }
+    });
+    const uncertain = new Error("Commit acknowledgement lost");
+    const uncertainDb: Database = {
+      query: db.query,
+      transaction: async (callback) => {
+        await db.transaction(callback);
+        throw uncertain;
+      }
+    };
+    const orchestrator = createAgentOrchestrator({ db: uncertainDb, toolRegistry: registry });
+
+    await expect(orchestrator.approveToolCall({
+      auth: developmentAuthContext, requestId: "source-commit-approve",
+      approvalId: toolCall.approvalId ?? "", reason: "Looks safe"
+    })).rejects.toBe(uncertain);
+    expect(stored.size).toBe(1);
   });
 
   it("rejectToolCall marks approval and tool rejected, then appends an assistant message", async () => {
@@ -1003,7 +1097,7 @@ describe("agent approval chain (beginApproval / resolveApproval)", () => {
       editedArgs: { ...mutatingPayload, targetValue: "7777" }
     });
 
-    expect(registry.authorize).toHaveBeenCalledTimes(1);
+    expect(registry.authorize).toHaveBeenCalledTimes(2);
     expect(registry.run).toHaveBeenCalledWith(
       "action.submitParameterChange",
       expect.anything(),

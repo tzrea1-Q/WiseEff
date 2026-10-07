@@ -17,6 +17,7 @@ const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).tra
 
 const relatedParameterPinSchema = z.object({
   kind: z.literal("canonical-pin"),
+  projectId: nonEmptyString,
   bindingId: nonEmptyString,
   definitionId: nonEmptyString.optional(),
   definitionRevisionId: nonEmptyString.optional()
@@ -32,6 +33,13 @@ function rejectMismatchedRelatedParameterPin(
       code: z.ZodIssueCode.custom,
       path: ["relatedParameterPin", "bindingId"],
       message: "relatedParameterPin.bindingId must match relatedParameterId."
+    });
+  }
+  if (value.relatedParameterId && !value.relatedParameterPin) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["relatedParameterPin"],
+      message: "relatedParameterId requires an explicitly project-scoped canonical relatedParameterPin."
     });
   }
 }

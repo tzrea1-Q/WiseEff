@@ -173,7 +173,9 @@ describe("parameter file routes", () => {
         fileName: "config.json",
         bytes
       },
-      { requestId: "test-request" }
+      { requestId: "test-request" },
+      undefined,
+      db
     );
   });
 
@@ -226,7 +228,7 @@ describe("parameter file routes", () => {
     expect(conflictService.resolveParameterFileConflict).toHaveBeenCalledWith(
       db,
       expect.any(Object),
-      { conflictId: "conflict-1", resolution: "file", reason: "keep file" },
+      { projectId: "project-1", conflictId: "conflict-1", resolution: "file", reason: "keep file" },
       { requestId: expect.any(String) }
     );
   });

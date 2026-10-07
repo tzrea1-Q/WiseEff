@@ -133,7 +133,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "KB-XREF-001",
     workflow: "J",
     title:
-      "An editor manages structural parameter-definition references on a knowledge entry (audited add/remove bound to the parameter_specs.id surrogate); the definition detail's related-knowledge list shows the published referencing entry while draft entries never appear there, and deprecating the definition keeps the knowledge-side chip with an honest deprecated badge.",
+      "An editor searches paged Catalog Definitions and manages exact Definition references with audited idempotent add/remove; related knowledge excludes draft and archived entries, both navigation directions preserve identity, and a legal same-Definition deprecated revision preserves its chip. Existing Spec history remains distinct and readable/removable, while new Spec references are refused.",
     required: true
   },
   {

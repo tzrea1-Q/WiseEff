@@ -1,3 +1,4 @@
+import { decodeCatalogCursor, encodeCatalogCursor, fingerprintCatalogQuery } from "../../catalog-kernel/runtime/cursors";
 import {
   catalogAcceptProposalRequestSchema,
   catalogContinueReplacementRequestSchema,
@@ -94,6 +95,7 @@ import {
   idempotencyKeyHeader,
   ifMatchHeader,
   parseEtagVersion,
+  queryValue,
   stripSpoofHeaders,
   unquoteEtag,
 } from "./query";
@@ -253,11 +255,13 @@ async function resolveDestinationModuleId(
     readonly organizationId: string;
     readonly subjectKind: CatalogSubjectKind;
     readonly placement: PlacementIntent;
+    readonly destinationModuleId?: string;
   },
 ): Promise<string | null> {
   if (ports.resolveDestinationModuleId) {
     return ports.resolveDestinationModuleId(input);
   }
+  if (input.destinationModuleId !== undefined) return null;
   return scope.defaultDestinationModuleId || null;
 }
 
@@ -539,6 +543,7 @@ function placementFromResult(
 ): RegistrationRecord["placement"] {
   return {
     id: result.placementId,
+    moduleId: result.moduleId,
     displayName: result.moduleId ?? result.placementId,
     parentPlacementId: null,
   };
@@ -580,6 +585,7 @@ async function handleCreateRegistration(
     organizationId,
     subjectKind,
     placement,
+    destinationModuleId: parsed.data.destinationModuleId,
   });
   if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
   const command: RegistrationCommand = {
@@ -680,12 +686,20 @@ async function handleUpdatePlacement(
     registrationId,
   });
   if (!existing) return notFound(request.requestId);
+  const offered = ifMatchHeader(request.headers) ?? "";
+  const prefix = `${existing.placement.id}:`;
+  const token = unquoteEtag(offered);
+  const expectedPlacementVersion = token.startsWith(prefix) ? token.slice(prefix.length) : "";
+  if (!/^\d+$/.test(expectedPlacementVersion) || offered !== placementEtag(existing.placement.id, expectedPlacementVersion)) {
+    return revisionConflict(request.requestId);
+  }
   const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
   if (!subjectKind) return validationFailed(request.requestId, "subjectId");
   const destinationModuleId = await resolveDestinationModuleId(ports, scope, {
     organizationId,
     subjectKind,
     placement,
+    destinationModuleId: parsed.data.destinationModuleId,
   });
   if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
   const command: RegistrationCommand = {
@@ -694,6 +708,7 @@ async function handleUpdatePlacement(
     registrationId,
     expectedRelease: pin.pin,
     destinationModuleId,
+    expectedPlacementVersion,
     idempotencyKey,
     context,
   };
@@ -704,7 +719,7 @@ async function handleUpdatePlacement(
     body: { item: mapPlacement(placementDto) },
     requestId: request.requestId,
     catalogReleaseId: result.value.release.id,
-    etag: placementEtag(result.value.placementId),
+    etag: placementEtag(result.value.placementId, result.value.placementVersion),
   });
 }
 
@@ -717,9 +732,38 @@ async function handleListRegistrations(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
-  const items = await ports.listRegistrations(queryScope(scope, request, pin.pin));
+  const offeredRelease = queryValue(request.query, "catalogReleaseId");
+  if (offeredRelease !== undefined && offeredRelease !== pin.pin.id) {
+    return releaseDrift(request.requestId, offeredRelease, pin.pin.id);
+  }
+  const rawLimit = queryValue(request.query, "limit");
+  const limit = rawLimit === undefined ? undefined : Number(rawLimit);
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)) {
+    return validationFailed(request.requestId, "limit");
+  }
+  const query = queryScope(scope, request, pin.pin);
+  const queryFingerprint = fingerprintCatalogQuery({ route: "catalog.listRegistrations", organizationId: query.organizationId, principalId: scope.principalId });
+  const offeredCursor = queryValue(request.query, "cursor");
+  let cursor: string | undefined;
+  if (offeredCursor !== undefined) {
+    const decoded = decodeCatalogCursor(offeredCursor);
+    if ("malformed" in decoded || decoded.queryFingerprint !== queryFingerprint || decoded.last.length !== 1
+      || typeof decoded.last[0] !== "string" || !decoded.last[0].trim()) {
+      return validationFailed(request.requestId, "cursor");
+    }
+    if (decoded.releaseId !== pin.pin.id || decoded.digest !== pin.pin.digest) {
+      return releaseDrift(request.requestId, decoded.releaseId, pin.pin.id);
+    }
+    cursor = decoded.last[0];
+  }
+  const page = await ports.listRegistrations({ ...query, limit, cursor });
+  const nextCursor = page.nextCursor === null ? null : encodeCatalogCursor({
+    releaseId: pin.pin.id, digest: pin.pin.digest, queryFingerprint, last: [page.nextCursor],
+  });
   return catalogGovernanceOk({
-    body: listEnvelope(items.map(mapRegistrationRecord), pin.pin.id, "no-registrations"),
+    body: { items: page.items.map(mapRegistrationRecord), totalCount: page.totalCount, nextCursor,
+      hasMore: nextCursor !== null, catalogReleaseId: pin.pin.id,
+      ...(page.emptyReason ? { emptyReason: page.emptyReason } : {}) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
   });
@@ -740,7 +784,7 @@ async function handleGetRegistration(
   });
   if (!record) return notFound(request.requestId);
   return catalogGovernanceOk({
-    body: { item: mapRegistrationRecord(record) },
+    body: { item: mapRegistrationRecord({ ...record, impact: scope.canMutateOrganization ? record.impact : undefined }) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
     etag: registrationEtag(record),
@@ -765,7 +809,7 @@ async function handleGetPlacement(
     body: { item: mapPlacement(placement) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
-    etag: placementEtag(placement.id),
+    etag: placementEtag(placement.id, placement.version),
   });
 }
 
@@ -1462,7 +1506,7 @@ export async function handleCatalogGovernance(
   try {
   switch (matched.id) {
     case "catalog.listRegistrations":
-      return handleListRegistrations(ports, auth.scope, scopedRequest);
+      return await handleListRegistrations(ports, auth.scope, scopedRequest);
     case "catalog.createRegistration":
       return handleCreateRegistration(ports, auth.scope, scopedRequest);
     case "catalog.getRegistration":

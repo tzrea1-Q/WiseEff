@@ -3,9 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { reducer } from "@/application/state/appState";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import { projectBindingDtoSchema } from "@wiseeff/dto-schemas";
 import { initialState } from "./mockData";
 import {
   createTestAuthClient,
+  createTestAppPorts,
   createTestDebuggingGateway,
   createTestLogAnalysisRepository,
   createTestParameterRepository,
@@ -46,7 +50,8 @@ function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): Lo
   });
 }
 
-function renderApiLogs(repository = createLogRepository(), initialPath = "/logs") {
+function renderApiLogs(repository = createLogRepository(), initialPath = "/logs", parameters = createTestParameterRepository(),
+  catalog?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">) {
   renderApp({
     path: initialPath,
     initialAppState: userState,
@@ -55,7 +60,8 @@ function renderApiLogs(repository = createLogRepository(), initialPath = "/logs"
       authClient: createAuthClient(),
       debuggingGateway: createTestDebuggingGateway(),
       logAnalysisRepository: repository,
-      parameterRepository: createTestParameterRepository()
+      parameterRepository: parameters,
+      ...(catalog ? { parameterCatalogRepository: { ...createTestAppPorts().parameterCatalogRepository, ...catalog } } : {})
     }
   });
   return repository;
@@ -95,6 +101,16 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+// Public ProjectBindingDto fixture: validate the producer shape, without a legacy ParameterRecord.
+const publicBinding = projectBindingDtoSchema.parse({
+  id: "binding-current", projectId: "canonical-project", parameterSpecId: "definition-current",
+  parameterSpecVersionId: "definition-revision-current", definitionId: "definition-current",
+  effectiveRevisionId: "definition-revision-current", currentValueId: "value-current",
+  propertyKey: "iin_max", driverModule: "Configuration", logicalNodeId: null, instanceName: null, locator: "/limit",
+  effectiveValue: { kind: "json", value: 36.5 }, rawValue: "36.5\n", schemaState: "valid", policyState: "not_applicable",
+  moduleId: "module-current", displayName: "Canonical current parameter", description: null, documentation: null
+});
 
 afterEach(() => {
   cleanup();
@@ -195,6 +211,110 @@ describe("LogsPage api upload wiring", () => {
         logDomainId: "domain-charging"
       })
     );
+  });
+
+  it("uploads the exact selected project Binding and Definition revision, excluding foreign and incomplete pins", async () => {
+    const project = { id: "canonical-project", code: "CAN", name: "Canonical project" };
+    const binding = publicBinding;
+    const parameters = createTestParameterRepository({
+      listProjects: vi.fn().mockResolvedValue([project])
+    });
+    const listProtectedProjectBindings = vi.fn().mockResolvedValue({ items: [binding,
+      { ...binding, displayName: "Foreign parameter", projectId: "foreign-project", id: "binding-foreign" },
+      { ...binding, displayName: "Incomplete parameter", id: "binding-incomplete", currentValueId: undefined }] });
+    const repository = renderApiLogs(createLogRepository(), "/logs", parameters, { listProtectedProjectBindings });
+    await waitForApiRuntime(repository);
+    // App hydration uses the legacy reader; the picker must not call it again.
+    vi.mocked(parameters.listParameters).mockClear();
+    openUploadDialog();
+    await screen.findByRole("option", { name: "CAN · Canonical project" });
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
+    await screen.findByRole("option", { name: "Canonical current parameter · /limit · binding-current" });
+    expect(listProtectedProjectBindings).toHaveBeenCalledWith(project.id);
+    expect(parameters.listParameters).not.toHaveBeenCalled();
+    expect(screen.queryByRole("option", { name: /Foreign parameter|Incomplete parameter/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("项目参数"), { target: { value: binding.id } });
+    vi.useFakeTimers();
+    const file = new File(["line"], "canonical.log", { type: "text/plain" });
+    chooseFile(file);
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "",
+      relatedParameterPin: { kind: "canonical-pin", projectId: project.id, bindingId: binding.id,
+        definitionRevisionId: binding.effectiveRevisionId } });
+  });
+
+  it("blocks a requested association after a project read failure and allows explicit unassociated upload", async () => {
+    const project = { id: "unavailable-project", code: "ERR", name: "Unavailable project" };
+    const parameters = createTestParameterRepository({ listProjects: vi.fn().mockResolvedValue([project]) });
+    const repository = renderApiLogs(createLogRepository(), "/logs", parameters, {
+      listProtectedProjectBindings: vi.fn().mockRejectedValue(new Error("Parameter reader unavailable")) });
+    await waitForApiRuntime(repository);
+    openUploadDialog();
+    await screen.findByRole("option", { name: "ERR · Unavailable project" });
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
+    await screen.findByRole("button", { name: "重试加载关联参数" });
+    vi.useFakeTimers();
+    const file = new File(["line"], "unassociated.log", { type: "text/plain" });
+    chooseFile(file);
+    await act(async () => { vi.advanceTimersByTime(250); });
+    expect(screen.getByRole("button", { name: "确认上传" })).toBeDisabled();
+    expect(repository.uploadLog).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: "" } });
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "" });
+  });
+
+  it("ignores a delayed parameter response after switching projects", async () => {
+    const projects = [{ id: "project-a", code: "A", name: "First project" },
+      { id: "project-b", code: "B", name: "Second project" }];
+    const first = { ...publicBinding, projectId: "project-a", displayName: "Old project parameter",
+      id: "binding-a", effectiveRevisionId: "revision-a", currentValueId: "value-a" };
+    const second = { ...first, projectId: "project-b", displayName: "Selected project parameter",
+      id: "binding-b", effectiveRevisionId: "revision-b", currentValueId: "value-b" };
+    const parameters = createTestParameterRepository({ listProjects: vi.fn().mockResolvedValue(projects) });
+    const delayed = deferred<CatalogProtectedProjectBindingListResponse>();
+    const listProtectedProjectBindings = vi.fn((projectId: string) =>
+      projectId === "project-a" ? delayed.promise : Promise.resolve({ items: [second] }));
+    const repository = renderApiLogs(createLogRepository(), "/logs", parameters, { listProtectedProjectBindings });
+    await waitForApiRuntime(repository);
+    openUploadDialog();
+    await screen.findByRole("option", { name: "A · First project" });
+    const projectSelect = screen.getByLabelText("关联参数的项目（可选）");
+    fireEvent.change(projectSelect, { target: { value: "project-a" } });
+    fireEvent.change(projectSelect, { target: { value: "project-b" } });
+    await screen.findByRole("option", { name: "Selected project parameter · /limit · binding-b" });
+    await act(async () => { delayed.resolve({ items: [first] }); await delayed.promise; });
+    expect(screen.queryByRole("option", { name: /Old project parameter/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("项目参数"), { target: { value: "binding-b" } });
+    vi.useFakeTimers();
+    chooseFile(new File(["line"], "second-project.log", { type: "text/plain" }));
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ relatedParameterPin: {
+      kind: "canonical-pin", projectId: "project-b", bindingId: "binding-b", definitionRevisionId: "revision-b"
+    } }));
+  });
+
+  it("refuses a requested association when the protected reader is missing, without falling back to legacy rows", async () => {
+    const project = { id: "canonical-project", code: "CAN", name: "Canonical project" };
+    const parameters = createTestParameterRepository({ listProjects: vi.fn().mockResolvedValue([project]) });
+    const repository = renderApiLogs(createLogRepository(), "/logs", parameters, { listProtectedProjectBindings: undefined });
+    await waitForApiRuntime(repository);
+    vi.mocked(parameters.listParameters).mockClear();
+    openUploadDialog();
+    await screen.findByRole("option", { name: "CAN · Canonical project" });
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
+    await screen.findByRole("button", { name: "重试加载关联参数" });
+    expect(screen.getByRole("alert")).toHaveTextContent("加载项目参数失败；请重试或取消关联。");
+    expect(parameters.listParameters).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    const file = new File(["line"], "reader-missing.log", { type: "text/plain" });
+    chooseFile(file);
+    await act(async () => { vi.advanceTimersByTime(250); });
+    expect(screen.getByRole("button", { name: "确认上传" })).toBeDisabled();
+    expect(repository.uploadLog).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: "" } });
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "" });
   });
 
   it("allows unsupported extensions to reach the runtime", async () => {

@@ -16,8 +16,11 @@ import { insertParameterFileCandidate } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract/index";
 import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "./sourceVersion";
+import { loadCanonicalBindingPins } from "../parameter-bindings/drafts/repository";
+import { requireApprovedParameterInvocation } from "../agent/approvedParameterInvocation";
 import { discoverCurrentSourceRevisionPins, discoverDeletedSourceRevisionPins, loadDeletedSourceAnchors, loadSourceBindingCohort, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
   type CanonicalValueSourcePin, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
+import type { ConfigSetRole } from "./types";
 export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
 
 export type CanonicalSourceManifest = CanonicalValueSourcePin & {
@@ -26,6 +29,34 @@ export type CanonicalSourceManifest = CanonicalValueSourcePin & {
     format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number;
   }>;
 };
+
+export type CanonicalSourceCurrentMember = {
+  id: string;
+  current_version_id: string | null;
+  config_set_role: string | null;
+  config_set_sort_order: number;
+  format: string;
+};
+
+/** Map only the DTS revision include role to its persisted config-set role. */
+export function canonicalSourceConfigSetRole(role: string): ConfigSetRole {
+  if (role === "include") return "misc";
+  if (role === "base" || role === "overlay" || role === "charging" || role === "thermal" || role === "misc") {
+    return role;
+  }
+  throw new ApiError("CONFLICT", "Canonical source member has an unsupported role.", { role });
+}
+
+export function canonicalSourceMemberMatchesCurrentFile(
+  member: Pick<CanonicalSourceManifest["members"][number], "fileId" | "fileVersionId" | "role" | "sortOrder" | "format">,
+  current: CanonicalSourceCurrentMember,
+): boolean {
+  return member.fileId === current.id
+    && member.fileVersionId === current.current_version_id
+    && canonicalSourceConfigSetRole(member.role) === current.config_set_role
+    && member.sortOrder === current.config_set_sort_order
+    && member.format === current.format;
+}
 
 /** Fence the whole current cohort before any Binding lock or authoritative source read. */
 export async function lockCanonicalSourceCohort(db: Queryable, source: CanonicalValueSourcePin) {
@@ -262,8 +293,13 @@ export async function assertPinnedCanonicalSensitiveNodeWriteAllowed(
   }
 }
 
-/** Repeat the immutable-base patch proof at preparation and at actual apply. */
-export async function validatePinnedDtsSourceChange(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+/** Return the exact target token after proving every non-target DTS semantic is unchanged. */
+export async function readPinnedDtsSourceChange(
+  db: Queryable,
+  manifest: CanonicalSourceManifest,
+  beforeText: string,
+  afterText: string,
+) {
   const row = await loadPinnedDtsProperty(db, manifest);
   const before = parseDts(beforeText);
   const properties = dtsProperties(before);
@@ -274,7 +310,97 @@ export async function validatePinnedDtsSourceChange(db: Queryable, manifest: Can
   if (!target || dtsNonTargetShape(before, targetIndex) !== dtsNonTargetShape(after, targetIndex)) {
     throw new ApiError("CONFLICT", "DTS patch changed non-target semantics.");
   }
-  return parseDtsValue(target.name, target.rawText).value;
+  return { rawText: target.rawText, value: parseDtsValue(target.name, target.rawText).value };
+}
+
+/** Rebuild a multi-property candidate from exact pinned spans before exposing its targets. */
+export async function readPinnedDtsSourceBatchChanges(
+  db: Queryable,
+  manifests: readonly CanonicalSourceManifest[],
+  beforeText: string,
+  afterText: string,
+) {
+  const propertyPaths = (document: DtsDocument) => {
+    const properties: Array<{ property: DtsPropertyCst; path: number[] }> = [];
+    const visit = (node: DtsDocument["topLevel"][number], path: number[]) => {
+      node.children.forEach((child, index) => {
+        if (child.kind === "property") properties.push({ property: child, path: [...path, index] });
+        else if (child.kind === "node") visit(child, [...path, index]);
+      });
+    };
+    document.topLevel.forEach((node, index) => visit(node, [index]));
+    return properties;
+  };
+  const statementAt = (document: DtsDocument, path: readonly number[]) => {
+    let statement: DtsDocument["topLevel"][number] | DtsDocument["topLevel"][number]["children"][number] | undefined = document.topLevel[path[0]!];
+    for (const index of path.slice(1)) {
+      if (statement?.kind !== "node") return undefined;
+      statement = statement.children[index];
+    }
+    return statement;
+  };
+  const beforeProperties = propertyPaths(parseDts(beforeText));
+  const after = parseDts(afterText);
+  const propertyIndex = new Map(beforeProperties.map(({ property }, index) =>
+    [`${property.name}:${property.span.start}:${property.span.end}`, index] as const));
+  const targets: Array<{
+    sourcePinId: string;
+    index: number;
+    path: number[];
+    row: Awaited<ReturnType<typeof loadPinnedDtsProperty>>;
+    action: "set" | "delete";
+    rawText?: string;
+    value?: ReturnType<typeof parseDtsValue>["value"];
+  }> = [];
+  for (const manifest of manifests) {
+    const row = await loadPinnedDtsProperty(db, manifest);
+    const index = propertyIndex.get(`${row.property_name}:${row.start_offset}:${row.end_offset}`);
+    if (index === undefined || beforeProperties[index]!.property.rawText !== row.raw_text) {
+      throw new ApiError("CONFLICT", "DTS batch has a stale property pin.");
+    }
+    const path = beforeProperties[index]!.path;
+    const statement = statementAt(after, path);
+    if (!statement || (statement.kind !== "property" && statement.kind !== "delete-property")
+      || statement.name !== row.property_name) {
+      throw new ApiError("CONFLICT", "DTS batch changed its target structure.");
+    }
+    targets.push({ sourcePinId: manifest.sourcePinId, index, path, row,
+      action: statement.kind === "delete-property" ? "delete" as const : "set" as const,
+      ...(statement.kind === "property" ? {
+        rawText: statement.rawText,
+        value: parseDtsValue(row.property_name, statement.rawText).value
+      } : {}) });
+  }
+  if (new Set(targets.map((target) => target.index)).size !== targets.length) {
+    throw new ApiError("CONFLICT", "DTS batch has duplicate target properties.");
+  }
+  let reconstructed = beforeText;
+  // ponytail: reparsing for each target costs O(targets × file size); batch CST edits if large cohorts need it.
+  for (const target of targets.filter((entry) => entry.action === "delete" || beforeProperties[entry.index]!.property.rawText !== entry.rawText)
+    .sort((left, right) => left.index - right.index)) {
+    const current = statementAt(parseDts(reconstructed), target.path);
+    if (!current || current.kind !== "property" || current.name !== target.row.property_name) {
+      throw new ApiError("CONFLICT", "DTS batch target moved during reconstruction.");
+    }
+    reconstructed = ensureOverlayProperty(reconstructed, {
+      propertyKey: target.row.property_name,
+      rawText: target.action === "delete" ? "" : renderDtsValue(target.value!),
+      action: target.action,
+      targetRef: target.row.node_locator,
+      expectedChecksum: createHash("sha256").update(reconstructed).digest("hex"),
+      occurrenceSpan: { start: current.span.start, end: current.span.end },
+    });
+  }
+  if (reconstructed !== afterText) {
+    throw new ApiError("CONFLICT", "DTS batch changed bytes outside its pinned properties.");
+  }
+  return new Map(targets.filter((entry) => entry.action === "delete" || beforeProperties[entry.index]!.property.rawText !== entry.rawText)
+    .map((entry) => [entry.sourcePinId, { action: entry.action, rawText: entry.rawText, value: entry.value }] as const));
+}
+
+/** Repeat the immutable-base patch proof at preparation and at actual apply. */
+export async function validatePinnedDtsSourceChange(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+  return (await readPinnedDtsSourceChange(db, manifest, beforeText, afterText)).value;
 }
 
 /** Reproduce the exact pinned-span removal, preserving all non-target bytes. */
@@ -307,9 +433,39 @@ export async function preparePinnedSourceChange(
 ) {
   try {
   const security = { invocation: input.invocation, requestId: input.requestId, refusalSink: input.refusalSink } satisfies CanonicalSourceSecurityContext;
-  const invocation = await requireCanonicalUserInvocation(auth, security, {
-    projectId: input.projectId, operation: "canonical source prepare", targetType: "project-parameter-binding", targetId: input.bindingId
-  });
+  const operation = { projectId: input.projectId, operation: "canonical source prepare", targetType: "project-parameter-binding", targetId: input.bindingId };
+  let invocation: TrustedInvocationContext;
+  let approvedAgent: Awaited<ReturnType<typeof requireApprovedParameterInvocation>> | undefined;
+  if (!input.requestId.trim()) {
+    throw new TrustedInvocationContextError("canonical source prepare requires a non-empty requestId");
+  }
+  assertTrustedRefusalAuditSink(input.refusalSink);
+  if (input.invocation.initiator === "agent" && input.action === "delete") {
+    // The approved Agent payload has no delete pin; never let a set approval
+    // authorize a different source operation.
+    await requireCanonicalUserInvocation(auth, security, operation);
+    throw new TrustedInvocationContextError("approved Agent source deletion is not supported");
+  }
+  if (input.invocation.initiator === "agent") {
+    try {
+      approvedAgent = await requireApprovedParameterInvocation(db, auth, {
+        invocation: input.invocation,
+        projectId: input.projectId,
+        bindingId: input.bindingId,
+        target: input.target,
+        expectedValueId: input.expectedValueId
+      });
+      invocation = approvedAgent.invocation;
+    } catch (error) {
+      if (!(error instanceof TrustedInvocationContextError)) throw error;
+      // Keep invalid or unapproved Agent calls on the existing durable refusal
+      // path; only the helper-proven Agent may reach source preparation.
+      await requireCanonicalUserInvocation(auth, security, operation);
+      throw error;
+    }
+  } else {
+    invocation = await requireCanonicalUserInvocation(auth, security, operation);
+  }
   if (!canEditParameters(auth, input.projectId)) {
     await recordCanonicalPermissionRefusal(security, {
       projectId: input.projectId, operation: "canonical source prepare", targetType: "project-parameter-binding", targetId: input.bindingId,
@@ -326,22 +482,58 @@ export async function preparePinnedSourceChange(
   const sourceIdentity = await loadOwnedProjectValueSourcePin(db,{ organizationId: auth.organization.id,projectId: input.projectId,
     bindingId: input.bindingId,projectValueId: input.expectedValueId });
   if (!sourceIdentity) throw new ApiError("CONFLICT", "Source value has no exact owned pin.");
+  if (input.invocation.initiator === "agent") {
+    if (!approvedAgent) throw new TrustedInvocationContextError("approved Agent proof is missing");
+    const currentPins = await loadCanonicalBindingPins(db, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      bindingId: input.bindingId
+    });
+    const pins = approvedAgent.pins;
+    if (!currentPins || currentPins.organizationId !== auth.organization.id
+      || currentPins.projectId !== input.projectId
+      || currentPins.bindingId !== input.bindingId
+      || currentPins.currentValueId !== input.expectedValueId
+      || currentPins.definitionId !== pins.definitionId
+      || currentPins.definitionRevisionId !== pins.definitionRevisionId
+      || currentPins.catalogReleaseId !== pins.catalogReleaseId
+      || currentPins.configRevisionId !== pins.configRevisionId
+      || currentPins.sourceRef !== pins.sourceRef
+      || currentPins.sourceFormat !== pins.sourceFormat
+      || sourceIdentity.sourcePinId !== pins.sourcePinId
+      || sourceIdentity.format !== pins.sourceFormat) {
+      throw new ApiError("CONFLICT", "Approved Agent source pins are stale or inconsistent.", { reason: "approved-source-pin-mismatch" });
+    }
+  }
   await lockCanonicalSourceCohort(db,sourceIdentity);
   const { manifest, files } = await loadCanonicalSourceSnapshot(db, objectStore, {
     organizationId: auth.organization.id, projectId: input.projectId, bindingId: input.bindingId, projectValueId: input.expectedValueId,
   });
   if (manifest.format !== input.target.format) throw new ApiError("VALIDATION_FAILED", "Source target format disagrees with its pin.");
+  if (input.invocation.initiator === "agent" && (!approvedAgent || approvedAgent.pins.projectId !== manifest.projectId
+    || approvedAgent.pins.bindingId !== manifest.bindingId
+    || approvedAgent.pins.expectedValueId !== manifest.projectValueId
+    || approvedAgent.pins.configRevisionId !== manifest.configRevisionId
+    || approvedAgent.pins.sourcePinId !== manifest.sourcePinId
+    || approvedAgent.pins.sourceFormat !== manifest.format)) {
+    throw new ApiError("CONFLICT", "Approved Agent source manifest is stale or inconsistent.", { reason: "approved-source-pin-mismatch" });
+  }
   await assertPinnedCanonicalSensitiveNodeWriteAllowed(db, auth, manifest, security);
-  const currentMembers = await db.query<{ id: string; current_version_id: string; config_set_role: string; config_set_sort_order: number; format: string }>(
+  const currentMembers = await db.query<CanonicalSourceCurrentMember>(
     `select id,current_version_id,config_set_role,config_set_sort_order,format from project_parameter_files where config_set_id=$1 order by id for update nowait`, [manifest.configSetId],
   );
   if (currentMembers.rows.length !== manifest.members.length || currentMembers.rows.some((current) =>
-    !manifest.members.some((member) => member.fileId === current.id && member.fileVersionId === current.current_version_id
-      && member.role === current.config_set_role && member.sortOrder === current.config_set_sort_order && member.format === current.format))) {
+    !manifest.members.some((member) => canonicalSourceMemberMatchesCurrentFile(member, current)))) {
     throw new ApiError("CONFLICT", "Configuration membership or file versions changed; prepare from the current source.");
   }
   const bindings = await loadCanonicalSourceCohort(db, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: manifest.configSetId });
-  if (!bindings.some((entry) => entry.bindingId === input.bindingId && entry.oldValueId === input.expectedValueId && entry.sourcePinId === manifest.sourcePinId)) {
+  const targetBinding = bindings.find((entry) => entry.bindingId === input.bindingId);
+  if (!targetBinding || targetBinding.oldValueId !== input.expectedValueId || targetBinding.sourcePinId !== manifest.sourcePinId
+    || (input.invocation.initiator === "agent" && (!approvedAgent
+      || targetBinding.definitionId !== approvedAgent.pins.definitionId
+      || targetBinding.effectiveRevisionId !== approvedAgent.pins.definitionRevisionId
+      || targetBinding.catalogReleaseId !== approvedAgent.pins.catalogReleaseId
+      || targetBinding.configSetId !== manifest.configSetId))) {
     throw new ApiError("CONFLICT", "Source cohort changed during preparation.");
   }
   const sourceIndex = manifest.members.findIndex((member) => member.fileId === manifest.fileId && member.fileVersionId === manifest.fileVersionId);

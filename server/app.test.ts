@@ -1,6 +1,7 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWiseEffServer } from "./app";
+import { CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES, DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES,
+  createWiseEffServer, resolveRouteBodyLimit } from "./app";
 import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
 import { resolveXiaozeLlmConfig } from "./config/xiaozeLlmConfig";
@@ -13,7 +14,8 @@ import {
 import { createMetricsRegistry } from "./observability/metrics";
 import type { AuthContext } from "./modules/auth/types";
 import type { Database, QueryResult } from "./shared/database/client";
-import { createHttpServer } from "./shared/http/server";
+import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
+import { MAX_PARAMETER_SOURCE_BYTES } from "./modules/parameter-files/jsonSource";
 import { requestJson } from "./test/testClient";
 
 type QueryCall = {
@@ -415,6 +417,33 @@ afterEach(() => {
 });
 
 describe("WiseEff API", () => {
+  it("bounds only the exact manual sync preparation POST and admits a 2 MiB source envelope", async () => {
+    const path = "/api/v1/projects/project-1/parameter-files/file-1/source-manual-sync/prepare";
+    expect(resolveRouteBodyLimit({ method: "POST", path }))
+      .toBe(CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES);
+    expect(Number.isFinite(CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES)).toBe(true);
+    for (const alias of [`${path}/`, path.replace("/parameter-files/", "//parameter-files/")]) {
+      expect(resolveRouteBodyLimit({ method: "POST", path: alias }))
+        .toBe(CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES);
+    }
+    for (const input of [
+      { method: "GET", path }, { method: "POST", path: `${path}/extra` },
+      { method: "POST", path: "/api/v1/projects/project-1/parameter-files/file-1/sync" }
+    ]) expect(resolveRouteBodyLimit(input)).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+    for (const debugPath of ["/api/v1/debugging/admin/catalog/import",
+      "/api/v1/debugging/admin/catalog/import-preview"]) {
+      expect(resolveRouteBodyLimit({ method: "POST", path: debugPath }))
+        .toBe(DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES);
+    }
+    const body = JSON.stringify({ contentBase64: Buffer.alloc(MAX_PARAMETER_SOURCE_BYTES).toString("base64"),
+      expectedCurrentVersionId: "v".repeat(36), expectedWorkflowProofToken: "p".repeat(128) });
+    expect(Buffer.byteLength(body)).toBeLessThan(CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES);
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      createWiseEffServer(), path, { method: "POST", body });
+    expect(response).toMatchObject({ status: 500, body: { error: {
+      code: "INTERNAL_ERROR", message: "Database adapter is required for parameter file routes."
+    } } });
+  });
   it("serves the health endpoint", async () => {
     const response = await requestJson(createWiseEffServer(), "/api/v1/health");
 

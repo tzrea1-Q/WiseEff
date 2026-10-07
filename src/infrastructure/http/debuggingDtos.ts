@@ -111,7 +111,23 @@ export type NodeOperationDto = {
   previousValueDigest?: string | null;
   readbackValueDigest?: string | null;
   valuePreview?: string | null;
+  canonicalPin?: CanonicalDebugPin;
 } & CanonicalDebugPin;
+
+export type DebugSnapshotEntryDto = {
+  parameterId?: string;
+  nodeId?: string;
+  protocol?: DebugConnectionProtocol;
+  nodePath?: string;
+  previousValue?: string;
+  targetValue?: string;
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  previousDigest?: string;
+  targetDigest?: string;
+  canonicalPin?: CanonicalDebugPin;
+};
 
 export type DebugSnapshotDto = {
   id: string;
@@ -119,6 +135,7 @@ export type DebugSnapshotDto = {
   status: "valid" | "rollback_pending" | "consumed" | "invalid";
   risk: "Low" | "Medium" | "High";
   createdAt: string;
+  entries?: DebugSnapshotEntryDto[];
 };
 
 const deviceStatusLabels: Record<DebugDeviceDto["status"], DeviceStatus> = {
@@ -195,8 +212,12 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter & 
     normalizationMode: valueMetadata.normalizationMode,
     maxValueBytes: valueMetadata.maxValueBytes ?? null,
     bindingId: dto.bindingId,
+    projectId: dto.projectId,
+    definitionId: dto.definitionId,
     effectiveRevisionId: dto.effectiveRevisionId,
     currentValueId: dto.currentValueId,
+    sourcePinId: dto.sourcePinId,
+    configRevisionId: dto.configRevisionId,
     protectedReferenceKind: dto.protectedReferenceKind,
     protectedReferenceReason: dto.protectedReferenceReason
   };
@@ -257,8 +278,12 @@ export function nodeOperationFromDto(dto: NodeOperationDto): NodeOperationSnapsh
     readbackValueDigest: dto.readbackValueDigest ?? undefined,
     valuePreview: dto.valuePreview ?? undefined,
     bindingId: dto.bindingId,
+    projectId: dto.projectId,
+    definitionId: dto.definitionId,
     effectiveRevisionId: dto.effectiveRevisionId,
     currentValueId: dto.currentValueId,
+    sourcePinId: dto.sourcePinId,
+    configRevisionId: dto.configRevisionId,
     protectedReferenceKind: dto.protectedReferenceKind,
     protectedReferenceReason: dto.protectedReferenceReason
   };
@@ -335,6 +360,17 @@ export type DebugRuntimeNodeDto = {
   valueFormat?: DebugValueFormat;
   normalizationMode?: DebugNormalizationMode;
   maxValueBytes?: number | null;
+  canonicalBinding?: {
+    projectId: string;
+    bindingId: string;
+    expectedEffectiveRevisionId?: string;
+    expectedCurrentValueId?: string;
+    sourcePinId?: string;
+  } | null;
+  projectId?: string;
+  definitionId?: string;
+  sourcePinId?: string;
+  configRevisionId?: string;
 } & CanonicalDebugPin;
 
 export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): DebugParameter & CanonicalDebugPin {
@@ -365,8 +401,12 @@ export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): Debu
     normalizationMode: valueMetadata.normalizationMode,
     maxValueBytes: valueMetadata.maxValueBytes ?? null,
     bindingId: dto.bindingId,
+    projectId: dto.projectId,
+    definitionId: dto.definitionId,
     effectiveRevisionId: dto.effectiveRevisionId,
     currentValueId: dto.currentValueId,
+    sourcePinId: dto.sourcePinId,
+    configRevisionId: dto.configRevisionId,
     protectedReferenceKind: dto.protectedReferenceKind,
     protectedReferenceReason: dto.protectedReferenceReason
   };

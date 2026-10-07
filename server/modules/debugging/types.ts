@@ -10,6 +10,7 @@ import type {
 } from "./status";
 import type { DebugReadbackOutcome, DebugWriteOutcome } from "./gateway";
 import type { DebugConnectionProtocol } from "./protocol";
+import type { CanonicalDebugPin } from "./canonicalProtectedReference";
 
 export const DEBUG_SESSION_KINDS = ["node", "parameter_reload"] as const;
 export type DebugSessionKind = (typeof DEBUG_SESSION_KINDS)[number];
@@ -111,6 +112,24 @@ export type DebugParameterRecord = {
   normalizationMode: DebugNormalizationMode;
   maxValueBytes: number | null;
   projectParameterBindingId: string | null;
+  canonicalBindingId?: string | null;
+  canonicalProjectId?: string | null;
+  canonicalBinding?: {
+    projectId: string;
+    bindingId: string;
+    expectedEffectiveRevisionId?: string;
+    expectedCurrentValueId?: string;
+    sourcePinId?: string;
+  } | null;
+  bindingId?: string;
+  projectId?: string;
+  definitionId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
+  sourcePinId?: string;
+  configRevisionId?: string;
+  protectedReferenceKind?: "canonical-pin" | "typed-block";
+  protectedReferenceReason?: string;
 };
 
 export type DebugParameterNodeBindingRecord = {
@@ -178,6 +197,8 @@ export type DebugSnapshotEntry = {
   normalizationMode?: DebugNormalizationMode;
   previousDigest?: string;
   targetDigest?: string;
+  /** Exact canonical association captured at operation time, never a latest-value alias. */
+  canonicalPin?: CanonicalDebugPin;
 };
 
 export type DebugSnapshotRecord = {
@@ -222,6 +243,9 @@ export type NodeOperationRecord = {
   readbackValueDigest: string | null;
   valuePreview: string | null;
   projectParameterBindingId: string | null;
+  canonicalBindingId?: string | null;
+  canonicalProjectId?: string | null;
+  canonicalPin?: CanonicalDebugPin;
   bindingId?: string | null;
   effectiveRevisionId?: string | null;
   currentValueId?: string | null;
@@ -261,6 +285,8 @@ export type DebugNodeRecord = {
   archivedAt: string | null;
   archivedBy: string | null;
   archiveReason: string | null;
+  canonicalBindingId?: string | null;
+  canonicalProjectId?: string | null;
   createdAt: string;
   updatedAt: string;
 };

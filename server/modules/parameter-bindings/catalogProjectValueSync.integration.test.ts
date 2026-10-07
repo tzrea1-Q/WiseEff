@@ -46,11 +46,13 @@ import {
   saveCanonicalProjectValue,
   syncPublishedCatalogProjectValues,
   syncPublishedCatalogProjectValuesInTransaction,
+  listObservedProperties,
 } from "./catalogProjectValueSync";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { exportCanonicalBindingSource } from "./catalogProjectValueSync";
 import { uploadProjectParameterFile } from "../parameter-files/service";
+import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetService";
 import { preparePinnedSourceChange } from "../parameter-files/canonicalSource";
 import { commitCanonicalSourceRevision } from "../parameter-files/canonicalSourceCommit";
 import { catalogBindingExportDtoSchema } from "../contracts/dtoSchemas/parameterCatalog";
@@ -478,6 +480,79 @@ describe("published catalog project values", () => {
     })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "invalid-command" } });
     const afterImport = await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT });
     expect(afterImport[0]?.rawValue).toBe("<1000>");
+  }, 60_000);
+
+  it("materializes only approval-selected DTS property occurrences", async () => {
+    const projectId = `project-filter-${randomUUID()}`;
+    await pool.query(
+      `insert into projects(id,organization_id,name,code,status,initialization_status)
+       values ($1,$2,'Filtered source',$3,'active','initialized')`,
+      [projectId, ORG, `FILTER-${randomUUID().slice(0, 8)}`],
+    );
+    const configSet = await createConfigSet(root, auth, { projectId, name: "filter" });
+    const sourceText = `/dts-v1/;\n/ {\n\tcharger@0 { compatible = "acme,power"; iin_max = <1000>; };\n\tcharger@1 { compatible = "acme,power"; iin_max = <1100>; };\n};\n`;
+    const file = await uploadProjectParameterFile(root, objectStore, auth, {
+      projectId,
+      fileName: "filtered.dts",
+      bytes: Buffer.from(sourceText),
+    });
+    await addConfigSetFile(root, auth, {
+      configSetId: configSet.id,
+      fileId: file.file.id,
+      role: "base",
+      sortOrder: 0,
+    });
+    const revision = await ingestConfigRevision(root, {
+      organizationId: ORG,
+      projectId,
+      configSetId: configSet.id,
+      entryFile: "filtered.dts",
+      includeSearchPaths: ["."],
+      overlayOrder: [],
+      members: [{
+        fileId: file.file.id,
+        fileVersionId: file.version.id,
+        fileName: "filtered.dts",
+        role: "base",
+        sortOrder: 0,
+        content: sourceText,
+      }],
+    }, auth, { legacyProjection: "skip" });
+    const observed = (await listObservedProperties(asValueClient(pool), revision.id))
+      .filter((row) => row.propertyKey === "iin_max");
+    expect(observed).toHaveLength(2);
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Published fixture is unavailable");
+    const selected = observed[0]!;
+    const written = await withAuditedWrite(root, auth, { requestId: "req-filtered-sync" }, async (tx) => {
+      const count = await syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, {
+        organizationId: ORG,
+        projectId,
+        configSetId: configSet.id,
+        configRevisionId: revision.id,
+        propertyOccurrenceIds: [selected.propertyOccurrenceId],
+      });
+      return {
+        result: count,
+        audit: {
+          app: "parameters",
+          kind: "parameter-topology-governance",
+          action: "binding-edited",
+          severity: "Medium" as const,
+          projectId,
+          targetType: "dts-config-revision",
+          targetId: revision.id,
+          metadata: { written: count, configRevisionId: revision.id },
+        },
+      };
+    });
+    expect(written).toBe(1);
+    const pins = await pool.query<{ property_occurrence_id: string }>(
+      `select property_occurrence_id from parameter_catalog.project_value_source_pins
+       where organization_id=$1 and project_id=$2`,
+      [ORG, projectId],
+    );
+    expect(pins.rows).toEqual([{ property_occurrence_id: selected.propertyOccurrenceId }]);
   }, 60_000);
 
   it("prepares a server-owned exact DTS candidate without advancing source or value tips", async () => {

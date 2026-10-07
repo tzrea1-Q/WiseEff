@@ -67,6 +67,7 @@ export type ParameterAdminNextPageProps = {
   onNewProject?: () => void;
   /** Published knowledge referencing a definition (相关知识); absent without knowledge:view. */
   relatedKnowledge?: SpecRelatedKnowledgeSource;
+  definitionRelatedKnowledge?: SpecRelatedKnowledgeSource;
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
   sessionPermissions?: readonly string[] | null;
@@ -96,6 +97,7 @@ export function ParameterAdminNextPage({
   state,
   onNewProject,
   relatedKnowledge,
+  definitionRelatedKnowledge,
   runtime,
   catalogOrganizationId,
   sessionPermissions
@@ -162,6 +164,7 @@ export function ParameterAdminNextPage({
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
         currentPersonId={state?.currentUserId ?? ""}
+        relatedKnowledge={definitionRelatedKnowledge}
       />
     ) : undefined;
   const isConfigurationWorkbenchRoute =
@@ -216,6 +219,7 @@ export function ParameterAdminNextPage({
               dispatch={dispatch}
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
+              parameterCatalogRepository={runtime?.parameterCatalogRepository}
               onNewProject={onNewProject}
               parameterFileRepository={parameterFileRepository}
               dtsStructuredRepository={dtsStructuredRepository}
@@ -255,6 +259,13 @@ export function ParameterAdminNextPage({
                 search={search}
                 onNavigate={onNavigate}
                 catalog={runtime?.parameterCatalogRepository}
+                governance={runtime?.parameterCatalogGovernanceRepository}
+                organizationId={catalogOrganizationId}
+                actor={catalogActorForSession({
+                  roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
+                })}
+                sessionPermissions={sessionPermissions}
+                canonicalEnabled={runtimeMode === "api"}
               />
             ) : null}
           </>

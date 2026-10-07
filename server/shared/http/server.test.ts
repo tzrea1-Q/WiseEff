@@ -93,4 +93,28 @@ describe("createHttpServer", () => {
     expect(response.status).toBe(200);
     expect((seen.body as { payload: string }).payload.length).toBe(30 * 1024 * 1024);
   });
+
+  it("exposes ETag only to allowed CORS origins", async () => {
+    const baseUrl = await listen(
+      createHttpServer({
+        handle: async () => ({
+          status: 200,
+          body: { ok: true },
+          headers: { ETag: '"test-etag"' },
+        }),
+      }),
+    );
+
+    const allowed = await fetch(`${baseUrl}/api/v1/etag`, {
+      headers: { Origin: "http://localhost:5173" },
+    });
+    expect(allowed.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+    expect(allowed.headers.get("access-control-expose-headers")).toBe("ETag");
+
+    const disallowed = await fetch(`${baseUrl}/api/v1/etag`, {
+      headers: { Origin: "https://example.invalid" },
+    });
+    expect(disallowed.headers.get("access-control-allow-origin")).toBeNull();
+    expect(disallowed.headers.get("access-control-expose-headers")).toBeNull();
+  });
 });

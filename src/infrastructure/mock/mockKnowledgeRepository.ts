@@ -14,7 +14,9 @@ import type {
   KnowledgeRevision,
   KnowledgeSearchResult
 } from "@/domain/knowledge/types";
+import type { ParameterSpecReferenceLifecycle } from "@/domain/knowledge/types";
 import type { LogRecord } from "@/domain/prototype/types";
+import { activeDefinition } from "@/application/parameter-catalog/fixtures";
 import { mockApiError } from "./mockApiError";
 
 const MOCK_KNOWLEDGE_NOW = "2026-08-12T00:00:00.000Z";
@@ -25,7 +27,7 @@ const MOCK_USER_ID = "u-xu-yun";
  * spec fixtures, so mock-mode reference chips and the picker stay consistent
  * (same ADR-0002 fixture-alignment pattern as `sourceLogId: "log-auth"`).
  */
-const MOCK_SPEC_CATALOG: Record<string, Pick<KnowledgeParameterReference, "propertyKey" | "displayName" | "driverModule" | "lifecycle">> = {
+const MOCK_SPEC_CATALOG: Record<string, { propertyKey: string; displayName: string | null; driverModule: string | null; lifecycle: ParameterSpecReferenceLifecycle }> = {
   "spec-sc8562-gpio-int": {
     propertyKey: "gpio_int",
     displayName: "SC8562 GPIO interrupt",
@@ -908,6 +910,59 @@ export function createMockKnowledgeRepository(
           };
         });
       return { items };
+    },
+
+    async relatedToDefinition(definitionId) {
+      const items = store.entries
+        .filter((entry) => entry.status === "published")
+        .filter((entry) => entry.parameterReferences.some((reference) => reference.kind === "definition" && reference.definitionId === definitionId))
+        .map<KnowledgeSearchResult>((entry) => ({
+          entryId: entry.id,
+          title: entry.title,
+          contentForm: entry.contentForm,
+          tags: [...entry.tags],
+          excerpt: searchableText(entry).replace(/\s+/g, " ").slice(0, 160),
+          updatedAt: entry.updatedAt,
+          revisionId: store.revisions.filter((revision) => revision.entryId === entry.id)
+            .sort((a, b) => b.revisionNumber - a.revisionNumber)[0]?.id ?? null
+        }));
+      return { items };
+    },
+
+    async addDefinitionReference(entryId, definitionId) {
+      const entry = requireEntry(entryId);
+      if (!canManage && entry.createdByUserId !== userId) {
+        throw mockApiError("FORBIDDEN", "Editing someone else's entry references requires knowledge:manage.");
+      }
+      if (entry.status === "archived") {
+        throw mockApiError("VALIDATION_FAILED", "Archived knowledge entries cannot change parameter references.");
+      }
+      if (definitionId !== activeDefinition.id) throw mockApiError("NOT_FOUND", "Definition not found.");
+      if (!entry.parameterReferences.some((reference) => reference.kind === "definition" && reference.definitionId === definitionId)) {
+        entry.parameterReferences = [...entry.parameterReferences, {
+          kind: "definition", definitionId, availability: "current",
+          propertyKey: activeDefinition.propertyKey,
+          displayName: activeDefinition.currentRevision.displayName,
+          driverModule: activeDefinition.subject.canonicalName,
+          lifecycle: activeDefinition.lifecycle,
+          createdByUserId: userId,
+          createdAt: MOCK_KNOWLEDGE_NOW
+        }];
+      }
+      return clone(entry);
+    },
+
+    async removeDefinitionReference(entryId, definitionId) {
+      const entry = requireEntry(entryId);
+      if (!canManage && entry.createdByUserId !== userId) {
+        throw mockApiError("FORBIDDEN", "Editing someone else's entry references requires knowledge:manage.");
+      }
+      if (entry.status === "archived") {
+        throw mockApiError("VALIDATION_FAILED", "Archived knowledge entries cannot change parameter references.");
+      }
+      entry.parameterReferences = entry.parameterReferences.filter((reference) =>
+        reference.kind !== "definition" || reference.definitionId !== definitionId);
+      return clone(entry);
     },
 
     async addParameterReference(entryId, specId) {

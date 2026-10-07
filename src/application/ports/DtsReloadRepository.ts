@@ -12,15 +12,24 @@ export type DtsReloadProtectedReferencePin = {
   kind: "canonical-pin";
   bindingId: string;
   configRevisionId?: string | null;
+  definitionId?: string;
   definitionRevisionId?: string;
   currentValueId?: string;
   catalogReleaseId?: string;
+  sourcePinId?: string;
+  sourceOccurrenceId?: string;
+  sourceFormat?: "dts" | "json";
+  sourceLocator?: unknown;
 };
 
 export type DtsReloadWritebackSourcePin = {
   kind: "source-writeback";
   sourceRef: string;
   configRevisionId?: string | null;
+  sourcePinId?: string;
+  sourceOccurrenceId?: string;
+  format?: "dts" | "json";
+  locator?: unknown;
 };
 
 export type DtsReloadCandidate = DomainDtsReloadCandidate & {
@@ -33,9 +42,16 @@ export type StartDtsReloadRunInput = {
   targets: Array<{
     bindingId: string;
     debugValue: string;
+    definitionId?: string;
     definitionRevisionId?: string;
     currentValueId?: string;
     catalogReleaseId?: string;
+    configRevisionId?: string;
+    sourcePinId?: string;
+    sourceOccurrenceId?: string;
+    sourceRef?: string;
+    sourceFormat?: "dts" | "json";
+    sourceLocator?: unknown;
   }>;
   /** Required for critical-tier sensitive matches: `confirm-sensitive-reload`. */
   confirmationToken?: string;

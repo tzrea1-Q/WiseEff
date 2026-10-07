@@ -57,7 +57,7 @@ function assertCanonicalChecksum(contribution: DtsComparisonContribution) {
 }
 
 describe("listReloadCandidateRows exact pins", () => {
-  it("executes source SQL with exact property_key, config revision, and no specification_key fallback", async () => {
+  it("executes canonical source SQL with exact value and DTS pin ownership", async () => {
     const statements: string[] = [];
     const wrapped = {
       query: async (sql: string, _values?: unknown[]) => {
@@ -72,8 +72,12 @@ describe("listReloadCandidateRows exact pins", () => {
     expect(rows).toEqual([]);
     expect(statements.length).toBeGreaterThan(0);
     const haystack = statements.join("\n");
-    expect(haystack).toContain("dps.property_key as property_key");
-    expect(haystack).toContain("and config_revision_id = br.config_revision_id");
+    expect(haystack).toContain("definition.property_key as property_key");
+    expect(haystack).toContain("project_parameter_values value");
+    expect(haystack).toContain("project_value_source_pins pin");
+    expect(haystack).toContain("pin.config_revision_id = value.config_revision_id");
+    expect(haystack).toContain("pin.format = 'dts'");
+    expect(haystack).not.toContain("from project_parameter_bindings b");
     expect(haystack).not.toContain("ps.specification_key");
     expect(haystack).not.toContain("string_to_array");
   });

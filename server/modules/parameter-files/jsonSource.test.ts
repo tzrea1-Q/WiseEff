@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { deleteJsonSourceMember, patchJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "./jsonSource";
+import { deleteJsonSourceMember, patchJsonSource, proveJsonSourceMemberAbsent, readJsonSourceText, readJsonSourceValue } from "./jsonSource";
 import { patchJsonValue } from "./writebackService";
 
 describe("exact JSON source writeback", () => {
   it("reads exact typed values by document-absolute pointers within the registered root", () => {
     const source = '{"a/b":{"": [false,36.5,null]}, "a":{"b":9}}';
     expect(readJsonSourceValue(source, "/a~1b//1", "/a~1b")).toBe(36.5);
+    expect(readJsonSourceText(source, "/a~1b//1", "/a~1b")).toBe("36.5");
     expect(readJsonSourceValue(source, "/a~1b//0", "/a~1b")).toBe(false);
     expect(readJsonSourceValue(source, "/a~1b//2", "/a~1b")).toBeNull();
     expect(() => readJsonSourceValue(source, "/a/b", "/a~1b")).toThrow();

@@ -193,7 +193,15 @@ synchronizer stage 并原子提交 release projection、所需 Definition revisi
 2. `legacy_mapping_versions`：append-only decision。每条记录一个 legacy identity、migration run、source checksum、relation fingerprint、disposition、exactly-one typed target 或 Archive；审计后的 forward correction 可设置 `supersedes_mapping_id`。
 3. `legacy_mapping_heads`：每个 legacy identity 一个 current mapping-version pointer，只能在 cutover 或 audited forward-remediation transaction 中 compare-and-swap。historical consumer/audit 固定引用它使用的 exact mapping version。
 
-mapping version 永不 update/delete。首次 cutover 为每个 protected legacy identity 创建一个 head。identical replay 为 no-op；source checksum、owner scope、relation fingerprint、target kind/ID 任一不同都属于 conflict。candidate traffic 后的 correction 追加 superseding version，并通过 forward recovery 推进 head，不能编辑旧 decision。
+mapping version 永不 update/delete。首次 cutover 为每个 protected legacy identity 创建一个 head。identical replay 为 no-op；source checksum、owner scope、relation fingerprint、target kind/ID 或 Archive ID 任一不同都属于 conflict。candidate traffic 后的 correction 追加 superseding version，并通过 forward recovery 推进 head，不能编辑旧 decision。
+
+新建的 `s7-orc-p0-p10-v2` run 在已提交 P7 checkpoint 中额外固定完整、按 identity 排序的 mapping 选择清单。每项取自 append/replay 的实际返回值：来源 identity 与 owner、R class 与 disposition、append/replay 状态、选择时的 head CAS version，以及含 typed target 或 Archive 的精确不可变 mapping version。清单摘要把有序项与选择它们的 run、plan、来源指纹、候选 artifact、Catalog Release ID/digest 绑定。只有完整 outcome 相同（包括 Archive ID）时，replay 才能选择**由更早 run 创建**的版本；版本创建 run 与清单选择 run 是不同事实。后来推进 current head 不改变该 checkpoint。
+
+当前 P7 实现对 archived MOD outcome 的边界更窄。Archive adapter 只会为同一 legacy identity 和 cutover run 复用 Archive；新 run 会创建不同的 Archive ID。P7 调用 `appendMappingVersion` 时传入 `expectedHead: null`，因此新 Archive 不会与现有 MappingVersion 完全 replay，且不能覆盖 current head：mapping 返回 `PCAT-MAP-CONFLICT`，orchestration 以 `PCAT-ORC-PHASE-FAILED` 使 P7 失败，不会提交 P7 manifest。同一 run 的 P7 recovery 可以复用 Archive ID 并 replay MappingVersion。MOD comparison-result writer 的幂等重试属于独立机制，不能证明跨 run MappingVersion 可达。这记录当前观察到的实现行为，不构成安全或漏洞结论。
+
+完成 run 的读取先在同一只读一致性快照内核对每个 checkpoint 摘要、不可变 P7 checkpoint event 的摘要，以及每条不可变 identity/version 引用，再生成组织投影。重试产生且摘要一致的重复 P7 event 有效；event 缺失或不一致时拒绝导出。这锚定了 producer 记录的 P7 内容，但不能独立证明物理 head CAS 写入。新 v2 每个 phase 的 checkpoint 摘要均正规化 JSONB 键顺序；已持久化的 v1 checkpoint 保持原摘要语义。组织投影明确为部分结果：保留完整 run 摘要作关联，并提供自身绑定 scope 的摘要与数量。组织范围须由已鉴权执行入口及持久化授权确定；任意组织 ID 数组或内存角色声明不足以授权。v1 checkpoint 未记录逐 identity version 引用时返回 `mapping-manifest-not-captured`，其 inspect/recovery 仍可使用。P7 失败时不存在成功清单，即使较早的逐 identity 写入已提交、恢复时需要精确 replay。清单仅证明完成 run 选择了哪些版本，不证明 mapping 算法正确或 P11-P16 已可用。
+
+迁移 0137 原有的 `comparison_result_mapping_run_fk` 要求 comparison case 与 mapping version 属于同一个**创建 run**。合法 v2 manifest 可以选择更早 run 创建的版本。前向迁移 0179 保留已有 v1 行及其规则，在原 comparison case/result 表上增加显式的比较场景阶段、受保护来源身份/owner，以及选择 run/version 的 pin。阶段标签不能证明 P13 已运行。延迟结果校验仅在完成 run 的 P7 manifest 确实选择该 identity 和 mapping version 时接受 v2 行。数据库校验绑定持久行，但不独立重算 TypeScript manifest 摘要、不授权组织，也不证明比较观测来自生产 provider。将来的服务端 writer 必须使用完成 manifest reader 与经组织授权的 v2 比较输入，才能接通实时持久化。P11-P16 仍为 unavailable。
 
 ### Required fields
 

@@ -42,52 +42,102 @@ describe.skipIf(!databaseAvailable)("dashboard service", () => {
     await db.rollback();
   });
 
-  it("builds a full summary with personal metrics and trend", async () => {
+  it("keeps independent admin metrics while excluding legacy parameter rows", async () => {
     const summary = await getDashboardSummary(db, { auth, window: "30d" });
     expect(summary.window).toBe("30d");
-    expect(summary.windowLabel).toBe("近 30 天");
+    expect(summary.windowLabel).toBe("近 30 天 · 完整 UTC 日（不含今天）");
     expect(summary.trend).toHaveLength(30);
+    expect(summary.kpis.totalParameters).toBe(0);
+    expect(summary.kpis.totalBindings).toBe(0);
+    expect(summary.kpis.totalDefinitions).toBe(0);
+    expect(summary.kpis.highRiskParameters).toBeNull();
+    expect(summary.kpis.riskAvailability).toBe("unavailable");
     expect(summary.personalKpis).toMatchObject({
-      workflowCount: 1,
+      workflowCount: 0,
       openItemCount: summary.workbenchSignals.unappliedImportBatches,
       pendingTodoCount: summary.workbenchSignals.inactiveAccounts
     });
     expect(summary.personalTrend).toHaveLength(30);
-    expect(summary.riskBuckets.length).toBeGreaterThan(0);
+    expect(summary.riskBuckets).toEqual([]);
   });
 
-  it("builds committer personal metrics from review decisions", async () => {
+  it("keeps perspective role display-only for canonical admin metrics", async () => {
     const summary = await getDashboardSummary(db, {
       auth,
       window: "30d",
       perspectiveRoleId: "hardware-committer"
     });
     expect(summary.personalKpis).toMatchObject({
-      contributionCount: 2,
-      workflowCount: 2
+      contributionCount: 0,
+      workflowCount: 0,
+      highRiskTouchCount: 0,
+      riskAvailability: "available"
     });
   });
 
-  it("returns ranked module hotspots with behavioral score breakdown", async () => {
+  it("uses a lower perspective only when the caller holds it in the selected scope", async () => {
+    const multiRoleAuth: AuthContext = {
+      ...auth,
+      roles: [...auth.roles, { projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.aurora, roleId: "software-user" }]
+    };
+    const ownScope = await getDashboardSummary(db, {
+      auth: multiRoleAuth,
+      projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.aurora,
+      window: "30d",
+      perspectiveRoleId: "software-user"
+    });
+    expect(ownScope.personalKpis.highRiskTouchCount).toBeNull();
+    expect(ownScope.personalKpis.riskAvailability).toBe("unavailable");
+    const otherScope = await getDashboardSummary(db, {
+      auth: multiRoleAuth,
+      projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.zephyr,
+      window: "30d",
+      perspectiveRoleId: "software-user"
+    });
+    expect(otherScope.personalKpis.riskAvailability).toBe("available");
+  });
+
+  it("does not expose legacy semantic rows as module hotspots", async () => {
     const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "module" });
-    expect(hotspots.length).toBeGreaterThan(0);
-    expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
-    expect(hotspots[0].evidence[0]).toContain("累计修改");
+    expect(hotspots).toEqual([]);
   });
 
-  it("returns ranked project hotspots with behavioral score breakdown", async () => {
+  it("does not expose legacy semantic rows as project hotspots", async () => {
     const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "project" });
-    expect(hotspots.length).toBeGreaterThan(0);
-    expect(hotspots[0].score).toBeGreaterThanOrEqual(hotspots[hotspots.length - 1].score);
-    expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
-    expect(hotspots[0].evidence[0]).toContain("累计修改");
+    expect(hotspots).toEqual([]);
   });
 
-  it("returns ranked parameter hotspots with project-scope evidence", async () => {
+  it("does not expose legacy semantic rows as parameter hotspots", async () => {
     const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "parameter" });
-    expect(hotspots.length).toBeGreaterThan(0);
-    expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
-    expect(hotspots[0].evidence[0]).toContain("个项目中修改");
-    expect(hotspots[0].projectCode).toContain("个项目");
+    expect(hotspots).toEqual([]);
+  });
+
+  it("rejects a missing or unauthorized project scope before returning zeroes", async () => {
+    await expect(
+      getDashboardSummary(db, { auth, projectId: "dashboard-fixture-missing", window: "30d" })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      getDashboardHotspots(db, { auth, projectId: "dashboard-fixture-missing", window: "30d", dimension: "project" })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    const projectScopedAuth = {
+      ...auth,
+      roles: [{ projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.aurora, roleId: "admin" }]
+    };
+    await expect(
+      getDashboardSummary(db, {
+        auth: projectScopedAuth,
+        projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.zephyr,
+        window: "30d"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      getDashboardHotspots(db, {
+        auth: projectScopedAuth,
+        projectId: PARAMETER_DASHBOARD_FIXTURE.projectIds.zephyr,
+        window: "30d",
+        dimension: "project"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

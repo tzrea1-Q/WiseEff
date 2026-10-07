@@ -72,6 +72,19 @@ export const requiredSmokeSpecPaths = [
   "e2e/acceptance/parameter-home.acceptance.spec.ts"
 ] as const;
 
+export const requiredAcceptanceEnvironmentHelperExceptions = [
+  "e2e/acceptance/catalog-publication-delivery.acceptance.spec.ts",
+  "e2e/acceptance/config-set-revision-gate.acceptance.spec.ts",
+  "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
+  "e2e/acceptance/runtime-warmup.spec.ts",
+  "e2e/acceptance/shell-navigation.acceptance.spec.ts",
+] as const;
+
+export const requiredAcceptanceEnvironmentConfigurationPaths = [
+  "playwright.acceptance.config.ts",
+  "playwright.quality.config.ts",
+] as const;
+
 export const ACCEPTANCE_LOCAL_NON_HDC_PLATFORM_OVERHEAD_MINUTES = 5;
 export const ACCEPTANCE_GATE0_OWNER_MINUTES = 60;
 export const acceptanceLocalNonHdcPreludeSteps = [
@@ -179,6 +192,9 @@ export type AcceptanceCiConfigurationResult = {
   forbiddenPlaywrightImports: string[];
   forbiddenAcceptanceDotenvImports: string[];
   acceptanceEnvironmentHelperCount: number;
+  missingAcceptanceEnvironmentHelperPaths: string[];
+  missingAcceptanceEnvironmentExceptionPaths: string[];
+  missingAcceptanceEnvironmentConfigurationPaths: string[];
   acceptanceEnvironmentGate: boolean;
   localNonHdcBudget: AcceptanceLocalNonHdcBudgetResult;
   immutableUploadContract: ImmutableUploadContractResult;
@@ -300,12 +316,11 @@ export function readAcceptanceEnvironmentSources(
     .map((name) => {
       const path = join(root, name).replaceAll("\\", "/");
       return { path, source: readFileSync(path, "utf8") };
-    })
-    .filter(({ source }) => source.includes("dotenv/config") || source.includes("loadAcceptanceEnvironment"));
+    });
 }
 
 export function readAcceptanceConfigurationSources(
-  paths = ["playwright.acceptance.config.ts", "playwright.quality.config.ts"],
+  paths: readonly string[] = requiredAcceptanceEnvironmentConfigurationPaths,
 ): Array<{ path: string; source: string }> {
   return paths
     .filter((path) => existsSync(path))
@@ -326,14 +341,29 @@ export function findForbiddenAcceptanceDotenvImports(
 export function findAcceptanceEnvironmentHelperLoads(
   files: Array<{ path: string; source: string }>,
 ): string[] {
+  const sideEffectHelperImport = /^\s*import\s+["'][^"']*\/helpers\/loadAcceptanceEnvironment["']/m;
+  const namedHelperImport = /^\s*import\s*\{[^}]*\bloadAcceptanceEnvironment\b[^}]*\}\s*from\s+["'][^"']*\/helpers\/acceptanceEnvironment["']/m;
+  const helperCall = /^\s*(?:(?:const|let|var)\s+[\w$]+\s*=\s*)?loadAcceptanceEnvironment\s*\(/m;
   return files
-    .filter(({ source }) => /loadAcceptanceEnvironment(?:["']|\s*\(\s*\))/.test(source))
+    .filter(({ source }) => sideEffectHelperImport.test(source)
+      || (namedHelperImport.test(source) && helperCall.test(source)))
     .map(({ path }) => path)
     .sort();
 }
 
-/** 39 environment-backed specs (including canonical-value-workflow) plus both Playwright configs. */
-const ACCEPTANCE_ENVIRONMENT_HELPER_COUNT = 41;
+export function findMissingAcceptanceEnvironmentHelperLoads(
+  files: Array<{ path: string; source: string }>,
+): string[] {
+  const exceptions = new Set<string>(requiredAcceptanceEnvironmentHelperExceptions);
+  const loaded = new Set(findAcceptanceEnvironmentHelperLoads(files).map((path) => path.replaceAll("\\", "/")));
+  return files
+    .filter(({ path }) => {
+      const normalizedPath = path.replaceAll("\\", "/");
+      return !exceptions.has(normalizedPath) && !loaded.has(normalizedPath);
+    })
+    .map(({ path }) => path.replaceAll("\\", "/"))
+    .sort();
+}
 
 export function evaluateAcceptanceCiConfiguration(
   input: AcceptanceCiConfigurationInput
@@ -356,9 +386,16 @@ export function evaluateAcceptanceCiConfiguration(
   const acceptanceEnvironmentSources = input.acceptanceEnvironmentSources ?? [];
   const forbiddenAcceptanceDotenvImports = findForbiddenAcceptanceDotenvImports(acceptanceEnvironmentSources);
   const acceptanceEnvironmentHelperCount = findAcceptanceEnvironmentHelperLoads(acceptanceEnvironmentSources).length;
-  const acceptanceEnvironmentGate = input.acceptanceEnvironmentSources === undefined
-    || (forbiddenAcceptanceDotenvImports.length === 0 &&
-      acceptanceEnvironmentHelperCount === ACCEPTANCE_ENVIRONMENT_HELPER_COUNT);
+  const acceptanceEnvironmentPaths = new Set(acceptanceEnvironmentSources.map(({ path }) => path.replaceAll("\\", "/")));
+  const missingAcceptanceEnvironmentHelperPaths = findMissingAcceptanceEnvironmentHelperLoads(acceptanceEnvironmentSources);
+  const missingAcceptanceEnvironmentExceptionPaths = requiredAcceptanceEnvironmentHelperExceptions
+    .filter((path) => !acceptanceEnvironmentPaths.has(path));
+  const missingAcceptanceEnvironmentConfigurationPaths = requiredAcceptanceEnvironmentConfigurationPaths
+    .filter((path) => !acceptanceEnvironmentPaths.has(path));
+  const acceptanceEnvironmentGate = forbiddenAcceptanceDotenvImports.length === 0
+    && missingAcceptanceEnvironmentHelperPaths.length === 0
+    && missingAcceptanceEnvironmentExceptionPaths.length === 0
+    && missingAcceptanceEnvironmentConfigurationPaths.length === 0;
   const localNonHdcBudget = evaluateAcceptanceLocalNonHdcBudget(input.workflowText);
   const immutableUploadContract = evaluateImmutableAcceptanceUpload(input.workflowText);
 
@@ -386,6 +423,9 @@ export function evaluateAcceptanceCiConfiguration(
     forbiddenPlaywrightImports,
     forbiddenAcceptanceDotenvImports,
     acceptanceEnvironmentHelperCount,
+    missingAcceptanceEnvironmentHelperPaths,
+    missingAcceptanceEnvironmentExceptionPaths,
+    missingAcceptanceEnvironmentConfigurationPaths,
     acceptanceEnvironmentGate,
     localNonHdcBudget,
     immutableUploadContract,
@@ -489,8 +529,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   }
   await client.end();
 '`;
-  const trustedBase = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
-  const catalogCommand = 'set -euo pipefail\ngit fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\ntest "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\n# The checker CLI exits 1 while T1.4 leftover remains. The inventory test\n# is the ratchet: leftover may exist, stale/growth/mismatch may not.\nnpm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts';
+  const catalogCommand = 'set -euo pipefail\nnpm run parameter-catalog-boundaries:check\nnpm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts';
   const expectedStepProjection = (ids: readonly string[]) => "{" + ids.map((id) => '"' + id + '":${{ toJSON(steps.' + id + ') }}').join(", ") + "}";
   const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.trim() : "";
   const expectedNeedsProjection = "{\"detect\":${{ toJSON(needs.detect) }}, \"l1-static\":{\"result\":${{ toJSON(needs.l1-static.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-static.outputs.receipt) }}}}, \"l1-frontend\":{\"result\":${{ toJSON(needs.l1-frontend.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-frontend.outputs.receipt) }}}}, \"l1-scripts\":{\"result\":${{ toJSON(needs.l1-scripts.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-scripts.outputs.receipt) }}}}, \"l1-server\":{\"result\":${{ toJSON(needs.l1-server.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-server.outputs.receipt) }}}}}";
@@ -567,7 +606,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       check(step("vector")?.run?.trim() === vectorCommand, `${id} requires the original vector create/read assertion.`);
     }
     if (id === "l1-static") {
-      check(step("catalog")?.env?.PARAMETER_CATALOG_TRUSTED_BASE_SHA === trustedBase && step("catalog")?.run?.trim() === catalogCommand, "Static trusted-base ratchet changed.");
+      check(step("catalog")?.env === undefined && step("catalog")?.run?.trim() === catalogCommand, "Static Catalog boundary baseline check changed.");
       check(step("eslint_cache")?.uses === "actions/cache@v4" && step("eslint_cache")?.with?.path === "node_modules/.cache/eslint", "ESLint cache must be retained.");
     }
     for (const [output, expression] of Object.entries(shadowOutputs[id] ?? {})) check(job.outputs?.[output] === expression, `${id}/${output} must publish its fixed shadow sibling output.`);

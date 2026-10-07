@@ -487,7 +487,7 @@ export function ParametersPage({
   ]);
 
   useEffect(() => {
-    if (!effectiveCanEdit || !contextQuery.logId) {
+    if (!effectiveCanEdit || !contextQuery.logId || contextQuery.bindingId) {
       return;
     }
 
@@ -521,7 +521,7 @@ export function ParametersPage({
 
       return nextDrafts;
     });
-  }, [activeParameterById, effectiveCanEdit, contextQuery.logId, contextQuery.parameterId, projectParameters, resolvedProjectId, selected, state.logs]);
+  }, [activeParameterById, effectiveCanEdit, contextQuery.bindingId, contextQuery.logId, contextQuery.parameterId, projectParameters, resolvedProjectId, selected, state.logs]);
 
   useEffect(() => {
     if (previousUserIdRef.current === state.currentUserId) {
@@ -965,7 +965,11 @@ export function ParametersPage({
         </button>
       ) : null}
       {effectiveCanEdit ? (
-        <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+        <button
+          className="button subtle"
+          type="button"
+          onClick={() => onNavigate(resolvedProjectId ? `/parameter-submissions?project=${encodeURIComponent(resolvedProjectId)}` : "/parameter-submissions")}
+        >
           历史提交
         </button>
       ) : null}
@@ -1011,6 +1015,7 @@ export function ParametersPage({
         {isApiMode ? (
           <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
+            requestedBindingId={contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
             canEdit={effectiveCanEdit}
             layoutMode={topologyLayoutMode}
             runtimeMode="api"
@@ -1132,7 +1137,7 @@ export function ParametersPage({
             onUpdateDraft={updateDraft}
             onSaveDraft={saveDraft}
             onSubmit={submitParameterToModifiedTable}
-            onViewSubmissions={() => onNavigate("/parameter-submissions")}
+            onViewSubmissions={() => onNavigate(resolvedProjectId ? `/parameter-submissions?project=${encodeURIComponent(resolvedProjectId)}` : "/parameter-submissions")}
           />
           ) : null}
           </>

@@ -16,6 +16,7 @@ const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
 const repairCommit = "b7ed7b9d3fb15ffedee3f3231c2ba6580c4c7983";
+const performanceRepairBaseCommit = "dcc3ed436617e01fc749ccecf02ed2c13a570bc2";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -286,13 +287,6 @@ function readGithubEventPayload() {
   }
 }
 
-function commitParentHashes(commit: string) {
-  return runGitText(["show", "-s", "--format=%P", commit])
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
 function commitChangedPaths(parent: string, commit: string) {
   return runGitText([
     "diff-tree",
@@ -321,15 +315,15 @@ function commitTouchedPaths(commit: string) {
     .filter(Boolean);
 }
 
-function isAncestor(ancestor: string, descendant: string) {
-  return spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
-    cwd: projectRoot,
-    encoding: "utf8",
-  }).status === 0;
-}
-
-function treeEntry(revision: string, sourcePath: string) {
-  return runGitText(["ls-tree", revision, "--", sourcePath]).trim();
+function protectedTreeEntries(revision: string) {
+  const entries = new Map<string, string>();
+  for (const line of runGitText(["ls-tree", revision, "--", ...lockedSourcePaths]).trim().split("\n")) {
+    if (!line) continue;
+    const separator = line.indexOf("\t");
+    expect(separator).toBeGreaterThan(0);
+    entries.set(line.slice(separator + 1), line);
+  }
+  return entries;
 }
 
 describe("parameter catalog rehearsal repaired source lock", () => {
@@ -452,56 +446,97 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     runGitText(["merge-base", "--is-ancestor", repairCommit, "HEAD"]);
     const postRepairCommits = runGitText([
       "rev-list",
+      "--parents",
       "--reverse",
       "--ancestry-path",
       `${repairCommit}..HEAD`,
     ])
       .trim()
       .split("\n")
-      .filter(Boolean);
-    const sourceLockCommits = postRepairCommits.filter((commit) => {
-      const parents = commitParentHashes(commit);
+      .filter(Boolean)
+      .map((line) => {
+        const [commit, ...parents] = line.split(" ");
+        return { commit, parents };
+      });
+    const sourceLockCommits = postRepairCommits.filter(({ commit, parents }) => {
       return parents.length === 1
         && parents[0] === repairCommit
         && commitChangedPaths(repairCommit, commit).join("\n") === `M\t${sourceLockPath}`;
     });
     expect(sourceLockCommits).toHaveLength(1);
-    const sourceLockCommit = sourceLockCommits[0]!;
-    expect(commitParentHashes(sourceLockCommit)).toEqual([repairCommit]);
+    const sourceLockCommit = sourceLockCommits[0]!.commit;
+    expect(sourceLockCommits[0]!.parents).toEqual([repairCommit]);
     expect(commitChangedPaths(repairCommit, sourceLockCommit)).toEqual(
       [`M\t${sourceLockPath}`],
     );
-    const lockTreeEntries = new Map(
-      lockedSourcePaths.map((sourcePath) => [
-        sourcePath,
-        treeEntry(sourceLockCommit, sourcePath),
-      ] as const),
+    const lockTreeEntries = protectedTreeEntries(sourceLockCommit);
+    runGitText(["merge-base", "--is-ancestor", performanceRepairBaseCommit, "HEAD"]);
+    const performanceRepairs = postRepairCommits.filter(({ commit, parents }) =>
+      parents.length === 1
+      && parents[0] === performanceRepairBaseCommit
+      && commitChangedPaths(performanceRepairBaseCommit, commit).join("\n") === `M\t${sourceLockPath}`,
     );
-    for (const commit of postRepairCommits) {
+    expect(performanceRepairs).toHaveLength(1);
+    const performanceRepairCommit = performanceRepairs[0]!.commit;
+    const performanceTreeEntries = protectedTreeEntries(performanceRepairCommit);
+    for (const sourcePath of lockedSourcePaths) {
+      expect(performanceTreeEntries.get(sourcePath)).toBeDefined();
+      if (sourcePath !== sourceLockPath) {
+        expect(performanceTreeEntries.get(sourcePath)).toBe(lockTreeEntries.get(sourcePath));
+      }
+    }
+    expect(performanceTreeEntries.get(sourceLockPath)).not.toBe(lockTreeEntries.get(sourceLockPath));
+    const lineageCommits = new Set(runGitText([
+      "rev-list", "--ancestry-path", `${sourceLockCommit}..HEAD`,
+    ]).trim().split("\n").filter(Boolean));
+    lineageCommits.add(sourceLockCommit);
+    const performanceLineageCommits = new Set(runGitText([
+      "rev-list", "--ancestry-path", `${performanceRepairCommit}..HEAD`,
+    ]).trim().split("\n").filter(Boolean));
+    performanceLineageCommits.add(performanceRepairCommit);
+    const expectedTreeEntry = (revision: string, sourcePath: string) =>
+      sourcePath === sourceLockPath && performanceLineageCommits.has(revision)
+        ? performanceTreeEntries.get(sourcePath)
+        : lockTreeEntries.get(sourcePath);
+    const checkedTrees = new Map<string, Map<string, string>>();
+    const treeAt = (revision: string) => {
+      let entries = checkedTrees.get(revision);
+      if (!entries) {
+        entries = protectedTreeEntries(revision);
+        checkedTrees.set(revision, entries);
+      }
+      return entries;
+    };
+    for (const { commit, parents } of postRepairCommits) {
       if (commit === sourceLockCommit) {
         continue;
       }
-      const parents = commitParentHashes(commit);
       if (parents.length > 1) {
         const lineageParents = parents.filter((parent) =>
-          isAncestor(sourceLockCommit, parent),
+          lineageCommits.has(parent),
         );
         expect(lineageParents.length).toBeGreaterThan(0);
+        const commitTree = treeAt(commit);
         for (const sourcePath of lockedSourcePaths) {
-          const goldenEntry = lockTreeEntries.get(sourcePath);
+          const goldenEntry = expectedTreeEntry(commit, sourcePath);
           expect(goldenEntry).toBeDefined();
-          expect(treeEntry(commit, sourcePath)).toBe(goldenEntry);
+          expect(commitTree.get(sourcePath) ?? "").toBe(goldenEntry);
         }
         for (const lineageParent of lineageParents) {
+          const parentTree = treeAt(lineageParent);
           for (const sourcePath of lockedSourcePaths) {
-            const goldenEntry = lockTreeEntries.get(sourcePath);
+            const goldenEntry = expectedTreeEntry(lineageParent, sourcePath);
             expect(goldenEntry).toBeDefined();
-            expect(treeEntry(lineageParent, sourcePath)).toBe(goldenEntry);
+            expect(parentTree.get(sourcePath) ?? "").toBe(goldenEntry);
           }
         }
         continue;
       }
       const touchedPaths = commitTouchedPaths(commit);
+      if (commit === performanceRepairCommit) {
+        expect(touchedPaths).toEqual([`M\t${sourceLockPath}`]);
+        continue;
+      }
       expect(lockedSourcePaths.some((sourcePath) =>
         touchedPaths.some((entry) => entry.endsWith(`\t${sourcePath}`)),
       )).toBe(false);

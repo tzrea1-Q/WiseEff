@@ -98,7 +98,7 @@ type EffectRow = {
   file_checksum: string | null;
 };
 
-function canonicalizeLogicalNodeCompatible(value: string | null): string | null {
+export function canonicalizeLogicalNodeCompatible(value: string | null): string | null {
   const quotedCompatible = value?.match(/"((?:\\.|[^"\\])*)"/);
   return quotedCompatible ? quotedCompatible[1]! : (value?.trim() || null);
 }

@@ -21,8 +21,14 @@ import * as topologyService from "../parameter-topology/service";
 import * as configSetService from "../parameter-files/configSetService";
 import * as projects from "../projects/repository";
 import * as importStaging from "./drafts/importService";
+import * as reviewWorkflow from "../parameters/reviewWorkflowRepository";
+import * as sourceDiff from "../parameter-files/canonicalSourceDiff";
 
 vi.mock("./drafts/importService", () => ({ stageCanonicalImportBatch: vi.fn() }));
+vi.mock("../parameter-files/canonicalSourceDiff", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../parameter-files/canonicalSourceDiff")>(),
+  readCanonicalBatchSourceDiff: vi.fn()
+}));
 afterEach(() => vi.restoreAllMocks());
 
 vi.mock("./catalogProjectValueSync", async (importOriginal) => {
@@ -89,6 +95,9 @@ vi.mock("./drafts", async (importOriginal) => {
     listCanonicalValueDraftsForUser: vi.fn(),
     removeCanonicalValueDraft: vi.fn(),
     listCanonicalValueChangesForAuth: vi.fn(),
+    approveCanonicalBatchValueChange: vi.fn(),
+    getCanonicalBatchValueChangeForReviewer: vi.fn(),
+    getCanonicalBatchValueChangeForAuth: vi.fn(),
     reviewCanonicalValueChange: vi.fn(),
     submitCanonicalValueChange: vi.fn(),
     withdrawCanonicalValueChange: vi.fn()
@@ -112,19 +121,21 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
 }
 
 function makeDb(): Database {
-  return {
+  const db: Database = {
     query: vi.fn(),
-    transaction: vi.fn()
+    transaction: vi.fn(async (fn) => fn(db))
   };
+  return db;
 }
 
-function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
+function makeServer(options: { db?: Database; auth?: AuthContext; withoutObjectStore?: boolean } = {}) {
   const router = createRouter();
   registerCatalogProjectValueConsumerRoutes(router, {
     db: options.db,
-    objectStore: {
+    objectStore: options.withoutObjectStore ? undefined : {
       put: async () => { throw new Error("Unexpected object write in route-only test"); },
       get: async () => { throw new Error("Unexpected object read in route-only test"); },
+      delete: async () => undefined,
     },
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   });
@@ -978,7 +989,8 @@ describe("canonical value change request routes", () => {
   it("routes approval authorization to the shared audited owner", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({} as never);
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ format: "json", config_revision_id: "revision-1" }] });
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }] } as never)
+      .mockResolvedValue({ rows: [{ format: "json", config_revision_id: "revision-1" }] });
     const viewer = makeAuth({ permissions: ["parameter:view", "parameter:review"] });
     vi.mocked(drafts.reviewCanonicalValueChange).mockRejectedValueOnce(new ApiError("FORBIDDEN", "Parameter edit permission is required."));
 
@@ -994,6 +1006,8 @@ describe("canonical value change request routes", () => {
 
   it("lets an editor reject a pending request without a sensitive-node check", async () => {
     const db = makeDb();
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }] } as never)
+      .mockResolvedValueOnce({ rows: [{ request_kind: "single", has_conflict_decision: false }] } as never);
     vi.mocked(drafts.reviewCanonicalValueChange).mockResolvedValue({
       ...changeRequest,
       status: "rejected",
@@ -1010,6 +1024,77 @@ describe("canonical value change request routes", () => {
     expect(response.status).toBe(200);
     expect(drafts.reviewCanonicalValueChange).toHaveBeenCalled();
     expect(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).not.toHaveBeenCalled();
+  });
+
+  it("routes one frozen batch proof to the whole-cohort reviewer transaction", async () => {
+    const db = makeDb();
+    const proof = "a".repeat(64);
+    const batch = { id: "pvcr-batch", status: "approved", batchProofDigest: proof,
+      targets: [{ ordinal: 0, bindingId: "binding-a" }, { ordinal: 1, bindingId: "binding-b" }] };
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
+    vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({} as never);
+    vi.mocked(drafts.approveCanonicalBatchValueChange).mockResolvedValue(batch as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue(batch as never);
+
+    const response = await requestJson<{ item: typeof batch }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-batch/review",
+      { method: "POST", body: JSON.stringify({ decision: "approve", batchProofDigest: proof }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(batch);
+    expect(drafts.approveCanonicalBatchValueChange).toHaveBeenCalledWith(
+      db, expect.anything(), expect.anything(), expect.anything(),
+      expect.objectContaining({ requestId: "pvcr-batch", batchProofDigest: proof })
+    );
+    expect(drafts.reviewCanonicalValueChange).not.toHaveBeenCalled();
+  });
+
+  it("returns the complete ordered batch through the authorized submitter or reviewer read", async () => {
+    const db = makeDb();
+    const batch = { id: "pvcr-batch", batchProofDigest: "a".repeat(64), status: "pending",
+      targets: [{ ordinal: 0, bindingId: "binding-a" }, { ordinal: 1, bindingId: "binding-b" }] };
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue(batch as never);
+
+    const response = await requestJson<{ item: typeof batch }>(
+      makeServer({ db }), "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-batch/batch"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(batch);
+    expect(drafts.getCanonicalBatchValueChangeForAuth).toHaveBeenCalledWith(
+      db, expect.anything(), { projectId: "project-1", requestId: "pvcr-batch" }
+    );
+  });
+
+  it("reads the same frozen batch proof and ordered source targets for review", async () => {
+    const db = makeDb();
+    const proof = "a".repeat(64);
+    const diff = { requestId: "pvcr-batch", candidateId: "candidate-batch", kind: "batch", batchProofDigest: proof,
+      targets: [
+        { ordinal: 0, bindingId: "binding-a", sourcePinId: "pin-a", action: "set" },
+        { ordinal: 1, bindingId: "binding-b", sourcePinId: "pin-b", action: "set" }
+      ] };
+    const frozenTargets = diff.targets.map((target) => ({ ...target, draftId: null, decision: "file" }));
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue({
+      id: "pvcr-batch", candidateId: "candidate-batch", batchProofDigest: proof,
+      uploadCandidateId: null, decisionProofDigest: null, targets: frozenTargets
+    } as never);
+    vi.mocked(sourceDiff.readCanonicalBatchSourceDiff).mockResolvedValue(diff as never);
+
+    const response = await requestJson<{ item: typeof diff }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-batch/source-diff"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual({ ...diff, uploadCandidateId: null,
+      decisionProofDigest: null, targets: frozenTargets });
+    expect(sourceDiff.readCanonicalBatchSourceDiff).toHaveBeenCalledWith(
+      db, expect.anything(), expect.anything(), { projectId: "project-1", requestId: "pvcr-batch" }
+    );
   });
 });
 
@@ -1089,5 +1174,78 @@ describe("catalog pending-draft tray routes", () => {
         requestId: expect.any(String)
       })
     );
+  });
+});
+
+describe("canonical request tracking access", () => {
+  const own = { id: "own-request", submitterUserId: "user-1" };
+  const other = { id: "other-request", submitterUserId: "user-2" };
+  beforeEach(() => {
+    vi.mocked(drafts.listCanonicalValueChangesForAuth).mockResolvedValue(
+      [own, other] as Awaited<ReturnType<typeof drafts.listCanonicalValueChangesForAuth>>
+    );
+  });
+
+  it("returns only the authenticated submitter and denies another person's source diff", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const server = makeServer({ db, withoutObjectStore: true });
+    const response = await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?mine=true");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [own] });
+    const diff = await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests/other-request/source-diff");
+    expect(diff.status).toBe(404);
+  });
+
+  it("keeps own pending work out of the reviewer queue while preserving personal and history views", async () => {
+    vi.spyOn(reviewWorkflow, "hasCurrentCanonicalReviewRole").mockResolvedValue(true);
+    const auth = makeAuth({ roles: [{ projectId: "project-1", roleId: "software-committer" }], permissions: ["parameter:view", "parameter:review"] });
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const server = makeServer({ db, auth });
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own, other] });
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?status=pending")).body).toEqual({ items: [other] });
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?mine=true")).body).toEqual({ items: [own] });
+    vi.mocked(reviewWorkflow.hasCurrentCanonicalReviewRole).mockResolvedValue(false);
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own] });
+  });
+
+  it("rejects an unrelated project role, inactive account, and malformed mine filter", async () => {
+    const auth = makeAuth({ roles: [{ projectId: "another-project", roleId: "software-user" }] });
+    const unauthorized = await requestJson(makeServer({ db: makeDb(), auth }), "/api/v2/projects/project-1/parameter-value-change-requests");
+    expect(unauthorized.status).toBe(403);
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const hidden = await requestJson(makeServer({ db, auth, withoutObjectStore: true }), "/api/v2/projects/project-1/parameter-value-change-requests/own-request/source-diff");
+    expect(hidden.status).toBe(404);
+    const inactive = makeAuth();
+    inactive.user = { ...inactive.user, isActive: false };
+    expect((await requestJson(makeServer({ db: makeDb(), auth: inactive }), "/api/v2/projects/project-1/parameter-value-change-requests")).status).toBe(403);
+    expect((await requestJson(makeServer({ db: makeDb() }), "/api/v2/projects/project-1/parameter-value-change-requests?mine=user-2")).status).toBe(400);
+  });
+
+  it("reports missing source storage only after confirming the submitter can see a single request", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
+    const response = await requestJson(
+      makeServer({ db, withoutObjectStore: true }),
+      "/api/v2/projects/project-1/parameter-value-change-requests/own-request/source-diff"
+    );
+    expect(response.status).toBe(500);
+    expect(drafts.listCanonicalValueChangesForAuth).toHaveBeenCalledWith(db, expect.anything(), { projectId: "project-1" });
+  });
+
+  it("checks batch reviewer visibility before reporting missing source storage", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue(null);
+    const path = "/api/v2/projects/project-1/parameter-value-change-requests/batch-request/source-diff";
+    expect((await requestJson(makeServer({ db, withoutObjectStore: true }), path)).status).toBe(404);
+    expect(drafts.getCanonicalBatchValueChangeForAuth).toHaveBeenCalledWith(
+      db, expect.anything(), { projectId: "project-1", requestId: "batch-request" }
+    );
+
+    vi.mocked(drafts.getCanonicalBatchValueChangeForAuth).mockResolvedValue({ id: "batch-request" } as never);
+    expect((await requestJson(makeServer({ db, withoutObjectStore: true }), path)).status).toBe(500);
   });
 });

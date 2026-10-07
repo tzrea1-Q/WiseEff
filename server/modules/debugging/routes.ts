@@ -31,7 +31,9 @@ import {
   importDebugCatalogBodySchema
 } from "./schemas";
 import { exportDebugCatalogFull, importDebugCatalog, previewDebugCatalogImport } from "./catalogTransfer";
+import { projectCanonicalDebugPinForHttp } from "./canonicalProtectedReference";
 import { createDebuggingService } from "./service";
+import type { CanonicalDebugPin } from "./canonicalProtectedReference";
 
 const paramsWithSessionIdSchema = z.object({
   sessionId: z.string().trim().min(1)
@@ -68,6 +70,56 @@ function normalizeArray<T>(value: T | T[] | undefined) {
   return value === undefined ? undefined : Array.isArray(value) ? value : [value];
 }
 
+type HttpRecord = Record<string, unknown>;
+
+function projectCanonicalPinRecord(record: object): HttpRecord {
+  const value = { ...record } as HttpRecord & { canonicalPin?: CanonicalDebugPin; sourcePin?: unknown };
+  const { sourcePin: _sourcePin, ...withoutSourcePin } = value;
+  if (!withoutSourcePin.canonicalPin) {
+    return withoutSourcePin;
+  }
+  return {
+    ...withoutSourcePin,
+    canonicalPin: projectCanonicalDebugPinForHttp(withoutSourcePin.canonicalPin)
+  };
+}
+
+function projectDebugNodeForHttp(node: object): HttpRecord {
+  const value = { ...node } as HttpRecord & {
+    canonicalBindingId?: unknown;
+    canonicalProjectId?: unknown;
+    canonicalBinding?: unknown;
+    protectedReferenceKind?: string;
+  };
+  const { canonicalBindingId: _canonicalBindingId, canonicalProjectId: _canonicalProjectId, ...safe } = value;
+  if (value.protectedReferenceKind === "typed-block") {
+    delete safe.canonicalBinding;
+  }
+  return projectCanonicalPinRecord(safe);
+}
+
+function projectDebugOperationForHttp(operation: object): HttpRecord {
+  const value = { ...operation } as HttpRecord & {
+    canonicalBindingId?: unknown;
+    canonicalProjectId?: unknown;
+  };
+  const { canonicalBindingId: _canonicalBindingId, canonicalProjectId: _canonicalProjectId, ...safe } = value;
+  return projectCanonicalPinRecord(safe);
+}
+
+function projectDebugSnapshotForHttp(snapshot: object): HttpRecord {
+  const value = { ...snapshot } as HttpRecord & { entries?: unknown[] };
+  if (!Array.isArray(value.entries)) {
+    return value;
+  }
+  return {
+    ...value,
+    entries: value.entries.map((entry) =>
+      entry && typeof entry === "object" ? projectCanonicalPinRecord(entry as Record<string, unknown>) : entry
+    )
+  };
+}
+
 function serviceFrom(options: {
   db?: Database;
   debugGateway?: DebugDeviceGateway;
@@ -97,10 +149,16 @@ function serviceFrom(options: {
 
 function writeResponse(result: unknown) {
   if (typeof result === "object" && result !== null && "operation" in result) {
-    return result;
+    const value = result as { operation?: object; snapshot?: object } & Record<string, unknown>;
+    const { operation, snapshot, ...outer } = value;
+    return {
+      ...projectDebugOperationForHttp(outer),
+      ...(operation ? { operation: projectDebugOperationForHttp(operation) } : {}),
+      ...(snapshot ? { snapshot: projectDebugSnapshotForHttp(snapshot) } : {})
+    };
   }
 
-  return { operation: result };
+  return { operation: projectDebugOperationForHttp(result as object) };
 }
 
 function requireDebugWritePermission(auth: AuthContext) {
@@ -158,7 +216,7 @@ export function registerDebuggingRoutes(
     const query = parseWithSchema(listRuntimeDebugNodesQuerySchema, request.query);
     const items = await service.listRuntimeNodes(auth, query);
 
-    return { status: 200, body: { items } };
+    return { status: 200, body: { items: items.map(projectDebugNodeForHttp) } };
   });
 
   router.get("/api/v1/debugging/admin/nodes", async (request) => {
@@ -167,7 +225,7 @@ export function registerDebuggingRoutes(
     const query = parseWithSchema(listDebugNodesAdminQuerySchema, request.query);
     const items = await service.listAdminDebugNodes(auth, query);
 
-    return { status: 200, body: { items } };
+    return { status: 200, body: { items: items.map(projectDebugNodeForHttp) } };
   });
 
   router.post("/api/v1/debugging/admin/nodes", async (request) => {
@@ -176,7 +234,7 @@ export function registerDebuggingRoutes(
     const body = parseWithSchema(writeDebugNodeAdminBodySchema, request.body);
     const item = await service.createAdminDebugNode(auth, body, { requestId: request.requestId });
 
-    return { status: 201, body: { item } };
+    return { status: 201, body: { item: projectDebugNodeForHttp(item) } };
   });
 
   router.patch("/api/v1/debugging/admin/nodes/:nodeId", async (request) => {
@@ -186,7 +244,7 @@ export function registerDebuggingRoutes(
     const body = parseWithSchema(patchDebugNodeAdminBodySchema, request.body);
     const item = await service.updateAdminDebugNode(auth, { nodeId: params.nodeId, ...body }, { requestId: request.requestId });
 
-    return { status: 200, body: { item } };
+    return { status: 200, body: { item: projectDebugNodeForHttp(item) } };
   });
 
   router.delete("/api/v1/debugging/admin/nodes/:nodeId", async (request) => {
@@ -344,7 +402,7 @@ export function registerDebuggingRoutes(
     const params = parseWithSchema(paramsWithSessionIdSchema, request.params);
     const items = await service.listSessionEvents(auth, { sessionId: params.sessionId });
 
-    return { status: 200, body: { items } };
+    return { status: 200, body: { items: items.map(projectDebugOperationForHttp) } };
   });
 
   router.post("/api/v1/debugging/nodes/read", async (request) => {
@@ -353,7 +411,7 @@ export function registerDebuggingRoutes(
     const body = parseWithSchema(readNodeBodySchema, request.body);
     const operation = await service.readNode(auth, body, { requestId: request.requestId });
 
-    return { status: 200, body: { operation } };
+    return { status: 200, body: { operation: projectDebugOperationForHttp(operation) } };
   });
 
   router.post("/api/v1/debugging/nodes/write", async (request) => {
@@ -392,6 +450,13 @@ export function registerDebuggingRoutes(
       { requestId: request.requestId }
     );
 
-    return { status: 200, body: result };
+    return {
+      status: 200,
+      body: {
+        ...result,
+        snapshot: projectDebugSnapshotForHttp(result.snapshot!),
+        operations: result.operations.map(projectDebugOperationForHttp)
+      }
+    };
   });
 }

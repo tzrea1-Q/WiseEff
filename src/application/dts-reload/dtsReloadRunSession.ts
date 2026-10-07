@@ -502,10 +502,25 @@ export function createDtsReloadRunSession(
       try {
         const started = await repository.startRun({
           projectId,
-          targets: selected.map((candidate) => ({
-            bindingId: candidate.bindingId,
-            debugValue: (debugValues[candidate.bindingId] ?? "").trim()
-          })),
+          targets: selected.map((candidate) => {
+            const pin = candidate.protectedReferencePin;
+            return {
+              bindingId: candidate.bindingId,
+              debugValue: (debugValues[candidate.bindingId] ?? "").trim(),
+              ...(pin?.definitionId ? { definitionId: pin.definitionId } : {}),
+              ...(pin?.definitionRevisionId ? { definitionRevisionId: pin.definitionRevisionId } : {}),
+              ...(pin?.currentValueId ? { currentValueId: pin.currentValueId } : {}),
+              ...(pin?.catalogReleaseId ? { catalogReleaseId: pin.catalogReleaseId } : {}),
+              ...(pin?.configRevisionId ? { configRevisionId: pin.configRevisionId } : {}),
+              ...(pin?.sourcePinId ? { sourcePinId: pin.sourcePinId } : {}),
+              ...(pin?.sourceOccurrenceId ? { sourceOccurrenceId: pin.sourceOccurrenceId } : {}),
+              ...(candidate.writebackSourcePin?.sourceRef
+                ? { sourceRef: candidate.writebackSourcePin.sourceRef }
+                : {}),
+              ...(pin?.sourceFormat ? { sourceFormat: pin.sourceFormat } : {}),
+              ...(pin?.sourceLocator ? { sourceLocator: pin.sourceLocator } : {})
+            };
+          }),
           ...(criticalSelected && criticalConfirmed
             ? { confirmationToken: SENSITIVE_RELOAD_CONFIRMATION_TOKEN }
             : {})

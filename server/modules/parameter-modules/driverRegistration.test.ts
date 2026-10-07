@@ -125,6 +125,9 @@ function createStatefulDb(seed: {
     [];
 
   const query = vi.fn(async (text: string, values: unknown[] = []) => {
+    if (text.includes("select exists") && text.includes("from parameter_definitions")) {
+      return { rows: [{ present: false }], rowCount: 1 };
+    }
     if (
       text.includes("from parameter_modules pm") &&
       text.includes("inner join attribution_subjects subject") &&

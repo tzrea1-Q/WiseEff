@@ -257,6 +257,32 @@ describe("createHttpKnowledgeRepository", () => {
     );
   });
 
+  it("keeps canonical Definition identity through reference add, reverse read and delete", async () => {
+    const definitionId = "pdef:canonical-only";
+    const canonical = {
+      kind: "definition" as const,
+      definitionId,
+      propertyKey: "charging-current",
+      displayName: "Charging current",
+      driverModule: "vendor,device",
+      lifecycle: "active" as const,
+      createdByUserId: "user-1",
+      createdAt: "2026-08-13T00:00:00.000Z"
+    };
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).includes("related-to-definition")) return jsonResponse({ items: [] });
+      return jsonResponse({ item: { ...baseEntryDto, parameterReferences: init?.method === "DELETE" ? [] : [canonical] } });
+    });
+    const repository = createRepository(fetchMock);
+
+    const added = await repository.addDefinitionReference("entry-1", definitionId);
+    expect(added.parameterReferences).toEqual([canonical]);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/entries/entry-1/definition-references/pdef%3Acanonical-only");
+    expect(await repository.relatedToDefinition(definitionId)).toEqual({ items: [] });
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/related-to-definition?definitionId=pdef%3Acanonical-only");
+    expect((await repository.removeDefinitionReference("entry-1", definitionId)).parameterReferences).toEqual([]);
+  });
+
   it("adds and removes parameter references with the encoded spec id and maps the reference list", async () => {
     const referencedDto: KnowledgeEntryDto = {
       ...baseEntryDto,

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -15,6 +16,7 @@ import {
   catalogLegacyIdentifierResponseSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../../testing/parameterCatalog";
+import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../../testing/labRuntimeLogins";
 
 import { listenLegacyCatalogHttpServer } from "./httpServer";
 
@@ -403,5 +405,48 @@ describe("S8-LEG PG+HTTP mapping projection", { timeout: CATALOG_TEST_TIMEOUT_MS
       "select count(*)::text as n from parameter_catalog.legacy_mapping_heads",
     );
     expect(Number(remaining.rows[0]?.n)).toBeGreaterThan(0);
+  });
+
+  it("reads persisted mappings over HTTP with the existing API login grants", async () => {
+    const runToken = `s8leg${randomBytes(6).toString("hex")}`;
+    const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken });
+    const reader = new pg.Client({ connectionString: runtime.apiUrl });
+    let close: () => Promise<void> = async () => undefined;
+    let organizationId = ORG;
+    try {
+      await reader.connect();
+      const identity = await reader.query(
+        "select session_user, current_user, rolsuper, rolbypassrls from pg_roles where rolname = current_user",
+      );
+      expect(identity.rows).toEqual([{ session_user: runtime.apiRole, current_user: runtime.apiRole,
+        rolsuper: false, rolbypassrls: false }]);
+      const server = await listenLegacyCatalogHttpServer({
+        catalogReleaseId: CATALOG_RELEASE_ID,
+        sunsetHttpDate: SUNSET,
+        getQueryable: () => reader,
+        resolveInvocation: () => createUserInvocation(authFor(organizationId)),
+      });
+      close = server.close;
+      const mapped = await fetch(`${server.baseUrl}/api/v2/catalog/legacy-identifiers/parameter-spec/s7cls-spec-r8-twin`);
+      expect(mapped.status).toBe(200);
+      expect(await mapped.json()).toMatchObject({ item: { disposition: "mapped",
+        target: { kind: "parameter-definition", id: TARGET_R8.targetId } } });
+      const archived = await fetch(`${server.baseUrl}/api/v2/catalog/legacy-identifiers/parameter-spec/s7cls-spec-r1-status`);
+      expect(archived.status).toBe(410);
+      expect(await archived.text()).not.toContain(TARGET_R1_ARCHIVE.archiveId);
+      organizationId = "org-other";
+      expect((await fetch(`${server.baseUrl}/api/v2/catalog/legacy-identifiers/parameter-spec/s7cls-spec-r8-twin`)).status).toBe(404);
+    } finally {
+      try {
+        await close();
+      } finally {
+        try {
+          await reader.end();
+        } finally {
+          const cleanup = await dropLabRuntimeLogins(database.url, runToken);
+          expect(cleanup.failed).toEqual([]);
+        }
+      }
+    }
   });
 });

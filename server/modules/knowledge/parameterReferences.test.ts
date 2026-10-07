@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
@@ -15,6 +15,8 @@ import {
   publishKnowledgeEntry,
   removeKnowledgeParameterReference
 } from "./service";
+import { loadParameterReferencesByEntryIds } from "./parameterReferences";
+import * as legacyApi from "../parameter-catalog-api/legacy";
 import { createDefaultKnowledgeTextExtractor } from "./extraction";
 import type { ObjectStore } from "../logs/objectStore";
 
@@ -142,6 +144,15 @@ async function createMarkdownEntry(db: InMemoryTestDatabase, auth: AuthContext, 
   );
 }
 
+async function seedLegacyReference(db: InMemoryTestDatabase, auth: AuthContext, entryId: string, specId: string) {
+  await db.query(
+    `insert into knowledge_parameter_references
+     (id, organization_id, entry_id, parameter_spec_id, created_by_user_id)
+     values ($1, $2, $3, $4, $5)`,
+    [randomUUID(), auth.organization.id, entryId, specId, auth.user.id]
+  );
+}
+
 async function listReferenceAudits(db: InMemoryTestDatabase, entryId: string) {
   const result = await db.query<{ kind: string; action: string; metadata: Record<string, unknown> }>(
     `
@@ -185,58 +196,105 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     await db.rollback();
   });
 
-  it("adds a reference with chip fields, audit evidence, and idempotent re-add", async () => {
+  it("keeps historical Spec references readable and only accepts an existing-key replay", async () => {
     const auth = makeAuth(EDITOR_A, viewEdit);
     const entry = await createMarkdownEntry(db, auth, "Tuning notes");
+
+    await expect(addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_ORG }))
+      .rejects.toMatchObject({ status: 409, details: { reason: "legacy-reference-write-disabled" } });
+    await seedLegacyReference(db, auth, entry.id, SPEC_ORG);
 
     const withReference = await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_ORG });
     expect(withReference.parameterReferences).toHaveLength(1);
     expect(withReference.parameterReferences[0]).toMatchObject({
+      kind: "legacy-spec",
       specId: SPEC_ORG,
       propertyKey: "charge_pump_ratio",
       displayName: "充电泵比率",
       driverModule: "SC8562",
       lifecycle: "active",
+      historicalOnly: false,
+      mappingStatus: "unmapped",
       createdByUserId: EDITOR_A
     });
 
-    // Idempotent: the second PUT changes nothing and writes no second audit.
     const again = await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_ORG });
     expect(again.parameterReferences).toHaveLength(1);
 
     const audits = await listReferenceAudits(db, entry.id);
-    expect(audits).toHaveLength(1);
-    expect(audits[0]).toMatchObject({ kind: "knowledge-parameter-reference-add", action: "parameter-reference-add" });
-    expect(audits[0].metadata).toMatchObject({ specId: SPEC_ORG, propertyKey: "charge_pump_ratio" });
+    expect(audits).toHaveLength(0);
+    const count = await db.query<{ count: string }>(
+      `select count(*)::text as count from knowledge_parameter_references where entry_id = $1`,
+      [entry.id]
+    );
+    expect(count.rows[0]?.count).toBe("1");
   });
 
   it("references platform-global definitions and removes references with audit evidence", async () => {
     const auth = makeAuth(EDITOR_A, viewEdit);
     const entry = await createMarkdownEntry(db, auth, "Global spec notes");
 
-    const withReference = await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_GLOBAL });
+    await seedLegacyReference(db, auth, entry.id, SPEC_GLOBAL);
+    const withReference = await getKnowledgeEntry(db, auth, entry.id);
     expect(withReference.parameterReferences.map((reference) => reference.specId)).toEqual([SPEC_GLOBAL]);
 
     const removed = await removeKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_GLOBAL });
     expect(removed.parameterReferences).toHaveLength(0);
 
     const audits = await listReferenceAudits(db, entry.id);
-    expect(audits.map((audit) => audit.kind)).toEqual([
-      "knowledge-parameter-reference-add",
-      "knowledge-parameter-reference-remove"
-    ]);
+    expect(audits.map((audit) => audit.kind)).toEqual(["knowledge-parameter-reference-remove"]);
   });
 
-  it("refuses references to another tenant's spec and to unknown specs with 404", async () => {
+  it("refuses every new legacy Spec write regardless of current Spec visibility", async () => {
     const auth = makeAuth(EDITOR_A, viewEdit);
     const entry = await createMarkdownEntry(db, auth, "Scope test");
 
     await expect(
       addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_FOREIGN })
-    ).rejects.toMatchObject({ status: 404 });
+    ).rejects.toMatchObject({ status: 409, details: { reason: "legacy-reference-write-disabled" } });
     await expect(
       addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: "pspec:does-not-exist" })
-    ).rejects.toMatchObject({ status: 404 });
+    ).rejects.toMatchObject({ status: 409, details: { reason: "legacy-reference-write-disabled" } });
+    const count = await db.query<{ count: string }>(
+      `select count(*)::text as count from knowledge_parameter_references where entry_id = $1`,
+      [entry.id]
+    );
+    expect(count.rows[0]?.count).toBe("0");
+  });
+
+  it("does not disguise unexpected Catalog infrastructure errors as unavailable references", async () => {
+    const auth = makeAuth(EDITOR_A, viewEdit);
+    const entry = await createMarkdownEntry(db, auth, "Catalog read failure");
+    await db.query(
+      `insert into knowledge_definition_references
+       (id, organization_id, entry_id, definition_id, created_by_user_id)
+       values ($1, $2, $3, $4, $5)`,
+      [randomUUID(), ORG_ID, entry.id, "pdef_error_probe", EDITOR_A]
+    );
+
+    await expect(
+      loadParameterReferencesByEntryIds(db, auth, [entry.id], async () => {
+        throw new Error("simulated PostgreSQL transport failure");
+      })
+    ).rejects.toThrow("simulated PostgreSQL transport failure");
+  });
+
+  it("propagates a legacy mapping transport failure instead of returning an unmapped reference", async () => {
+    const auth = makeAuth(EDITOR_A, viewEdit);
+    const entry = await createMarkdownEntry(db, auth, "Legacy lookup failure");
+    await seedLegacyReference(db, auth, entry.id, SPEC_ORG);
+    const before = await loadParameterReferencesByEntryIds(db, auth, [entry.id]);
+    expect(before.get(entry.id)?.[0]).toMatchObject({ kind: "legacy-spec", specId: SPEC_ORG, mappingStatus: "unmapped" });
+
+    const failure = new Error("simulated legacy mapping PostgreSQL transport failure");
+    const injected = vi.spyOn(legacyApi, "lookupLegacyIdentifier").mockRejectedValue(failure);
+    try {
+      await expect(loadParameterReferencesByEntryIds(db, auth, [entry.id])).rejects.toBe(failure);
+    } finally {
+      injected.mockRestore();
+    }
+    expect(await loadParameterReferencesByEntryIds(db, auth, [entry.id])).toEqual(before);
+    expect(await listReferenceAudits(db, entry.id)).toEqual([]);
   });
 
   it("enforces publisher accountability: non-owner edit is 403, manager may govern, viewer may not", async () => {
@@ -251,6 +309,7 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
       addKnowledgeParameterReference(db, makeAuth(VIEWER, viewOnly), { entryId: entry.id, specId: SPEC_ORG })
     ).rejects.toMatchObject({ status: 403 });
 
+    await seedLegacyReference(db, owner, entry.id, SPEC_ORG);
     const managed = await addKnowledgeParameterReference(db, makeAuth(MANAGER, manageAll), {
       entryId: entry.id,
       specId: SPEC_ORG
@@ -275,7 +334,7 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
   it("refuses reference edits on archived entries, like content edits", async () => {
     const auth = makeAuth(EDITOR_A, viewEdit);
     const entry = await createMarkdownEntry(db, auth, "Archive refusal");
-    await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_ORG });
+    await seedLegacyReference(db, auth, entry.id, SPEC_ORG);
     await publishKnowledgeEntry(db, auth, entry.id);
     await archiveKnowledgeEntry(db, auth, entry.id);
 
@@ -306,14 +365,14 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
       const manager = makeAuth(MANAGER, manageAll);
 
       const published = await createMarkdownEntry(db, editor, "Published referencing entry");
-      await addKnowledgeParameterReference(db, editor, { entryId: published.id, specId: SPEC_ORG });
+      await seedLegacyReference(db, editor, published.id, SPEC_ORG);
       await publishKnowledgeEntry(db, editor, published.id);
 
       const draft = await createMarkdownEntry(db, editor, "Draft referencing entry");
-      await addKnowledgeParameterReference(db, editor, { entryId: draft.id, specId: SPEC_ORG });
+      await seedLegacyReference(db, editor, draft.id, SPEC_ORG);
 
       const archived = await createMarkdownEntry(db, editor, "Archived referencing entry");
-      await addKnowledgeParameterReference(db, editor, { entryId: archived.id, specId: SPEC_ORG });
+      await seedLegacyReference(db, editor, archived.id, SPEC_ORG);
       await publishKnowledgeEntry(db, editor, archived.id);
       await archiveKnowledgeEntry(db, editor, archived.id);
 
@@ -328,7 +387,7 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     it("requires knowledge:view and stays organization-scoped", async () => {
       const editor = makeAuth(EDITOR_A, viewEdit);
       const entry = await createMarkdownEntry(db, editor, "Scoped entry");
-      await addKnowledgeParameterReference(db, editor, { entryId: entry.id, specId: SPEC_ORG });
+      await seedLegacyReference(db, editor, entry.id, SPEC_ORG);
       await publishKnowledgeEntry(db, editor, entry.id);
 
       await expect(
@@ -341,7 +400,7 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
       ).rejects.toMatchObject({ status: 404 });
 
       // A global spec resolves for both tenants but each only sees its own entries.
-      await addKnowledgeParameterReference(db, editor, { entryId: entry.id, specId: SPEC_GLOBAL });
+      await seedLegacyReference(db, editor, entry.id, SPEC_GLOBAL);
       const foreignView = await findRelatedKnowledgeForSpec(db, makeAuth(OTHER_ORG_EDITOR, viewOnly, OTHER_ORG_ID), {
         specId: SPEC_GLOBAL
       });
@@ -359,7 +418,7 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     it("survives spec deprecation and reports the lifecycle honestly (ADR-0011)", async () => {
       const auth = makeAuth(EDITOR_A, viewEdit);
       const entry = await createMarkdownEntry(db, auth, "Deprecation survival");
-      await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_ORG });
+      await seedLegacyReference(db, auth, entry.id, SPEC_ORG);
       await publishKnowledgeEntry(db, auth, entry.id);
 
       await db.query(`update parameter_specs set definition_lifecycle = 'deprecated' where id = $1`, [SPEC_ORG]);
@@ -376,7 +435,7 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     it("survives an ADR-0017 identity correction (surrogate id does not move)", async () => {
       const auth = makeAuth(EDITOR_A, viewEdit);
       const entry = await createMarkdownEntry(db, auth, "Identity correction survival");
-      await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_ORG });
+      await seedLegacyReference(db, auth, entry.id, SPEC_ORG);
 
       // Re-attribution + property-key rename rewrite identity columns in place.
       const subjectId = `asub:${SPEC_GLOBAL}`;
@@ -394,8 +453,8 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     it("entry hard delete cascades reference rows and audits the count", async () => {
       const manager = makeAuth(MANAGER, manageAll);
       const entry = await createMarkdownEntry(db, manager, "Cascade on delete");
-      await addKnowledgeParameterReference(db, manager, { entryId: entry.id, specId: SPEC_ORG });
-      await addKnowledgeParameterReference(db, manager, { entryId: entry.id, specId: SPEC_GLOBAL });
+      await seedLegacyReference(db, manager, entry.id, SPEC_ORG);
+      await seedLegacyReference(db, manager, entry.id, SPEC_GLOBAL);
 
       await hardDeleteKnowledgeEntry(db, manager, entry.id, { requestId: "req-xref-delete" });
 
@@ -416,7 +475,7 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     it("spec rows with references refuse deletion (no silent reference loss)", async () => {
       const auth = makeAuth(EDITOR_A, viewEdit);
       const entry = await createMarkdownEntry(db, auth, "FK restraint");
-      await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_ORG });
+      await seedLegacyReference(db, auth, entry.id, SPEC_ORG);
 
       // The catalog has no spec hard-delete path; if one ever appears it must
       // decide reference disposition explicitly — the FK makes that a hard error.

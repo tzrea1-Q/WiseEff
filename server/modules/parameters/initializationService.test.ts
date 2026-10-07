@@ -148,15 +148,15 @@ describe.skipIf(!databaseAvailable)("initializationService", () => {
     expect(await auditKinds()).toContain("project-initialization-rejected");
   });
 
-  it("forbids double-approve of a non-pending review", async () => {
+  it("replays double-approve without rematerializing the review", async () => {
     await upsertDraft(db, creatorAuth(), emptyDraftInput());
     const submitted = await submitDraft(db, creatorAuth(), { projectId: "project-new" });
     await approveReview(db, adminAuth(), { reviewId: submitted.id });
 
-    await expect(approveReview(db, adminAuth(), { reviewId: submitted.id })).rejects.toMatchObject({
-      code: "CONFLICT",
-      status: 409
-    } satisfies Partial<ApiError>);
+    await expect(approveReview(db, adminAuth(), { reviewId: submitted.id })).resolves.toMatchObject({
+      id: submitted.id,
+      status: "approved"
+    });
     await expect(materializedBindingCount()).resolves.toBe(0);
   });
 

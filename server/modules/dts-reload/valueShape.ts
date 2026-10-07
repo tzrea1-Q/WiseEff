@@ -61,6 +61,44 @@ export function isBarePhandleListValue(value: DtsValue): boolean {
   );
 }
 
+/** Infer the reload surface family from the canonical DTS value payload. */
+export function inferReloadValueShape(value: DtsValue): CandidateValueShape {
+  switch (value.kind) {
+    case "boolean":
+      return { kind: "boolean" };
+    case "strings":
+      return { kind: value.values.length === 1 ? "string" : "string-list" };
+    case "bytes":
+      return { kind: "bytes", bits: 8, length: value.values.length };
+    case "mixed":
+      return { kind: "mixed" };
+    case "cells": {
+      const cells = value.groups.flat();
+      const isPhandle =
+        value.bits === 32 &&
+        cells.length > 0 &&
+        value.groups.every((group) => group.length > 0 && group[0]?.kind === "phandle");
+      if (isPhandle) {
+        const cellsPerGroup = value.groups[0]?.length ?? 1;
+        return {
+          kind: cellsPerGroup === 1 ? "phandle-list" : "phandle-cells",
+          bits: 32,
+          cellsPerGroup,
+          groups: value.groups.length
+        };
+      }
+      return {
+        kind: value.bits === 32 ? "u32-array" : "cells",
+        bits: value.bits,
+        cellsPerGroup: value.groups[0]?.length ?? 1,
+        groups: value.groups.length
+      };
+    }
+    case "empty":
+      return { kind: "empty" };
+  }
+}
+
 function tryParseBaseline(baselineValue: string | null | undefined): DtsValue | null {
   if (!baselineValue || baselineValue.trim().length === 0) return null;
   try {

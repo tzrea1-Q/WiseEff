@@ -27,9 +27,12 @@ import {
 import { catalogPendingWorkLabel } from "../parameter-catalog/copy";
 import { RegistrationDialog } from "./RegistrationDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
+import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 
 import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -41,6 +44,7 @@ export type CatalogOrganizationSurfaceProps = {
   onAnchorChange: (href: string, mode: "push" | "replace") => void;
   organizationId?: string;
   currentPersonId: string;
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
 };
 
 export function CatalogOrganizationSurface({
@@ -52,7 +56,8 @@ export function CatalogOrganizationSurface({
   search,
   onAnchorChange,
   organizationId,
-  currentPersonId
+  currentPersonId,
+  relatedKnowledge
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
   const anchor = parseCatalogUrlAnchor(search);
@@ -60,7 +65,7 @@ export function CatalogOrganizationSurface({
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
-  const [pendingWorkOpen, setPendingWorkOpen] = useState(false);
+  const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId));
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
   const [lifecycle, setLifecycle] = useState<{
@@ -68,10 +73,16 @@ export function CatalogOrganizationSurface({
     definition: CatalogDefinitionResponse["item"];
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
+
+  useEffect(() => {
+    if (anchor.reviewItemId) setPendingWorkOpen(true);
+  }, [anchor.reviewItemId]);
   const subjectId = anchor.subjectId ?? "";
   const [catalogSubjects, setCatalogSubjects] = useState<
     Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]
   >([]);
+  const [subjectLoad, setSubjectLoad] = useState<"loading" | "ready" | "error">("loading");
+  const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
 
   const handleAction = useCallback(
     (next: CatalogAuthorizedAction, context?: { subjectId?: string | null; registrationId?: string | null }) => {
@@ -90,22 +101,26 @@ export function CatalogOrganizationSurface({
 
   useEffect(() => {
     let cancelled = false;
+    setCatalogSubjects([]);
+    setSubjectLoad("loading");
     void (async () => {
       try {
-        const listed = await catalog.listSubjects({ limit: 100 });
+        const subjects = await listAllCanonicalPages((query) => catalog.listSubjects(query));
         if (!cancelled) {
-          setCatalogSubjects([...listed.items]);
+          setCatalogSubjects(subjects);
+          setSubjectLoad("ready");
         }
       } catch {
         if (!cancelled) {
           setCatalogSubjects([]);
+          setSubjectLoad("error");
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [catalog, surfaceEpoch]);
+  }, [catalog, surfaceEpoch, subjectReadEpoch]);
 
 
   useEffect(() => {
@@ -185,6 +200,14 @@ export function CatalogOrganizationSurface({
         renderDefinitionEditor={
           domainState
             ? (definition, history) => (
+          <>
+          {subjectLoad === "loading" ? <SectionSkeleton label="正在读取主体列表" /> : null}
+          {subjectLoad === "error" ? (
+            <SectionError
+              message="无法读取主体列表，请重试。"
+              onRetry={() => setSubjectReadEpoch((value) => value + 1)}
+            />
+          ) : null}
           <DefinitionEditorBody
             actor={actor}
             sessionPermissions={sessionPermissions}
@@ -192,6 +215,7 @@ export function CatalogOrganizationSurface({
             catalog={catalog}
             catalogReleaseId={catalogReleaseId}
             definition={definition}
+            relatedKnowledge={relatedKnowledge}
             subjects={catalogSubjects}
             createIdempotencyKey={createGovernanceIdempotencyKey}
             // The catalog refreshes when the dialog closes, so a written result
@@ -208,6 +232,7 @@ export function CatalogOrganizationSurface({
               />
             }
           />
+          </>
               )
             : undefined
         }

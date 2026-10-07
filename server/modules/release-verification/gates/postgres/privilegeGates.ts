@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
 import pg from "pg";
 import {
+  CATALOG_BASELINE_READER_ROLE,
   CATALOG_MIGRATION_OWNER,
+  CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
   LEGACY_STRUCTURAL_TABLES,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
@@ -197,6 +200,18 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
   });
 };
 
+// #930 / 0169: exact audited tombstone entry point, not a general writer DML grant.
+// Re-review the migration body and role matrix before changing this fingerprint.
+const REVIEWED_TOMBSTONE_IDENTITY =
+  "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)";
+const REVIEWED_TOMBSTONE_BODY_SHA256 =
+  "34ac6fdf032badb57c998b3597810048b06d78e480fd8edb4c052c25d967edd5";
+// #897 / 0176: exact current DTS occurrence writer; API logins retain no Catalog table DML.
+const DTS_OBSERVATION_OCCURRENCE_IDENTITY =
+  "parameter_catalog.ensure_dts_observation_source_occurrence(text,text,text,text,text,text,text,text)";
+const DTS_OBSERVATION_OCCURRENCE_BODY_SHA256 =
+  "779e47230dcde8f668f773aa39774ed522c07fee50a7678333bee45ed1d9e4dc";
+
 export const runP02 = async (db: Database): Promise<GateResult> => {
   const probes: PrivilegeProbe[] = [];
   for (const role of [PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE]) {
@@ -216,9 +231,26 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
     ),
   );
 
-  const definers = await db.query<{ proname: string }>(
+  const definers = await db.query<{
+    identity: string;
+    proname: string;
+    body: string;
+    function_owner: string;
+    settings: string[] | null;
+    public_execute: boolean;
+    synchronizer_execute: boolean;
+    coordinator_execute: boolean;
+    reader_execute: boolean;
+  }>(
     `
-    select procedure.proname
+    select procedure.oid::regprocedure::text as identity,
+      procedure.proname, procedure.prosrc as body,
+      pg_catalog.pg_get_userbyid(procedure.proowner) as function_owner,
+      procedure.proconfig as settings,
+      pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
+      pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as synchronizer_execute,
+      pg_catalog.has_function_privilege('catalog_publication_coordinator_role', procedure.oid, 'execute') as coordinator_execute,
+      pg_catalog.has_function_privilege('catalog_baseline_reader_role', procedure.oid, 'execute') as reader_execute
     from pg_catalog.pg_proc procedure
     join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
     where procedure.prosecdef
@@ -230,20 +262,69 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
       )
     order by procedure.proname
     `,
-    [PARAMETER_GOVERNANCE_WRITER_ROLE],
+    [PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE],
   );
   const unexpectedDefiners = definers.rows.filter(
-    (row) => row.proname !== "assert_catalog_subject_active",
+    (row) => row.proname !== "assert_catalog_subject_active" && !(
+      row.identity === REVIEWED_TOMBSTONE_IDENTITY
+      && createHash("sha256").update(row.body).digest("hex") === REVIEWED_TOMBSTONE_BODY_SHA256
+      && row.function_owner === CATALOG_MIGRATION_OWNER
+      && row.settings?.length === 1
+      && row.settings[0] === "search_path=pg_catalog, parameter_catalog, public"
+      && !row.public_execute
+      && !row.synchronizer_execute
+      && !row.coordinator_execute
+      && !row.reader_execute
+    ) && !(
+      row.identity === DTS_OBSERVATION_OCCURRENCE_IDENTITY
+      && createHash("sha256").update(row.body).digest("hex") === DTS_OBSERVATION_OCCURRENCE_BODY_SHA256
+      && row.function_owner === CATALOG_MIGRATION_OWNER
+      && row.settings?.length === 1
+      && row.settings[0] === "search_path=pg_catalog, parameter_catalog"
+      && !row.public_execute
+      && !row.synchronizer_execute
+      && !row.coordinator_execute
+      && !row.reader_execute
+    ),
   );
 
+  // Query this exact function independently: a revoked writer grant must not
+  // make it disappear from the writer-visible definer inventory above.
+  const dtsOccurrence = await db.query<{
+    owner: string; security_definer: boolean; settings: string[] | null;
+    body: string; executable_roles: string[] | null;
+  }>(`
+    select pg_catalog.pg_get_userbyid(p.proowner) as owner,
+      p.prosecdef as security_definer, p.proconfig as settings, p.prosrc as body,
+      (select array_agg(role_name order by role_name)
+       from unnest($2::text[]) as roles(role_name)
+       where pg_catalog.has_function_privilege(role_name, p.oid, 'execute')) as executable_roles
+    from pg_catalog.pg_proc p where p.oid=pg_catalog.to_regprocedure($1)
+  `, [DTS_OBSERVATION_OCCURRENCE_IDENTITY, [
+    "public", PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE,
+    CATALOG_PUBLICATION_COORDINATOR_ROLE, CATALOG_BASELINE_READER_ROLE,
+    "catalog_verification_writer_role", "catalog_verifier_role",
+  ]]);
+  const occurrence = dtsOccurrence.rows[0];
+  const validDtsOccurrence = occurrence?.owner === CATALOG_MIGRATION_OWNER
+    && occurrence.security_definer
+    && occurrence.settings?.length === 1
+    && occurrence.settings[0] === "search_path=pg_catalog, parameter_catalog"
+    && createHash("sha256").update(occurrence.body).digest("hex") === DTS_OBSERVATION_OCCURRENCE_BODY_SHA256
+    && occurrence.executable_roles?.length === 1
+    && occurrence.executable_roles[0] === PARAMETER_GOVERNANCE_WRITER_ROLE;
+
   const bypasses = probes.filter((item) => item.succeeded || item.sqlstate !== "42501");
-  const violationCount = bypasses.length + unexpectedDefiners.length;
+  const violationCount = bypasses.length + unexpectedDefiners.length + (validDtsOccurrence ? 0 : 1);
   await db.query("reset role").catch(() => undefined);
   return countedResult("PCAT-DB-P02", "PCAT-PRIV-LEGACY-WRITER-BYPASS", violationCount, {
     bypassCount: bypasses.length,
     probeCount: probes.length,
     sqlstateChecksum: checksumProbes(probes),
     sqlstates: probes.map((item) => item.sqlstate),
-    unexpectedDefiners: unexpectedDefiners.map((row) => row.proname),
+    unexpectedDefiners: [
+      ...unexpectedDefiners.map((row) => row.proname),
+      ...(!validDtsOccurrence ? [DTS_OBSERVATION_OCCURRENCE_IDENTITY] : []),
+    ],
   });
 };

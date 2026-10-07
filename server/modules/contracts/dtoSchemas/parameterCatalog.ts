@@ -13,6 +13,8 @@ import {
   subjectLifecycles
 } from "../../parameter-catalog-contract/index";
 import { itemEnvelopeSchema } from "./envelopes";
+import { canonicalBatchRollbackPrepareResponseSchema } from "./canonicalBatchRollback";
+import { bindingCompareEntryDtoSchema, bindingHistoryEntryDtoSchema } from "../../parameter-topology/schemas";
 
 export const pcatApiGates = [
   "PCAT-API-01",
@@ -390,12 +392,17 @@ export const catalogRegistrationDtoSchema = catalogObject({
   status: catalogRegistrationStatusSchema,
   method: catalogRegistrationMethodSchema,
   placement: catalogPlacementDtoSchema,
+  impact: catalogObject({
+    bindingCount: z.number().int().nonnegative(),
+    projectCount: z.number().int().nonnegative()
+  }).optional(),
   catalogReleaseId: z.string()
 });
 
 export const catalogRegisterSubjectRequestSchema = catalogObject({
   subjectId: z.string(),
   placement: catalogPlacementIntentSchema,
+  destinationModuleId: z.string().min(1).optional(),
   reason: z.string().optional()
 });
 
@@ -408,7 +415,8 @@ export const catalogRestoreRegistrationRequestSchema = catalogObject({
 });
 
 export const catalogUpdatePlacementRequestSchema = catalogObject({
-  placement: catalogPlacementIntentSchema
+  placement: catalogPlacementIntentSchema,
+  destinationModuleId: z.string().min(1).optional()
 });
 
 export const catalogObservationDtoSchema = catalogObject({
@@ -836,18 +844,18 @@ export const catalogProjectBindingDtoSchema = catalogObject({
 });
 
 export const catalogBindingHistoryEntryDtoSchema = catalogObject({
-  id: z.string(),
+  ...bindingHistoryEntryDtoSchema.shape,
   bindingId: z.string(),
   definitionId: z.string(),
   effectiveRevisionId: z.string(),
-  currentValueId: z.string(),
   recordedAt: z.string()
 });
 
 export const catalogBindingCompareEntryDtoSchema = catalogObject({
-  projectId: z.string(),
+  ...bindingCompareEntryDtoSchema.shape,
   bindingId: z.string(),
   definitionId: z.string(),
+  definitionRevisionId: z.string(),
   effectiveRevisionId: z.string(),
   currentValueId: z.string()
 });
@@ -1036,16 +1044,144 @@ export const catalogValueChangeRequestResponseSchema = itemEnvelopeSchema(
 export const catalogValueChangeRequestListResponseSchema = catalogObject({
   items: z.array(catalogValueChangeRequestDtoSchema)
 });
-export const catalogValueChangeSourceDiffResponseSchema = itemEnvelopeSchema(catalogObject({
+export const catalogBatchCompositionProofSchema = catalogObject({
+    kind: z.literal("canonical-batch-draft-composition"),
+    organizationId: z.string(), projectId: z.string(), format: closedEnum(["json", "dts"]),
+    fileId: z.string(), baseVersionId: z.string(), configSetId: z.string(),
+    cohortProofToken: z.string(),
+    uploadCandidateId: z.string(), composedCandidateId: z.string(),
+    uploadObject: catalogObject({ storageKey: z.string(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      sizeBytes: z.number().int().nonnegative(), proofToken: z.string() }),
+    composedObject: catalogObject({ storageKey: z.string(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      sizeBytes: z.number().int().nonnegative(), proofToken: z.string() }),
+    batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    members: canonicalBatchRollbackPrepareResponseSchema.shape.item.shape.members,
+    cohort: canonicalBatchRollbackPrepareResponseSchema.shape.item.shape.cohort,
+    targetDecisions: z.array(catalogObject({
+      ordinal: z.number().int().nonnegative(), bindingId: z.string(),
+      choice: closedEnum(["file", "draft"]),
+      action: closedEnum(["set", "delete"]), locator: z.record(z.string(), z.unknown()),
+      targetValue: z.unknown(), targetText: z.string().nullable(),
+      draft: catalogObject({ id: z.string(), authorUserId: z.string().nullable(),
+        frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/), baseCurrentValueId: z.string(),
+        sourcePinId: z.string().nullable(), configRevisionId: z.string(),
+        candidateStorageKey: z.string(), candidateSha256: z.string().regex(/^[0-9a-f]{64}$/),
+        candidateSizeBytes: z.number().int().nonnegative() }).nullable()
+    })).min(2)
+});
+const catalogBatchDraftImpactSchema = z.array(catalogObject({
+  ordinal: z.number().int().nonnegative(), bindingId: z.string(),
+  role: closedEnum(["target", "sibling"]), decision: closedEnum(["file", "draft", "re-pin"]),
+  selectedDraftId: z.string().optional(),
+  baseCurrentValueId: z.string(), sourcePinId: z.string(), configRevisionId: z.string(),
+  drafts: z.array(catalogObject({
+    draftId: z.string(), authorUserId: z.string().nullable(), reason: z.string(),
+    action: closedEnum(["set", "delete"]), targetValue: z.unknown(),
+    baseCurrentValueId: z.string(), sourcePinId: z.string().nullable(), configRevisionId: z.string(),
+    currentlyStale: z.boolean(), expectedEffect: z.literal("preserved-stale"),
+    frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/)
+  }))
+}));
+export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
+  id: z.string(), projectId: z.string(), candidateId: z.string(),
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), cohortCount: z.number().int().positive(),
+  draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  uploadCandidateId: z.string().nullable(),
+  decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  compositionProof: catalogBatchCompositionProofSchema.nullable(),
+  draftImpact: catalogBatchDraftImpactSchema.nullable(),
+  status: closedEnum(["pending", "approved", "rejected", "withdrawn"]), reason: z.string(),
+  submitterUserId: z.string().nullable(), assignedToUserId: z.string().nullable(),
+  reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
+  sourceProofToken: z.string(), cohortProofToken: z.string(),
+  fileId: z.string(), baseVersionId: z.string(), configSetId: z.string(),
+  appliedAt: z.string().nullable(), appliedAuditRef: z.string().nullable(),
+  targets: z.array(catalogObject({
+    ordinal: z.number().int().nonnegative(), draftId: z.string().nullable(),
+    decision: closedEnum(["file", "draft", "unverified-draft"]),
+    bindingId: z.string(), definitionId: z.string(), definitionRevisionId: z.string(),
+    catalogReleaseId: z.string(), baseCurrentValueId: z.string(),
+    configRevisionId: z.string(), sourceRef: z.string(), sourcePinId: z.string(),
+    action: closedEnum(["set", "delete"]), targetValue: z.unknown(), targetText: z.string().nullable(),
+    appliedValueId: z.string().nullable(), appliedHistoryEventId: z.string().nullable(),
+    appliedSourcePinId: z.string().nullable(), appliedFileVersionId: z.string().nullable()
+  })).min(2)
+});
+export const catalogBatchValueChangeRequestResponseSchema = itemEnvelopeSchema(catalogBatchValueChangeRequestDtoSchema);
+export const catalogBatchValueChangeRequestListResponseSchema = catalogObject({
+  items: z.array(catalogBatchValueChangeRequestDtoSchema)
+});
+export const catalogMemberRemovalProofSchema = catalogObject({
+  kind: z.literal("canonical-member-removal"),
+  organizationId: z.string(), projectId: z.string(), configSetId: z.string(),
+  fileId: z.string(), fileVersionId: z.string(), configRevisionId: z.string(),
+  members: z.array(catalogObject({
+    fileId: z.string(), fileVersionId: z.string(), sourceName: z.string(),
+    format: z.literal("json"), role: z.string(), sortOrder: z.number().int(),
+    checksum: z.string(), sizeBytes: z.number().nonnegative()
+  })).min(2),
+  cohort: z.array(catalogObject({
+    bindingId: z.string(), oldValueId: z.string(), sourcePinId: z.string(),
+    sourceOccurrenceId: z.string(), definitionId: z.string(), effectiveRevisionId: z.string(),
+    catalogReleaseId: z.string(), fileId: z.string(), fileVersionId: z.string(),
+    locator: z.record(z.string(), z.unknown()), valueDigest: z.string()
+  })).min(2),
+  proofDigest: z.string().regex(/^[0-9a-f]{64}$/)
+});
+export const catalogMemberRemovalRequestDtoSchema = catalogObject({
+  id: z.string(), projectId: z.string(), configSetId: z.string(),
+  fileId: z.string(), fileVersionId: z.string(), proofDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  frozenProof: catalogMemberRemovalProofSchema,
+  status: closedEnum(["pending", "approved", "rejected", "withdrawn"]),
+  reason: z.string(), submitterUserId: z.string(), assignedToUserId: z.string(),
+  reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
+  appliedSourceResult: catalogObject({
+    tombstoneId: z.string(), successorConfigRevisionId: z.string()
+  }).nullable(),
+  createdAt: z.string(), updatedAt: z.string()
+});
+export const catalogMemberRemovalRequestResponseSchema = itemEnvelopeSchema(catalogMemberRemovalRequestDtoSchema);
+export const catalogMemberRemovalRequestListResponseSchema = catalogObject({
+  items: z.array(catalogMemberRemovalRequestDtoSchema)
+});
+export const catalogValueChangeReviewResponseSchema = itemEnvelopeSchema(z.union([
+  catalogValueChangeRequestDtoSchema, catalogBatchValueChangeRequestDtoSchema,
+  catalogMemberRemovalRequestDtoSchema
+]));
+export const catalogValueChangeWithdrawalResponseSchema = itemEnvelopeSchema(z.union([
+  catalogValueChangeRequestDtoSchema, catalogBatchValueChangeRequestDtoSchema,
+  catalogMemberRemovalRequestDtoSchema
+]));
+const catalogValueChangeSourceBindingSchema = catalogObject({
+  bindingId: z.string(),oldValueId: z.string(),sourcePinId: z.string(),sourceOccurrenceId: z.string(),
+  definitionId: z.string(),effectiveRevisionId: z.string(),catalogReleaseId: z.string(),
+  locator: z.record(z.string(),z.unknown()),valueKind: z.string(),valueDigest: z.string(),configSetId: z.string()
+});
+const catalogSingleValueChangeSourceDiffSchema = catalogObject({
   requestId: z.string(),bindingId: z.string(),format: closedEnum(["dts", "json"]),sourceName: z.string(),
   sourcePinId: z.string(),candidateId: z.string(),baseDigest: z.string(),proposedDigest: z.string(),diffDigest: z.string(),
   before: z.string(),after: z.string(),
-  bindings: z.array(catalogObject({
-    bindingId: z.string(),oldValueId: z.string(),sourcePinId: z.string(),sourceOccurrenceId: z.string(),
-    definitionId: z.string(),effectiveRevisionId: z.string(),catalogReleaseId: z.string(),
-    locator: z.record(z.string(),z.unknown()),valueKind: z.string(),valueDigest: z.string(),configSetId: z.string()
-  }))
-}));
+  bindings: z.array(catalogValueChangeSourceBindingSchema)
+});
+const catalogBatchValueChangeSourceDiffSchema = catalogObject({
+  kind: z.literal("batch"), requestId: z.string(), candidateId: z.string(),
+  uploadCandidateId: z.string().nullable(), decisionProofDigest: z.string().nullable(),
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/), format: closedEnum(["json", "dts"]),
+  sourceName: z.string(), baseDigest: z.string(), proposedDigest: z.string(), diffDigest: z.string(),
+  before: z.string(), after: z.string(), bindings: z.array(catalogValueChangeSourceBindingSchema),
+  uploadAfter: z.string().nullable().optional(),
+  draftImpact: catalogBatchDraftImpactSchema.nullable().optional(),
+  targets: z.array(catalogObject({
+    ordinal: z.number().int().nonnegative(), bindingId: z.string(), sourcePinId: z.string(),
+    action: closedEnum(["set", "delete"]), beforeText: z.string(), afterText: z.string().optional(),
+    decision: closedEnum(["file", "draft"]), draftId: z.string().nullable()
+  })).min(2)
+});
+export const catalogValueChangeSourceDiffResponseSchema = itemEnvelopeSchema(z.union([
+  catalogSingleValueChangeSourceDiffSchema, catalogBatchValueChangeSourceDiffSchema
+]));
 export const catalogRegisterConfigurationInstancesRequestSchema = catalogObject({
   configSetId: z.string().min(1),
   fileVersionId: z.string().min(1),
@@ -1059,9 +1195,31 @@ export const catalogRegisterConfigurationInstancesRequestSchema = catalogObject(
 export const catalogSubmitValueChangeRequestSchema = catalogObject({
   assignedToUserId: z.string().nullable().optional()
 });
+export const catalogSubmitMemberRemovalRequestSchema = catalogObject({
+  configSetId: z.string().min(1), fileId: z.string().min(1),
+  reason: z.string().trim().min(1), assignedToUserId: z.string().min(1)
+});
+export const catalogSubmitBatchValueChangeRequestSchema = catalogObject({
+  candidateId: z.string().min(1), expectedProofToken: z.string().min(1),
+  reason: z.string().trim().min(1), assignedToUserId: z.string().min(1),
+  selectedDrafts: z.array(catalogObject({ bindingId: z.string().min(1), draftId: z.string().min(1) })).optional(),
+  targetDecisions: z.array(catalogObject({ bindingId: z.string().min(1),
+    choice: closedEnum(["file", "draft"]), draftId: z.string().min(1).optional(),
+    expectedConflictProofs: z.array(catalogObject({ draftId: z.string().min(1),
+      decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/) })).optional() })).optional()
+});
+export const catalogReviewMemberRemovalRequestSchema = catalogObject({
+  decision: closedEnum(["approve", "reject"]),
+  note: z.string().nullable().optional(),
+  memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/)
+});
 export const catalogReviewValueChangeRequestSchema = catalogObject({
   decision: closedEnum(["approve", "reject"]),
-  note: z.string().nullable().optional()
+  note: z.string().nullable().optional(),
+  batchProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  draftImpactDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  decisionProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  memberProofDigest: z.string().regex(/^[0-9a-f]{64}$/).optional()
 });
 
 export const catalogCreateNodeEnablementDraftRequestSchema = catalogObject({
@@ -1110,6 +1268,40 @@ export const catalogPlacementResponseSchema = itemEnvelopeSchema(catalogPlacemen
   rejectLegacySpecKeys
 );
 export const catalogObservationListResponseSchema = catalogItemsEnvelopeSchema(catalogObservationDtoSchema);
+export const catalogDriverCompatibleDiscoveryResponseSchema = z.union([
+  catalogObject({
+    status: z.literal("unavailable"),
+    reason: closedEnum(["catalog-unavailable", "release-drift", "review-evidence-limit", "review-evidence-invalid"])
+  }),
+  catalogObject({
+    status: z.literal("ready"),
+    catalogRelease: catalogReleasePinSchema,
+    matcherRevision: z.string(),
+    items: z.array(catalogObject({
+      observationId: z.string(), projectId: z.string(), logicalNodeId: z.string(),
+      configRevisionId: z.string(), observedCatalogReleaseId: z.string(),
+      observedMatcherRevision: z.string(),
+      source: z.union([
+        catalogObject({status: z.literal("unavailable"), reason: z.string()}),
+        catalogObject({status: z.literal("historical"), currentConfigRevisionId: z.string(),
+          historicalCompatibles: z.array(z.string())}),
+        catalogObject({status: z.literal("current"), configSetId: z.string(), sourceName: z.string(),
+          fileVersionId: z.string(), sourceDigest: z.string(), revisionDigest: z.string()})
+      ]),
+      compatibles: z.array(catalogObject({
+        compatible: z.string(),
+        candidate: z.union([
+          catalogObject({kind: z.literal("recognized"), subjectId: z.string(), registrationId: z.string().nullable()}),
+          catalogObject({kind: z.literal("review-required"),
+            reason: closedEnum(["unknown", "ambiguous", "retired"]),
+            reviewItemIds: z.array(z.string()).nullable()})
+        ])
+      }))
+    })),
+    nextCursor: z.string().nullable(), ignoredReviewItemCount: z.number().int().nonnegative().nullable(),
+    emptyReason: z.literal("no-observations").optional()
+  })
+]);
 export const catalogObservationResponseSchema = itemEnvelopeSchema(catalogObservationDtoSchema).superRefine(
   rejectLegacySpecKeys
 );
@@ -1142,12 +1334,12 @@ export const catalogLegacyIdentifierResponseSchema = itemEnvelopeSchema(
 export const projectParameterBindingListResponseSchema = catalogItemsEnvelopeSchema(
   catalogProjectBindingDtoSchema
 );
-export const bindingHistoryListResponseSchema = catalogItemsEnvelopeSchema(
-  catalogBindingHistoryEntryDtoSchema
-);
-export const bindingCompareListResponseSchema = catalogItemsEnvelopeSchema(
-  catalogBindingCompareEntryDtoSchema
-);
+export const bindingHistoryListResponseSchema = catalogObject({
+  items: z.array(catalogBindingHistoryEntryDtoSchema)
+});
+export const bindingCompareListResponseSchema = catalogObject({
+  items: z.array(catalogBindingCompareEntryDtoSchema)
+});
 export const bindingDraftResponseSchema = itemEnvelopeSchema(catalogBindingDraftDtoSchema).superRefine(
   rejectLegacySpecKeys
 );
@@ -1313,6 +1505,7 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogPlacementResponse: catalogPlacementResponseSchema,
   CatalogUpdatePlacementRequest: catalogUpdatePlacementRequestSchema,
   CatalogObservationListResponse: catalogObservationListResponseSchema,
+  CatalogDriverCompatibleDiscoveryResponse: catalogDriverCompatibleDiscoveryResponseSchema,
   CatalogObservationResponse: catalogObservationResponseSchema,
   CatalogReviewItemListResponse: catalogReviewItemListResponseSchema,
   CatalogReviewItemResponse: catalogReviewItemResponseSchema,
@@ -1348,6 +1541,14 @@ export const parameterCatalogDtoSchemaCatalog = {
   RegisterConfigurationInstancesRequest: catalogRegisterConfigurationInstancesRequestSchema,
   ProjectValueDraftRemovedResponse: projectValueDraftRemovedResponseSchema,
   ProjectValueChangeRequestResponse: catalogValueChangeRequestResponseSchema,
+  ProjectValueBatchChangeRequestResponse: catalogBatchValueChangeRequestResponseSchema,
+  ProjectValueBatchChangeRequestListResponse: catalogBatchValueChangeRequestListResponseSchema,
+  SubmitProjectValueBatchChangeRequest: catalogSubmitBatchValueChangeRequestSchema,
+  MemberRemovalRequestResponse: catalogMemberRemovalRequestResponseSchema,
+  MemberRemovalRequestListResponse: catalogMemberRemovalRequestListResponseSchema,
+  SubmitMemberRemovalRequest: catalogSubmitMemberRemovalRequestSchema,
+  ProjectValueChangeReviewResponse: catalogValueChangeReviewResponseSchema,
+  ProjectValueChangeWithdrawalResponse: catalogValueChangeWithdrawalResponseSchema,
   ProjectValueChangeRequestListResponse: catalogValueChangeRequestListResponseSchema,
   SubmitProjectValueChangeRequest: catalogSubmitValueChangeRequestSchema,
   ReviewProjectValueChangeRequest: catalogReviewValueChangeRequestSchema,
@@ -1520,6 +1721,13 @@ export const parameterCatalogCanonicalRoutes = [
     id: "catalog.getObservation",
     method: "GET",
     path: "/api/v2/organizations/:organizationId/parameter-observations/:observationId",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.listDriverCompatibleDiscovery",
+    method: "GET",
+    path: "/api/v2/organizations/:organizationId/driver-compatible-discovery",
     module: "catalog",
     stability: "mvp"
   },
@@ -1704,6 +1912,7 @@ export const parameterCatalogRouteGates: Record<
   "catalog.updatePlacement": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.listObservations": ["PCAT-API-05"],
   "catalog.getObservation": ["PCAT-API-05"],
+  "catalog.listDriverCompatibleDiscovery": ["PCAT-API-05"],
   "catalog.listReviewItems": ["PCAT-API-05"],
   "catalog.getReviewItem": ["PCAT-API-05"],
   "catalog.resolveReviewItem": ["PCAT-API-05", "PCAT-API-10"],
@@ -1759,6 +1968,7 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.updatePlacement": "updatePlacement",
   "catalog.listObservations": "listObservations",
   "catalog.getObservation": "getObservation",
+  "catalog.listDriverCompatibleDiscovery": "listDriverCompatibleDiscovery",
   "catalog.listReviewItems": "listReviewItems",
   "catalog.getReviewItem": "getReviewItem",
   "catalog.resolveReviewItem": "resolveReviewItem",
@@ -2109,6 +2319,21 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogObservationResponse",
     additionalResponses: catalogReadErrors,
     successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.listDriverCompatibleDiscovery": {
+    summary: "Discover source-proven Driver compatibles for authorized projects",
+    tags: ["catalog"],
+    responseBody: "CatalogDriverCompatibleDiscoveryResponse",
+    additionalResponses: { ...catalogReadErrors, "400": "ErrorResponse", "409": "ErrorResponse" },
+    requestParameters: [
+      { name: "projectId", in: "query" },
+      { name: "observationId", in: "query" },
+      ...pageQueryParameters,
+      { ...catalogReleaseRequestHeader, required: false,
+        description: "Required with cursor; must match the first page's catalog release." }
+    ],
+    successHeaders: [{ ...catalogReleaseResponseHeader, required: false,
+      description: "Present on ready pages; unavailable pages have no proven release pin." }]
   },
   "catalog.listReviewItems": {
     summary: "List the organization parameter review queue",

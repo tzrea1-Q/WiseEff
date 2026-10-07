@@ -1,8 +1,10 @@
 export {
   createCanonicalValueDraft,
   listCanonicalValueDraftsForUser,
+  listCanonicalValueDraftsForReviewer,
   removeCanonicalValueDraft,
   type CanonicalValueDraftDto,
+  type CanonicalValueDraftReviewerDto,
   type CreateCanonicalValueDraftInput,
   type CanonicalValueDraftOptions
 } from "./service";
@@ -11,9 +13,11 @@ export {
   getCanonicalValueDraft,
   getCanonicalValueDraftForUpdate,
   listCanonicalValueDrafts,
+  listCanonicalValueDraftsForBinding,
   loadCanonicalBindingPins,
   upsertCanonicalValueDraft,
   type CanonicalValueDraftAction,
+  type CanonicalValueDraftReviewRow,
   type CanonicalValueDraftRow,
   type CanonicalBindingPins
 } from "./repository";
@@ -40,3 +44,13 @@ export {
   type CanonicalChangeRequestStatus,
   type CanonicalValueChangeRequestRow
 } from "./changeRepository";
+export {
+  approveCanonicalBatchValueChange,
+  getCanonicalBatchValueChangeForReviewer,
+  getCanonicalBatchValueChangeForAuth,
+  listCanonicalBatchValueChangesForAuth,
+  rejectCanonicalBatchValueChange,
+  submitCanonicalBatchValueChange,
+  withdrawCanonicalBatchValueChange,
+  type CanonicalBatchChangeRequestDto
+} from "./batchChangeService";

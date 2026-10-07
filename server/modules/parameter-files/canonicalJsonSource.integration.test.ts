@@ -863,15 +863,19 @@ describe("canonical JSON configuration source", () => {
     });
     expect(applied).toMatchObject({ action: "delete",sourceFormat: "json",status: "approved",appliedValueId: expect.any(String) });
     const deletedValueId = applied.appliedValueId!;
-    const deletedState = (await db.query<{
-      current_value_id: string; value_state: string; value: unknown; value_digest: string; source_pin_id: string;
-      base_source_pin_id: string; delete_request_id: string; locator: Record<string, unknown>; delete_proof: Record<string, unknown>;
-    }>(`select binding.current_value_id,value.value_state,value.value,value.value_digest,pin.id as source_pin_id,
-        pin.base_source_pin_id,pin.delete_request_id,pin.locator,pin.delete_proof
-      from parameter_catalog.project_parameter_bindings binding
-      join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
-      join parameter_catalog.project_value_source_pins pin on pin.project_value_id=value.id and pin.binding_id=binding.id
-      where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3`, [ORG,PROJECT,target.id])).rows[0]!;
+    const deletedBinding = (await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).bindings.find((binding) => binding.id === target.id);
+    if (!deletedBinding) throw new Error("Deleted JSON Binding is missing from the owned source state");
+    const deletedValue = await loadProjectValueById(asValueClient(db),deletedBinding.currentValueId);
+    if (!deletedValue || deletedValue.binding_id !== target.id) throw new Error("Deleted JSON Binding has no owned current Value");
+    const deletedPin = await loadOwnedProjectValueSourcePin(db,{
+      organizationId: ORG,projectId: PROJECT,bindingId: target.id,projectValueId: deletedBinding.currentValueId,
+    });
+    if (!deletedPin) throw new Error("Deleted JSON Binding has no owned current source pin");
+    const deletedState = {
+      current_value_id: deletedBinding.currentValueId,value_state: deletedValue.value_state,value: deletedValue.value,
+      value_digest: deletedValue.value_digest,source_pin_id: deletedPin.sourcePinId,base_source_pin_id: deletedPin.baseSourcePinId,
+      delete_request_id: deletedPin.deleteRequestId,locator: deletedPin.locator,delete_proof: deletedPin.deleteProof,
+    };
     expect(deletedState).toMatchObject({ current_value_id: deletedValueId,value_state: "deleted",value: null,base_source_pin_id: targetBefore.manifest.sourcePinId,delete_request_id: submitted.id });
     expect(deletedState.locator).toEqual({ kind: "json-delete",rootPointer: "/a~1b",pointer: "/a~1b/",parentPointer: "/a~1b",memberKey: "",fileVersionId: expect.any(String) });
     expect(deletedState.delete_proof).toMatchObject({ kind: "json-delete-v1",scannerVersion: "json-span-v1",rootPointer: "/a~1b",pointer: "/a~1b/",parentPointer: "/a~1b",memberKey: "",beforeValueDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),beforeSourceDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),afterSourceDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) });

@@ -1,10 +1,41 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { SemanticInitializationSnapshotItem } from "@/domain/parameters/initializationTypes";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { initialState } from "./mockData";
 import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 
 describe("ProjectParameterInitializationWizard", () => {
+  function canonicalSnapshot(
+    overrides: Partial<SemanticInitializationSnapshotItem> = {}
+  ): SemanticInitializationSnapshotItem {
+    return {
+      id: "snapshot-aurora-temperature",
+      sourceProjectId: "aurora",
+      sourceProjectParameterBindingId: "binding-aurora-temperature",
+      sourceProjectValueId: "value-aurora-temperature",
+      sourceRole: "primary",
+      parameterSpecId: "definition-temperature",
+      parameterSpecVersionId: "revision-definition-temperature",
+      propertyKey: "battery_temp_target_c",
+      moduleId: "battery-safety",
+      risk: null,
+      effectiveValue: 36.5,
+      rawValue: "36.5",
+      currentValueState: "pending_project_confirmation",
+      alternativeSourceBindingIds: [],
+      alternativeSourceValueIds: [],
+      sourceConfigSetId: "config-aurora",
+      sourceConfigRevisionId: "revision-aurora",
+      sourceOccurrenceId: "occurrence-aurora",
+      sourceName: "power/aurora.dts",
+      sourceLocatorLabel: "temp-target @ /battery@0",
+      sourceFormat: "dts",
+      needsEffectiveValueConfirmation: false,
+      ...overrides
+    };
+  }
+
   function fillProjectInfoAndContinue() {
     fireEvent.change(screen.getByLabelText("项目名称"), { target: { value: "Zephyr" } });
     fireEvent.change(screen.getByLabelText("项目代号"), { target: { value: "ZEP" } });
@@ -163,6 +194,282 @@ describe("ProjectParameterInitializationWizard", () => {
 
     expect(screen.getByText(/12 个参数库条目可选/)).toBeInTheDocument();
     expect(screen.getByText("battery_temp_target_c")).toBeInTheDocument();
+  });
+
+  it("previews canonical candidates and submits the exact source value snapshot", async () => {
+    const snapshot = canonicalSnapshot();
+    const onPreview = vi.fn().mockResolvedValue([snapshot]);
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <ProjectParameterInitializationWizard
+        state={initialState}
+        dispatch={vi.fn()}
+        onClose={onClose}
+        onPreview={onPreview}
+        onSubmit={onSubmit}
+      />
+    );
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^Aurora/));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => {
+      expect(onPreview).toHaveBeenCalledWith({
+        projectId: "zep",
+        primarySourceProjectId: "aurora",
+        supplementSourceProjectIds: []
+      });
+    });
+    expect(screen.getByRole("table", { name: "来源参数选择表" })).toBeInTheDocument();
+    expect(screen.getByText("battery_temp_target_c")).toBeInTheDocument();
+    expect(screen.getByText(/power\/aurora\.dts/)).toBeInTheDocument();
+    expect(screen.getByText(/temp-target @ \/battery@0/)).toBeInTheDocument();
+    expect(screen.getByText("未分类")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("选择 battery_temp_target_c"));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交初始化审阅" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SUBMIT_PARAMETER_INITIALIZATION",
+        draft: expect.objectContaining({
+          projectCode: "ZEP",
+          selectedParameterIds: ["binding-aurora-temperature"]
+        })
+      }),
+      [snapshot]
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps same-definition values independent across sources and labels their canonical files", async () => {
+    const primary = canonicalSnapshot({
+      alternativeSourceBindingIds: ["binding-nebula-temperature"],
+      alternativeSourceValueIds: ["value-nebula-temperature"]
+    });
+    const supplement = canonicalSnapshot({
+      id: "snapshot-nebula-temperature",
+      sourceProjectId: "nebula",
+      sourceProjectParameterBindingId: "binding-nebula-temperature",
+      sourceProjectValueId: "value-nebula-temperature",
+      sourceRole: "supplement",
+      rawValue: "48",
+      sourceConfigSetId: "config-nebula",
+      sourceConfigRevisionId: "revision-nebula",
+      sourceOccurrenceId: "occurrence-nebula",
+      sourceName: "power/nebula.dts",
+      sourceLocatorLabel: "temp-target @ /battery@1",
+      alternativeSourceBindingIds: ["binding-aurora-temperature"],
+      alternativeSourceValueIds: ["value-aurora-temperature"]
+    });
+    const onPreview = vi.fn().mockResolvedValue([primary, supplement]);
+
+    render(
+      <ProjectParameterInitializationWizard
+        state={initialState}
+        dispatch={vi.fn()}
+        onClose={vi.fn()}
+        onPreview={onPreview}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^Aurora/));
+    fireEvent.click(screen.getByLabelText(/^Nebula/));
+    fireEvent.click(screen.getByLabelText("设 Aurora 量产平台 为主来源"));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => expect(screen.getAllByText("battery_temp_target_c")).toHaveLength(2));
+    expect(screen.getAllByText(/多来源同定义：1 个独立来源值待确认；来源配置集保持独立。/)).toHaveLength(2);
+    expect(screen.getByText(/power\/aurora\.dts/)).toBeInTheDocument();
+    expect(screen.getByText(/power\/nebula\.dts/)).toBeInTheDocument();
+    expect(screen.getByText(/temp-target @ \/battery@1/)).toBeInTheDocument();
+  });
+
+  it("does not fall back to the legacy parameter library when canonical preview is empty", async () => {
+    const onPreview = vi.fn().mockResolvedValue([]);
+
+    render(
+      <ProjectParameterInitializationWizard
+        state={initialState}
+        dispatch={vi.fn()}
+        onClose={vi.fn()}
+        onPreview={onPreview}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^Aurora/));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => expect(screen.getByText("当前来源没有可用的来源参数。")).toBeInTheDocument());
+    expect(screen.queryByText("battery_temp_target_c")).not.toBeInTheDocument();
+    expect(screen.queryByText("参数库暂不可用。")).not.toBeInTheDocument();
+  });
+
+  it("rejects a JSON canonical candidate without an exact config revision", async () => {
+    const onPreview = vi.fn().mockResolvedValue([
+      canonicalSnapshot({
+        sourceFormat: "json",
+        sourceConfigRevisionId: undefined,
+        sourceName: "settings.json",
+        sourceLocatorLabel: "/battery/temp-target"
+      })
+    ]);
+
+    render(
+      <ProjectParameterInitializationWizard
+        state={initialState}
+        dispatch={vi.fn()}
+        onClose={vi.fn()}
+        onPreview={onPreview}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^Aurora/));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("来源快照缺少精确来源固定、文件或定位信息，已停止加载。")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("table", { name: "来源参数选择表" })).not.toBeInTheDocument();
+  });
+
+  it("locks source choices while canonical preview is pending", async () => {
+    const snapshot = canonicalSnapshot();
+    let resolvePreview: ((snapshots: SemanticInitializationSnapshotItem[]) => void) | undefined;
+    const onPreview = vi.fn(() => new Promise<SemanticInitializationSnapshotItem[]>((resolve) => {
+      resolvePreview = resolve;
+    }));
+
+    render(
+      <ProjectParameterInitializationWizard
+        state={initialState}
+        dispatch={vi.fn()}
+        onClose={vi.fn()}
+        onPreview={onPreview}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    fillProjectInfoAndContinue();
+    const auroraSource = screen.getByLabelText(/^Aurora/);
+    const nebulaSource = screen.getByLabelText(/^Nebula/);
+    fireEvent.click(auroraSource);
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => {
+      expect(onPreview).toHaveBeenCalledWith({
+        projectId: "zep",
+        primarySourceProjectId: "aurora",
+        supplementSourceProjectIds: []
+      });
+      expect(screen.getByRole("button", { name: "加载中…" })).toBeDisabled();
+    });
+
+    const search = screen.getByLabelText("搜索来源项目");
+    const primarySource = screen.getByLabelText("设 Aurora 量产平台 为主来源");
+    expect(auroraSource).toBeDisabled();
+    expect(nebulaSource).toBeDisabled();
+    expect(primarySource).toBeDisabled();
+    expect(search).toBeDisabled();
+
+    fireEvent.click(nebulaSource);
+    fireEvent.click(primarySource);
+    fireEvent.change(search, { target: { value: "Nebula" } });
+    expect(auroraSource).toBeChecked();
+    expect(nebulaSource).not.toBeChecked();
+    expect(primarySource).toBeChecked();
+    expect(search).toHaveValue("");
+    expect(onPreview).toHaveBeenCalledTimes(1);
+
+    resolvePreview?.([snapshot]);
+    await waitFor(() => {
+      expect(screen.getByRole("table", { name: "来源参数选择表" })).toBeInTheDocument();
+    });
+  });
+
+  it("previews an empty project with no snapshots and submits an empty selection", async () => {
+    const emptyProjectState = {
+      ...initialState,
+      configDraft: {
+        ...initialState.configDraft,
+        projects: []
+      }
+    };
+    const onPreview = vi.fn().mockResolvedValue([]);
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <ProjectParameterInitializationWizard
+        state={emptyProjectState}
+        dispatch={vi.fn()}
+        onClose={onClose}
+        onPreview={onPreview}
+        onSubmit={onSubmit}
+      />
+    );
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => {
+      expect(onPreview).toHaveBeenCalledWith({
+        projectId: "zep",
+        primarySourceProjectId: null,
+        supplementSourceProjectIds: []
+      });
+    });
+    expect(screen.getByText("当前来源没有可用的来源参数。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交初始化审阅" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.anything(), []));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the wizard open and disables controls while API submit is pending", async () => {
+    const snapshot = canonicalSnapshot();
+    const onPreview = vi.fn().mockResolvedValue([snapshot]);
+    let resolveSubmit: (() => void) | undefined;
+    const onSubmit = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSubmit = resolve;
+    }));
+    const onClose = vi.fn();
+
+    render(
+      <ProjectParameterInitializationWizard
+        state={initialState}
+        dispatch={vi.fn()}
+        onClose={onClose}
+        onPreview={onPreview}
+        onSubmit={onSubmit}
+      />
+    );
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^Aurora/));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await waitFor(() => expect(screen.getByLabelText("选择 battery_temp_target_c")).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("选择 battery_temp_target_c"));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交初始化审阅" }));
+
+    expect(screen.getByRole("button", { name: "提交中…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "上一步" })).toBeDisabled();
+    expect(onClose).not.toHaveBeenCalled();
+    resolveSubmit?.();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it("submits selected parameters for initialization review", () => {

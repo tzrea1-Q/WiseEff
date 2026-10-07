@@ -9,7 +9,6 @@ import type { HydrateParameterRuntimeAction } from "@/application/parameters/par
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import { derivePowerManagementRuntimeState } from "@/application/state/derivePowerManagementRuntimeState";
 import { canPerform } from "@/app/permissions";
-import { buildDraftSubmissionRounds } from "@/domain/parameters/buildDraftSubmissionRounds";
 import { submitParameterRound } from "@/domain/parameters/commands";
 import {
   applyInitializationDraftToConfig,
@@ -422,12 +421,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "HYDRATE_PARAMETER_RUNTIME": {
-      const draftSubmissionRounds = buildDraftSubmissionRounds(
-        action.parameterDrafts,
-        action.parameters,
-        action.projects,
-        currentUser?.name ?? "API draft"
-      );
       const projects = action.projects.map((project) => ({ ...project }));
       const parameterLibrary = buildParameterLibraryFromRecords(action.parameters, projects);
       const parameterModules = buildParameterModulesFromRecords(action.parameters, state.configDraft.parameterModules);
@@ -442,7 +435,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         parameters: action.parameters,
         changeRequests: action.changeRequests,
         parameterDrafts: action.parameterDrafts ?? [],
-        parameterSubmissionRounds: [...draftSubmissionRounds, ...action.parameterSubmissionRounds],
+        parameterSubmissionRounds: action.parameterSubmissionRounds,
         parameterReviewDecisions: [],
         configDraft: {
           ...state.configDraft,

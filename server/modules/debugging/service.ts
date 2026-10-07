@@ -19,7 +19,23 @@ import {
   readNodeViaBridge,
   writeNodeViaBridge
 } from "./bridgeExecution";
-import { attachDebugPin, attachDebugPins, pinFromStoredBinding } from "./canonicalProtectedReference";
+import {
+  assertDebugHistoryPin,
+  assertDebugNodeCanonicalReferenceCurrent,
+  attachDebugPin,
+  attachDebugPins,
+  isCanonicalDebugHistoryVisible,
+  lockDebugNodeRow,
+  lockDebugNodeCanonicalAssociation,
+  pinFromOperation,
+  pinFromStoredBinding,
+  redactCanonicalDebugRecord,
+  resolveDebugNodeCanonicalReference,
+  resolveStoredDebugNodePin,
+  type CanonicalDebugBindingInput,
+  type CanonicalDebugPin,
+  type CanonicalDebugReference
+} from "./canonicalProtectedReference";
 import { assertDeviceRollbackAuthorization, assertDeviceWriteAuthorization } from "./deviceWriteApproval";
 import {
   requireDebugAdmin,
@@ -225,6 +241,7 @@ type AdminNodeWriteInput = {
   maxValueBytes?: number | null;
   enabled?: boolean;
   bindings?: AdminNodeBindingInput[];
+  canonicalBinding?: CanonicalDebugBindingInput | null;
 };
 
 type AdminNodePatchInput = Partial<Omit<AdminNodeWriteInput, "name">> & {
@@ -370,7 +387,7 @@ function resolveExecutionMode(session: DebugSessionRecord): DebugSessionExecutio
   return session.executionMode ?? "server";
 }
 
-function runtimeNodeAsParameter(source: RuntimeNodeSource): DebugParameterRecord {
+function runtimeNodeAsParameter(source: RuntimeNodeSource, canonicalPin?: CanonicalDebugPin): DebugParameterRecord {
   const node = "node" in source ? source.node : source;
   const nodePath = "node" in source ? source.binding.nodePath : source.nodePath;
   const accessMode = "node" in source ? source.binding.accessMode : source.accessMode;
@@ -399,7 +416,18 @@ function runtimeNodeAsParameter(source: RuntimeNodeSource): DebugParameterRecord
     valueFormat: node.valueFormat,
     normalizationMode: node.normalizationMode,
     maxValueBytes: node.maxValueBytes,
-    projectParameterBindingId: null
+    projectParameterBindingId: null,
+    canonicalBindingId: node.canonicalBindingId ?? null,
+    canonicalProjectId: node.canonicalProjectId ?? null,
+    ...(canonicalPin?.protectedReferenceKind ? { protectedReferenceKind: canonicalPin.protectedReferenceKind } : {}),
+    ...(canonicalPin?.protectedReferenceReason ? { protectedReferenceReason: canonicalPin.protectedReferenceReason } : {}),
+    ...(canonicalPin?.bindingId ? { bindingId: canonicalPin.bindingId } : {}),
+    ...(canonicalPin?.projectId ? { projectId: canonicalPin.projectId } : {}),
+    ...(canonicalPin?.definitionId ? { definitionId: canonicalPin.definitionId } : {}),
+    ...(canonicalPin?.effectiveRevisionId ? { effectiveRevisionId: canonicalPin.effectiveRevisionId } : {}),
+    ...(canonicalPin?.currentValueId ? { currentValueId: canonicalPin.currentValueId } : {}),
+    ...(canonicalPin?.sourcePinId ? { sourcePinId: canonicalPin.sourcePinId } : {}),
+    ...(canonicalPin?.configRevisionId ? { configRevisionId: canonicalPin.configRevisionId } : {})
   };
 }
 
@@ -696,7 +724,8 @@ function snapshotEntryFromWrite(
   nodePath: string,
   previousValue: string,
   targetValue: string,
-  metadata: DebugValueMetadata
+  metadata: DebugValueMetadata,
+  canonicalPin?: CanonicalDebugPin | null
 ): DebugSnapshotEntry {
   const previousEnvelope = buildValueEnvelope(previousValue, metadata);
   const targetEnvelope = buildValueEnvelope(targetValue, metadata);
@@ -716,7 +745,8 @@ function snapshotEntryFromWrite(
     valueFormat: metadata.valueFormat,
     normalizationMode: metadata.normalizationMode,
     previousDigest: previousEnvelope.digest,
-    targetDigest: targetEnvelope.digest
+    targetDigest: targetEnvelope.digest,
+    ...(canonicalPin ? { canonicalPin } : {})
   };
 }
 
@@ -822,6 +852,61 @@ function resolvePatchedNullable<T extends object, K extends keyof T, V>(input: T
   return hasOwn(input, key) ? ((input[key] as V | null | undefined) ?? null) : existingValue;
 }
 
+function requireCanonicalReference(pin: CanonicalDebugPin): CanonicalDebugReference {
+  if (pin.protectedReferenceKind !== "canonical-pin") {
+    throw new ApiError(
+      pin.protectedReferenceReason === "project-scope" ? "FORBIDDEN" : "CONFLICT",
+      "Canonical debug binding is unavailable at its exact pin.",
+      { reason: pin.protectedReferenceReason ?? "typed-block" }
+    );
+  }
+  if (!pin.bindingId || !pin.projectId || !pin.definitionId || !pin.effectiveRevisionId || !pin.currentValueId || !pin.sourcePinId || !pin.configRevisionId || !pin.sourcePin) {
+    throw new ApiError("CONFLICT", "Canonical debug binding pin is incomplete.", { reason: "invalid-command" });
+  }
+  return pin as CanonicalDebugReference;
+}
+
+function canonicalBindingFromPin(pin: CanonicalDebugPin): CanonicalDebugBindingInput | null {
+  if (pin.protectedReferenceKind !== "canonical-pin" || !pin.bindingId || !pin.projectId) {
+    return null;
+  }
+  return {
+    projectId: pin.projectId,
+    bindingId: pin.bindingId,
+    expectedEffectiveRevisionId: pin.effectiveRevisionId,
+    expectedCurrentValueId: pin.currentValueId,
+    sourcePinId: pin.sourcePinId
+  };
+}
+
+type DebugNodeResponseExtra = {
+  bindings?: DebugNodeBindingRecord[];
+};
+
+function debugNodeResponseFromPin<
+  T extends DebugNodeRecord,
+  E extends DebugNodeResponseExtra
+>(
+  node: T,
+  pin: CanonicalDebugPin,
+  extra: E
+): T & E & CanonicalDebugPin & { canonicalBinding: CanonicalDebugBindingInput | null } {
+  const safeNode = pin.protectedReferenceKind === "typed-block"
+    ? redactCanonicalDebugRecord(node, pin.protectedReferenceReason ?? "typed-block")
+    : node;
+  return attachDebugPin({ ...safeNode, ...extra, canonicalBinding: canonicalBindingFromPin(pin) }, pin);
+}
+
+function debugOperationResponseFromPin(operation: NodeOperationRecord, auth: AuthContext) {
+  const pin = pinFromOperation(operation);
+  if (!isCanonicalDebugHistoryVisible(auth, pin)) {
+    // A foreign project's history must not reveal even operation values. Keep
+    // only independent legacy events in an organization-scoped session list.
+    return null;
+  }
+  return attachDebugPin(operation, pin);
+}
+
 export function createDebuggingService(options: ServiceOptions) {
   const db = options.db;
   const gatewayRegistry =
@@ -857,10 +942,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
   async function insertPinnedNodeOperation(tx: Queryable, input: Parameters<typeof insertNodeOperation>[1]) {
     const operation = await insertNodeOperation(tx, input);
-    return attachDebugPin(
-      operation,
-      pinFromStoredBinding(input.projectParameterBindingId ?? operation.projectParameterBindingId)
-    );
+    return attachDebugPin(operation, input.canonicalPin ?? pinFromOperation(operation));
   }
 
   return {
@@ -1004,14 +1086,16 @@ export function createDebuggingService(options: ServiceOptions) {
     ) {
       requireDebugView(auth);
       const organizationId = organizationIdFor(auth);
-      return attachDebugPins(
-        await listRuntimeDebugNodes(db, {
+      const nodes = await listRuntimeDebugNodes(db, {
           organizationId,
           protocol: query.protocol,
           moduleId: query.moduleId,
           includeDescendants: query.includeDescendants
-        })
-      );
+        });
+      return Promise.all(nodes.map(async (node) => {
+        const pin = await resolveStoredDebugNodePin(db, auth, node);
+        return debugNodeResponseFromPin(node, pin, {});
+      }));
     },
 
     async listAdminParameters(auth: AuthContext, query: AdminParameterListQuery = {}) {
@@ -1370,7 +1454,8 @@ export function createDebuggingService(options: ServiceOptions) {
       const nodesWithBindings = await Promise.all(
         nodes.map(async (node) => {
           const bindings = await listDebugNodeBindings(db, { organizationId, nodeId: node.id });
-          return { ...node, bindings };
+          const pin = await resolveStoredDebugNodePin(db, auth, node);
+          return debugNodeResponseFromPin(node, pin, { bindings });
         })
       );
       return nodesWithBindings;
@@ -1380,8 +1465,14 @@ export function createDebuggingService(options: ServiceOptions) {
       requireDebugAdmin(auth);
       const organizationId = organizationIdFor(auth);
       const moduleAssignment = await resolveDebugNodeModuleAssignment(db, organizationId, input);
+      const canonicalReference = input.canonicalBinding
+        ? requireCanonicalReference(await resolveDebugNodeCanonicalReference(db, auth, { ...input.canonicalBinding, mode: "mutate" }))
+        : null;
 
       return db.transaction(async (tx) => {
+        if (canonicalReference) {
+          await assertDebugNodeCanonicalReferenceCurrent(tx, auth, canonicalReference);
+        }
         const node = await createDebugNode(tx, {
           organizationId,
           name: input.name,
@@ -1395,7 +1486,9 @@ export function createDebuggingService(options: ServiceOptions) {
           valueFormat: input.valueFormat,
           normalizationMode: input.normalizationMode,
           maxValueBytes: input.maxValueBytes ?? null,
-          enabled: input.enabled ?? true
+          enabled: input.enabled ?? true,
+          canonicalBindingId: canonicalReference?.bindingId ?? null,
+          canonicalProjectId: canonicalReference?.projectId ?? null
         });
         for (const bindingInput of input.bindings ?? []) {
           const binding = await upsertDebugNodeBinding(tx, {
@@ -1433,7 +1526,8 @@ export function createDebuggingService(options: ServiceOptions) {
           )
         );
 
-        return { ...node, bindings };
+        const pin = canonicalReference ?? pinFromStoredBinding(null);
+        return debugNodeResponseFromPin(node, pin, { bindings });
       });
     },
 
@@ -1447,11 +1541,23 @@ export function createDebuggingService(options: ServiceOptions) {
               moduleId: input.moduleId
             })
           : null;
+      const currentCanonicalInput = input.canonicalBinding;
 
       return db.transaction(async (tx) => {
         const current = await getDebugNode(tx, { organizationId, nodeId: input.nodeId, includeArchived: true });
         if (!current) {
           throw notFound("Debug node was not found.");
+        }
+        if (currentCanonicalInput !== undefined) {
+          await lockDebugNodeRow(tx, auth, current.id);
+        }
+        const canonicalReference = currentCanonicalInput === undefined
+          ? null
+          : currentCanonicalInput === null
+            ? null
+            : requireCanonicalReference(await resolveDebugNodeCanonicalReference(db, auth, { ...currentCanonicalInput, mode: "mutate" }));
+        if (canonicalReference) {
+          await assertDebugNodeCanonicalReferenceCurrent(tx, auth, canonicalReference);
         }
         const node = await updateDebugNode(tx, {
           organizationId,
@@ -1467,7 +1573,13 @@ export function createDebuggingService(options: ServiceOptions) {
           valueFormat: input.valueFormat ?? current.valueFormat,
           normalizationMode: input.normalizationMode ?? current.normalizationMode,
           maxValueBytes: resolvePatchedNullable(input, "maxValueBytes", current.maxValueBytes),
-          enabled: input.enabled ?? current.enabled
+          enabled: input.enabled ?? current.enabled,
+          ...(currentCanonicalInput !== undefined
+            ? {
+                canonicalBindingId: canonicalReference?.bindingId ?? null,
+                canonicalProjectId: canonicalReference?.projectId ?? null
+              }
+            : {})
         });
         if (!node) {
           throw notFound("Debug node was not found.");
@@ -1494,7 +1606,10 @@ export function createDebuggingService(options: ServiceOptions) {
           )
         );
 
-        return { ...node, bindings };
+        const pin = currentCanonicalInput === undefined
+          ? await resolveStoredDebugNodePin(db, auth, node)
+          : canonicalReference ?? pinFromStoredBinding(null);
+        return debugNodeResponseFromPin(node, pin, { bindings });
       });
     },
 
@@ -1977,7 +2092,9 @@ export function createDebuggingService(options: ServiceOptions) {
       if (!session) {
         throw new ApiError("NOT_FOUND", "Debug session was not found.");
       }
-      return attachDebugPins(await listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId }));
+      return (await listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId }))
+        .map((operation) => debugOperationResponseFromPin(operation, auth))
+        .filter((operation): operation is NonNullable<typeof operation> => operation !== null);
     },
 
     async readNode(auth: AuthContext, input: ReadNodeInput, context: ServiceContext = {}) {
@@ -1991,6 +2108,7 @@ export function createDebuggingService(options: ServiceOptions) {
         let catalogNodeId: string | null = null;
         let nodePath = input.nodePath;
         let accessMode: DebugAccessMode = "RW";
+        let canonicalReference: CanonicalDebugReference | null = null;
 
         if (input.nodeId) {
           const node = await getDebugNode(tx, { organizationId, nodeId: input.nodeId });
@@ -1999,7 +2117,20 @@ export function createDebuggingService(options: ServiceOptions) {
           }
           ensureNodeRuntimeAvailable(node);
           const binding = await requireNodeBinding(tx, organizationId, node.id, protocol);
-          catalogParameter = runtimeNodeAsParameter({ node, binding });
+          const canonicalPin = await resolveStoredDebugNodePin(db, auth, node);
+          canonicalReference = canonicalPin.protectedReferenceKind === "canonical-pin"
+            ? requireCanonicalReference(canonicalPin)
+            : null;
+          if (node.canonicalBindingId || node.canonicalProjectId) {
+            if (!canonicalReference) {
+              throw new ApiError("CONFLICT", "Canonical debug binding is unavailable at its exact pin.", {
+                reason: canonicalPin.protectedReferenceReason ?? "typed-block"
+              });
+            }
+            await lockDebugNodeCanonicalAssociation(tx, auth, node.id, canonicalReference);
+            await assertDebugNodeCanonicalReferenceCurrent(tx, auth, canonicalReference);
+          }
+          catalogParameter = runtimeNodeAsParameter({ node, binding }, canonicalPin);
           catalogNodeId = node.id;
           nodePath = binding.nodePath;
           accessMode = binding.accessMode;
@@ -2083,6 +2214,9 @@ export function createDebuggingService(options: ServiceOptions) {
           parameterId: input.parameterId ?? null,
           nodeId: catalogNodeId,
           projectParameterBindingId: catalogParameter?.projectParameterBindingId ?? null,
+          canonicalBindingId: canonicalReference?.bindingId ?? null,
+          canonicalProjectId: canonicalReference?.projectId ?? null,
+          canonicalPin: canonicalReference,
           protocol,
           nodePath,
           operationType: "read",
@@ -2138,6 +2272,7 @@ export function createDebuggingService(options: ServiceOptions) {
         let catalogNodeId: string | null = null;
         let nodePath: string;
         let accessMode: DebugAccessMode;
+        let canonicalReference: CanonicalDebugReference | null = null;
         const operationType: DebugOperationType = "write";
 
         if (isReload) {
@@ -2149,7 +2284,20 @@ export function createDebuggingService(options: ServiceOptions) {
           }
           ensureNodeRuntimeAvailable(node);
           const binding = await requireNodeBinding(tx, organizationId, node.id, protocol);
-          parameter = ensureWritable(runtimeNodeAsParameter({ node, binding }), input, binding.accessMode);
+          const canonicalPin = await resolveStoredDebugNodePin(db, auth, node, { mode: "mutate" });
+          canonicalReference = canonicalPin.protectedReferenceKind === "canonical-pin"
+            ? requireCanonicalReference(canonicalPin)
+            : null;
+          if (node.canonicalBindingId || node.canonicalProjectId) {
+            if (!canonicalReference) {
+              throw new ApiError("CONFLICT", "Canonical debug binding is unavailable at its exact pin.", {
+                reason: canonicalPin.protectedReferenceReason ?? "typed-block"
+              });
+            }
+            await lockDebugNodeCanonicalAssociation(tx, auth, node.id, canonicalReference);
+            await assertDebugNodeCanonicalReferenceCurrent(tx, auth, canonicalReference);
+          }
+          parameter = ensureWritable(runtimeNodeAsParameter({ node, binding }, canonicalPin), input, binding.accessMode);
           catalogNodeId = node.id;
           parameterId = null;
           nodePath = binding.nodePath;
@@ -2229,6 +2377,9 @@ export function createDebuggingService(options: ServiceOptions) {
             nodeId: catalogNodeId,
             parameterDefinitionId,
             projectParameterBindingId: parameter.projectParameterBindingId,
+            canonicalBindingId: canonicalReference?.bindingId ?? null,
+            canonicalProjectId: canonicalReference?.projectId ?? null,
+            canonicalPin: canonicalReference,
             protocol,
             nodePath,
             operationType,
@@ -2269,7 +2420,7 @@ export function createDebuggingService(options: ServiceOptions) {
             )
           );
           await maybeNotifyDebugWriteFailed(tx, auth, session, parameter.name, operation);
-          return operation;
+          return { ...operation, operation };
         }
 
         const previousValue = previous.value ?? previous.stdout ?? "";
@@ -2278,7 +2429,7 @@ export function createDebuggingService(options: ServiceOptions) {
           sessionId: session.id,
           risk: parameter.risk,
           entries: [
-            snapshotEntryFromWrite({ parameterId, nodeId: catalogNodeId }, protocol, nodePath, previousValue, input.value, metadata)
+            snapshotEntryFromWrite({ parameterId, nodeId: catalogNodeId }, protocol, nodePath, previousValue, input.value, metadata, canonicalReference)
           ],
           createdByUserId: auth.user.id
         });
@@ -2332,6 +2483,9 @@ export function createDebuggingService(options: ServiceOptions) {
           nodeId: catalogNodeId,
           parameterDefinitionId,
           projectParameterBindingId: parameter.projectParameterBindingId,
+          canonicalBindingId: canonicalReference?.bindingId ?? null,
+          canonicalProjectId: canonicalReference?.projectId ?? null,
+          canonicalPin: canonicalReference,
           protocol,
           nodePath,
           operationType,
@@ -2399,7 +2553,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
         await maybeNotifyDebugWriteFailed(tx, auth, session, parameter.name, operation);
         await maybeNotifyDebugReadbackFailed(tx, auth, session, parameter.name, operation);
-        return operation;
+        return { ...operation, operation, snapshot };
       });
     },
 
@@ -2457,6 +2611,7 @@ export function createDebuggingService(options: ServiceOptions) {
         const preparedEntries: Array<{
           entry: DebugSnapshotEntry;
           identity: { parameterId: string | null; nodeId: string | null };
+          canonicalReference: CanonicalDebugReference | null;
         }> = [];
         for (const entry of snapshot.entries) {
           const entryProtocol = entry.protocol ?? protocol;
@@ -2465,12 +2620,13 @@ export function createDebuggingService(options: ServiceOptions) {
           }
           preparedEntries.push({
             entry,
-            identity: await resolveRollbackEntryIdentity(tx, { organizationId, protocol: entryProtocol, entry })
+            identity: await resolveRollbackEntryIdentity(tx, { organizationId, protocol: entryProtocol, entry }),
+            canonicalReference: await assertDebugHistoryPin(tx, auth, entry.canonicalPin)
           });
         }
 
         const operations: NodeOperationRecord[] = [];
-        for (const { entry, identity } of preparedEntries) {
+        for (const { entry, identity, canonicalReference } of preparedEntries) {
           const entryMetadata = resolveSnapshotEntryMetadata(entry);
           const preserveExactRead = requiresExactRead(entryMetadata);
           const compareReadback = (written: string, read: string) => compareDebugValues(written, read, entryMetadata);
@@ -2517,6 +2673,9 @@ export function createDebuggingService(options: ServiceOptions) {
               // catalog parameters, node_id for node entries (#420).
               parameterId: identity.parameterId,
               nodeId: identity.nodeId,
+              canonicalBindingId: canonicalReference?.bindingId ?? null,
+              canonicalProjectId: canonicalReference?.projectId ?? null,
+              canonicalPin: canonicalReference,
               protocol,
               nodePath: entry.nodePath,
               operationType: "rollback",

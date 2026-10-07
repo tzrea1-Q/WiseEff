@@ -7,6 +7,7 @@ import {
   parameterCatalogClientMethodByRouteId
 } from "@wiseeff/dto-schemas";
 import { WiseEffApiError } from "./apiClient";
+import { createApiParameterCatalogGovernanceRepository } from "../../application/parameter-catalog/apiAdapter";
 import {
   catalogFailureClientBehavior,
   catalogFailureReason,
@@ -19,6 +20,36 @@ function jsonResponse(body: unknown, status = 200, headers: Record<string, strin
     headers: { "Content-Type": "application/json", ...headers }
   });
 }
+
+describe("protected project Binding client", () => {
+  // Observed public JSON row shape, plus a synthetic DTS value codec variant; no database acceptance.
+  const binding = {
+    id: "pbind_6b6714303ae7c1781f7b56a45ee6dac66b4ef5c935b431ecfb0b81eec78e43f4",
+    projectId: "page-8f791044-f5bd-4d31-bc4e-fb0e5734e188", parameterSpecId: "pdef_acme_power_iin_max",
+    parameterSpecVersionId: "drev_acme_power_iin_max_1", definitionId: "pdef_acme_power_iin_max",
+    effectiveRevisionId: "drev_acme_power_iin_max_1", currentValueId: "pval_590c9cf0634dc079ba3876d18b2114feb507439f053220fc3acb6f647fe9c520",
+    propertyKey: "iin_max", driverModule: "Configuration", logicalNodeId: null, instanceName: null, locator: "/limit",
+    effectiveValue: { kind: "json", value: 36.5 }, rawValue: "36.5\n", schemaState: "valid", policyState: "not_applicable",
+    moduleId: "10b210eb-bb98-413d-9d87-961128adae59", displayName: "Input current limit", description: null,
+    documentation: "Maximum accepted input current."
+  };
+  it.each([
+    { kind: "json", value: 36.5 },
+    { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "36", value: "36" }]] }
+  ])("validates the existing public $kind row and preserves exact current pins", async (effectiveValue) => {
+    const body = { items: [{ ...binding, effectiveValue }] };
+    const fetchImpl = vi.fn(async () => jsonResponse(body));
+    const client = createParameterCatalogClient({ fetchImpl });
+    expect(await client.listProtectedProjectBindings(binding.projectId)).toEqual(body);
+    expect(fetchImpl).toHaveBeenCalledExactlyOnceWith(`/api/v2/projects/${binding.projectId}/parameter-bindings`, expect.objectContaining({ method: "GET" }));
+  });
+  it("refuses malformed public rows without repairing the payload", async () => {
+    const client = createParameterCatalogClient({ fetchImpl: vi.fn(async () => jsonResponse({ items: [{ ...binding, rawValue: 36.5 }] })) });
+    await expect(client.listProtectedProjectBindings(binding.projectId)).rejects.toMatchObject({
+      code: "INTERNAL_ERROR", details: { reason: "contract-drift", schemaName: "CatalogProtectedProjectBindingListResponse" }
+    });
+  });
+});
 
 const catalogDocument = {
   item: {
@@ -38,6 +69,30 @@ const catalogDocument = {
 };
 
 describe("parameter catalog client contract", () => {
+  it("passes only discovery filters through the port and rejects mixed-release pages", async () => {
+    const page = {status:"ready",catalogRelease:{id:"crel_one",digest:"sha256:one"},
+      matcherRevision:"matcher-one",items:[],nextCursor:null,ignoredReviewItemCount:null,
+      emptyReason:"no-observations"};
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(page));
+    const repository = createApiParameterCatalogGovernanceRepository(
+      createParameterCatalogClient({fetchImpl:fetchMock}));
+    await expect(repository.listDriverCompatibleDiscovery("org_one",{cursor:"obs_before"}))
+      .rejects.toMatchObject({code:"VALIDATION_FAILED",details:{reason:"release-pin-required"}});
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(repository.listDriverCompatibleDiscovery("org_one",
+      {projectId:"project_one",observationId:"obs_one",cursor:"obs_before",limit:3},
+      {id:"crel_one",digest:"sha256:one"})).resolves.toEqual(page);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/v2/organizations/org_one/driver-compatible-discovery?projectId=project_one&observationId=obs_one&cursor=obs_before&limit=3");
+    expect((fetchMock.mock.calls[0]?.[1]?.headers as Record<string,string>)["X-WiseEff-Catalog-Release"])
+      .toBe("crel_one");
+    await expect(repository.listDriverCompatibleDiscovery("org_one",{cursor:"obs_before"},
+      {id:"crel_one",digest:"sha256:different"})).rejects.toMatchObject({
+        code:"CONFLICT",details:{reason:"release-drift"}});
+    fetchMock.mockImplementationOnce(async () => jsonResponse({status:"unavailable",reason:"review-evidence-invalid"}));
+    await expect(repository.listDriverCompatibleDiscovery("org_one")).resolves.toEqual(
+      {status:"unavailable",reason:"review-evidence-invalid"});
+  });
   it("exposes a typed method for every frozen canonical route", () => {
     const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: vi.fn() });
     for (const route of parameterCatalogCanonicalRoutes) {
@@ -54,6 +109,15 @@ describe("parameter catalog client contract", () => {
       "/api/v2/catalog",
       expect.objectContaining({ method: "GET" })
     );
+  });
+
+  it("keeps ETag metadata scoped to governance reads that opt in", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(catalogDocument, 200, { ETag: "catalog-release-etag" })
+    );
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getCatalog()).resolves.toEqual(catalogDocument);
   });
 
   it("pins historical catalog reads with catalogReleaseId instead of borrowing current", async () => {
@@ -96,6 +160,40 @@ describe("parameter catalog client contract", () => {
     for (const spoof of catalogForbiddenSpoofHeaders) {
       expect(headers[spoof]).toBeUndefined();
     }
+  });
+
+  it("preserves the governance placement ETag after envelope validation", async () => {
+    const placementItem = {
+      id: "placement_01K",
+      displayName: "Driver A",
+      parentPlacementId: null,
+      moduleId: "module_driver_a"
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ item: placementItem, etag: "etag-envelope" })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ item: placementItem }, 200, { ETag: "etag-header" })
+      );
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getPlacement("org_01K", "registration_01K")).resolves.toEqual({
+      item: placementItem,
+      etag: "etag-envelope"
+    });
+    await expect(
+      client.updatePlacement(
+        "org_01K",
+        "registration_01K",
+        { placement: { mode: "use-default" }, destinationModuleId: "module_driver_b" },
+        { catalogReleaseId: "crel_01K42", idempotencyKey: "key-1", ifMatch: "etag-before" }
+      )
+    ).resolves.toEqual({ item: placementItem, etag: "etag-header" });
+
+    const init = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)["If-Match"]).toBe("etag-before");
   });
 
   it("posts a typed ChangeSet to publication-candidates with the catalog release header", async () => {
@@ -340,11 +438,155 @@ describe("parameter catalog client contract", () => {
     );
   });
 
+  it("reads the frozen conflict decision through the request-scoped route", async () => {
+    const sourceDiff = { requestId: "request-1", bindingId: "binding-1", candidateId: "prepared-1",
+      format: "json", sourcePinId: "pin-1", baseDigest: "a".repeat(64), proposedDigest: "b".repeat(64),
+      diffDigest: "c".repeat(64), before: "old", after: "new" };
+    const item = { request: { id: "request-1", bindingId: "binding-1", targetValue: "50",
+      sourceFormat: "json", status: "pending", assignedToUserId: "reviewer-1", submitterUserId: "author-1" },
+      sourceCandidateId: "uploaded-1", selectedBindingId: "binding-1", selectedDraftId: "draft-1",
+      choice: "file", decisionProofDigest: "d".repeat(64), sourceDiff };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item }));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    await expect(client.getProjectValueConflictDecision("project/1", "request/1")).resolves.toEqual({ item });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project%2F1/parameter-value-change-requests/request%2F1/conflict-decision",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it.each(["json", "dts"] as const)("parses one ordered %s batch and sends its proof to the existing review route", async (format) => {
+    const proof = "a".repeat(64);
+    const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
+      ordinal, draftId: null, decision: "file", bindingId, definitionId: "definition-1",
+      definitionRevisionId: "revision-1", catalogReleaseId: "release-1",
+      baseCurrentValueId: `old-${ordinal}`, configRevisionId: `config-${ordinal}`,
+      sourceRef: `source-${ordinal}`, sourcePinId: `pin-${ordinal}`,
+      action: "set", targetText: String(50 + ordinal), appliedValueId: null,
+      appliedHistoryEventId: null, appliedSourcePinId: null, appliedFileVersionId: null
+    }));
+    const batch = { item: {
+      id: "batch-1", projectId: "project-1", candidateId: "candidate-1",
+      batchProofDigest: proof, cohortCount: 2, status: "pending", reason: "calibrate",
+      draftImpactDigest: proof, draftImpact: targets.map((target) => ({
+        ordinal: target.ordinal, bindingId: target.bindingId, role: "target", decision: "file",
+        baseCurrentValueId: target.baseCurrentValueId, sourcePinId: target.sourcePinId,
+        configRevisionId: target.configRevisionId, drafts: []
+      })), uploadCandidateId: null,
+      decisionProofDigest: null, compositionProof: null,
+      submitterUserId: "author", assignedToUserId: "reviewer", reviewerUserId: null,
+      reviewerNote: null, sourceProofToken: "source-proof", cohortProofToken: "cohort-proof",
+      fileId: "file-1", baseVersionId: "version-1", configSetId: "set-1",
+      appliedAt: null, appliedAuditRef: null, targets
+    } };
+    const diff = { item: {
+      kind: "batch", requestId: "batch-1", candidateId: "candidate-1",
+      uploadCandidateId: null, decisionProofDigest: null,
+      batchProofDigest: proof, format, sourceName: `config.${format}`,
+      baseDigest: "old-digest", proposedDigest: "new-digest", diffDigest: proof,
+      before: '{"a":1}', after: '{"a":2}',
+      bindings: targets.map((target) => ({
+        bindingId: target.bindingId, oldValueId: target.baseCurrentValueId,
+        sourcePinId: target.sourcePinId, sourceOccurrenceId: `occ-${target.ordinal}`,
+        definitionId: target.definitionId, effectiveRevisionId: target.definitionRevisionId,
+        catalogReleaseId: target.catalogReleaseId, locator: { kind: "json-pointer", pointer: `/item/${target.ordinal}` },
+        valueKind: "json", valueDigest: "value-digest", configSetId: "set-1"
+      })),
+      targets: targets.map((target) => ({ ordinal: target.ordinal, bindingId: target.bindingId,
+        sourcePinId: target.sourcePinId, action: target.action, beforeText: "1", afterText: target.targetText,
+        decision: "file", draftId: null }))
+    } };
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      const path = String(url);
+      if (path.endsWith("/source-diff")) return jsonResponse(diff);
+      if (path.endsWith("/withdraw")) return jsonResponse({ item: { ...batch.item, status: "withdrawn" } });
+      if (path.includes("/batches") && init?.method === "GET") return jsonResponse({ items: [batch.item] });
+      return jsonResponse(batch, init?.method === "POST" && path.endsWith("/batches") ? 201 : 200);
+    });
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getProjectValueBatchChangeRequest("project-1", "batch-1")).resolves.toEqual(batch);
+    await expect(client.submitProjectValueBatchChangeRequest("project-1", {
+      candidateId: "candidate-1", expectedProofToken: "preview-proof", reason: "calibrate", assignedToUserId: "reviewer"
+    }, { catalogReleaseId: "release-1", idempotencyKey: "submit-1" })).resolves.toEqual(batch);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project-1/parameter-value-change-requests/batches",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({
+        candidateId: "candidate-1", expectedProofToken: "preview-proof", reason: "calibrate", assignedToUserId: "reviewer"
+      }) })
+    );
+    await expect(client.listProjectValueBatchChangeRequests("project-1", { status: "pending", mine: true }))
+      .resolves.toEqual({ items: [batch.item] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project-1/parameter-value-change-requests/batches?status=pending&mine=true",
+      expect.objectContaining({ method: "GET" })
+    );
+    await expect(client.getProjectValueChangeSourceDiff("project-1", "batch-1")).resolves.toEqual(diff);
+    await expect(client.reviewProjectValueChangeRequest("project-1", "batch-1",
+      { decision: "approve", batchProofDigest: proof },
+      { catalogReleaseId: "release-1", idempotencyKey: "review-1" })).resolves.toEqual(batch);
+    const [url, options] = fetchMock.mock.lastCall!;
+    expect(url).toBe("/api/v2/projects/project-1/parameter-value-change-requests/batch-1/review");
+    expect(options).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "approve", batchProofDigest: proof }) }));
+    await expect(client.withdrawProjectValueChangeRequest("project-1", "batch-1",
+      { catalogReleaseId: "release-1", idempotencyKey: "withdraw-1" }))
+      .resolves.toEqual({ item: { ...batch.item, status: "withdrawn" } });
+  });
+
   it("sends the pending-review filter without the Catalog list whitelist dropping it", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ items: [] }));
     const client = createParameterCatalogClient({ baseUrl: "",fetchImpl: fetchMock });
     await client.listProjectValueChangeRequests("project_1",{ status: "pending" });
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=pending",expect.objectContaining({ method: "GET" }));
+    await client.listProjectValueChangeRequests("project_1", { status: "rejected", mine: true });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=rejected&mine=true", expect.objectContaining({ method: "GET" }));
+  });
+
+  it("carries the exact frozen member-removal proof through submit, detail and review", async () => {
+    const proofDigest = "a".repeat(64);
+    const member = (fileId: string) => ({ fileId, fileVersionId: `v-${fileId}`,
+      sourceName: `${fileId}.json`, format: "json", role: "base", sortOrder: 0,
+      checksum: "sha256:source", sizeBytes: 12 });
+    const cohort = (bindingId: string) => ({ bindingId, oldValueId: `v-${bindingId}`,
+      sourcePinId: `pin-${bindingId}`, sourceOccurrenceId: `occ-${bindingId}`,
+      definitionId: "def", effectiveRevisionId: "rev", catalogReleaseId: "release",
+      fileId: "file-a", fileVersionId: "v-file-a", locator: { pointer: "/value" },
+      valueDigest: "sha256:value" });
+    const item = { id: "request-1", projectId: "project-1", configSetId: "set-1",
+      fileId: "file-a", fileVersionId: "v-file-a", proofDigest,
+      frozenProof: { kind: "canonical-member-removal", organizationId: "org-1",
+        projectId: "project-1", configSetId: "set-1", fileId: "file-a",
+        fileVersionId: "v-file-a", configRevisionId: "config-rev",
+        members: [member("file-a"), member("file-b")],
+        cohort: [cohort("binding-a"), cohort("binding-b")], proofDigest },
+      status: "pending", reason: "retire member", submitterUserId: "submitter",
+      assignedToUserId: "reviewer", reviewerUserId: null, reviewerNote: null,
+      appliedSourceResult: null, createdAt: "2026-09-24T00:00:00Z",
+      updatedAt: "2026-09-24T00:00:00Z" };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item }));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    const context = { catalogReleaseId: "release", idempotencyKey: "member-key" };
+    const submitted = await client.submitMemberRemovalRequest("project-1", {
+      configSetId: "set-1", fileId: "file-a", reason: "retire member",
+      assignedToUserId: "reviewer"
+    }, context);
+    expect(submitted.item.frozenProof).toEqual(item.frozenProof);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/v2/projects/project-1/parameter-value-change-requests/member-removals"
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      fileId: "file-a", assignedToUserId: "reviewer"
+    });
+    await expect(client.getMemberRemovalRequest("project-1", "request-1")).resolves.toEqual({ item });
+    await client.reviewMemberRemovalRequest("project-1", "request-1", {
+      decision: "approve", memberProofDigest: submitted.item.proofDigest
+    }, context);
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
+      decision: "approve", memberProofDigest: proofDigest
+    });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      "/api/v2/projects/project-1/parameter-value-change-requests/request-1/review"
+    );
   });
 
   it("rejects binding drafts that still carry a legacy spec identity", async () => {

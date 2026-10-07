@@ -44,4 +44,22 @@ describe("xiaoze checkpointer", () => {
       delete process.env.XIAOZE_DETERMINISTIC;
     }
   });
+
+  it("refuses an injected postgres saver without its matching owner before work", async () => {
+    const cp = createXiaozeCheckpointer({ mode: "postgres", saver: new MemorySaver() });
+    let worked = false;
+    await expect(cp.withNamespaceLease("thread", async () => { worked = true; })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(worked).toBe(false);
+  });
+
+  it("shares memory namespace admission across wrappers of the same saver", async () => {
+    const saver = new MemorySaver();
+    const a = createXiaozeCheckpointer({ saver });
+    const b = createXiaozeCheckpointer({ saver });
+    await a.withNamespaceLease("thread", async () => {
+      await expect(b.withNamespaceLease("thread", async () => undefined)).rejects.toMatchObject({ details: { reason: "xiaoze-thread-busy" } });
+      await b.withNamespaceLease("other", async () => undefined);
+    });
+    await b.withNamespaceLease("thread", async () => undefined);
+  });
 });

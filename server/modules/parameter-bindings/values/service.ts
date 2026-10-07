@@ -3,10 +3,13 @@ import type { Queryable } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 
 import {
+  CatalogReleaseId,
+  CatalogSubjectId,
   DefinitionRevisionId,
   ParameterBindingId,
   ParameterDefinitionId,
   ProjectValueId,
+  SubjectRegistrationId,
 } from "../../parameter-catalog-contract/index";
 import type { Binding } from "../binding";
 
@@ -30,6 +33,7 @@ import {
   discoverDeletedSourceRevisionPins as queryDeletedSourceRevisionPins,
   loadDeletedSourceAnchors as queryDeletedSourceAnchors,
   loadSourceBindingCohort as querySourceBindingCohort,
+  loadSourceBindingCohortReadOnly as querySourceBindingCohortReadOnly,
   loadOwnedProjectValueSourcePin as queryOwnedProjectValueSourcePin,
   isCurrentGovernedSourceValue as queryCurrentGovernedSourceValue,
   loadSourceValueReplay as querySourceValueReplay,
@@ -40,6 +44,7 @@ import {
 import type {
   AppendProjectValueCommand,
   MutateExistingProjectValueCommand,
+  OwnedCurrentBindingRead,
   ProjectValue,
   ProjectValueConflict,
   ProjectValueHistoryQuery,
@@ -105,6 +110,12 @@ export async function loadSourceBindingCohort(tx: Queryable, input: { organizati
   return querySourceBindingCohort(tx,input);
 }
 
+export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return querySourceBindingCohortReadOnly(tx,input);
+}
+
 export async function hasDeletedCurrentValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string }) {
   assertSourceReadScope(input);
   const binding = await loadBindingById(tx as ValueClient, input.bindingId, "none");
@@ -112,10 +123,53 @@ export async function hasDeletedCurrentValue(tx: Queryable, input: { organizatio
   return (await loadProjectValueById(tx as ValueClient, binding.current_value_id))?.value_state === "deleted";
 }
 
-export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+/** Exact scoped identity, not replacement-following lookup. A retained base
+ * row is never current. Locks use the caller's Queryable, without a new connection. */
+export async function readOwnedCurrentBinding(
+  tx: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string; lock?: boolean },
+): Promise<OwnedCurrentBindingRead> {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId)) return { status: "missing" };
+  const row = await loadBindingById(tx as ValueClient, input.bindingId, input.lock ? "update" : "none", { ...input, currentOnly: true });
+  if (!row) {
+    const retained = await loadBindingById(tx as ValueClient, input.bindingId, "none", input);
+    return { status: retained ? "replaced" : "missing" };
+  }
+  return {
+    status: "current",
+    binding: {
+      id: ParameterBindingId(row.id),
+      organizationId: row.organization_id,
+      projectId: row.project_id,
+      logicalNodeId: row.logical_node_id,
+      sourceOccurrenceId: row.source_occurrence_id,
+      registrationId: SubjectRegistrationId(row.registration_id),
+      subjectId: CatalogSubjectId(row.subject_id),
+      definitionId: ParameterDefinitionId(row.definition_id),
+      effectiveRevisionId: DefinitionRevisionId(row.effective_revision_id),
+      currentValueId: ProjectValueId(row.current_value_id),
+      catalogReleaseId: CatalogReleaseId(row.catalog_release_id),
+    },
+  };
+}
+
+export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string; lock?: boolean }) {
   assertSourceReadScope(input);
   if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return null;
   return queryOwnedProjectValueSourcePin(tx,input);
+}
+
+/** Exact historical identity, including replaced Bindings and non-current
+ * values. Never substitute a current tip for the caller's immutable value ID. */
+export async function readOwnedProjectValueIdentity(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return null;
+  const binding = await loadBindingById(tx as ValueClient, input.bindingId, "none", input);
+  if (!binding || binding.organization_id !== input.organizationId || binding.project_id !== input.projectId) return null;
+  const value = await loadProjectValueById(tx as ValueClient, input.projectValueId);
+  if (!value || value.binding_id !== binding.id) return null;
+  return { bindingId: binding.id, definitionId: binding.definition_id, definitionRevisionId: value.definition_revision_id };
 }
 
 export async function isCurrentGovernedSourceValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
@@ -366,10 +420,25 @@ const writeAppend = async (
         and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id
         and base_pin.config_revision_id=request.config_revision_id and base_pin.value_state='present'
       where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.status='pending'
+        and request.request_kind='single'
         and request.candidate_binding_manifest @> $4::jsonb
         and $5::boolean = (request.binding_id <> $6)
         and ($5 or request.base_current_value_id=$7)
-        and $8 = case when request.binding_id=$6 and request.action='delete' then 'deleted' else 'present' end`,
+        and $8 = case when request.binding_id=$6 and request.action='delete' then 'deleted' else 'present' end
+      union all
+      select request.id from public.project_parameter_value_change_requests request
+      join parameter_catalog.project_value_source_pins base_pin
+        on base_pin.binding_id=$6 and base_pin.project_value_id=$7
+       and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id
+       and base_pin.value_state='present'
+      left join public.project_parameter_value_change_targets target
+        on target.request_id=request.id and target.binding_id=$6
+      where request.id=$1 and request.organization_id=$2 and request.project_id=$3
+        and request.status='pending' and request.request_kind='batch'
+        and request.candidate_binding_manifest @> $4::jsonb
+        and $5::boolean = (target.id is null)
+        and (target.id is null or (target.base_current_value_id=$7 and target.source_pin_id=base_pin.id))
+        and $8 = case when target.action='delete' then 'deleted' else 'present' end`,
     [command.sourceCommit.requestId,stored.organization_id,stored.project_id,
       JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }]),
       command.sourceCommit.derived,stored.id,command.expectedTip,command.valueState ?? "present"]);

@@ -490,11 +490,13 @@ function AppShell({
         {...props}
         runtimeMode={runtimeMode}
         debuggingAdminClient={debuggingAdminCatalogClient}
+        parameterRepository={parameterRepositoryClient}
+        parameterCatalogRepository={appRuntime.parameterCatalogRepository}
         dtsReloadRepository={dtsReloadRepositoryClient}
         apiAuthPermissions={apiAuthPermissions}
       />
     ),
-    [apiAuthPermissions, debuggingAdminCatalogClient, dtsReloadRepositoryClient, runtimeMode]
+    [apiAuthPermissions, appRuntime.parameterCatalogRepository, debuggingAdminCatalogClient, dtsReloadRepositoryClient, parameterRepositoryClient, runtimeMode]
   );
   const refreshParameterInitializationFromApi = useCallback(async () => {
     if (runtimeMode !== "api" || pageKeyRef.current === "home") {
@@ -564,8 +566,16 @@ function AppShell({
     [parameterInitializationRepositoryClient, runtimeMode]
   );
 
+  const initializationCreatedProjectIds = useRef(new Set<string>());
+  const previewParameterInitializationViaApi = useCallback<ParameterInitializationRepository["previewSnapshot"]>(
+    (input) => parameterInitializationRepositoryClient.previewSnapshot(input),
+    [parameterInitializationRepositoryClient]
+  );
   const submitParameterInitializationViaApi = useCallback(
-    async (action: Extract<AppAction, { type: "SUBMIT_PARAMETER_INITIALIZATION" }>) => {
+    async (
+      action: Extract<AppAction, { type: "SUBMIT_PARAMETER_INITIALIZATION" }>,
+      expectedSnapshots?: Awaited<ReturnType<ParameterInitializationRepository["previewSnapshot"]>>
+    ) => {
       const projectCode = action.draft.projectCode.trim().toUpperCase();
       const projectId = action.draft.projectCode
         .trim()
@@ -577,21 +587,25 @@ function AppShell({
       }
       try {
         const adminClient = createParameterAdminClient();
-        await adminClient.createProject({
-          id: projectId,
-          name: action.draft.projectName.trim(),
-          code: projectCode
-        });
+        if (!initializationCreatedProjectIds.current.has(projectId)) {
+          await adminClient.createProject({
+            id: projectId,
+            name: action.draft.projectName.trim(),
+            code: projectCode
+          });
+          initializationCreatedProjectIds.current.add(projectId);
+        }
         const emptyLibrary =
           !action.draft.primarySourceProjectId || action.draft.sourceProjectIds.length === 0;
         let bindingSnapshots = [] as Awaited<
           ReturnType<ParameterInitializationRepository["previewSnapshot"]>
         >;
         if (!emptyLibrary) {
-          bindingSnapshots = await parameterInitializationRepositoryClient.previewSnapshot({
+          bindingSnapshots = expectedSnapshots ?? await parameterInitializationRepositoryClient.previewSnapshot({
             projectId,
             primarySourceProjectId: action.draft.primarySourceProjectId,
             supplementSourceProjectIds: action.draft.supplementSourceProjectIds,
+            selectedSourceBindingIds: action.draft.selectedParameterIds,
             selectedModuleIds: action.draft.selectedModules,
             selectedRisks: action.draft.selectedRisks
           });
@@ -626,6 +640,7 @@ function AppShell({
         setProjectInitOpen(false);
       } catch (error) {
         dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "参数初始化提交失败，请稍后重试。") });
+        if (expectedSnapshots !== undefined) throw error;
       }
     },
     [parameterInitializationRepositoryClient]
@@ -737,7 +752,7 @@ function AppShell({
     if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
-    const urlProjectId = page.key === "parameters" || page.key === "parameter-review"
+    const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
       ? new URLSearchParams(search).get("project") : null;
     const projectId = urlProjectId || state.activeProjectId;
     if (!projectId) {
@@ -1221,6 +1236,8 @@ function AppShell({
             state={state}
             dispatch={handleInitializationWizardDispatch}
             onClose={() => setProjectInitOpen(false)}
+            onPreview={runtimeMode === "api" ? previewParameterInitializationViaApi : undefined}
+            onSubmit={runtimeMode === "api" ? submitParameterInitializationViaApi : undefined}
           />
         ) : null}
       <FeedbackDialog
@@ -1428,12 +1445,12 @@ function TopBar({
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
-    page.key === "parameters" || page.key === "parameter-review"
+    page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
       ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
   const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
-    if (page.key === "parameters" || page.key === "parameter-review") {
+    if (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions") {
       onNavigate(`/${page.key}?project=${encodeURIComponent(projectId)}`);
     }
   };

@@ -78,8 +78,11 @@ export function WorkbenchSourceCanvas({
   onVisibleLineChange,
   sessionChangeMarkers
 }: WorkbenchSourceCanvasProps) {
+  const sourceFormatLabel =
+    (selectedMember?.format ?? activeCandidate?.format) === "json" ? "JSON" : "DTS";
+  const sourceBodyAriaLabel = `${sourceFormatLabel} 源码`;
   return (
-    <main className="configuration-workbench__source" aria-label="只读 DTS 源码" ref={sourceRegionRef}>
+    <main className="configuration-workbench__source" aria-label={`只读 ${sourceFormatLabel} 源码`} ref={sourceRegionRef}>
       {selectedMember ? (
         <header className="configuration-workbench__source-head">
           <div>
@@ -260,6 +263,7 @@ export function WorkbenchSourceCanvas({
           findNextToken={findNextToken}
           onVisibleLineChange={onVisibleLineChange}
           sessionChangeMarkers={sessionChangeMarkers}
+          bodyAriaLabel={sourceBodyAriaLabel}
         />
       ) : null}
       {!modeSourceLoading &&
@@ -274,6 +278,7 @@ export function WorkbenchSourceCanvas({
           text={historySource}
           focusLine={focusLineOverride}
           onVisibleLineChange={onVisibleLineChange}
+          bodyAriaLabel={sourceBodyAriaLabel}
         />
       ) : null}
       {!candidateLoading && canvasMode === "candidate" && candidateSource ? (
@@ -284,6 +289,7 @@ export function WorkbenchSourceCanvas({
           text={candidateSource}
           focusLine={focusLineOverride}
           onVisibleLineChange={onVisibleLineChange}
+          bodyAriaLabel={sourceBodyAriaLabel}
         />
       ) : null}
       {canvasMode === "candidate" && candidateLoading ? (
@@ -312,12 +318,14 @@ export function WorkbenchSourceCanvas({
             versionNumber={selectedMember.currentVersionNumber ?? 0}
             text={compareSource || source}
             onVisibleLineChange={onVisibleLineChange}
+            bodyAriaLabel={sourceBodyAriaLabel}
           />
           <ProjectPrimaryDtsViewer
             className="configuration-workbench__code"
             fileName={`${selectedMember.fileName} · 历史`}
             versionNumber={fileVersions.find((item) => item.id === historyVersionId)?.versionNumber ?? 0}
             text={historySource}
+            bodyAriaLabel={sourceBodyAriaLabel}
           />
         </div>
       ) : null}

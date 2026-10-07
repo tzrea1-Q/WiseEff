@@ -7,6 +7,7 @@ import type {
 } from "../../parameter-governance/registration/command";
 import type { RegistrationFailure } from "../../parameter-governance/registration/failures";
 import type { RegistrationResult } from "../../parameter-governance/registration/result";
+import type { RegistrationList } from "../../parameter-governance/queries";
 import type {
   GetReviewItemQuery,
   ListReviewQueueQuery,
@@ -76,12 +77,15 @@ export type CatalogGovernanceAuthResult =
 
 export type RegistrationRecord = {
   readonly id: string;
+  readonly impact?: { readonly bindingCount: number; readonly projectCount: number };
   readonly organizationId: string;
   readonly subjectId: string;
   readonly status: "active" | "retired";
   readonly method: "explicit" | "automatic" | "review";
   readonly placement: {
     readonly id: string;
+    readonly moduleId?: string;
+    readonly version?: string;
     readonly displayName: string;
     readonly parentPlacementId: string | null;
   };
@@ -150,10 +154,11 @@ export type CatalogGovernancePorts = {
     readonly organizationId: string;
     readonly subjectKind: "driver" | "node-type" | "configuration-schema";
     readonly placement: PlacementIntent;
+    readonly destinationModuleId?: string;
   }) => Promise<string | null>;
   readonly listRegistrations: (
-    input: CatalogGovernanceQueryScope,
-  ) => Promise<readonly RegistrationRecord[]>;
+    input: CatalogGovernanceQueryScope & { readonly cursor?: string; readonly limit?: number },
+  ) => Promise<RegistrationList>;
   readonly getRegistration: (
     input: CatalogGovernanceQueryScope & { readonly registrationId: string },
   ) => Promise<RegistrationRecord | null>;

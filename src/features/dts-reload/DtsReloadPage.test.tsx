@@ -318,6 +318,31 @@ afterEach(() => {
 });
 
 describe("DtsReloadPage", () => {
+  it("does not query the default project while opening a run deep link", async () => {
+    let resolveRun: ((value: DtsReloadRun) => void) | undefined;
+    const getRun = vi.fn(
+      () =>
+        new Promise<DtsReloadRun>((resolve) => {
+          resolveRun = resolve;
+        })
+    );
+    const repository = createRepository({ getRun });
+
+    renderPage(repository, { initialRunId: "run-history" });
+
+    await waitFor(() => expect(getRun).toHaveBeenCalledWith("run-history"));
+    expect(repository.listCandidates).not.toHaveBeenCalled();
+    expect(repository.listRuns).not.toHaveBeenCalled();
+
+    resolveRun?.(run({ id: "run-history", projectId: "project-1" }));
+    await waitFor(() => expect(repository.listCandidates).toHaveBeenCalledWith("project-1"));
+    await waitFor(() =>
+      expect(repository.listRuns).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "project-1" })
+      )
+    );
+  });
+
   it.each([
     { otherCount: 0, revokeOther: false, revokeFails: false },
     { otherCount: 1, revokeOther: false, revokeFails: false },

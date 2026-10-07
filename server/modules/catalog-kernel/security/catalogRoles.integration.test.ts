@@ -9,6 +9,7 @@ import {
   serializeContract,
 } from "../../parameter-catalog-contract";
 import { applyMigrations } from "../../../shared/database/migrations";
+import { withTestClusterRoleCatalogLock } from "../../../testing/testDatabase";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
@@ -16,6 +17,15 @@ import {
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 import { migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
+import {
+  S2_SCH_0171_FINGERPRINT,
+  S2_SCH_0176_FINGERPRINT,
+  S2_SCH_0179_FINGERPRINT,
+  S2_SCH_0180_FINGERPRINT,
+  S2_SCH_0181_FINGERPRINT,
+  S2_SCH_LIVE_FINGERPRINT,
+  readCanonicalSchemaFingerprint,
+} from "../../../testing/parameterCatalog";
 import type { Database } from "../../../shared/database/client";
 import {
   BINDING_CUTOVER_RELATIONS,
@@ -515,7 +525,10 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
         where rolname in (
           'catalog_migration_owner',
           'catalog_synchronizer_role',
-          'parameter_governance_writer_role'
+          'parameter_governance_writer_role',
+          'catalog_mod_d02_capture_owner',
+          'wiseeff_mod_d02_capture',
+          'wiseeff_mod_d02_source_reader'
         )
         order by rolname
       `);
@@ -524,10 +537,12 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
     table_name: string;
     privilege_type: string;
   }>(`
-        select grantee, table_name, privilege_type
+        select grantee, table_schema, table_name, privilege_type
         from information_schema.role_table_grants
         where table_schema = 'parameter_catalog'
-        order by grantee, table_name, privilege_type
+          or (table_schema in ('public', 'catalog_publication')
+            and grantee in ('catalog_mod_d02_capture_owner', 'wiseeff_mod_d02_capture', 'wiseeff_mod_d02_source_reader'))
+        order by grantee, table_schema, table_name, privilege_type
       `);
   const columnGrants = await query<{
     grantee: string;
@@ -535,11 +550,13 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
     column_name: string;
     privilege_type: string;
   }>(`
-        select grantee, table_name, column_name, privilege_type
+        select grantee, table_schema, table_name, column_name, privilege_type
         from information_schema.column_privileges
         where table_schema = 'parameter_catalog'
           and grantee in ('catalog_synchronizer_role', 'parameter_governance_writer_role')
-        order by grantee, table_name, column_name, privilege_type
+          or (table_schema in ('public', 'parameter_catalog', 'catalog_publication')
+            and grantee in ('catalog_mod_d02_capture_owner', 'wiseeff_mod_d02_capture', 'wiseeff_mod_d02_source_reader'))
+        order by grantee, table_schema, table_name, column_name, privilege_type
       `);
   const functionExecute = await query<{
     role_name: string;
@@ -548,7 +565,7 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
   }>(`
         select
           role_name,
-          procedure.proname as function_name,
+          namespace.nspname || '.' || procedure.proname as function_name,
           pg_catalog.has_function_privilege(
             role_name,
             procedure.oid,
@@ -560,10 +577,13 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
           values
             ('public'),
             ('catalog_synchronizer_role'),
-            ('parameter_governance_writer_role')
+            ('parameter_governance_writer_role'),
+            ('catalog_mod_d02_capture_owner'),
+            ('wiseeff_mod_d02_capture'),
+            ('wiseeff_mod_d02_source_reader')
         ) as roles(role_name)
-        where namespace.nspname = 'parameter_catalog'
-        order by role_name, procedure.proname, pg_catalog.pg_get_function_identity_arguments(procedure.oid)
+        where namespace.nspname in ('public', 'parameter_catalog', 'catalog_publication')
+        order by role_name, namespace.nspname, procedure.proname, pg_catalog.pg_get_function_identity_arguments(procedure.oid)
       `);
   const schemaUsage = await query<{ role_name: string; can_use: boolean }>(`
         select role_name, pg_catalog.has_schema_privilege(role_name, 'parameter_catalog', 'usage') as can_use
@@ -638,33 +658,126 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     ]);
   });
 
-  it("T1: Catalog relations and functions are owned by NOLOGIN catalog_migration_owner", async () => {
+  it("0180/0181 preserve the exact maintenance roles, column reads and function-only capture boundary", async () => {
+    const maintenanceRoles = ["catalog_mod_d02_capture_owner", "wiseeff_mod_d02_capture", "wiseeff_mod_d02_source_reader"];
+    const roles = await client.query(`
+      select rolname, rolcanlogin, rolinherit, rolsuper, rolcreatedb, rolcreaterole,
+        rolreplication, rolbypassrls, rolconfig
+      from pg_catalog.pg_roles where rolname = any($1::text[]) order by rolname
+    `, [maintenanceRoles]);
+    expect(roles.rows).toEqual(maintenanceRoles.map((rolname) => ({
+      rolname, rolcanlogin: rolname !== maintenanceRoles[0], rolinherit: false,
+      rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false,
+      rolbypassrls: false, rolconfig: rolname === maintenanceRoles[0] ? null : ["log_parameter_max_length=0"],
+    })));
+    expect((await client.query(`
+      select member.roleid from pg_catalog.pg_auth_members member
+      join pg_catalog.pg_roles child on child.oid = member.member
+      join pg_catalog.pg_roles parent on parent.oid = member.roleid
+      where child.rolname = any($1::text[]) or parent.rolname = any($1::text[])
+    `, [maintenanceRoles])).rows).toEqual([]);
+
+    // Compare the actual column ACL with the complete, checksum-pinned 0180 grant list.
+    const migration = await fs.readFile(path.join(migrationsDir, "0180_mod_d02_offline_capture.sql"), "utf8");
+    expect(createHash("sha256").update(migration).digest("hex"))
+      .toBe("3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb");
+    const expectedColumns = [...migration.matchAll(/grant select \(([^)]+)\)\s+on ([a-z_]+\.[a-z_]+)\s+to wiseeff_mod_d02_source_reader;/g)]
+      .flatMap(([, columns, relation]) => columns.split(",").map((column) => `${relation}.${column.trim()}`)).sort();
+    expect(expectedColumns.length).toBeGreaterThan(0);
+    const actualColumns = await client.query<{ identity: string }>(`
+      select table_schema || '.' || table_name || '.' || column_name as identity
+      from information_schema.column_privileges
+      where grantee = 'wiseeff_mod_d02_source_reader' and privilege_type = 'SELECT'
+    `);
+    expect(actualColumns.rows.map(({ identity }) => identity).sort()).toEqual(expectedColumns);
+    for (const role of maintenanceRoles.slice(1)) {
+      expect((await client.query(`
+        select c.oid from pg_catalog.pg_class c
+        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+        where n.nspname in ('public', 'parameter_catalog', 'catalog_publication')
+          and c.relkind in ('r', 'p', 'v') and (
+            pg_catalog.has_table_privilege($1, c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+            or pg_catalog.has_any_column_privilege($1, c.oid, 'INSERT,UPDATE'))
+      `, [role])).rows).toEqual([]);
+    }
+    const functions = await client.query(`
+      select p.proname, pg_catalog.pg_get_userbyid(p.proowner) as owner,
+        p.prosecdef as security_definer, p.proconfig as settings,
+        pg_catalog.has_function_privilege('public', p.oid, 'execute') as public_execute,
+        pg_catalog.has_function_privilege('wiseeff_mod_d02_capture', p.oid, 'execute') as capture_execute,
+        pg_catalog.has_function_privilege('wiseeff_mod_d02_source_reader', p.oid, 'execute') as reader_execute,
+        pg_catalog.has_function_privilege('parameter_governance_writer_role', p.oid, 'execute') as writer_execute,
+        pg_catalog.has_function_privilege('catalog_synchronizer_role', p.oid, 'execute') as synchronizer_execute,
+        pg_catalog.pg_get_functiondef(p.oid) as definition
+      from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'parameter_catalog' and p.proname = any($1::text[]) order by p.proname
+    `, [["capture_mod_d02_pre_activation_v2", "mod_d02_canonical_json", "mod_d02_uri_component"]]);
+    const bodyPins = [
+      "2ceb9293b59eaa9d85f5bb1a086a21887740c35becb119e50e06652e76a2c47e",
+      "178d84d4ac650819e7835ac4d9aacc48155ca2f5fbe0bbcd264c43f68f76b4cc",
+      "f4f5c4ae92d4c7dff64d704687f91dfed731fe3c8ddce96666e0b4e9cd2f14ea",
+    ];
+    expect(functions.rows).toHaveLength(3);
+    functions.rows.forEach(({ definition, ...row }, index) => {
+      expect(createHash("sha256").update(definition).digest("hex")).toBe(bodyPins[index]);
+      expect(row).toEqual({ proname: row.proname, owner: maintenanceRoles[0],
+        security_definer: index === 0, settings: ["search_path=pg_catalog, pg_temp"],
+        public_execute: false, capture_execute: index === 0, reader_execute: false,
+        writer_execute: false, synchronizer_execute: false });
+    });
+    for (const role of maintenanceRoles.slice(1)) {
+      const executable = await client.query<{ proname: string }>(`
+        select p.proname from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+        where n.nspname in ('public', 'parameter_catalog', 'catalog_publication')
+          and (n.nspname = 'parameter_catalog' or p.prosecdef)
+          and pg_catalog.has_function_privilege($1, p.oid, 'execute')
+      `, [role]);
+      expect(executable.rows).toEqual(role === "wiseeff_mod_d02_capture"
+        ? [{ proname: "capture_mod_d02_pre_activation_v2" }] : []);
+    }
+    const lockPrivileges = await client.query(`
+      select pg_catalog.has_table_privilege('catalog_mod_d02_capture_owner',
+          'parameter_catalog.catalog_activation_receipts', 'UPDATE') as receipt_update,
+        pg_catalog.has_column_privilege('catalog_mod_d02_capture_owner',
+          'catalog_publication.publication_policies', 'singleton', 'UPDATE') as policy_lock,
+        pg_catalog.has_column_privilege('catalog_mod_d02_capture_owner',
+          'catalog_publication.release_artifacts', 'artifact_digest', 'SELECT') as artifact_read
+    `);
+    expect(lockPrivileges.rows).toEqual([{ receipt_update: true, policy_lock: true, artifact_read: true }]);
+  });
+
+  it("T1: Catalog relations and exact functions retain their NOLOGIN owners", async () => {
     const tables = await client.query<{ tablename: string; tableowner: string }>(`
       select tablename, tableowner
       from pg_catalog.pg_tables
       where schemaname = 'parameter_catalog'
       order by tablename
     `);
-    expect(tables.rows.length).toBe(
-      CATALOG_RELATIONS.length +
-        GOVERNANCE_RELATIONS.length +
-        BINDING_CUTOVER_RELATIONS.length +
-        VERIFICATION_RELATIONS.length,
-    );
+    expect(tables.rows.map((row) => row.tablename)).toEqual([
+      ...CATALOG_RELATIONS,
+      ...GOVERNANCE_RELATIONS,
+      ...BINDING_CUTOVER_RELATIONS,
+      ...VERIFICATION_RELATIONS,
+    ].sort());
     expect(new Set(tables.rows.map((row) => row.tableowner))).toEqual(
       new Set([CATALOG_MIGRATION_OWNER]),
     );
 
-    const functions = await client.query<{ owner: string }>(`
-      select pg_catalog.pg_get_userbyid(procedure.proowner) as owner
+    const functions = await client.query<{ function_name: string; owner: string }>(`
+      select procedure.proname as function_name, pg_catalog.pg_get_userbyid(procedure.proowner) as owner
       from pg_catalog.pg_proc procedure
       join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
       where namespace.nspname = 'parameter_catalog'
     `);
     expect(functions.rows.length).toBeGreaterThan(0);
-    expect(new Set(functions.rows.map((row) => row.owner))).toEqual(
-      new Set([CATALOG_MIGRATION_OWNER]),
-    );
+    const captureFunctions = new Set([
+      "capture_mod_d02_pre_activation_v2", "mod_d02_canonical_json", "mod_d02_uri_component",
+    ]);
+    expect(functions.rows.filter((row) => captureFunctions.has(row.function_name))).toHaveLength(3);
+    for (const row of functions.rows) {
+      expect(row.owner).toBe(captureFunctions.has(row.function_name)
+        ? "catalog_mod_d02_capture_owner" : CATALOG_MIGRATION_OWNER);
+    }
 
     const schema = await client.query<{ owner: string }>(`
       select pg_catalog.pg_get_userbyid(namespace.nspowner) as owner
@@ -711,14 +824,22 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     expect(typed.detail).toBe("PCAT-GUARD-DRIFT");
   });
 
-  it("T3: re-running 0138 is idempotent", async () => {
-    const before = await aclFingerprint(client);
-    const sql = await fs.readFile(path.join(migrationsDir, ROLES_MIGRATION), "utf8");
-    await client.query(sql);
-    const after = await aclFingerprint(client);
-    expect(after).toBe(before);
-    expect(before).toMatch(/^[0-9a-f]{64}$/);
-  });
+  it("T3: re-running 0138 at its historical migration boundary is idempotent", async () => {
+    await withTempDatabase(
+      { prefix: "pcat_rbac_0138_replay", migrate: false },
+      async ({ db }) => {
+        await applyMigrations(db, migrationsDir, { through: ROLES_MIGRATION });
+        await withTestClusterRoleCatalogLock(async () => {
+          const before = await aclFingerprint(db);
+          const sql = await fs.readFile(path.join(migrationsDir, ROLES_MIGRATION), "utf8");
+          await db.query(sql);
+          const after = await aclFingerprint(db);
+          expect(after).toBe(before);
+          expect(before).toMatch(/^[0-9a-f]{64}$/);
+        });
+      },
+    );
+  }, 120_000);
 
   it("T4: PUBLIC remains revoked for Catalog tables and the guard", async () => {
     const publicExecute = await client.query<{ allowed: boolean }>(`
@@ -882,10 +1003,16 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
   it("keeps placement and observation-match guards SECURITY DEFINER without writer execute", async () => {
     const rows = await client.query<{
       identity: string;
+      owner: string;
       security_definer: boolean;
+      settings: string[];
       public_execute: boolean;
       synchronizer_execute: boolean;
       writer_execute: boolean;
+      coordinator_execute: boolean;
+      reader_execute: boolean;
+      verification_writer_execute: boolean;
+      verifier_execute: boolean;
     }>(`
       select
         format(
@@ -894,10 +1021,16 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
           procedure.proname,
           pg_catalog.pg_get_function_identity_arguments(procedure.oid)
         ) as identity,
+        pg_catalog.pg_get_userbyid(procedure.proowner) as owner,
         procedure.prosecdef as security_definer,
+        procedure.proconfig as settings,
         pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
         pg_catalog.has_function_privilege($1, procedure.oid, 'execute') as synchronizer_execute,
-        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute
+        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute,
+        pg_catalog.has_function_privilege('catalog_publication_coordinator_role', procedure.oid, 'execute') as coordinator_execute,
+        pg_catalog.has_function_privilege('catalog_baseline_reader_role', procedure.oid, 'execute') as reader_execute,
+        pg_catalog.has_function_privilege('catalog_verification_writer_role', procedure.oid, 'execute') as verification_writer_execute,
+        pg_catalog.has_function_privilege('catalog_verifier_role', procedure.oid, 'execute') as verifier_execute
       from pg_catalog.pg_proc procedure
       join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
       where namespace.nspname = 'parameter_catalog'
@@ -916,10 +1049,16 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     expect(rows.rows).toEqual(
       [...TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES].sort().map((identity) => ({
         identity,
+        owner: CATALOG_MIGRATION_OWNER,
         security_definer: true,
+        settings: ["search_path=pg_catalog, parameter_catalog"],
         public_execute: false,
         synchronizer_execute: false,
         writer_execute: false,
+        coordinator_execute: false,
+        reader_execute: false,
+        verification_writer_execute: false,
+        verifier_execute: false,
       })),
     );
   });
@@ -1122,7 +1261,37 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         )
       order by procedure.proname
     `, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
-    expect(writerDefiners.rows).toEqual([{ proname: "assert_catalog_subject_active" }]);
+    expect(writerDefiners.rows).toEqual([
+      { proname: "assert_catalog_subject_active" },
+      { proname: "ensure_dts_observation_source_occurrence" },
+      { proname: "insert_reviewed_member_tombstone" },
+    ]);
+
+    const reviewedTombstoneGrant = await client.query<{
+      public_execute: boolean;
+      synchronizer_execute: boolean;
+      coordinator_execute: boolean;
+      reader_execute: boolean;
+      writer_execute: boolean;
+    }>(`
+      select
+        pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
+        pg_catalog.has_function_privilege($1, procedure.oid, 'execute') as synchronizer_execute,
+        pg_catalog.has_function_privilege('catalog_publication_coordinator_role', procedure.oid, 'execute') as coordinator_execute,
+        pg_catalog.has_function_privilege('catalog_baseline_reader_role', procedure.oid, 'execute') as reader_execute,
+        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute
+      from pg_catalog.pg_proc procedure
+      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'parameter_catalog'
+        and procedure.proname = 'insert_reviewed_member_tombstone'
+    `, [CATALOG_SYNCHRONIZER_ROLE, PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(reviewedTombstoneGrant.rows).toEqual([{
+      public_execute: false,
+      synchronizer_execute: false,
+      coordinator_execute: false,
+      reader_execute: false,
+      writer_execute: true,
+    }]);
 
     const guardBody = await client.query<{ definition: string }>(`
       select pg_catalog.pg_get_functiondef(procedure.oid) as definition
@@ -1234,6 +1403,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       with refs as (
         select
           procedure.proname as function_name,
+          pg_catalog.pg_get_userbyid(procedure.proowner) as function_owner,
           match[1] as table_name
         from pg_catalog.pg_proc procedure
         join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
@@ -1248,7 +1418,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       select distinct function_name, table_name
       from refs
       where not pg_catalog.has_table_privilege(
-        'catalog_migration_owner',
+        function_owner,
         format('public.%I', table_name),
         'select'
       )
@@ -1296,6 +1466,469 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 });
 
 describe("0138 Catalog role migration paths", () => {
+  it("0172-0182 receipts, historical phase pins and writer ACL match the live schema", async () => {
+    await withTempDatabase({ prefix: "pcat_rbac_0179", migrate: false }, async ({ db, connectionString }) => {
+      await applyMigrations(db, migrationsDir, {
+        through: "0176_dts_observation_source_occurrence.sql",
+      });
+      const admin = new pg.Client({ connectionString });
+      await admin.connect();
+      try {
+        const historicalReceipts = await admin.query<{ name: string; checksum: string }>(
+          "select name, checksum from schema_migrations order by name",
+        );
+        expect(historicalReceipts.rows).toHaveLength(174);
+        expect(historicalReceipts.rows.at(-1)?.name).toBe("0176_dts_observation_source_occurrence.sql");
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0178_log_related_parameter_snapshots.sql",
+        })).toEqual([
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0179_parameter_catalog_comparison_manifest_binding.sql",
+        })).toEqual([
+          "0179_parameter_catalog_comparison_manifest_binding.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0179_FINGERPRINT);
+        const through0179 = (await admin.query("select name, checksum from schema_migrations order by name")).rows;
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0180_mod_d02_offline_capture.sql",
+        })).toEqual(["0180_mod_d02_offline_capture.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0180_FINGERPRINT);
+        const through0180 = (await admin.query("select name, checksum from schema_migrations order by name")).rows;
+        expect(through0180.slice(0, -1)).toEqual(through0179);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0181_mod_d02_capture_revalidation.sql",
+        })).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
+        const through0181 = (await admin.query("select name, checksum from schema_migrations order by name")).rows;
+        expect(through0181).toHaveLength(179);
+        expect(through0181.slice(0, -1)).toEqual(through0180);
+        expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+        const expectedChecksums = {
+          "0172_canonical_batch_draft_impact.sql": "6a40b58507c134884adff408c416bcae4249adcf008eb93bee8f901a7c649a53",
+          "0173_canonical_batch_draft_impact_pair.sql": "26924e1a0ef7e4f94cc47bd6cce6a79f0727e400109bee5685e38b6e362fedfb",
+          "0174_canonical_batch_composition_proof.sql": "505922550af2a450b44619ebe90c0f7caf0a7da8cd1d08b62217402fc97d2613",
+          "0175_canonical_batch_frozen_draft_choice.sql": "4286bd3da43f9812ce1fca56fa142d55f9afd4ba71b6876e47f823157c9ff2c2",
+          "0176_dts_observation_source_occurrence.sql": "b688d730d674e4e4a3dcb49ba7239cc9df8b9dfcce64a9db1a9a42ab35e829bd",
+          "0177_knowledge_definition_references.sql": "08cc13e6b5488bc976bc14b84e0e28fa74dbaedcae29c61f9a878805d5d2d7b6",
+          "0178_log_related_parameter_snapshots.sql": "9a3d80c997a4ea49a501fdb633f0bb0b1b87c2020d5451901a03abe254ae0203",
+          "0179_parameter_catalog_comparison_manifest_binding.sql": "1ec7ffd3ce83aabccf964b1a544422cc60ce1a3ddb527a4cc70de4bdd1889e4d",
+          "0180_mod_d02_offline_capture.sql": "3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb",
+          "0181_mod_d02_capture_revalidation.sql": "2674cff84ec482f54b547339aca44699e94b7c0af8648a19aab7c383d847e9d5",
+          "0182_legacy_dismissed_identity_reader.sql": "151bd22764a7d528c0e183a1bf0482412670ecff8f4c0d994e846f7326e8ffae",
+        };
+        const receipts = await admin.query<{ name: string; checksum: string }>(
+          "select name, checksum from schema_migrations order by name",
+        );
+        const files = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
+        expect(receipts.rows.map(({ name }) => name)).toEqual(files);
+        expect(receipts.rows.slice(0, -1)).toEqual(through0181);
+        expect(receipts.rows.slice(0, 174)).toEqual(historicalReceipts.rows);
+        const through0176 = files.filter((name) => name <= "0176_dts_observation_source_occurrence.sql");
+        expect(through0176).toHaveLength(174);
+        expect(receipts.rows.slice(0, 174).map(({ name }) => name)).toEqual(through0176);
+        expect(receipts.rows.slice(174).map(({ name }) => name)).toEqual([
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
+          "0179_parameter_catalog_comparison_manifest_binding.sql",
+          "0180_mod_d02_offline_capture.sql",
+          "0181_mod_d02_capture_revalidation.sql",
+          "0182_legacy_dismissed_identity_reader.sql",
+        ]);
+        expect(receipts.rows).toHaveLength(180);
+        for (const { name, checksum } of receipts.rows) {
+          expect(checksum).toBe(createHash("sha256")
+            .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
+        }
+        expect(Object.fromEntries(receipts.rows.filter(({ name }) => name in expectedChecksums)
+          .map(({ name, checksum }) => [name, checksum]))).toEqual(expectedChecksums);
+
+        const guards = await admin.query<{
+          proname: string; owner: string; security_definer: boolean; settings: string[];
+          public_execute: boolean; synchronizer_execute: boolean; writer_execute: boolean;
+        }>(`
+          select p.proname, pg_catalog.pg_get_userbyid(p.proowner) as owner,
+            p.prosecdef as security_definer, p.proconfig as settings,
+            pg_catalog.has_function_privilege('public', p.oid, 'execute') as public_execute,
+            pg_catalog.has_function_privilege('catalog_synchronizer_role', p.oid, 'execute') as synchronizer_execute,
+            pg_catalog.has_function_privilege('parameter_governance_writer_role', p.oid, 'execute') as writer_execute
+          from pg_catalog.pg_proc p
+          join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'parameter_catalog'
+            and p.proname = any($1::text[]) order by p.proname
+        `, [["freeze_batch_target_draft_id", "protect_batch_composition_proof", "protect_batch_draft_impact"]]);
+        expect(guards.rows.map(({ proname }) => proname)).toEqual([
+          "freeze_batch_target_draft_id", "protect_batch_composition_proof", "protect_batch_draft_impact",
+        ]);
+        for (const guard of guards.rows) {
+          expect(guard).toEqual({
+            proname: guard.proname, owner: CATALOG_MIGRATION_OWNER, security_definer: true,
+            settings: ["search_path=pg_catalog, parameter_catalog"], public_execute: false,
+            synchronizer_execute: false, writer_execute: false,
+          });
+          assertSqlstate42501(await captureRoleStatementError(
+            admin, PARAMETER_GOVERNANCE_WRITER_ROLE, `select parameter_catalog.${guard.proname}()`,
+          ), p02Gate());
+        }
+
+        const constraints = await admin.query<{ conname: string; convalidated: boolean; definition: string }>(`
+          select c.conname, c.convalidated, pg_catalog.pg_get_constraintdef(c.oid, true) as definition
+          from pg_catalog.pg_constraint c
+          where c.conname = any($1::text[]) order by c.conname
+        `, [[
+          "project_parameter_value_change_requests_composition_ck",
+          "project_parameter_value_change_requests_draft_impact_ck",
+          "project_parameter_value_change_requests_upload_candidate_fk",
+          "project_parameter_value_change_targets_frozen_draft_ck",
+        ]]);
+        expect(constraints.rows).toHaveLength(4);
+        expect(constraints.rows.every(({ convalidated }) => convalidated)).toBe(true);
+        const definitions = Object.fromEntries(constraints.rows.map(({ conname, definition }) => [conname, definition]));
+        expect(definitions.project_parameter_value_change_requests_draft_impact_ck)
+          .toContain("batch_draft_impact_digest IS NOT NULL");
+        expect(definitions.project_parameter_value_change_requests_composition_ck)
+          .toContain("jsonb_array_length(batch_composition_proof -> 'targetDecisions'::text) = batch_target_count");
+        expect(definitions.project_parameter_value_change_requests_upload_candidate_fk)
+          .toContain("ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED");
+        expect(definitions.project_parameter_value_change_targets_frozen_draft_ck)
+          .toContain("draft_id = frozen_draft_id");
+
+        const triggers = await admin.query<{ tgname: string; tgenabled: string }>(`
+          select tgname, tgenabled from pg_catalog.pg_trigger
+          where tgname = any($1::text[]) order by tgname
+        `, [[
+          "project_parameter_value_change_request_composition_immutable",
+          "project_parameter_value_change_request_draft_impact_immutable",
+          "project_parameter_value_change_target_draft_choice",
+          "project_parameter_value_change_target_immutable",
+        ]]);
+        expect(triggers.rows).toEqual([
+          { tgname: "project_parameter_value_change_request_composition_immutable", tgenabled: "O" },
+          { tgname: "project_parameter_value_change_request_draft_impact_immutable", tgenabled: "O" },
+          { tgname: "project_parameter_value_change_target_draft_choice", tgenabled: "O" },
+          { tgname: "project_parameter_value_change_target_immutable", tgenabled: "O" },
+        ]);
+      } finally {
+        await admin.end();
+      }
+    });
+  }, 120_000);
+
+  it("0179 preserves existing v1 comparison rows and their immutable guards", async () => {
+    await withTempDatabase({ prefix: "pcat_rbac_0179_v1", migrate: false }, async ({ db, connectionString }) => {
+      await applyMigrations(db, migrationsDir, { through: "0178_log_related_parameter_snapshots.sql" });
+      await db.query(`
+        insert into parameter_catalog.parameter_catalog_cutover_runs
+          (id, source_snapshot_fingerprint, target_artifact_sha, target_catalog_release_digest,
+           migration_contract_version, plan_digest, current_phase, state)
+        values ('0179-v1-history', 'v1-history', repeat('a', 40), 'v1-release',
+                's7-orc-p0-p10-v1', 'v1-plan', 'P10', 'completed')
+      `);
+      await db.query(`
+        insert into parameter_catalog.parameter_catalog_comparison_cases
+          (id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference)
+        values ('0179-v1-case', '0179-v1-history', 'PCAT-CMP-D01', 'runtime', 'v1-retained', true)
+      `);
+      await db.query(`
+        insert into parameter_catalog.parameter_catalog_comparison_results
+          (comparison_case_id, outcome, mapping_version_id, rule_id, evidence)
+        values ('0179-v1-case', 'unqueryable/protected-reference-missing', null, null, '{}'::jsonb)
+      `);
+      const cases = await db.query(`
+        select id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `);
+      const results = await db.query(`
+        select comparison_case_id, outcome, mapping_version_id, rule_id, evidence, compared_at
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `);
+      const immutableTriggers = () => db.query(`
+        select tgname, tgenabled from pg_catalog.pg_trigger
+        where tgname in ('parameter_catalog_comparison_cases_immutable',
+                         'parameter_catalog_comparison_results_immutable')
+        order by tgname
+      `);
+      const guardsBefore = await immutableTriggers();
+      expect(guardsBefore.rows).toEqual([
+        { tgname: "parameter_catalog_comparison_cases_immutable", tgenabled: "O" },
+        { tgname: "parameter_catalog_comparison_results_immutable", tgenabled: "O" },
+      ]);
+      const priorRejection = await captureDatabaseError(db.query(`
+        update parameter_catalog.parameter_catalog_comparison_results
+        set evidence = '{}'::jsonb where comparison_case_id = '0179-v1-case'
+      `));
+      expect(priorRejection.where).toContain("reject_immutable_catalog_change");
+      const receipts = (await db.query("select name, checksum from schema_migrations order by name")).rows;
+      expect(receipts).toHaveLength(176);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+
+      const functionAcl = () => db.query(`
+        select pg_catalog.pg_get_userbyid(proowner) as owner, prosecdef as security_definer,
+          proconfig as settings,
+          pg_catalog.has_function_privilege('public', oid, 'execute') as public_execute,
+          pg_catalog.has_function_privilege('parameter_governance_writer_role', oid, 'execute') as writer_execute,
+          pg_catalog.has_function_privilege('catalog_synchronizer_role', oid, 'execute') as synchronizer_execute
+        from pg_catalog.pg_proc
+        where oid = 'parameter_catalog.assert_comparison_result_mapping_run()'::regprocedure
+      `);
+      const aclBefore = await functionAcl();
+      expect(aclBefore.rows).toEqual([{
+        owner: CATALOG_MIGRATION_OWNER, security_definer: false,
+        settings: ["search_path=pg_catalog, parameter_catalog"],
+        public_execute: false, writer_execute: false, synchronizer_execute: false,
+      }]);
+
+      expect(await applyMigrations(db, migrationsDir, {
+        through: "0179_parameter_catalog_comparison_manifest_binding.sql",
+      })).toEqual([
+        "0179_parameter_catalog_comparison_manifest_binding.sql",
+      ]);
+      const upgradedReceipts = (await db.query("select name, checksum from schema_migrations order by name")).rows;
+      expect(upgradedReceipts.slice(0, -1)).toEqual(receipts);
+      expect(upgradedReceipts.at(-1)).toEqual({
+        name: "0179_parameter_catalog_comparison_manifest_binding.sql",
+        checksum: "1ec7ffd3ce83aabccf964b1a544422cc60ce1a3ddb527a4cc70de4bdd1889e4d",
+      });
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0179_FINGERPRINT);
+      expect(await applyMigrations(db, migrationsDir, {
+        through: "0180_mod_d02_offline_capture.sql",
+      })).toEqual(["0180_mod_d02_offline_capture.sql"]);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0180_FINGERPRINT);
+      expect(await applyMigrations(db, migrationsDir, {
+        through: "0181_mod_d02_capture_revalidation.sql",
+      })).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
+      expect((await db.query("select name, checksum from schema_migrations order by name")).rows.slice(0, -2))
+        .toEqual(upgradedReceipts);
+      expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      expect((await db.query("select name, checksum from schema_migrations order by name")).rows.slice(0, -3))
+        .toEqual(upgradedReceipts);
+      expect((await functionAcl()).rows).toEqual(aclBefore.rows);
+      expect((await immutableTriggers()).rows).toEqual(guardsBefore.rows);
+      expect((await db.query(`
+        select id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `)).rows).toEqual(cases.rows);
+      expect((await db.query(`
+        select comparison_case_id, outcome, mapping_version_id, rule_id, evidence, compared_at
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `)).rows).toEqual(results.rows);
+      const newColumns = await db.query(`
+        select comparison_phase, protected_reference_kind, protected_reference_id,
+          protected_reference_owner_scope_kind, protected_reference_owner_scope_id
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `);
+      expect(Object.values(newColumns.rows[0] ?? {})).toEqual(Array(5).fill(null));
+      const selectionColumns = await db.query(`
+        select selection_run_id, selection_plan_digest, selection_catalog_release_id,
+          selection_catalog_release_digest, selection_manifest_digest,
+          selection_p7_checkpoint_digest, selection_legacy_identity_id, selection_mapping_version_id
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `);
+      expect(Object.values(selectionColumns.rows[0] ?? {})).toEqual(Array(8).fill(null));
+      const currentRejection = await captureDatabaseError(db.query(`
+        update parameter_catalog.parameter_catalog_comparison_results
+        set evidence = '{}'::jsonb where comparison_case_id = '0179-v1-case'
+      `));
+      expect(currentRejection.where).toContain("reject_immutable_catalog_change");
+      const caseRejection = await captureDatabaseError(db.query(`
+        delete from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `));
+      expect(caseRejection.where).toContain("reject_immutable_catalog_change");
+      expect((await db.query(`
+        select id, cutover_run_id, gate_id, consumer_family, case_key, protected_reference
+        from parameter_catalog.parameter_catalog_comparison_cases where id = '0179-v1-case'
+      `)).rows).toEqual(cases.rows);
+      expect((await db.query(`
+        select comparison_case_id, outcome, mapping_version_id, rule_id, evidence, compared_at
+        from parameter_catalog.parameter_catalog_comparison_results where comparison_case_id = '0179-v1-case'
+      `)).rows).toEqual(results.rows);
+    });
+  }, 120_000);
+
+  it("0170 upgrades a populated 0169 database without granting Catalog reads or direct guard execution", async () => {
+    await withTempDatabase(
+      { prefix: "pcat_rbac_0170_upgrade", migrate: false },
+      async ({ db, connectionString }) => {
+        await applyMigrations(db, migrationsDir, {
+          through: "0169_reviewed_source_member_cohort.sql",
+        });
+        const admin = new pg.Client({ connectionString });
+        await admin.connect();
+        try {
+          const prior = canonicalDriverFixture("upg170old", 88931);
+          await commitCanonicalDriverCatalog(admin, prior, {
+            includePlacement: true,
+            includeBinding: false,
+          });
+          const before = await admin.query<{ security_definer: boolean }>(`
+            select prosecdef as security_definer
+            from pg_catalog.pg_proc
+            where oid = 'parameter_catalog.assert_subject_placement_kind()'::regprocedure
+          `);
+          expect(before.rows).toEqual([{ security_definer: false }]);
+
+          expect(await applyMigrations(db, migrationsDir, {
+            through: "0170_restore_subject_placement_definer.sql",
+          })).toEqual([
+            "0170_restore_subject_placement_definer.sql",
+          ]);
+          const successorMigrations = [
+            "0171_canonical_dts_batch_target_contract.sql",
+            "0172_canonical_batch_draft_impact.sql",
+            "0173_canonical_batch_draft_impact_pair.sql",
+            "0174_canonical_batch_composition_proof.sql",
+            "0175_canonical_batch_frozen_draft_choice.sql",
+            "0176_dts_observation_source_occurrence.sql",
+            "0177_knowledge_definition_references.sql",
+            "0178_log_related_parameter_snapshots.sql",
+            "0179_parameter_catalog_comparison_manifest_binding.sql",
+            "0180_mod_d02_offline_capture.sql",
+            "0181_mod_d02_capture_revalidation.sql",
+          ];
+          expect(await applyMigrations(db, migrationsDir, {
+            through: "0181_mod_d02_capture_revalidation.sql",
+          })).toEqual(successorMigrations);
+          expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
+          expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+          expect(await applyMigrations(db, migrationsDir)).toEqual([]);
+          const receipts = await admin.query<{ name: string; checksum: string }>(`
+            select name, checksum from schema_migrations
+            where name >= '0170_restore_subject_placement_definer.sql' order by name
+          `);
+          expect(receipts.rows.map(({ name }) => name)).toEqual([
+            "0170_restore_subject_placement_definer.sql", ...successorMigrations,
+            "0182_legacy_dismissed_identity_reader.sql",
+          ]);
+          for (const { name, checksum } of receipts.rows) {
+            expect(checksum).toBe(createHash("sha256")
+              .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
+          }
+          const preserved = await admin.query<{ id: string }>(
+            "select id from parameter_catalog.subject_placements where id = $1",
+            [prior.placementId],
+          );
+          expect(preserved.rows).toEqual([{ id: prior.placementId }]);
+
+          const guard = await admin.query<{
+            owner: string;
+            security_definer: boolean;
+            settings: string[];
+            public_execute: boolean;
+            synchronizer_execute: boolean;
+            writer_execute: boolean;
+            coordinator_execute: boolean;
+            reader_execute: boolean;
+            verification_writer_execute: boolean;
+            verifier_execute: boolean;
+            writer_catalog_select: boolean;
+          }>(`
+            select
+              pg_catalog.pg_get_userbyid(proowner) as owner,
+              prosecdef as security_definer,
+              proconfig as settings,
+              pg_catalog.has_function_privilege('public', oid, 'execute') as public_execute,
+              pg_catalog.has_function_privilege('catalog_synchronizer_role', oid, 'execute') as synchronizer_execute,
+              pg_catalog.has_function_privilege('parameter_governance_writer_role', oid, 'execute') as writer_execute,
+              pg_catalog.has_function_privilege('catalog_publication_coordinator_role', oid, 'execute') as coordinator_execute,
+              pg_catalog.has_function_privilege('catalog_baseline_reader_role', oid, 'execute') as reader_execute,
+              pg_catalog.has_function_privilege('catalog_verification_writer_role', oid, 'execute') as verification_writer_execute,
+              pg_catalog.has_function_privilege('catalog_verifier_role', oid, 'execute') as verifier_execute,
+              pg_catalog.has_table_privilege('parameter_governance_writer_role', 'parameter_catalog.catalog_subjects', 'select') as writer_catalog_select
+            from pg_catalog.pg_proc
+            where oid = 'parameter_catalog.assert_subject_placement_kind()'::regprocedure
+          `);
+          expect(guard.rows).toEqual([{
+            owner: CATALOG_MIGRATION_OWNER,
+            security_definer: true,
+            settings: ["search_path=pg_catalog, parameter_catalog"],
+            public_execute: false,
+            synchronizer_execute: false,
+            writer_execute: false,
+            coordinator_execute: false,
+            reader_execute: false,
+            verification_writer_execute: false,
+            verifier_execute: false,
+            writer_catalog_select: false,
+          }]);
+
+          const next = canonicalDriverFixture("upg170new", 88932);
+          await commitCanonicalDriverCatalog(admin, next, {
+            includePlacement: false,
+            includeBinding: false,
+          });
+          await withLocalRole(admin, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+            await admin.query(`
+              insert into parameter_catalog.organization_subject_registrations (
+                id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+              ) values ($1, $2, $3, 'active', 'explicit', '{}', $4)
+            `, [next.registrationId, next.orgId, next.subjectId, next.placementId]);
+            await admin.query(`
+              insert into parameter_catalog.subject_placements (
+                id, registration_id, organization_id, module_id, origin
+              ) values ($1, $2, $3, $4, 'curated')
+            `, [next.placementId, next.registrationId, next.orgId, next.moduleId]);
+            await admin.query("set constraints all immediate");
+          });
+
+          await admin.query("update public.parameter_modules set kind = 'node-type' where id = $1", [
+            next.moduleId,
+          ]);
+          await withLocalRole(admin, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+            await admin.query(`
+              insert into parameter_catalog.organization_subject_registrations (
+                id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+              ) values ($1, $2, $3, 'active', 'explicit', '{}', $4)
+            `, [next.registrationId, next.orgId, next.subjectId, next.placementId]);
+            await admin.query(`
+              insert into parameter_catalog.subject_placements (
+                id, registration_id, organization_id, module_id, origin
+              ) values ($1, $2, $3, $4, 'curated')
+            `, [next.placementId, next.registrationId, next.orgId, next.moduleId]);
+            const denied = await captureDatabaseError(admin.query("set constraints all immediate"));
+            expect(denied.code).toBe("23514");
+            expect(denied.constraint).toBe("subject_placement_kind_ck");
+          });
+
+          for (const role of [
+            CATALOG_SYNCHRONIZER_ROLE,
+            "catalog_publication_coordinator_role",
+            "catalog_baseline_reader_role",
+            "catalog_verification_writer_role",
+            "catalog_verifier_role",
+            PARAMETER_GOVERNANCE_WRITER_ROLE,
+          ]) {
+            const denied = await captureRoleStatementError(
+              admin,
+              role,
+              "select parameter_catalog.assert_subject_placement_kind()",
+            );
+            assertSqlstate42501(denied, p02Gate());
+          }
+          await withProductionLogin(admin, connectionString, "guard170", async (login, roleName) => {
+            await admin.query(`grant usage on schema parameter_catalog to ${quoteIdent(roleName)}`);
+            try {
+              const denied = await captureDatabaseError(
+                login.query("select parameter_catalog.assert_subject_placement_kind()"),
+              );
+              assertSqlstate42501(denied, p02Gate());
+              expect(denied.message).toContain("function assert_subject_placement_kind");
+            } finally {
+              await admin.query(`revoke usage on schema parameter_catalog from ${quoteIdent(roleName)}`);
+            }
+          });
+        } finally {
+          await admin.end();
+        }
+      },
+    );
+  }, 180_000);
+
   it("applies as the contiguous suffix after 0137", async () => {
     await withTempDatabase(
       { prefix: "pcat_rbac_floor", migrate: false },
@@ -1350,7 +1983,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0161 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0182 upgrade produce the same ACL fingerprint", async () => withTestClusterRoleCatalogLock(async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1360,7 +1993,7 @@ describe("0138 Catalog role migration paths", () => {
 
     await withTempDatabase(
       { prefix: "pcat_rbac_upgrade", migrate: false },
-      async ({ db }) => {
+      async ({ db, connectionString }) => {
         await applyMigrations(db, migrationsDir, { through: FLOOR_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: SCHEMA_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: ROLES_MIGRATION });
@@ -1414,11 +2047,75 @@ describe("0138 Catalog role migration paths", () => {
         await applyMigrations(db, migrationsDir, {
           through: "0161_canonical_property_delete_tombstone.sql",
         });
+        await applyMigrations(db, migrationsDir, {
+          through: "0162_canonical_dts_reload_pins.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0163_canonical_debug_binding_pins.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0164_canonical_debug_project_integrity.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0165_canonical_batch_value_requests.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0166_canonical_batch_applied_revision.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0167_canonical_member_removal_tombstone.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0168_pinned_file_version_trigger_guard.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0169_reviewed_source_member_cohort.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0170_restore_subject_placement_definer.sql",
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: "0171_canonical_dts_batch_target_contract.sql",
+        });
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0171_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0176_dts_observation_source_occurrence.sql",
+        })).toEqual([
+          "0172_canonical_batch_draft_impact.sql",
+          "0173_canonical_batch_draft_impact_pair.sql",
+          "0174_canonical_batch_composition_proof.sql",
+          "0175_canonical_batch_frozen_draft_choice.sql",
+          "0176_dts_observation_source_occurrence.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0178_log_related_parameter_snapshots.sql",
+        })).toEqual([
+          "0177_knowledge_definition_references.sql",
+          "0178_log_related_parameter_snapshots.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0176_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0179_parameter_catalog_comparison_manifest_binding.sql",
+        })).toEqual([
+          "0179_parameter_catalog_comparison_manifest_binding.sql",
+        ]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0179_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0180_mod_d02_offline_capture.sql",
+        })).toEqual(["0180_mod_d02_offline_capture.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0180_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0181_mod_d02_capture_revalidation.sql",
+        })).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
+        expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
         upgrade = await aclFingerprint(db);
       },
     );
 
     expect(fresh).toMatch(/^[0-9a-f]{64}$/);
     expect(upgrade).toBe(fresh);
-  }, 180_000);
+  }), 180_000);
 });

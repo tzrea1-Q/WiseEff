@@ -3,8 +3,8 @@ import { Plus, Search } from "lucide-react";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
-import type { KnowledgeEntry, KnowledgeParameterReference, ParameterSpecReferenceLifecycle } from "@/domain/knowledge/types";
-import { parameterSpecReferenceLifecycleLabels } from "@/domain/knowledge/types";
+import type { KnowledgeEntry, KnowledgeParameterReference } from "@/domain/knowledge/types";
+import { definitionReferenceLifecycleLabels } from "@/domain/knowledge/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
@@ -19,13 +19,19 @@ export type KnowledgeEditorSubmit = {
   expectedHeadRevisionNumber?: number;
 };
 
-/** Definition option offered by the picker search (parameter-specs read API). */
-export type KnowledgeSpecPickerOption = {
-  specId: string;
+/** One exact canonical Definition returned by CatalogRead. */
+export type KnowledgeDefinitionPickerOption = {
+  definitionId: string;
   propertyKey: string;
   displayName: string | null;
   driverModule: string | null;
-  lifecycle: ParameterSpecReferenceLifecycle;
+  lifecycle: "active" | "deprecated" | "retired";
+};
+
+export type KnowledgeDefinitionPickerPage = {
+  items: KnowledgeDefinitionPickerOption[];
+  nextCursor: string | null;
+  catalogReleaseId: string;
 };
 
 /**
@@ -34,9 +40,9 @@ export type KnowledgeSpecPickerOption = {
  * Absent when the caller cannot search definitions (`parameter:view`).
  */
 export type KnowledgeParameterReferencePicker = {
-  search: (q: string) => Promise<KnowledgeSpecPickerOption[]>;
-  onAdd: (entryId: string, specId: string) => Promise<KnowledgeParameterReference[]>;
-  onRemove: (entryId: string, specId: string) => Promise<KnowledgeParameterReference[]>;
+  search: (q: string, cursor?: string, catalogReleaseId?: string) => Promise<KnowledgeDefinitionPickerPage>;
+  onAdd: (entryId: string, definitionId: string) => Promise<KnowledgeParameterReference[]>;
+  onRemove: (entryId: string, reference: KnowledgeParameterReference) => Promise<KnowledgeParameterReference[]>;
 };
 
 export type KnowledgeEntryEditorDialogProps = {
@@ -80,7 +86,9 @@ export function KnowledgeEntryEditorDialog({
   const [conflict, setConflict] = useState<KnowledgeRevisionConflictError | null>(null);
   const [references, setReferences] = useState<KnowledgeParameterReference[]>([]);
   const [specQuery, setSpecQuery] = useState("");
-  const [specOptions, setSpecOptions] = useState<KnowledgeSpecPickerOption[]>([]);
+  const [specOptions, setSpecOptions] = useState<KnowledgeDefinitionPickerOption[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [catalogReleaseId, setCatalogReleaseId] = useState<string | null>(null);
   const [specSearchRan, setSpecSearchRan] = useState(false);
   const [specSearching, setSpecSearching] = useState(false);
   const [referenceError, setReferenceError] = useState("");
@@ -97,6 +105,8 @@ export function KnowledgeEntryEditorDialog({
       setReferences(entry?.parameterReferences ?? []);
       setSpecQuery("");
       setSpecOptions([]);
+      setNextCursor(null);
+      setCatalogReleaseId(null);
       setSpecSearchRan(false);
       setSpecSearching(false);
       setReferenceError("");
@@ -105,7 +115,9 @@ export function KnowledgeEntryEditorDialog({
   }, [open, entry]);
 
   const previewHtml = useMemo(() => renderMarkdownPreview(content), [content]);
-  const referencedSpecIds = useMemo(() => new Set(references.map((reference) => reference.specId)), [references]);
+  const referencedDefinitionIds = useMemo(() => new Set(references
+    .filter((reference) => reference.kind === "definition")
+    .map((reference) => reference.definitionId)), [references]);
   const showReferenceSection = Boolean(parameterReferencePicker);
 
   const runSpecSearch = async () => {
@@ -114,8 +126,10 @@ export function KnowledgeEntryEditorDialog({
     setSpecSearching(true);
     setReferenceError("");
     try {
-      const options = await parameterReferencePicker.search(q);
-      setSpecOptions(options.slice(0, 8));
+      const page = await parameterReferencePicker.search(q);
+      setSpecOptions(page.items);
+      setNextCursor(page.nextCursor);
+      setCatalogReleaseId(page.catalogReleaseId);
       setSpecSearchRan(true);
     } catch (searchError) {
       setReferenceError(presentError(searchError, "参数定义检索失败，请稍后重试。"));
@@ -124,12 +138,29 @@ export function KnowledgeEntryEditorDialog({
     }
   };
 
-  const addReference = async (specId: string) => {
-    if (!parameterReferencePicker || !entry) return;
-    setReferencePendingSpecId(specId);
+  const loadMoreDefinitions = async () => {
+    if (!parameterReferencePicker || !nextCursor || !catalogReleaseId) return;
+    setSpecSearching(true);
     setReferenceError("");
     try {
-      setReferences(await parameterReferencePicker.onAdd(entry.id, specId));
+      const page = await parameterReferencePicker.search(specQuery.trim(), nextCursor, catalogReleaseId);
+      if (page.catalogReleaseId !== catalogReleaseId) throw new Error("目录发布已变化，请重新检索。");
+      setSpecOptions((current) => [...current, ...page.items.filter((item) =>
+        !current.some((existing) => existing.definitionId === item.definitionId))]);
+      setNextCursor(page.nextCursor);
+    } catch (searchError) {
+      setReferenceError(presentError(searchError, "后续定义加载失败，请重新检索。"));
+    } finally {
+      setSpecSearching(false);
+    }
+  };
+
+  const addReference = async (definitionId: string) => {
+    if (!parameterReferencePicker || !entry) return;
+    setReferencePendingSpecId(definitionId);
+    setReferenceError("");
+    try {
+      setReferences(await parameterReferencePicker.onAdd(entry.id, definitionId));
     } catch (addError) {
       setReferenceError(presentError(addError, "添加引用失败，请稍后重试。"));
     } finally {
@@ -137,12 +168,12 @@ export function KnowledgeEntryEditorDialog({
     }
   };
 
-  const removeReference = async (specId: string) => {
+  const removeReference = async (reference: KnowledgeParameterReference) => {
     if (!parameterReferencePicker || !entry) return;
-    setReferencePendingSpecId(specId);
+    setReferencePendingSpecId(reference.kind === "definition" ? reference.definitionId : reference.specId);
     setReferenceError("");
     try {
-      setReferences(await parameterReferencePicker.onRemove(entry.id, specId));
+      setReferences(await parameterReferencePicker.onRemove(entry.id, reference));
     } catch (removeError) {
       setReferenceError(presentError(removeError, "移除引用失败，请稍后重试。"));
     } finally {
@@ -240,7 +271,7 @@ export function KnowledgeEntryEditorDialog({
               <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                 <span className="text-sm font-medium text-foreground">关联参数定义</span>
                 <span className="text-xs text-muted-foreground">
-                  {entry ? "添加/移除立即生效并写入审计;引用绑定定义本体,废弃后仍保留。" : "先创建草稿,再关联参数定义。"}
+                  {entry ? "添加/移除立即生效并写入审计；引用绑定定义本体，退役后仍保留。" : "先创建草稿,再关联参数定义。"}
                 </span>
               </div>
 
@@ -248,7 +279,7 @@ export function KnowledgeEntryEditorDialog({
                 <>
                   <KnowledgeParameterReferenceChips
                     references={references}
-                    onRemove={(specId) => void removeReference(specId)}
+                    onRemove={(reference) => void removeReference(reference)}
                     removePendingSpecId={referencePendingSpecId}
                   />
                   {references.length === 0 ? (
@@ -266,7 +297,13 @@ export function KnowledgeEntryEditorDialog({
                       className="knowledge-spec-search"
                       ariaLabel="检索参数定义"
                       value={specQuery}
-                      onValueChange={setSpecQuery}
+                      onValueChange={(value) => {
+                        setSpecQuery(value);
+                        setSpecOptions([]);
+                        setSpecSearchRan(false);
+                        setNextCursor(null);
+                        setCatalogReleaseId(null);
+                      }}
                       placeholder="按属性键 / 模块检索参数定义"
                       loading={specSearching}
                     />
@@ -277,13 +314,13 @@ export function KnowledgeEntryEditorDialog({
                   </form>
 
                   {specSearchRan ? (
-                    <ul className="flex flex-col gap-1" aria-label="参数定义检索结果">
+                    <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto pr-1" aria-label="参数定义检索结果">
                       {specOptions.map((option) => {
-                        const alreadyReferenced = referencedSpecIds.has(option.specId);
+                        const alreadyReferenced = referencedDefinitionIds.has(option.definitionId);
                         const name = referenceDisplayName(option);
                         return (
                           <li
-                            key={option.specId}
+                            key={option.definitionId}
                             className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1.5"
                           >
                             <span className="min-w-0 truncate text-sm text-foreground">
@@ -292,19 +329,19 @@ export function KnowledgeEntryEditorDialog({
                                 <span className="ml-1 text-xs text-muted-foreground">· {option.driverModule}</span>
                               ) : null}
                               <span className="ml-1 text-xs text-muted-foreground">
-                                ({parameterSpecReferenceLifecycleLabels[option.lifecycle]})
+                                ({definitionReferenceLifecycleLabels[option.lifecycle]})
                               </span>
                             </span>
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              disabled={alreadyReferenced || referencePendingSpecId === option.specId}
-                              aria-busy={referencePendingSpecId === option.specId || undefined}
-                              onClick={() => void addReference(option.specId)}
+                              disabled={alreadyReferenced || option.lifecycle === "retired" || referencePendingSpecId === option.definitionId}
+                              aria-busy={referencePendingSpecId === option.definitionId || undefined}
+                              onClick={() => void addReference(option.definitionId)}
                             >
                               <Plus data-icon="inline-start" />
-                              {alreadyReferenced ? "已关联" : "关联"}
+                              {alreadyReferenced ? "已关联" : option.lifecycle === "retired" ? "不可关联" : "关联"}
                             </Button>
                           </li>
                         );
@@ -315,6 +352,12 @@ export function KnowledgeEntryEditorDialog({
                         </li>
                       ) : null}
                     </ul>
+                  ) : null}
+                  {nextCursor ? (
+                    <Button type="button" variant="outline" size="sm" disabled={specSearching}
+                      onClick={() => void loadMoreDefinitions()}>
+                      加载更多定义
+                    </Button>
                   ) : null}
 
                   {referenceError ? (

@@ -35,10 +35,14 @@ describe("M2 log seed contract", () => {
     await seedM2Logs(db);
 
     const jobInserts = txCalls.filter((call) => call.text.includes("insert into jobs"));
-    const completedJob = jobInserts.find((call) => call.values.includes("job-aurora-charging-foldback"));
+    const completedJob = jobInserts.find((call) => call.values.includes("job-aurora-charging-foldback-unassociated"));
 
     expect(completedJob?.text).toContain("'log-analysis-run'");
-    expect(completedJob?.values).toContain("run-aurora-charging-foldback");
+    expect(completedJob?.values).toContain("run-aurora-charging-foldback-unassociated");
     expect(jobInserts.some((call) => call.values.includes("job-aurora-unsupported"))).toBe(false);
+    const completedLog = txCalls.find((call) => call.text.includes("insert into log_records") && call.values.includes("log-aurora-charging-foldback-unassociated"));
+    expect(completedLog?.text).toContain("related_parameter_id");
+    expect(completedLog?.text).toContain("related_parameter_project_id = null");
+    expect(completedLog?.values[5]).toBeNull();
   });
 });

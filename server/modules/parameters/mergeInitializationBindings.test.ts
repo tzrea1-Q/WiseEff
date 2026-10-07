@@ -10,6 +10,7 @@ function candidate(
     Pick<InitializationBindingCandidate, "sourceProjectId" | "sourceBindingId" | "parameterSpecId" | "moduleId">
 ): InitializationBindingCandidate {
   return {
+    sourceProjectValueId: overrides.sourceProjectValueId ?? overrides.sourceBindingId,
     propertyKey: "fast_charge_current",
     parameterSpecVersionId: "psv-1",
     risk: "High",
@@ -20,7 +21,7 @@ function candidate(
 }
 
 describe("mergeInitializationBindingCandidates", () => {
-  it("keeps primary bindings and fills only missing semantic keys from supplements in order", () => {
+  it("keeps every canonical source value and exposes same-definition conflicts", () => {
     const primary = [
       candidate({
         sourceProjectId: "aurora",
@@ -82,7 +83,7 @@ describe("mergeInitializationBindingCandidates", () => {
       {
         sourceBindingId: "b-aurora-1",
         sourceRole: "primary",
-        alternativeSourceBindingIds: ["b-atlas-1"]
+        alternativeSourceBindingIds: ["b-atlas-1"],
       },
       {
         sourceBindingId: "b-aurora-2",
@@ -90,9 +91,19 @@ describe("mergeInitializationBindingCandidates", () => {
         alternativeSourceBindingIds: []
       },
       {
+        sourceBindingId: "b-atlas-1",
+        sourceRole: "supplement",
+        alternativeSourceBindingIds: ["b-aurora-1"]
+      },
+      {
         sourceBindingId: "b-atlas-3",
         sourceRole: "supplement",
         alternativeSourceBindingIds: ["b-nebula-3"]
+      },
+      {
+        sourceBindingId: "b-nebula-3",
+        sourceRole: "supplement",
+        alternativeSourceBindingIds: ["b-atlas-3"]
       },
       {
         sourceBindingId: "b-nebula-4",
@@ -120,5 +131,33 @@ describe("mergeInitializationBindingCandidates", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]?.needsEffectiveValueConfirmation).toBe(true);
     expect(merged[0]?.currentValueState).toBe("pending_project_confirmation");
+  });
+
+  it("keeps same-name values from different definitions independent", () => {
+    const merged = mergeInitializationBindingCandidates({
+      primary: [
+        candidate({
+          sourceProjectId: "aurora",
+          sourceBindingId: "b-limit-a",
+          sourceProjectValueId: "v-limit-a",
+          parameterSpecId: "definition-a",
+          moduleId: "mod-charge",
+          propertyKey: "limit",
+        }),
+        candidate({
+          sourceProjectId: "aurora",
+          sourceBindingId: "b-limit-b",
+          sourceProjectValueId: "v-limit-b",
+          parameterSpecId: "definition-b",
+          moduleId: "mod-charge",
+          propertyKey: "limit",
+        }),
+      ],
+      supplements: [],
+    });
+
+    expect(merged).toHaveLength(2);
+    expect(merged.map((item) => item.parameterSpecId)).toEqual(["definition-a", "definition-b"]);
+    expect(merged.every((item) => item.alternativeSourceBindingIds.length === 0)).toBe(true);
   });
 });

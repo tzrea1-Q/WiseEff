@@ -18,6 +18,7 @@ import {
 import { notifyLogAnalysisCompleted, notifyLogAnalysisFailed } from "../notifications/producers";
 import type { LogWebhookDeliverer } from "./webhookDelivery";
 import type { LogStage } from "./status";
+import { requireRelatedParameterRunSnapshot } from "./relatedParameter";
 
 type LogWorkerMetrics = Pick<MetricsRegistry, "recordLogAnalysisJobResult"> &
   Partial<Pick<MetricsRegistry, "recordLogAnalysisDegraded">>;
@@ -244,6 +245,19 @@ async function processClaimedLogAnalysisJob(
   let currentFailureReason: LogAnalysisJobFailureReason = "unknown";
 
   try {
+    let relatedParameterSnapshot;
+    if (snapshot.relatedParameterId) {
+      if (!snapshot.relatedParameterProjectId) {
+        throw new Error("Legacy related-parameter association has no authoritative project scope.");
+      }
+      relatedParameterSnapshot = requireRelatedParameterRunSnapshot(snapshot.relatedParameterSnapshot, {
+        organizationId: snapshot.organizationId,
+        projectId: snapshot.relatedParameterProjectId,
+        bindingId: snapshot.relatedParameterId
+      });
+    } else if (snapshot.relatedParameterProjectId || snapshot.relatedParameterSnapshot != null) {
+      throw new Error("Log run has an unexpected related-parameter snapshot.");
+    }
     await markProgress(options, {
       organizationId: snapshot.organizationId,
       jobId: snapshot.jobId,
@@ -333,6 +347,7 @@ async function processClaimedLogAnalysisJob(
         organizationId: snapshot.organizationId,
         logDomainId: snapshot.logDomain?.id,
         relatedParameterId: snapshot.relatedParameterId ?? undefined,
+        relatedParameterSnapshot,
         onProgress: async ({ step, maxSteps }) => {
           const boundedStep = Math.min(Math.max(step, 1), Math.max(maxSteps, 1));
           const progress = 65 + Math.min(14, Math.floor(((boundedStep - 1) / Math.max(maxSteps, 1)) * 15));
@@ -413,7 +428,7 @@ async function processClaimedLogAnalysisJob(
         runId: snapshot.runId,
         fileName: snapshot.fileName,
         recipientUserId: snapshot.submittedByUserId,
-        conclusion: analysis.conclusion
+        conclusion: relatedParameterSnapshot ? undefined : analysis.conclusion
       });
     }
 
@@ -431,7 +446,7 @@ async function processClaimedLogAnalysisJob(
         degradedReason: analysis.degradedReason,
         severity: analysis.severity,
         confidence: analysis.confidence,
-        conclusion: analysis.conclusion,
+        conclusion: relatedParameterSnapshot ? undefined : analysis.conclusion,
         occurredAt: now().toISOString()
       });
     }

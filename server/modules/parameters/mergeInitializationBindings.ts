@@ -1,6 +1,7 @@
 export type InitializationBindingCandidate = {
   sourceProjectId: string;
   sourceBindingId: string;
+  sourceProjectValueId: string;
   parameterSpecId: string;
   parameterSpecVersionId: string;
   propertyKey: string;
@@ -8,6 +9,12 @@ export type InitializationBindingCandidate = {
   risk: "High" | "Medium" | "Low" | null;
   effectiveValue: unknown;
   rawValue: string;
+  sourceConfigSetId?: string;
+  sourceConfigRevisionId?: string;
+  sourceOccurrenceId?: string;
+  sourceFormat?: "dts" | "json";
+  sourceName?: string;
+  sourceLocatorLabel?: string;
 };
 
 export type MergedInitializationBinding = InitializationBindingCandidate & {
@@ -15,10 +22,11 @@ export type MergedInitializationBinding = InitializationBindingCandidate & {
   alternativeSourceBindingIds: string[];
   needsEffectiveValueConfirmation: boolean;
   currentValueState: "pending_project_confirmation";
+  alternativeSourceValueIds: string[];
 };
 
-function semanticKey(candidate: Pick<InitializationBindingCandidate, "parameterSpecId" | "moduleId">) {
-  return `${candidate.parameterSpecId}::${candidate.moduleId}`;
+function semanticKey(candidate: Pick<InitializationBindingCandidate, "sourceProjectValueId">) {
+  return candidate.sourceProjectValueId;
 }
 
 function needsConfirmation(candidate: InitializationBindingCandidate) {
@@ -28,12 +36,14 @@ function needsConfirmation(candidate: InitializationBindingCandidate) {
 function toMerged(
   candidate: InitializationBindingCandidate,
   sourceRole: "primary" | "supplement",
-  alternativeSourceBindingIds: string[]
+  alternativeSourceBindingIds: string[],
+  alternativeSourceValueIds: string[]
 ): MergedInitializationBinding {
   return {
     ...candidate,
     sourceRole,
     alternativeSourceBindingIds,
+    alternativeSourceValueIds,
     needsEffectiveValueConfirmation: needsConfirmation(candidate),
     currentValueState: "pending_project_confirmation"
   };
@@ -41,20 +51,19 @@ function toMerged(
 
 /**
  * Primary-source priority merge for project initialization snapshots.
- * Semantic key: parameter_spec_id + module_id (design v1).
+ * Semantic key: immutable canonical source project value id. Definition/module
+ * names are presentation fields and cannot identify a source instance.
  */
 export function mergeInitializationBindingCandidates(input: {
   primary: InitializationBindingCandidate[];
   supplements: InitializationBindingCandidate[][];
 }): MergedInitializationBinding[] {
-  const alternativesByKey = new Map<string, string[]>();
-  const allByKey = new Map<string, InitializationBindingCandidate[]>();
+  const alternativesByDefinition = new Map<string, InitializationBindingCandidate[]>();
 
   const remember = (candidate: InitializationBindingCandidate) => {
-    const key = semanticKey(candidate);
-    const list = allByKey.get(key) ?? [];
-    list.push(candidate);
-    allByKey.set(key, list);
+    const definitionList = alternativesByDefinition.get(candidate.parameterSpecId) ?? [];
+    definitionList.push(candidate);
+    alternativesByDefinition.set(candidate.parameterSpecId, definitionList);
   };
 
   for (const candidate of input.primary) {
@@ -64,13 +73,6 @@ export function mergeInitializationBindingCandidates(input: {
     for (const candidate of group) {
       remember(candidate);
     }
-  }
-
-  for (const [key, list] of allByKey) {
-    alternativesByKey.set(
-      key,
-      list.slice(1).map((item) => item.sourceBindingId)
-    );
   }
 
   const chosen = new Map<string, { candidate: InitializationBindingCandidate; role: "primary" | "supplement" }>();
@@ -109,9 +111,11 @@ export function mergeInitializationBindingCandidates(input: {
 
   return orderedKeys.map((key) => {
     const entry = chosen.get(key)!;
-    const alts = (alternativesByKey.get(key) ?? []).filter(
-      (id) => id !== entry.candidate.sourceBindingId
-    );
-    return toMerged(entry.candidate, entry.role, alts);
+    const alternatives = (alternativesByDefinition.get(entry.candidate.parameterSpecId) ?? [])
+      .filter((item) => item.sourceBindingId !== entry.candidate.sourceBindingId);
+    const alts = alternatives.map((item) => item.sourceBindingId);
+    const valueAlternatives = alternatives
+      .map((item) => item.sourceProjectValueId);
+    return toMerged(entry.candidate, entry.role, alts, valueAlternatives);
   });
 }

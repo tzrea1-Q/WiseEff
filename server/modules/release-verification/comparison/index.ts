@@ -55,6 +55,7 @@ export {
 export {
   assertIndependentPhaseReports,
   generateComparisonReport,
+  generateLiveComparisonReport,
 } from "./generateComparisonReport";
 export {
   createProductionComparisonProviders,

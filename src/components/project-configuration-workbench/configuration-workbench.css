@@ -943,6 +943,47 @@
   scroll-margin-bottom: 24px;
 }
 
+.configuration-workbench__canonical-conflicts {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.configuration-workbench__canonical-conflicts :is(h4, p) {
+  margin: 0;
+}
+
+.configuration-workbench__canonical-conflicts fieldset {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+}
+
+.configuration-workbench__canonical-conflicts :is(legend, code) {
+  overflow-wrap: anywhere;
+}
+
+.configuration-workbench__canonical-conflicts label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.configuration-workbench__canonical-conflicts :is(textarea, select) {
+  width: 100%;
+}
+
 .configuration-workbench__inspector-actions {
   display: inline-flex;
   align-items: center;
@@ -1533,4 +1574,46 @@
 .configuration-workbench__revision-gate [data-tone="fail"] {
   color: var(--danger);
 }
+.confirm-dialog.workbench-batch-rollback-dialog {
+  width: min(720px, calc(100vw - 48px));
+}
 
+.workbench-batch-rollback-dialog__description {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.workbench-batch-rollback-dialog code {
+  overflow-wrap: anywhere;
+}
+
+.workbench-batch-rollback-dialog ol {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.workbench-batch-rollback-dialog li {
+  padding: var(--space-2);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface-low);
+}
+
+.workbench-batch-rollback-dialog .configuration-workbench__source-review-reason {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.workbench-batch-rollback-dialog .configuration-workbench__source-review-reason textarea,
+.workbench-batch-rollback-dialog .configuration-workbench__source-review-reason select {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}

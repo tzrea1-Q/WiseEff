@@ -10,7 +10,7 @@ import {
 import { ApiError } from "../../../shared/http/errors";
 import type { AgentToolResult } from "../types";
 import type { AuthContext } from "../../auth/types";
-import type { ApprovalResolveInput, ApprovalResolveResult } from "../orchestrator";
+import type { ApprovalResolveInput, ApprovalResolveResult, ApprovalResumePreflightInput } from "../orchestrator";
 import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "./checkpointer";
 import type {
   PerceptionAgentContext,
@@ -45,6 +45,7 @@ export type PlanningAgentRunInput = PerceptionAgentRunInput & {
 };
 
 export type PlanningApprovalResolver = {
+  preflightApproval(input: ApprovalResumePreflightInput): Promise<void>;
   resolveApproval(input: ApprovalResolveInput): Promise<ApprovalResolveResult>;
 };
 
@@ -427,17 +428,19 @@ export function createPlanningAgent(options: {
     }
     pushSink(config, finish({ status: "succeeded", summary: resumed.text }));
 
+    const citations = [...state.perceivedCitations, ...(resumed.citations ?? [])];
     const messages = [
       ...state.messages,
       {
         role: "tool",
         tool_call_id: pending.id,
-        content: JSON.stringify({ summary: resumed.text, data: {}, citations: state.perceivedCitations })
+        content: JSON.stringify({ summary: resumed.text, data: {}, citations: resumed.citations ?? [] })
       }
     ];
 
     return {
       messages,
+      perceivedCitations: citations,
       pendingMutatingCall: undefined,
       pendingMutatingToolCallId: undefined,
       interrupt: undefined,
@@ -520,6 +523,7 @@ export function createPlanningAgent(options: {
   return {
     listTools: options.listTools,
     async run(input: PlanningAgentRunInput): Promise<PerceptionAgentRunResult & { threadId: string }> {
+      await checkpointer.ensureReady();
       const runScope: XiaozeRunScope = {
         sink: input.sink,
         requestContext: input.requestContext
@@ -530,6 +534,7 @@ export function createPlanningAgent(options: {
       const checkpointThreadId = input.requestContext
         ? `${input.requestContext.auth.organization.id}:${input.requestContext.auth.user.id}:${input.threadId}`
         : input.threadId;
+      return checkpointer.withNamespaceLease(checkpointThreadId, async () => {
       const config = { configurable: { thread_id: checkpointThreadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
       const tools = options.listTools();
       const buildPromptDebug = (llmMessages: unknown[]) =>
@@ -558,6 +563,27 @@ export function createPlanningAgent(options: {
 
       try {
         if (input.resume) {
+          const requestContext = input.requestContext;
+          if (!requestContext || requestContext.sessionId !== input.threadId || !options.approvalResolver?.preflightApproval) {
+            throw new ApiError("CONFLICT", "Xiaoze approval resume requires server-owned context and resolver.");
+          }
+          const snapshot = await graph.getState(config);
+          const pendingToolCallId = snapshot.values.pendingMutatingToolCallId;
+          const pendingTask = snapshot.tasks.find((task) => task.name === "act" && task.interrupts.some(
+            (entry) => entry.value?.toolCallId === pendingToolCallId
+          ));
+          if (!pendingToolCallId || !snapshot.values.pendingMutatingCall || !snapshot.next.includes("act") || !pendingTask) {
+            throw new ApiError("CONFLICT", "Xiaoze approval checkpoint has no correlated resumable action.");
+          }
+          // LangGraph persists resume task writes before act's decision guards run.
+          // Read-only admission must succeed before entering Command(resume).
+          await options.approvalResolver.preflightApproval({
+            auth: requestContext.auth,
+            requestId: requestContext.requestId,
+            approvalId: input.resume.approvalId,
+            expectedSessionId: requestContext.sessionId,
+            expectedToolCallId: pendingToolCallId
+          });
           const resumeValue: PlanningResumeDecision = {
             approvalId: input.resume.approvalId,
             decision: input.resume.decision,
@@ -628,6 +654,7 @@ export function createPlanningAgent(options: {
         }
         throw error;
       }
+      });
     }
   };
 }

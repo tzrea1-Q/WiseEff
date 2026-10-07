@@ -45,8 +45,10 @@ export type PrimaryJsonSource = {
 
 export type JsonBindingPanelProps = {
   bindings: readonly ProjectParameterBinding[];
+  requestedBindingId?: string;
   moduleRegistry?: ParameterModuleRegistry | null;
   canEdit?: boolean;
+  editableBindingIds?: ReadonlySet<string>;
   draftBindingIds?: ReadonlySet<string>;
   currentEdits?: React.ReactNode;
   onValidateEdit?: (input: BindingEditInput) =>
@@ -141,8 +143,10 @@ function findEarliestJsonSourceLine(
 /** JSON bindings workbench matching DTS layout (Topology Navigator + Table + Modal Dialogs). */
 export function JsonBindingPanel({
   bindings,
+  requestedBindingId,
   moduleRegistry,
   canEdit = false,
+  editableBindingIds,
   draftBindingIds,
   currentEdits,
   onValidateEdit,
@@ -152,6 +156,8 @@ export function JsonBindingPanel({
   onExportRows,
   projectName
 }: JsonBindingPanelProps) {
+  const canEditBinding = (bindingId: string) => canEdit &&
+    (editableBindingIds === undefined || editableBindingIds.has(bindingId));
   const jsonBindings = useMemo(
     () => bindings.filter((binding) => binding.effectiveValue.kind === "json"),
     [bindings]
@@ -172,6 +178,16 @@ export function JsonBindingPanel({
   // Dialog states
   const [viewingBindingId, setViewingBindingId] = useState<string | null>(null);
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
+  const handledRequest = useRef<string | null>(null);
+  useEffect(() => {
+    if (!requestedBindingId || handledRequest.current === requestedBindingId
+      || !jsonBindings.some((binding) => binding.id === requestedBindingId)) return;
+    handledRequest.current = requestedBindingId;
+    setResultsMode("parameters");
+    setQuery("");
+    setSelectedNodeId(null);
+    setViewingBindingId(requestedBindingId);
+  }, [jsonBindings, requestedBindingId]);
 
   // Draft form states inside edit dialog
   const activeEditBinding = useMemo(
@@ -291,7 +307,7 @@ export function JsonBindingPanel({
   }, [draftRaw]);
 
   const submitDraft = (action: "set" | "delete") => {
-    if (!activeEditBinding) return;
+    if (!activeEditBinding || !canEditBinding(activeEditBinding.id)) return;
     setValidating(true);
     void Promise.resolve(
       onValidateEdit?.({
@@ -328,6 +344,7 @@ export function JsonBindingPanel({
   };
 
   const openDraft = (bindingId: string) => {
+    if (!canEditBinding(bindingId)) return;
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setViewingBindingId(null);
     setEditingBindingId(bindingId);
@@ -631,7 +648,7 @@ export function JsonBindingPanel({
                                 >
                                   <Eye size={15} strokeWidth={1.9} aria-hidden="true" />
                                 </button>
-                                {canEdit ? (
+                                {canEditBinding(binding.id) ? (
                                   <button
                                     type="button"
                                     className="button subtle dts-parameter-workbench-table__icon-action"
@@ -775,7 +792,7 @@ export function JsonBindingPanel({
               ) : null}
 
               <div className="dts-binding-detail-dialog__footer">
-                {canEdit ? (
+                {canEditBinding(activeViewBinding.id) ? (
                   <button
                     type="button"
                     className="button subtle is-primary"
@@ -864,7 +881,7 @@ export function JsonBindingPanel({
                       aria-invalid={diagnostics.length > 0}
                       aria-describedby={diagnostics.length > 0 ? diagnosticId : undefined}
                       value={draftRaw}
-                      disabled={!canEdit || validating}
+                      disabled={!canEditBinding(activeEditBinding.id) || validating}
                       rows={5}
                       className="dts-binding-draft-card__code-editor"
                       placeholder="输入合法的 JSON 字符串..."
@@ -891,7 +908,7 @@ export function JsonBindingPanel({
                       id={`${diagnosticId}-reason`}
                       aria-label="修改原因"
                       value={draftReason}
-                      disabled={!canEdit || validating}
+                      disabled={!canEditBinding(activeEditBinding.id) || validating}
                       rows={2}
                       placeholder={`说明为什么要修改 ${activeEditBinding.propertyKey}...`}
                       onChange={(e) => {
@@ -954,7 +971,7 @@ export function JsonBindingPanel({
                 <button
                   type="button"
                   className="button subtle is-primary"
-                  disabled={!canEdit || validating || !draftReason.trim()}
+                  disabled={!canEditBinding(activeEditBinding.id) || validating || !draftReason.trim()}
                   onClick={() => submitDraft("set")}
                 >
                   {validating ? "校验中…" : "校验并创建草稿"}
@@ -962,7 +979,7 @@ export function JsonBindingPanel({
                 <button
                   type="button"
                   className="button subtle is-danger"
-                  disabled={!canEdit || validating || !draftReason.trim()}
+                  disabled={!canEditBinding(activeEditBinding.id) || validating || !draftReason.trim()}
                   onClick={() => submitDraft("delete")}
                 >
                   创建删除草稿

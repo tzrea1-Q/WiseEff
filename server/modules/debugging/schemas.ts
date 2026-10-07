@@ -28,6 +28,14 @@ export const debugValueKindSchema = z.enum(DEBUG_VALUE_KINDS);
 export const debugValueFormatSchema = z.enum(DEBUG_VALUE_FORMATS);
 export const debugNormalizationModeSchema = z.enum(DEBUG_NORMALIZATION_MODES);
 
+const canonicalBindingSchema = z.object({
+  projectId: nonEmptyString,
+  bindingId: nonEmptyString,
+  expectedEffectiveRevisionId: nonEmptyString.optional(),
+  expectedCurrentValueId: nonEmptyString.optional(),
+  sourcePinId: nonEmptyString.optional()
+}).strict();
+
 export const debugParameterNodeBindingSchema = z.object({
   protocol: z.enum(debugConnectionProtocols),
   nodePath: nodePathSchema,
@@ -145,7 +153,8 @@ const writeDebugNodeAdminBodyBaseSchema = z.object({
   normalizationMode: debugNormalizationModeSchema.default(DEBUG_NORMALIZATION_MODE_TRIM),
   maxValueBytes: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().default(true),
-  bindings: z.array(debugParameterNodeBindingSchema).optional()
+  bindings: z.array(debugParameterNodeBindingSchema).optional(),
+  canonicalBinding: canonicalBindingSchema.nullable().optional()
 });
 
 export const writeDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.refine(

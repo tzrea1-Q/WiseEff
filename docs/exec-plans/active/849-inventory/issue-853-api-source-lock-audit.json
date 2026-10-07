@@ -1,0 +1,5882 @@
+{
+  "base": "8dd0ea074e6686ba58d773c99c5a387050fb937c",
+  "tree": "1ed21d931af9f4badd8e1c461ce2b70953684379",
+  "database": "wiseeff_a_api_lock_20261001",
+  "roleProvisioning": "unchanged provisionPublicationRuntimeLogins(mode=lab), no extra GRANT",
+  "probes": [
+    {
+      "name": "public.debug_nodes SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.debug_nodes for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.debug_nodes for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.dts_config_set SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_set for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_set for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.project_parameter_files SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.project_parameter_files for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.project_parameter_files for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.project_parameter_file_versions SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.project_parameter_file_versions for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.project_parameter_file_versions for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_revisions SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_revisions for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_revisions for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_revision_members SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_revision_members for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_config_revision_members for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_logical_nodes SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_logical_nodes for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_logical_nodes for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_logical_node_revisions SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_logical_node_revisions for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_logical_node_revisions for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_node_occurrences SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_node_occurrences for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_node_occurrences for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_property_occurrences SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_property_occurrences for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_property_occurrences for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_occurrence_effects SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_occurrence_effects for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.dts_occurrence_effects for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "public.project_parameter_file_candidates SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_file_candidates for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_file_candidates for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_drafts SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_drafts for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_drafts for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_change_requests SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_change_requests for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_change_requests for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_change_targets SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_change_targets for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "public.project_parameter_value_change_targets for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 0
+      }
+    },
+    {
+      "name": "parameter_catalog.project_parameter_source_occurrences SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.project_parameter_source_occurrences for update nowait",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for table project_parameter_source_occurrences"
+    },
+    {
+      "name": "parameter_catalog.project_parameter_source_occurrences for share nowait",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for table project_parameter_source_occurrences"
+    },
+    {
+      "name": "parameter_catalog.project_parameter_bindings SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.project_parameter_bindings for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.project_parameter_bindings for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.current_project_parameter_bindings SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.current_project_parameter_bindings for update nowait",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for view current_project_parameter_bindings"
+    },
+    {
+      "name": "parameter_catalog.current_project_parameter_bindings for share nowait",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for view current_project_parameter_bindings"
+    },
+    {
+      "name": "parameter_catalog.project_value_source_pins SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.project_value_source_pins for update nowait",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for table project_value_source_pins"
+    },
+    {
+      "name": "parameter_catalog.project_value_source_pins for share nowait",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for table project_value_source_pins"
+    },
+    {
+      "name": "parameter_catalog.project_parameter_values SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.project_parameter_values for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.project_parameter_values for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.binding_history_events SELECT",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.binding_history_events for update nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "parameter_catalog.binding_history_events for share nowait",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "DBG historical exact pin",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "kind": "canonical-pin"
+      }
+    },
+    {
+      "name": "DBG current pre-I/O complete recheck",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for view current_project_parameter_bindings"
+    },
+    {
+      "name": "source-prefix fence (public exact revisions)",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "locked": true
+      }
+    },
+    {
+      "name": "source complete cohort owner call",
+      "identity": "api",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for table project_parameter_source_occurrences"
+    },
+    {
+      "name": "cohort binding JOIN lock independently",
+      "identity": "api",
+      "session_user": "wiseeff_ra_aapilock20261001_api",
+      "current_user": "wiseeff_ra_aapilock20261001_api",
+      "pid": 83,
+      "outcome": "ok",
+      "result": {
+        "rowCount": 1
+      }
+    },
+    {
+      "name": "source occurrence locked read under approved writer role",
+      "identity": "writer",
+      "outcome": "rejected",
+      "code": "42501",
+      "message": "permission denied for table project_parameter_source_occurrences"
+    },
+    {
+      "name": "DBG application permission user-898-canonical-guest",
+      "outcome": "typed-block",
+      "reason": "project-scope"
+    },
+    {
+      "name": "DBG application permission user-898-canonical-other",
+      "outcome": "typed-block",
+      "reason": "missing-binding"
+    }
+  ],
+  "teardown": {
+    "apiConnections": 0,
+    "labRolesRemaining": 0,
+    "leaseReleased": true
+  },
+  "boundaries": [
+    "local lab role, not target deployment identity",
+    "fixture AuthContext, no OIDC/browser/HTTP acceptance",
+    "no function or migration changes"
+  ],
+  "postgres": {
+    "version": "16.14 (Debian 16.14-1.pgdg12+1)",
+    "session_user": "postgres",
+    "current_user": "postgres"
+  },
+  "migrations": [
+    "0001_m0_foundation.sql",
+    "0002_m1_parameters.sql",
+    "0003_parameter_workflow_assignees.sql",
+    "0004_m2_logs.sql",
+    "0005_m3_debugging.sql",
+    "0006_m3_5_job_leases.sql",
+    "0007_m3_5_device_leases.sql",
+    "0008_m4_agent.sql",
+    "0009_m5_job_dead_letters.sql",
+    "0010_m5_agent_provider_traces.sql",
+    "0011_m6_user_governance.sql",
+    "0012_local_account_lifecycle.sql",
+    "0013_local_account_username.sql",
+    "0014_local_accounts_remove_internal_email.sql",
+    "0015_local_registration_role_requests.sql",
+    "0016_stable_local_registration_organizations.sql",
+    "0017_adb_hdc_debugging_protocol.sql",
+    "0018_shared_debugging_catalog_adb_smoke_default.sql",
+    "0019_debugging_admin_catalog_archive.sql",
+    "0020_complex_debug_node_values.sql",
+    "0021_baseline_platform_roles.sql",
+    "0022_local_device_bridge.sql",
+    "0023_parameter_value_kind.sql",
+    "0024_xiaoze_thread_indexes.sql",
+    "0025_agent_message_metadata.sql",
+    "0026_td032_debug_domain_split.sql",
+    "0027_node_only_runtime.sql",
+    "0028_debug_node_bindings.sql",
+    "0029_debug_nodes_module.sql",
+    "0030_debug_nodes_drop_sort_order.sql",
+    "0031_debug_node_modules.sql",
+    "0032_debug_nodes_detailed_description.sql",
+    "0033_user_notifications.sql",
+    "0034_notification_outbox.sql",
+    "0035_drop_debug_node_modules_owner.sql",
+    "0036_debug_nodes_write_format_fields.sql",
+    "0037_debug_logs_org_scope_decoupling.sql",
+    "0038_product_feedback.sql",
+    "0039_parameter_modules_tree.sql",
+    "0040_debug_node_modules_tree.sql",
+    "0041_project_parameter_files.sql",
+    "0042_dts_structural_model.sql",
+    "0043_dts_config_set_baseline.sql",
+    "0044_dts_config_set_project_cascade.sql",
+    "0045_dts_sensitive_node_rules.sql",
+    "0046_project_delete_cascade.sql",
+    "0047_dts_phandle_target_on_delete.sql",
+    "0048_parameter_topology_schema_shadow.sql",
+    "0049_parameter_identity_migration_infra.sql",
+    "0050_parameter_spec_review_decisions.sql",
+    "0051_dts_config_revision_manifest.sql",
+    "0052_parameter_spec_semantic_metadata.sql",
+    "0053_topology_round3_scoping_writeback.sql",
+    "0054_config_revision_manifest_backfill.sql",
+    "0055_parameter_spec_review_task_scope_backfill.sql",
+    "0056_parameter_identity_migration_phases.sql",
+    "0057_parameter_spec_review_task_scope_reconcile.sql",
+    "0058_parameter_spec_review_task_scope_evidence_only.sql",
+    "0059_binding_draft_submission_identity.sql",
+    "0060_parameter_draft_candidate_identity_gate.sql",
+    "0061_parameter_draft_candidate_identity_all_origins.sql",
+    "0062_parameter_change_action.sql",
+    "0063_parameter_submission_candidate_identity.sql",
+    "0066_parameter_module_mappings.sql",
+    "0067_binding_module_id.sql",
+    "0068_dismiss_structural_spec_reviews.sql",
+    "0069_node_enablement_drafts.sql",
+    "0070_node_enablement_change_requests.sql",
+    "0071_relax_enablement_subject_checks.sql",
+    "0072_module_kind_origin.sql",
+    "0073_dismissed_compatibles.sql",
+    "0074_fix_business_misclassified_as_instance.sql",
+    "0075_module_logical_kind.sql",
+    "0076_organization_driver_schemas.sql",
+    "0077_organization_driver_schema_properties_link_specs.sql",
+    "0078_platform_admin_role.sql",
+    "0079_driver_schema_platform_tier.sql",
+    "0080_attribution_taxonomy.sql",
+    "0081_remove_structural_parameter_specs.sql",
+    "0082_attribution_subjects.sql",
+    "0083_parameter_spec_versioning.sql",
+    "0084_parameter_spec_version_cutover.sql",
+    "0085_identity_mapping_and_singleton_blockers.sql",
+    "0086_retire_config_revision_published.sql",
+    "0087_relax_ppv_null_for_enablement_drafts.sql",
+    "0088_parameter_spec_subject_required.sql",
+    "0089_driver_registration_default_business_category.sql",
+    "0090_parameter_spec_identity_surrogate.sql",
+    "0091_project_parameter_initialization.sql",
+    "0092_dts_structural_spans.sql",
+    "0093_project_parameter_file_candidates.sql",
+    "0094_project_parameter_file_candidate_activation.sql",
+    "0095_dts_release_baseline_historical.sql",
+    "0096_dts_reload_runs.sql",
+    "0097_dts_reload_configuration.sql",
+    "0098_dts_reload_deploy.sql",
+    "0099_dts_reload_behavioural_verify.sql",
+    "0100_dts_reload_residue.sql",
+    "0101_drop_dts_reload_device_overrides.sql",
+    "0102_dts_reload_deploy_claimed_at.sql",
+    "0103_knowledge_foundation.sql",
+    "0104_knowledge_retrieval.sql",
+    "0105_knowledge_distillation_source.sql",
+    "0106_log_domains.sql",
+    "0107_log_domain_knowledge_links.sql",
+    "0108_log_domain_webhooks_and_model_override.sql",
+    "0109_repair_module_parent_id_from_path.sql",
+    "0110_knowledge_reload_distillation_source.sql",
+    "0111_knowledge_parameter_references.sql",
+    "0112_log_feedback_run_id.sql",
+    "0113_parameter_spec_property_key_cutover.sql",
+    "0114_retire_department_registration_organizations.sql",
+    "0115_log_webhook_delivery_retention_order.sql",
+    "0116_node_write_observation_outcomes.sql",
+    "0117_user_account_deletion.sql",
+    "0118_effective_driver_parameter_catalog.sql",
+    "0119_effective_driver_parameter_catalog_contract.sql",
+    "0120_effective_driver_parameter_catalog_finalize.sql",
+    "0121_effective_driver_parameter_catalog_legacy_write_compat.sql",
+    "0122_classify_nodename_driver_subjects.sql",
+    "0123_harden_node_type_identity.sql",
+    "0124_harden_driver_identity_owner.sql",
+    "0125_harden_driver_schema_owner_scope.sql",
+    "0126_guard_binding_spec_version_owner.sql",
+    "0127_repair_populated_effective_driver_catalog.sql",
+    "0128_repair_driver_placement_subject_cutover.sql",
+    "0129_parameter_execution_provenance.sql",
+    "0130_parameter_system_user_attribution_guard.sql",
+    "0131_parameter_governance_execution_identity.sql",
+    "0132_parameter_draft_enablement_owner_index.sql",
+    "0133_parameter_execution_identity_checks.sql",
+    "0134_parameter_execution_identity_legacy_compatibility.sql",
+    "0135_parameter_execution_identity_discriminated_constraints.sql",
+    "0136_parameter_execution_principal_deleted_marker.sql",
+    "0137_canonical_parameter_catalog_schema.sql",
+    "0138_canonical_parameter_catalog_roles.sql",
+    "0139_parameter_catalog_verification_core.sql",
+    "0140_catalog_publication_control_plane.sql",
+    "0141_catalog_publication_intent_reference.sql",
+    "0142_catalog_publication_activation.sql",
+    "0143_catalog_publication_runtime.sql",
+    "0144_definition_replacement.sql",
+    "0145_canonical_project_value_drafts.sql",
+    "0146_canonical_value_change_requests.sql",
+    "0147_configuration_schema_subject.sql",
+    "0148_seed_initialization_runs.sql",
+    "0149_project_parameter_plane_archives.sql",
+    "0150_product_feedback_v2.sql",
+    "0151_source_occurrence_identity.sql",
+    "0152_pinned_source_graph_immutability.sql",
+    "0153_source_occurrence_integrity.sql",
+    "0154_plane_disposal_residue.sql",
+    "0155_plane_disposal_grants.sql",
+    "0156_plane_disposal_disposer_acl.sql",
+    "0157_plane_disposal_regenerable_grants.sql",
+    "0158_plane_disposal_allows_delete_acl.sql",
+    "0159_plane_disposal_definer_select.sql",
+    "0160_canonical_dts_delete_source_pin.sql",
+    "0161_canonical_property_delete_tombstone.sql",
+    "0162_canonical_dts_reload_pins.sql",
+    "0163_canonical_debug_binding_pins.sql",
+    "0164_canonical_debug_project_integrity.sql",
+    "0165_canonical_batch_value_requests.sql",
+    "0166_canonical_batch_applied_revision.sql",
+    "0167_canonical_member_removal_tombstone.sql",
+    "0168_pinned_file_version_trigger_guard.sql",
+    "0169_reviewed_source_member_cohort.sql",
+    "0170_restore_subject_placement_definer.sql",
+    "0171_canonical_dts_batch_target_contract.sql",
+    "0172_canonical_batch_draft_impact.sql",
+    "0173_canonical_batch_draft_impact_pair.sql",
+    "0174_canonical_batch_composition_proof.sql",
+    "0175_canonical_batch_frozen_draft_choice.sql",
+    "0176_dts_observation_source_occurrence.sql",
+    "0177_knowledge_definition_references.sql",
+    "0178_log_related_parameter_snapshots.sql",
+    "0179_parameter_catalog_comparison_manifest_binding.sql",
+    "0180_mod_d02_offline_capture.sql",
+    "0181_mod_d02_capture_revalidation.sql",
+    "0182_legacy_dismissed_identity_reader.sql"
+  ],
+  "vector": {
+    "extversion": "0.8.6"
+  },
+  "role": {
+    "rolname": "wiseeff_ra_aapilock20261001_api",
+    "rolcanlogin": true,
+    "rolsuper": false,
+    "rolinherit": false,
+    "rolcreaterole": false,
+    "rolcreatedb": false,
+    "rolbypassrls": false
+  },
+  "memberships": [
+    {
+      "rolname": "catalog_baseline_reader_role",
+      "rolcanlogin": false,
+      "member": true,
+      "inherited": false,
+      "can_set": true
+    },
+    {
+      "rolname": "catalog_legacy_identity_reader_role",
+      "rolcanlogin": false,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    },
+    {
+      "rolname": "catalog_migration_owner",
+      "rolcanlogin": false,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    },
+    {
+      "rolname": "catalog_mod_d02_capture_owner",
+      "rolcanlogin": false,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    },
+    {
+      "rolname": "catalog_publication_coordinator_role",
+      "rolcanlogin": false,
+      "member": true,
+      "inherited": false,
+      "can_set": true
+    },
+    {
+      "rolname": "catalog_synchronizer_role",
+      "rolcanlogin": false,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    },
+    {
+      "rolname": "catalog_verification_writer_role",
+      "rolcanlogin": false,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    },
+    {
+      "rolname": "catalog_verifier_role",
+      "rolcanlogin": false,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    },
+    {
+      "rolname": "parameter_governance_writer_role",
+      "rolcanlogin": false,
+      "member": true,
+      "inherited": false,
+      "can_set": true
+    },
+    {
+      "rolname": "wiseeff_mod_d02_capture",
+      "rolcanlogin": true,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    },
+    {
+      "rolname": "wiseeff_mod_d02_source_reader",
+      "rolcanlogin": true,
+      "member": false,
+      "inherited": false,
+      "can_set": false
+    }
+  ],
+  "fixture": {
+    "organizationId": "org-898-canonical",
+    "projectId": "project-898-canonical",
+    "bindingId": "pbind_10b78fd84e06c4cda103603af048d7bba4d18fe575035bece620b27e6ee04f2b",
+    "valueId": "pval_c39ddaa55e0173b97d633f2214962275d798cbc00cfb0ba960d227777e017ab5",
+    "pinId": "ca4f591a-bcb0-439a-8aad-7ecbf42b400e",
+    "configSetId": "dcs-898-canonical",
+    "configRevisionId": "cff2f22c-d63d-468d-8b4c-aee6aec0837d",
+    "authUser": "user-898-canonical-editor",
+    "authRoles": [
+      {
+        "projectId": "project-898-canonical",
+        "roleId": "hardware-committer"
+      }
+    ]
+  },
+  "acl": [
+    {
+      "relation": "debug_nodes",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "description",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "value_kind",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "value_format",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "normalization_mode",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "max_value_bytes",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "enabled",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "archived_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "archived_by",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "archive_reason",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "module",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "detailed_description",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "write_format_example",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "write_format_hint",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "debug_node_module_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "canonical_binding_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "canonical_project_id",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_config_set",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "description",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "derived_from_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "project_parameter_files",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "format",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "module_hint",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "current_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "enabled",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_set_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_set_role",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_set_sort_order",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "project_parameter_file_versions",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "version_number",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "storage_key",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "checksum",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "size_bytes",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "parsed_index",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "origin",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_by_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_type",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_system_kind",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_system_name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_session_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_tool_call_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_approval_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_principal_deleted",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_config_revisions",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_set_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "revision_number",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "status",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_by_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "resolved_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "entry_file",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "include_search_paths",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "overlay_order",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "manifest_state",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_type",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_system_kind",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_system_name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_session_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_tool_call_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_approval_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_principal_deleted",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_config_revision_members",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "role",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "sort_order",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_name",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_logical_nodes",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_set_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_logical_node_revisions",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "logical_node_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "node_locator",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "unit_address",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "compatible",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "driver_schema_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "parent_logical_node_id",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_node_occurrences",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "parent_occurrence_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "unit_address",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "labels",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "ref_target",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "is_overlay_root",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "node_path",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "start_offset",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "end_offset",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "start_line",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "start_column",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "end_line",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "end_column",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "raw_text",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "ast_json",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_order",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "content_hash",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_property_occurrences",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "node_occurrence_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "property_name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "start_offset",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "end_offset",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "start_line",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "start_column",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "end_line",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "end_column",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "raw_text",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "ast_json",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_order",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "content_hash",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "dts_occurrence_effects",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "logical_node_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "property_name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "effect_kind",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "node_occurrence_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "property_occurrence_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_order",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "project_parameter_file_candidates",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "file_name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "format",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "status",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "base_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "storage_key",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "checksum",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "size_bytes",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "parsed_index",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "diagnostics",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "impact",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "blockers",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_by_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "abandoned_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "abandoned_by_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "activated_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "activated_by_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "activated_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_type",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_system_kind",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_system_name",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_session_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_tool_call_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_approval_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "initiator_principal_deleted",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "base_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "proposed_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "diff_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "frozen_member_manifest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "frozen_binding_manifest",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "project_parameter_value_drafts",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "binding_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "catalog_release_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "base_current_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_ref",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "action",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "target_value",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "reason",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_pin_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_base_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_proposed_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_diff_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_member_manifest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_binding_manifest",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "project_parameter_value_change_requests",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "draft_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "binding_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "catalog_release_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "base_current_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_ref",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "action",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "target_value",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "reason",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "status",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "submitter_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "assigned_to_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "reviewer_user_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "reviewer_note",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "apply_outcome",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_pin_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_base_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_proposed_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_diff_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_member_manifest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "candidate_binding_manifest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_history_event_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_audit_ref",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_file_version_ids",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_source_result",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "request_kind",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_proof_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_target_count",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_cohort_count",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_source_proof_token",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_cohort_proof_token",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_file_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_base_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_config_set_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "member_file_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "member_config_set_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "member_file_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "member_proof_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "member_frozen_proof",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_draft_impact",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_draft_impact_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_upload_candidate_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_composition_proof",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "batch_decision_proof_digest",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "project_parameter_value_change_targets",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "postgres",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "request_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "ordinal",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "draft_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "binding_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "catalog_release_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "base_current_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_ref",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_pin_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "action",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "target_value",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "target_text",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "base_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "proposed_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_history_event_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_source_pin_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_file_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "frozen_draft_id",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "parameter_catalog.project_parameter_source_occurrences",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "catalog_migration_owner",
+      "can_select": true,
+      "can_update": false,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "config_set_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "file_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "occurrence_kind",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "logical_node_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "configuration_instance_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "configuration_schema_subject_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "root_pointer",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "root_pointer_digest",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": false
+        }
+      ]
+    },
+    {
+      "relation": "parameter_catalog.project_parameter_bindings",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "catalog_migration_owner",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "catalog_release_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "logical_node_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "registration_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "subject_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "effective_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "current_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_occurrence_id",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "parameter_catalog.current_project_parameter_bindings",
+      "relkind": "v",
+      "relrowsecurity": false,
+      "owner": "catalog_migration_owner",
+      "can_select": true,
+      "can_update": false,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "catalog_release_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "logical_node_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "registration_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "subject_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "definition_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "effective_revision_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "current_value_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "updated_at",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "source_occurrence_id",
+          "can_select": true,
+          "can_update": false
+        }
+      ]
+    },
+    {
+      "relation": "parameter_catalog.project_value_source_pins",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "catalog_migration_owner",
+      "can_select": true,
+      "can_update": false,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "project_value_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "binding_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "definition_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "organization_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "project_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "source_occurrence_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "file_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "file_version_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "format",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "property_occurrence_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "locator",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "locator_digest",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "value_state",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "base_source_pin_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "delete_request_id",
+          "can_select": true,
+          "can_update": false
+        },
+        {
+          "attname": "delete_proof",
+          "can_select": true,
+          "can_update": false
+        }
+      ]
+    },
+    {
+      "relation": "parameter_catalog.project_parameter_values",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "catalog_migration_owner",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "binding_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "definition_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "source_ref",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "config_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "value_digest",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "value_kind",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "value",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "replaced_from_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "replaced_from_definition_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "value_state",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    },
+    {
+      "relation": "parameter_catalog.binding_history_events",
+      "relkind": "r",
+      "relrowsecurity": false,
+      "owner": "catalog_migration_owner",
+      "can_select": true,
+      "can_update": true,
+      "columns": [
+        {
+          "attname": "id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "binding_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "old_effective_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "new_effective_revision_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "old_current_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "new_current_value_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "reason",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "success_audit_ref",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "catalog_release_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "legacy_mapping_version_id",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "created_at",
+          "can_select": true,
+          "can_update": true
+        },
+        {
+          "attname": "applied_request_id",
+          "can_select": true,
+          "can_update": true
+        }
+      ]
+    }
+  ],
+  "debugResolution": {
+    "kind": "canonical-pin",
+    "reason": null
+  },
+  "functions": [
+    {
+      "signature": "catalog_publication.acquire_publication_guard_lock()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "b018fde01c0ae745c8d7c4ed124ce95eef2c8ff608f40c0b2c7af3707b3b7c01",
+      "hasRowLock": true,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.append_activation_success_audit(text,text,text,text,jsonb,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "b7d5f353d2b93a64b75cf54858e952782ea23c6f290da1cedc1ec5a397257728",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.assert_authorization_revoke_tuple()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "0eef9cc637e1920469f73cd22ae251dbac3a63022e1af85a6a2f0bc46e4d731a",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.assert_job_authorization_approve()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d591e09a424ce9eafdec407083ed14a7e1e3463c324084edc278296f9d6ca0f6",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.digest_jsonb(jsonb)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "3cbbd60939f8575b8517c7b0c213de11b8a3d243e9e288adcc2b2f131b3fbd6f",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.mark_job_activated(text,bigint)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "e552b85b0d4f79fa432bb247be23204dcbd8a192acbbe5ef5fadc4b7dc5f79ba",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.reject_direct_freeze_update()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "7e6c1cb381a08584a2a3db92c6e4434f235231885c7960ed6f0599a16b131a52",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.reject_direct_policy_update()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "48a28350c3ce5b1d5b81d876d5bf505b534f9a3a9dcdd089ac7c985219b2fc43",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.reject_immutable_publication_change()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "5a8fb57439cd64d62eebe86cd8efe7f555635febcaf58c10dc591bd17e299162",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.reject_publication_job_identity_change()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "637efa93837c2ae26582bbc50d7a0217c1f292543e19a1eab4b80969bdf557eb",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.revise_publication_policy(boolean,boolean,text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "a89d7de06386873f23bca00d1fef22940cc893e5a39444d38c478f6fd60c594d",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "catalog_publication.set_publication_freeze(boolean,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "ddddfffc6b0bc81f90c07a0b383a705ec5085c32c1382044c70d49ed05c145cb",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.acquire_current_pointer_lock_exclusive()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "a96f4c21c99dfddbcfced02e9a43b5f85b0e3d46ede85d0d5049a57489595160",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_activation_receipt_consistency()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, catalog_publication"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "3047396d5b0ee35eccf8f6f3ec38b75e5a9631c38835400bf4a5a408f7eefe0c",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_batch_value_request()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "42bf5713a460b947af96ef0b01140142845589197e13ed0c39d2640fca615b18",
+      "hasRowLock": false,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_binding_current_source_pin()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "cc1d751821b7c004c796302af87f282d5c71c3ec04bfcff557b28926a85ac0f1",
+      "hasRowLock": false,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_binding_effective_revision_is_verified_head()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "935c8822aee8a3022cbd36f65eecf80323299d7314695041010954687d65b796",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_binding_history_event_owners()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "6b6d0147c8c71a2bd0dbe976533cea5e6d8ba758736d8ef33cd2506b36ad92e1",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_catalog_materialization_projection_complete()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "a308d1c0c8e477de508becf67dea1671b5552211ff3ae354ff19c9b6f25d8f09",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_catalog_release_predecessor_acyclic()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d4b674c9f307db861186a07ed48c250e79ce6a81487c7b095b3764baad09b7f0",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_catalog_release_predecessor_materialized()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "3d41d648d0614ec2ddbc63997f681b91fcf02f00229002cbab53241c37c0e3a9",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_catalog_release_predecessor_sequence()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "6712939328c0f06d906177b983d0ea1dc62659d26d7f154571637a7773c98596",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_catalog_subject_active(text,text,text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": true,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "7bd5b40a420c80678a4ab8ad94e50759c899245b732ebc450dc97a248aebfdc9",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_comparison_result_mapping_run()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "5cd2de80806a019c645379b0830958b73763e04b6d335304cdba7c000bfdbce5",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_current_definition_head()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "2666b177c9eaa37c1b842aedb20720f3078c8e43809be4c5a70777779a5b4fbc",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_current_release_complete()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "8831bf2d69da791eed3f3f4ff2fbeeccc12042fc89dba7a61d844dab8d61ce7d",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_definition_replacement_no_chain()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "83c4fc5ddb4384abb92b1ce30d5873b413d31d34aa8e2db26c7a23f013153df4",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_definition_replacement_project_complete_is_final()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "630a56c3cad18cd3c0feee460153f85a4d139870b1996ff5eaaa1149004abcdc",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_legacy_identity_source_owner()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "ea8c649786ee3273f9970abc9a0941e90df40b27f02fbf035448bbcc8e79a720",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_legacy_mapping_target_exists()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "eeaf854fea096b83f2f19823df54a4b7fdeb067b6b578571a5ddd3bf2ee8529b",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_member_removal_request()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "04ece10f38907892d3d9d4cb18fd54682d6b7dee23e274283b2c6276ba5a499c",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_member_removal_tombstone()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "630929eb8d52b81326f2a49e190009d64bea5e1a728c2f0bc713f1eac933e746",
+      "hasRowLock": false,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": true,
+      "mentionsCurrentBindings": true
+    },
+    {
+      "signature": "parameter_catalog.assert_observation_match_binding_revision()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "fc53816d82f4ff78beeab27a2879b40b4f9d8b2978566074b08802bb0e997d80",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_parameter_module_placement_kind()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "8ac8e9f4abf8407eeca6cd92303541dac7e5ed722902f15e3f972596ebf28675",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_parameter_observation_source_owner()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "7bc9a1a13b92a42c64e10c7a309ced2ec8d513aa56f8e111d34ab205ed7152e7",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": true,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_project_value_source_pin_owner()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d94df528c962176af9dfe579af2c46d8168267c631b333807f8901b75bf26c58",
+      "hasRowLock": false,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": true,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_publication_regime_pointer()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "82cf7f0dbbf7c11648db789a78979783dafac7a3390f75f18ce8e114bcc0c29f",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_removed_member_has_tombstone()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "486f1e65d7da1fa140ed4729f946ccb38ab3b5e4e94c6f878cdddad20a69e3f2",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": true,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_replacement_source_occurrence()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "9ec865e2c4bc0d62b4bd13850e38137d21a98a1eb51c12184aab88933879a425",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_review_resolution_target_owner()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "ce4237cd5c97a94b2cd8c89c89c27a67c0866dd73bcf9b1f60e9d4fd7d698c31",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_source_apply_result()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "dc15a35d73ad45c0931563a73335b248e444e7b08815150044a761041954c274",
+      "hasRowLock": false,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_source_candidate_snapshot()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "fc58dab07d77ce4e9d600b9c6d4d2c05e881d8ef379d486195e0e30e0bb268d0",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_subject_has_exact_subtype()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "872194cd1f98afc2cf156543a4d74cb92b4e45697fa8ebdafc4f8d0ff98357a4",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_subject_placement_kind()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "ab573ca552db7a4bf97271f02832cd76f80d6de4096e3c1af37e3f93aaddbebf",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_value_target_binding_is_current()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "a4eb08572c4f54ff08d36bb6768c89bef32c937108006c55101dc15e2a10f7e5",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.assert_verification_approval_principals()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "5b6a3d5b00871d7f0dbcc4604a9db7c5c2698b54a8455d5d787c7f88975bf6cb",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.canonical_dts_delete_locator_digest(jsonb)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "939a404f523c04b910bca7cc5781f94b7b0a36e09efa769fc3023da97d2ab7c4",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.canonical_dts_parameter_locator_digest(jsonb)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "e9d00658b7d380991eb92b1554b278f5d7c070ee33d2c434b714383c2d277658",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.canonical_json_delete_locator_digest(jsonb)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "b79bc9bcdfdd64a60c392910aaee4c9ff9c1311491130e647b62df889ccdf39c",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.capture_mod_d02_pre_activation_v2(text,text,text,text,text,jsonb,text)",
+      "owner": "catalog_mod_d02_capture_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, pg_temp"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "2ceb9293b59eaa9d85f5bb1a086a21887740c35becb119e50e06652e76a2c47e",
+      "hasRowLock": true,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.dispose_plane_residue(text,text,text,text[])",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "918a11f5ee5238af295781eddee0db6d228c4847ab7524df187acff850547622",
+      "hasRowLock": false,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": true,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.ensure_dts_observation_source_occurrence(text,text,text,text,text,text,text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": true,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "005931c5ac422bfc6515ca98fb342265152fd3537ff393374846e9961f764d06",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": true,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.fence_first_source_pin()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "c349b79ccefbfc189550b21a61a53673dc9e2c4733134fc1b0719c97af49839f",
+      "hasRowLock": true,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": true,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.freeze_batch_target_draft_id()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "0c6c7eb7d269db244d3f6d069af3d97c2f17e51bea9ae9c8a351f9b275502607",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.insert_reviewed_member_tombstone(text,text,text,text,text,text,text,jsonb,text,jsonb,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": true,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "4cf7f55d422279be85e38f0203e5b4a2a587d203124ef0e2878bd10861d1b356",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.is_canonical_compatible_selector(text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "ee4ab0d79b18152aae021935fe11fc98878823fc05298fc2b9095ff0dffd9149",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.is_canonical_node_type_name(text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "61bc54719b3fcb8b4fda4cdbf7e9d375b4cfde477d7dbac25b5eaf591bdc15d7",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.is_canonical_property_key(text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "c1e65d4dc9e9711274c00c539d5d460f152eba67cbc598dadc75fc94fb374d27",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.is_replaced_current_binding(text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "ed7ddfb94759f14dd5ac14eb45e2fa0c24f5ef96faae023d46cd5e34f8b1bd4c",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.json_pointer_contains(text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "40b20e7d75b5dad9580fb2d79193c92ce95a1e8fa622363674f10e0cbe73d429",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.legacy_identity_source_registry()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "70832406b3751047d2f769fbf9616c01c176a71d7c77a7f9219b981d46b50006",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.list_retained_dismissed_compatible_identities(text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "be6fd1c7117dd93fe04ef9f84a706d4a0e9dfa088609250ae0877b82f5175786",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.lock_catalog_release_for_materialization()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "3e6c927a9a87e9e5e0c4a858f625eb9c312fda62527951b927aac4da5ce25771",
+      "hasRowLock": true,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.lock_catalog_state_pointer()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "592888220b704c94fb650fd0cb8c6493d6093bd8c551dcb05eb7c3c9d0b8740a",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.lock_subject_placement_module()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d408c2d29f3cdc4b4d3fac5316adc3102d402127615fb49f911a1e046f005133",
+      "hasRowLock": true,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.mirror_single_value_request_target()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog, public"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "c3af1705d5e0cf3edf01d6fe7f7a0c596cf77eb95e983dc843c71594018c18d9",
+      "hasRowLock": false,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.mod_d02_canonical_json(jsonb)",
+      "owner": "catalog_mod_d02_capture_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, pg_temp"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "178d84d4ac650819e7835ac4d9aacc48155ca2f5fbe0bbcd264c43f68f76b4cc",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.mod_d02_uri_component(text)",
+      "owner": "catalog_mod_d02_capture_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, pg_temp"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "f4f5c4ae92d4c7dff64d704687f91dfed731fe3c8ddce96666e0b4e9cd2f14ea",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.normalize_dts_revision_member_source_name()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "4489798373cf39d5d260b32507b39c98262243693d801e19a59e39fa74d88aee",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.normalize_dts_source_name(text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d8fa630567afd4511dd61a159482a13e9f02c2fba8be8dd4e7cf086709c89b7f",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.plane_disposal_allows_delete(text,text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "9e7ffd728fc4aaa54685f3150ca2f1d200e785be374db22e9c3cb53588b3981a",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_batch_composition_proof()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "54e974dca6664c71bd796b6600615b5476eccc93e2a43ddbecc4b7fb82f4651b",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_batch_draft_impact()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d5a1c4b60d5de77aface92a95cc858e0a3aac22794f07b50d7f11dfba922c024",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_batch_value_request()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "078ecdb75ee3a6f7c23fdf048d4144903329ebd4c022572c523ef4ded01344c4",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_batch_value_target()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "575d611a5cdd26c369fe7149c24f672ce10e6ae9b3a0672bf7613630c471139e",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_binding_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "7b04b69c9a17c37cbfc373f2e1633f38f976e2f12ae73799822328f28f67b817",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_catalog_state_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "2beb3915ce25655300ff66c8b37a7755c843bc9c228f973ab29bab49c3f39333",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_command_idempotency()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "fdb7984c0132304524554c133d672613266aed0ee44abab16407cfda1b862cf7",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_cutover_run_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "75f8d675266cbbf38f2a9ebfe88a4c5a60389c606015f4fb91442eaf2b2ab33f",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_definition_replacement_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "5d35ee30180970d3366b439938a84250f0e0c4833286b4148a269d1e2e3736ec",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_definition_replacement_preview_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "90a8cca562703c2704916d8aa9dcafabd31dc2be85f254757e3a03aa4da7ab91",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_definition_replacement_project_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "b85adea1b60aa6a7951826022693f426e4210cee08c71d2fca721a3844c1266d",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_member_removal_request()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d341f3189af4604a9074c00463a028e5bab08170f4d3e867ca38699a034af7d9",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_parameter_definition_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "7455105fb56d4724cac52151a13dda0db270829a65f1e6270f0f45523fd9bd9b",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_pinned_source_file()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "c1eb4d3b2194f7ee93dbd212ada736e8b74a05ce53ce459a997fa39594d89e01",
+      "hasRowLock": true,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_pinned_source_provenance()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "4f5d67ae85314c6a88c91c2de876889d87f5e9a3dfc10e950c91e242c61eaedd",
+      "hasRowLock": true,
+      "mentionsSourcePins": true,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_project_parameter_binding_source_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "1b10f34220566e700b59b2352567916a526b203b94b76c8f7ae792262a186394",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_proposal_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "9ebfb7c50d172d64380907a753682c1bf66d2ede71e71297fc748b290254f16c",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_registration_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "811165d175ab98b5d1b38ed48be6586ed33d3cd2b4d82fbf7e6e0d0f4c5d3549",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_review_item_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "2d69979de46a976fcef88f63fe0069f7b9253145ec36a1e928dad076bc41c47e",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_source_occurrence_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "6e9dfab31d1414919243b529d905e2a6030019ac3da7084b63e85e8c06b87991",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_subject_placement_identity()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "14f3a3ef3550983d4c1e4fb2f92ce2fbc63634e1b8eb9c526a9b45ec2b1c27b0",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_submitted_candidate_payload()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "126024d3d5f1aac1d69a26ce26c2f53024836add8609143d6f8fc17b18ab788c",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.protect_submitted_source_request()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "683f715398a0a88252fe4fdd62edf97a99f048005afed964199062cbc375549d",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.reject_cross_root_selector_collision()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "2629d31a4cc49c177cc9642284182f814abee8dcbb10bcb7fe67888ec9a86444",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.reject_immutable_catalog_change()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "f6582c8ed82fd347515945d92b71d9dca8ad3ff872180c5429ac60617909516b",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.reject_immutable_project_value_source_pin()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "019aa670c0841bf32658d6d55e3ea9d7cdce20b9924ab0418be2a7d611c6d802",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.reject_member_tombstone_change()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "50aeda39a8a12def6ced5a0ae80778f52e6042489bce0668c5cce2b4ee8966b5",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.reject_sealed_catalog_release_change()",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "cc25b93be6c0faf4f82acee99bf2949389a35f92fccbb1b146f312f8ff62b152",
+      "hasRowLock": true,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.resolve_current_binding_by_source_occurrence(text,text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "bdbf796e2a5580af836e432d150ad4d7cab895ccc3eca8780c09ae89fc32450a",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.resolve_current_binding(text,text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "ea0c70d4bcb5c8b679f188ae236f1892cf7b8d1d0181d4f5a7459caac339ddc9",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.resolve_legacy_identity_owner(text,text)",
+      "owner": "catalog_migration_owner",
+      "prosecdef": true,
+      "provolatile": "v",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "2585e119d05ba09e0c19efd399897408d53ba3d3d870403236c9ec32ffd42621",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    },
+    {
+      "signature": "parameter_catalog.serialize_legacy_source_key(text[],text[])",
+      "owner": "catalog_migration_owner",
+      "prosecdef": false,
+      "provolatile": "i",
+      "proconfig": [
+        "search_path=pg_catalog, parameter_catalog"
+      ],
+      "api_execute": false,
+      "writer_execute": false,
+      "baseline_execute": false,
+      "public_execute": false,
+      "definitionSha256": "d75e256b504d87fe88c875d72de3e4a667fc7b2c7b091efd5c6d75b8ebb94309",
+      "hasRowLock": false,
+      "mentionsSourcePins": false,
+      "mentionsSourceOccurrences": false,
+      "mentionsCurrentBindings": false
+    }
+  ],
+  "businessStateUnchanged": true,
+  "snapshot": {
+    "rows": [
+      {
+        "relation": "catalog_publication.candidates",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "catalog_publication.publication_authorizations",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "catalog_publication.publication_freeze",
+        "count": 1,
+        "sha256": "ec3b60207a3ef2e8152d68591679780143e1e3d8b02239f5268dfd7b09868bc9"
+      },
+      {
+        "relation": "catalog_publication.publication_guard",
+        "count": 1,
+        "sha256": "3106790aa6df21ac1803b5e87a5e4b93f9ee7b6819d298e43ed5724c0a6df1b7"
+      },
+      {
+        "relation": "catalog_publication.publication_jobs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "catalog_publication.publication_policies",
+        "count": 1,
+        "sha256": "3edbe72b0ac86500d662359499817148b289b5f26bdfe62ab6996aa3b3670012"
+      },
+      {
+        "relation": "catalog_publication.publication_policy_revisions",
+        "count": 1,
+        "sha256": "67a450bffacbb56ce718bb7f4c934332ecf5a5e4e9a2e92681148228d2a754c0"
+      },
+      {
+        "relation": "catalog_publication.release_artifacts",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.binding_history_events",
+        "count": 1,
+        "sha256": "118d1289abd74fd3dcbcbae3f3a37ce1644cb4fea8bdc476e45b482bc8c94ebd"
+      },
+      {
+        "relation": "parameter_catalog.catalog_activation_receipts",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.catalog_command_idempotency",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.catalog_configuration_schemas",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.catalog_drivers",
+        "count": 1,
+        "sha256": "4509796d8d55c01f6081b6d539c0e5c8b0cf94581a3aae43ab1a487efa06e26f"
+      },
+      {
+        "relation": "parameter_catalog.catalog_materializations",
+        "count": 1,
+        "sha256": "9674c4e1b28fa31b5bee6f7001923bc3a0cb56437a2b1a466b844ef3334d3c9b"
+      },
+      {
+        "relation": "parameter_catalog.catalog_node_types",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.catalog_publication_intents",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.catalog_release_definition_heads",
+        "count": 1,
+        "sha256": "f7a57faa851f92f124bed91a22d68e8a2a36888ec65cdf21509608db4e8816ee"
+      },
+      {
+        "relation": "parameter_catalog.catalog_release_subject_aliases",
+        "count": 1,
+        "sha256": "2375b66f1f30953db42b1a052cdad25a226949cb0c7a2e59ca9a2ed50a5a17cb"
+      },
+      {
+        "relation": "parameter_catalog.catalog_release_subjects",
+        "count": 1,
+        "sha256": "804bb6d14d8af7537341b708e78de142642c7cf049dca53ca4caecf01fbf2d88"
+      },
+      {
+        "relation": "parameter_catalog.catalog_releases",
+        "count": 1,
+        "sha256": "a5afb0d679670f998114f6c29c59ced0ebcdcbf249829e64ce3fb6023b289871"
+      },
+      {
+        "relation": "parameter_catalog.catalog_state",
+        "count": 1,
+        "sha256": "8253a0c0e4a20c9da523591f29d5520c970a727365ef94216b49316d982b42c6"
+      },
+      {
+        "relation": "parameter_catalog.catalog_subject_aliases",
+        "count": 1,
+        "sha256": "4dadbb19141cf7068dd62b639cbaac63328a0fe4ae2655011617616b2972c939"
+      },
+      {
+        "relation": "parameter_catalog.catalog_subjects",
+        "count": 1,
+        "sha256": "c28166ce3ee60210d518c970b47581815fac0516872ac9fdcb798c41073b32bc"
+      },
+      {
+        "relation": "parameter_catalog.definition_proposal_revisions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.definition_proposals",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.definition_replacement_previews",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.definition_replacement_projects",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.definition_replacements",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.definition_revisions",
+        "count": 1,
+        "sha256": "b3aaebff8831e4a312c6ca1c5ff95e8ccfca8678b52a20a8ba8b8c52fda2fa05"
+      },
+      {
+        "relation": "parameter_catalog.governance_command_idempotency",
+        "count": 1,
+        "sha256": "10f8ae9065e2de7ea1023da9b75f17d2ec88e6036bc52bc2820fc21e1755881c"
+      },
+      {
+        "relation": "parameter_catalog.legacy_identities",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.legacy_mapping_heads",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.legacy_mapping_versions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.organization_subject_registrations",
+        "count": 1,
+        "sha256": "cfcce2a351a77aa338a66ff6483657a3e8342f80a67e349f38f6b43665221da8"
+      },
+      {
+        "relation": "parameter_catalog.parameter_catalog_archives",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_catalog_classification_ledger",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_catalog_comparison_cases",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_catalog_comparison_results",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_catalog_cutover_checkpoints",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_catalog_cutover_events",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_catalog_cutover_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_definitions",
+        "count": 1,
+        "sha256": "7368aa8f54e6ad0d0275fd469fa085ffc02865fbfbfe1b9fa22d07d04a1de080"
+      },
+      {
+        "relation": "parameter_catalog.parameter_observation_matches",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_observations",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_review_evidence",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_review_items",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.parameter_review_resolutions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.plane_disposal_allowlist",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.plane_disposal_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.project_parameter_bindings",
+        "count": 1,
+        "sha256": "149c1f3b1d16b1457a7db668803266a5d168cc82200e72906f6f034f4cdee87c"
+      },
+      {
+        "relation": "parameter_catalog.project_parameter_source_occurrences",
+        "count": 1,
+        "sha256": "e6935ea5b30c951f1921fdaf56599d0eaf910b308f55ad02bb4bfb7b84de1914"
+      },
+      {
+        "relation": "parameter_catalog.project_parameter_values",
+        "count": 2,
+        "sha256": "3b9a4ea6550c9a1a0307a5cb1f10153604fa1ffcc21d967d547a9a30cdc14a43"
+      },
+      {
+        "relation": "parameter_catalog.project_source_member_tombstones",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.project_value_source_pins",
+        "count": 1,
+        "sha256": "6953e14d67eceda7768e0034979923aabdbc5dcf19e04e1fc2dd8424fcc62bfa"
+      },
+      {
+        "relation": "parameter_catalog.subject_placements",
+        "count": 1,
+        "sha256": "ed07310ecb1f3e37fcbd6cde2a8af78d6eafb84d3c4fd691c1bf0203d02c6a41"
+      },
+      {
+        "relation": "parameter_catalog.verification_approvals",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.verification_attempts",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.verification_gate_registry",
+        "count": 70,
+        "sha256": "345f2d11a5441facc181e16aa89f88e018f3d01f943a1c9eb08a37196ec2c2af"
+      },
+      {
+        "relation": "parameter_catalog.verification_gate_results",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.verification_plans",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "parameter_catalog.verification_reports",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.agent_approvals",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.agent_messages",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.agent_run_traces",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.agent_tool_calls",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.attribution_subjects",
+        "count": 1,
+        "sha256": "85780ede03ed93cd966ed0a9580c8793e23e9ae52b7c476ff2a82adc51795ec5"
+      },
+      {
+        "relation": "public.audit_events",
+        "count": 2,
+        "sha256": "b7c00f0402867bd98361e889e7b74380940b45d04e7049c05cb016070ede630d"
+      },
+      {
+        "relation": "public.audit_subject_links",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.business_categories",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debug_device_leases",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debug_node_bindings",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debug_node_modules",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debug_nodes",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debugging_devices",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debugging_events",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debugging_parameter_node_bindings",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debugging_parameters",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debugging_snapshots",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.debugging_targets",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.device_bridge_pairing_codes",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.device_bridges",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.driver_registration_placements",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.driver_registrations",
+        "count": 1,
+        "sha256": "46962e8b394a69c0a875e0cbe36973ac7e3ad28eb7d68783042f0c3b21867c1c"
+      },
+      {
+        "relation": "public.driver_schema_overlay_promotions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.driver_schema_overlay_properties",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.driver_schema_overlays",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.driver_schema_versions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.driver_schemas",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_config_revision_members",
+        "count": 1,
+        "sha256": "65c76cb13535f918cfedbbb4457eb7a911f1494d60ac72bb196700d50023aeab"
+      },
+      {
+        "relation": "public.dts_config_revisions",
+        "count": 1,
+        "sha256": "adc48af0dd571aef20e23ba686549a7ae954a2cb16fc084330739057847799a1"
+      },
+      {
+        "relation": "public.dts_config_set",
+        "count": 1,
+        "sha256": "ff2ccf97fc20264b8ec27f122c7c820654fa5626321e9bd82b222f1d94b885cd"
+      },
+      {
+        "relation": "public.dts_logical_node_revisions",
+        "count": 2,
+        "sha256": "b7f79223b7d15d2561e6294ec08b7067872c2bc513c313cf5aaa64eb40ed08af"
+      },
+      {
+        "relation": "public.dts_logical_nodes",
+        "count": 2,
+        "sha256": "61b5b28f2c7d65450f353236a90096be2ebeddedc8b92e6637a6cecfac4bbfa2"
+      },
+      {
+        "relation": "public.dts_node_occurrences",
+        "count": 2,
+        "sha256": "b8bd34a58b3ca91c877e82c19fb1824c720b51015afefc78cb1d4b0c7486cb98"
+      },
+      {
+        "relation": "public.dts_nodes",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_occurrence_effects",
+        "count": 2,
+        "sha256": "c1d8676b954673c398b6ba03eff0268651afa7f1d8e7f85387694c7f0e2b30c5"
+      },
+      {
+        "relation": "public.dts_phandle_refs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_properties",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_property_occurrence_spec_decisions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_property_occurrences",
+        "count": 2,
+        "sha256": "5fe6b91f2c3ef2ad005a98d3176ec8d36e88488b009961eaf7b0c3e8ceb058b2"
+      },
+      {
+        "relation": "public.dts_property_specs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_release_baseline",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_release_baseline_members",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_reload_device_residue",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_reload_org_defaults",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_reload_run_targets",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_reload_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_sensitive_node_rules",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_validation_diagnostics",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.dts_validation_runs",
+        "count": 1,
+        "sha256": "399c251d6a4f80b8fd617a66f1054a0d0b1b329f40bc66459ad58bc387c94f40"
+      },
+      {
+        "relation": "public.identity_mapping_tasks",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.jobs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.knowledge_chunks",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.knowledge_definition_references",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.knowledge_entries",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.knowledge_files",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.knowledge_index_status",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.knowledge_parameter_references",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.knowledge_revisions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.legacy_parameter_migration_evidence",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.local_registration_role_requests",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_analysis_reports",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_analysis_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_analysis_stages",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_domain_knowledge_links",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_domains",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_evidence",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_feedback",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_file_objects",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.log_records",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.node_operations",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.node_type_definitions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.notification_outbox",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.organizations",
+        "count": 4,
+        "sha256": "a56016c18be594c52adee22a61704023939cd9349d504e6779405aa5d41c32e0"
+      },
+      {
+        "relation": "public.parameter_change_requests",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_definition_reconciliation_items",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_definition_reconciliation_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_definitions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_draft_identity_invalidations",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_drafts",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_file_sync_conflicts",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_history_entries",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_identity_cutovers",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_identity_migration_phases",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_identity_migration_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_import_batches",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_module_dismissed_compatibles",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_module_mappings",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_modules",
+        "count": 2,
+        "sha256": "8bfe2b591e4fbb1c45ea187d53623a5d00ee361e131b94f1a7f5c7331782e17b"
+      },
+      {
+        "relation": "public.parameter_policy_targets",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_review_decisions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_spec_matcher_overrides",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_spec_property_key_cutover_items",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_spec_property_key_cutover_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_spec_review_tasks",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_spec_version_cutover_items",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_spec_version_cutover_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_spec_versions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_specs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_submission_items",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.parameter_submission_rounds",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.product_feedback",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.product_feedback_attachments",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.product_feedback_progress_events",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_modules",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_binding_revisions",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_bindings",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_file_candidates",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_file_versions",
+        "count": 1,
+        "sha256": "c6b9c2a200796885e2670d886b505bb98b326a8253d2fa4667afb502a7513099"
+      },
+      {
+        "relation": "public.project_parameter_files",
+        "count": 1,
+        "sha256": "f6baa2e34b05dce08f8d4a73014926ccf9ff51b950c36019d464905457c869cc"
+      },
+      {
+        "relation": "public.project_parameter_initialization_drafts",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_initialization_reviews",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_plane_archives",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_value_change_requests",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_value_change_targets",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_value_drafts",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.project_parameter_values",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.projects",
+        "count": 3,
+        "sha256": "88d0dc55257e66411b305208244b0bd32400e76bf7ddf3a38b2f803f88181d12"
+      },
+      {
+        "relation": "public.roles",
+        "count": 7,
+        "sha256": "396c467bf9495c71e2c7145520c0edb7ec4e5bda3243d23417cc8ee87e16e1b9"
+      },
+      {
+        "relation": "public.schema_migrations",
+        "count": 180,
+        "sha256": "2157a9e28b9b04934bc0aca890a69939c724f4247895b8a578ad96609d6faa31"
+      },
+      {
+        "relation": "public.seed_initialization_runs",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.user_notifications",
+        "count": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "relation": "public.user_role_bindings",
+        "count": 4,
+        "sha256": "3bf7b59accc24ce2c2ea2e05e782b2ac090f6618741239ab56ac6d993b5e7558"
+      },
+      {
+        "relation": "public.users",
+        "count": 4,
+        "sha256": "385c2a19b4961de185541b4e8db5d0706cf18c8e1deabadd4d57e9ccebf36772"
+      }
+    ],
+    "objects": [
+      {
+        "path": "org-898-canonical/c9e1cf3bdf9e817f076ef5c4dde31a011cadd95daa69e06b93d551366a7bf91b-issue-898-canonical.dts",
+        "sha256": "c9e1cf3bdf9e817f076ef5c4dde31a011cadd95daa69e06b93d551366a7bf91b"
+      }
+    ]
+  },
+  "complete": true,
+  "probeCounts": {
+    "ok": 60,
+    "rejected": 9,
+    "typed-block": 2
+  },
+  "probeScriptSha256": "f38d6ec7d5522ffd052717cc77b0ed597f967e7d8feb9026e003b0a8273ec700",
+  "failureIdentityBoundary": "Rejected probes used the connected API client or explicit writer SET LOCAL ROLE; catch did not retain per-error actor/PID fields.",
+  "acceptanceBoundary": "Read/lock capability measurements, not 71 product passes. Zero-row lock statements prove statement permission only. No target authorization or function implementation.",
+  "ownedEnvironmentCleanup": {
+    "preRemovalLabRoleCount": 0,
+    "preRemovalApiConnectionCount": 0,
+    "container": "wiseeff-a-api-lock-20261001",
+    "removed": true,
+    "privateConnectionFileRemoved": true
+  },
+  "snapshotRedaction": {
+    "originalComparedRelationCount": 190,
+    "publishedRelationCount": 184,
+    "omittedRelations": [
+      "public.agent_sessions",
+      "public.auth_sessions",
+      "public.debugging_sessions",
+      "public.device_bridge_tokens",
+      "public.log_webhook_deliveries",
+      "public.user_password_credentials"
+    ],
+    "reason": "Exclude fixture credential/session/token/webhook-derived fingerprints. Original equality boolean retained; no omitted row/hash is published."
+  }
+}

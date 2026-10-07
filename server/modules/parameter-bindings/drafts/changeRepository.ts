@@ -13,6 +13,7 @@ export type CanonicalChangeApplyOutcome = "committed" | "replayed";
 
 export type CanonicalValueChangeRequestRow = {
   id: string;
+  request_kind: "single" | "batch";
   organization_id: string;
   project_id: string;
   draft_id: string | null;
@@ -145,11 +146,31 @@ export async function getCanonicalValueChangeRequest(
      where request.organization_id = $1
        and request.project_id = $2
        and request.id = $3
+       and request.request_kind = 'single'
      limit 1
     `,
     [input.organizationId, input.projectId, input.requestId]
   );
   return result.rows[0] ? hydrateRequest(db, result.rows[0]) : null;
+}
+
+/** Candidate previews need only the receipt; review details retain their own visibility checks. */
+export type CanonicalCandidateRequestReceipt = Pick<CanonicalValueChangeRequestRow, "id" | "status"> & {
+  kind: CanonicalValueChangeRequestRow["request_kind"];
+};
+
+export async function getCanonicalCandidateRequestReceipt(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; candidateId: string; linkedRequestId?: string }
+): Promise<CanonicalCandidateRequestReceipt | null> {
+  const result = await db.query<CanonicalCandidateRequestReceipt>(`
+    select id,status,request_kind as kind from public.project_parameter_value_change_requests
+     where organization_id=$1 and project_id=$2 and request_kind in ('single','batch')
+       and (candidate_id=$3 or batch_upload_candidate_id=$3 or id=$4)
+     order by case status when 'pending' then 0 when 'approved' then 1 else 2 end,
+       created_at desc,id desc limit 1`,
+  [input.organizationId, input.projectId, input.candidateId, input.linkedRequestId ?? null]);
+  return result.rows[0] ?? null;
 }
 
 /** Serializes concurrent reviews of the same request. */
@@ -166,6 +187,7 @@ export async function getCanonicalValueChangeRequestForUpdate(
      where request.organization_id = $1
        and request.project_id = $2
        and request.id = $3
+       and request.request_kind = 'single'
      for update of request
     `,
     [input.organizationId, input.projectId, input.requestId]
@@ -211,6 +233,7 @@ export async function listCanonicalValueChangeRequests(
      where request.organization_id = $1
        and request.project_id = $2
        and ($3::text is null or request.status = $3)
+       and request.request_kind = 'single'
      order by updated_at desc, id
     `,
     [input.organizationId, input.projectId, input.status ?? null]

@@ -12,7 +12,7 @@ import { upsertFileSyncDraft } from "../parameter-drafts/repository";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { ApiError } from "../../shared/http/errors";
 import { detectFileUiDraftConflict } from "./conflictService";
-import { getFileVersionById, getProjectParameterFileById } from "./repository";
+import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileById } from "./repository";
 import { findBindingBySource } from "./syncIdentity";
 
 export type SyncFileVersionInput = {
@@ -53,6 +53,10 @@ export async function syncFileVersion(
   if (version.origin === "writeback") {
     return { draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: true, identityFallbackUses: 0 };
   }
+
+  // Re-check inside the audited transaction. The route's canonical preview is
+  // read-only and can race a source registration before these legacy writes.
+  await assertLegacySourceMutationAllowed(db, file.id);
 
   const semantic = parameterIdentityMode() === "semantic";
   let draftsCreated = 0;

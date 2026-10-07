@@ -1,13 +1,18 @@
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
-import type { KnowledgeEntryDto, KnowledgeParameterReferenceDto, KnowledgeSearchResultDto } from "./types";
+import { ApiError } from "../../shared/http/errors";
+import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
+import type {
+  KnowledgeDefinitionReferenceDto,
+  KnowledgeEntryDto,
+  KnowledgeLegacySpecReferenceDto,
+  KnowledgeParameterReferenceDto,
+  KnowledgeSearchResultDto
+} from "./types";
 
 /**
- * Repository slice for structural parameter-to-knowledge references
- * (design deferred roadmap item 2). References bind to `parameter_specs.id`,
- * the stable surrogate key (ADR-0017): identity corrections rewrite the
- * definition's attribution/property key in place and never move the id, and
- * deprecation (ADR-0011) is soft retirement, so reference rows survive both.
+ * Canonical Definition links and legacy Spec history have separate storage.
+ * Existing legacy rows keep their original identity and are never remapped here.
  */
 
 type ReferenceRow = {
@@ -57,8 +62,9 @@ const REFERENCE_SPEC_JOINS = `
   left join dts_property_specs dps on dps.parameter_spec_id = ps.id
 `;
 
-function toReferenceDto(row: ReferenceRow): KnowledgeParameterReferenceDto {
+function toReferenceDto(row: ReferenceRow): KnowledgeLegacySpecReferenceDto {
   return {
+    kind: "legacy-spec",
     specId: row.parameter_spec_id,
     propertyKey: row.property_key ?? row.parameter_spec_id,
     displayName: row.display_name,
@@ -69,13 +75,74 @@ function toReferenceDto(row: ReferenceRow): KnowledgeParameterReferenceDto {
   };
 }
 
+type DefinitionReferenceRow = {
+  entry_id: string;
+  definition_id: string;
+  created_by_user_id: string | null;
+  created_at: string | Date;
+};
+
+type CatalogDefinitionReader = (
+  definitionId: string
+) => ReturnType<typeof readCatalogDefinitionForKnowledge>;
+
+function unavailableDefinitionReference(row: DefinitionReferenceRow): KnowledgeDefinitionReferenceDto {
+  return {
+    kind: "definition",
+    definitionId: row.definition_id,
+    availability: "unavailable",
+    propertyKey: null,
+    displayName: null,
+    driverModule: null,
+    lifecycle: null,
+    createdByUserId: row.created_by_user_id,
+    createdAt: dateTimeToIso(row.created_at)
+  };
+}
+
+async function mapDefinitionReferenceRows(
+  rows: DefinitionReferenceRow[],
+  readDefinition?: CatalogDefinitionReader
+): Promise<Array<{ entryId: string; reference: KnowledgeDefinitionReferenceDto }>> {
+  return Promise.all(rows.map(async (row) => {
+    if (!readDefinition) {
+      return { entryId: row.entry_id, reference: unavailableDefinitionReference(row) };
+    }
+    try {
+      const definition = await readDefinition(row.definition_id);
+      return {
+        entryId: row.entry_id,
+        reference: {
+          kind: "definition",
+          definitionId: row.definition_id,
+          availability: "current",
+          propertyKey: definition.propertyKey,
+          displayName: definition.currentRevision.displayName,
+          driverModule: definition.subject.canonicalName,
+          lifecycle: definition.lifecycle,
+          createdByUserId: row.created_by_user_id,
+          createdAt: dateTimeToIso(row.created_at)
+        }
+      };
+    } catch (error) {
+      if (error instanceof ApiError && ["NOT_FOUND", "FORBIDDEN", "CONFLICT"].includes(error.code)) {
+        // Catalog API refusal/unavailability preserves the link without leaking metadata.
+        return { entryId: row.entry_id, reference: unavailableDefinitionReference(row) };
+      }
+      throw error;
+    }
+  }));
+}
+
 export async function loadParameterReferencesByEntryIds(
   db: Queryable,
   auth: AuthContext,
-  entryIds: readonly string[]
+  entryIds: readonly string[],
+  readDefinition?: CatalogDefinitionReader
 ): Promise<Map<string, KnowledgeParameterReferenceDto[]>> {
   if (entryIds.length === 0) return new Map();
-  const result = await db.query<ReferenceRow>(
+  const [legacyResult, definitionResult] = await Promise.all([
+    db.query<ReferenceRow>(
     `
     select
       r.entry_id,
@@ -91,14 +158,35 @@ export async function loadParameterReferencesByEntryIds(
     order by r.created_at asc, r.parameter_spec_id asc
     `,
     [auth.organization.id, entryIds]
-  );
+    ),
+    db.query<DefinitionReferenceRow>(
+      `
+      select entry_id, definition_id, created_by_user_id, created_at
+      from knowledge_definition_references
+      where organization_id = $1
+        and entry_id = any($2::uuid[])
+      order by created_at asc, definition_id asc
+      `,
+      [auth.organization.id, entryIds]
+    )
+  ]);
 
-  const mappedRows = await mapLoadedReferenceRows(db, auth, result.rows);
+  const mappedRows = [
+    ...await mapLoadedReferenceRows(db, auth, legacyResult.rows),
+    ...await mapDefinitionReferenceRows(definitionResult.rows, readDefinition)
+  ];
   const map = new Map<string, KnowledgeParameterReferenceDto[]>();
   for (const dto of mappedRows) {
     const references = map.get(dto.entryId) ?? [];
     references.push(dto.reference);
     map.set(dto.entryId, references);
+  }
+  for (const references of map.values()) {
+    references.sort((left, right) => {
+      const byTime = Date.parse(left.createdAt) - Date.parse(right.createdAt);
+      if (byTime !== 0) return byTime;
+      return (left.definitionId ?? left.specId).localeCompare(right.definitionId ?? right.specId);
+    });
   }
   return map;
 }
@@ -145,21 +233,42 @@ export async function resolveReferenceableSpec(
   };
 }
 
-/** Idempotent add: returns false when the (entry, spec) pair already exists. */
-export async function insertParameterReference(
+export async function hasParameterReference(
   db: Queryable,
   auth: AuthContext,
-  input: { id: string; entryId: string; specId: string }
+  input: { entryId: string; specId: string }
 ): Promise<boolean> {
   const result = await db.query(
     `
-    insert into knowledge_parameter_references (id, organization_id, entry_id, parameter_spec_id, created_by_user_id)
-    values ($1, $2, $3, $4, $5)
-    on conflict (entry_id, parameter_spec_id) do nothing
+    select 1
+    from knowledge_parameter_references
+    where organization_id = $1
+      and entry_id = $2
+      and parameter_spec_id = $3
+    limit 1
     `,
-    [input.id, auth.organization.id, input.entryId, input.specId, auth.user.id]
+    [auth.organization.id, input.entryId, input.specId]
   );
-  return (result.rowCount ?? 0) > 0;
+  return result.rows.length > 0;
+}
+
+export async function hasDefinitionReference(
+  db: Queryable,
+  auth: AuthContext,
+  input: { entryId: string; definitionId: string }
+): Promise<boolean> {
+  const result = await db.query(
+    `
+    select 1
+    from knowledge_definition_references
+    where organization_id = $1
+      and entry_id = $2
+      and definition_id = $3
+    limit 1
+    `,
+    [auth.organization.id, input.entryId, input.definitionId]
+  );
+  return result.rows.length > 0;
 }
 
 export async function deleteParameterReference(
@@ -179,6 +288,40 @@ export async function deleteParameterReference(
   return (result.rowCount ?? 0) > 0;
 }
 
+/** Idempotent add of a current Catalog Definition reference. */
+export async function insertDefinitionReference(
+  db: Queryable,
+  auth: AuthContext,
+  input: { id: string; entryId: string; definitionId: string }
+): Promise<boolean> {
+  const result = await db.query(
+    `
+    insert into knowledge_definition_references (id, organization_id, entry_id, definition_id, created_by_user_id)
+    values ($1, $2, $3, $4, $5)
+    on conflict (entry_id, definition_id) do nothing
+    `,
+    [input.id, auth.organization.id, input.entryId, input.definitionId, auth.user.id]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function deleteDefinitionReference(
+  db: Queryable,
+  auth: AuthContext,
+  input: { entryId: string; definitionId: string }
+): Promise<boolean> {
+  const result = await db.query(
+    `
+    delete from knowledge_definition_references
+    where organization_id = $1
+      and entry_id = $2
+      and definition_id = $3
+    `,
+    [auth.organization.id, input.entryId, input.definitionId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 /** Reference count for the entry-delete audit metadata. */
 export async function countParameterReferencesForEntry(
   db: Queryable,
@@ -187,10 +330,10 @@ export async function countParameterReferencesForEntry(
 ): Promise<number> {
   const result = await db.query<{ reference_count: string | number }>(
     `
-    select count(*)::int as reference_count
-    from knowledge_parameter_references
-    where organization_id = $1
-      and entry_id = $2
+    select (
+      (select count(*) from knowledge_parameter_references where organization_id = $1 and entry_id = $2) +
+      (select count(*) from knowledge_definition_references where organization_id = $1 and entry_id = $2)
+    )::int as reference_count
     `,
     [auth.organization.id, entryId]
   );
@@ -249,39 +392,67 @@ export async function listPublishedEntriesReferencingSpec(
   }));
 }
 
+export async function listPublishedEntriesReferencingDefinition(
+  db: Queryable,
+  auth: AuthContext,
+  input: { definitionId: string; limit?: number }
+): Promise<KnowledgeSearchResultDto[]> {
+  const result = await db.query<ReferencingEntryRow>(
+    `
+    select e.id, e.title, e.content_form, e.tags, e.search_text, e.head_revision_id, e.updated_at
+    from knowledge_definition_references r
+    join knowledge_entries e
+      on e.id = r.entry_id
+     and e.organization_id = r.organization_id
+    where r.organization_id = $1
+      and r.definition_id = $2
+      and e.status = 'published'
+    order by e.updated_at desc, e.id desc
+    limit $3
+    `,
+    [auth.organization.id, input.definitionId, input.limit ?? 20]
+  );
+
+  return result.rows.map((row) => ({
+    entryId: row.id,
+    title: row.title,
+    contentForm: row.content_form,
+    tags: row.tags ?? [],
+    excerpt: buildLeadExcerpt(row.search_text),
+    updatedAt: dateTimeToIso(row.updated_at),
+    revisionId: row.head_revision_id
+  }));
+}
+
 async function mapLoadedReferenceRows(
   db: Queryable,
   auth: AuthContext,
   rows: ReferenceRow[]
-): Promise<Array<{ entryId: string; reference: KnowledgeParameterReferenceDto }>> {
+): Promise<Array<{ entryId: string; reference: KnowledgeLegacySpecReferenceDto }>> {
   const { lookupLegacyIdentifier } = await import("../parameter-catalog-api/legacy");
-  const mapped: Array<{ entryId: string; reference: KnowledgeParameterReferenceDto }> = [];
+  const mapped: Array<{ entryId: string; reference: KnowledgeLegacySpecReferenceDto }> = [];
   for (const row of rows) {
     const reference = toReferenceDto(row);
     const orphan = !row.lifecycle && !row.property_key;
     let historicalOnly = false;
-    let mappingStatus: KnowledgeParameterReferenceDto["mappingStatus"] = orphan ? "orphaned" : "unmapped";
+    let mappingStatus: KnowledgeLegacySpecReferenceDto["mappingStatus"] = orphan ? "orphaned" : "unmapped";
     let canonicalTargetKind: string | null = null;
     let canonicalTargetId: string | null = null;
-    try {
-      const outcome = await lookupLegacyIdentifier({
-        client: db as never,
-        legacyType: "parameter-spec",
-        legacyId: row.parameter_spec_id,
-        organizationId: auth.organization.id
-      });
-      if (outcome.kind === "archived") {
-        historicalOnly = true;
-        mappingStatus = "archived";
-        canonicalTargetKind = "Archive";
-      } else if (outcome.kind === "mapped" && outcome.item?.target) {
-        historicalOnly = Boolean(outcome.item.historicalOnly);
-        mappingStatus = historicalOnly ? "historical" : "current";
-        canonicalTargetKind = outcome.item.target.kind;
-        canonicalTargetId = outcome.item.target.id;
-      }
-    } catch {
-      // Keep chip fields when mapping is unqueryable.
+    const outcome = await lookupLegacyIdentifier({
+      client: db as never,
+      legacyType: "parameter-spec",
+      legacyId: row.parameter_spec_id,
+      organizationId: auth.organization.id
+    });
+    if (outcome.kind === "archived") {
+      historicalOnly = true;
+      mappingStatus = "archived";
+      canonicalTargetKind = "Archive";
+    } else if (outcome.kind === "mapped" && outcome.item?.target) {
+      historicalOnly = Boolean(outcome.item.historicalOnly);
+      mappingStatus = historicalOnly ? "historical" : "current";
+      canonicalTargetKind = outcome.item.target.kind;
+      canonicalTargetId = outcome.item.target.id;
     }
     mapped.push({
       entryId: row.entry_id,

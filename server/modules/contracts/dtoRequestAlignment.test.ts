@@ -12,7 +12,7 @@ describe("frontend request payloads against backend request schemas", () => {
         contentType: "text/csv",
         contentBase64: Buffer.from("timestamp,message\n1,ok").toString("base64"),
         analysisQuestion: "Why did charging slow?",
-        relatedParameterId: "fast-charge-current"
+        relatedParameterPin: { kind: "canonical-pin", projectId: "project-1", bindingId: "binding-1" }
       }).fileName
     ).toBe("diagnostics.csv");
   });

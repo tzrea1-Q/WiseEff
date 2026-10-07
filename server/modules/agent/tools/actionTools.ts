@@ -4,31 +4,36 @@ import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../
 import {
   assertTrustedInvocationContext,
   TrustedInvocationContextError,
-  trustedDomainAttribution,
   type AgentInvocationContext
 } from "../../auth/trustedInvocation";
 import { createAgentKnowledgeDraft } from "../../knowledge/service";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
-import { deleteDraft } from "../../parameter-drafts/repository";
-import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
-import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
-import { submitParameterChanges } from "../../parameters/service";
+import { parameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import {
-  loadBindingContext,
-  loadLogicalNodeSubmissionContext,
-  resolveBindingHeadRevisionId
-} from "../../parameter-topology/writeLock";
-import { createBindingDraft } from "../../parameter-topology/service";
+  createCanonicalValueDraft,
+  loadCanonicalBindingPins,
+  submitCanonicalValueChange
+} from "../../parameter-bindings/drafts";
+import { parseJsonSource } from "../../parameter-files/jsonSource";
 import { knowledgeEntryHref } from "./knowledgeTools";
-import type { AgentToolExecutionContext, AgentToolDefinition } from "../toolRegistry";
+import {
+  APPROVED_PARAMETER_PAYLOAD_KEY,
+  requireApprovedParameterInvocation,
+  type ApprovedParameterTarget
+} from "../approvedParameterInvocation";
+import type {
+  AgentToolApprovalPreparationContext,
+  AgentToolExecutionContext,
+  AgentToolDefinition
+} from "../toolRegistry";
 import { requireAgentToolMetadata } from "../toolMetadata";
 
 type ToolOptions = {
   db: Database;
   objectStore?: ObjectStore;
-  /** Injected by tests; production uses the real toolchain runner. */
+  /** Retained for existing callers; canonical parameter actions use the source owner directly. */
   toolchain?: DtsToolchainRunner;
   refusalAuditSink?: TrustedRefusalAuditSink;
 };
@@ -43,7 +48,7 @@ function submissionCitation(changeRequestId: string, projectId: string, targetVa
       type: "parameter" as const,
       id: changeRequestId,
       label: `Change request ${changeRequestId}`,
-      href: `/parameters/review?changeRequestId=${encodeURIComponent(changeRequestId)}`,
+      href: `/parameter-review?request=${encodeURIComponent(changeRequestId)}&project=${encodeURIComponent(projectId)}`,
       snippet: `${targetValue} pending review for ${projectId}.`
     }
   ];
@@ -70,6 +75,92 @@ function requireParameterSubmissionRefusalSink(options: ToolOptions): TrustedRef
   return options.refusalAuditSink;
 }
 
+function readApprovedTarget(payload: Record<string, unknown>): ApprovedParameterTarget {
+  const approved = payload[APPROVED_PARAMETER_PAYLOAD_KEY];
+  if (typeof approved !== "object" || approved === null || Array.isArray(approved)) {
+    throw new ApiError("VALIDATION_FAILED", "The approved canonical parameter pins are missing.");
+  }
+  const value = approved as { sourceFormat?: unknown; target?: unknown };
+  const target = value.target;
+  if (typeof target !== "object" || target === null || Array.isArray(target)) {
+    throw new ApiError("VALIDATION_FAILED", "The approved canonical parameter target is missing.");
+  }
+  const targetValue = target as { format?: unknown; sourceText?: unknown };
+  if (
+    (targetValue.format !== "dts" && targetValue.format !== "json") ||
+    typeof targetValue.sourceText !== "string" ||
+    targetValue.format !== value.sourceFormat
+  ) {
+    throw new ApiError("VALIDATION_FAILED", "The approved canonical parameter target is invalid.");
+  }
+  return { format: targetValue.format, sourceText: targetValue.sourceText };
+}
+
+function validateTarget(target: ApprovedParameterTarget) {
+  try {
+    if (target.format === "dts") {
+      parseDtsValue("_approved_parameter", target.sourceText);
+    } else {
+      parseJsonSource(target.sourceText);
+    }
+  } catch (error) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      `targetValue must be valid ${target.format} source text: ${error instanceof Error ? error.message : "unrecognized value"}`
+    );
+  }
+}
+
+async function prepareParameterApproval(
+  options: ToolOptions,
+  context: AgentToolApprovalPreparationContext,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const projectId = readProjectId(context.projectId, payload);
+  const bindingId = typeof payload.parameterId === "string" ? payload.parameterId.trim() : "";
+  const targetValue = typeof payload.targetValue === "string" ? payload.targetValue : "";
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!projectId || !bindingId || !targetValue || !reason) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Project id, parameter id, target value, and reason are required for parameter change submission.",
+      { projectId, parameterId: bindingId || undefined, targetValue }
+    );
+  }
+  const pins = await loadCanonicalBindingPins(options.db, {
+    organizationId: context.auth.organization.id,
+    projectId,
+    bindingId
+  });
+  if (!pins) {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
+      projectId,
+      parameterId: bindingId
+    });
+  }
+  const target = { format: pins.sourceFormat, sourceText: targetValue } satisfies ApprovedParameterTarget;
+  validateTarget(target);
+  return {
+    ...payload,
+    projectId,
+    parameterId: bindingId,
+    reason,
+    [APPROVED_PARAMETER_PAYLOAD_KEY]: {
+      projectId: pins.projectId,
+      bindingId: pins.bindingId,
+      expectedValueId: pins.currentValueId,
+      definitionId: pins.definitionId,
+      definitionRevisionId: pins.definitionRevisionId,
+      catalogReleaseId: pins.catalogReleaseId,
+      configRevisionId: pins.configRevisionId,
+      sourceRef: pins.sourceRef,
+      sourcePinId: pins.sourcePinId,
+      sourceFormat: pins.sourceFormat,
+      target
+    }
+  };
+}
+
 const MAX_DRAFT_TITLE_CHARS = 200;
 const MAX_DRAFT_CONTENT_CHARS = 200_000;
 const MAX_DRAFT_TAGS = 20;
@@ -90,6 +181,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
   return [
     {
       ...requireAgentToolMetadata("action.submitParameterChange"),
+      prepareApproval: (context, payload) => prepareParameterApproval(options, context, payload),
       run: async (context, payload) => {
         const invocation = requireDurableAgentInvocation(context);
         const refusalSink = requireParameterSubmissionRefusalSink(options);
@@ -106,136 +198,71 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           );
         }
         const db = options.db;
-
-        if ((await resolveParameterIdentityMode(db)) !== "semantic") {
+        if (parameterIdentityMode() !== "semantic") {
           throw new ApiError(
             "CONFLICT",
             "Agent parameter submission requires post-cutover binding identity.",
             { reason: "legacy-identity-mode-retired-for-agent", projectId, parameterId }
           );
         }
-
-        // Post-cutover: semantic identity is the only accepted submission
-        // contract, and `parameterId` is the project parameter binding id.
-        const binding = await loadBindingContext(db, context.auth, parameterId);
-        if (binding.project_id !== projectId) {
-          throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", {
+        const target = readApprovedTarget(payload);
+        const targetText = targetValue;
+        validateTarget(target);
+        return db.transaction(async (tx) => {
+          const approved = await requireApprovedParameterInvocation(tx, context.auth, {
+            invocation,
             projectId,
-            parameterId
+            bindingId: parameterId,
+            target,
+            expectedValueId: (() => {
+              const value = payload[APPROVED_PARAMETER_PAYLOAD_KEY];
+              return typeof value === "object" && value !== null && !Array.isArray(value) &&
+                typeof (value as { expectedValueId?: unknown }).expectedValueId === "string"
+                ? (value as { expectedValueId: string }).expectedValueId
+                : "";
+            })()
           });
-        }
-        const baseRevisionId = await resolveBindingHeadRevisionId(db, {
-          organizationId: context.auth.organization.id,
-          projectId,
-          bindingId: parameterId
-        });
-        if (!baseRevisionId) {
-          throw new ApiError(
-            "CONFLICT",
-            "No config revision is available for this parameter binding yet.",
-            { projectId, parameterId }
+          const draft = await createCanonicalValueDraft(
+            tx,
+            context.auth,
+            {
+              projectId,
+              bindingId: parameterId,
+              baseRevisionId: approved.pins.configRevisionId,
+              baseCurrentValueId: approved.pins.expectedValueId,
+              action: "set",
+              reason,
+              ...(target.format === "json"
+                ? { sourceTarget: { format: "json" as const, sourceText: target.sourceText } }
+                : { targetValue: parseDtsValue("_approved_parameter", target.sourceText).value })
+            },
+            {
+              objectStore: options.objectStore,
+              invocation,
+              requestId: context.requestId,
+              refusalSink
+            }
           );
-        }
-
-        // Early guard uses the exact server-resolved binding head. Never use
-        // loadBindingContext's display-oriented latest locator as provenance.
-        if (binding.logical_node_id) {
-          const node = await loadLogicalNodeSubmissionContext(db, {
-            organizationId: context.auth.organization.id,
+          const submission = await submitCanonicalValueChange(tx, context.auth, {
             projectId,
-            configRevisionId: baseRevisionId,
-            logicalNodeId: binding.logical_node_id
-          });
-          await assertTrustedSensitiveNodeSubmissionAllowed(db, context.auth, {
-            organizationId: context.auth.organization.id,
-            projectId,
-            nodePath: node.nodeLocator,
-            compatible: node.compatible,
-            // The logical-node compatible token was read from the exact,
-            // server-selected binding-head revision above. It is not a
-            // client-supplied compatible override and must remain the
-            // authoritative source for this preflight.
-            compatibleIsAuthoritative: true,
+            draftId: draft.id,
             invocation,
             requestId: context.requestId,
             refusalSink
           });
-        }
-
-        let parsedValue: ReturnType<typeof parseDtsValue>;
-        try {
-          parsedValue = parseDtsValue(binding.property_key || "value", targetValue);
-        } catch (error) {
-          throw new ApiError(
-            "VALIDATION_FAILED",
-            `targetValue must be DTS source text such as <3600>, "fast" or [01 02]: ${
-              error instanceof Error ? error.message : "unrecognized value"
-            }`,
-            { parameterId, targetValue }
-          );
-        }
-
-        const draft = await createBindingDraft(
-          db,
-          context.auth,
-          {
-            projectId,
-            bindingId: parameterId,
-            baseRevisionId,
-            targetValue: parsedValue.value,
-            action: "set",
-            reason
-          },
-          { objectStore: options.objectStore, toolchain: options.toolchain },
-          { requestId: context.requestId, invocation, refusalSink }
-        );
-
-        try {
-          const submission = await submitParameterChanges(
-            db,
-            context.auth,
-            {
-              projectId,
-              items: [
-                {
-                  draftId: draft.draftId,
-                  editSubjectKind: "binding",
-                  projectParameterBindingId: draft.projectParameterBindingId,
-                  parameterSpecId: draft.parameterSpecId,
-                  action: draft.action,
-                  targetValue: draft.rawText,
-                  reason
-                }
-              ]
-            },
-            { requestId: context.requestId, invocation, refusalSink }
-          );
-          const changeRequestId = submission.items[0]?.requestId ?? submission.id;
+          const changeRequestId = submission.id;
           return {
             summary: `Submitted parameter change request ${changeRequestId} for review.`,
             data: {
               changeRequestId,
               projectId,
               parameterId,
-              targetValue: draft.rawText,
-              draftId: draft.draftId
+              targetValue: targetText,
+              draftId: draft.id
             },
-            citations: submissionCitation(changeRequestId, projectId, draft.rawText)
+            citations: submissionCitation(changeRequestId, projectId, targetText)
           };
-        } catch (error) {
-          // Best-effort cleanup so a failed submission does not leave an
-          // agent-created draft parked in the user's workbench.
-          try {
-            await deleteDraft(db, {
-              organizationId: context.auth.organization.id,
-              owner: trustedDomainAttribution(invocation),
-              draftId: draft.draftId
-            });
-          } catch {
-            // keep the submission error as the caller-visible failure
-          }
-          throw error;
-        }
+        });
       }
     },
     {

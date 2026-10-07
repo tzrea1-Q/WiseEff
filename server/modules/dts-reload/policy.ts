@@ -1,6 +1,7 @@
 import { assertTrustedInvocationContext, TrustedInvocationContextError, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { AuthContext, BackendPermission } from "../auth/types";
+import { canPerform } from "../auth/policy";
 import { ApiError } from "../../shared/http/errors";
 
 export const DTS_RELOAD_AGENT_REFUSED_CODE = "dts-reload-agent-refused";
@@ -28,6 +29,17 @@ function hasPermission(auth: AuthContext, permission: BackendPermission) {
 /** Dedicated permission for starting and mutating DTS reload debugging runs. */
 export function requireDtsReload(auth: AuthContext) {
   requirePermission(auth, "debugging:dts-reload");
+}
+
+/** A permission from another project must not authorize this project's device write. */
+export function requireDtsReloadProjectMutation(auth: AuthContext, projectId: string) {
+  if (!auth.user.isActive || !auth.roles.some((role) =>
+    (role.projectId === null || role.projectId === projectId) &&
+    canPerform(role.roleId, "debugging:dts-reload"))) {
+    throw new ApiError("FORBIDDEN", "DTS reload permission is required in this project.", {
+      code: "reload-project-scope-required", projectId
+    });
+  }
 }
 
 /**

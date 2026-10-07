@@ -120,6 +120,9 @@ describe("S8-LEG HTTP seam", () => {
     if (identity.kind !== "source-tuple") {
       return { ok: false, error: { code: "PCAT-MAP-UNKNOWN-IDENTITY", detail: "missing" } };
     }
+    if (identity.sourceId === "spec-returned-failure") {
+      return { ok: false, error: { code: "PCAT-MAP-WRITE-FAILED", detail: "private mapping failure details" } };
+    }
     if (identity.sourceId === "spec-mapped" && identity.ownerScopeKind === "platform") {
       return { ok: true, value: mappedResult };
     }
@@ -183,6 +186,29 @@ describe("S8-LEG HTTP seam", () => {
       text,
     };
   };
+
+  it("sanitizes returned mapping failures on canonical and bounded legacy HTTP reads", async () => {
+    invocation = createUserInvocation(authFor("org_acme"));
+    for (const path of [
+      "/api/v2/catalog/legacy-identifiers/parameter-spec/spec-returned-failure",
+      "/api/v2/parameter-specs?id=spec-returned-failure",
+    ]) {
+      const failed = await request("GET", path);
+      expect(failed.status).toBe(500);
+      expect(failed.body).toMatchObject({ error: { code: "INTERNAL_ERROR",
+        message: "Internal server error.", details: {} } });
+      expect(JSON.stringify(failed.body)).not.toContain("private mapping failure details");
+      expect(JSON.stringify(failed.body)).not.toContain("PCAT-MAP-WRITE-FAILED");
+    }
+    const calls = lookupCalls;
+    try {
+      invocation = null;
+      expect((await request("GET", "/api/v2/parameter-specs?id=spec-returned-failure")).status).toBe(401);
+      invocation = createUserInvocation(authFor("org_acme", []));
+      expect((await request("GET", "/api/v2/parameter-specs?id=spec-returned-failure")).status).toBe(403);
+      expect(lookupCalls).toBe(calls);
+    } finally { invocation = createUserInvocation(authFor("org_acme")); }
+  });
 
   it("returns mapped lookup with bounded-legacy headers", async () => {
     lookupCalls = 0;

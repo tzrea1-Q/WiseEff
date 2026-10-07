@@ -1,5 +1,6 @@
 import type { ParsedLogEntry, ParseResult } from "./parser";
 import { collectRuleEvidence, prefilterRules } from "./prefilter";
+import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -32,6 +33,8 @@ export type AnalyzeLogInput = {
   organizationId?: string;
   logDomainId?: string;
   relatedParameterId?: string;
+  /** Immutable canonical context frozen when this specific run was accepted. */
+  relatedParameterSnapshot?: RelatedParameterRunSnapshot;
   onProgress?: (progress: { step: number; maxSteps: number }) => void | Promise<void>;
 };
 

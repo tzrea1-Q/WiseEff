@@ -19,6 +19,7 @@ import {
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 import type {
   BindingHistoryEntry,
+  CanonicalDtsDefinitionDetail,
   EffectiveTopologyNode,
   ParameterSpecDetail,
   SourceTopologyNode
@@ -54,6 +55,7 @@ type PrimaryDtsSource = {
 
 export type DtsParameterWorkbenchProps = {
   projectId?: string;
+  requestedBindingId?: string;
   configSetId?: string;
   revisionId?: string;
   layoutMode?: "desktop" | "tablet" | "mobile";
@@ -72,6 +74,7 @@ export type DtsParameterWorkbenchProps = {
   canEdit: boolean;
   onSelectBinding: (bindingId: string) => void;
   onEditBinding?: (bindingId: string) => void;
+  onStartDtsReload?: (bindingId: string) => void;
   onCreateDraft?: (input: {
     bindingId: string;
     rawValue: string;
@@ -85,7 +88,11 @@ export type DtsParameterWorkbenchProps = {
   /** Loads cross-project compare peers when a detail dialog opens. */
   loadBindingCompare?: (bindingId: string) => Promise<BindingCompareEntry[]>;
   /** Loads parameter-spec meaning/example fields when a detail dialog opens. */
-  loadParameterSpec?: (parameterSpecId: string) => Promise<ParameterSpecDetail>;
+  loadParameterSpec?: (
+    definitionId: string,
+    effectiveRevisionId: string,
+    propertyKey: string
+  ) => Promise<ParameterSpecDetail | CanonicalDtsDefinitionDetail>;
   /** Optional mature-workbench current-edits tray rendered inside the DTS region. */
   currentEdits?: ReactNode;
   /**
@@ -161,6 +168,7 @@ function treeContainsNode(roots: DtsWorkbenchTreeNode[], nodeId: string): boolea
 
 export function DtsParameterWorkbench({
   projectId,
+  requestedBindingId,
   configSetId,
   revisionId,
   layoutMode = "desktop",
@@ -175,6 +183,7 @@ export function DtsParameterWorkbench({
   canEdit,
   onSelectBinding,
   onEditBinding,
+  onStartDtsReload,
   onCreateDraft,
   onEditNodeEnablement,
   loadBindingHistory,
@@ -215,6 +224,20 @@ export function DtsParameterWorkbench({
   useHorizontalDragScroll(listScrollXRef);
 
   const currentRows = effectiveRows;
+  const handledRequest = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${projectId ?? ""}:${requestedBindingId ?? ""}`;
+    if (!requestedBindingId || handledRequest.current === key
+      || !currentRows.some((row) => row.bindingId === requestedBindingId)) return;
+    handledRequest.current = key;
+    setQuery("");
+    setModuleFilter([]);
+    setSelectedNodeId(null);
+    setResultsMode("parameters");
+    setSelectedBindingId(requestedBindingId);
+    setDetailIntent("view");
+    onSelectBinding(requestedBindingId);
+  }, [currentRows, onSelectBinding, projectId, requestedBindingId]);
   const moduleTree = useMemo(
     () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules, groupByDevice: true }),
     [currentRows, moduleRegistry],
@@ -488,76 +511,110 @@ export function DtsParameterWorkbench({
 
   const [historyEntries, setHistoryEntries] = useState<BindingHistoryEntry[]>([]);
   const [compareEntries, setCompareEntries] = useState<BindingCompareEntry[]>([]);
-  const [specDetail, setSpecDetail] = useState<ParameterSpecDetail | null>(null);
+  const [historyStatus, setHistoryStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [compareStatus, setCompareStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [historyErrorMessage, setHistoryErrorMessage] = useState<string | null>(null);
+  const [compareErrorMessage, setCompareErrorMessage] = useState<string | null>(null);
+  const [historyRetryToken, setHistoryRetryToken] = useState(0);
+  const [compareRetryToken, setCompareRetryToken] = useState(0);
+  const [specDetail, setSpecDetail] = useState<ParameterSpecDetail | CanonicalDtsDefinitionDetail | null>(null);
   const [specDetailStatus, setSpecDetailStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [specDetailErrorMessage, setSpecDetailErrorMessage] = useState<string | null>(null);
+  const [specDetailRetryToken, setSpecDetailRetryToken] = useState(0);
 
   useEffect(() => {
     if (!selectedBindingId || !loadBindingHistory) {
       setHistoryEntries([]);
+      setHistoryStatus("idle");
+      setHistoryErrorMessage(null);
       return undefined;
     }
     let cancelled = false;
     const requestBindingId = selectedBindingId;
     setHistoryEntries([]);
+    setHistoryStatus("loading");
+    setHistoryErrorMessage(null);
     loadBindingHistory(requestBindingId)
       .then((entries) => {
-        if (!cancelled) setHistoryEntries(entries);
+        if (!cancelled) {
+          setHistoryEntries(entries);
+          setHistoryStatus("ready");
+        }
       })
-      .catch(() => {
-        if (!cancelled) setHistoryEntries([]);
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setHistoryEntries([]);
+          setHistoryStatus("error");
+          setHistoryErrorMessage(presentError(error, "历史加载失败，请稍后重试。"));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedBindingId, loadBindingHistory]);
+  }, [selectedBindingId, loadBindingHistory, historyRetryToken]);
 
   useEffect(() => {
     if (!selectedBindingId || !loadBindingCompare) {
       setCompareEntries([]);
+      setCompareStatus("idle");
+      setCompareErrorMessage(null);
       return undefined;
     }
     let cancelled = false;
     const requestBindingId = selectedBindingId;
     setCompareEntries([]);
+    setCompareStatus("loading");
+    setCompareErrorMessage(null);
     loadBindingCompare(requestBindingId)
       .then((entries) => {
-        if (!cancelled) setCompareEntries(entries);
+        if (!cancelled) {
+          setCompareEntries(entries);
+          setCompareStatus("ready");
+        }
       })
-      .catch(() => {
-        if (!cancelled) setCompareEntries([]);
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setCompareEntries([]);
+          setCompareStatus("error");
+          setCompareErrorMessage(presentError(error, "对比加载失败，请稍后重试。"));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedBindingId, loadBindingCompare]);
+  }, [selectedBindingId, loadBindingCompare, compareRetryToken]);
 
   useEffect(() => {
     if (!selectedRow || detailIntent !== "view" || !loadParameterSpec) {
       setSpecDetail(null);
       setSpecDetailStatus("idle");
+      setSpecDetailErrorMessage(null);
       return undefined;
     }
     let cancelled = false;
-    const requestSpecId = selectedRow.parameterSpecId;
+    const requestDefinitionId = selectedRow.definitionId ?? selectedRow.parameterSpecId;
+    const requestRevisionId = selectedRow.effectiveRevisionId ?? selectedRow.parameterSpecVersionId;
     setSpecDetail(null);
     setSpecDetailStatus("loading");
-    void Promise.resolve(loadParameterSpec(requestSpecId))
+    setSpecDetailErrorMessage(null);
+    void Promise.resolve(loadParameterSpec(requestDefinitionId, requestRevisionId, selectedRow.propertyKey))
       .then((detail) => {
         if (!cancelled) {
           setSpecDetail(detail);
           setSpecDetailStatus("ready");
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
           setSpecDetail(null);
           setSpecDetailStatus("error");
+          setSpecDetailErrorMessage(presentError(error, "规格详情加载失败，请稍后重试。"));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedRow, detailIntent, loadParameterSpec]);
+  }, [selectedRow, detailIntent, loadParameterSpec, specDetailRetryToken]);
 
   useEffect(() => {
     if (selectedBindingId || draftDialogOpen || !pendingFocusRestoreRef.current) return;
@@ -752,6 +809,7 @@ export function DtsParameterWorkbench({
                     canEdit={canEdit}
                     onSelectBinding={selectBinding}
                     onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
+                    onStartDtsReload={onStartDtsReload}
                     onSelectedBindingIdsChange={setSelectedBindingIds}
                   />
                   {visibleRows.length === 0 ? (
@@ -805,10 +863,18 @@ export function DtsParameterWorkbench({
           canEdit={canEdit && Boolean(onCreateDraft)}
           historyEntries={historyEntries}
           compareEntries={compareEntries}
+          historyStatus={historyStatus}
+          historyErrorMessage={historyErrorMessage}
+          compareStatus={compareStatus}
+          compareErrorMessage={compareErrorMessage}
+          onRetryHistory={() => setHistoryRetryToken((token) => token + 1)}
+          onRetryCompare={() => setCompareRetryToken((token) => token + 1)}
           baseProjectId={projectId ?? "current"}
           baseProjectName="当前项目"
           specDetail={specDetail}
           specDetailStatus={specDetailStatus}
+          specDetailErrorMessage={specDetailErrorMessage}
+          onRetrySpecDetail={() => setSpecDetailRetryToken((token) => token + 1)}
           onClose={closeDetail}
           onAddToDraft={canEdit && onCreateDraft ? addBindingToDraft : undefined}
           onUseCompareAsDraft={canEdit && onCreateDraft ? useCompareAsDraft : undefined}

@@ -4,7 +4,19 @@
 > Chinese: [`docs/zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md`](../zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md)  
 > Plan: [`docs/exec-plans/completed/2026-08-05-project-parameter-initialization.md`](../exec-plans/completed/2026-08-05-project-parameter-initialization.md)
 
-## Summary
+## Canonical source amendment (#902, 2026-09-23)
+
+For the current API, the source of inheritance is a canonical Binding and its immutable ProjectValue/source pin. The semantic-table implementation described below is historical; it must not be used as a fallback or materialization target.
+
+- The wizard loads candidates from the API. Selection retains individual Binding/source instances, including equal names or Definitions in different instances. Primary/supplement selects ordering; distinct sources are copied into independent target config sets, with conflicting values shown for review rather than silently merged.
+- Each preview freezes `sourceProjectValueId` and Definition revision. Saving reloads server-owned candidates; client-supplied display values cannot replace source evidence. Missing provenance or a changed value, Definition, source manifest, or Catalog selection prevents approval.
+- Approval copies the complete pinned DTS/JSON member bytes into target-owned files/versions and config sets. DTS is reparsed with new target logical nodes; only selected properties are materialized through the existing canonical owner. JSON uses explicit ConfigurationSchema/root/pointer mappings. Neither path copies a source logical-node identity or creates a value without a pin.
+- Target and source subsequently use their own canonical draft/review/writeback flow. Initialization remains an audited transaction; duplicate approval returns the recorded result. Starting empty creates no parameter Binding or source copy.
+- YAML/TOML/ENV remain unsupported. No migration, old semantic-row reconstruction, source-project mutation, or production rebuild is part of initialization.
+
+Focused evidence is maintained in `initializationHttp.integration.test.ts`, initialization service/source tests, and the wizard tests. Real API browser evidence and the exact candidate are reported in the Issue/PR; these tests do not establish publication-manager or deployment readiness.
+
+## Summary (historical semantic design)
 
 Add a parameter-library initialization step to the new-project wizard. Creators take a **one-time snapshot of selected source-project bindings** (semantic identities), submit an initialization review, and unlock the normal typed-binding workflow only after admin approval.
 

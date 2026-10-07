@@ -10,18 +10,44 @@ import type {
   RiskLevel
 } from "@/domain/parameters/types";
 
-function toLegacySnapshot(item: SemanticInitializationSnapshotItem): ProjectParameterInitializationSnapshotItem {
+export type InitializationUiCandidate = Omit<ProjectParameterInitializationSnapshotItem, "risk"> & {
+  risk: SemanticInitializationSnapshotItem["risk"];
+};
+
+function canonicalDisplayNotes(item: SemanticInitializationSnapshotItem) {
+  return [
+    item.notes,
+    `参数标识: ${item.propertyKey}`,
+    `定义标识: ${item.parameterSpecId}`,
+    item.sourceName ? `来源文件: ${item.sourceName}` : undefined,
+    item.sourceLocatorLabel ? `来源定位: ${item.sourceLocatorLabel}` : undefined
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+export function toInitializationUiCandidate(
+  item: SemanticInitializationSnapshotItem
+): InitializationUiCandidate {
   return {
     parameterId: item.sourceProjectParameterBindingId || item.parameterSpecId,
     sourceProjectId: item.sourceProjectId,
     sourceRole: item.sourceRole,
     module: item.moduleId,
-    risk: (item.risk ?? "Low") as RiskLevel,
+    risk: item.risk,
     recommendedValue: item.rawValue,
     currentValueState: "pending_project_confirmation",
     alternativeSourceProjectIds: [],
     needsRecommendedValueConfirmation: item.needsEffectiveValueConfirmation,
-    notes: item.notes
+    notes: canonicalDisplayNotes(item)
+  };
+}
+
+function toLegacySnapshot(item: SemanticInitializationSnapshotItem): ProjectParameterInitializationSnapshotItem {
+  const candidate = toInitializationUiCandidate(item);
+  return {
+    ...candidate,
+    risk: (candidate.risk ?? "Low") as RiskLevel
   };
 }
 

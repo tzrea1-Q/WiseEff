@@ -57,7 +57,8 @@ import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
-import type { KnowledgeSpecPickerOption } from "@/features/knowledge/KnowledgeEntryEditorDialog";
+import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/KnowledgeEntryEditorDialog";
+import { buildCatalogHref, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
 
 
 export type ParameterPageActions = {
@@ -192,28 +193,42 @@ export function PageRouter({
       onOpenEntry: (entryId: string) => onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`)
     };
   }, [knowledgeRepository, canViewKnowledge, onNavigate]);
+  const definitionRelatedKnowledge = useMemo<SpecRelatedKnowledgeSource | undefined>(() => {
+    if (!knowledgeRepository || !canViewKnowledge) return undefined;
+    return {
+      load: async (definitionId) => {
+        const { items } = await knowledgeRepository.relatedToDefinition(definitionId);
+        return items;
+      },
+      onOpenEntry: (entryId) => onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`)
+    };
+  }, [knowledgeRepository, canViewKnowledge, onNavigate]);
 
   // Entry-editor definition picker: searching needs parameter:view (the same
   // read API the caller uses elsewhere); absent hides the picker section.
-  const canViewParameterSpecs = canPerform(currentRoleId, "parameter.view");
-  const searchParameterSpecs = useMemo<((q: string) => Promise<KnowledgeSpecPickerOption[]>) | undefined>(() => {
-    if (!parameterTopologyRepository || !canViewParameterSpecs) {
+  const canViewParameterDefinitions = canPerform(currentRoleId, "parameter.view");
+  const searchParameterDefinitions = useMemo<((q: string, cursor?: string, catalogReleaseId?: string) => Promise<KnowledgeDefinitionPickerPage>) | undefined>(() => {
+    if (!runtime?.parameterCatalogRepository || !canViewParameterDefinitions) {
       return undefined;
     }
-    return async (q: string) => {
-      const trimmed = q.trim();
-      const items = await parameterTopologyRepository.listSpecs(trimmed ? { q: trimmed, propertyKey: trimmed } : {});
-      return items.map((item) => ({
-        specId: item.id,
-        propertyKey: item.propertyKey ?? item.specificationKey,
-        // The list projection carries no display name; the chip falls back to
-        // the property key, which is how the library scan columns read too.
-        displayName: null,
-        driverModule: item.driverModule ?? null,
-        lifecycle: item.lifecycle
-      }));
+    return async (q, cursor, catalogReleaseId) => {
+      const page = await runtime.parameterCatalogRepository!.listDefinitions({
+        search: q.trim(), limit: 50, ...(cursor ? { cursor } : {}),
+        ...(catalogReleaseId ? { catalogReleaseId } : {})
+      });
+      return {
+        items: page.items.map((item) => ({
+          definitionId: item.id,
+          propertyKey: item.propertyKey,
+          displayName: item.currentRevision.displayName,
+          driverModule: item.subject.canonicalName,
+          lifecycle: item.lifecycle
+        })),
+        nextCursor: page.nextCursor,
+        catalogReleaseId: page.catalogReleaseId
+      };
     };
-  }, [parameterTopologyRepository, canViewParameterSpecs]);
+  }, [runtime?.parameterCatalogRepository, canViewParameterDefinitions]);
 
   const detectDtsReloadTargets = useMemo(() => {
     if (!debuggingGateway) {
@@ -277,7 +292,17 @@ export function PageRouter({
         />
       );
     case "parameter-submissions":
-      return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
+      return (
+        <ParameterSubmissionsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          parameterActions={parameterActions}
+          runtime={runtime}
+          runtimeMode={runtimeMode}
+        />
+      );
     case "parameter-home":
       return (
         <ParameterHomePage
@@ -333,6 +358,7 @@ export function PageRouter({
           state={state}
           onNewProject={onNewProject}
           relatedKnowledge={specRelatedKnowledge}
+          definitionRelatedKnowledge={definitionRelatedKnowledge}
           runtime={runtime}
           catalogOrganizationId={organizationId}
           sessionPermissions={sessionPermissions}
@@ -374,8 +400,8 @@ export function PageRouter({
           capability={knowledgeCapability}
           askXiaozeEnabled={runtimeMode === "api"}
           initialEntryId={new URLSearchParams(search).get("entryId")}
-          searchParameterSpecs={searchParameterSpecs}
-          onOpenParameterSpec={(specId) => onNavigate(`/parameter-admin?spec=${encodeURIComponent(specId)}`)}
+          searchParameterDefinitions={searchParameterDefinitions}
+          onOpenDefinition={(definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId }))}
           onNavigate={onNavigate}
         />
       ) : null;

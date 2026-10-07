@@ -119,6 +119,7 @@ if (phase === "discovery") {
   }
   if (output && scenario.storageFailure === "publication") {
     writeFileSync(path.join(path.dirname(output), "record.json"), "fixture-existing-record", { mode: 0o600 });
+    appendFileSync(marker, "publication-record-ready\\n");
   }
   if (scenario.report === "missing" && output) { try { unlinkSync(output); } catch {} }
   else if (scenario.report !== "empty" && output) {
@@ -225,9 +226,13 @@ async function invokeSignalledFixture(fixture: string, scenario: MatrixScenario)
   let markerPid: number | undefined;
   while (!closed && Date.now() < deadline) {
     if (existsSync(marker)) {
-      const line = readFileSync(marker, "utf8").split(/\r?\n/u).find(value => value.startsWith(`${scenario.signalPhase}:`));
+      const markerText = readFileSync(marker, "utf8");
+      const line = markerText.split(/\r?\n/u).find(value => value.startsWith(`${scenario.signalPhase}:`));
       const match = line?.match(/:pid:(\d+)$/u);
-      if (match) { markerPid = Number(match[1]); break; }
+      if (match && (scenario.storageFailure !== "publication" || markerText.includes("publication-record-ready"))) {
+        markerPid = Number(match[1]);
+        break;
+      }
     }
     await new Promise(resolve => setTimeout(resolve, 10));
   }

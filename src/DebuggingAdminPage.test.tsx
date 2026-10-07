@@ -5,6 +5,10 @@ import { DebuggingAdminPage } from "./DebuggingAdminPage";
 import { WiseEffApiError } from "./infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "./infrastructure/http/debuggingAdminClient";
 import { initialState } from "./mockData";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { createParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
+import { createApiParameterCatalogRepository } from "@/application/parameter-catalog/apiAdapter";
 
 const adminState = { ...initialState, activeRoleId: "admin" };
 
@@ -71,7 +75,7 @@ function createDebuggingAdminApiMock() {
   };
 }
 
-function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), apiAuthPermissions = ["debugging:admin"]) {
+function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), apiAuthPermissions = ["debugging:admin"], parameterRepository?: Pick<ParameterRepository, "listProjects">, parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">) {
   render(
     <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
       <DebuggingAdminPage
@@ -82,6 +86,8 @@ function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), api
         area="nodes"
         runtimeMode="api"
         debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
+        parameterRepository={parameterRepository}
+        parameterCatalogRepository={parameterCatalogRepository}
         apiAuthPermissions={apiAuthPermissions}
       />
     </TopBarActionsContext.Provider>
@@ -102,6 +108,53 @@ afterEach(() => {
 });
 
 describe("/debugging-admin API mode", () => {
+  it.each(["create", "edit"])("sends protected Binding pins through the %s node API writer", async (mode) => {
+    // Observed canonical-only JSON shape; public client/port/UI codec proof, not backend acceptance.
+    const projects = [
+      { id: "page-8f791044-f5bd-4d31-bc4e-fb0e5734e188", name: "Owned page 0", code: "PAGE0" },
+      { id: "page-977e6a0a-74f5-4167-b878-d483fd346c13", name: "Owned page 1", code: "PAGE1" }
+    ];
+    const pins = [
+      { id: "pbind_6b6714303ae7c1781f7b56a45ee6dac66b4ef5c935b431ecfb0b81eec78e43f4", currentValueId: "pval_590c9cf0634dc079ba3876d18b2114feb507439f053220fc3acb6f647fe9c520" },
+      { id: "pbind_d4f68d8ff81649c3345a31182c26961f865f61f3427f836919fdd713b31f9dd8", currentValueId: "pval_5cf2e143f7de951bd5fac2cd1979308c66afcf087fd4021d4222657d1f8ae58c" }
+    ];
+    const selectedIndex = mode === "create" ? 0 : 1;
+    const project = projects[selectedIndex], pin = pins[selectedIndex];
+    const reader = {
+      listProjects: vi.fn().mockResolvedValue(projects),
+      listParameters: vi.fn().mockResolvedValue([])
+    } satisfies Pick<ParameterRepository, "listProjects" | "listParameters">;
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ items: [{
+      ...pin, projectId: project.id, parameterSpecId: "pdef_acme_power_iin_max", parameterSpecVersionId: "drev_acme_power_iin_max_1",
+      definitionId: "pdef_acme_power_iin_max", effectiveRevisionId: "drev_acme_power_iin_max_1",
+      propertyKey: "iin_max", driverModule: "Configuration", logicalNodeId: null, instanceName: null, locator: "/limit",
+      effectiveValue: { kind: "json", value: selectedIndex ? 48 : 36.5 }, rawValue: selectedIndex ? "48\n" : "36.5\n",
+      schemaState: "valid", policyState: "not_applicable", moduleId: "10b210eb-bb98-413d-9d87-961128adae59",
+      displayName: "Input current limit", description: null, documentation: "Maximum accepted input current."
+    }] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const catalogReader = createApiParameterCatalogRepository(createParameterCatalogClient({ fetchImpl }));
+    const apiClient = renderDebuggingAdminPage(createDebuggingAdminApiMock(), ["debugging:admin"], reader, catalogReader);
+    await screen.findByText("Fast charge current");
+    if (mode === "create") {
+      fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
+      fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Temperature" } });
+    } else {
+      fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑" }));
+    }
+    await waitFor(() => expect(screen.getByLabelText("关联项目")).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("关联项目"), { target: { value: project.id } });
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    await screen.findByRole("option", { name: "Input current limit · /limit" });
+    fireEvent.change(screen.getByLabelText("关联参数"), { target: { value: pin.id } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    const writer = mode === "create" ? apiClient.post : apiClient.patch;
+    await waitFor(() => expect(writer).toHaveBeenCalledWith(
+      mode === "create" ? "/api/v1/debugging/admin/nodes" : "/api/v1/debugging/admin/nodes/node-1",
+      expect.objectContaining({ canonicalBinding: { projectId: project.id, bindingId: pin.id, expectedEffectiveRevisionId: "drev_acme_power_iin_max_1", expectedCurrentValueId: pin.currentValueId } })
+    ));
+    expect(fetchImpl).toHaveBeenCalledWith(`/api/v2/projects/${project.id}/parameter-bindings`, expect.objectContaining({ method: "GET" }));
+    expect(reader.listParameters).not.toHaveBeenCalled();
+  });
   it("switches scope peers between parameter reload config and node catalog", async () => {
     const onNavigate = vi.fn();
     render(

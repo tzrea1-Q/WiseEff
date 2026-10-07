@@ -126,7 +126,7 @@ function expectedBindingId(specId: string, logicalNodeId: string) {
 }
 
 async function withTempDatabase(fn: (db: Database, connectionString: string) => Promise<void>) {
-  await withSharedTempDatabase({ prefix: "pcw" }, ({ db, connectionString }) =>
+  await withSharedTempDatabase({ prefix: "pcw", migrate: "template" }, ({ db, connectionString }) =>
     fn(db, connectionString)
   );
 }

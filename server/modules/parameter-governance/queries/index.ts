@@ -1,5 +1,7 @@
 import type pg from "pg";
 
+export { listDriverCompatibleDiscovery } from "./driverCompatibleDiscovery";
+export type { DriverCompatibleDiscoveryItem, DriverCompatibleDiscoveryPage } from "./driverCompatibleDiscovery";
 import { getObservation, listObservations } from "./observations";
 import { getProposal, listProposals } from "./proposals";
 import {

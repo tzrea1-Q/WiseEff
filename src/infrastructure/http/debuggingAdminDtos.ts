@@ -43,6 +43,22 @@ export type DebugAdminNodeDto = {
   archivedBy: string | null;
   archiveReason: string | null;
   bindings?: DebugAdminBindingDto[];
+  canonicalBinding?: {
+    projectId: string;
+    bindingId: string;
+    expectedEffectiveRevisionId?: string;
+    expectedCurrentValueId?: string;
+    sourcePinId?: string;
+  } | null;
+  bindingId?: string;
+  projectId?: string;
+  definitionId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
+  sourcePinId?: string;
+  configRevisionId?: string;
+  protectedReferenceKind?: "canonical-pin" | "typed-block";
+  protectedReferenceReason?: string;
 };
 
 export type DebugAdminNodeWriteDto = {
@@ -55,6 +71,7 @@ export type DebugAdminNodeWriteDto = {
   moduleId?: string;
   enabled: boolean;
   bindings?: DebugAdminNodeBindingWriteDto[];
+  canonicalBinding?: DebugAdminNodeDto["canonicalBinding"];
 };
 
 export type DebugAdminModuleDto = FlatModuleNode;
@@ -104,6 +121,17 @@ export function debugAdminNodeFromDto(dto: DebugAdminNodeDto): DebugNodeRegistry
     moduleId: dto.moduleId,
     modulePath: dto.modulePath,
     enabled: dto.enabled,
-    bindings: dto.bindings?.map(debugAdminNodeBindingFromDto) ?? []
+    bindings: dto.bindings?.map(debugAdminNodeBindingFromDto) ?? [],
+    canonicalBinding: dto.canonicalBinding ?? (
+      dto.bindingId && dto.projectId
+        ? {
+            projectId: dto.projectId,
+            bindingId: dto.bindingId,
+            expectedEffectiveRevisionId: dto.effectiveRevisionId,
+            expectedCurrentValueId: dto.currentValueId,
+            sourcePinId: dto.sourcePinId
+          }
+        : null
+    )
   };
 }

@@ -56,6 +56,10 @@ export type WorkbenchSourceTreeProps = {
   membersLoading: boolean;
   membersError: string;
   onMembersRetry: () => void;
+  sourceWorkflowSetLoading: boolean;
+  sourceWorkflowSetReady: boolean;
+  sourceWorkflowSetCanonical: boolean;
+  sourceWorkflowSetError: string;
   selectedMembers: DtsConfigSetMemberFile[];
   selectedMember: DtsConfigSetMemberFile | null;
   onSelectMember: (fileId: string) => void;
@@ -94,6 +98,10 @@ export function WorkbenchSourceTree({
   membersLoading,
   membersError,
   onMembersRetry,
+  sourceWorkflowSetLoading,
+  sourceWorkflowSetReady,
+  sourceWorkflowSetCanonical,
+  sourceWorkflowSetError,
   selectedMembers,
   selectedMember,
   onSelectMember,
@@ -115,6 +123,19 @@ export function WorkbenchSourceTree({
   pendingAction,
   onAssignUngroupedFile
 }: WorkbenchSourceTreeProps) {
+  const sourceSetMutationBlocked =
+    sourceWorkflowSetLoading ||
+    !sourceWorkflowSetReady ||
+    Boolean(sourceWorkflowSetError) ||
+    sourceWorkflowSetCanonical;
+  const sourceSetMutationReason = sourceWorkflowSetError
+    ? sourceWorkflowSetError
+    : sourceWorkflowSetCanonical
+      ? "当前配置集包含 canonical 来源成员；canonical 成员新增尚无受审入口，不能编入文件。"
+      : selectedMembers.length === 0
+        ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
+      : "配置集来源一致性尚未完成校验，成员变更已禁用。";
+
   if (!treeOpen) {
     return (
       <button
@@ -306,7 +327,9 @@ export function WorkbenchSourceTree({
                 className="button subtle"
                 type="button"
                 aria-label={`编入 ${item.fileName}`}
-                disabled={pendingAction !== null}
+                title={sourceSetMutationBlocked ? sourceSetMutationReason : undefined}
+                aria-describedby={sourceSetMutationBlocked ? "source-tree-member-add-reason" : undefined}
+                disabled={pendingAction !== null || sourceSetMutationBlocked}
                 onClick={() => onAssignUngroupedFile(item)}
               >
                 编入当前配置集
@@ -314,6 +337,10 @@ export function WorkbenchSourceTree({
             ) : null}
           </div>
         ))}
+        {ungroupedFiles.length > 0 && sourceSetMutationBlocked ? (
+          <p id="source-tree-member-add-reason" role="note">{sourceSetMutationReason}
+            {sourceWorkflowSetCanonical ? "" : " 未完成校验前不能编入当前配置集。"}</p>
+        ) : null}
       </div>
     </aside>
   );

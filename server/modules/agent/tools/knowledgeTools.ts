@@ -94,13 +94,27 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
             tags: entry.tags,
             content,
             truncated,
-            // Structural definition references so grounding answers can name
-            // the parameters; lifecycle is honest (deprecated stays visible).
-            referencedParameters: entry.parameterReferences.map((reference) => ({
-              specId: reference.specId,
-              name: reference.displayName?.trim() || reference.propertyKey,
-              lifecycle: reference.lifecycle
-            }))
+            // Keep canonical Definition identity distinct from legacy Spec history.
+            referencedParameters: entry.parameterReferences.map((reference) =>
+              reference.kind === "definition"
+                ? {
+                    kind: reference.kind,
+                    definitionId: reference.definitionId,
+                    availability: reference.availability,
+                    name: reference.availability === "unavailable"
+                      ? "定义不可用"
+                      : reference.displayName?.trim() || reference.propertyKey || reference.definitionId,
+                    lifecycle: reference.lifecycle
+                  }
+                : {
+                    kind: reference.kind,
+                    specId: reference.specId,
+                    name: reference.displayName?.trim() || reference.propertyKey || reference.specId,
+                    lifecycle: reference.lifecycle,
+                    historicalOnly: reference.historicalOnly,
+                    mappingStatus: reference.mappingStatus
+                  }
+            )
           },
           citations: [
             {

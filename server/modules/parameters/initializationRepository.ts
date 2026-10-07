@@ -1,5 +1,10 @@
 import type { Queryable } from "../../shared/database/client";
 import { serializePostgresJsonb } from "../../shared/database/jsonb";
+import {
+  listCanonicalInitializationBindingCandidates,
+  payloadToBindingView,
+} from "../parameter-bindings/catalogProjectValueSync";
+import { ApiError } from "../../shared/http/errors";
 import type { InitializationBindingCandidate } from "./mergeInitializationBindings";
 import type {
   InitializationDraftDto,
@@ -42,19 +47,6 @@ type ReviewRow = {
   reviewed_by_user_id: string | null;
   reviewed_at: string | Date | null;
   rejection_reason: string | null;
-};
-
-type SourceBindingRow = {
-  source_binding_id: string;
-  source_project_id: string;
-  parameter_spec_id: string;
-  parameter_spec_version_id: string;
-  property_key: string;
-  module_id: string;
-  logical_node_id: string | null;
-  risk: string | null;
-  effective_value: unknown;
-  raw_value: string | null;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -132,6 +124,25 @@ export async function getProjectInitializationStatus(
     where organization_id = $1
       and id = $2
     limit 1
+    `,
+    [input.organizationId, input.projectId]
+  );
+  return result.rows[0]?.initialization_status ?? null;
+}
+
+/** Serialize the complete initialization draft/review lifecycle on the project row. */
+export async function lockProjectInitialization(
+  db: Queryable,
+  input: { organizationId: string; projectId: string }
+): Promise<ProjectInitializationStatus | null> {
+  const result = await db.query<{ initialization_status: ProjectInitializationStatus }>(
+    `
+    select initialization_status
+    from projects
+    where organization_id = $1
+      and id = $2
+    limit 1
+    for update
     `,
     [input.organizationId, input.projectId]
   );
@@ -292,6 +303,26 @@ export async function getReviewById(
   return row ? toReviewDto(row) : null;
 }
 
+/** Approval serializes on the review row so retry/concurrent requests cannot clone twice. */
+export async function getReviewByIdForUpdate(
+  db: Queryable,
+  input: { organizationId: string; reviewId: string }
+): Promise<InitializationReviewDto | null> {
+  const result = await db.query<ReviewRow>(
+    `
+    select *
+    from project_parameter_initialization_reviews
+    where organization_id = $1
+      and id = $2
+    limit 1
+    for update
+    `,
+    [input.organizationId, input.reviewId]
+  );
+  const row = result.rows[0];
+  return row ? toReviewDto(row) : null;
+}
+
 export async function markReviewApproved(
   db: Queryable,
   input: { organizationId: string; reviewId: string; reviewedByUserId: string }
@@ -340,23 +371,6 @@ export async function markReviewRejected(
   return row ? toReviewDto(row) : null;
 }
 
-export async function getBindingLogicalNodeId(
-  db: Queryable,
-  input: { organizationId: string; bindingId: string }
-): Promise<string | null> {
-  const result = await db.query<{ logical_node_id: string | null }>(
-    `
-    select logical_node_id
-    from project_parameter_bindings
-    where organization_id = $1
-      and id = $2
-    limit 1
-    `,
-    [input.organizationId, input.bindingId]
-  );
-  return result.rows[0]?.logical_node_id ?? null;
-}
-
 /**
  * Load latest-revision binding candidates from source projects for snapshot preview.
  */
@@ -371,67 +385,43 @@ export async function listSourceBindingCandidates(
   }
 ): Promise<InitializationBindingCandidate[]> {
   if (input.projectIds.length === 0) return [];
+  const rows = await listCanonicalInitializationBindingCandidates(db, input);
 
-  const values: unknown[] = [input.organizationId, input.projectIds];
-  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])"];
+  return rows.map((row) => {
+    const view = payloadToBindingView(row.payload, row.sourceFormat);
+    return {
+      sourceProjectId: row.sourceProjectId,
+      sourceBindingId: row.sourceBindingId,
+      sourceProjectValueId: row.currentValueId,
+      parameterSpecId: row.definitionId,
+      parameterSpecVersionId: row.effectiveRevisionId,
+      propertyKey: row.propertyKey,
+      moduleId: row.moduleId ?? "",
+      risk: normalizeRisk(row.risk),
+      effectiveValue: view.typedValue,
+      rawValue: view.rawValue,
+      sourceConfigSetId: row.sourceConfigSetId,
+      sourceConfigRevisionId: row.sourceConfigRevisionId,
+      sourceOccurrenceId: row.sourceOccurrenceId,
+      sourceFormat: row.sourceFormat,
+      sourceName: row.sourceName ?? undefined,
+      sourceLocatorLabel: row.sourceLocatorLabel ?? undefined
+    };
+  });
+}
 
-  if (input.bindingIds?.length) {
-    values.push(input.bindingIds);
-    conditions.push(`b.id = any($${values.length}::text[])`);
-  }
-  if (input.moduleIds?.length) {
-    values.push(input.moduleIds);
-    conditions.push(`b.module_id = any($${values.length}::text[])`);
-  }
-
-  const result = await db.query<SourceBindingRow>(
-    `
-    select
-      b.id as source_binding_id,
-      b.project_id as source_project_id,
-      b.parameter_spec_id,
-      br.parameter_spec_version_id,
-      coalesce(nullif(trim(ps.property_key), ''), nullif(trim(dps.property_key), ''), '') as property_key,
-      b.module_id,
-      b.logical_node_id,
-      null::text as risk,
-      br.typed_value as effective_value,
-      br.raw_value
-    from project_parameter_bindings b
-    inner join lateral (
-      select br2.parameter_spec_version_id, br2.typed_value, br2.raw_value
-      from project_parameter_binding_revisions br2
-      inner join dts_config_revisions cr on cr.id = br2.config_revision_id
-      where br2.binding_id = b.id
-      order by cr.revision_number desc, br2.created_at desc
-      limit 1
-    ) br on true
-    inner join parameter_specs ps on ps.id = b.parameter_spec_id
-    left join dts_property_specs dps on dps.parameter_spec_version_id = br.parameter_spec_version_id
-    where ${conditions.join(" and ")}
-    order by b.project_id, coalesce(ps.property_key, ''), b.id
-    `,
-    values
+/** Reject cross-tenant or missing source projects before reading canonical rows. */
+export async function assertSourceProjectsOwned(
+  db: Queryable,
+  input: { organizationId: string; projectIds: string[] }
+): Promise<void> {
+  const projectIds = [...new Set(input.projectIds.filter(Boolean))];
+  if (projectIds.length === 0) return;
+  const result = await db.query<{ id: string }>(
+    `select id from projects where organization_id=$1 and id=any($2::text[])`,
+    [input.organizationId, projectIds]
   );
-
-  let rows = result.rows;
-  if (input.risks?.length) {
-    const allowed = new Set(input.risks);
-    rows = rows.filter((row) => {
-      const risk = normalizeRisk(row.risk);
-      return risk !== null && allowed.has(risk);
-    });
+  if (result.rows.length !== projectIds.length) {
+    throw new ApiError("FORBIDDEN", "Every initialization source project must belong to the current organization.");
   }
-
-  return rows.map((row) => ({
-    sourceProjectId: row.source_project_id,
-    sourceBindingId: row.source_binding_id,
-    parameterSpecId: row.parameter_spec_id,
-    parameterSpecVersionId: row.parameter_spec_version_id,
-    propertyKey: row.property_key,
-    moduleId: row.module_id,
-    risk: normalizeRisk(row.risk),
-    effectiveValue: row.effective_value,
-    rawValue: row.raw_value ?? ""
-  }));
 }

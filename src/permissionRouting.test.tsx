@@ -48,7 +48,7 @@ describe("permission-aware routing", () => {
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "admin" }} />);
 
-    const settingsEntry = screen.getByRole("button", { name: /^打开 组织管理$/ });
+    const settingsEntry = await screen.findByRole("button", { name: /^打开 组织管理$/ });
     expect(settingsEntry).toBeInTheDocument();
 
     fireEvent.click(settingsEntry);
@@ -58,7 +58,7 @@ describe("permission-aware routing", () => {
     });
   });
 
-  it("filters personal workbench entries by role", () => {
+  it("filters personal workbench entries by role", async () => {
     const renderRole = (activeRoleId: string) => {
       cleanup();
       window.history.replaceState(null, "", "/parameter-home");
@@ -67,23 +67,23 @@ describe("permission-aware routing", () => {
 
     renderRole("guest");
 
-    expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /打开 处理审阅/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
 
     renderRole("hardware-user");
 
-    expect(screen.getByRole("button", { name: /打开 修改参数/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /打开 修改参数/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
 
     renderRole("hardware-committer");
 
-    expect(screen.getByRole("button", { name: /打开 处理审阅/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /打开 处理审阅/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
 
     renderRole("admin");
 
-    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
   });
 
   it("prevents Guest from mutating parameter values in the reducer", () => {

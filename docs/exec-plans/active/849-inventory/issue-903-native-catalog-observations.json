@@ -1,0 +1,905 @@
+{
+  "schemaVersion": 1,
+  "scope": "native Catalog raw observation identity handoff for Knowledge #903; no authorization of changed whole-file blobs",
+  "baseCommit": "c48e6e1d4c0414d7aef42f4f33a6fa3822d8a8a3",
+  "observedHeadCommit": "81acf20baeeb9bd8b3e4c9c0455c0d9dd22dc3e8",
+  "finalSuccessorRule": "verify the listed watched file blob OIDs are unchanged at the eventual PR head",
+  "baseCount": 3565,
+  "observedHeadCount": 3565,
+  "retainedCount": 3531,
+  "retiredCount": 34,
+  "addedCount": 34,
+  "dispositions": {
+    "position-migration": 34,
+    "semantic-change": 0,
+    "true-retirement": 0,
+    "unmatched": 0
+  },
+  "semanticEquivalence": "unverified; whole-file native Catalog gate remains blocking",
+  "pairs": [
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:attribution_subjects",
+      "sourceLine": "const REFERENCE_SPEC_JOINS = `",
+      "scannerEvidence": "read attribution_subjects: left join attribution_subjects asub on asub.id = ps.attribution_subject_id left join lateral ( select display_name from parameter_spec_versions where parameter_spec_id = ps.id order by case version_status when 'a…",
+      "sourceSpanText": "`\n  left join attribution_subjects asub on asub.id = ps.attribution_subject_id\n  left join lateral (\n    select display_name\n    from parameter_spec_versions\n    where parameter_spec_id = ps.id\n    order by\n      case version_status\n        when 'active' then 0\n        when 'superseded' then 1\n        else 2\n      end,\n      version desc\n    limit 1\n  ) psv on true\n  left join dts_property_specs dps on dps.parameter_spec_id = ps.id\n`",
+      "spanSha256": "a25d125505880be9c03b7ce5fdf96dfa3b7a9dc600a2a21aa224fa5cecea19c9",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:4b9d4b6636bcbc05:2cabc964404db6fe",
+        "line": 42,
+        "column": 30,
+        "byteStart": 1615,
+        "byteEnd": 2052,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:4b9d4b6636bcbc05:049bfcc2adf64ecd",
+        "line": 47,
+        "column": 30,
+        "byteStart": 1621,
+        "byteEnd": 2058,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:attribution_subjects",
+      "sourceLine": "`",
+      "scannerEvidence": "read attribution_subjects: select ps.id, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_lifecycle as lifecycle from parameter_specs ps left join attribution_…",
+      "sourceSpanText": "`\n    select\n      ps.id,\n      ${REFERENCE_SPEC_PROJECTION}\n    from parameter_specs ps\n    ${REFERENCE_SPEC_JOINS}\n    where ps.id = $2\n      and (ps.organization_id = $1 or ps.organization_id is null)\n    limit 1\n    `",
+      "spanSha256": "9d35a3776aee5dd12715f8390557108ac2b8c88f4f99ed8b4fc0776ff9aaa94b",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:b335af11d46317ed:65aff50620c22b73",
+        "line": 125,
+        "column": 5,
+        "byteStart": 4195,
+        "byteEnd": 4416,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:b335af11d46317ed:1161f81cff14b8df",
+        "line": 213,
+        "column": 5,
+        "byteStart": 7031,
+        "byteEnd": 7252,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:attribution_subjects",
+      "sourceLine": "`",
+      "scannerEvidence": "read attribution_subjects: select r.entry_id, r.parameter_spec_id, r.created_by_user_id, r.created_at, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_lifecyc…",
+      "sourceSpanText": "`\n    select\n      r.entry_id,\n      r.parameter_spec_id,\n      r.created_by_user_id,\n      r.created_at,\n      ${REFERENCE_SPEC_PROJECTION}\n    from knowledge_parameter_references r\n    left join parameter_specs ps on ps.id = r.parameter_spec_id\n    ${REFERENCE_SPEC_JOINS}\n    where r.organization_id = $1\n      and r.entry_id = any($2::uuid[])\n    order by r.created_at asc, r.parameter_spec_id asc\n    `",
+      "spanSha256": "542305877af19a489a71c829313cc712e6173f38478d228f83d16565f682524e",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:b335af11d46317ed:191585926c1c1830",
+        "line": 79,
+        "column": 5,
+        "byteStart": 2737,
+        "byteEnd": 3144,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:c1290b83988b0f8c:e61ba45b1fd1e318",
+        "line": 146,
+        "column": 5,
+        "byteStart": 4822,
+        "byteEnd": 5229,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:dts_property_specs",
+      "sourceLine": "const REFERENCE_SPEC_JOINS = `",
+      "scannerEvidence": "read dts_property_specs: left join attribution_subjects asub on asub.id = ps.attribution_subject_id left join lateral ( select display_name from parameter_spec_versions where parameter_spec_id = ps.id order by case version_status when 'act…",
+      "sourceSpanText": "`\n  left join attribution_subjects asub on asub.id = ps.attribution_subject_id\n  left join lateral (\n    select display_name\n    from parameter_spec_versions\n    where parameter_spec_id = ps.id\n    order by\n      case version_status\n        when 'active' then 0\n        when 'superseded' then 1\n        else 2\n      end,\n      version desc\n    limit 1\n  ) psv on true\n  left join dts_property_specs dps on dps.parameter_spec_id = ps.id\n`",
+      "spanSha256": "a25d125505880be9c03b7ce5fdf96dfa3b7a9dc600a2a21aa224fa5cecea19c9",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:138f197f9f1d034f:97a3f94e7570a021",
+        "line": 42,
+        "column": 30,
+        "byteStart": 1615,
+        "byteEnd": 2052,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:138f197f9f1d034f:6452e6314483f7cf",
+        "line": 47,
+        "column": 30,
+        "byteStart": 1621,
+        "byteEnd": 2058,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:dts_property_specs",
+      "sourceLine": "`",
+      "scannerEvidence": "read dts_property_specs: select ps.id, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_lifecycle as lifecycle from parameter_specs ps left join attribution_su…",
+      "sourceSpanText": "`\n    select\n      ps.id,\n      ${REFERENCE_SPEC_PROJECTION}\n    from parameter_specs ps\n    ${REFERENCE_SPEC_JOINS}\n    where ps.id = $2\n      and (ps.organization_id = $1 or ps.organization_id is null)\n    limit 1\n    `",
+      "spanSha256": "9d35a3776aee5dd12715f8390557108ac2b8c88f4f99ed8b4fc0776ff9aaa94b",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:87a3f5671b89d611:9e4b245dd774940e",
+        "line": 125,
+        "column": 5,
+        "byteStart": 4195,
+        "byteEnd": 4416,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:87a3f5671b89d611:3c543fd8eeb56f0e",
+        "line": 213,
+        "column": 5,
+        "byteStart": 7031,
+        "byteEnd": 7252,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:dts_property_specs",
+      "sourceLine": "`",
+      "scannerEvidence": "read dts_property_specs: select r.entry_id, r.parameter_spec_id, r.created_by_user_id, r.created_at, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_lifecycle…",
+      "sourceSpanText": "`\n    select\n      r.entry_id,\n      r.parameter_spec_id,\n      r.created_by_user_id,\n      r.created_at,\n      ${REFERENCE_SPEC_PROJECTION}\n    from knowledge_parameter_references r\n    left join parameter_specs ps on ps.id = r.parameter_spec_id\n    ${REFERENCE_SPEC_JOINS}\n    where r.organization_id = $1\n      and r.entry_id = any($2::uuid[])\n    order by r.created_at asc, r.parameter_spec_id asc\n    `",
+      "spanSha256": "542305877af19a489a71c829313cc712e6173f38478d228f83d16565f682524e",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:87a3f5671b89d611:83f67d2ec38e2cf4",
+        "line": 79,
+        "column": 5,
+        "byteStart": 2737,
+        "byteEnd": 3144,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:8051cbab68b62b6e:f24f5cd2734c0241",
+        "line": 146,
+        "column": 5,
+        "byteStart": 4822,
+        "byteEnd": 5229,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:parameter_spec_versions",
+      "sourceLine": "const REFERENCE_SPEC_JOINS = `",
+      "scannerEvidence": "read parameter_spec_versions: left join attribution_subjects asub on asub.id = ps.attribution_subject_id left join lateral ( select display_name from parameter_spec_versions where parameter_spec_id = ps.id order by case version_status when…",
+      "sourceSpanText": "`\n  left join attribution_subjects asub on asub.id = ps.attribution_subject_id\n  left join lateral (\n    select display_name\n    from parameter_spec_versions\n    where parameter_spec_id = ps.id\n    order by\n      case version_status\n        when 'active' then 0\n        when 'superseded' then 1\n        else 2\n      end,\n      version desc\n    limit 1\n  ) psv on true\n  left join dts_property_specs dps on dps.parameter_spec_id = ps.id\n`",
+      "spanSha256": "a25d125505880be9c03b7ce5fdf96dfa3b7a9dc600a2a21aa224fa5cecea19c9",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:7b7ad83d454067b2:8e7006e7a2f31861",
+        "line": 42,
+        "column": 30,
+        "byteStart": 1615,
+        "byteEnd": 2052,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:7b7ad83d454067b2:23f47a1b0dd5e39a",
+        "line": 47,
+        "column": 30,
+        "byteStart": 1621,
+        "byteEnd": 2058,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:parameter_spec_versions",
+      "sourceLine": "`",
+      "scannerEvidence": "read parameter_spec_versions: select ps.id, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_lifecycle as lifecycle from parameter_specs ps left join attributi…",
+      "sourceSpanText": "`\n    select\n      ps.id,\n      ${REFERENCE_SPEC_PROJECTION}\n    from parameter_specs ps\n    ${REFERENCE_SPEC_JOINS}\n    where ps.id = $2\n      and (ps.organization_id = $1 or ps.organization_id is null)\n    limit 1\n    `",
+      "spanSha256": "9d35a3776aee5dd12715f8390557108ac2b8c88f4f99ed8b4fc0776ff9aaa94b",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:67bd4f0c70682e1c:9217d859fbbca757",
+        "line": 125,
+        "column": 5,
+        "byteStart": 4195,
+        "byteEnd": 4416,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:67bd4f0c70682e1c:8e3f39f43cb6dde1",
+        "line": 213,
+        "column": 5,
+        "byteStart": 7031,
+        "byteEnd": 7252,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:parameter_spec_versions",
+      "sourceLine": "`",
+      "scannerEvidence": "read parameter_spec_versions: select r.entry_id, r.parameter_spec_id, r.created_by_user_id, r.created_at, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_life…",
+      "sourceSpanText": "`\n    select\n      r.entry_id,\n      r.parameter_spec_id,\n      r.created_by_user_id,\n      r.created_at,\n      ${REFERENCE_SPEC_PROJECTION}\n    from knowledge_parameter_references r\n    left join parameter_specs ps on ps.id = r.parameter_spec_id\n    ${REFERENCE_SPEC_JOINS}\n    where r.organization_id = $1\n      and r.entry_id = any($2::uuid[])\n    order by r.created_at asc, r.parameter_spec_id asc\n    `",
+      "spanSha256": "542305877af19a489a71c829313cc712e6173f38478d228f83d16565f682524e",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:67bd4f0c70682e1c:3d10f824f084a227",
+        "line": 79,
+        "column": 5,
+        "byteStart": 2737,
+        "byteEnd": 3144,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:febef65f6db6446f:42b908650065c116",
+        "line": 146,
+        "column": 5,
+        "byteStart": 4822,
+        "byteEnd": 5229,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:parameter_specs",
+      "sourceLine": "`",
+      "scannerEvidence": "read parameter_specs: select ps.id, ${…} from parameter_specs ps ${…} where ps.id = $2 and (ps.organization_id = $1 or ps.organization_id is null) limit 1",
+      "sourceSpanText": "`\n    select\n      ps.id,\n      ${REFERENCE_SPEC_PROJECTION}\n    from parameter_specs ps\n    ${REFERENCE_SPEC_JOINS}\n    where ps.id = $2\n      and (ps.organization_id = $1 or ps.organization_id is null)\n    limit 1\n    `",
+      "spanSha256": "9d35a3776aee5dd12715f8390557108ac2b8c88f4f99ed8b4fc0776ff9aaa94b",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:f3d350684d5b173a:b91d271f7515a2f6",
+        "line": 125,
+        "column": 5,
+        "byteStart": 4195,
+        "byteEnd": 4416,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:f3d350684d5b173a:9b6e25d431c77885",
+        "line": 213,
+        "column": 5,
+        "byteStart": 7031,
+        "byteEnd": 7252,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:parameter_specs",
+      "sourceLine": "`",
+      "scannerEvidence": "read parameter_specs: select ps.id, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_lifecycle as lifecycle from parameter_specs ps left join attribution_subje…",
+      "sourceSpanText": "`\n    select\n      ps.id,\n      ${REFERENCE_SPEC_PROJECTION}\n    from parameter_specs ps\n    ${REFERENCE_SPEC_JOINS}\n    where ps.id = $2\n      and (ps.organization_id = $1 or ps.organization_id is null)\n    limit 1\n    `",
+      "spanSha256": "9d35a3776aee5dd12715f8390557108ac2b8c88f4f99ed8b4fc0776ff9aaa94b",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:f3d350684d5b173a:1f86d9360fd8f584",
+        "line": 125,
+        "column": 5,
+        "byteStart": 4195,
+        "byteEnd": 4416,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:f3d350684d5b173a:95875ba02f332a82",
+        "line": 213,
+        "column": 5,
+        "byteStart": 7031,
+        "byteEnd": 7252,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:parameter_specs",
+      "sourceLine": "`",
+      "scannerEvidence": "read parameter_specs: select r.entry_id, r.parameter_spec_id, r.created_by_user_id, r.created_at, ${…} from knowledge_parameter_references r left join parameter_specs ps on ps.id = r.parameter_spec_id ${…} where r.organization_id = $1 and …",
+      "sourceSpanText": "`\n    select\n      r.entry_id,\n      r.parameter_spec_id,\n      r.created_by_user_id,\n      r.created_at,\n      ${REFERENCE_SPEC_PROJECTION}\n    from knowledge_parameter_references r\n    left join parameter_specs ps on ps.id = r.parameter_spec_id\n    ${REFERENCE_SPEC_JOINS}\n    where r.organization_id = $1\n      and r.entry_id = any($2::uuid[])\n    order by r.created_at asc, r.parameter_spec_id asc\n    `",
+      "spanSha256": "542305877af19a489a71c829313cc712e6173f38478d228f83d16565f682524e",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:f3d350684d5b173a:50201f1ab1308e25",
+        "line": 79,
+        "column": 5,
+        "byteStart": 2737,
+        "byteEnd": 3144,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:7cbfdd11f75b3a09:44486ccf9c14a58b",
+        "line": 146,
+        "column": 5,
+        "byteStart": 4822,
+        "byteEnd": 5229,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-raw-read",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "read:parameter_specs",
+      "sourceLine": "`",
+      "scannerEvidence": "read parameter_specs: select r.entry_id, r.parameter_spec_id, r.created_by_user_id, r.created_at, coalesce(ps.property_key, dps.property_key) as property_key, psv.display_name, asub.display_name as driver_module, ps.definition_lifecycle as…",
+      "sourceSpanText": "`\n    select\n      r.entry_id,\n      r.parameter_spec_id,\n      r.created_by_user_id,\n      r.created_at,\n      ${REFERENCE_SPEC_PROJECTION}\n    from knowledge_parameter_references r\n    left join parameter_specs ps on ps.id = r.parameter_spec_id\n    ${REFERENCE_SPEC_JOINS}\n    where r.organization_id = $1\n      and r.entry_id = any($2::uuid[])\n    order by r.created_at asc, r.parameter_spec_id asc\n    `",
+      "spanSha256": "542305877af19a489a71c829313cc712e6173f38478d228f83d16565f682524e",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-raw-read:f3d350684d5b173a:bef04f15143c1eec",
+        "line": 79,
+        "column": 5,
+        "byteStart": 2737,
+        "byteEnd": 3144,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-raw-read:7cbfdd11f75b3a09:71c805e14a9debe2",
+        "line": 146,
+        "column": 5,
+        "byteStart": 4822,
+        "byteEnd": 5229,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "server/modules/knowledge/routes.test.ts",
+      "token": "route:/api/v1/knowledge/related-to-spec",
+      "sourceLine": "\"/api/v1/knowledge/related-to-spec\"",
+      "scannerEvidence": "/api/v1/knowledge/related-to-spec",
+      "sourceSpanText": "\"/api/v1/knowledge/related-to-spec\"",
+      "spanSha256": "41193d06c0a9f3322fe2619cbf8f1fa5d3a553d00d6836374b53ce3dfe14b716",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:aeb9f727643cb9e7:06b09a4b786ba67b",
+        "line": 218,
+        "column": 7,
+        "byteStart": 7570,
+        "byteEnd": 7605,
+        "trustedBlobOid": "e0c90d17c722ac31149b4f9c68814796e5f3f0e5"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:aeb9f727643cb9e7:fc9240234f5cc734",
+        "line": 221,
+        "column": 7,
+        "byteStart": 7707,
+        "byteEnd": 7742,
+        "trustedBlobOid": "a043281b8c59b9e025a2ebc926a7eb90caa9b224"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "server/modules/knowledge/routes.test.ts",
+      "token": "route:/api/v1/knowledge/related-to-spec",
+      "sourceLine": "\"/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc&limit=5\"",
+      "scannerEvidence": "/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc&limit=5",
+      "sourceSpanText": "\"/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc&limit=5\"",
+      "spanSha256": "ea40835b01b292d7fedea31c4bdf8efef14578b22dfbee24dab31622c64c50db",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:aeb9f727643cb9e7:b5e971579a579e37",
+        "line": 225,
+        "column": 7,
+        "byteStart": 7850,
+        "byteEnd": 7912,
+        "trustedBlobOid": "e0c90d17c722ac31149b4f9c68814796e5f3f0e5"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:aeb9f727643cb9e7:cf403a99487d7189",
+        "line": 228,
+        "column": 7,
+        "byteStart": 7987,
+        "byteEnd": 8049,
+        "trustedBlobOid": "a043281b8c59b9e025a2ebc926a7eb90caa9b224"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "server/modules/knowledge/routes.test.ts",
+      "token": "route:/api/v1/knowledge/related-to-spec",
+      "sourceLine": "it(\"GET /api/v1/knowledge/related-to-spec requires specId and delegates\", async () => {",
+      "scannerEvidence": "GET /api/v1/knowledge/related-to-spec requires specId and delegates",
+      "sourceSpanText": "\"GET /api/v1/knowledge/related-to-spec requires specId and delegates\"",
+      "spanSha256": "5b940382d0e595c0a498c9626b729caefdefca6a61e9a3b35f7522e0ea1dddc9",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:c557db51393cb00b:85333ddc73a11050",
+        "line": 212,
+        "column": 6,
+        "byteStart": 7242,
+        "byteEnd": 7311,
+        "trustedBlobOid": "e0c90d17c722ac31149b4f9c68814796e5f3f0e5"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:c557db51393cb00b:08017f669648064d",
+        "line": 215,
+        "column": 6,
+        "byteStart": 7379,
+        "byteEnd": 7448,
+        "trustedBlobOid": "a043281b8c59b9e025a2ebc926a7eb90caa9b224"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "server/modules/knowledge/routes.test.ts",
+      "token": "route:/parameter-references/:specId",
+      "sourceLine": "it(\"PUT and DELETE /api/v1/knowledge/entries/:entryId/parameter-references/:specId delegate with the raw spec id\", async () => {",
+      "scannerEvidence": "PUT and DELETE /api/v1/knowledge/entries/:entryId/parameter-references/:specId delegate with the raw spec id",
+      "sourceSpanText": "\"PUT and DELETE /api/v1/knowledge/entries/:entryId/parameter-references/:specId delegate with the raw spec id\"",
+      "spanSha256": "cd8a66fae847563a4381766833cf2f11e0e050b04d025374dd8edf32bd3afff9",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:11418ae3c476191d:7e89599e2c036005",
+        "line": 235,
+        "column": 6,
+        "byteStart": 8158,
+        "byteEnd": 8268,
+        "trustedBlobOid": "e0c90d17c722ac31149b4f9c68814796e5f3f0e5"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:11418ae3c476191d:504b03ecf9e52706",
+        "line": 261,
+        "column": 6,
+        "byteStart": 9263,
+        "byteEnd": 9373,
+        "trustedBlobOid": "a043281b8c59b9e025a2ebc926a7eb90caa9b224"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "server/modules/knowledge/routes.ts",
+      "token": "route:/api/v1/knowledge/related-to-spec",
+      "sourceLine": "router.get(\"/api/v1/knowledge/related-to-spec\", async (request) => {",
+      "scannerEvidence": "/api/v1/knowledge/related-to-spec",
+      "sourceSpanText": "\"/api/v1/knowledge/related-to-spec\"",
+      "spanSha256": "41193d06c0a9f3322fe2619cbf8f1fa5d3a553d00d6836374b53ce3dfe14b716",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:3dce3358678e8a69:a614292ff86b0970",
+        "line": 158,
+        "column": 14,
+        "byteStart": 5884,
+        "byteEnd": 5919,
+        "trustedBlobOid": "828c05600d1715a1001c95f4215af0e4357d8888"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:3dce3358678e8a69:9e34be11b1b5c2b6",
+        "line": 166,
+        "column": 14,
+        "byteStart": 6147,
+        "byteEnd": 6182,
+        "trustedBlobOid": "236d70d18ea45a0c2014bf0d83980dfaedefbc88"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "server/modules/knowledge/routes.ts",
+      "token": "route:/parameter-references/:specId",
+      "sourceLine": "router.delete(\"/api/v1/knowledge/entries/:entryId/parameter-references/:specId\", async (request) => {",
+      "scannerEvidence": "/api/v1/knowledge/entries/:entryId/parameter-references/:specId",
+      "sourceSpanText": "\"/api/v1/knowledge/entries/:entryId/parameter-references/:specId\"",
+      "spanSha256": "7fe2211cb0c4c512912d93d50c5c0796b86b31d768d007eae1ea7db5bab68fd1",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:f8d1a04e0ea3df64:c8bda68ff3629e7d",
+        "line": 273,
+        "column": 17,
+        "byteStart": 10887,
+        "byteEnd": 10952,
+        "trustedBlobOid": "828c05600d1715a1001c95f4215af0e4357d8888"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:f8d1a04e0ea3df64:4d67128d6c434318",
+        "line": 304,
+        "column": 17,
+        "byteStart": 12115,
+        "byteEnd": 12180,
+        "trustedBlobOid": "236d70d18ea45a0c2014bf0d83980dfaedefbc88"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "server/modules/knowledge/routes.ts",
+      "token": "route:/parameter-references/:specId",
+      "sourceLine": "router.put(\"/api/v1/knowledge/entries/:entryId/parameter-references/:specId\", async (request) => {",
+      "scannerEvidence": "/api/v1/knowledge/entries/:entryId/parameter-references/:specId",
+      "sourceSpanText": "\"/api/v1/knowledge/entries/:entryId/parameter-references/:specId\"",
+      "spanSha256": "7fe2211cb0c4c512912d93d50c5c0796b86b31d768d007eae1ea7db5bab68fd1",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:dc6c8130f188ad72:3a6403fca5fe5742",
+        "line": 259,
+        "column": 14,
+        "byteStart": 10373,
+        "byteEnd": 10438,
+        "trustedBlobOid": "828c05600d1715a1001c95f4215af0e4357d8888"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:dc6c8130f188ad72:d1ba758bbb49e56e",
+        "line": 276,
+        "column": 14,
+        "byteStart": 11064,
+        "byteEnd": 11129,
+        "trustedBlobOid": "236d70d18ea45a0c2014bf0d83980dfaedefbc88"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "src/infrastructure/http/knowledgeClient.test.ts",
+      "token": "route:/api/v1/knowledge/related-to-spec",
+      "sourceLine": "\"http://127.0.0.1:8787/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc\"",
+      "scannerEvidence": "http://127.0.0.1:8787/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc",
+      "sourceSpanText": "\"http://127.0.0.1:8787/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc\"",
+      "spanSha256": "0ed5c0807918da0fbbee5020a078d627064c60ee78b96b71af5d5d88f49362fc",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:768b6e9c6fd44cac:bf364f7e498342d5",
+        "line": 256,
+        "column": 7,
+        "byteStart": 10342,
+        "byteEnd": 10417,
+        "trustedBlobOid": "446b93ebed1bf82fb1703df64469c0bea411daf7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:768b6e9c6fd44cac:7e8377c0f6e17c7e",
+        "line": 256,
+        "column": 7,
+        "byteStart": 10342,
+        "byteEnd": 10417,
+        "trustedBlobOid": "5c635f15b81f4ee900b5483ee75e10d8d925da07"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-route",
+      "path": "src/infrastructure/http/knowledgeClient.ts",
+      "token": "route:/api/v1/knowledge/related-to-spec",
+      "sourceLine": "`/api/v1/knowledge/related-to-spec?${params.toString()}`",
+      "scannerEvidence": "/api/v1/knowledge/related-to-spec?${…}",
+      "sourceSpanText": "`/api/v1/knowledge/related-to-spec?${params.toString()}`",
+      "spanSha256": "d1741059b06ca1f31ea1799b15c13751fbdb4efcf8a872e0f2aab5e1447bfd81",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-route:ce3282c4268941b8:3f53063bb45443c6",
+        "line": 351,
+        "column": 9,
+        "byteStart": 11794,
+        "byteEnd": 11850,
+        "trustedBlobOid": "225bc36749f4669c1bb193d56cfdccd3ccfa3b2d"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-route:ce3282c4268941b8:9a6734e9cd909d3b",
+        "line": 335,
+        "column": 9,
+        "byteStart": 11330,
+        "byteEnd": 11386,
+        "trustedBlobOid": "c7addd568c91b3b8d33480299b0f4bc81734987d"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-sql-write",
+      "path": "server/modules/knowledge/parameterReferences.test.ts",
+      "token": "write:attribution_subjects",
+      "sourceLine": "`",
+      "scannerEvidence": "write attribution_subjects: insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key) values ($1, $2, 'driver-registration', $3, $1) on conflict (id) do nothing",
+      "sourceSpanText": "`\n    insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key)\n    values ($1, $2, 'driver-registration', $3, $1)\n    on conflict (id) do nothing\n    `",
+      "spanSha256": "d81838f6121544726a687510708ab78d23d470a9fdbcb6c66d1a2f9da7149029",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:48b8b4f10b7a8fbd:57a97982d5c8996a",
+        "line": 104,
+        "column": 5,
+        "byteStart": 3332,
+        "byteEnd": 3521,
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:48b8b4f10b7a8fbd:3a227e5dc83d70da",
+        "line": 105,
+        "column": 5,
+        "byteStart": 3407,
+        "byteEnd": 3596,
+        "trustedBlobOid": "89274d4229a5c7383093ebea711b0fb9031ebbd2"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-sql-write",
+      "path": "server/modules/knowledge/parameterReferences.test.ts",
+      "token": "write:parameter_spec_versions",
+      "sourceLine": "`",
+      "scannerEvidence": "write parameter_spec_versions: insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status) values ($1, $2, 1, $3, '', '{\"kind\":\"int32\"}'::jsonb, $4, 'active')",
+      "sourceSpanText": "`\n    insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status)\n    values ($1, $2, 1, $3, '', '{\"kind\":\"int32\"}'::jsonb, $4, 'active')\n    `",
+      "spanSha256": "6170cfdba359e2bf43f052df63819ed14d61164943c7133082b4a85063442659",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:5e7bd11440b8a216",
+        "line": 126,
+        "column": 5,
+        "byteStart": 4048,
+        "byteEnd": 4267,
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:337ce1e0bd339da7",
+        "line": 127,
+        "column": 5,
+        "byteStart": 4123,
+        "byteEnd": 4342,
+        "trustedBlobOid": "89274d4229a5c7383093ebea711b0fb9031ebbd2"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-sql-write",
+      "path": "server/modules/knowledge/parameterReferences.test.ts",
+      "token": "write:parameter_specs",
+      "sourceLine": "await expect(db.query(`delete from parameter_specs where id = $1`, [SPEC_ORG])).rejects.toThrow();",
+      "scannerEvidence": "write parameter_specs: delete from parameter_specs where id = $1",
+      "sourceSpanText": "`delete from parameter_specs where id = $1`",
+      "spanSha256": "f5086dbb8b26c225c2ea06c6db547a05638b6cc1befadfb0fd4ed59ed763d1e2",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:f9ddf5b33e98ddb5",
+        "line": 423,
+        "column": 29,
+        "byteStart": 17786,
+        "byteEnd": 17829,
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:2f9d46dee68c8681",
+        "line": 463,
+        "column": 29,
+        "byteStart": 19249,
+        "byteEnd": 19292,
+        "trustedBlobOid": "89274d4229a5c7383093ebea711b0fb9031ebbd2"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-sql-write",
+      "path": "server/modules/knowledge/parameterReferences.test.ts",
+      "token": "write:parameter_specs",
+      "sourceLine": "`",
+      "scannerEvidence": "write parameter_specs: insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle) values ($1, $2, 'manual', $3, $4, $5, $6)",
+      "sourceSpanText": "`\n    insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle)\n    values ($1, $2, 'manual', $3, $4, $5, $6)\n    `",
+      "spanSha256": "3e2b1a53210971196361d814ffdb9e75278f871a81b2cd46c0ae6c75ac75bae4",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:099926e67d1c4684",
+        "line": 112,
+        "column": 5,
+        "byteStart": 3631,
+        "byteEnd": 3830,
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:0a418545c2d6fceb",
+        "line": 113,
+        "column": 5,
+        "byteStart": 3706,
+        "byteEnd": 3905,
+        "trustedBlobOid": "89274d4229a5c7383093ebea711b0fb9031ebbd2"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-sql-write",
+      "path": "server/modules/knowledge/parameterReferences.test.ts",
+      "token": "write:parameter_specs",
+      "sourceLine": "`update parameter_specs set attribution_subject_id = $2, property_key = $3, specification_key = $4 where id = $1`,",
+      "scannerEvidence": "write parameter_specs: update parameter_specs set attribution_subject_id = $2, property_key = $3, specification_key = $4 where id = $1",
+      "sourceSpanText": "`update parameter_specs set attribution_subject_id = $2, property_key = $3, specification_key = $4 where id = $1`",
+      "spanSha256": "3ecfc0678cfb3546f4048683aef009371c5f70c05cdb7e53044ed887992f85b8",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:19cd5aea3bfb96cb",
+        "line": 384,
+        "column": 9,
+        "byteStart": 15636,
+        "byteEnd": 15749,
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:24c291cf8af79a47",
+        "line": 424,
+        "column": 9,
+        "byteStart": 17195,
+        "byteEnd": 17308,
+        "trustedBlobOid": "89274d4229a5c7383093ebea711b0fb9031ebbd2"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-catalog-sql-write",
+      "path": "server/modules/knowledge/parameterReferences.test.ts",
+      "token": "write:parameter_specs",
+      "sourceLine": "await db.query(`update parameter_specs set definition_lifecycle = 'deprecated' where id = $1`, [SPEC_ORG]);",
+      "scannerEvidence": "write parameter_specs: update parameter_specs set definition_lifecycle = 'deprecated' where id = $1",
+      "sourceSpanText": "`update parameter_specs set definition_lifecycle = 'deprecated' where id = $1`",
+      "spanSha256": "6c168a590f96d6f2381a79f7fcc2ac3d0832c4387297f8606bd939b1111477f6",
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:2acb37efd51de8a6",
+        "line": 365,
+        "column": 22,
+        "byteStart": 14609,
+        "byteEnd": 14687,
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:37b4977c59c0ae00",
+        "line": 405,
+        "column": 22,
+        "byteStart": 16200,
+        "byteEnd": 16278,
+        "trustedBlobOid": "89274d4229a5c7383093ebea711b0fb9031ebbd2"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-parameter-spec-identifier",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "parameter_spec_id",
+      "sourceLine": "legacyId: row.parameter_spec_id,",
+      "scannerEvidence": "parameter_spec_id",
+      "sourceSpanText": "parameter_spec_id",
+      "spanSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed",
+      "old": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:7d722a7dd611c22b:384f30d25231cd73",
+        "line": 270,
+        "column": 23,
+        "byteStart": 8777,
+        "byteEnd": 8794,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:7d722a7dd611c22b:93142a483beb0778",
+        "line": 445,
+        "column": 23,
+        "byteStart": 14081,
+        "byteEnd": 14098,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-parameter-spec-identifier",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "parameter_spec_id",
+      "sourceLine": "parameter_spec_id: string;",
+      "scannerEvidence": "parameter_spec_id",
+      "sourceSpanText": "parameter_spec_id",
+      "spanSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed",
+      "old": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:8a7ee14a16ecfa7b:81d4cd2c21db0e86",
+        "line": 15,
+        "column": 3,
+        "byteStart": 650,
+        "byteEnd": 667,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:8a7ee14a16ecfa7b:d875a0cbe2454f33",
+        "line": 20,
+        "column": 3,
+        "byteStart": 656,
+        "byteEnd": 673,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-parameter-spec-identifier",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "parameter_spec_id",
+      "sourceLine": "propertyKey: row.property_key ?? row.parameter_spec_id,",
+      "scannerEvidence": "parameter_spec_id",
+      "sourceSpanText": "parameter_spec_id",
+      "spanSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed",
+      "old": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:be56ec8df27ac554:0298b46220ee0b13",
+        "line": 63,
+        "column": 42,
+        "byteStart": 2219,
+        "byteEnd": 2236,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:be56ec8df27ac554:29e4fa0dd2664115",
+        "line": 69,
+        "column": 42,
+        "byteStart": 2251,
+        "byteEnd": 2268,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "legacy-parameter-spec-identifier",
+      "path": "server/modules/knowledge/parameterReferences.ts",
+      "token": "parameter_spec_id",
+      "sourceLine": "specId: row.parameter_spec_id,",
+      "scannerEvidence": "parameter_spec_id",
+      "sourceSpanText": "parameter_spec_id",
+      "spanSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed",
+      "old": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:2b48d3b67f72e2e8:89bbc2526c350188",
+        "line": 62,
+        "column": 17,
+        "byteStart": 2159,
+        "byteEnd": 2176,
+        "trustedBlobOid": "4a148237ac67071553aab58b01172da21c49fdd7"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-parameter-spec-identifier:2b48d3b67f72e2e8:4da4827ac6cf1806",
+        "line": 68,
+        "column": 17,
+        "byteStart": 2191,
+        "byteEnd": 2208,
+        "trustedBlobOid": "d59925922e7c9c20c16e5109fb1d963cf191c719"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "unresolved-boundary-expression",
+      "path": "server/modules/knowledge/repository.ts",
+      "token": "unresolved:database",
+      "sourceLine": "`",
+      "scannerEvidence": "database: ` select * from knowledge_entries where ${where.join(\"\\n and \")} order by updated_at desc, id desc limit $${values.length} `",
+      "sourceSpanText": "`\n    select *\n    from knowledge_entries\n    where ${where.join(\"\\n      and \")}\n    order by updated_at desc, id desc\n    limit $${values.length}\n    `",
+      "spanSha256": "b68646fb88c6da88a5795e019e9d6fbc6998304f0be267f06b06e1751f10421e",
+      "old": {
+        "id": "S12-KNW:unresolved-boundary-expression:173520f29c77a947:c16e1d67ba49a866",
+        "line": 446,
+        "column": 5,
+        "byteStart": 12517,
+        "byteEnd": 12670,
+        "trustedBlobOid": "2d2f9b24a4e686ccea08820c74d16fe15f26bd3e"
+      },
+      "new": {
+        "id": "S12-KNW:unresolved-boundary-expression:173520f29c77a947:a21b39c7fc2ef51a",
+        "line": 448,
+        "column": 5,
+        "byteStart": 12740,
+        "byteEnd": 12893,
+        "trustedBlobOid": "fd7c2bafff9453fdca940e4ff7b4f1ec7a91eb4b"
+      }
+    },
+    {
+      "disposition": "position-migration",
+      "rule": "unresolved-boundary-expression",
+      "path": "server/modules/knowledge/repository.ts",
+      "token": "unresolved:database",
+      "sourceLine": "`",
+      "scannerEvidence": "database: ` select best.* from ( select distinct on (c.entry_id) c.entry_id, e.title, e.content_form, e.tags, c.revision_id, c.text, e.updated_at, c.embedding <=> $2::vector as distance from knowledge_chunks c join knowledge_entries e on e…",
+      "sourceSpanText": "`\n    select best.*\n    from (\n      select distinct on (c.entry_id)\n        c.entry_id, e.title, e.content_form, e.tags, c.revision_id, c.text, e.updated_at,\n        c.embedding <=> $2::vector as distance\n      from knowledge_chunks c\n      join knowledge_entries e\n        on e.id = c.entry_id\n       and e.organization_id = c.organization_id\n      where c.organization_id = $1\n        and e.status = 'published'\n        and c.embedding is not null\n        ${distanceCutoff}\n      order by c.entry_id, c.embedding <=> $2::vector asc\n    ) best\n    order by best.distance asc\n    limit $${values.length}\n    `",
+      "spanSha256": "6c940b7cb4bf48fe7b2c7637502faa919f704c28b43a2bc674182e32e74f0e14",
+      "old": {
+        "id": "S12-KNW:unresolved-boundary-expression:173520f29c77a947:21133b190604069f",
+        "line": 649,
+        "column": 5,
+        "byteStart": 18833,
+        "byteEnd": 19443,
+        "trustedBlobOid": "2d2f9b24a4e686ccea08820c74d16fe15f26bd3e"
+      },
+      "new": {
+        "id": "S12-KNW:unresolved-boundary-expression:173520f29c77a947:14efc2c2e50f0ca7",
+        "line": 651,
+        "column": 5,
+        "byteStart": 19056,
+        "byteEnd": 19666,
+        "trustedBlobOid": "fd7c2bafff9453fdca940e4ff7b4f1ec7a91eb4b"
+      }
+    }
+  ]
+}

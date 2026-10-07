@@ -142,6 +142,14 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 | Project drafts | 现有 binding 与 node-enablement draft paths | 保留产品行为；input 通过规范 binding/definition identity 解析。 |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | 仅 deployment operator 可用的 reconciliation 与迁移诊断；公共 DTO 不得链接。 |
 
+### 共享模块归属
+
+Registration 与 Placement 写入接受可选 `destinationModuleId`，它是可信 Organization 内现存模块的精确 ID。Driver 目标必须是 `driver-group`，NodeType 必须是 `node-type`，ConfigurationSchema 必须是 `business`。显式目标无效时拒绝，不回退到名称匹配。未传此字段的既有调用方保留 PlacementIntent 契约。
+
+Placement GET 返回带版本的不透明 ETag，并向已有 CORS 允许来源的浏览器请求暴露该响应头。Move 命令持有 owner 行锁时检查提交版本。仍获授权的相同已提交请求在检查已推进版本前走既有 owner 重放路径，不重复移动；该 owner 读取保留资源，并不承诺首次响应的不可变快照。组织管理员可读取 registration `impact` 中当前 Binding 数及去重项目数，其他读者不获得跨项目影响聚合。移动 Placement 只改变导航归属，不修改参数值。
+
+共享 `public.parameter_modules` 树继续作为模块权威来源。模块计数组合一次捕获的 Catalog Kernel snapshot 中的 active Definition、当前 canonical Binding，以及组织隔离的 Registration/Placement 事实；尚无 Binding 的 Definition 也计数，归档 semantic 行不提供 canonical 计数。保留的 Placement 或 Binding 引用阻止模块删除；改名和移动保留模块身份。Overlay 选择遍历全部 canonical 分页，并区分加载错误与空结果。
+
 ### Proposal 重放执行契约
 
 R2 实现保留 create 为 draft、submit 原位推进。作者执行 submit/withdraw 时仍须是合法 Organization Admin；另一名合法 Platform Admin 审核。重试继续检查认证、对象范围、当前角色和 release，不能承诺撤权或切换 release 后旧请求仍永久可重放。

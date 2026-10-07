@@ -949,11 +949,56 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse"
     }
   },
+  "parameterTopology.submitMemberRemovalRequest": {
+    summary: "Freeze one canonical JSON source member removal for a separate human reviewer",
+    tags: ["parameters"],
+    requestBody: "SubmitMemberRemovalRequest",
+    responseBody: "MemberRemovalRequestResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.listMemberRemovalRequests": {
+    summary: "List visible canonical member removal requests",
+    tags: ["parameters"],
+    responseBody: "MemberRemovalRequestListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterTopology.getMemberRemovalRequest": {
+    summary: "Read one frozen canonical member removal proof for its submitter or assigned reviewer",
+    tags: ["parameters"],
+    responseBody: "MemberRemovalRequestResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterTopology.getProjectValueBatchChangeRequest": {
+    summary: "Read one frozen canonical batch request, ordered cohort draft impact and targets for its submitter or assigned reviewer",
+    tags: ["parameters"],
+    responseBody: "ProjectValueBatchChangeRequestResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
+  "parameterTopology.submitProjectValueBatchChangeRequest": {
+    summary: "Freeze and submit one canonical JSON or DTS batch request and its full cohort draft impact for a separate assigned software reviewer",
+    tags: ["parameters"],
+    requestBody: "SubmitProjectValueBatchChangeRequest",
+    responseBody: "ProjectValueBatchChangeRequestResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.listProjectValueBatchChangeRequests": {
+    summary: "List canonical batch requests assigned to the reviewer or submitted by the caller",
+    tags: ["parameters"],
+    responseBody: "ProjectValueBatchChangeRequestListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterTopology.reviewProjectValueChangeRequest": {
-    summary: "Approve (apply) or reject one pending canonical value change request",
+    summary: "Review one canonical value, batch, or member removal request with its frozen proof",
     tags: ["parameters"],
     requestBody: "ReviewProjectValueChangeRequest",
-    responseBody: "ProjectValueChangeRequestResponse",
+    responseBody: "ProjectValueChangeReviewResponse",
     additionalResponses: {
       "400": "ErrorResponse",
       "403": "ErrorResponse",
@@ -964,7 +1009,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "parameterTopology.withdrawProjectValueChangeRequest": {
     summary: "Withdraw one pending canonical value change request as its submitter",
     tags: ["parameters"],
-    responseBody: "ProjectValueChangeRequestResponse",
+    responseBody: "ProjectValueChangeWithdrawalResponse",
     additionalResponses: {
       "403": "ErrorResponse",
       "404": "ErrorResponse",
@@ -1242,16 +1287,35 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeRelatedToSpecResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
-  "knowledge.addParameterReference": {
-    summary:
-      "Add a structural parameter-definition reference to a knowledge entry (idempotent; entry owner with knowledge:edit, or knowledge:manage; the reference binds to the parameter_specs.id surrogate and survives identity corrections and deprecation)",
+  "knowledge.relatedToDefinition": {
+    summary: "Published knowledge structurally referencing one exact visible Catalog Definition (knowledge:view and parameter:view; published-only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeRelatedToSpecResponse",
+    requestParameters: [{ name: "definitionId", in: "query", required: true }, { name: "limit", in: "query", required: false }],
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.addDefinitionReference": {
+    summary: "Idempotently add a verified Catalog Definition reference to a knowledge entry (entry owner or knowledge:manage, plus parameter:view; audited)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.removeDefinitionReference": {
+    summary: "Idempotently remove an exact Catalog Definition reference from a knowledge entry (entry owner or knowledge:manage; audited)",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "knowledge.addParameterReference": {
+    summary:
+      "Replay an existing historical Spec reference; new legacy Spec references are rejected with 409 (entry owner with knowledge:edit, or knowledge:manage)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "knowledge.removeParameterReference": {
     summary:
-      "Remove a structural parameter-definition reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
+      "Remove an existing historical Spec reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
@@ -1772,6 +1836,85 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "ActivateParameterFileCandidateRequest",
     responseBody: "ParameterFileCandidateActivateResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.getCanonicalSourceWorkflow": {
+    summary: "Inspect the canonical source cohort and proof for a parameter file",
+    tags: ["parameter-files"],
+    responseBody: "CanonicalSourceWorkflowResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewCanonicalCandidate": {
+    summary: "Preview a staged candidate against exact canonical source pins",
+    tags: ["parameter-files"],
+    responseBody: "CanonicalSourceCandidatePreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.listCanonicalSourceConflicts": {
+    summary: "Find exact canonical file/UI draft choices for a staged source candidate",
+    tags: ["parameter-files"],
+    responseBody: "CanonicalSourceConflictListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.submitCanonicalSourceConflict": {
+    summary: "Freeze one selected canonical source conflict for human review",
+    tags: ["parameter-files"],
+    requestBody: "CanonicalSourceConflictSubmitRequest",
+    responseBody: "CanonicalSourceConflictSubmitResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.getCanonicalSourceConflictDecision": {
+    summary: "Read the frozen choice and verified source diff of one visible conflict request",
+    tags: ["parameters"],
+    responseBody: "CanonicalSourceConflictDecisionResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.submitCanonicalCandidate": {
+    summary: "Submit one source candidate through canonical draft and human review",
+    tags: ["parameter-files"],
+    requestBody: "CanonicalSourceSubmitRequest",
+    responseBody: "CanonicalSourceSubmissionResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.rollbackCanonicalSource": {
+    summary: "Submit a historical source version through canonical draft and human review",
+    tags: ["parameter-files"],
+    requestBody: "CanonicalSourceRollbackRequest",
+    responseBody: "CanonicalSourceSubmissionResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.prepareCanonicalBatchRollback": {
+    summary: "Prepare exact ordered JSON or DTS historical batch rollback proof",
+    tags: ["parameter-files"],
+    requestParameters: [{ name: "X-Request-Id", in: "header",
+      description: "Reuse this stable key to replay the same preparation." }],
+    requestBody: "CanonicalBatchRollbackPrepareRequest",
+    responseBody: "CanonicalBatchRollbackPrepareResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.prepareCanonicalManualSync": {
+    summary: "Prepare exact uploaded JSON or DTS bytes for one canonical batch review request",
+    tags: ["parameter-files"],
+    requestParameters: [{ name: "X-Request-Id", in: "header",
+      description: "Reuse this stable key only for the same preparation bytes and source proof." }],
+    requestBody: "CanonicalManualSyncPrepareRequest",
+    responseBody: "CanonicalManualSyncPrepareResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.submitCanonicalBatchRollback": {
+    summary: "Freeze one historical multi-Binding rollback for assigned human review",
+    tags: ["parameter-files"],
+    requestParameters: [{ name: "X-Request-Id", in: "header",
+      description: "Reuse this stable key to replay the same review request." }],
+    requestBody: "CanonicalBatchRollbackSubmitRequest",
+    responseBody: "CanonicalBatchRollbackSubmitResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse",
+      "404": "ErrorResponse", "409": "ErrorResponse" }
   },
 
   "parameters.deleteAdminProject": {

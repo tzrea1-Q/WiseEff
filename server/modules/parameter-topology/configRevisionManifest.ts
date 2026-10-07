@@ -17,6 +17,7 @@ export type ManifestValidationFailure = {
     | "missing-base"
     | "missing-entry-file"
     | "path-escape"
+    | "duplicate-member-path"
     | "empty-manifest"
     | "manifest-needs-review";
   message: string;
@@ -158,6 +159,22 @@ export function normalizePersistedManifest(input: {
       };
     }
     overlayOrder.push(normalized);
+  }
+
+  const memberPaths = new Set<string>();
+  for (const member of input.members) {
+    const normalized = normalizeManifestLogicalPath(member.sourceName ?? member.fileName);
+    if (normalized === null) continue;
+    if (memberPaths.has(normalized)) {
+      return {
+        ok: false,
+        failure: {
+          code: "duplicate-member-path",
+          message: `Ambiguous logical member path in config revision manifest: ${normalized}`,
+        },
+      };
+    }
+    memberPaths.add(normalized);
   }
 
   return {

@@ -228,6 +228,7 @@ export async function executeReloadDeploy(input: {
   deploy: DeployReloadRunInput;
   deps: DeployReloadDeps;
   persistProgress: PersistDeployProgress;
+  beforeDeviceIo?: () => Promise<void>;
 }): Promise<ReloadRunDto> {
   const { auth, run, artifactBytes, deploy, deps } = input;
   const now = deps.now ?? (() => new Date());
@@ -376,6 +377,10 @@ export async function executeReloadDeploy(input: {
   const leaseSessionId = `dts-reload:${run.id}`;
   let leaseAcquired = false;
   try {
+    // The run claim closes the status race. Re-check canonical provenance immediately before any
+    // bridge/device setup so a value/source pin drift after the cheap pre-check cannot be written.
+    await input.beforeDeviceIo?.();
+
     await ensureBridgeDebugDevice(input.db, {
       organizationId: auth.organization.id,
       deviceId,
@@ -744,6 +749,7 @@ export async function executeReloadDeploy(input: {
       verification = await verifyReloadTargetsBehaviourally({
         db: input.db,
         organizationId: auth.organization.id,
+        projectId: run.projectId,
         targets: run.targets,
         protocol: deploy.protocol,
         bridgeId: deploy.bridgeId,

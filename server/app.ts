@@ -33,6 +33,7 @@ import { defaultTracingBoundary, type TracingBoundary } from "./observability/tr
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterFileRoutes } from "./modules/parameter-files/routes";
+import { MAX_PARAMETER_SOURCE_BYTES } from "./modules/parameter-files/jsonSource";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
@@ -330,12 +331,14 @@ export function createWiseEffServer(options: WiseEffServerOptions = {}) {
 }
 
 /**
- * The debug-node catalog transfer routes accept a 20 MiB document contract (counted in
- * UTF-8 file bytes) inside a JSON envelope, so their body collection bound sits just above
- * that contract. Every other route keeps the default transport bound.
+ * The debug-node catalog transfer and canonical manual sync preparation routes carry
+ * bounded source bytes inside JSON envelopes. Other routes keep the default transport bound.
  */
 /** Transport headroom over the 20 MiB document contract: JSON envelope and formatting. */
 export const DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES = DEBUG_CATALOG_MAX_DOCUMENT_BYTES + 2 * 1024 * 1024;
+/** Encoded 2 MiB source plus bounded JSON field and proof-token headroom. */
+export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
+  4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
 
 export function resolveRouteBodyLimit({ method, path }: { method: string; path: string }) {
   if (
@@ -343,6 +346,11 @@ export function resolveRouteBodyLimit({ method, path }: { method: string; path: 
     (path === "/api/v1/debugging/admin/catalog/import" || path === "/api/v1/debugging/admin/catalog/import-preview")
   ) {
     return DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES;
+  }
+  // Router path matching ignores empty segments from repeated or trailing slashes.
+  if (method === "POST" &&
+    /^\/+api\/+v1\/+projects\/+[^/]+\/+parameter-files\/+[^/]+\/+source-manual-sync\/+prepare\/*$/.test(path)) {
+    return CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES;
   }
   return DEFAULT_MAX_REQUEST_BODY_BYTES;
 }

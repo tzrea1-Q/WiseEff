@@ -4,7 +4,7 @@ import type { AuthContext } from "../auth/types";
 import { createAuditEvent } from "../audit/repository";
 import { syncFileVersion } from "./syncService";
 import { detectFileUiDraftConflict } from "./conflictService";
-import { getFileVersionById, getProjectParameterFileById } from "./repository";
+import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileById } from "./repository";
 import {
   bindParameterSource,
   findProjectValueBySource
@@ -14,6 +14,7 @@ import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityM
 import { findBindingBySource } from "./syncIdentity";
 
 vi.mock("./repository", () => ({
+  assertLegacySourceMutationAllowed: vi.fn(),
   getProjectParameterFileById: vi.fn(),
   getFileVersionById: vi.fn()
 }));
@@ -41,6 +42,7 @@ vi.mock("../audit/repository", () => ({
 
 const mockedGetProjectParameterFileById = vi.mocked(getProjectParameterFileById);
 const mockedGetFileVersionById = vi.mocked(getFileVersionById);
+const mockedAssertLegacySourceMutationAllowed = vi.mocked(assertLegacySourceMutationAllowed);
 const mockedFindProjectValueBySource = vi.mocked(findProjectValueBySource);
 const mockedFindBindingBySource = vi.mocked(findBindingBySource);
 const mockedBindParameterSource = vi.mocked(bindParameterSource);
@@ -206,6 +208,19 @@ describe("syncFileVersion", () => {
     });
     expect(mockedFindProjectValueBySource).not.toHaveBeenCalled();
     expect(mockedBindParameterSource).not.toHaveBeenCalled();
+    expect(mockedUpsertFileSyncDraft).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the legacy mutation fence inside the write transaction", async () => {
+    mockUploadVersion();
+    mockedAssertLegacySourceMutationAllowed.mockRejectedValueOnce(new Error("canonical source is protected"));
+
+    await expect(syncFileVersion(fakeDb, adminAuth(), {
+      fileId: "file-1",
+      versionId: "version-1"
+    })).rejects.toThrow("canonical source is protected");
+    expect(mockedAssertLegacySourceMutationAllowed).toHaveBeenCalledWith(fakeDb, "file-1");
+    expect(mockedFindProjectValueBySource).not.toHaveBeenCalled();
     expect(mockedUpsertFileSyncDraft).not.toHaveBeenCalled();
   });
 

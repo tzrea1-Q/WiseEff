@@ -3,9 +3,16 @@ import { z } from "zod";
 export const startReloadRunTargetSchema = z.object({
   bindingId: z.string().min(1),
   debugValue: z.string().min(1),
+  definitionId: z.string().min(1).optional(),
   definitionRevisionId: z.string().min(1).optional(),
   currentValueId: z.string().min(1).optional(),
-  catalogReleaseId: z.string().min(1).optional()
+  catalogReleaseId: z.string().min(1).optional(),
+  configRevisionId: z.string().min(1).optional(),
+  sourcePinId: z.string().min(1).optional(),
+  sourceOccurrenceId: z.string().min(1).optional(),
+  sourceRef: z.string().min(1).optional(),
+  sourceFormat: z.literal("dts").optional(),
+  sourceLocator: z.record(z.string(), z.unknown()).optional()
 });
 
 /** Upper bound on reload targets per run — bounds overlay size, audit metadata, and worst-case deploy duration against the device lease. */

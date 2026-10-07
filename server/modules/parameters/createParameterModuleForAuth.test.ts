@@ -70,6 +70,9 @@ function createStatefulDb(seed: { modules?: ModuleRow[]; mappings?: MappingRow[]
   const audits: Array<{ kind: string; metadata: Record<string, unknown> }> = [];
 
   const query = vi.fn(async (text: string, values: unknown[] = []) => {
+    if (text.includes("select exists (") && text.includes("from parameter_definitions")) {
+      return { rows: [{ present: false }], rowCount: 1 };
+    }
     if (
       text.includes("from parameter_modules") &&
       text.includes("organization_id = $1") &&

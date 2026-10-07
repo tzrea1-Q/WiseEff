@@ -16,6 +16,7 @@ import { createAgentOrchestrator, type AgentOrchestrator, type ApprovalBeginResu
 import { createXiaozeCheckpointer, resolveXiaozeCheckpointerFromEnv } from "./checkpointer";
 import { type PersistXiaozeTurnInput, createXiaozeTurnPersister } from "./threadPersistence";
 import { registerXiaozeThreadRoutes } from "./threadRoutes";
+import { XIAOZE_PAGE_KEY } from "./threadRepository";
 import { wrapLangChainChatModel } from "./perceptionAgent";
 import { createDeterministicPerceptionModel } from "./deterministicModel";
 import type { PerceptionAgentRunResult, PerceptionToolDescriptor } from "./modelTypes";
@@ -388,7 +389,7 @@ export function createXiaozeAgUiHandler(options: {
             payload: result.interrupt.payload,
             citations: result.interrupt.citations,
             toolCallId: result.interrupt.toolCallId,
-            pageKey: pageContext.pageKey,
+            pageKey: XIAOZE_PAGE_KEY,
             projectId: pageContext.projectId
           });
           yield* stream.interrupt(interrupt);
@@ -492,6 +493,7 @@ export function createXiaozeAgentFactory(options: {
         auth: requestContext.auth,
         requestId: requestContext.requestId,
         sessionId: requestContext.sessionId,
+        projectId: requestContext.projectId,
         toolCallId,
         request: {
           name: name as AgentToolName,
@@ -651,6 +653,7 @@ export function registerXiaozeRoutes(
           auth,
           requestId: request.requestId,
           sessionId: `suggest-${request.requestId}`,
+          projectId: typeof context.projectId === "string" ? context.projectId : undefined,
           request: {
             name: name as AgentToolName,
             label: getXiaozeToolLabel(name),

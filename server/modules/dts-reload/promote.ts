@@ -5,16 +5,18 @@ import {
 import { writeTrustedMilestoneAudit } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { canEditParameters } from "../parameter-kernel/policy";
-import { createBindingDraft as defaultCreateBindingDraft } from "../parameter-topology/service";
-import type { CreateBindingDraftBody } from "../parameter-topology/schemas";
-import type { CreateBindingDraftDeps } from "../parameter-topology/overlayWriteback";
-import type { CreateBindingDraftServiceResult } from "../parameter-topology/service";
+import { isDeepStrictEqual } from "node:util";
+import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
+import type { CanonicalValueDraftRow } from "../parameter-bindings/drafts/repository";
+import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { lockCanonicalSourceCohort } from "../parameter-files/canonicalSource";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
 import {
   assertDtsReloadInvocationContext,
   requireDtsReloadPromote,
+  requireDtsReloadProjectMutation,
   requireDtsReloadUserInvocation,
   type DtsReloadInvocationContext
 } from "./policy";
@@ -24,24 +26,15 @@ import {
   listReloadRunTargets,
   type ReloadCandidateRow
 } from "./repository";
-import { resolveReloadValueShape, validateAuthoredDebugValue, type CandidateValueShape } from "./valueShape";
+import { validateAuthoredDebugValue } from "./valueShape";
 import type {
   ParameterVerificationOutcome,
   ReloadRunPurpose,
   ReloadRunStatus,
   ReloadSnapshotDto
 } from "./types";
-
-export type PromoteBindingDraftFn = (
-  db: Database,
-  auth: AuthContext,
-  input: {
-    projectId: string;
-    bindingId: string;
-  } & CreateBindingDraftBody,
-  deps?: CreateBindingDraftDeps,
-  context?: DtsReloadInvocationContext
-) => Promise<CreateBindingDraftServiceResult>;
+import type { ReloadRunTargetDto } from "./types";
+import { rowToCandidate } from "./service";
 
 export type PromoteReloadRunToDraftsInput = {
   runId: string;
@@ -63,7 +56,6 @@ export type PromoteReloadRunToDraftsResult = {
 };
 
 export type PromoteReloadRunToDraftsContext = DtsReloadInvocationContext & {
-  createBindingDraft?: PromoteBindingDraftFn;
   objectStore?: ObjectStore;
 };
 
@@ -86,11 +78,6 @@ function uniqueBindingIds(bindingIds: string[]): string[] {
 
 function asReloadPurpose(value: unknown): ReloadRunPurpose {
   return value === "restore-baseline" ? "restore-baseline" : "ordinary";
-}
-
-function asValueShape(value: unknown): CandidateValueShape {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as CandidateValueShape;
 }
 
 function verificationForBinding(snapshot: unknown, bindingId: string): ParameterVerificationOutcome | "unbound" {
@@ -130,51 +117,58 @@ function assertRunPromotionEligible(input: {
 
 async function listOpenDraftsForBinding(
   db: Queryable,
-  input: { organizationId: string; bindingId: string }
-): Promise<Array<{ id: string; targetValue: string; reason: string | null }>> {
-  const result = await db.query<{ id: string; target_value: string; reason: string | null }>(
+  input: { organizationId: string; projectId: string; bindingId: string }
+): Promise<CanonicalValueDraftRow[]> {
+  const result = await db.query<CanonicalValueDraftRow>(
     `
-    select id, target_value, reason
-    from parameter_drafts
+    select *
+    from project_parameter_value_drafts
     where organization_id = $1
-      and project_parameter_binding_id = $2
+      and project_id = $2
+      and binding_id = $3
     `,
-    [input.organizationId, input.bindingId]
+    [input.organizationId, input.projectId, input.bindingId]
   );
-  return result.rows.map((row) => ({
-    id: row.id,
-    targetValue: row.target_value,
-    reason: row.reason
-  }));
+  return result.rows;
 }
 
 async function hasInFlightChangeRequest(
   db: Queryable,
-  input: { organizationId: string; bindingId: string }
+  input: { organizationId: string; projectId: string; bindingId: string }
 ): Promise<boolean> {
   const result = await db.query<{ id: string }>(
     `
     select id
-    from parameter_change_requests
+    from project_parameter_value_change_requests
     where organization_id = $1
-      and project_parameter_binding_id = $2
-      and status not in ('merged', 'rejected')
+      and project_id = $2
+      and binding_id = $3
+      and status = 'pending'
     limit 1
     `,
-    [input.organizationId, input.bindingId]
+    [input.organizationId, input.projectId, input.bindingId]
   );
   return result.rows.length > 0;
 }
 
-function isIdempotentPromotion(
-  draft: { targetValue: string; reason: string | null },
-  runId: string,
-  debugValue: string
-): boolean {
-  return (
-    draft.targetValue === debugValue &&
-    Boolean(draft.reason?.includes(`sourceReloadRunId=${runId}`))
-  );
+function assertExactRunTarget(candidate: ReloadCandidateRow, target: ReloadRunTargetDto) {
+  assertNodePathUnchanged(candidate, target.nodePath, target.bindingId);
+  if (target.canonicalBindingId !== candidate.binding_id ||
+      target.canonicalDefinitionId !== candidate.definition_id ||
+      target.canonicalDefinitionRevisionId !== candidate.definition_revision_id ||
+      target.canonicalCurrentValueId !== candidate.current_value_id ||
+      target.canonicalCatalogReleaseId !== candidate.catalog_release_id ||
+      target.canonicalSourcePinId !== candidate.source_pin_id ||
+      target.canonicalSourceOccurrenceId !== candidate.source_occurrence_id ||
+      target.canonicalConfigRevisionId !== candidate.config_revision_id ||
+      target.canonicalSourceRef !== candidate.source_ref ||
+      target.canonicalSourceFormat !== "dts" || candidate.source_format !== "dts" ||
+      target.propertyKey !== candidate.property_key ||
+      !isDeepStrictEqual(target.canonicalSourceLocator, candidate.source_locator)) {
+    throw new ApiError("CONFLICT", "Reload target no longer matches its exact canonical value and DTS source.", {
+      code: "reload-promote-pin-drift", bindingId: target.bindingId
+    });
+  }
 }
 
 export async function promoteReloadRunToDrafts(
@@ -198,6 +192,8 @@ export async function promoteReloadRunToDrafts(
     throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId: input.runId });
   }
 
+  requireDtsReloadProjectMutation(auth, row.project_id);
+
   if (!canEditParameters(auth, row.project_id)) {
     throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", { permission: "parameter:edit" });
   }
@@ -216,134 +212,163 @@ export async function promoteReloadRunToDrafts(
     unverifiableAcknowledged: input.unverifiableAcknowledged
   });
 
-  const runTargets = await listReloadRunTargets(db, row.id);
-  const targetByBinding = new Map(runTargets.map((target) => [target.bindingId, target]));
-  const createDraft = context.createBindingDraft ?? defaultCreateBindingDraft;
-  const drafts: PromotedDraftItem[] = [];
+  if (!context.objectStore) {
+    throw new ApiError("INTERNAL_ERROR", "Reload promotion requires canonical source object storage.");
+  }
+  return db.transaction(async (tx) => {
+    await tx.query("select id from dts_reload_runs where id=$1 and organization_id=$2 for update", [row.id, auth.organization.id]);
+    const runTargets = await listReloadRunTargets(tx, row.id);
+    const targetByBinding = new Map(runTargets.map((target) => [target.bindingId, target]));
+    const drafts: PromotedDraftItem[] = [];
 
-  for (const bindingId of bindingIds) {
-    const runTarget = targetByBinding.get(bindingId);
-    if (!runTarget) {
-      throw new ApiError("VALIDATION_FAILED", "Selected binding is not a target of this reload run.", {
-        code: "reload-promote-unknown-target",
-        bindingId,
-        runId: row.id
-      });
-    }
+    // Fence every source before taking Binding locks, matching the source owner.
+    // The transaction also makes a failed multi-target promotion leave no drafts.
+    const sources = [];
+    for (const bindingId of [...bindingIds].sort()) {
+      const runTarget = targetByBinding.get(bindingId);
+      if (!runTarget) {
+        throw new ApiError("VALIDATION_FAILED", "Selected binding is not a target of this reload run.", {
+          code: "reload-promote-unknown-target",
+          bindingId,
+          runId: row.id
+        });
+      }
 
-    const candidate = await getReloadCandidateRow(db, {
-      organizationId: auth.organization.id,
-      projectId: row.project_id,
-      bindingId
-    });
-    if (!candidate) {
-      throw new ApiError("CONFLICT", "Parameter binding is no longer available in the project.", {
-        code: "reload-promote-binding-missing",
-        bindingId
-      });
-    }
-    assertNodePathUnchanged(candidate, runTarget.nodePath, bindingId);
-
-    const resolvedShape = resolveReloadValueShape(asValueShape(candidate.value_shape), candidate.baseline_value);
-    const validated = validateAuthoredDebugValue(candidate.property_key, runTarget.debugValue, resolvedShape);
-    if (!validated.ok) {
-      throw new ApiError("VALIDATION_FAILED", "Stored debug value no longer conforms to the current reload value shape.", {
-        code: "reload-promote-value-shape",
-        bindingId,
-        debugValue: runTarget.debugValue
-      });
-    }
-
-    if (await hasInFlightChangeRequest(db, { organizationId: auth.organization.id, bindingId })) {
-      throw new ApiError("CONFLICT", "An in-flight change request already exists for this binding.", {
-        code: "reload-promote-in-flight-cr",
-        bindingId
-      });
-    }
-
-    const openDrafts = await listOpenDraftsForBinding(db, {
-      organizationId: auth.organization.id,
-      bindingId
-    });
-    const idempotent = openDrafts.find((draft) => isIdempotentPromotion(draft, row.id, runTarget.debugValue));
-    if (idempotent) {
-      drafts.push({ bindingId, draftId: idempotent.id, outcome: "unchanged" });
-      continue;
-    }
-    if (openDrafts.length > 0) {
-      throw new ApiError("CONFLICT", "An open draft already exists for this binding.", {
-        code: "reload-promote-open-draft",
-        bindingId,
-        draftId: openDrafts[0]!.id
-      });
-    }
-
-    const baseRevisionId = candidate.config_revision_id;
-    if (!baseRevisionId) {
-      throw new ApiError("CONFLICT", "Binding has no current config revision to stage a draft against.", {
-        code: "reload-promote-revision-missing",
-        bindingId
-      });
-    }
-
-    const verification = verificationForBinding(row.reload_snapshot, bindingId);
-    const reason = encodePromoteDraftReason({
-      runId: row.id,
-      baselineValue: runTarget.baselineValue,
-      debugValue: runTarget.debugValue,
-      verification
-    });
-
-    const created = await createDraft(
-      db,
-      auth,
-      {
+      const candidate = await getReloadCandidateRow(tx, {
+        organizationId: auth.organization.id,
         projectId: row.project_id,
+        bindingId
+      });
+      if (!candidate) {
+        throw new ApiError("CONFLICT", "Parameter binding is no longer available in the project.", {
+          code: "reload-promote-binding-missing",
+          bindingId
+        });
+      }
+      assertExactRunTarget(candidate, runTarget);
+      const source = await loadOwnedProjectValueSourcePin(tx, {
+        organizationId: auth.organization.id, projectId: row.project_id,
+        bindingId, projectValueId: candidate.current_value_id
+      });
+      if (!source || source.sourcePinId !== candidate.source_pin_id) {
+        throw new ApiError("CONFLICT", "Reload source pin is unavailable.", { code: "reload-promote-pin-drift", bindingId });
+      }
+      sources.push(source);
+    }
+    sources.sort((left, right) => left.configSetId.localeCompare(right.configSetId));
+    for (const source of sources) await lockCanonicalSourceCohort(tx, source);
+    for (const bindingId of [...bindingIds].sort()) {
+      await tx.query("select id from parameter_catalog.project_parameter_bindings where id=$1 and organization_id=$2 and project_id=$3 for update",
+        [bindingId, auth.organization.id, row.project_id]);
+    }
+
+    for (const bindingId of bindingIds) {
+      const runTarget = targetByBinding.get(bindingId)!;
+      const candidate = await getReloadCandidateRow(tx, { organizationId: auth.organization.id, projectId: row.project_id, bindingId });
+      if (!candidate) throw new ApiError("CONFLICT", "Reload binding is no longer available.", { code: "reload-promote-binding-missing", bindingId });
+      assertExactRunTarget(candidate, runTarget);
+      const { resolvedShape } = rowToCandidate(candidate);
+      const validated = validateAuthoredDebugValue(candidate.property_key, runTarget.debugValue, resolvedShape);
+      if (!validated.ok) {
+        throw new ApiError("VALIDATION_FAILED", "Stored debug value no longer conforms to the current reload value shape.", {
+          code: "reload-promote-value-shape",
+          bindingId,
+          debugValue: runTarget.debugValue
+        });
+      }
+
+      if (await hasInFlightChangeRequest(tx, { organizationId: auth.organization.id, projectId: row.project_id, bindingId })) {
+        throw new ApiError("CONFLICT", "An in-flight change request already exists for this binding.", {
+          code: "reload-promote-in-flight-cr",
+          bindingId
+        });
+      }
+
+      const verification = verificationForBinding(row.reload_snapshot, bindingId);
+      const reason = encodePromoteDraftReason({ runId: row.id, baselineValue: runTarget.baselineValue,
+        debugValue: runTarget.debugValue, verification });
+      const openDrafts = await listOpenDraftsForBinding(tx, {
+        organizationId: auth.organization.id,
+        projectId: row.project_id,
+        bindingId
+      });
+      const idempotent = openDrafts.length === 1 && openDrafts.find((draft) =>
+        draft.user_id === auth.user.id && draft.action === "set" && draft.reason === reason &&
+        draft.base_current_value_id === candidate.current_value_id &&
+        draft.definition_revision_id === candidate.definition_revision_id &&
+        draft.config_revision_id === candidate.config_revision_id && draft.source_pin_id === candidate.source_pin_id &&
+        draft.source_ref === candidate.source_ref && isDeepStrictEqual(draft.target_value, validated.parsed));
+      if (idempotent) {
+        drafts.push({ bindingId, draftId: idempotent.id, outcome: "unchanged" });
+        continue;
+      }
+      if (openDrafts.length > 0) {
+        throw new ApiError("CONFLICT", "An open draft already exists for this binding.", {
+          code: "reload-promote-open-draft",
+          bindingId,
+          draftId: openDrafts[0]!.id
+        });
+      }
+
+      const baseRevisionId = candidate.config_revision_id;
+      if (!baseRevisionId) {
+        throw new ApiError("CONFLICT", "Binding has no current config revision to stage a draft against.", {
+          code: "reload-promote-revision-missing",
+          bindingId
+        });
+      }
+
+      const created = await createCanonicalValueDraft(
+        tx,
+        auth,
+        {
+          projectId: row.project_id,
+          bindingId,
+          baseRevisionId,
+          baseCurrentValueId: candidate.current_value_id,
+          targetValue: validated.parsed,
+          action: "set",
+          reason
+        },
+        { objectStore: context.objectStore, ...trustedContext }
+      );
+      drafts.push({
         bindingId,
-        baseRevisionId,
-        targetValue: validated.parsed,
-        action: "set",
-        reason
-      },
-      context.objectStore ? { objectStore: context.objectStore } : {},
-      trustedContext
-    );
-    drafts.push({
-      bindingId,
-      draftId: created.draftId,
-      outcome: "created"
-    });
-  }
+        draftId: created.id,
+        outcome: "created"
+      });
+    }
 
-  const createdBindingIds = drafts.filter((item) => item.outcome === "created").map((item) => item.bindingId);
-  if (createdBindingIds.length > 0) {
-    await writeTrustedMilestoneAudit(db, {
-      invocation: trustedContext.invocation,
-      ...(trustedContext.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
-      projectId: row.project_id,
-      app: "dts-reload",
-      kind: "reload-value-promoted-to-draft",
-      action: "promote",
-      severity: "Medium",
-      targetType: "dts-reload-run",
-      targetId: row.id,
-      metadata: {
-        runId: row.id,
-        status: row.status,
-        purpose,
-        bindingIds: createdBindingIds,
-        draftIds: drafts.filter((item) => item.outcome === "created").map((item) => item.draftId)
-      },
-      traceId: trustedContext.requestId
-    });
-  }
+    const createdBindingIds = drafts.filter((item) => item.outcome === "created").map((item) => item.bindingId);
+    if (createdBindingIds.length > 0) {
+      await writeTrustedMilestoneAudit(tx, {
+        invocation: trustedContext.invocation,
+        ...(trustedContext.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+        projectId: row.project_id,
+        app: "dts-reload",
+        kind: "reload-value-promoted-to-draft",
+        action: "promote",
+        severity: "Medium",
+        targetType: "dts-reload-run",
+        targetId: row.id,
+        metadata: {
+          runId: row.id,
+          status: row.status,
+          purpose,
+          bindingIds: createdBindingIds,
+          draftIds: drafts.filter((item) => item.outcome === "created").map((item) => item.draftId)
+        },
+        traceId: trustedContext.requestId
+      });
+    }
 
-  return {
-    runId: row.id,
-    status: row.status,
-    drafts,
-    workbenchHref: reloadPromoteWorkbenchHref(row.project_id)
-  };
+    return {
+      runId: row.id,
+      status: row.status,
+      drafts,
+      workbenchHref: reloadPromoteWorkbenchHref(row.project_id)
+    };
+  });
 }
 
 function assertNodePathUnchanged(candidate: ReloadCandidateRow, recordedNodePath: string, bindingId: string) {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { decodeCatalogCursor, encodeCatalogCursor, fingerprintCatalogQuery } from "../../catalog-kernel/runtime/cursors";
+import { GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../../parameter-governance/queries/index";
 
 import {
   CATALOG_IDEMPOTENCY_HEADER,
@@ -186,7 +188,7 @@ function createHarness(
     },
     listRegistrations: async () => {
       calls.push("listRegistrations");
-      return [];
+      return { semantics: GOVERNANCE_CURRENT_PROJECTION_SEMANTICS, items: [], nextCursor: null, totalCount: 0, emptyReason: "no-registrations" };
     },
     getRegistration: async () => {
       calls.push("getRegistration");
@@ -240,6 +242,99 @@ const writeHeaders = {
 };
 
 describe("S8-GOV one-command HTTP mapping", () => {
+  it("forwards registration page inputs and preserves whole count and the public cursor", async () => {
+    const { ports } = createHarness();
+    const fingerprint = fingerprintCatalogQuery({ route: "catalog.listRegistrations", organizationId: orgAdmin.organizationId, principalId: orgAdmin.principalId });
+    const cursor = encodeCatalogCursor({ releaseId: pin.id, digest: pin.digest, queryFingerprint: fingerprint, last: ["inner-before"] });
+    const response = await handleCatalogGovernance({ ...ports, listRegistrations: async (input) => {
+      expect(input).toMatchObject({ organizationId: orgAdmin.organizationId, principalId: orgAdmin.principalId,
+        catalogReleaseId: pin.id, limit: 100, cursor: "inner-before" });
+      return { semantics: GOVERNANCE_CURRENT_PROJECTION_SEMANTICS, items: [], nextCursor: "inner-after", totalCount: 101 };
+    } }, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, { query: { limit: "100", cursor } }));
+    expect(response.status).toBe(200);
+    const body = response.body as { totalCount: number; hasMore: boolean; nextCursor: string; catalogReleaseId: string };
+    expect(body).toMatchObject({ totalCount: 101, hasMore: true, catalogReleaseId: pin.id });
+    expect(decodeCatalogCursor(body.nextCursor)).toEqual({ releaseId: pin.id, digest: pin.digest, queryFingerprint: fingerprint, last: ["inner-after"] });
+  });
+
+  it("rejects invalid registration paging and stale query release before calling its port", async () => {
+    for (const limit of ["0", "-1", "1.5", "101", "nope", ""]) {
+      const { ports, calls } = createHarness();
+      expect((await handleCatalogGovernance(ports, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, { query: { limit } }))).status).toBe(400);
+      expect(calls).not.toContain("listRegistrations");
+    }
+    const { ports, calls } = createHarness();
+    expect((await handleCatalogGovernance(ports, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, { query: { catalogReleaseId: "crel_stale" } }))).status).toBe(409);
+    expect(calls).not.toContain("listRegistrations");
+  });
+
+  it("passes an explicit module identity to the destination resolver without guessing a default", async () => {
+    const { ports, commands } = createHarness();
+    const response = await handleCatalogGovernance({
+      ...ports,
+      resolveDestinationModuleId: async (input) => {
+        expect(input).toMatchObject({ organizationId: orgAdmin.organizationId, subjectKind: "driver", destinationModuleId: "module-exact" });
+        return input.destinationModuleId ?? null;
+      }
+    }, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+      headers: writeHeaders,
+      body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, destinationModuleId: "module-exact" }
+    }));
+    expect(response.status).toBe(201);
+    expect(commands[0]).toMatchObject({ destinationModuleId: "module-exact" });
+  });
+
+  it("does not silently ignore an explicit module when a resolver cannot validate it", async () => {
+    const { ports, commands } = createHarness();
+    const response = await handleCatalogGovernance(ports, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+      headers: writeHeaders,
+      body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, destinationModuleId: "module-foreign" }
+    }));
+    expect(response.status).toBe(400);
+    expect(commands).toHaveLength(0);
+  });
+
+  it("passes the client's exact placement version to the atomic owner, including retries", async () => {
+    const { ports, commands } = createHarness();
+    const version = "1780000000000000";
+    const readPorts: CatalogGovernancePorts = { ...ports, getRegistration: async () => ({
+      id: registrationResult.registrationId,
+      organizationId: orgAdmin.organizationId,
+      subjectId: registrationResult.subjectId,
+      status: "active", method: "explicit", catalogReleaseId: pin.id, etag: "unused-registration-etag",
+      placement: { id: registrationResult.placementId, displayName: "Current module", parentPlacementId: null }
+    }) };
+    const input = request("PATCH", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${registrationResult.registrationId}/placement`, {
+      headers: { ...writeHeaders, [CATALOG_IF_MATCH_HEADER]: `"${registrationResult.placementId}:${version}"` },
+      body: { placement: { mode: "use-default" } }
+    });
+    expect((await handleCatalogGovernance(readPorts, input)).status).toBe(200);
+    expect((await handleCatalogGovernance(readPorts, input)).status).toBe(200);
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toMatchObject({ kind: "move-placement", expectedPlacementVersion: version });
+    expect(commands[1]).toEqual(commands[0]);
+    const invalid = { ...input, headers: { ...writeHeaders, [CATALOG_IF_MATCH_HEADER]: `"${registrationResult.placementId}"` } };
+    expect((await handleCatalogGovernance(readPorts, invalid)).status).toBe(409);
+    expect(commands).toHaveLength(2);
+  });
+
+  it("exposes cross-project placement impact only to organization administrators", async () => {
+    for (const canMutateOrganization of [true, false]) {
+      const { ports } = createHarness({ scope: { ...orgAdmin, canMutateOrganization } });
+      const result = await handleCatalogGovernance({ ...ports, getRegistration: async () => ({
+        id: registrationResult.registrationId, organizationId: orgAdmin.organizationId,
+        subjectId: registrationResult.subjectId, status: "active", method: "explicit",
+        catalogReleaseId: pin.id, etag: "registration-etag",
+        placement: { id: registrationResult.placementId, moduleId: "module-a", version: "123456", displayName: "Module A", parentPlacementId: null },
+        impact: { bindingCount: 7, projectCount: 3 }
+      }) }, request("GET", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations/${registrationResult.registrationId}`));
+      expect(result.status).toBe(200);
+      const body = result.body as { item: { impact?: unknown; placement: { version?: unknown } } };
+      expect(body.item.impact).toEqual(canMutateOrganization ? { bindingCount: 7, projectCount: 3 } : undefined);
+      expect(body.item.placement.version).toBeUndefined();
+    }
+  });
+
   it("matches every frozen governance route and refuses legacy lookup", () => {
     for (const route of catalogGovernanceRoutes) {
       const filled = route.path

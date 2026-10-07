@@ -7,7 +7,8 @@ import {
   type TrustedRefusalAuditSink
 } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
-import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
+import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -112,7 +113,8 @@ const listDraftsQuerySchema = z.object({
 
 const listSubmissionRoundsQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
-  status: z.union([z.enum(parameterSubmissionRoundStatuses), z.array(z.enum(parameterSubmissionRoundStatuses))]).optional()
+  status: z.union([z.enum(parameterSubmissionRoundStatuses), z.array(z.enum(parameterSubmissionRoundStatuses))]).optional(),
+  mine: z.enum(["true", "false"]).optional()
 });
 
 const listChangeRequestsQuerySchema = z.object({
@@ -506,11 +508,62 @@ export function registerParameterRoutes(
   router.get("/api/v1/parameter-submission-rounds", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const query = parseWithSchema(listSubmissionRoundsQuerySchema, request.query);
-    const items = await listSubmissionRounds(db, auth, {
-      ...query,
-      status: normalizeArray(query.status)
-    });
+    const { mine, ...query } = parseWithSchema(listSubmissionRoundsQuerySchema, request.query);
+    const status = normalizeArray(query.status);
+    if (mine !== "true") {
+      const items = await listSubmissionRounds(db, auth, { ...query, status });
+      return { status: 200, body: { items } };
+    }
+
+    if (!auth.user.isActive) {
+      throw new ApiError("FORBIDDEN", "Active parameter view access is required for the personal archive.");
+    }
+    const hasOrganizationWideRole = auth.roles.some((role) =>
+      role.projectId === null || role.roleId === "admin" || role.roleId === "platform-admin"
+    );
+    const projectIds = [...new Set(auth.roles.flatMap((role) => role.projectId ? [role.projectId] : []))];
+    if (query.projectId && !hasOrganizationWideRole && !projectIds.includes(query.projectId)) {
+      return { status: 200, body: { items: [] } };
+    }
+    if (!query.projectId && !hasOrganizationWideRole && projectIds.length === 0) {
+      return { status: 200, body: { items: [] } };
+    }
+
+    const rounds = query.projectId || hasOrganizationWideRole
+      ? await listSubmissionRounds(db, auth, { ...query, status })
+      : (await Promise.all(projectIds.map((projectId) =>
+          listSubmissionRounds(db, auth, { status, projectId })
+        ))).flat();
+    const authorizedProjectIds = query.projectId
+      ? new Set([query.projectId])
+      : hasOrganizationWideRole
+        ? null
+        : new Set(projectIds);
+    if (rounds.length === 0) return { status: 200, body: { items: [] } };
+
+    // ponytail: The legacy DTO has no owner ID, so filter the already-authorized round IDs in one query; this loads O(n) archive rows, with a repository-owned scoped projection as the upgrade path if that history grows.
+    const roundIds = rounds.map((round) => round.id);
+    const ownership = authorizedProjectIds === null
+      ? await db.query<{ id: string }>(
+          `select id from parameter_submission_rounds
+            where organization_id = $1
+              and submitter_user_id = $2
+              and id = any($3::text[])`,
+          [auth.organization.id, auth.user.id, roundIds]
+        )
+      : await db.query<{ id: string }>(
+          `select id from parameter_submission_rounds
+            where organization_id = $1
+              and submitter_user_id = $2
+              and id = any($3::text[])
+              and project_id = any($4::text[])`,
+          [auth.organization.id, auth.user.id, roundIds, [...authorizedProjectIds]]
+        );
+    const ownRoundIds = new Set(ownership.rows.map((row) => row.id));
+    const items = rounds.filter((round) =>
+      ownRoundIds.has(round.id)
+      && (authorizedProjectIds === null || authorizedProjectIds.has(round.projectId))
+    );
 
     return { status: 200, body: { items } };
   });
@@ -658,7 +711,15 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithInitializationReviewIdSchema, request.params);
-    const item = await approveReview(db, auth, { reviewId: params.reviewId }, { requestId: request.requestId });
+    const pool = getRootPostgresPool(db);
+    const catalogSnapshot = pool ? await loadPublishedCatalog(pool) : null;
+    const item = await approveReview(db, auth, { reviewId: params.reviewId }, {
+      requestId: request.requestId,
+      invocation: createUserInvocation(auth),
+      refusalSink: refusalAuditSink,
+      objectStore: options.objectStore,
+      catalogSnapshot: catalogSnapshot ?? undefined
+    });
     return { status: 200, body: { item } };
   });
 

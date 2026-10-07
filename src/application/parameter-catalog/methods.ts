@@ -20,15 +20,25 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "createDefinitionReplacement",
   "getDefinitionReplacement",
   "continueDefinitionReplacement",
+  "listProtectedProjectBindings",
   "listProjectValueDrafts",
   "deleteProjectValueDraft",
   "submitProjectValueDraft",
   "listProjectValueChangeRequests",
+  "submitProjectValueBatchChangeRequest",
+  "listProjectValueBatchChangeRequests",
+  "getProjectValueBatchChangeRequest",
+  "submitMemberRemovalRequest",
+  "listMemberRemovalRequests",
+  "getMemberRemovalRequest",
+  "reviewMemberRemovalRequest",
+  "withdrawMemberRemovalRequest",
   "reviewProjectValueChangeRequest",
   "withdrawProjectValueChangeRequest",
   "getCanonicalBindingChangeHistory",
   "getCanonicalBindingExport",
-  "getProjectValueChangeSourceDiff"
+  "getProjectValueChangeSourceDiff",
+  "getProjectValueConflictDecision"
 ] as const;
 
 export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [
@@ -39,6 +49,7 @@ export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [
   "restoreRegistration",
   "getPlacement",
   "updatePlacement",
+  "listDriverCompatibleDiscovery",
   "listObservations",
   "getObservation",
   "listReviewItems",

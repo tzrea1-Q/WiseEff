@@ -33,6 +33,7 @@ import type { TopologyNodeEnablement } from "@/domain/parameter-topology/types";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { presentError } from "@/infrastructure/http/presentError";
 import {
+  bindingFromDto,
   mapParameterTopologyError,
   type ParameterTopologyMappedError
 } from "@/infrastructure/http/parameterTopologyClient";
@@ -49,7 +50,9 @@ import { DtsNodeEnablementDialog } from "./DtsNodeEnablementDialog";
 import type { PendingEnablementDraft } from "./draftTrayTypes";
 import type { TrayHydrationDraft } from "@/application/parameters/canonicalDraftTray";
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
+import { buildDtsReloadHandoffPath } from "@/domain/dtsReload/handoff";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
+import { loadCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
 import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import {
@@ -70,6 +73,7 @@ import {
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
+  requestedBindingId?: string;
   canEdit?: boolean;
   layoutMode?: TopologyLayoutMode;
   runtimeMode?: WiseEffRuntimeMode;
@@ -315,6 +319,7 @@ async function loadWorkspace(
  */
 export function ApiProjectTopologyWorkspace({
   projectId,
+  requestedBindingId,
   canEdit = true,
   layoutMode = "desktop",
   runtimeMode = "api",
@@ -368,7 +373,15 @@ export function ApiProjectTopologyWorkspace({
   const isCurrentProjectRequest = (requestProjectId: string, requestGeneration: number) =>
     activeProjectIdRef.current === requestProjectId && projectGenerationRef.current === requestGeneration;
 
-  const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
+  const [loadedWorkspace, setLoadedWorkspace] = useState<{ projectId: string; state: LoadState } | null>(null);
+  const loadState: LoadState = loadedWorkspace?.projectId === projectId
+    ? loadedWorkspace.state : { kind: "loading" };
+  const [protectedJson, setProtectedJson] = useState<{
+    projectId: string;
+    state: "loading" | "ready" | "error";
+    bindings: ProjectParameterBinding[];
+    message?: string;
+  } | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [draftsReloadToken, setDraftsReloadToken] = useState(0);
   const [preferredRevision, setPreferredRevision] = useState<{
@@ -536,6 +549,7 @@ export function ApiProjectTopologyWorkspace({
   }, [hasProjectDrafts, listWorkflowAssignees, projectId]);
 
   useEffect(() => {
+    const setLoadState = (state: LoadState) => setLoadedWorkspace({ projectId, state });
     if (!repository) {
       setLoadState({
         kind: "error",
@@ -569,6 +583,34 @@ export function ApiProjectTopologyWorkspace({
       cancelled = true;
     };
   }, [projectId, preferredRevisionId, repository, runtimeMode, reloadToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const generation = projectGenerationRef.current;
+    setProtectedJson({ projectId, state: "loading", bindings: [] });
+    const read = canonicalRepository?.listProtectedProjectBindings;
+    const request = Promise.resolve().then(() => {
+      if (!read) throw new Error("当前未配置受保护项目 JSON 绑定读取能力");
+      return read(projectId);
+    });
+    request.then((response) => {
+      if (cancelled || activeProjectIdRef.current !== projectId || projectGenerationRef.current !== generation) return;
+      setProtectedJson({ projectId, state: "ready", bindings: response.items
+        .filter((binding) => binding.projectId === projectId && binding.effectiveValue.kind === "json")
+        // The protected DTO marks JSON arrays readonly; the existing adapter only copies fields.
+        .map((binding) => bindingFromDto(binding as Parameters<typeof bindingFromDto>[0])) });
+    }).catch((error: unknown) => {
+      if (cancelled || activeProjectIdRef.current !== projectId || projectGenerationRef.current !== generation) return;
+      setProtectedJson({ projectId, state: "error", bindings: [],
+        message: presentError(error, "加载受保护项目 JSON 绑定失败，请稍后重试。") });
+    });
+    return () => { cancelled = true; };
+  }, [canonicalRepository, projectId, reloadToken]);
+
+  const jsonState = protectedJson?.projectId === projectId ? protectedJson : null;
+  const jsonBindings = jsonState?.state === "ready" ? jsonState.bindings
+    : !canonicalRepository && loadState.kind === "ready"
+      ? loadState.bindings.filter((binding) => binding.effectiveValue.kind === "json") : [];
 
   useEffect(() => {
     if (!moduleRegistryRepo) {
@@ -1101,7 +1143,9 @@ export function ApiProjectTopologyWorkspace({
 
   const loadBindingHistory = useCallback(
     (bindingId: string) => {
-      if (!repository?.listBindingHistory) return Promise.resolve([]);
+      if (!repository?.listBindingHistory) {
+        return Promise.reject(new Error("canonical binding history repository unavailable"));
+      }
       return repository.listBindingHistory(projectId, bindingId);
     },
     [projectId, repository]
@@ -1109,20 +1153,29 @@ export function ApiProjectTopologyWorkspace({
 
   const loadBindingCompare = useCallback(
     (bindingId: string) => {
-      if (!repository?.listBindingCompare) return Promise.resolve([]);
+      if (!repository?.listBindingCompare) {
+        return Promise.reject(new Error("canonical binding compare repository unavailable"));
+      }
       return repository.listBindingCompare(projectId, bindingId);
     },
     [projectId, repository]
   );
 
   const loadParameterSpec = useCallback(
-    (parameterSpecId: string) => {
-      if (!repository?.getSpec) {
-        return Promise.reject(new Error("parameter topology repository unavailable"));
+    (definitionId: string, effectiveRevisionId: string, propertyKey: string) => {
+      if (canonicalRepository?.getDefinitionRevision) {
+        return loadCanonicalDtsDefinitionDetail(canonicalRepository, {
+          definitionId,
+          revisionId: effectiveRevisionId,
+          propertyKey
+        });
       }
-      return repository.getSpec(parameterSpecId);
+      if (runtimeMode === "mock" && repository?.getSpec) {
+        return repository.getSpec(definitionId);
+      }
+      return Promise.reject(new Error("canonical definition repository unavailable"));
     },
-    [repository]
+    [canonicalRepository, repository, runtimeMode]
   );
 
   const loadPrimaryDtsSource = useCallback(async () => {
@@ -1145,7 +1198,7 @@ export function ApiProjectTopologyWorkspace({
   }, [parameterFileRepo, projectId]);
 
   const loadPrimaryJsonSource = useCallback(async (): Promise<PrimaryJsonSource> => {
-    const readyBindings = loadState.kind === "ready" ? loadState.bindings : [];
+    const readyBindings = jsonBindings;
     try {
       const files = await parameterFileRepo.listFiles(projectId);
       const file = selectPrimaryProjectJsonFile(projectId, files);
@@ -1172,7 +1225,7 @@ export function ApiProjectTopologyWorkspace({
         projectId
       );
     }
-  }, [loadState, parameterFileRepo, projectId]);
+  }, [jsonBindings, parameterFileRepo, projectId]);
 
   const exportCanonicalBinding = useCallback(
     async (bindingId: string) => {
@@ -1210,65 +1263,29 @@ export function ApiProjectTopologyWorkspace({
     [canonicalRepository, projectId]
   );
 
-  if (loadState.kind === "loading") {
-    return (
-      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
-        <p role="status"><LoaderCircle className="dts-status-icon dts-status-icon--spin" size={17} strokeWidth={2} aria-hidden="true" />正在加载项目拓扑与绑定…</p>
-      </section>
-    );
-  }
+  const requestedBinding = requestedBindingId
+    ? jsonBindings.find((binding) => binding.id === requestedBindingId)
+      ?? (loadState.kind === "ready" ? loadState.bindings.find((binding) =>
+        binding.id === requestedBindingId && binding.effectiveValue.kind !== "json") : undefined)
+    : undefined;
 
-  if (loadState.kind === "empty") {
-    return (
-      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
-        <div className="project-topology-workspace__empty" role="status">
-          <Info className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
-          {loadState.message}
-        </div>
-      </section>
-    );
-  }
+  useEffect(() => {
+    if (requestedBinding) setActiveFormatTab(requestedBinding.effectiveValue.kind === "json" ? "json" : "dts");
+  }, [requestedBinding]);
 
-  if (loadState.kind === "error") {
-    return (
-      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
-        <div className="project-topology-workspace__error" role="alert">
-          <AlertCircle className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
-          {loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : null}
-          {loadState.message}
-          <button type="button" className="button subtle" onClick={() => setReloadToken((t) => t + 1)}>
-            重试
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  const statusBanner =
-    loadState.status === "needs_mapping"
-      ? "修订状态：needs_mapping — 存在未解决节点对应，发布前须完成审核。"
-      : loadState.status === "invalid"
-        ? "修订状态：invalid — 解析/编译失败，修复后方可编辑或发布。"
-        : null;
-
-  const canEditSemantic =
-    canEdit &&
-    !loadState.incompleteBase &&
-    loadState.status !== "invalid" &&
-    loadState.status !== "needs_mapping" &&
-    !projectMutationKind;
-
+  const canEditSemantic = loadState.kind === "ready" && canEdit &&
+    !loadState.incompleteBase && loadState.status !== "invalid" &&
+    loadState.status !== "needs_mapping" && !projectMutationKind;
+  const editableJsonBindings = canEditSemantic && loadState.kind === "ready" ? jsonBindings.filter((binding) =>
+    loadState.bindings.some((semanticBinding) => semanticBinding.id === binding.id &&
+      semanticBinding.currentValueId === binding.currentValueId &&
+      semanticBinding.effectiveRevisionId === binding.effectiveRevisionId &&
+      semanticBinding.rawValue === binding.rawValue)) : [];
+  const editableJsonIds = new Set(editableJsonBindings.map((binding) => binding.id));
   const draftBindingIds = new Set(
     projectDrafts
       .filter((draft) => draft.kind === "binding")
       .map((draft) => draft.projectParameterBindingId)
-  );
-  const { other: productDiagnostics, summary: danglingSummary } =
-    partitionDanglingReferenceDiagnostics(loadState.diagnostics);
-  const showGovernancePanel = Boolean(
-    statusBanner ||
-    loadState.incompleteBase ||
-    productDiagnostics.length > 0
   );
   const currentEdits = projectDrafts.length > 0 ? (
     <DtsBindingDraftTray
@@ -1307,8 +1324,87 @@ export function ApiProjectTopologyWorkspace({
     </section>
   ) : null;
 
+  const jsonContent = jsonState?.state === "error" && (canonicalRepository || loadState.kind !== "ready" || (requestedBindingId && !requestedBinding)) ? (
+    <div className="project-topology-workspace__error" role="alert">
+      {jsonState.message}
+      <button type="button" className="button subtle" onClick={() => setReloadToken((token) => token + 1)}>重试</button>
+    </div>
+  ) : jsonBindings.length > 0 ? (
+    <JsonBindingPanel
+      key={projectId}
+      bindings={jsonBindings}
+      requestedBindingId={requestedBinding?.effectiveValue.kind === "json" ? requestedBindingId : undefined}
+      moduleRegistry={moduleRegistry}
+      canEdit={canEditSemantic}
+      editableBindingIds={editableJsonIds}
+      draftBindingIds={draftBindingIds}
+      currentEdits={loadState.kind === "ready" ? currentEdits : undefined}
+      onValidateEdit={editableJsonIds.size > 0 ? handleValidateEdit : undefined}
+      onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
+      onLoadHistory={canonicalRepository?.getCanonicalBindingChangeHistory ? loadCanonicalBindingHistory : undefined}
+      loadPrimaryJsonSource={loadPrimaryJsonSource}
+      onExportRows={(bindings) => downloadJsonWorkbenchCsv(bindings, `json-parameters-${projectId}.csv`)}
+      projectName={projectId}
+    />
+  ) : jsonState?.state === "loading" || !jsonState ? <p role="status">正在加载项目 JSON 绑定…</p> : null;
+  const unavailableBinding = requestedBindingId && !requestedBinding && jsonState?.state === "ready"
+    ? <p role="status">关联参数在当前项目中不可用。</p> : null;
+
+  if (loadState.kind === "loading") {
+    return (
+      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
+        <p role="status"><LoaderCircle className="dts-status-icon dts-status-icon--spin" size={17} strokeWidth={2} aria-hidden="true" />正在加载项目拓扑与绑定…</p>
+        {jsonContent}
+      </section>
+    );
+  }
+
+  if (loadState.kind === "empty") {
+    return (
+      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
+        <div className="project-topology-workspace__empty" role="status">
+          <Info className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
+          {loadState.message}
+        </div>
+        {unavailableBinding}
+        {jsonContent}
+      </section>
+    );
+  }
+
+  if (loadState.kind === "error") {
+    return (
+      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
+        <div className="project-topology-workspace__error" role="alert">
+          <AlertCircle className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
+          {loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : null}
+          {loadState.message}
+          <button type="button" className="button subtle" onClick={() => setReloadToken((t) => t + 1)}>
+            重试
+          </button>
+        </div>
+        {unavailableBinding}
+        {jsonContent}
+      </section>
+    );
+  }
+
+  const statusBanner =
+    loadState.status === "needs_mapping"
+      ? "修订状态：needs_mapping — 存在未解决节点对应，发布前须完成审核。"
+      : loadState.status === "invalid"
+        ? "修订状态：invalid — 解析/编译失败，修复后方可编辑或发布。"
+        : null;
+
+  const { other: productDiagnostics, summary: danglingSummary } =
+    partitionDanglingReferenceDiagnostics(loadState.diagnostics);
+  const showGovernancePanel = Boolean(
+    statusBanner ||
+    loadState.incompleteBase ||
+    productDiagnostics.length > 0
+  );
   const dtsBindingCount = loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length;
-  const jsonBindingCount = loadState.bindings.filter((b) => b.effectiveValue.kind === "json").length;
+  const jsonBindingCount = jsonBindings.length;
 
   const formatSwitcher = jsonBindingCount > 0 ? (
     <div className="parameter-workspace-format-switch" role="tablist" aria-label="参数配置格式">
@@ -1343,32 +1439,18 @@ export function ApiProjectTopologyWorkspace({
 
   return (
     <div className="api-project-topology-workspace">
+      {unavailableBinding}
+      {jsonState?.state === "error" && (canonicalRepository || (requestedBindingId && !requestedBinding)) ? jsonContent : null}
       {formatSwitcher}
       {activeFormatTab === "json" && jsonBindingCount > 0 ? (
         <div id="format-panel-json" role="tabpanel" aria-labelledby="format-tab-json">
-          <JsonBindingPanel
-            bindings={loadState.bindings}
-            moduleRegistry={moduleRegistry}
-            canEdit={canEditSemantic}
-            draftBindingIds={draftBindingIds}
-            currentEdits={currentEdits}
-            onValidateEdit={handleValidateEdit}
-            onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
-            onLoadHistory={canonicalRepository?.getCanonicalBindingChangeHistory ? loadCanonicalBindingHistory : undefined}
-            loadPrimaryJsonSource={loadPrimaryJsonSource}
-            onExportRows={(bindings) => {
-              downloadJsonWorkbenchCsv(
-                bindings,
-                `json-parameters-${projectId}-${loadState.revisionId}.csv`
-              );
-            }}
-            projectName={projectId}
-          />
+          {jsonContent}
         </div>
       ) : (
         <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts">
           <DtsParameterWorkbench
             projectId={projectId}
+            requestedBindingId={requestedBinding?.effectiveValue.kind !== "json" ? requestedBindingId : undefined}
             configSetId={loadState.configSetId}
             revisionId={loadState.revisionId}
             layoutMode={layoutMode}
@@ -1383,6 +1465,7 @@ export function ApiProjectTopologyWorkspace({
             canEdit={canEditSemantic}
             onSelectBinding={handleSelectBinding}
             onEditBinding={handleEditBinding}
+            onStartDtsReload={(bindingId) => onNavigate(buildDtsReloadHandoffPath({ projectId, bindingIds: [bindingId] }))}
             onCreateDraft={handleValidateEdit}
             onEditNodeEnablement={canEditSemantic ? handleOpenNodeEnablement : undefined}
             loadBindingHistory={loadBindingHistory}

@@ -116,7 +116,7 @@ export function XiaozeApprovalCardContent({
   return (
     <AlertDialog open onOpenChange={() => undefined}>
       <AlertDialogContent
-        className="confirm-dialog"
+        className="confirm-dialog min-w-0"
         data-testid="xiaoze-approval-card"
       >
         <AlertDialogHeader>
@@ -125,12 +125,12 @@ export function XiaozeApprovalCardContent({
             小泽建议提交参数变更，请审阅后批准或拒绝。批准后将经现有审批链写入变更请求。
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="grid gap-3 py-2">
-          <p>
+        <div className="grid min-w-0 gap-3 py-2">
+          <p className="min-w-0 break-all">
             <strong>项目：</strong>
             {interrupt.payload.projectId ?? "—"}
           </p>
-          <p>
+          <p className="min-w-0 break-all">
             <strong>参数：</strong>
             {interrupt.payload.parameterId ?? "—"}
           </p>

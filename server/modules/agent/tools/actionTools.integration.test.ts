@@ -10,7 +10,8 @@ import {
   createUserInvocation
 } from "../../auth/trustedInvocation";
 import { testRefusalAuditSink } from "../../audit/testRefusalSink";
-import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import { createTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import { parseDtsValue } from "../../dts/valueAst";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
@@ -25,10 +26,10 @@ import type { AgentToolExecutionContext } from "../toolRegistry";
 import { createActionTools } from "./actionTools";
 
 /**
- * Non-mocked regression for TD-078: the Xiaoze mutating tool must complete a
- * real post-cutover submission — typed binding draft, candidate revision, and
- * change request — against a real schema, with no parameters-module mocks.
- * Fixture mirrors server/modules/parameter-topology/editService.test.ts.
+ * Archived semantic-owner regression for TD-078. These cases intentionally
+ * exercise the existing binding-draft and parameter-submission owners
+ * directly, preserving their historical guards. Canonical Agent action
+ * acceptance lives in canonicalParameterAction.integration.test.ts.
  */
 
 const passToolchain: DtsToolchainRunner = {
@@ -423,24 +424,25 @@ async function seedConfigAndBinding(db: Database, auth: AuthContext) {
 }
 
 function contextFor(auth: AuthContext): AgentToolExecutionContext {
+  const sessionId = `agent-session-${randomUUID().slice(0, 8)}`;
   const toolCallId = `tool-call-${randomUUID().slice(0, 8)}`;
   const approvalId = `approval-${randomUUID().slice(0, 8)}`;
   return {
     auth,
     invocation: createAgentInvocation(auth, {
-      sessionId: "agent-session",
+      sessionId,
       toolCallId,
       approval: { required: true, approvalId }
     }),
     requestId: `req-${randomUUID().slice(0, 8)}`,
-    sessionId: "agent-session",
+    sessionId,
     toolCallId,
     projectId: PROJECT_ID,
     approvalId
   };
 }
 
-describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (TD-078)", () => {
+describe.skipIf(!databaseAvailable)("archived semantic binding submission regression (TD-078)", () => {
   let db: InMemoryTestDatabase | undefined;
   const auth = makeAuth();
 
@@ -448,6 +450,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
     setParameterIdentityMode("semantic");
     db = await createInMemoryTestDatabase();
     await seedGraph(db);
+    await resolveParameterIdentityMode(db);
   });
 
   afterEach(async () => {
@@ -456,13 +459,11 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
     setParameterIdentityMode(null);
   });
 
-  function actionTool() {
-    return createActionTools({ db: db!, toolchain: passToolchain, refusalAuditSink: testRefusalAuditSink }).find(
-      (tool) => tool.name === "action.submitParameterChange"
-    )!;
-  }
-
-  async function seedAgentAuditLineage(targetDb: Database, context: AgentToolExecutionContext) {
+  async function seedAgentAuditLineage(
+    targetDb: Database,
+    context: AgentToolExecutionContext,
+    payload: Record<string, unknown> = {}
+  ) {
     await targetDb.query(
       `insert into agent_sessions (
          id, organization_id, project_id, actor_user_id, page_key, context, status, title
@@ -473,8 +474,8 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
       `insert into agent_tool_calls (
          id, session_id, organization_id, project_id, name, label, payload, requires_approval, status
        ) values ($1, $2, $3, $4, 'action.submitParameterChange', 'Submit parameter change',
-                 '{}'::jsonb, true, 'approved')`,
-      [context.toolCallId, context.sessionId, ORG_ID, PROJECT_ID]
+                 $5::jsonb, true, 'approved')`,
+      [context.toolCallId, context.sessionId, ORG_ID, PROJECT_ID, JSON.stringify(payload)]
     );
     await targetDb.query(
       `insert into agent_approvals (
@@ -485,18 +486,64 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
     );
   }
 
+  async function submitLegacyBindingChange(
+    targetDb: Database,
+    authContext: AuthContext,
+    context: AgentToolExecutionContext,
+    bindingId: string,
+    baseRevisionId: string,
+    targetValue: string,
+    reason: string,
+    refusalSink: TrustedRefusalAuditSink = testRefusalAuditSink
+  ) {
+    const draft = await createBindingDraft(
+      targetDb,
+      authContext,
+      {
+        projectId: PROJECT_ID,
+        bindingId,
+        baseRevisionId,
+        targetValue: parseDtsValue("iin_max", targetValue).value,
+        action: "set",
+        reason
+      },
+      { toolchain: passToolchain },
+      { requestId: context.requestId, invocation: context.invocation, refusalSink }
+    );
+    return submitParameterChanges(
+      targetDb,
+      authContext,
+      {
+        projectId: PROJECT_ID,
+        items: [{
+          draftId: draft.draftId,
+          editSubjectKind: "binding" as const,
+          projectParameterBindingId: draft.projectParameterBindingId,
+          parameterSpecId: draft.parameterSpecId,
+          action: draft.action,
+          targetValue: draft.rawText,
+          reason
+        }]
+      },
+      { invocation: context.invocation, requestId: context.requestId, refusalSink }
+    );
+  }
+
   it("submits a real post-cutover change request through a typed binding draft", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
+    const context = contextFor(auth);
+    await seedAgentAuditLineage(db!, context);
+    const result = await submitLegacyBindingChange(
+      db!,
+      auth,
+      context,
+      fixture.binding.id,
+      fixture.revision.id,
+      "<3600>",
+      "Agent tuning after review"
+    );
 
-    const result = await actionTool().run(contextFor(auth), {
-      projectId: PROJECT_ID,
-      parameterId: fixture.binding.id,
-      targetValue: "<3600>",
-      reason: "Agent tuning after review"
-    });
-
-    expect(result.summary).toContain("Submitted parameter change request");
-    expect(result.data).toMatchObject({ targetValue: "<3600>", projectId: PROJECT_ID });
+    expect(result.items).toHaveLength(1);
 
     const changeRequests = await db!.query<{
       target_value: string;
@@ -535,6 +582,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
         };
         const context = contextFor(capableAuth);
         await seedAgentAuditLineage(ownedDb, context);
+        const refusalSink = createTrustedRefusalAuditSink(root);
         await ownedDb.query(
       `insert into dts_sensitive_node_rules (
          id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
@@ -545,18 +593,18 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
       [ORG_ID, PROJECT_ID]
     );
 
-        const refusalSink = createTrustedRefusalAuditSink(root);
         await expect(
           root.transaction(async (tx) => {
-            const tool = createActionTools({ db: tx, toolchain: passToolchain, refusalAuditSink: refusalSink }).find(
-              (candidate) => candidate.name === "action.submitParameterChange"
-            )!;
-            return tool.run(context, {
-              projectId: PROJECT_ID,
-              parameterId: fixture.binding.id,
-              targetValue: "<3600>",
-              reason: "Compatible-only critical rule must require a human"
-            });
+            return submitLegacyBindingChange(
+              tx,
+              capableAuth,
+              context,
+              fixture.binding.id,
+              fixture.revision.id,
+              "<3600>",
+              "Compatible-only critical rule must require a human",
+              refusalSink
+            );
           })
         ).rejects.toMatchObject({
           code: "FORBIDDEN",
@@ -634,18 +682,16 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           [ORG_ID, PROJECT_ID]
         );
 
-        const tool = createActionTools({
-          db: root,
-          toolchain: passToolchain,
-          refusalAuditSink: createTrustedRefusalAuditSink(root)
-        }).find((candidate) => candidate.name === "action.submitParameterChange")!;
-        const result = await tool.run(context, {
-          projectId: PROJECT_ID,
-          parameterId: fixture.binding.id,
-          targetValue: "<3600>",
-          reason: "Compatible-only high remains Agent-capable"
-        });
-        expect(result.summary).toContain("Submitted parameter change request");
+        const result = await submitLegacyBindingChange(
+          root,
+          auth,
+          context,
+          fixture.binding.id,
+          fixture.revision.id,
+          "<3600>",
+          "Compatible-only high remains Agent-capable"
+        );
+        expect(result.items).toHaveLength(1);
 
         const evidence = await ownedDb.query<{
           requests: string;
@@ -1070,14 +1116,18 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
 
   it("submits a second change after the first open request is rejected", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
-
-    const first = await actionTool().run(contextFor(auth), {
-      projectId: PROJECT_ID,
-      parameterId: fixture.binding.id,
-      targetValue: "<3600>",
-      reason: "First agent submission"
-    });
-    expect(first.summary).toContain("Submitted parameter change request");
+    const firstContext = contextFor(auth);
+    await seedAgentAuditLineage(db!, firstContext);
+    const first = await submitLegacyBindingChange(
+      db!,
+      auth,
+      firstContext,
+      fixture.binding.id,
+      fixture.revision.id,
+      "<3600>",
+      "First agent submission"
+    );
+    expect(first.items).toHaveLength(1);
 
     await db!.query(
       `
@@ -1091,14 +1141,18 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
       [ORG_ID, PROJECT_ID, fixture.binding.id]
     );
 
-    const second = await actionTool().run(contextFor(auth), {
-      projectId: PROJECT_ID,
-      parameterId: fixture.binding.id,
-      targetValue: "<3700>",
-      reason: "Second agent submission after reject"
-    });
-    expect(second.summary).toContain("Submitted parameter change request");
-    expect(second.data).toMatchObject({ targetValue: "<3700>", projectId: PROJECT_ID });
+    const secondContext = contextFor(auth);
+    await seedAgentAuditLineage(db!, secondContext);
+    const second = await submitLegacyBindingChange(
+      db!,
+      auth,
+      secondContext,
+      fixture.binding.id,
+      fixture.revision.id,
+      "<3700>",
+      "Second agent submission after reject"
+    );
+    expect(second.items).toHaveLength(1);
 
     const changeRequests = await db!.query<{ target_value: string; status: string }>(
       `select target_value, status
@@ -1118,9 +1172,20 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
 
   it("returns 404 without residue when the binding does not exist", async () => {
     await seedConfigAndBinding(db!, auth);
+    const context = contextFor(auth);
+    const actionTool = createActionTools({
+      db: db!,
+      toolchain: passToolchain,
+      refusalAuditSink: testRefusalAuditSink
+    }).find((candidate) => candidate.name === "action.submitParameterChange")!;
 
     await expect(
-      actionTool().run(contextFor(auth), {
+      actionTool.prepareApproval!({
+        auth: context.auth,
+        requestId: context.requestId,
+        sessionId: context.sessionId,
+        projectId: context.projectId
+      }, {
         projectId: PROJECT_ID,
         parameterId: "missing-binding",
         targetValue: "<1>",

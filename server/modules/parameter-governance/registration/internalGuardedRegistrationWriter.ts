@@ -62,6 +62,7 @@ const toResult = (
   registrationMethod: registration.registration_method,
   placementOrigin: placement.origin,
   moduleId: placement.module_id,
+  placementVersion: placement.version,
   release: command.expectedRelease,
   idempotencyKey: command.idempotencyKey,
   fingerprint,
@@ -239,6 +240,22 @@ const writeMove = async (
   const pair = await loadStoredPair(client, command.organizationId, command.registrationId);
   if (!pair) {
     return fail({ kind: "registration-not-found", registrationId: command.registrationId });
+  }
+  if (pair.registration.status === "retired") {
+    return fail({
+      kind: "restore-required",
+      registrationId: SubjectRegistrationId(pair.registration.id),
+    });
+  }
+  if (
+    command.expectedPlacementVersion !== undefined &&
+    pair.placement.version !== command.expectedPlacementVersion
+  ) {
+    return fail({
+      kind: "placement-conflict",
+      registrationId: pair.registration.id,
+      placementId: pair.placement.id,
+    });
   }
   const destination = await requireDestination(
     client,

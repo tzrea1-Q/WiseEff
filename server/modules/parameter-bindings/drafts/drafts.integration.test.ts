@@ -8,7 +8,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,7 @@ import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
+  withTestClusterRoleCatalogLock,
   type EphemeralTestDatabase
 } from "../../../testing/testDatabase";
 import { makeTestAuthContext } from "../../../testing/authContext";
@@ -37,7 +38,8 @@ import {
 } from "../../../shared/database/client";
 import { asAuditTx, withAuditedWrite } from "../../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
-import { createUserInvocation } from "../../auth/trustedInvocation";
+import { createAgentInvocation, createUserInvocation } from "../../auth/trustedInvocation";
+import { createAgentToolRegistry } from "../../agent/toolRegistry";
 import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
 import { parseDts } from "../../dts/parser";
@@ -56,8 +58,16 @@ import { createLocalObjectStore, type ObjectStore } from "../../logs/objectStore
 import {
   createCanonicalValueDraft,
   listCanonicalValueDraftsForUser,
+  listCanonicalValueDraftsForReviewer,
   removeCanonicalValueDraft
 } from "./service";
+import { listCanonicalValueDraftsForBinding, loadCanonicalBindingPins } from "./repository";
+import { installConfigurationSourceFixture } from "../../../testing/parameterCatalog/configurationSource";
+import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
+import { addConfigSetFile, createConfigSet } from "../../parameter-files/configSetService";
+import { uploadProjectParameterFile } from "../../parameter-files/service";
+import { applyReviewedCanonicalMemberRemoval } from "../../parameter-files/canonicalMemberRemoval";
+import { reviewCanonicalMemberRemoval, submitCanonicalMemberRemoval } from "./memberRemovalChangeService";
 import {
   listCanonicalValueChangesForAuth,
   reviewCanonicalValueChange,
@@ -220,6 +230,17 @@ describe("canonical pending value drafts", () => {
     organizationName: "Draft org",
     roles: [{ projectId: PROJECT, roleId: "software-committer" }]
   });
+
+  const readAgentOverview = async () => {
+    const auth = makeTestAuthContext({ userId: USER, organizationId: ORG,
+      roles: [{ projectId: PROJECT, roleId: "guest" }], permissions: ["parameter:view"] });
+    const invocation = createAgentInvocation(auth, { sessionId: "overview-session",
+      toolCallId: "overview-call", approval: { required: false } });
+    return createAgentToolRegistry({ db: root, objectStore }).run("perception.getProjectOverview", {
+      auth, invocation, requestId: "overview-request", sessionId: invocation.sessionId,
+      toolCallId: invocation.toolCallId, projectId: PROJECT
+    }, { projectId: PROJECT });
+  };
 
   const registerCommand = (expectedRelease: { id: string; digest: string }): RegisterSubjectCommand => ({
     kind: "register",
@@ -608,6 +629,13 @@ describe("canonical pending value drafts", () => {
     changeRequestId = submitted.id;
     submittedDraftId = draft.id;
     expect(await listCanonicalValueDraftsForUser(root, editorAuth, { projectId: PROJECT })).toEqual([]);
+
+    // A read-only Agent sees the real canonical request with no legacy rows.
+    expect((await pool.query(`select count(*)::int as count from project_parameter_bindings
+      where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0].count).toBe(0);
+    expect((await pool.query(`select count(*)::int as count from parameter_change_requests
+      where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0].count).toBe(0);
+    expect((await readAgentOverview()).data).toMatchObject({ parameter_count: 1, open_change_requests: 1 });
   });
 
   it("refuses self-approval and a non-reviewer approval", async () => {
@@ -789,6 +817,7 @@ describe("canonical pending value drafts", () => {
     // The canonical value advanced through the existing value owner.
     const after = await readCurrentValue();
     expect(after.value).toEqual(2500);
+    expect((await readAgentOverview()).data).toMatchObject({ parameter_count: 1, open_change_requests: 0 });
     expect(after.current_value_id).toBe(applied.appliedValueId);
     expect(after.current_value_id).not.toBe(before.current_value_id);
 
@@ -1220,6 +1249,133 @@ describe("canonical pending value drafts", () => {
     expect(submittedDraftId.length).toBeGreaterThan(0);
   });
 
+  it("lists all canonical authors, retains pending requests, and marks the unselected draft stale", async () => {
+    const otherAuthorId = "user-849-second-author";
+    const otherAuthor = makeTestAuthContext({
+      userId: otherAuthorId,
+      organizationId: ORG,
+      roles: [{ projectId: PROJECT, roleId: "software-user" }]
+    });
+    await pool.query(
+      `insert into users (id, organization_id, name, email, title, is_active)
+       values ($1, $2, 'Second author', 'second-author-849@example.com', 'Engineer', true)`,
+      [otherAuthorId, ORG]
+    );
+    await pool.query(
+      `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+       values ($1, $2, $3, $4, 'software-user')`,
+      [`urb-849-second-author-${randomUUID()}`, otherAuthorId, ORG, PROJECT]
+    );
+
+    const baseRevisionId = (await readCurrentValue()).config_revision_id;
+    const firstAuthorDraft = await createPreparedDraft(root, editorAuth, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("2900"),
+      reason: "first author candidate",
+      baseRevisionId
+    }, objectStore);
+    const selectedDraft = await createPreparedDraft(root, otherAuthor, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("2550"),
+      reason: "selected author candidate",
+      baseRevisionId
+    }, objectStore);
+    const firstRequest = await submitChange(editorAuth, {
+      projectId: PROJECT,
+      draftId: firstAuthorDraft.id,
+      assignedToUserId: REVIEWER
+    });
+    const selectedRequest = await submitChange(otherAuthor, {
+      projectId: PROJECT,
+      draftId: selectedDraft.id,
+      assignedToUserId: REVIEWER
+    });
+
+    const lowLevel = await listCanonicalValueDraftsForBinding(root, {
+      organizationId: ORG,
+      projectId: PROJECT,
+      bindingId
+    });
+    const createdRows = lowLevel.filter((row) =>
+      row.id === firstAuthorDraft.id || row.id === selectedDraft.id
+    );
+    expect(createdRows).toHaveLength(2);
+    expect(lowLevel.map((row) => row.user_id)).toEqual(
+      expect.arrayContaining([USER, otherAuthorId])
+    );
+    expect(lowLevel.every((row) => !("target_value" in row))).toBe(true);
+    expect(createdRows.find((row) => row.id === firstAuthorDraft.id)?.pending_request_id).toBe(firstRequest.id);
+    expect(createdRows.find((row) => row.id === selectedDraft.id)?.pending_request_id).toBe(selectedRequest.id);
+    expect(createdRows.every((row) => row.stale === false)).toBe(true);
+
+    const reviewerRows = await listCanonicalValueDraftsForReviewer(root, reviewerAuth, {
+      projectId: PROJECT,
+      bindingId
+    });
+    const createdReviewerRows = reviewerRows.filter((row) =>
+      row.draftId === firstAuthorDraft.id || row.draftId === selectedDraft.id
+    );
+    expect(createdReviewerRows).toHaveLength(2);
+    expect(reviewerRows.every((row) => !("targetValue" in row))).toBe(true);
+    expect(createdReviewerRows.find((row) => row.draftId === selectedDraft.id)).toMatchObject({
+      authorUserId: otherAuthorId,
+      pendingRequestId: selectedRequest.id,
+      baseCurrentValueId: expect.any(String),
+      configRevisionId: baseRevisionId,
+      sourcePinId: expect.any(String),
+      candidateId: expect.any(String),
+      candidateBaseDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      candidateProposedDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      candidateDiffDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      stale: false
+    });
+
+    await expect(
+      listCanonicalValueDraftsForReviewer(root, editorAuth, { projectId: PROJECT, bindingId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const otherProjectId = "project-849-reviewer-scope";
+    await pool.query(
+      `insert into projects (id, organization_id, name, code, status)
+       values ($1, $2, 'Reviewer scope project', 'D849S', 'initialized')`,
+      [otherProjectId, ORG]
+    );
+    await expect(
+      listCanonicalValueDraftsForReviewer(root, reviewerAuth, {
+        projectId: otherProjectId,
+        bindingId
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const applied = await reviewChange(reviewerAuth, {
+      projectId: PROJECT,
+      requestId: selectedRequest.id,
+      decision: "approve"
+    }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-selective-review"));
+    expect(applied.status).toBe("approved");
+
+    const remaining = await listCanonicalValueDraftsForReviewer(root, reviewerAuth, {
+      projectId: PROJECT,
+      bindingId
+    });
+    const remainingFirstAuthor = remaining.find((row) => row.draftId === firstAuthorDraft.id);
+    expect(remainingFirstAuthor).toMatchObject({
+      draftId: firstAuthorDraft.id,
+      authorUserId: USER,
+      pendingRequestId: firstRequest.id,
+      stale: true
+    });
+    expect((await readCurrentValue()).value).toBe(2550);
+
+    // Leave the competing stale row in place, but close its request so the
+    // following deletion case can reuse the existing per-author draft slot.
+    await withdrawChange(editorAuth, { projectId: PROJECT, requestId: firstRequest.id });
+  });
+
   it("deletes a pinned DTS property through review, preserves its historical export, and fails closed on replay tampering", async () => {
     const before = await readCurrentValue();
     const beforeFile = (await pool.query<{ current_version_id: string }>(
@@ -1380,5 +1536,253 @@ describe("canonical pending value drafts", () => {
       await tamper.query("rollback").catch(() => undefined);
       tamper.release();
     }
+  });
+
+  it("allows the archive disposer to remove an approved target before its history and delete pin", async () => {
+    const referenced = await pool.query<{ target_id: string; request_id: string }>(`
+      select target.id as target_id, request.id as request_id
+        from public.project_parameter_value_change_requests request
+        join public.project_parameter_value_change_targets target on target.request_id=request.id
+        join parameter_catalog.binding_history_events history
+          on history.applied_request_id=request.id and history.binding_id=target.binding_id
+        join parameter_catalog.project_value_source_pins pin
+          on pin.delete_request_id=request.id and pin.binding_id=target.binding_id
+       where request.organization_id=$1 and request.project_id=$2
+         and request.status='approved' and target.action='delete'
+       limit 1`, [ORG, PROJECT]);
+    expect(referenced.rows).toHaveLength(1);
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const removed = await client.query<{ count: number }>(
+        `select parameter_catalog.dispose_plane_residue($1, 'public.project_parameter_value_change_targets', 'id', $2::text[]) as count`,
+        ["c906-approved-disposal-probe", [referenced.rows[0]!.target_id]]
+      );
+      expect(removed.rows[0]?.count).toBe(1);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+    expect((await pool.query(`select id from public.project_parameter_value_change_targets where id=$1`,
+      [referenced.rows[0]!.target_id])).rows).toHaveLength(1);
+  });
+});
+
+describe("single draft admission after reviewed JSON member retirement", () => {
+  async function createFixture() {
+    const database = await createEphemeralTestDatabase("c_member_current_admission");
+    const db = createPostgresDatabase(database.url);
+    const directory = await mkdtemp(join(tmpdir(), "wiseeff-c-member-current-admission-"));
+    const realStore = createLocalObjectStore(directory);
+    let puts = 0;
+    const storage: ObjectStore = { ...realStore, put: async (input) => {
+      puts++;
+      return realStore.put(input);
+    } };
+    const organizationId = "org-c-member-admission";
+    const projectId = "project-c-member-admission";
+    const authorId = "user-c-member-author";
+    const reviewerId = "user-c-member-reviewer";
+    const schemaId = "wiseeff.c.member.admission";
+    const author = makeTestAuthContext({ userId: authorId, organizationId,
+      permissions: ["parameter:view", "parameter:edit", "admin:access"],
+      roles: [{ roleId: "admin", projectId: null }] });
+    const reviewer = makeTestAuthContext({ userId: reviewerId, organizationId,
+      permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+      roles: [{ roleId: "software-committer", projectId }] });
+    const security = (auth = author) => ({ invocation: createUserInvocation(auth),
+      traceId: `member-admission:${randomUUID()}`, refusalSink: createTrustedRefusalAuditSink(db) });
+    const close = async () => {
+      try { await db.close(); } finally {
+        try { await database.drop(); } finally { await rm(directory, { recursive: true, force: true }); }
+      }
+    };
+    try {
+      await db.query("insert into organizations(id,name) values ($1,'Current admission')", [organizationId]);
+      await db.query(`insert into users(id,organization_id,name,title,is_active)
+        values ($1,$2,'Author','Admin',true),($3,$2,'Reviewer','Reviewer',true)`,
+      [authorId, organizationId, reviewerId]);
+      await db.query(`insert into projects(id,organization_id,name,code,status)
+        values ($1,$2,'Current admission','CAD','initialized')`, [projectId, organizationId]);
+      await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('c-admission-admin',$1,$2,null,'admin'),('c-admission-reviewer',$3,$2,$4,'software-committer')`,
+      [authorId, organizationId, reviewerId, projectId]);
+      await installConfigurationSourceFixture(db, author, { subjectId: "csub_c_member_admission", schemaId });
+      const configSetId = (await createConfigSet(db, author, { projectId, name: "Reviewed members" })).id;
+      const removed = await uploadProjectParameterFile(db, storage, author, {
+        projectId, fileName: "removed.json", bytes: Buffer.from('{"limit":10}\n')
+      });
+      const survivor = await uploadProjectParameterFile(db, storage, author, {
+        projectId, fileName: "survivor.json", bytes: Buffer.from('{"limit":20}\n')
+      });
+      await addConfigSetFile(db, author, { configSetId, fileId: removed.file.id, role: "base", sortOrder: 0 });
+      await addConfigSetFile(db, author, { configSetId, fileId: survivor.file.id, role: "overlay", sortOrder: 1 });
+      const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+      if (!snapshot) throw new Error("Published JSON membership fixture is unavailable");
+      const bindings = [];
+      for (const file of [removed, survivor]) {
+        const result = await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, author, snapshot, {
+          projectId, configSetId, fileId: file.file.id, fileVersionId: file.version.id,
+          configurationSchemaId: schemaId, rootPointer: "",
+          mappings: [{ definitionId: "pdef_acme_power_iin_max", pointer: "/limit" }],
+          invocation: createUserInvocation(author), requestId: `register:${file.file.id}`,
+          refusalSink: createTrustedRefusalAuditSink(db)
+        }));
+        bindings.push(result.bindings[0]!);
+      }
+      expect((await db.query<{ count: number }>(
+        "select count(*)::int as count from public.project_parameter_bindings"
+      )).rows[0]!.count).toBe(0);
+      const base = await loadCanonicalBindingPins(db, { organizationId, projectId, bindingId: bindings[0]!.id });
+      if (!base) throw new Error("Prepared JSON member has no exact base pins");
+      const draft = await createPreparedDraft(db, author, {
+        projectId, bindingId: bindings[0]!.id, action: "set", reason: "Prepared before retirement",
+        sourceTarget: { format: "json", sourceText: '{"limit":88}\n' },
+        baseRevisionId: base.configRevisionId
+      }, storage);
+      const removal = await submitCanonicalMemberRemoval(db, storage, author, {
+        projectId, configSetId, fileId: removed.file.id,
+        reason: "Retire reviewed member", assignedToUserId: reviewerId, ...security()
+      });
+      const submit = () => submitCanonicalValueChange(db, author, {
+        projectId, draftId: draft.id, invocation: createUserInvocation(author),
+        requestId: `submit:${randomUUID()}`, refusalSink: createTrustedRefusalAuditSink(db)
+      });
+      const objectBytes = async (relative = ""): Promise<Array<{ path: string; sha256: string }>> => {
+        const files = [];
+        for (const entry of await readdir(join(directory, relative), { withFileTypes: true })) {
+          const path = join(relative, entry.name);
+          if (entry.isDirectory()) files.push(...await objectBytes(path));
+          else files.push({ path, sha256: createHash("sha256").update(await readFile(join(directory, path))).digest("hex") });
+        }
+        return files.sort((left, right) => left.path.localeCompare(right.path));
+      };
+      const state = async () => ({
+        db: (await db.query<{ state: { [name: string]: unknown; drafts: unknown[];
+          candidates: unknown[]; requests: unknown[]; audit: Array<{ action: string }> } }>(`select jsonb_build_object(
+          'bindings',(select jsonb_agg(to_jsonb(b) order by id) from parameter_catalog.project_parameter_bindings b),
+          'values',(select jsonb_agg(to_jsonb(v) order by id) from parameter_catalog.project_parameter_values v),
+          'pins',(select jsonb_agg(to_jsonb(p) order by id) from parameter_catalog.project_value_source_pins p),
+          'history',(select jsonb_agg(to_jsonb(h) order by id) from parameter_catalog.binding_history_events h),
+          'drafts',(select jsonb_agg(to_jsonb(d) order by id) from project_parameter_value_drafts d),
+          'requests',(select jsonb_agg(to_jsonb(r) order by id) from project_parameter_value_change_requests r),
+          'candidates',(select jsonb_agg(to_jsonb(c) order by id) from project_parameter_file_candidates c),
+          'files',(select jsonb_agg(to_jsonb(f) order by id) from project_parameter_files f),
+          'versions',(select jsonb_agg(to_jsonb(v) order by id) from project_parameter_file_versions v),
+          'revisions',(select jsonb_agg(to_jsonb(r) order by id) from dts_config_revisions r),
+          'members',(select jsonb_agg(to_jsonb(m) order by id) from dts_config_revision_members m),
+          'tombstones',(select jsonb_agg(to_jsonb(t) order by id) from parameter_catalog.project_source_member_tombstones t),
+          'audit',(select jsonb_agg(to_jsonb(a) order by id) from audit_events a)
+        ) as state`)).rows[0]!.state,
+        objects: await objectBytes(), puts
+      });
+      return { db, author, reviewer, organizationId, projectId, configSetId, draft, removal,
+        snapshot, storage, security, submit, state, close, bindings };
+    } catch (error) {
+      await close();
+      throw error;
+    }
+  }
+
+  it("refuses a retired prepared draft even when its raw historical tip and pin still match", async () => {
+    await withTestClusterRoleCatalogLock(async () => {
+      const f = await createFixture();
+      try {
+        const raw = await loadCanonicalBindingPins(f.db, {
+          organizationId: f.organizationId, projectId: f.projectId, bindingId: f.draft.bindingId
+        });
+        expect(raw).not.toBeNull();
+        const approved = await reviewCanonicalMemberRemoval(f.db, f.storage, f.reviewer, {
+          projectId: f.projectId, requestId: f.removal.id, decision: "approve",
+          proofDigest: f.removal.proofDigest, ...f.security(f.reviewer)
+        });
+        expect(approved.status).toBe("approved");
+        expect(await loadCanonicalBindingPins(f.db, {
+          organizationId: f.organizationId, projectId: f.projectId, bindingId: f.draft.bindingId
+        })).toEqual(raw);
+        expect((await f.db.query(`select id from parameter_catalog.current_project_parameter_bindings
+          where id=$1`, [f.draft.bindingId])).rows).toEqual([]);
+        const before = await f.state();
+        await expect(f.submit()).rejects.toMatchObject({ code: "CONFLICT",
+          details: { reason: "source-retired-or-stale" } });
+        const after = await f.state();
+        expect(after).toEqual(before);
+        expect((await f.db.query("select id from project_parameter_value_drafts where id=$1", [f.draft.id])).rows)
+          .toEqual([{ id: f.draft.id }]);
+        process.stdout.write(`${JSON.stringify({ case: "retired-current-admission", code: "CONFLICT",
+          reason: "source-retired-or-stale", rawPinsUnchanged: true,
+          beforeDigest: createHash("sha256").update(JSON.stringify(before)).digest("hex"),
+          afterDigest: createHash("sha256").update(JSON.stringify(after)).digest("hex"),
+          objectCount: after.objects.length, putsBefore: before.puts, putsAfter: after.puts })}\n`);
+      } finally { await f.close(); }
+    });
+  });
+
+  it("waits for retirement's source prefix and refuses admission after its commit", async () => {
+    await withTestClusterRoleCatalogLock(async () => {
+      const f = await createFixture();
+      let release!: () => void;
+      const releasePrefix = new Promise<void>((resolve) => { release = resolve; });
+      let held!: (pid: number) => void;
+      const prefixHeld = new Promise<number>((resolve) => { held = resolve; });
+      let submission: ReturnType<typeof f.submit> | undefined;
+      let retirement: ReturnType<typeof applyReviewedCanonicalMemberRemoval> | undefined;
+      try {
+        const before = await f.state();
+        retirement = f.db.transaction(async (tx) => {
+          const pid = (await tx.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+          await tx.query("select id from dts_config_set where id=$1 for update", [f.configSetId]);
+          held(pid);
+          await releasePrefix;
+          return applyReviewedCanonicalMemberRemoval(tx, f.storage, f.reviewer, f.snapshot, {
+            requestId: f.removal.id, submitterUserId: f.author.user.id,
+            reviewerUserId: f.reviewer.user.id, decision: "approve", frozen: f.removal.frozenProof
+          }, f.security(f.reviewer));
+        });
+        const pid = await Promise.race([prefixHeld, retirement]);
+        expect(typeof pid).toBe("number");
+        // The existing unassigned-reviewer submit path is valid and does not
+        // acquire the retirement reviewer's user FK lock while awaiting source.
+        submission = f.submit();
+        void submission.catch(() => undefined);
+        let waiting: { pid: number; wait_event_type: string; query: string } | undefined;
+        const deadline = Date.now() + 5_000;
+        while (!waiting && Date.now() < deadline) {
+          waiting = (await f.db.query<{ pid: number; wait_event_type: string; query: string }>(`
+            select pid,wait_event_type,query from pg_stat_activity
+             where datname=current_database() and $1=any(pg_blocking_pids(pid))
+               and wait_event_type='Lock'
+               and query like 'select id from dts_config_set%for update'`, [pid])).rows[0];
+        }
+        expect(waiting).toMatchObject({ pid: expect.any(Number), wait_event_type: "Lock" });
+        expect(waiting!.pid).not.toBe(pid);
+        process.stdout.write(`${JSON.stringify({ case: "current-admission-source-prefix", event: "submit-blocked",
+          retirementPid: pid, submitPid: waiting!.pid, waitEventType: waiting!.wait_event_type,
+          blockedQuery: waiting!.query })}\n`);
+        release();
+        expect(await retirement).toMatchObject({ requestId: f.removal.id, replayed: false });
+        await expect(submission).rejects.toMatchObject({ code: "CONFLICT",
+          details: { reason: "source-retired-or-stale" } });
+        const after = await f.state();
+        expect(after.objects).toEqual(before.objects);
+        expect(after.puts).toBe(before.puts);
+        expect(after.db.drafts).toEqual(before.db.drafts);
+        expect(after.db.candidates).toEqual(before.db.candidates);
+        expect(after.db.requests).toHaveLength(1);
+        expect(after.db.requests[0]).toMatchObject({ id: f.removal.id, status: "approved", request_kind: "member-removal" });
+        expect(after.db.audit).toHaveLength(before.db.audit.length + 1);
+        expect(after.db.audit.filter((row: { action: string }) => row.action === "source-member-removed")).toHaveLength(1);
+        process.stdout.write(`${JSON.stringify({ case: "current-admission-source-prefix", event: "retirement-committed-submit-refused",
+          code: "CONFLICT", reason: "source-retired-or-stale", sqlState: null,
+          requestCount: after.db.requests.length, successAuditDelta: after.db.audit.length - before.db.audit.length,
+          putsBefore: before.puts, putsAfter: after.puts,
+          objectDigestBefore: createHash("sha256").update(JSON.stringify(before.objects)).digest("hex"),
+          objectDigestAfter: createHash("sha256").update(JSON.stringify(after.objects)).digest("hex") })}\n`);
+      } finally {
+        release();
+        await Promise.allSettled([retirement, submission]);
+        await f.close();
+      }
+    });
   });
 });

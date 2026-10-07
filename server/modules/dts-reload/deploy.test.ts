@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { seedCanonicalParameterFixture } from "./testing/canonicalReloadFixture";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,14 +45,13 @@ import {
   releaseDebugDeviceLease
 } from "../debugging/repository";
 import {
-  createInMemoryTestDatabase,
+  createManagedInstanceTestDatabase,
   isTestDatabaseAvailable,
-  type InMemoryTestDatabase
+  type EphemeralTestDatabase
 } from "../../testing/testDatabase";
-import { seedCoreGraph } from "../../testing/fixtures";
 import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
-import { insertReloadRun, insertReloadRunTarget } from "./repository";
+import { getReloadCandidateRow, insertReloadRun, insertReloadRunTarget } from "./repository";
 import {
   deployReloadRun as deployReloadRunService,
   getReloadResidue,
@@ -118,15 +123,18 @@ describe("reload deploy helpers", () => {
 });
 
 describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
-  let db: InMemoryTestDatabase;
+  let db: RootDatabase;
+  let database: EphemeralTestDatabase;
+  let storageRoot: string;
+  let fixture: Awaited<ReturnType<typeof seedCanonicalParameterFixture>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(listBridgesForUser).mockResolvedValue([
       {
         id: "br-1",
-        organizationId: "org-1",
-        userId: "user-1",
+        organizationId: "org-898-canonical",
+        userId: "user-898-canonical-editor",
         machineLabel: "LAB-PC",
         platform: "darwin",
         arch: "arm64",
@@ -138,39 +146,39 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
       }
     ]);
     vi.mocked(acquireDebugDeviceLease).mockResolvedValue({
-      organizationId: "org-1",
+      organizationId: "org-898-canonical",
       deviceId: CANONICAL_DEVICE_ID,
       sessionId: "dts-reload:run-1",
-      leaseOwnerUserId: "user-1",
+      leaseOwnerUserId: "user-898-canonical-editor",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       acquiredAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
     vi.mocked(releaseDebugDeviceLease).mockResolvedValue(null);
-    db = await createInMemoryTestDatabase();
-    await seedCoreGraph(db, {
-      organization: { id: "org-1", name: "ChargeLab" },
-      users: [{ id: "user-1", name: "Riley", email: "r@example.com" }],
-      projects: [{ id: "project-1" }]
-    });
+    database = await createManagedInstanceTestDatabase("898deploy");
+    db = createPostgresDatabase(database.url);
+    storageRoot = await mkdtemp(join(tmpdir(), "wiseeff-898-deploy-"));
+    fixture = await seedCanonicalParameterFixture(db, createLocalObjectStore(storageRoot));
   });
 
   afterEach(async () => {
-    await db?.rollback();
+    await db?.close();
+    await database?.drop();
+    if (storageRoot) await rm(storageRoot, { recursive: true, force: true });
   });
 
   function auth(overrides: Partial<AuthContext> = {}): AuthContext {
     return {
       user: {
-        id: "user-1",
-        organizationId: "org-1",
+        id: "user-898-canonical-editor",
+        organizationId: "org-898-canonical",
         name: "Riley",
         email: "r@example.com",
         title: "HW",
         isActive: true
       },
-      organization: { id: "org-1", name: "ChargeLab" },
-      roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
+      organization: { id: "org-898-canonical", name: "ChargeLab" },
+      roles: [{ projectId: "project-898-canonical", roleId: "hardware-committer" }],
       permissions: ["debugging:dts-reload"],
       ...overrides
     };
@@ -195,100 +203,22 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
     return objectStore;
   }
 
-  /**
-   * Seed the parameter-library graph behind one reload candidate binding
-   * (module → spec → spec version → dts property spec → logical node → binding → revision).
-   */
-  async function seedCandidate(input: {
-    bindingId: string;
-    propertyKey?: string;
-    nodePath?: string | null;
-    compatible?: string | null;
-    baselineValue?: string | null;
-  }) {
-    const propertyKey = input.propertyKey ?? "watchdog_time";
-    const nodePath = input.nodePath === undefined ? "/amba/i2c@1/node" : input.nodePath;
-
-    await db.query(
-      `insert into parameter_modules (id, organization_id, name, path)
-       values ('mod-charger', 'org-1', 'charger', '/charger')
-       on conflict (id) do nothing`
-    );
-    await db.query(
-      `insert into dts_config_set (id, organization_id, project_id, name)
-       values ('cs-1', 'org-1', 'project-1', 'primary') on conflict (id) do nothing`
-    );
-    await db.query(
-      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
-       select 'rev-1', 'org-1', 'project-1', 'cs-1',
-              coalesce((select max(revision_number) from dts_config_revisions where config_set_id = 'cs-1'), 0) + 1,
-              'compiled'
-       where not exists (select 1 from dts_config_revisions where id = 'rev-1')`
-    );
-    await db.query(
-      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-       values ($1, 'org-1', 'dts', $2)`,
-      [`spec-${input.bindingId}`, `reload/${input.bindingId}/${propertyKey}`]
-    );
-    await db.query(
-      `insert into parameter_spec_versions (
-         id, parameter_spec_id, version, display_name, description, documentation, value_shape, units, lifecycle
-       ) values ($1, $2, 1, 'Watchdog', '', 'Watchdog timeout for charger safety.', $3::jsonb, 'ms', 'active')`,
-      [
-        `psv-${input.bindingId}`,
-        `spec-${input.bindingId}`,
-        JSON.stringify({ kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 })
-      ]
-    );
-    await db.query(
-      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
-       values ($1, $2, $3, 'reload-test', $4::jsonb)`,
-      [
-        `dps-${input.bindingId}`,
-        `spec-${input.bindingId}`,
-        propertyKey,
-        JSON.stringify({ min: 0, max: 20000, cells: 1 })
-      ]
-    );
-    if (nodePath !== null) {
-      await db.query(
-        `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
-         values ($1, 'org-1', 'project-1', 'cs-1')`,
-        [`node-${input.bindingId}`]
-      );
-      await db.query(
-        `insert into dts_logical_node_revisions (id, logical_node_id, config_revision_id, node_locator, name, compatible)
-         values ($1, $2, 'rev-1', $3, $4, $5)`,
-        [
-          `lnr-${input.bindingId}`,
-          `node-${input.bindingId}`,
-          nodePath,
-          nodePath.split("/").filter(Boolean).at(-1) ?? "node",
-          input.compatible === undefined ? "sc8562" : input.compatible
-        ]
-      );
-    }
-    await db.query(
-      `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
-       values ($1, 'org-1', 'project-1', $2, $3, 'mod-charger')`,
-      [input.bindingId, nodePath === null ? null : `node-${input.bindingId}`, `spec-${input.bindingId}`]
-    );
-    await db.query(
-      `insert into project_parameter_binding_revisions (
-         id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value
-       ) values ($1, $2, 'rev-1', $3, '{}'::jsonb, $4)`,
-      [
-        `bpr-${input.bindingId}`,
-        input.bindingId,
-        `psv-${input.bindingId}`,
-        input.baselineValue === undefined ? "<6000>" : input.baselineValue
-      ]
-    );
+  async function canonicalTarget() {
+    const candidate = (await getReloadCandidateRow(db, { organizationId: fixture.organizationId,
+      projectId: fixture.projectId, bindingId: fixture.bindingId }))!;
+    return {
+      bindingId: null,
+      canonicalBindingId: candidate.binding_id, canonicalDefinitionId: candidate.definition_id,
+      canonicalDefinitionRevisionId: candidate.definition_revision_id,
+      canonicalCurrentValueId: candidate.current_value_id, canonicalCatalogReleaseId: candidate.catalog_release_id,
+      canonicalSourcePinId: candidate.source_pin_id, canonicalSourceOccurrenceId: candidate.source_occurrence_id,
+      canonicalConfigRevisionId: candidate.config_revision_id!, canonicalSourceRef: candidate.source_ref,
+      canonicalSourceFormat: "dts" as const, canonicalSourceLocator: candidate.source_locator
+    };
   }
 
   async function seedValidatedRun(input: {
     id?: string;
-    bindingId?: string;
     nodePath?: string;
     purpose?: ReloadRunPurpose;
     deviceId?: string | null;
@@ -297,14 +227,12 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
     completedAt?: string | null;
   } = {}) {
     const id = input.id ?? "run-1";
-    const bindingId = input.bindingId ?? "binding-1";
-    const nodePath = input.nodePath ?? "/amba/i2c@1/node";
-    await seedCandidate({ bindingId, nodePath });
+    const nodePath = input.nodePath ?? "/logical-898-canonical";
     await insertReloadRun(db, {
       id,
-      organizationId: "org-1",
-      projectId: "project-1",
-      configRevisionId: "rev-1",
+      organizationId: "org-898-canonical",
+      projectId: "project-898-canonical",
+      configRevisionId: fixture.configRevisionId,
       status: input.status ?? "validated",
       purpose: input.purpose ?? "ordinary",
       deviceId: input.deviceId ?? null,
@@ -323,16 +251,16 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
       overlayArtifactStorageKey: "art-key",
       overlayArtifactSha256: ARTIFACT_SHA,
       overlayArtifactBytes: ARTIFACT.length,
-      createdByUserId: "user-1",
+      createdByUserId: "user-898-canonical-editor",
       completedAt: input.completedAt === undefined ? new Date().toISOString() : input.completedAt
     });
     await insertReloadRunTarget(db, {
       id: `target-${id}`,
       reloadRunId: id,
-      bindingId,
+      ...await canonicalTarget(),
       nodePath,
-      propertyKey: "watchdog_time",
-      baselineValue: "<6000>",
+      propertyKey: "iin_max",
+      baselineValue: "<5>",
       debugValue: "<7000>",
       sortOrder: 0
     });
@@ -383,7 +311,7 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         if (method === "debug.readKernelLog") {
           return {
             ok: true,
-            text: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+            text: "kernel: iin_max applied\nkernel: overlay reload ok\n",
             truncated: false
           };
         }
@@ -477,9 +405,9 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
       });
       await insertReloadRun(db, {
         id: "run-1",
-        organizationId: "org-1",
-        projectId: "project-1",
-        configRevisionId: "rev-1",
+        organizationId: "org-898-canonical",
+        projectId: "project-898-canonical",
+        configRevisionId: fixture.configRevisionId,
         status: "validated",
         purpose: "restore-baseline",
         deviceId: "bridge:lab-1",
@@ -498,17 +426,17 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         overlayArtifactStorageKey: "art-key",
         overlayArtifactSha256: ARTIFACT_SHA,
         overlayArtifactBytes: ARTIFACT.length,
-        createdByUserId: "user-1",
+        createdByUserId: "user-898-canonical-editor",
         completedAt: new Date().toISOString()
       });
       await insertReloadRunTarget(db, {
         id: "target-run-1",
         reloadRunId: "run-1",
-        bindingId: "binding-1",
-        nodePath: "/amba/i2c@1/node",
-        propertyKey: "watchdog_time",
-        baselineValue: "<6000>",
-        debugValue: "<6000>",
+        ...await canonicalTarget(),
+        nodePath: "/logical-898-canonical",
+        propertyKey: "iin_max",
+        baselineValue: "<5>",
+        debugValue: "<5>",
         sortOrder: 0
       });
       const bridgeRpcClient = rpcCall();
@@ -520,11 +448,11 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
     });
 
     it("re-runs the sensitive-node gate at deploy so a deployer lacking capability is refused", async () => {
-      await seedValidatedRun({ nodePath: "/soc/fuel-gauge@0" });
+      await seedValidatedRun({ nodePath: "/logical-898-canonical" });
       await db.query(
         `insert into dts_sensitive_node_rules (
            id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
-         ) values ('rule-1', 'org-1', null, 'path', '/soc/fuel-gauge@0', 'high', 'parameter:edit-critical', true)`
+         ) values ('rule-1', 'org-898-canonical', null, 'path', '/logical-898-canonical', 'high', 'parameter:edit-critical', true)`
       );
       const bridgeRpcClient = rpcCall();
 
@@ -554,16 +482,16 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
   describe("claim, lease, and canonical device identity", () => {
     it("atomically refuses a second deploy claim on the same run and never acquires a second lease", async () => {
       await seedValidatedRun();
-      let waiting = 0;
       let releaseBarrier: (() => void) | undefined;
-      const bothAtCapabilities = new Promise<void>((resolve) => {
+      let reachedCapabilities: (() => void) | undefined;
+      const atCapabilities = new Promise<void>((resolve) => { reachedCapabilities = resolve; });
+      const continueDeploy = new Promise<void>((resolve) => {
         releaseBarrier = resolve;
       });
       const bridgeRpcClient = rpcCall({
         "bridge.getCapabilities": async () => {
-          waiting += 1;
-          if (waiting >= 2) releaseBarrier?.();
-          await bothAtCapabilities;
+          reachedCapabilities?.();
+          await continueDeploy;
           return {
             methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"]
           };
@@ -571,18 +499,17 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         "debug.mountTarget": () => ({ ok: false, error: "mount denied" })
       });
 
-      const results = await Promise.allSettled([deploy(bridgeRpcClient), deploy(bridgeRpcClient)]);
-      const fulfilled = results.filter((entry) => entry.status === "fulfilled");
-      const rejected = results.filter((entry) => entry.status === "rejected");
-      expect(fulfilled).toHaveLength(1);
-      expect(rejected).toHaveLength(1);
-      if (fulfilled[0]?.status !== "fulfilled" || rejected[0]?.status !== "rejected") {
-        throw new Error("expected one winner and one claim conflict");
+      const first = deploy(bridgeRpcClient);
+      await atCapabilities;
+      try {
+        // The second request is now fenced even before bridge capability I/O.
+        await expect(deploy(bridgeRpcClient)).rejects.toMatchObject({
+          details: { code: "reload-deploy-source-cohort-busy" }
+        });
+      } finally {
+        releaseBarrier?.();
       }
-      expect(fulfilled[0].value.failureCode).toBe("mount-target-failed");
-      expect(rejected[0].reason).toMatchObject({
-        details: { code: "reload-deploy-already-in-progress" }
-      });
+      expect((await first).failureCode).toBe("mount-target-failed");
       expect(acquireDebugDeviceLease).toHaveBeenCalledTimes(1);
       const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
       expect(stored.status).toBe("failed");
@@ -621,24 +548,24 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
       expect(result.failureCode).toBeNull();
       expect(result.deviceId).toBe(CANONICAL_DEVICE_ID);
       expect(result.integrityCheck).toBe("sha256");
-      expect(result.reloadSnapshot?.libraryBaselines[0]?.baselineValue).toBe("<6000>");
+      expect(result.reloadSnapshot?.libraryBaselines[0]?.baselineValue).toBe("<5>");
       expect(result.reloadSnapshot?.artifactDigest?.integrityCheck).toBe("sha256");
       expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
         command: "dmesg",
         captureStatus: "obtained",
-        rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+        rawText: "kernel: iin_max applied\nkernel: overlay reload ok\n",
         matchedByParameter: [
           {
-            parameterName: "watchdog_time",
-            bindingId: "binding-1",
-            lines: ["kernel: watchdog_time applied"]
+            parameterName: "iin_max",
+            bindingId: fixture.bindingId,
+            lines: ["kernel: iin_max applied"]
           }
         ]
       });
       expect(result.reloadSnapshot?.behaviouralVerification?.outcomes).toEqual([
         expect.objectContaining({
-          bindingId: "binding-1",
-          propertyKey: "watchdog_time",
+          bindingId: fixture.bindingId,
+          propertyKey: "iin_max",
           outcome: "unbound",
           reason: expect.stringContaining("No readable debug-node binding")
         })
@@ -688,8 +615,8 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         targetRef: "AURORA-001",
         command: "dmesg"
       });
-      expect(JSON.stringify(kernelCall?.[2])).not.toContain("watchdog_time");
-      expect(JSON.stringify(kernelCall?.[2])).not.toContain("binding-1");
+      expect(JSON.stringify(kernelCall?.[2])).not.toContain("iin_max");
+      expect(JSON.stringify(kernelCall?.[2])).not.toContain(fixture.bindingId);
       expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readNode")).toBe(false);
       expect(ensureBridgeDebugDevice).toHaveBeenCalledWith(
         expect.anything(),
@@ -807,7 +734,7 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
 
     it("keeps verbatim kernel log text when the bridge reports ok:false with non-empty text", async () => {
       await seedValidatedRun();
-      const logText = "[Fail] overlay reported\n[E123456] probe failed\nwatchdog_time applied\n";
+      const logText = "[Fail] overlay reported\n[E123456] probe failed\niin_max applied\n";
       const result = await deploy(
         rpcCall({
           "debug.readKernelLog": () => ({
@@ -873,13 +800,13 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
       const residue = await getReloadResidue(db, auth(), CANONICAL_DEVICE_ID);
       expect(residue).toMatchObject({
         deviceId: CANONICAL_DEVICE_ID,
-        projectId: "project-1",
+        projectId: "project-898-canonical",
         sourceRunId: "run-1"
       });
       expect(residue?.parameters).toEqual([
         expect.objectContaining({
-          bindingId: "binding-1",
-          propertyKey: "watchdog_time",
+          bindingId: fixture.bindingId,
+          propertyKey: "iin_max",
           debugValue: "<7000>"
         })
       ]);
@@ -894,11 +821,11 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         behaviouralVerification: {
           outcomes: [
             {
-              bindingId: "binding-1",
-              propertyKey: "watchdog_time",
+              bindingId: fixture.bindingId,
+              propertyKey: "iin_max",
               outcome: "verified",
               debugNodeId: "dbg-node-1",
-              nodePath: "/sys/class/power_supply/battery/watchdog_time",
+              nodePath: "/sys/class/power_supply/battery/iin_max",
               expectedValue: "<7000>",
               readValue: "7000\n",
               reason: null
@@ -931,11 +858,11 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         behaviouralVerification: {
           outcomes: [
             {
-              bindingId: "binding-1",
-              propertyKey: "watchdog_time",
+              bindingId: fixture.bindingId,
+              propertyKey: "iin_max",
               outcome: "contradicted",
               debugNodeId: "dbg-node-1",
-              nodePath: "/sys/class/power_supply/battery/watchdog_time",
+              nodePath: "/sys/class/power_supply/battery/iin_max",
               expectedValue: "<7000>",
               readValue: "6000",
               reason: null
@@ -959,11 +886,11 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         behaviouralVerification: {
           outcomes: [
             {
-              bindingId: "binding-1",
-              propertyKey: "watchdog_time",
+              bindingId: fixture.bindingId,
+              propertyKey: "iin_max",
               outcome: "read-failed",
               debugNodeId: "dbg-node-1",
-              nodePath: "/sys/class/power_supply/battery/watchdog_time",
+              nodePath: "/sys/class/power_supply/battery/iin_max",
               expectedValue: "<7000>",
               readValue: null,
               reason: "permission denied"
@@ -978,6 +905,52 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
       expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
         outcome: "read-failed",
         reason: "permission denied"
+      });
+    });
+
+    it("holds source membership, occurrence and Binding locks through device I/O", async () => {
+      await seedValidatedRun();
+      const target = await canonicalTarget();
+      await db.query(`insert into dts_logical_nodes(id,organization_id,project_id,config_set_id)
+        select 'logical-898-concurrent',organization_id,project_id,config_set_id
+        from parameter_catalog.project_parameter_source_occurrences where id=$1`, [target.canonicalSourceOccurrenceId]);
+      const insertOccurrence = `insert into parameter_catalog.project_parameter_source_occurrences
+        (id,organization_id,project_id,config_set_id,file_id,occurrence_kind,logical_node_id)
+        select 'occurrence-898-concurrent',organization_id,project_id,config_set_id,file_id,'dts','logical-898-concurrent'
+        from parameter_catalog.project_parameter_source_occurrences where id=$1`;
+      let checked = false;
+      const bridgeRpcClient = rpcCall({
+        "debug.mountTarget": async () => {
+          const contender = await getRootPostgresPool(db)!.connect();
+          try {
+            for (const [table, id] of [
+              ["project_parameter_source_occurrences", target.canonicalSourceOccurrenceId],
+              ["project_parameter_bindings", fixture.bindingId]
+            ]) {
+              await contender.query("begin");
+              await expect(contender.query(`select id from parameter_catalog.${table} where id=$1 for update nowait`, [id]))
+                .rejects.toMatchObject({ code: "55P03" });
+              await contender.query("rollback");
+            }
+            await contender.query("begin");
+            await contender.query("set local lock_timeout='100ms'");
+            await expect(contender.query(insertOccurrence, [target.canonicalSourceOccurrenceId]))
+              .rejects.toMatchObject({ code: "55P03" });
+            await contender.query("rollback");
+            checked = true;
+            return { ok: true };
+          } finally {
+            await contender.query("rollback");
+            contender.release();
+          }
+        }
+      });
+      await deploy(bridgeRpcClient);
+      expect(checked).toBe(true);
+      await db.query(insertOccurrence, [target.canonicalSourceOccurrenceId]);
+      await db.transaction(async (tx) => {
+        expect((await tx.query("select id from parameter_catalog.project_parameter_bindings where id=$1 for update nowait", [fixture.bindingId])).rows)
+          .toHaveLength(1);
       });
     });
 

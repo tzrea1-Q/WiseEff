@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { dashboardReducer, initialDashboardState } from "./dashboardState";
 
 describe("dashboardReducer", () => {
-  it("marks summary empty when no data", () => {
+  it("keeps a true zero summary ready", () => {
     const next = dashboardReducer(initialDashboardState, {
       type: "DASHBOARD_SUMMARY_READY",
       data: {
@@ -14,7 +14,8 @@ describe("dashboardReducer", () => {
           managedProjects: 0,
           changeFrequency: 0,
           activeContributors: 0,
-          highRiskParameters: 0
+          highRiskParameters: null,
+          riskAvailability: "unavailable"
         },
         trend: [],
         personalKpis: {
@@ -22,7 +23,8 @@ describe("dashboardReducer", () => {
           workflowCount: 0,
           openItemCount: 0,
           pendingTodoCount: 0,
-          highRiskTouchCount: 0
+          highRiskTouchCount: null,
+          riskAvailability: "unavailable"
         },
         personalTrend: [],
         riskBuckets: [],
@@ -36,7 +38,7 @@ describe("dashboardReducer", () => {
         }
       }
     });
-    expect(next.summary.status).toBe("empty");
+    expect(next.summary.status).toBe("ready");
   });
 
   it("captures summary errors without dropping stale data", () => {
@@ -56,7 +58,7 @@ describe("dashboardReducer", () => {
     expect(next.overviewScope).toBe("overall");
   });
 
-  it("marks summary empty for personal scope when personal kpis are zero", () => {
+  it("keeps summary ready when personal activity is truly zero", () => {
     const next = dashboardReducer(
       { ...initialDashboardState, overviewScope: "personal" },
       {
@@ -93,7 +95,16 @@ describe("dashboardReducer", () => {
         }
       }
     );
-    expect(next.summary.status).toBe("empty");
+    expect(next.summary.status).toBe("ready");
+  });
+
+  it("keeps loaded data ready when switching overview scope", () => {
+    const loaded = dashboardReducer(
+      { ...initialDashboardState, overviewScope: "personal", summary: { status: "ready", data: {} as any, error: null } },
+      { type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope: "overall" }
+    );
+    expect(loaded.overviewScope).toBe("overall");
+    expect(loaded.summary.status).toBe("ready");
   });
 
   it("marks summary ready for overall scope when overall kpis are non-zero", () => {
@@ -134,5 +145,48 @@ describe("dashboardReducer", () => {
       }
     );
     expect(next.summary.status).toBe("ready");
+  });
+});
+
+const retainedSummary: import("@/domain/parameters/dashboardTypes").DashboardSummary = {
+  window: "30d",
+  windowLabel: "近 30 天",
+  projectId: null,
+  kpis: {
+    totalParameters: 0, totalBindings: 0, totalDefinitions: 0, managedProjects: 0,
+    changeFrequency: 0, activeContributors: 0, highRiskParameters: null, riskAvailability: "unavailable"
+  },
+  trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 0, workflowEventCount: 0 }],
+  personalKpis: {
+    contributionCount: 0, workflowCount: 0, openItemCount: 0, pendingTodoCount: 0,
+    highRiskTouchCount: null, riskAvailability: "unavailable"
+  },
+  personalTrend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 0, workflowEventCount: 0 }],
+  riskBuckets: [],
+  workbenchSignals: {
+    reviewQueue: 0, myDrafts: 0, returnedChanges: 0, waitingMerge: 0,
+    unappliedImportBatches: 0, inactiveAccounts: 0
+  }
+};
+
+describe("dashboard overview scope during refresh", () => {
+  it.each([
+    { action: { type: "DASHBOARD_SUMMARY_ERROR", error: "Refresh failed" } as const, status: "error", error: "Refresh failed" },
+    { action: { type: "DASHBOARD_SUMMARY_LOADING" } as const, status: "loading", error: null }
+  ])("preserves retained summary $status when switching scope", ({ action, status, error }) => {
+    const ready = dashboardReducer(initialDashboardState, { type: "DASHBOARD_SUMMARY_READY", data: retainedSummary });
+    const state = dashboardReducer(ready, action);
+    const before = structuredClone(state);
+    const summary = state.summary;
+
+    const next = dashboardReducer(state, { type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope: "overall" });
+
+    expect(next.overviewScope).toBe("overall");
+    expect(next.summary).toBe(summary);
+    expect(next.summary.status).toBe(status);
+    expect(next.summary.error).toBe(error);
+    expect(next.summary.data).toBe(retainedSummary);
+    expect(next).toEqual({ ...state, overviewScope: "overall" });
+    expect(state).toEqual(before);
   });
 });

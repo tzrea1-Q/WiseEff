@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { submitRoundBodySchema } from "./schemas";
+import { initializationSnapshotItemSchema, submitRoundBodySchema } from "./schemas";
+
+it("requires an immutable canonical value identity for an initialization snapshot", () => {
+  const item = {
+    id: "preview-1", sourceProjectId: "source", sourceProjectParameterBindingId: "binding-1",
+    sourceRole: "primary", parameterSpecId: "definition-1", parameterSpecVersionId: "revision-1",
+    propertyKey: "limit", moduleId: "module-1", risk: null, effectiveValue: 36.5, rawValue: "36.5",
+    currentValueState: "pending_project_confirmation", alternativeSourceBindingIds: [],
+    needsEffectiveValueConfirmation: false
+  };
+  expect(initializationSnapshotItemSchema.safeParse(item).success).toBe(false);
+  expect(initializationSnapshotItemSchema.parse({ ...item, sourceProjectValueId: "value-1" }))
+    .toMatchObject({ sourceProjectValueId: "value-1", sourceProjectParameterBindingId: "binding-1" });
+});
 
 describe("submitRoundBodySchema binding draft actions", () => {
   const exactIdentity = {

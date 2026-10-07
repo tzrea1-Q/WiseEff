@@ -100,6 +100,7 @@ export const BINDING_CUTOVER_RELATIONS = [
   "plane_disposal_allowlist",
   "plane_disposal_runs",
   "project_parameter_bindings",
+  "project_source_member_tombstones",
   projectParameterValuesRel,
 ] as const;
 

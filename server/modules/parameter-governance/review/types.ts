@@ -111,6 +111,7 @@ export type ReviewQueueItem = {
 export type ReviewQueueList = {
   readonly items: readonly ReviewQueueItem[];
   readonly catalogRelease: CatalogReleasePin;
+  readonly ignoredReviewItemCount: number;
   readonly emptyReason?: "no-review-work";
 };
 

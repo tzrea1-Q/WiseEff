@@ -4,7 +4,19 @@
 > English: [`docs/design-docs/2026-05-20-project-parameter-initialization-design.md`](../../design-docs/2026-05-20-project-parameter-initialization-design.md)  
 > 计划：[`docs/zh-CN/exec-plans/completed/2026-08-05-project-parameter-initialization.md`](../exec-plans/completed/2026-08-05-project-parameter-initialization.md)
 
-## 摘要
+## Canonical 来源修订（#902，2026-09-23）
+
+当前 API 继承的是 canonical Binding 及其不可变 ProjectValue/source pin。下文语义表实现保留为历史说明，不得作为回退读取或物化目标。
+
+- 向导从 API 加载候选，逐 Binding/来源实例选择，同名或同 Definition 的不同实例不合并。主/辅来源决定显示顺序；不同来源复制到独立的目标配置集，冲突值明确展示供审阅，不静默覆盖。
+- 预览固定 `sourceProjectValueId` 与 Definition 修订。保存时重读服务端候选，客户端展示值不能替代来源证据。缺少来源，或值、Definition、来源清单、Catalog 选择漂移时，阻止批准。
+- 批准复制完整的 pinned DTS/JSON 成员字节，创建目标拥有的文件、版本与配置集。DTS 重解析得到目标自己的 logical node，仅通过既有 canonical owner 物化选中的属性；JSON 使用显式 ConfigurationSchema/root/pointer 映射。两条路径均不复制来源 logical node 身份，不创建无 pin 的值。
+- 目标和来源后续分别走自己的 canonical 草稿、审核和来源写回。初始化仍在审计事务内完成，重复批准返回已记录结果。从零开始不创建参数 Binding 或来源副本。
+- YAML/TOML/ENV 仍不支持。初始化不执行迁移、不补旧语义行、不改来源项目、不重建生产数据。
+
+聚焦证据由 `initializationHttp.integration.test.ts`、初始化 service/source 测试与向导测试维护。真实 API 浏览器证据和精确候选在 Issue/PR 中记录；这些测试不证明 publication manager 或部署就绪。
+
+## 摘要（历史语义设计）
 
 在新建项目向导中增加参数库初始化：从源项目选取 **binding 语义快照**（一次性），提交初始化审阅，Admin 批准后才解锁常规 typed binding 工作流。批准后不与源项目保持同步。
 

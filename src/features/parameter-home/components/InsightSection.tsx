@@ -36,6 +36,14 @@ export function InsightSection({
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const isViewportAccordion = useIsAccordionMode(1099);
   const isAccordionMode = layout === "page" || isViewportAccordion;
+  const hotspotSubtitle =
+    !summary
+      ? undefined
+      : hotspotsStatus === "loading" || hotspotsStatus === "idle"
+        ? `${summary.windowLabel} · 加载中`
+        : hotspotsStatus === "error"
+          ? `${summary.windowLabel} · 不可用`
+          : `${summary.windowLabel} · ${hotspots.length} 个热区`;
 
   useEffect(() => {
     setExpandedHotspotIds([]);
@@ -64,7 +72,7 @@ export function InsightSection({
       {expanded ? (
         <Panel
           title="热榜"
-          subtitle={summary ? `${summary.windowLabel} · ${hotspots.length} 个热区` : undefined}
+          subtitle={hotspotSubtitle}
         >
             {hotspotsStatus === "loading" || hotspotsStatus === "idle" ? <SectionSkeleton label="加载热榜" /> : null}
             {hotspotsStatus === "error" ? <SectionError message={hotspotsError ?? "热榜加载失败"} onRetry={onHotspotsRetry} /> : null}

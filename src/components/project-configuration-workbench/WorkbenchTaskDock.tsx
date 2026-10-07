@@ -6,6 +6,7 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   ParameterFileRepository,
+  ParameterFileSourceWorkflow,
   ParameterFileSyncConflict
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionDraftRow } from "@/application/project-configuration/sessionDrafts";
@@ -18,6 +19,7 @@ export type WorkbenchTaskDockProps = {
   onTasksOpenChange: (open: boolean) => void;
   sessionDraftRows: SessionDraftRow[];
   syncEvidence: string;
+  canonicalSyncCheck: boolean;
   exportEvidence: string;
   syncConflicts: ParameterFileSyncConflict[];
   releaseReadiness: DtsReleaseReadiness | null;
@@ -39,6 +41,8 @@ export type WorkbenchTaskDockProps = {
   submitError: string;
   projectId: string;
   fileRepository: ParameterFileRepository;
+  sourceWorkflowByFileId: Readonly<Record<string, ParameterFileSourceWorkflow | null>>;
+  sourceWorkflowLoading: boolean;
   onConflictsChange: (next: ParameterFileSyncConflict[]) => void;
   onLocateConflict: (conflict: ParameterFileSyncConflict) => void;
   canAdmin: boolean;
@@ -53,6 +57,7 @@ export function WorkbenchTaskDock({
   onTasksOpenChange,
   sessionDraftRows,
   syncEvidence,
+  canonicalSyncCheck,
   exportEvidence,
   syncConflicts,
   releaseReadiness,
@@ -74,6 +79,8 @@ export function WorkbenchTaskDock({
   submitError,
   projectId,
   fileRepository,
+  sourceWorkflowByFileId,
+  sourceWorkflowLoading,
   onConflictsChange,
   onLocateConflict,
   canAdmin,
@@ -92,7 +99,7 @@ export function WorkbenchTaskDock({
         onClick={() => onTasksOpenChange(!tasksOpen)}
       >
         <span>
-          本轮更改 <strong>{sessionDraftRows.length + (syncEvidence || exportEvidence ? 1 : 0)}</strong>
+          本轮更改 <strong>{sessionDraftRows.length + (exportEvidence || (syncEvidence && !canonicalSyncCheck) ? 1 : 0)}</strong>
         </span>
         <span>
           校验问题 <strong>{sessionDraftRows.filter((row) => row.valid === false).length}</strong>
@@ -209,6 +216,8 @@ export function WorkbenchTaskDock({
               projectId={projectId}
               repository={fileRepository}
               conflicts={syncConflicts}
+              sourceWorkflowByFileId={sourceWorkflowByFileId}
+              sourceWorkflowLoading={sourceWorkflowLoading}
               onConflictsChange={onConflictsChange}
               onQueueEmpty={() => onTasksOpenChange(false)}
               onLocateConflict={onLocateConflict}

@@ -129,6 +129,24 @@ export type ParameterSpecDetail = ParameterSpecSummary & {
   cutover?: ParameterSpecCutoverSummary;
 };
 
+/**
+ * Read-only canonical Definition revision used by the DTS workbench.
+ * It deliberately keeps Catalog identity separate from the retired Spec model.
+ */
+export type CanonicalDtsDefinitionDetail = {
+  definitionId: string;
+  revisionId: string;
+  revisionNumber: number;
+  propertyKey: string;
+  contentDigest: string;
+  displayName: string;
+  valueShape: unknown;
+  constraints: unknown;
+  documentation: string | null;
+  unit: string | null;
+  catalogReleaseId: string;
+};
+
 export type PropertyKeyCutoverStartBlocker = {
   code: "triple-collision" | "open-version-cutover" | "open-property-key-cutover";
   message: string;
@@ -216,7 +234,10 @@ export type ProjectParameterBinding = {
   parameterSpecVersionId: string;
   definitionId?: string;
   definitionRevisionId?: string;
+  /** Canonical wire alias used by project-value reads. */
+  effectiveRevisionId?: string;
   currentValueId?: string;
+  projectId?: string;
   propertyKey: string;
   driverModule: string | null;
   logicalNodeId: string | null;
@@ -243,6 +264,24 @@ export type BindingHistoryEntry = {
   changedAt: string;
   fromRawValue?: string | null;
   toRawValue?: string | null;
+  bindingId?: string;
+  definitionId?: string;
+  definitionRevisionId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string | null;
+  oldCurrentValueId?: string | null;
+  newCurrentValueId?: string | null;
+  valueState?: "present" | "deleted";
+  eventType?: string;
+  sourceOccurrenceId?: string | null;
+  sourceIdentity?: string | null;
+  sourceRef?: string | null;
+  sourceLocator?: string | Record<string, unknown> | null;
+  displayLocator?: string | null;
+  fileName?: string | null;
+  configSetId?: string | null;
+  catalogReleaseId?: string | null;
+  reason?: string | null;
 };
 
 /**
@@ -250,9 +289,25 @@ export type BindingHistoryEntry = {
  * `parameter_spec_id` + `module_id` within the same organization (design lock).
  */
 export type BindingCompareEntry = {
+  /** Canonical project binding instance identity. Optional for legacy mock fixtures. */
+  bindingId?: string;
+  definitionId?: string;
+  definitionRevisionId?: string | null;
   projectId: string;
   projectName: string;
   rawValue: string;
+  /** Stable source occurrence identity for distinguishing sibling instances. */
+  sourceIdentity?: string | null;
+  sourceOccurrenceId?: string | null;
+  sourceRef?: string | null;
+  sourceLocator?: string | Record<string, unknown> | null;
+  displayLocator?: string | null;
+  fileName?: string | null;
+  configSetId?: string | null;
+  locator?: string | null;
+  currentValueId?: string | null;
+  effectiveRevisionId?: string | null;
+  valueState?: "present" | "deleted" | null;
   moduleName?: string | null;
   driverModule?: string | null;
 };

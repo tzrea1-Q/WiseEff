@@ -1,90 +1,55 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../shared/http/errors";
+import { setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 
-vi.mock("../../parameters/service", () => ({
-  submitParameterChanges: vi.fn()
+vi.mock("../../parameter-bindings/drafts", () => ({
+  createCanonicalValueDraft: vi.fn(),
+  submitCanonicalValueChange: vi.fn()
 }));
 
-vi.mock("../../parameter-kernel/sensitiveNode", () => ({
-  assertTrustedSensitiveNodeSubmissionAllowed: vi.fn()
-}));
-
-vi.mock("../../parameters/repository", () => ({
-  deleteDraft: vi.fn(),
-  getProjectParameterForUpdate: vi.fn()
-}));
-
-vi.mock("../../parameter-kernel/parameterIdentityMode", () => ({
-  resolveParameterIdentityMode: vi.fn().mockResolvedValue("semantic")
-}));
-
-vi.mock("../../parameter-topology/service", () => ({
-  createBindingDraft: vi.fn()
-}));
-
-vi.mock("../../parameter-topology/writeLock", () => ({
-  loadBindingContext: vi.fn(),
-  loadLogicalNodeSubmissionContext: vi.fn(),
-  resolveBindingHeadRevisionId: vi.fn()
-}));
-
-vi.mock("../../audit/repository", () => ({
-  createAuditEvent: vi.fn()
+vi.mock("../approvedParameterInvocation", () => ({
+  APPROVED_PARAMETER_PAYLOAD_KEY: "approvedParameter",
+  requireApprovedParameterInvocation: vi.fn()
 }));
 
 import { createActionTools } from "./actionTools";
 import { createAgentInvocation } from "../../auth/trustedInvocation";
 import { testRefusalAuditSink } from "../../audit/testRefusalSink";
-import { submitParameterChanges } from "../../parameters/service";
-import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
-import {
-  loadBindingContext,
-  loadLogicalNodeSubmissionContext,
-  resolveBindingHeadRevisionId
-} from "../../parameter-topology/writeLock";
-import { createBindingDraft } from "../../parameter-topology/service";
+import { createCanonicalValueDraft, submitCanonicalValueChange } from "../../parameter-bindings/drafts";
+import { requireApprovedParameterInvocation } from "../approvedParameterInvocation";
 
-const mockedSubmit = vi.mocked(submitParameterChanges);
-const mockedAssert = vi.mocked(assertTrustedSensitiveNodeSubmissionAllowed);
-const mockedLoadBinding = vi.mocked(loadBindingContext);
-const mockedLoadNode = vi.mocked(loadLogicalNodeSubmissionContext);
-const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
-const mockedCreateDraft = vi.mocked(createBindingDraft);
+const mockedCreateDraft = vi.mocked(createCanonicalValueDraft);
+const mockedSubmit = vi.mocked(submitCanonicalValueChange);
+const mockedApproved = vi.mocked(requireApprovedParameterInvocation);
+
+const canonicalPins = {
+  projectId: "p1",
+  bindingId: "pd1",
+  expectedValueId: "value-1",
+  definitionId: "def-1",
+  definitionRevisionId: "revision-1",
+  catalogReleaseId: "release-1",
+  configRevisionId: "config-1",
+  sourceRef: "config.dts",
+  sourcePinId: "pin-1",
+  sourceFormat: "dts" as const
+};
 
 describe("action.submitParameterChange sensitive node guard", () => {
   beforeEach(() => {
-    mockedSubmit.mockReset();
-    mockedAssert.mockReset();
-    mockedLoadBinding.mockReset();
-    mockedLoadNode.mockReset();
-    mockedResolveHead.mockReset();
+    setParameterIdentityMode("semantic");
+    vi.clearAllMocks();
+    mockedApproved.mockResolvedValue({ pins: canonicalPins } as never);
   });
 
-  it("denies agent writes to critical nodes early and does not submit", async () => {
+  afterEach(() => setParameterIdentityMode(null));
+
+  it("propagates a canonical critical-node refusal and does not submit", async () => {
     const db = {
       query: vi.fn(),
-      transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ query: vi.fn() }))
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db))
     };
-    mockedLoadBinding.mockResolvedValue({
-      binding_id: "pd1",
-      organization_id: "org1",
-      project_id: "p1",
-      parameter_spec_id: "def-1",
-      logical_node_id: "ln-1",
-      property_key: "status",
-      node_locator: "safety/cutover/status",
-      constraints: {},
-      schema_default: null,
-      example_value: null,
-      policy_target: null
-    } as never);
-    mockedResolveHead.mockResolvedValue("rev-1");
-    mockedLoadNode.mockResolvedValue({
-      nodeLocator: "safety/cutover/status",
-      compatible: "vendor,safety-cutover"
-    });
-
-    mockedAssert.mockRejectedValue(
+    mockedCreateDraft.mockRejectedValue(
       new ApiError("FORBIDDEN", "Agent writes to critical sensitive nodes require a human.", {
         riskTier: "critical",
         requireHuman: true
@@ -102,9 +67,20 @@ describe("action.submitParameterChange sensitive node guard", () => {
       toolCallId: "tool-call-1",
       approval: { required: true, approvalId: "approval-1" }
     });
-    const tool = createActionTools({ db, refusalAuditSink: testRefusalAuditSink }).find(
+    const tool = createActionTools({ db: db as never, refusalAuditSink: testRefusalAuditSink }).find(
       (item) => item.name === "action.submitParameterChange"
     )!;
+    const payload = {
+      projectId: "p1",
+      parameterId: "pd1",
+      targetValue: "<1>",
+      reason: "agent tweak",
+      approvedParameter: {
+        ...canonicalPins,
+        target: { format: "dts" as const, sourceText: "<1>" }
+      }
+    };
+
     await expect(
       tool.run(
         {
@@ -116,26 +92,16 @@ describe("action.submitParameterChange sensitive node guard", () => {
           projectId: "p1",
           approvalId: "approval-1"
         } as never,
-        {
-          projectId: "p1",
-          parameterId: "pd1",
-          targetValue: "locked",
-          reason: "agent tweak"
-        }
+        payload
       )
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403, details: { riskTier: "critical", requireHuman: true } });
 
-    expect(mockedAssert).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({
-        invocation,
-        nodePath: "safety/cutover/status",
-        projectId: "p1",
-        refusalSink: testRefusalAuditSink
-      })
+    expect(mockedCreateDraft).toHaveBeenCalledWith(
+      db,
+      auth,
+      expect.objectContaining({ projectId: "p1", bindingId: "pd1", action: "set" }),
+      expect.objectContaining({ invocation, requestId: "r1", refusalSink: testRefusalAuditSink })
     );
-    expect(mockedCreateDraft).not.toHaveBeenCalled();
     expect(mockedSubmit).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,27 @@ export const debugNormalizationModeSchema = z.enum([
   "json-canonical"
 ]);
 
+/** Public canonical identity.  The source-owner row is intentionally server-only. */
+export const canonicalDebugPinDtoSchema = z.object({
+  bindingId: z.string().optional(),
+  projectId: z.string().optional(),
+  definitionId: z.string().optional(),
+  effectiveRevisionId: z.string().optional(),
+  currentValueId: z.string().optional(),
+  sourcePinId: z.string().optional(),
+  configRevisionId: z.string().optional(),
+  protectedReferenceKind: z.enum(["canonical-pin", "typed-block"]).optional(),
+  protectedReferenceReason: z.string().optional()
+});
+
+export const canonicalDebugBindingDtoSchema = z.object({
+  projectId: z.string(),
+  bindingId: z.string(),
+  expectedEffectiveRevisionId: z.string().optional(),
+  expectedCurrentValueId: z.string().optional(),
+  sourcePinId: z.string().optional()
+});
+
 export const debugDeviceDtoSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -86,7 +107,8 @@ export const debugParameterDtoSchema = z.object({
   valueFormat: debugValueFormatSchema.optional(),
   normalizationMode: debugNormalizationModeSchema.optional(),
   maxValueBytes: z.number().nullable().optional(),
-  organizationId: z.string().optional()
+  organizationId: z.string().optional(),
+  ...canonicalDebugPinDtoSchema.shape
 });
 
 export const debugRuntimeNodeDtoSchema = z.object({
@@ -112,7 +134,9 @@ export const debugRuntimeNodeDtoSchema = z.object({
   archivedBy: z.string().nullable().optional(),
   archiveReason: z.string().nullable().optional(),
   createdAt: z.string().optional(),
-  updatedAt: z.string().optional()
+  updatedAt: z.string().optional(),
+  canonicalBinding: canonicalDebugBindingDtoSchema.nullable().optional(),
+  ...canonicalDebugPinDtoSchema.shape
 });
 
 export const debugSessionDtoSchema = z.object({
@@ -158,7 +182,27 @@ export const nodeOperationDtoSchema = z.object({
   requestedValueDigest: z.string().nullable().optional(),
   previousValueDigest: z.string().nullable().optional(),
   readbackValueDigest: z.string().nullable().optional(),
-  valuePreview: z.string().nullable().optional()
+  valuePreview: z.string().nullable().optional(),
+  canonicalPin: canonicalDebugPinDtoSchema.optional(),
+  ...canonicalDebugPinDtoSchema.shape
+});
+
+export const debugSnapshotEntryDtoSchema = z.object({
+  parameterId: z.string().optional(),
+  nodeId: z.string().optional(),
+  protocol: debugConnectionProtocolSchema.optional(),
+  // Older snapshots may contain the pre-#420 legacy entry shape. Keep these
+  // fields optional at the wire boundary; rollback still validates identity
+  // before any device I/O.
+  nodePath: z.string().optional(),
+  previousValue: z.string().optional(),
+  targetValue: z.string().optional(),
+  valueKind: debugValueKindSchema.optional(),
+  valueFormat: debugValueFormatSchema.optional(),
+  normalizationMode: debugNormalizationModeSchema.optional(),
+  previousDigest: z.string().optional(),
+  targetDigest: z.string().optional(),
+  canonicalPin: canonicalDebugPinDtoSchema.optional()
 });
 
 export const debugSnapshotDtoSchema = z.object({
@@ -166,7 +210,8 @@ export const debugSnapshotDtoSchema = z.object({
   sessionId: z.string(),
   status: debugSnapshotStatusSchema,
   risk: debugRiskLevelSchema,
-  createdAt: z.string()
+  createdAt: z.string(),
+  entries: z.array(debugSnapshotEntryDtoSchema).optional()
 });
 
 export const debugDeviceListResponseSchema = itemsEnvelopeSchema(debugDeviceDtoSchema);

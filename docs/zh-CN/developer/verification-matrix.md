@@ -15,6 +15,12 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` 产物是�
 - 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。
 - 若中文页与源码、测试或英文页冲突，以源码、测试和当前英文页为准，并在同一变更中修正中文页。
 
+## Parameter Catalog boundary baseline
+
+运行 `npm run parameter-catalog-boundaries:check`，将当前 AST/SQL 检测结果与 `scripts/parameter-catalog-boundaries/baseline.json` 比较。按仓库相对文件路径和规则统计已配置消费者族的出现次数；计数不变即可通过，无需 Git 历史、blob 哈希或外部证明文件。新增文件/规则或计数增加会失败并输出证据。计数减少也会以基线过期失败：运行 `npm run parameter-catalog-boundaries:check -- --update` 锁定改进。
+
+`--update` 遇到任何增加都会拒绝更新，且不写入基线。只有明确评审过的增加才应使用 `--update --allow-increase`；该命令也用于初始化缺失基线。零出现次数的文件不写入，键按序排列。计数不会区分同一文件/规则中保持数量不变的替换。使用 `npm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts` 验证变更。
+
 ## CI shadow 观察
 
 `Build and test` 汇总器先强制校验现有原生 L1 回执和必需结果，通过后才发布有界、无放行权的 shadow 摘要。适用的 PR 若有四份新鲜且匹配的原生观察，返回 `observed`、`planValid:true`；证据缺失、畸形或不匹配时返回 `unavailable`、`planValid:false`。纯文档和非 PR 运行返回 `not-applicable`、`planValid:false`。适用范围由原生 Detect 输出确定，观察不可用不能掩盖原生失败或生成有效计划。

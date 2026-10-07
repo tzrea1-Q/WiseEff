@@ -1,4 +1,5 @@
 import pg from "pg";
+import type { Queryable } from "../../../shared/database/client";
 
 import {
   CatalogReleaseDigest,
@@ -72,7 +73,7 @@ const validatePin = (pin: CatalogReleasePin): Result<CatalogReleasePin, ReviewQu
   return { ok: true, value: pin };
 };
 
-const parseStoredEvidence = (value: unknown): StoredReviewEvidenceBody | null => {
+export const parseStoredEvidence = (value: unknown): StoredReviewEvidenceBody | null => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
   if (!isUsableToken(body.sourceIdentity) || !isUsableToken(body.catalogReleaseId)) return null;
@@ -97,14 +98,15 @@ const parseStoredEvidence = (value: unknown): StoredReviewEvidenceBody | null =>
 };
 
 const loadEvidence = async (
-  client: pg.PoolClient,
+  client: Queryable,
   organizationId: string,
+  observationIds: readonly string[] | null = null,
 ): Promise<ReviewEvidenceRecord[]> => {
   const result = await client.query<EvidenceRow>(
     `select id, organization_id, reason, candidate_safe_digest, r_class, source_graph_ref, evidence
        from parameter_catalog.parameter_review_evidence
-      where organization_id = $1`,
-    [organizationId],
+      where organization_id = $1 and ($2::text[] is null or observation_id=any($2::text[]))`,
+    [organizationId,observationIds],
   );
   const records: ReviewEvidenceRecord[] = [];
   for (const row of result.rows) {
@@ -123,19 +125,20 @@ const loadEvidence = async (
   return records;
 };
 
-const loadOpenItems = async (
-  client: pg.PoolClient,
+const loadItems = async (
+  client: Queryable,
   organizationId: string,
+  catalogReleaseId: string,
 ): Promise<{ records: ReviewItemRow[]; existing: ExistingOpenReviewItem[] }> => {
   const result = await client.query<ReviewItemRow>(
     `select id, evidence_fingerprint, matcher_revision, catalog_release_id, reason, status, etag_version
        from parameter_catalog.parameter_review_items
-      where organization_id = $1 and status = 'open'`,
-    [organizationId],
+      where organization_id = $1 and catalog_release_id = $2`,
+    [organizationId, catalogReleaseId],
   );
   return {
     records: result.rows,
-    existing: result.rows.map((row) => ({
+    existing: result.rows.filter((row) => row.status === "open").map((row) => ({
       id: row.id,
       groupingFingerprint: row.evidence_fingerprint,
     })),
@@ -143,7 +146,7 @@ const loadOpenItems = async (
 };
 
 const insertOpenItem = async (
-  client: pg.PoolClient,
+  client: Queryable,
   input: {
     id: string;
     organizationId: string;
@@ -208,24 +211,59 @@ const projectGroups = (
 ): ReviewQueueItem[] => {
   const byId = new Map(openRows.map((row) => [row.id, row]));
   const candidateState = { status: "current" as const, capturedRelease };
-  return groups.map((group) => {
+  return groups.flatMap((group) => {
     const id = ReviewItemId(group.existingItemId ?? reviewItemIdFor(group.groupingFingerprint));
     const persisted = byId.get(id);
-    return projectReviewQueueItem(group, {
+    if (!persisted || persisted.status !== "open" || persisted.evidence_fingerprint !== group.groupingFingerprint
+      || persisted.catalog_release_id !== capturedRelease.id || persisted.matcher_revision !== group.matcherRevision) return [];
+    return [projectReviewQueueItem(group, {
       capturedRelease,
       candidateState,
       persisted: {
         id,
-        etagVersion: Number(persisted?.etag_version ?? 1),
+        etagVersion: Number(persisted.etag_version),
       },
-    });
+    })];
   });
 };
+
+/** Existing Review Queue grouping, used by the trusted file-activation transaction. */
+export async function materializeReviewItemsInTransaction(
+  tx: Queryable, organizationId: string, capturedRelease: CatalogReleasePin,
+  observationIds: readonly string[] | null = null,
+): Promise<Result<{ actionable: readonly GroupedReview[]; refreshed: ReviewItemRow[] }, ReviewQueueFailure>> {
+  const records = await loadEvidence(tx, organizationId, observationIds);
+  const existing = await loadItems(tx, organizationId, capturedRelease.id);
+  const grouped = groupReviewEvidence(records, capturedRelease, { existingOpenItems: existing.existing });
+  if (!grouped.ok) return grouped;
+  const closed = new Set(existing.records.filter((row) => row.status !== "open")
+    .map((row) => `${row.matcher_revision}\0${row.evidence_fingerprint}`));
+  const actionable = grouped.value.filter((group) => group.existingItemId !== null
+    || !closed.has(`${group.matcherRevision}\0${group.groupingFingerprint}`));
+  for (const group of actionable) {
+    try {
+      await insertOpenItem(tx, {
+        id: group.existingItemId ?? reviewItemIdFor(group.groupingFingerprint),
+        organizationId: group.organizationId, groupingFingerprint: group.groupingFingerprint,
+        matcherRevision: group.matcherRevision, catalogReleaseId: group.catalogReleaseId,
+        reason: group.reason,
+      });
+    } catch (error) {
+      if (error instanceof pg.DatabaseError && error.code === "23505") return {
+        ok:false,error:{kind:"duplicate-group",organizationId:group.organizationId,
+          groupingFingerprint:group.groupingFingerprint},
+      };
+      throw error;
+    }
+  }
+  const refreshed = await loadItems(tx, organizationId, capturedRelease.id);
+  return {ok:true,value:{actionable,refreshed:refreshed.records}};
+}
 
 const readAuthorizedQueue = async (
   pool: pg.Pool,
   query: ListReviewQueueQuery,
-): Promise<Result<{ items: ReviewQueueItem[] }, ReviewQueueFailure>> => {
+): Promise<Result<{ items: ReviewQueueItem[]; ignoredReviewItemCount: number }, ReviewQueueFailure>> => {
   const authorized = authorizeReviewQueueRead(query);
   if (!authorized.ok) return authorized;
   const pin = validatePin(query.capturedRelease);
@@ -236,45 +274,16 @@ const readAuthorizedQueue = async (
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const records = await loadEvidence(client, query.organizationId);
-    const open = await loadOpenItems(client, query.organizationId);
-    const grouped = groupReviewEvidence(records, pin.value, {
-      existingOpenItems: open.existing,
-    });
-    if (!grouped.ok) {
+    const materialized = await materializeReviewItemsInTransaction(client,query.organizationId,pin.value);
+    if (!materialized.ok) {
       await client.query("rollback");
-      return grouped;
+      return materialized;
     }
-    for (const group of grouped.value) {
-      const id = group.existingItemId ?? reviewItemIdFor(group.groupingFingerprint);
-      try {
-        await insertOpenItem(client, {
-          id,
-          organizationId: group.organizationId,
-          groupingFingerprint: group.groupingFingerprint,
-          matcherRevision: group.matcherRevision,
-          catalogReleaseId: group.catalogReleaseId,
-          reason: group.reason,
-        });
-      } catch (error) {
-        await client.query("rollback");
-        if (error instanceof pg.DatabaseError && error.code === "23505") {
-          return {
-            ok: false,
-            error: {
-              kind: "duplicate-group",
-              organizationId: group.organizationId,
-              groupingFingerprint: group.groupingFingerprint,
-            },
-          };
-        }
-        throw error;
-      }
-    }
-    const refreshed = await loadOpenItems(client, query.organizationId);
-    const items = projectGroups(grouped.value, pin.value, refreshed.records);
+    const items = projectGroups(materialized.value.actionable, pin.value, materialized.value.refreshed);
     await client.query("commit");
-    return { ok: true, value: { items } };
+    const ignoredReviewItemCount = new Set(materialized.value.refreshed.filter((row) => row.status === "out-of-scope")
+      .map((row) => row.id)).size;
+    return { ok: true, value: { items, ignoredReviewItemCount } };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;
@@ -295,6 +304,7 @@ export const listReviewQueue = async (
       value: {
         items: [],
         catalogRelease: query.capturedRelease,
+        ignoredReviewItemCount: result.value.ignoredReviewItemCount,
         emptyReason: "no-review-work",
       },
     };
@@ -304,6 +314,7 @@ export const listReviewQueue = async (
     value: {
       items: result.value.items,
       catalogRelease: query.capturedRelease,
+      ignoredReviewItemCount: result.value.ignoredReviewItemCount,
     },
   };
 };

@@ -4,6 +4,7 @@ import type {
   CandidateDiagnostic,
   CandidateImpact,
   CandidateStatus,
+  CanonicalSourceWorkflowLink,
   InsertParameterFileCandidateInput,
   ParameterFileFormat,
   ParsedIndex,
@@ -144,6 +145,54 @@ export async function getParameterFileCandidateById(
     limit 1
     `,
     [query.candidateId, query.organizationId, query.projectId]
+  );
+  const row = result.rows[0];
+  return row ? toCandidateDto(row) : null;
+}
+
+export async function getParameterFileCandidateByIdForUpdate(
+  db: Queryable,
+  query: { organizationId: string; projectId: string; candidateId: string }
+): Promise<ProjectParameterFileCandidateDto | null> {
+  const result = await db.query<CandidateRow>(
+    `
+    select ${candidateSelect}
+    from project_parameter_file_candidates
+    where id = $1
+      and organization_id = $2
+      and project_id = $3
+    for update
+    `,
+    [query.candidateId, query.organizationId, query.projectId]
+  );
+  const row = result.rows[0];
+  return row ? toCandidateDto(row) : null;
+}
+
+export async function linkParameterFileCandidateToCanonicalWorkflow(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; candidateId: string; link: CanonicalSourceWorkflowLink }
+): Promise<ProjectParameterFileCandidateDto | null> {
+  const current = await getParameterFileCandidateById(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    candidateId: input.candidateId
+  });
+  const existing = current?.impact?.canonicalSourceWorkflow;
+  if (existing && (existing.requestId !== input.link.requestId || existing.fingerprint !== input.link.fingerprint)) {
+    return null;
+  }
+  const result = await db.query<CandidateRow>(
+    `
+    update project_parameter_file_candidates
+       set impact = jsonb_set(coalesce(impact, '{}'::jsonb), '{canonicalSourceWorkflow}', $4::jsonb, true),
+           updated_at = now()
+     where id = $1
+       and organization_id = $2
+       and project_id = $3
+    returning ${candidateSelect}
+    `,
+    [input.candidateId, input.organizationId, input.projectId, JSON.stringify(input.link)]
   );
   const row = result.rows[0];
   return row ? toCandidateDto(row) : null;

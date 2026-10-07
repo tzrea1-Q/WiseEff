@@ -166,6 +166,21 @@ export async function getProjectParameterFileById(
   return row ? toFileDto(row) : null;
 }
 
+/** Return the persisted source membership for a file without widening the public file DTO. */
+export async function getProjectParameterFileConfigSetId(
+  db: Queryable,
+  query: { organizationId: string; projectId: string; fileId: string }
+): Promise<string | null> {
+  const result = await db.query<{ config_set_id: string | null }>(
+    `select config_set_id
+       from project_parameter_files
+      where organization_id = $1 and project_id = $2 and id = $3
+      limit 1`,
+    [query.organizationId, query.projectId, query.fileId]
+  );
+  return result.rows[0]?.config_set_id ?? null;
+}
+
 export async function getProjectParameterFileByName(
   db: Queryable,
   query: { organizationId: string; projectId: string; fileName: string }

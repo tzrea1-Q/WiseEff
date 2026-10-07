@@ -7,10 +7,16 @@ import {
   parameterCatalogCoveredRouteIds,
   parameterCatalogDtoSchemaCatalog
 } from "./parameterCatalog";
+import { canonicalConflictDtoSchemaCatalog } from "./canonicalConflict";
+import { canonicalBatchRollbackDtoSchemaCatalog } from "./canonicalBatchRollback";
+import { canonicalManualSyncDtoSchemaCatalog } from "./canonicalManualSync";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...coreDtoSchemaCatalog,
-  ...parameterCatalogDtoSchemaCatalog
+  ...parameterCatalogDtoSchemaCatalog,
+  ...canonicalConflictDtoSchemaCatalog,
+  ...canonicalBatchRollbackDtoSchemaCatalog,
+  ...canonicalManualSyncDtoSchemaCatalog
 };
 
 export const dtoSchemaCoveredRouteIds = [
@@ -27,7 +33,12 @@ export {
   okEnvelopeSchema
 } from "./envelopes";
 export * from "./parameters";
+export * from "./parameterDashboard";
 export * from "./logs";
 export * from "./debugging";
 export * from "./agent";
 export * from "./parameterCatalog";
+export * from "./canonicalConflict";
+export * from "./canonicalBatchRollback";
+export * from "./canonicalManualSync";
+export { projectBindingDtoSchema } from "../../parameter-topology/schemas";

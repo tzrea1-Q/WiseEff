@@ -1,5 +1,7 @@
 import type { AuthContext } from "../../auth/types";
 import type { Database } from "../../../shared/database/client";
+import { ApiError } from "../../../shared/http/errors";
+import { getProjectById } from "../../projects/repository";
 import type {
   DashboardHotspot,
   DashboardSummary,
@@ -8,7 +10,8 @@ import type {
   TrendPoint
 } from "../../../../src/domain/parameters/dashboardTypes";
 import { getPlatformRole, migrateLegacyRoleId } from "../../../../src/domain/users/types";
-import { resolvePersonalRoleLevel } from "./personalMetrics";
+import { canReviewParameterStage, canReviewParameters } from "../../parameter-kernel/policy";
+import { hasCurrentCanonicalReviewRole } from "../reviewWorkflowRepository";
 import {
   aggregatePersonalTrend,
   aggregateRiskDistribution,
@@ -27,9 +30,9 @@ import {
 } from "../../../../src/domain/parameters/projectHotspotScoring";
 
 const windowLabels: Record<DashboardWindow, string> = {
-  "7d": "近 7 天",
-  "30d": "近 30 天",
-  "180d": "近 180 天"
+  "7d": "近 7 天 · 完整 UTC 日（不含今天）",
+  "30d": "近 30 天 · 完整 UTC 日（不含今天）",
+  "180d": "近 180 天 · 完整 UTC 日（不含今天）"
 };
 
 type ServiceInput = {
@@ -79,42 +82,86 @@ function labelTrendPoints(points: Array<{ bucketStart: string; changeCount: numb
 }
 
 function resolveRoleLevel(input: ServiceInput): "guest" | "user" | "committer" | "admin" {
-  const perspectiveRoleId = input.perspectiveRoleId?.trim();
-  if (perspectiveRoleId) {
-    return resolvePersonalRoleLevel(perspectiveRoleId);
-  }
-  const scopedRole =
-    (input.projectId ? input.auth.roles.find((role) => role.projectId === input.projectId) : undefined) ??
-    input.auth.roles.find((role) => role.projectId === null) ??
-    input.auth.roles[0];
-  const roleId = migrateLegacyRoleId(scopedRole?.roleId ?? "guest");
-  return getPlatformRole(roleId).level;
+  return getPlatformRole(resolvePerspectiveRoleId(input)).level;
 }
 
 function resolvePerspectiveRoleId(input: ServiceInput) {
-  const perspectiveRoleId = input.perspectiveRoleId?.trim();
-  if (perspectiveRoleId) {
-    return migrateLegacyRoleId(perspectiveRoleId);
+  const roles = input.auth.roles.filter(
+    (role) => role.projectId === null || input.projectId === undefined || role.projectId === input.projectId
+  );
+  const requested = input.perspectiveRoleId?.trim();
+  const heldPerspective = requested && roles.find(
+    (role) => migrateLegacyRoleId(role.roleId) === migrateLegacyRoleId(requested)
+  );
+  if (heldPerspective) return migrateLegacyRoleId(heldPerspective.roleId);
+  const levelRank = { guest: 0, user: 1, committer: 2, admin: 3 } as const;
+  return roles.reduce<ReturnType<typeof migrateLegacyRoleId>>((selected, role) => {
+    const candidate = migrateLegacyRoleId(role.roleId);
+    return levelRank[getPlatformRole(candidate).level] > levelRank[getPlatformRole(selected).level] ? candidate : selected;
+  }, "guest");
+}
+
+function resolveAuthorizedProjectIds(input: ServiceInput): readonly string[] | null {
+  if (input.auth.roles.some((role) => role.projectId === null)) return null;
+  return [...new Set(input.auth.roles.map((role) => role.projectId).filter((id): id is string => Boolean(id)))];
+}
+
+async function assertProjectScope(db: Database, input: ServiceInput) {
+  if (!input.projectId) return;
+  const project = await getProjectById(db, {
+    organizationId: input.auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
+      projectId: input.projectId
+    });
   }
-  const scopedRole =
-    (input.projectId ? input.auth.roles.find((role) => role.projectId === input.projectId) : undefined) ??
-    input.auth.roles.find((role) => role.projectId === null) ??
-    input.auth.roles[0];
-  return migrateLegacyRoleId(scopedRole?.roleId ?? "guest");
+  const allowed = input.auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId);
+  if (!allowed) {
+    throw new ApiError("FORBIDDEN", "Parameter dashboard project scope is not allowed.", {
+      projectId: input.projectId
+    });
+  }
+}
+
+async function resolveReviewableProjectIds(
+  db: Database,
+  input: ServiceInput,
+  authorizedProjectIds: readonly string[] | null
+): Promise<string[]> {
+  if (!canReviewParameters(input.auth)) return [];
+  const projects = await db.query<{ id: string }>(
+    `
+      select id
+        from public.projects
+       where organization_id = $1
+         and ($2::text is null or id = $2)
+         and ($3::text[] is null or id = any($3::text[]))
+       order by id asc
+    `,
+    [input.auth.organization.id, input.projectId ?? null, authorizedProjectIds]
+  );
+  const reviewable: string[] = [];
+  for (const project of projects.rows) {
+    if (!canReviewParameterStage(input.auth, project.id, "software_review")) continue;
+    if (await hasCurrentCanonicalReviewRole(db, {
+      organizationId: input.auth.organization.id,
+      projectId: project.id,
+      userId: input.auth.user.id
+    })) {
+      reviewable.push(project.id);
+    }
+  }
+  return reviewable;
 }
 
 function buildHotspotPath(
   kind: HotspotGroupAggregate["kind"],
   groupId: string,
   projectId: string | undefined,
-  module: string,
   relatedRequestCount: number
 ) {
-  if (kind === "module") {
-    return relatedRequestCount > 0
-      ? `/parameter-review?module=${encodeURIComponent(module)}`
-      : `/parameters?module=${encodeURIComponent(module)}`;
-  }
   if (kind === "project") {
     return relatedRequestCount > 0
       ? `/parameter-review?project=${encodeURIComponent(groupId)}`
@@ -122,8 +169,12 @@ function buildHotspotPath(
   }
 
   return relatedRequestCount > 0
-    ? `/parameter-review?parameter=${encodeURIComponent(groupId)}`
-    : `/parameters?parameter=${encodeURIComponent(groupId)}`;
+    ? projectId
+      ? `/parameter-review?project=${encodeURIComponent(projectId)}`
+      : "/parameter-review"
+    : projectId
+      ? `/parameters?project=${encodeURIComponent(projectId)}`
+      : "/parameters";
 }
 
 function computeTrend(current: number, previous: number): Pick<DashboardHotspot, "trendDelta" | "trendDirection"> {
@@ -171,20 +222,29 @@ function mapBehavioralGroupToHotspot(
     evidence: buildBehavioralHotspotEvidence(scoreInput, group.kind),
     ...trend,
     lastChangedAt: group.lastChangedAt,
-    suggestedPath: buildHotspotPath(group.kind, group.groupId, group.projectId, group.module, group.relatedRequestCount)
+    suggestedPath: buildHotspotPath(group.kind, group.groupId, group.projectId, group.relatedRequestCount)
   };
 }
 
 export async function getDashboardSummary(db: Database, input: ServiceInput): Promise<DashboardSummary> {
+  await assertProjectScope(db, input);
   const organizationId = input.auth.organization.id;
   const { windowStart, windowEnd, granularity } = resolveWindowBounds(input.window);
   const projectId = input.projectId ?? null;
-  const workbenchSignalsPromise = aggregateWorkbenchSignals(db, { organizationId, projectId, userId: input.auth.user.id });
+  const authorizedProjectIds = resolveAuthorizedProjectIds(input);
+  const reviewableProjectIds = await resolveReviewableProjectIds(db, input, authorizedProjectIds);
+  const workbenchSignalsPromise = aggregateWorkbenchSignals(db, {
+    organizationId,
+    projectId,
+    authorizedProjectIds,
+    reviewableProjectIds,
+    userId: input.auth.user.id
+  });
 
   const [kpis, trendRaw, riskBuckets, workbenchSignals] = await Promise.all([
-    countKpis(db, { organizationId, projectId, windowStart }),
-    aggregateTrend(db, { organizationId, projectId, windowStart, windowEnd, granularity }),
-    aggregateRiskDistribution(db, { organizationId, projectId }),
+    countKpis(db, { organizationId, projectId, authorizedProjectIds, windowStart, windowEnd }),
+    aggregateTrend(db, { organizationId, projectId, authorizedProjectIds, windowStart, windowEnd, granularity }),
+    aggregateRiskDistribution(db, { organizationId, projectId, authorizedProjectIds }),
     workbenchSignalsPromise
   ]);
   const roleLevel = resolveRoleLevel(input);
@@ -193,8 +253,10 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
     countPersonalKpis(db, {
       organizationId,
       projectId,
+      authorizedProjectIds,
       userId: input.auth.user.id,
       windowStart,
+      windowEnd,
       perspectiveRoleId,
       workbenchSignals,
       roleLevel
@@ -202,6 +264,7 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
     aggregatePersonalTrend(db, {
       organizationId,
       projectId,
+      authorizedProjectIds,
       userId: input.auth.user.id,
       windowStart,
       windowEnd,
@@ -224,17 +287,20 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
 }
 
 export async function getDashboardHotspots(db: Database, input: HotspotServiceInput): Promise<DashboardHotspot[]> {
+  await assertProjectScope(db, input);
   const organizationId = input.auth.organization.id;
   const { windowStart, windowEnd, days } = resolveWindowBounds(input.window);
   const previousEnd = windowStart;
   const previousStart = new Date(windowStart);
   previousStart.setUTCDate(previousStart.getUTCDate() - days);
   const projectId = input.projectId ?? null;
+  const authorizedProjectIds = resolveAuthorizedProjectIds(input);
 
   const [currentGroups, previousGroups] = await Promise.all([
     aggregateHotspotGroups(db, {
       organizationId,
       projectId,
+      authorizedProjectIds,
       dimension: input.dimension,
       windowStart,
       windowEnd
@@ -242,6 +308,7 @@ export async function getDashboardHotspots(db: Database, input: HotspotServiceIn
     aggregateHotspotGroups(db, {
       organizationId,
       projectId,
+      authorizedProjectIds,
       dimension: input.dimension,
       windowStart: previousStart.toISOString(),
       windowEnd: previousEnd

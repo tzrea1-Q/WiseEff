@@ -65,6 +65,15 @@ export type DebugParameter = {
   parameterDefinitionId?: string;
   writeFormatExample?: string;
   writeFormatHint?: string;
+  bindingId?: string;
+  projectId?: string;
+  definitionId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
+  sourcePinId?: string;
+  configRevisionId?: string;
+  protectedReferenceKind?: "canonical-pin" | "typed-block";
+  protectedReferenceReason?: string;
 };
 
 export type DebugParameterArchiveState = "active" | "archived";
@@ -133,4 +142,11 @@ export type DebugNodeRegistryEntry = {
   modulePath?: string[];
   enabled: boolean;
   bindings: DebugNodeProtocolBinding[];
+  canonicalBinding?: {
+    projectId: string;
+    bindingId: string;
+    expectedEffectiveRevisionId?: string;
+    expectedCurrentValueId?: string;
+    sourcePinId?: string;
+  } | null;
 };

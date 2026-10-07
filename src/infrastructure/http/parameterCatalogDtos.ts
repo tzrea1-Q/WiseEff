@@ -2,6 +2,7 @@ import type { z } from "zod";
 
 import type {
   bindingDraftResponseSchema,
+  canonicalSourceConflictDecisionResponseSchema,
   catalogBindingChangeHistoryListResponseSchema,
   bindingCompareListResponseSchema,
   bindingHistoryListResponseSchema,
@@ -10,9 +11,17 @@ import type {
   catalogCreatePublicationCandidateRequestSchema,
   catalogBindingExportResponseSchema,
   catalogBindingDraftDtoSchema,
+  catalogBatchValueChangeRequestResponseSchema,
+  catalogBatchValueChangeRequestListResponseSchema,
+  catalogSubmitBatchValueChangeRequestSchema,
   catalogValueChangeRequestDtoSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
+  catalogValueChangeReviewResponseSchema,
+  catalogMemberRemovalRequestResponseSchema,
+  catalogMemberRemovalRequestListResponseSchema,
+  catalogSubmitMemberRemovalRequestSchema,
+  catalogReviewMemberRemovalRequestSchema,
   catalogValueChangeSourceDiffResponseSchema,
   catalogCreateReplacementRequestSchema,
   catalogContinueReplacementRequestSchema,
@@ -39,6 +48,7 @@ import type {
   catalogLegacyGoneResponseSchema,
   catalogLegacyIdentifierResponseSchema,
   catalogObservationListResponseSchema,
+  catalogDriverCompatibleDiscoveryResponseSchema,
   catalogObservationResponseSchema,
   catalogPlacementResponseSchema,
   catalogProjectBindingDtoSchema,
@@ -61,6 +71,8 @@ import type {
   catalogWithdrawProposalRequestSchema,
   nodeEnablementDraftResponseSchema,
   projectParameterBindingListResponseSchema,
+  projectBindingDtoSchema,
+  itemsEnvelopeSchema,
   projectValueDraftListResponseSchema,
   projectValueDraftRemovedResponseSchema
 } from "@wiseeff/dto-schemas";
@@ -96,6 +108,7 @@ export type CatalogRestoreRegistrationRequest = z.infer<typeof catalogRestoreReg
 export type CatalogPlacementResponse = z.infer<typeof catalogPlacementResponseSchema>;
 export type CatalogUpdatePlacementRequest = z.infer<typeof catalogUpdatePlacementRequestSchema>;
 export type CatalogObservationListResponse = z.infer<typeof catalogObservationListResponseSchema>;
+export type CatalogDriverCompatibleDiscoveryResponse = z.infer<typeof catalogDriverCompatibleDiscoveryResponseSchema>;
 export type CatalogObservationResponse = z.infer<typeof catalogObservationResponseSchema>;
 export type CatalogReviewItemListResponse = z.infer<typeof catalogReviewItemListResponseSchema>;
 export type CatalogReviewItemResponse = z.infer<typeof catalogReviewItemResponseSchema>;
@@ -124,6 +137,7 @@ export type CatalogLegacyIdentifierResponse = z.infer<typeof catalogLegacyIdenti
 export type CatalogLegacyGoneResponse = z.infer<typeof catalogLegacyGoneResponseSchema>;
 export type CatalogProjectBindingDto = z.infer<typeof catalogProjectBindingDtoSchema>;
 export type CatalogProjectBindingListResponse = z.infer<typeof projectParameterBindingListResponseSchema>;
+export type CatalogProtectedProjectBindingListResponse = z.infer<ReturnType<typeof itemsEnvelopeSchema<typeof projectBindingDtoSchema>>>;
 export type CatalogBindingHistoryListResponse = z.infer<typeof bindingHistoryListResponseSchema>;
 export type CatalogBindingChangeHistoryListResponse = z.infer<
   typeof catalogBindingChangeHistoryListResponseSchema
@@ -136,8 +150,17 @@ export type CatalogBindingDraftDto = z.infer<typeof catalogBindingDraftDtoSchema
 export type CatalogProjectValueDraftListResponse = z.infer<typeof projectValueDraftListResponseSchema>;
 export type CatalogProjectValueDraftRemovedResponse = z.infer<typeof projectValueDraftRemovedResponseSchema>;
 export type CatalogValueChangeRequestDto = z.infer<typeof catalogValueChangeRequestDtoSchema>;
+export type CatalogSourceConflictDecisionResponse = z.infer<typeof canonicalSourceConflictDecisionResponseSchema>;
 export type CatalogValueChangeRequestListResponse = z.infer<typeof catalogValueChangeRequestListResponseSchema>;
 export type CatalogValueChangeRequestResponse = z.infer<typeof catalogValueChangeRequestResponseSchema>;
+export type CatalogBatchValueChangeRequestResponse = z.infer<typeof catalogBatchValueChangeRequestResponseSchema>;
+export type CatalogBatchValueChangeRequestListResponse = z.infer<typeof catalogBatchValueChangeRequestListResponseSchema>;
+export type CatalogSubmitBatchValueChangeRequest = z.infer<typeof catalogSubmitBatchValueChangeRequestSchema>;
+export type CatalogValueChangeReviewResponse = z.infer<typeof catalogValueChangeReviewResponseSchema>;
+export type CatalogMemberRemovalRequestResponse = z.infer<typeof catalogMemberRemovalRequestResponseSchema>;
+export type CatalogMemberRemovalRequestListResponse = z.infer<typeof catalogMemberRemovalRequestListResponseSchema>;
+export type CatalogSubmitMemberRemovalRequest = z.infer<typeof catalogSubmitMemberRemovalRequestSchema>;
+export type CatalogReviewMemberRemovalRequest = z.infer<typeof catalogReviewMemberRemovalRequestSchema>;
 export type CatalogValueChangeSourceDiffResponse = z.infer<
   typeof catalogValueChangeSourceDiffResponseSchema
 >;
@@ -160,6 +183,13 @@ export type CatalogListQuery = {
   placementModuleId?: string;
   propertyKey?: string;
   catalogReleaseId?: string;
+};
+
+export type CatalogDriverCompatibleDiscoveryQuery = {
+  projectId?: string;
+  observationId?: string;
+  cursor?: string;
+  limit?: number;
 };
 
 export function catalogDocumentFromDto(dto: CatalogDocumentResponse): CatalogDocumentResponse {

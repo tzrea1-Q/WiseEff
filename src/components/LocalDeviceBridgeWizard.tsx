@@ -221,6 +221,7 @@ export function LocalDeviceBridgeWizard({
   );
 
   useEffect(() => {
+    if (showUpgradeInstall && viewStep === 1) return;
     if (panelStatus === "missing_bridge") {
       if (!allowStep2WhileMissing) {
         setViewStep(1);
@@ -235,7 +236,7 @@ export function LocalDeviceBridgeWizard({
       setViewStep(naturalStep);
     }
     previousNaturalStep.current = naturalStep;
-  }, [naturalStep, panelStatus, allowStep2WhileMissing, viewStep]);
+  }, [naturalStep, panelStatus, allowStep2WhileMissing, viewStep, showUpgradeInstall]);
 
   useEffect(() => {
     if (shouldClearStaleBridgeConnectError({ connectError, health, panelStatus })) {

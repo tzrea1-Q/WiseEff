@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { presentError } from "@/infrastructure/http/presentError";
+import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
+import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import {
   buildParameterAdminModulesPath,
   parseParameterAdminModulesSubView,
@@ -39,6 +42,8 @@ import {
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
+import { CanonicalSubjectPlacementPanel } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
+import { CanonicalDriverDiscovery } from "@/components/parameter-admin-next/CanonicalDriverDiscovery";
 
 export type { UnmappedCompatibleHint };
 
@@ -50,6 +55,13 @@ export type ParameterModuleMappingPanelProps = {
   pathname?: string;
   search?: string;
   onNavigate?: (path: string) => void;
+  /** Canonical subject/placement seam; absent in explicit legacy mock mode. */
+  canonicalCatalog?: ParameterCatalogRepository;
+  canonicalGovernance?: ParameterCatalogGovernanceRepository;
+  canonicalOrganizationId?: string;
+  canonicalActor?: CatalogActorKind;
+  canonicalSessionPermissions?: readonly string[] | null;
+  canonicalEnabled?: boolean;
 };
 
 /**
@@ -61,7 +73,13 @@ export function ParameterModuleMappingPanel({
   listLibrarySpecs,
   pathname = "/parameter-admin/modules",
   search = "",
-  onNavigate
+  onNavigate,
+  canonicalCatalog,
+  canonicalGovernance,
+  canonicalOrganizationId,
+  canonicalActor = "user",
+  canonicalSessionPermissions,
+  canonicalEnabled = false
 }: ParameterModuleMappingPanelProps) {
   const client = useMemo(
     () => repository ?? createHttpParameterModuleRegistryRepository(),
@@ -91,9 +109,11 @@ export function ParameterModuleMappingPanel({
   const [overlayPickerOpen, setOverlayPickerOpen] = useState(false);
   const [overlayLibrarySpecs, setOverlayLibrarySpecs] = useState<ParameterSpecLibraryRow[]>([]);
   const [overlayLibraryLoading, setOverlayLibraryLoading] = useState(false);
+  const [overlayLibraryError, setOverlayLibraryError] = useState<string | null>(null);
   const [organizationDriverSchemas, setOrganizationDriverSchemas] = useState<
     OrganizationDriverSchema[]
   >([]);
+  const [canonicalDiscoveryRefresh, setCanonicalDiscoveryRefresh] = useState(0);
 
   const refreshDiscoveryHints = async () => {
     const hints = await client.getDiscoveryHints();
@@ -129,7 +149,7 @@ export function ParameterModuleMappingPanel({
     setError(null);
     Promise.all([
       client.getRegistry(),
-      client.getDiscoveryHints(),
+      canonicalEnabled ? Promise.resolve(null) : client.getDiscoveryHints(),
       client.listDriverRegistry(),
       client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])
     ])
@@ -139,7 +159,7 @@ export function ParameterModuleMappingPanel({
         setDriverRegistry(driverList.items);
         setOrganizationDriverSchemas(schemas);
         setObservedCompatibles(
-          hints.compatibles.map((hint) =>
+          (hints?.compatibles ?? []).map((hint) =>
             toUnmappedCompatibleHint({
               compatible: hint.compatible,
               bindingCount: hint.bindingCount,
@@ -149,7 +169,7 @@ export function ParameterModuleMappingPanel({
           )
         );
         setDismissedCompatibles(
-          hints.dismissedCompatibles.map((hint) =>
+          (hints?.dismissedCompatibles ?? []).map((hint) =>
             toUnmappedCompatibleHint({
               compatible: hint.compatible,
               bindingCount: hint.bindingCount,
@@ -174,7 +194,7 @@ export function ParameterModuleMappingPanel({
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, canonicalEnabled]);
 
   const unmappedCompatibles = useMemo(
     () => filterUnmappedCompatibles(observedCompatibles, registry.mappings),
@@ -182,6 +202,7 @@ export function ParameterModuleMappingPanel({
   );
   const queueCount = unmappedCompatibles.length;
   const hasQueue = queueCount > 0 || dismissedCompatibles.length > 0;
+  const legacyQueueVisible = !canonicalEnabled && hasQueue;
   const requestedSubView: ParameterAdminModulesSubView =
     parseParameterAdminModulesSubView(pathname) ?? "tree";
   const activeSubView: ParameterAdminModulesSubView =
@@ -251,10 +272,14 @@ export function ParameterModuleMappingPanel({
       onNavigate(buildParameterAdminModulesPath("tree", search));
       return;
     }
-    if (requestedSubView === "queue" && !loading && !hasQueue) {
+    if (
+      requestedSubView === "queue" &&
+      !loading &&
+      (canonicalEnabled || !hasQueue)
+    ) {
       onNavigate(buildParameterAdminModulesPath("tree", search));
     }
-  }, [hasQueue, loading, onNavigate, pathname, requestedSubView, search]);
+  }, [canonicalEnabled, hasQueue, loading, onNavigate, pathname, requestedSubView, search]);
 
   const goToSubView = (subView: ParameterAdminModulesSubView) => {
     onNavigate?.(buildParameterAdminModulesPath(subView, search));
@@ -481,6 +506,7 @@ export function ParameterModuleMappingPanel({
       setOverlayLinkedSpecs([]);
       setOverlayPickerOpen(false);
       setOverlayLibrarySpecs([]);
+      setOverlayLibraryError(null);
       setRecomputeNotice(
         `已激活组织级解析「${result.schema.displayName}」，覆盖 compatible ${input.compatible}。`
       );
@@ -499,19 +525,25 @@ export function ParameterModuleMappingPanel({
     setOverlaySchemaDraft(draft);
     setOverlayLinkedSpecs([]);
     setOverlayPickerOpen(false);
+    setOverlayLibraryError(null);
   };
 
   const openOverlaySpecPicker = async () => {
     setOverlayPickerOpen(true);
+    setOverlayLibraryError(null);
     if (!listLibrarySpecs) {
       setOverlayLibrarySpecs([]);
+      setOverlayLibraryError("当前环境未接线参数定义库；可直接新建覆盖属性。");
       return;
     }
     setOverlayLibraryLoading(true);
     try {
       setOverlayLibrarySpecs(await listLibrarySpecs());
-    } catch {
+    } catch (overlayLoadError) {
       setOverlayLibrarySpecs([]);
+      setOverlayLibraryError(
+        presentError(overlayLoadError, "参数定义库加载失败，请重试。")
+      );
     } finally {
       setOverlayLibraryLoading(false);
     }
@@ -524,6 +556,12 @@ export function ParameterModuleMappingPanel({
     }
     return ids;
   }, [overlayLinkedSpecs]);
+
+  const refreshAfterCanonicalChange = async () => {
+    setCanonicalDiscoveryRefresh((value) => value + 1);
+    setRegistry(await client.getRegistry());
+    await refreshDriverRegistry();
+  };
 
   if (loading) {
     return (
@@ -552,7 +590,7 @@ export function ParameterModuleMappingPanel({
           <h3>{PARAMETER_ADMIN_UI.moduleMapping}</h3>
           <p>{PARAMETER_ADMIN_UI.moduleMappingBlurb}</p>
         </div>
-        {canAdmin && activeSubView === "tree" ? (
+        {canAdmin && !canonicalEnabled && activeSubView === "tree" ? (
           <div className="parameter-module-mapping-panel__actions">
             <button
               type="button"
@@ -573,7 +611,7 @@ export function ParameterModuleMappingPanel({
         ) : null}
       </header>
 
-      {hasQueue ? (
+      {legacyQueueVisible ? (
         <nav
           className="parameter-module-mapping-panel__subnav"
           aria-label={PARAMETER_ADMIN_UI.moduleQueueSubnavAria}
@@ -616,7 +654,7 @@ export function ParameterModuleMappingPanel({
         </p>
       ) : null}
 
-      {activeSubView === "tree" && hasQueue ? (
+      {activeSubView === "tree" && legacyQueueVisible ? (
         <div className="parameter-module-mapping-panel__queue-banner" role="status">
           <p>
             <strong>{PARAMETER_ADMIN_UI.moduleQueueBanner}</strong>
@@ -632,8 +670,36 @@ export function ParameterModuleMappingPanel({
         </div>
       ) : null}
 
-      <div className="parameter-module-mapping-panel__stack">
-        {activeSubView === "queue" ? (
+      <div
+        className={`parameter-module-mapping-panel__stack${
+          canonicalEnabled ? " parameter-module-mapping-panel__stack--canonical" : ""
+        }`}
+      >
+        {canonicalEnabled && (!canonicalCatalog || !canonicalGovernance || !canonicalOrganizationId) ? (
+          <p role="alert">规范目录发现服务不可用，请检查组织与治理接口。</p>
+        ) : null}
+        {canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? (
+          <CanonicalDriverDiscovery
+            governance={canonicalGovernance}
+            organizationId={canonicalOrganizationId}
+            onNavigate={onNavigate}
+            onAuthorOverlay={canAdmin ? (compatible) => openOverlaySchemaDraft({ compatible }) : undefined}
+            refreshKey={canonicalDiscoveryRefresh}
+          />
+        ) : null}
+        {canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? (
+          <CanonicalSubjectPlacementPanel
+            catalog={canonicalCatalog}
+            governance={canonicalGovernance}
+            organizationId={canonicalOrganizationId}
+            actor={canonicalActor}
+            sessionPermissions={canonicalSessionPermissions}
+            canAdmin={canAdmin}
+            modules={registry.modules}
+            onChanged={refreshAfterCanonicalChange}
+          />
+        ) : null}
+        {activeSubView === "queue" && !canonicalEnabled ? (
             <UnclassifiedCompatibleQueue
               hints={unmappedCompatibles}
               dismissedHints={dismissedCompatibles}
@@ -659,9 +725,24 @@ export function ParameterModuleMappingPanel({
             driverCoverage={driverCoverage}
             driverCoverageDetails={driverCoverageDetails}
             driverRegistrationByModuleId={driverRegistrationByModuleId}
+            canonicalModeEnabled={canonicalEnabled}
+            canonicalPlacementAvailable={Boolean(
+              canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId
+            )}
+            onOpenCanonicalPlacement={
+              canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId
+                ? () => {
+                    window.requestAnimationFrame(() => {
+                      const panel = document.getElementById("canonical-subject-placement");
+                      panel?.scrollIntoView({ block: "start" });
+                      panel?.focus({ preventScroll: true });
+                    });
+                  }
+                : undefined
+            }
             canAdmin={canAdmin}
             busy={busy}
-            hasUnclassifiedQueue={hasQueue}
+            hasUnclassifiedQueue={legacyQueueVisible}
             onOpenUnclassifiedQueue={() => goToSubView("queue")}
             onAuthorOverlaySchema={(compatible) => openOverlaySchemaDraft({ compatible })}
             organizationDriverSchemas={organizationDriverSchemas}
@@ -768,7 +849,7 @@ export function ParameterModuleMappingPanel({
               setError(null);
               try {
                 setRegistry(await client.deleteModule(moduleId));
-                await refreshDiscoveryHints();
+                if (!canonicalEnabled) await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (deleteError) {
                 setError(presentError(deleteError, "删除模块失败，请稍后重试。"));
@@ -776,13 +857,13 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onRemoveMapping={async (mappingId) => {
+            onRemoveMapping={canonicalEnabled ? undefined : async (mappingId) => {
               setBusy(true);
               setError(null);
               try {
                 const result = await client.deleteMapping(mappingId);
                 setRegistry(result.registry);
-                await refreshDiscoveryHints();
+                if (!canonicalEnabled) await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (mappingError) {
                 setError(presentError(mappingError, "删除归属失败，请稍后重试。"));
@@ -790,7 +871,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onAddCompatibleMapping={async ({ moduleId, matchValue }) => {
+            onAddCompatibleMapping={canonicalEnabled ? undefined : async ({ moduleId, matchValue }) => {
               setBusy(true);
               setError(null);
               try {
@@ -800,7 +881,7 @@ export function ParameterModuleMappingPanel({
                   matchValue
                 });
                 setRegistry(result.registry);
-                await refreshDiscoveryHints();
+                if (!canonicalEnabled) await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (mappingError) {
                 setError(presentError(mappingError, "添加 compatible 规则失败，请稍后重试。"));
@@ -816,6 +897,9 @@ export function ParameterModuleMappingPanel({
                   if (!input.parentId) {
                     throw new Error("驱动组必须选择业务分类父级。");
                   }
+                  if (canonicalEnabled) {
+                    throw new Error("API 模式请从规范主体面板登记 Driver，不能使用旧驱动登记入口。");
+                  }
                   await client.registerOrClaimDriver({
                     displayName: input.name,
                     businessCategoryId: input.parentId,
@@ -824,7 +908,7 @@ export function ParameterModuleMappingPanel({
                   });
                   setRegistry(await client.getRegistry());
                   await refreshDriverRegistry();
-                  await refreshDiscoveryHints();
+                  if (!canonicalEnabled) await refreshDiscoveryHints();
                 } else {
                   setRegistry(
                     await client.createModule({
@@ -874,6 +958,7 @@ export function ParameterModuleMappingPanel({
             setOverlayLinkedSpecs([]);
             setOverlayPickerOpen(false);
             setOverlayLibrarySpecs([]);
+            setOverlayLibraryError(null);
           }}
           onAddProperty={() => void openOverlaySpecPicker()}
           onRemoveProperty={(index) =>
@@ -887,6 +972,8 @@ export function ParameterModuleMappingPanel({
         <OverlaySpecPickerDialog
           specs={overlayLibrarySpecs}
           loading={overlayLibraryLoading}
+          loadError={overlayLibraryError}
+          onRetryLoad={() => void openOverlaySpecPicker()}
           busy={busy}
           excludedSpecIds={excludedOverlaySpecIds}
           onBack={() => setOverlayPickerOpen(false)}

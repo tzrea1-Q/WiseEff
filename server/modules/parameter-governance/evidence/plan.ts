@@ -128,6 +128,7 @@ const missingProvenance = (
 
 export const planEvidenceIngest = (
   command: IngestEvidenceCommand,
+  options: { readonly sourceObservation?: boolean } = {},
 ): Result<PlannedIngest, IngestEvidenceFailure> => {
   const missing: string[] = [];
   for (const field of tokenFields) {
@@ -141,7 +142,7 @@ export const planEvidenceIngest = (
   const rClass = classification?.rClass ?? null;
   const classified = rClass != null;
   const weak = command.matcherOutput?.status !== "matched";
-  const reviewPath = classified || weak;
+  const reviewPath = !options.sourceObservation && (classified || weak);
 
   if (!reviewPath) {
     const provenance = command.provenance ?? null;

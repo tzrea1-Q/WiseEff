@@ -1018,16 +1018,12 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   it("refuses status value drafts and points at node-enablement", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
     await db!.query(
-      `delete from dts_property_specs where parameter_spec_id = (
-         select parameter_spec_id from project_parameter_bindings where id = $1
-       )`,
-      [fixture.binding.id],
+      `delete from dts_property_specs where parameter_spec_id = $1`,
+      [SPEC_ID],
     );
     await db!.query(
-      `update parameter_specs set specification_key = 'charging_core/status' where id = (
-         select parameter_spec_id from project_parameter_bindings where id = $1
-       )`,
-      [fixture.binding.id],
+      `update parameter_specs set specification_key = 'charging_core/status' where id = $1`,
+      [SPEC_ID],
     );
 
     await expect(
@@ -1059,16 +1055,12 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   it("refuses other structural keys as value drafts", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
     await db!.query(
-      `delete from dts_property_specs where parameter_spec_id = (
-         select parameter_spec_id from project_parameter_bindings where id = $1
-       )`,
-      [fixture.binding.id],
+      `delete from dts_property_specs where parameter_spec_id = $1`,
+      [SPEC_ID],
     );
     await db!.query(
-      `update parameter_specs set specification_key = 'charging_core/phandle' where id = (
-         select parameter_spec_id from project_parameter_bindings where id = $1
-       )`,
-      [fixture.binding.id],
+      `update parameter_specs set specification_key = 'charging_core/phandle' where id = $1`,
+      [SPEC_ID],
     );
 
     await expect(

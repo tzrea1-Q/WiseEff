@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventType } from "@ag-ui/core";
 
-vi.mock("../../parameters/service", () => ({
-  submitParameterChanges: vi.fn()
+vi.mock("../../parameter-bindings/drafts", () => ({
+  createCanonicalValueDraft: vi.fn(),
+  loadCanonicalBindingPins: vi.fn(),
+  submitCanonicalValueChange: vi.fn()
+}));
+
+vi.mock("../approvedParameterInvocation", () => ({
+  APPROVED_PARAMETER_PAYLOAD_KEY: "approvedParameter",
+  requireApprovedParameterInvocation: vi.fn()
 }));
 
 vi.mock("../../parameter-kernel/sensitiveNode", () => ({
@@ -16,6 +23,7 @@ vi.mock("../../parameters/repository", () => ({
 }));
 
 vi.mock("../../parameter-kernel/parameterIdentityMode", () => ({
+  parameterIdentityMode: vi.fn().mockReturnValue("semantic"),
   resolveParameterIdentityMode: vi.fn().mockResolvedValue("semantic")
 }));
 
@@ -34,54 +42,63 @@ import { developmentAuthContext } from "../../auth/routes";
 import { createAgentSession } from "../repository";
 import { createMemoryAgentDb } from "../testing/memoryAgentDb";
 import { registerXiaozeRoutes } from "./agUiEndpoint";
-import { submitParameterChanges } from "../../parameters/service";
-import { createBindingDraft } from "../../parameter-topology/service";
-import { testRefusalAuditSink } from "../../audit/testRefusalSink";
 import {
-  loadBindingContext,
-  loadLogicalNodeSubmissionContext,
-  resolveBindingHeadRevisionId
-} from "../../parameter-topology/writeLock";
+  createCanonicalValueDraft,
+  loadCanonicalBindingPins,
+  submitCanonicalValueChange
+} from "../../parameter-bindings/drafts";
+import { requireApprovedParameterInvocation } from "../approvedParameterInvocation";
+import { testRefusalAuditSink } from "../../audit/testRefusalSink";
 
-const mockedSubmit = vi.mocked(submitParameterChanges);
-const mockedLoadBinding = vi.mocked(loadBindingContext);
-const mockedCreateDraft = vi.mocked(createBindingDraft);
-const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
-const mockedLoadNode = vi.mocked(loadLogicalNodeSubmissionContext);
+const mockedSubmit = vi.mocked(submitCanonicalValueChange);
+const mockedLoadPins = vi.mocked(loadCanonicalBindingPins);
+const mockedCreateDraft = vi.mocked(createCanonicalValueDraft);
+const mockedApproved = vi.mocked(requireApprovedParameterInvocation);
 
 function primeParameterMocks(editedRawText: string) {
-  mockedLoadBinding.mockResolvedValue({
-    binding_id: "pd-1",
-    organization_id: "org-chargelab",
-    project_id: "aurora",
-    parameter_spec_id: "spec-1",
-    logical_node_id: "ln-1",
-    property_key: "pd-1",
-    node_locator: null,
-    constraints: {},
-    schema_default: null,
-    example_value: null,
-    policy_target: null
+  const pins = {
+    bindingId: "pd-1",
+    projectId: "aurora",
+    organizationId: "org-chargelab",
+    definitionId: "def-1",
+    definitionRevisionId: "revision-1",
+    catalogReleaseId: "release-1",
+    currentValueId: "value-1",
+    configRevisionId: "rev-base",
+    sourceRef: "config.dts",
+    sourcePinId: "source-pin-1",
+    sourceFormat: "dts" as const
+  };
+  mockedLoadPins.mockResolvedValue(pins);
+  mockedApproved.mockResolvedValue({
+    pins: {
+      projectId: pins.projectId,
+      bindingId: pins.bindingId,
+      expectedValueId: pins.currentValueId,
+      definitionId: pins.definitionId,
+      definitionRevisionId: pins.definitionRevisionId,
+      catalogReleaseId: pins.catalogReleaseId,
+      configRevisionId: pins.configRevisionId,
+      sourceRef: pins.sourceRef,
+      sourcePinId: pins.sourcePinId,
+      sourceFormat: pins.sourceFormat
+    }
   } as never);
-  mockedResolveHead.mockResolvedValue("rev-base" as never);
-  mockedLoadNode.mockResolvedValue({
-    nodeLocator: "charging_core",
-    compatible: "wiseeff,charging_core"
-  });
   mockedCreateDraft.mockResolvedValue({
-    draftId: "draft-1",
-    parameterId: "pd-1",
-    candidateRevisionId: "rev-c1",
-    workingCandidateRevisionId: "rev-c1",
-    rebasedDraftIds: [],
-    rawText: editedRawText,
-    action: "set",
-    parameterSpecId: "spec-1",
-    projectParameterBindingId: "pd-1",
-    writeTarget: {},
-    overlayFileId: "file-overlay",
-    overlayFileName: "edit-overlay.dts"
-  } as never);
+    id: "draft-1",
+    bindingId: "pd-1",
+    definitionId: "def-1",
+    effectiveRevisionId: "revision-1",
+    currentValueId: "value-1",
+    targetValue: editedRawText,
+    sourceFormat: "dts",
+    baseRevisionId: "rev-base",
+    sourcePinId: "source-pin-1",
+    candidateId: "candidate-1",
+    reason: "edited before approval",
+    updatedAt: new Date().toISOString(),
+    action: "set"
+  });
 }
 
 type SseEvent = { event: string; data: unknown };
@@ -119,6 +136,94 @@ function readInterruptApprovalId(events: SseEvent[]) {
  * planning graph, the real orchestrator, and the shared memory agent DB.
  */
 describe("registerXiaozeRoutes approval assembly", () => {
+  it("recovers an owned first-turn approval from the parameters page without a prior read tool", async () => {
+    primeParameterMocks("<3100>");
+    mockedSubmit.mockClear();
+    const { db, tables } = createMemoryAgentDb();
+    const owner = developmentAuthContext;
+    let currentAuth = owner;
+    const options = {
+      db,
+      refusalAuditSink: testRefusalAuditSink,
+      getCurrentAuthContext: () => currentAuth
+    };
+    const router = createRouter();
+    registerXiaozeRoutes(router, options);
+    const threadId = "thread-first-pending-parameters";
+    const pageContext = { pageKey: "parameters", projectId: "aurora", path: "/parameters?project=aurora" };
+    expect(tables.sessions).toHaveLength(0);
+    const started = await postXiaoze(router, "req-first-pending", {
+      threadId,
+      runId: "run-first-pending",
+      messages: [{ id: "m-first-pending", role: "user", content: "set pd-1 to <3100>" }],
+      context: [{ description: "wiseeff.page", value: pageContext }]
+    });
+    const interrupt = readInterruptApprovalId(started.events);
+    expect(interrupt.outcomeType).toBe("interrupt");
+    expect(interrupt.approvalId).toBeTruthy();
+    expect(tables.toolCalls).toHaveLength(1);
+    expect(tables.toolCalls[0]).toMatchObject({
+      session_id: threadId,
+      name: "action.submitParameterChange",
+      status: "pending_approval"
+    });
+    expect(tables.approvals[0]).toMatchObject({
+      id: interrupt.approvalId,
+      session_id: threadId,
+      tool_call_id: tables.toolCalls[0].id,
+      requested_by_user_id: owner.user.id,
+      organization_id: owner.organization.id,
+      project_id: "aurora",
+      status: "pending"
+    });
+    expect(mockedSubmit).not.toHaveBeenCalled();
+
+    const recoveredRouter = createRouter();
+    registerXiaozeRoutes(recoveredRouter, options);
+    const recover = (targetRouter: ReturnType<typeof createRouter>) => targetRouter.handle({
+      method: "GET",
+      path: `/api/v1/agent/xiaoze/threads/${threadId}`,
+      params: { threadId },
+      query: {},
+      headers: { authorization: "Bearer dev" },
+      requestId: "req-recover-first-pending",
+      body: undefined
+    });
+    for (const targetRouter of [router, recoveredRouter]) {
+      const recovered = await recover(targetRouter);
+      expect(recovered.status).toBe(200);
+      expect(recovered).toMatchObject({ body: {
+        thread: { id: threadId, context: pageContext },
+        messages: expect.arrayContaining([expect.objectContaining({ id: "m-first-pending", role: "user" })])
+      } });
+    }
+    expect(tables.sessions[0]).toMatchObject({
+      page_key: "xiaoze",
+      actor_user_id: owner.user.id,
+      organization_id: owner.organization.id,
+      project_id: "aurora"
+    });
+
+    currentAuth = { ...owner, user: { ...owner.user, id: "u-intruder" } };
+    await expect(recover(recoveredRouter)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    currentAuth = { ...owner, organization: { ...owner.organization, id: "org-foreign" } };
+    await expect(recover(recoveredRouter)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    currentAuth = owner;
+    const rejected = await postXiaoze(router, "req-reject-first-pending", {
+      threadId,
+      runId: "run-reject-first-pending",
+      messages: [{ id: "m-reject-first-pending", role: "user", content: "reject" }],
+      resume: [{ interruptId: interrupt.approvalId, status: "resolved", payload: {
+        approvalId: interrupt.approvalId, decision: "reject"
+      } }]
+    });
+    expect(rejected.events.some((event) => event.event === EventType.RUN_ERROR)).toBe(false);
+    expect(tables.approvals[0]).toMatchObject({ status: "rejected" });
+    expect(tables.toolCalls[0]).toMatchObject({ status: "rejected" });
+    expect(mockedSubmit).not.toHaveBeenCalled();
+    expect((await recover(recoveredRouter)).status).toBe(200);
+  });
+
   it("normalizes a partial route env before resolving the Xiaoze model label", async () => {
     const { db } = createMemoryAgentDb();
     const router = createRouter();
@@ -148,7 +253,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
 
   it("executes the edited payload when an approval is resumed with editedArgs", async () => {
     primeParameterMocks("<3600>");
-    mockedSubmit.mockResolvedValue({ id: "batch-1", items: [{ requestId: "cr-777" }] } as never);
+    mockedSubmit.mockResolvedValue({ id: "cr-777" } as never);
 
     const { db, tables } = createMemoryAgentDb();
     const router = createRouter();
@@ -162,7 +267,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const started = await postXiaoze(router, "req-assembly-1", {
       threadId,
       runId: "run-assembly-1",
-      messages: [{ id: "m-user", role: "user", content: "set pd-1 to 3100" }],
+      messages: [{ id: "m-user", role: "user", content: "set pd-1 to <3100>" }],
       context: [
         {
           description: "wiseeff.page",
@@ -207,39 +312,36 @@ describe("registerXiaozeRoutes approval assembly", () => {
         projectId: "aurora",
         bindingId: "pd-1",
         baseRevisionId: "rev-base",
+        baseCurrentValueId: "value-1",
+        action: "set",
         targetValue: {
           kind: "cells",
           bits: 32,
           groups: [[{ kind: "integer", raw: "3600", value: "3600" }]]
         }
       }),
-      expect.anything(),
-      expect.objectContaining({ requestId: expect.any(String) })
+      expect.objectContaining({
+        invocation: expect.anything(),
+        requestId: expect.any(String),
+        refusalSink: testRefusalAuditSink
+      })
     );
     expect(mockedSubmit).toHaveBeenCalledTimes(1);
     expect(mockedSubmit).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({
+      {
         projectId: "aurora",
-        items: [
-          expect.objectContaining({
-            draftId: "draft-1",
-            projectParameterBindingId: "pd-1",
-            parameterSpecId: "spec-1",
-            targetValue: "<3600>"
-          })
-        ]
-      }),
-      expect.objectContaining({
+        draftId: "draft-1",
         invocation: expect.objectContaining({
           initiator: "agent",
           sessionId: threadId,
           toolCallId: expect.any(String),
           approvalId: interrupt.approvalId
         }),
+        requestId: "req-assembly-2",
         refusalSink: testRefusalAuditSink
-      })
+      }
     );
     expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "<3600>" });
     expect(tables.toolCalls[0]).toMatchObject({ status: "succeeded" });
@@ -259,6 +361,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
   });
 
   it("rejects an approval through the same chain without executing the tool", async () => {
+    primeParameterMocks("<42>");
     mockedSubmit.mockReset();
 
     const { db, tables } = createMemoryAgentDb();
@@ -273,7 +376,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const started = await postXiaoze(router, "req-assembly-3", {
       threadId,
       runId: "run-assembly-3",
-      messages: [{ id: "m-user", role: "user", content: "set pd-2 to 42" }],
+      messages: [{ id: "m-user", role: "user", content: "set pd-2 to <42>" }],
       context: [
         {
           description: "wiseeff.page",

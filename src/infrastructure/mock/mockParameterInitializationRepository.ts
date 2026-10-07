@@ -28,7 +28,8 @@ function cloneDraft(draft: InitializationDraftDto): InitializationDraftDto {
     selectedSourceBindingIds: [...draft.selectedSourceBindingIds],
     bindingSnapshots: draft.bindingSnapshots.map((item) => ({
       ...item,
-      alternativeSourceBindingIds: [...item.alternativeSourceBindingIds]
+      alternativeSourceBindingIds: [...item.alternativeSourceBindingIds],
+      alternativeSourceValueIds: item.alternativeSourceValueIds ? [...item.alternativeSourceValueIds] : undefined
     }))
   };
 }
@@ -58,7 +59,8 @@ function draftFromInput(
     selectedSourceBindingIds: [...input.selectedSourceBindingIds],
     bindingSnapshots: input.bindingSnapshots.map((item) => ({
       ...item,
-      alternativeSourceBindingIds: [...item.alternativeSourceBindingIds]
+      alternativeSourceBindingIds: [...item.alternativeSourceBindingIds],
+      alternativeSourceValueIds: item.alternativeSourceValueIds ? [...item.alternativeSourceValueIds] : undefined
     })),
     emptyLibrary: input.emptyLibrary,
     notes: input.notes,
@@ -138,7 +140,8 @@ export function createMockParameterInitializationRepository(
       if (items.length > 0) {
         return items.map((item) => ({
           ...item,
-          alternativeSourceBindingIds: [...item.alternativeSourceBindingIds]
+          alternativeSourceBindingIds: [...item.alternativeSourceBindingIds],
+          alternativeSourceValueIds: item.alternativeSourceValueIds ? [...item.alternativeSourceValueIds] : undefined
         }));
       }
       // Deterministic placeholder candidates when no draft snapshots exist yet.
@@ -147,6 +150,7 @@ export function createMockParameterInitializationRepository(
           id: `preview-${input.primarySourceProjectId}`,
           sourceProjectId: input.primarySourceProjectId,
           sourceProjectParameterBindingId: `binding-${input.primarySourceProjectId}`,
+          sourceProjectValueId: `value-${input.primarySourceProjectId}`,
           sourceRole: "primary",
           parameterSpecId: "spec-preview",
           parameterSpecVersionId: "spec-version-preview",
@@ -157,6 +161,12 @@ export function createMockParameterInitializationRepository(
           rawValue: "",
           currentValueState: "pending_project_confirmation",
           alternativeSourceBindingIds: [],
+          sourceConfigSetId: `config-${input.primarySourceProjectId}`,
+          sourceConfigRevisionId: `revision-${input.primarySourceProjectId}`,
+          sourceOccurrenceId: `occurrence-${input.primarySourceProjectId}`,
+          sourceName: "preview.dts",
+          sourceLocatorLabel: "/preview/node@0/preview_key",
+          sourceFormat: "dts",
           needsEffectiveValueConfirmation: true
         }
       ];

@@ -2,12 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   DtsReleaseReadinessIssue,
+  DtsConfigSetMemberFile,
   DtsSearchHit,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
+import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/CanonicalBatchSubmitDialog";
+import { permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
 import type {
   ParameterFileRepository,
+  ParameterFileSourceWorkflow,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import { useToast } from "@/components/common/toast/ToastProvider";
@@ -20,6 +26,11 @@ import {
 import { WorkbenchCommandBar } from "./WorkbenchCommandBar";
 import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
 import { WorkbenchCandidateActivateDialog } from "./WorkbenchCandidateActivateDialog";
+import { WorkbenchCandidateSourceReviewDialog } from "./WorkbenchCandidateSourceReviewDialog";
+import { WorkbenchSourceRollbackDialog } from "./WorkbenchSourceRollbackDialog";
+import { WorkbenchCanonicalManualSyncDialog } from "./WorkbenchCanonicalManualSyncDialog";
+import type { createCanonicalBatchRollbackClient } from "@/infrastructure/http/canonicalBatchRollbackClient";
+import type { createCanonicalManualSyncClient } from "@/infrastructure/http/canonicalManualSyncClient";
 import { WorkbenchShellChrome } from "./WorkbenchShellChrome";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import type { StructuredValueChange } from "@/components/parameters/StructuredValueEditor";
@@ -85,6 +96,8 @@ export type ProjectConfigurationWorkbenchProps = {
   onNavigate: (path: string) => void;
   dtsRepository: DtsStructuredRepository;
   fileRepository: ParameterFileRepository;
+  batchRollbackClient?: ReturnType<typeof createCanonicalBatchRollbackClient>;
+  manualSyncClient?: ReturnType<typeof createCanonicalManualSyncClient>;
   /** When false, typed editors stay readable but write/submit stay locked. Defaults to true for tests. */
   canEdit?: boolean;
   /** When false, regulator/thermal critical nodes stay readable but write stays locked. Defaults to true. */
@@ -95,6 +108,8 @@ export type ProjectConfigurationWorkbenchProps = {
   listAuditEvents: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
   /** Authenticated user for draft scoping. Defaults to "local-user" for back-compat tests. */
   currentUserId?: string;
+  memberRemovalRepository?: ParameterCatalogRepository;
+  apiMode?: boolean;
   /** Optional org override; prefer selectedConfigSet.organizationId at runtime. */
   organizationId?: string;
   /** Injectable storage for recoverable session drafts (tests / non-DOM). */
@@ -115,16 +130,24 @@ export function ProjectConfigurationWorkbench({
   onNavigate,
   dtsRepository,
   fileRepository,
+  batchRollbackClient,
+  manualSyncClient,
   canEdit = true,
   canEditCritical = true,
   canAdmin = true,
   listAuditEvents,
   currentUserId = "local-user",
+  memberRemovalRepository,
+  apiMode = false,
   organizationId,
   draftStorage,
   topologyRepository
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
+  const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
+  const [manualSyncTarget, setManualSyncTarget] = useState<{
+    member: DtsConfigSetMemberFile; currentVersionId: string; workflowProofToken: string
+  } | null>(null);
   const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
   const {
     session: workspaceLoadSession,
@@ -176,6 +199,20 @@ export function ProjectConfigurationWorkbench({
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [versionsReloadToken, setVersionsReloadToken] = useState(0);
+  const [sourceWorkflowsByFileId, setSourceWorkflowsByFileId] = useState<
+    Record<string, ParameterFileSourceWorkflow>
+  >({});
+  const [sourceWorkflowErrorsByFileId, setSourceWorkflowErrorsByFileId] = useState<
+    Record<string, string>
+  >({});
+  const [sourceWorkflowLoading, setSourceWorkflowLoading] = useState(false);
+  const [sourceWorkflowReloadToken, setSourceWorkflowReloadToken] = useState(0);
+  const [rollbackReviewVersion, setRollbackReviewVersion] = useState<ProjectParameterFileVersion | null>(null);
+  const [rollbackBatchContext, setRollbackBatchContext] = useState<{
+    fileId: string; currentVersionId: string; workflowProofToken: string
+  } | null>(null);
+  const [rollbackReviewPending, setRollbackReviewPending] = useState(false);
+  const [rollbackReviewError, setRollbackReviewError] = useState("");
   const {
     flow: candidateFlow,
     candidate: activeCandidate,
@@ -185,8 +222,15 @@ export function ProjectConfigurationWorkbench({
     activating: activatingCandidate,
     error: candidateError,
     activateError,
+    sourcePreview,
+    sourcePreviewLoading,
+    sourcePreviewError,
+    submittingSourceReview,
+    sourceReviewError,
+    sourceReviewResult,
     activateRole,
     canActivate,
+    canSubmitSourceReview,
     canRecompute,
     canAbandon
   } = useCandidateVersionFlow();
@@ -329,6 +373,10 @@ export function ProjectConfigurationWorkbench({
     membersLoading ||
     (selectedConfigSet != null && membersBoundConfigSetId !== selectedConfigSet.id);
 
+  const sourceWorkflowMemberVersionKey = selectedMembers
+    .map((member) => `${member.fileId}:${member.currentVersionId ?? ""}`)
+    .join("|");
+
   const selectedMember = useMemo(
     () =>
       navigationSession.resolveSelectedMember(
@@ -469,6 +517,93 @@ export function ProjectConfigurationWorkbench({
     };
   }, [fileRepository, inspectorOpen, project.id, selectedMember, versionsReloadToken]);
 
+  useEffect(() => {
+    if (filesLoading) {
+      setSourceWorkflowsByFileId({});
+      setSourceWorkflowErrorsByFileId({});
+      setSourceWorkflowLoading(true);
+      return;
+    }
+    const fileIds = projectFiles.map((file) => file.id);
+    if (fileIds.length === 0) {
+      setSourceWorkflowsByFileId({});
+      setSourceWorkflowErrorsByFileId({});
+      setSourceWorkflowLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSourceWorkflowsByFileId({});
+    setSourceWorkflowErrorsByFileId({});
+    setSourceWorkflowLoading(true);
+    void (async () => {
+      const workflows: Record<string, ParameterFileSourceWorkflow> = {};
+      const errors: Record<string, string> = {};
+      // Keep the refresh deterministic so every project file gets one proof snapshot.
+      for (const fileId of fileIds) {
+        try {
+          workflows[fileId] = await fileRepository.getSourceWorkflow(project.id, fileId);
+        } catch (error: unknown) {
+          errors[fileId] = presentError(error, "来源工作流加载失败，已禁用受保护操作。");
+        }
+      }
+      if (cancelled) return;
+      setSourceWorkflowsByFileId(workflows);
+      setSourceWorkflowErrorsByFileId(errors);
+      setSourceWorkflowLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fileRepository,
+    filesLoading,
+    membersRetry,
+    project.id,
+    projectFiles,
+    selectedConfigSet?.id,
+    sourceWorkflowMemberVersionKey,
+    sourceWorkflowReloadToken
+  ]);
+
+  const sourceWorkflow = selectedMember
+    ? sourceWorkflowsByFileId[selectedMember.fileId] ?? null
+    : null;
+  const sourceWorkflowError = selectedMember
+    ? sourceWorkflowErrorsByFileId[selectedMember.fileId] ?? ""
+    : "";
+  const legacySourceWorkflowConfirmed =
+    Boolean(sourceWorkflow) &&
+    sourceWorkflow?.canonical === false &&
+    !sourceWorkflowLoading &&
+    !sourceWorkflowError;
+  const sourceWorkflowByFileId = useMemo(() => {
+    const result: Record<string, ParameterFileSourceWorkflow | null> = {};
+    for (const file of projectFiles) {
+      result[file.id] = sourceWorkflowsByFileId[file.id] ?? null;
+    }
+    return result;
+  }, [projectFiles, sourceWorkflowsByFileId]);
+  const sourceWorkflowSetCanonical = selectedMembers.some(
+    (member) => sourceWorkflowsByFileId[member.fileId]?.canonical === true
+  );
+  const sourceWorkflowSetError = selectedMembers
+    .map((member) => sourceWorkflowErrorsByFileId[member.fileId])
+    .find(Boolean) ?? "";
+  const sourceWorkflowSetReady =
+    !membersListLoading &&
+    !filesLoading &&
+    selectedMembers.length > 0 &&
+    selectedMembers.every(
+      (member) =>
+        Boolean(sourceWorkflowsByFileId[member.fileId]) ||
+        Boolean(sourceWorkflowErrorsByFileId[member.fileId])
+    ) &&
+    !sourceWorkflowSetError;
+  const sourceWorkflowSetLoading =
+    sourceWorkflowLoading || filesLoading || membersListLoading;
+  const canRequestReviewedMemberRemoval = apiMode && selectedMembers.length >= 2
+    && selectedMembers.every((member) => member.format === "json"
+      && sourceWorkflowsByFileId[member.fileId]?.canonical === true);
   useEffect(() => {
     if (
       canvasMode !== "working" &&
@@ -717,7 +852,30 @@ export function ProjectConfigurationWorkbench({
   const handleRequestRollbackVersion = useCallback(
     (version: ProjectParameterFileVersion) => {
       if (!canAdmin || !selectedMember) return;
+      if (sourceWorkflowLoading || sourceWorkflowError || !sourceWorkflow) {
+        showToast(sourceWorkflowError || "来源工作流仍在加载，暂不能执行版本回滚。");
+        return;
+      }
       const fileId = selectedMember.fileId;
+      if (sourceWorkflow.canonical) {
+        if (!sourceWorkflow.proofToken) {
+          showToast("来源一致性证明缺失，暂不能提交来源回滚审核。");
+          return;
+        }
+        setRollbackReviewError("");
+        if (sourceWorkflow.bindingCount >= 2) {
+          if (!batchRollbackClient || !selectedMember.currentVersionId) {
+            showToast("多目标历史回滚接口或当前版本不可用，已阻止提交。");
+            return;
+          }
+          setRollbackBatchContext({ fileId, currentVersionId: selectedMember.currentVersionId,
+            workflowProofToken: sourceWorkflow.proofToken });
+        } else {
+          setRollbackBatchContext(null);
+        }
+        setRollbackReviewVersion(version);
+        return;
+      }
       setConfirmation({
         key: "rollback-file-version",
         title: "恢复为当前版本",
@@ -741,7 +899,70 @@ export function ProjectConfigurationWorkbench({
         }
       });
     },
-    [canAdmin, fileRepository, notifyMutation, project.id, selectedMember, workspaceLoadSession]
+    [
+      canAdmin,
+      batchRollbackClient,
+      fileRepository,
+      notifyMutation,
+      project.id,
+      selectedMember,
+      setRollbackReviewVersion,
+      showToast,
+      sourceWorkflow,
+      sourceWorkflowError,
+      sourceWorkflowLoading,
+      workspaceLoadSession
+    ]
+  );
+
+  const handleConfirmSourceRollback = useCallback(
+    async (reason: string) => {
+      if (!selectedMember || !rollbackReviewVersion || !sourceWorkflow?.canonical) return;
+      const currentVersionId = selectedMember.currentVersionId;
+      const proofToken = sourceWorkflow.proofToken;
+      if (!proofToken) {
+        setRollbackReviewError("来源一致性证明缺失，请刷新后重试。");
+        return;
+      }
+      if (!currentVersionId) {
+        setRollbackReviewError("当前文件没有可校验的活跃版本。");
+        return;
+      }
+      setRollbackReviewPending(true);
+      setRollbackReviewError("");
+      try {
+        const result = await fileRepository.rollbackVersionThroughSourceReview(
+          project.id,
+          selectedMember.fileId,
+          {
+            versionId: rollbackReviewVersion.id,
+            expectedCurrentVersionId: currentVersionId,
+            expectedProofToken: proofToken,
+            reason
+          }
+        );
+        setRollbackReviewVersion(null);
+        notifyMutation(
+          `来源回滚审核已提交（${result.status}）。审核通过前活跃版本不变。`
+        );
+        setSourceWorkflowReloadToken((value) => value + 1);
+        setVersionsReloadToken((value) => value + 1);
+        onNavigate(`/parameter-review?projectId=${encodeURIComponent(project.id)}`);
+      } catch (error: unknown) {
+        setRollbackReviewError(presentError(error, "提交来源回滚审核失败。"));
+      } finally {
+        setRollbackReviewPending(false);
+      }
+    },
+    [
+      fileRepository,
+      notifyMutation,
+      onNavigate,
+      project.id,
+      rollbackReviewVersion,
+      selectedMember,
+      sourceWorkflow
+    ]
   );
 
   const {
@@ -793,6 +1014,7 @@ export function ProjectConfigurationWorkbench({
     memberRole,
     memberSortOrder,
     syncEvidence,
+    canonicalSyncCheck,
     exportEvidence,
     setMemberFileId,
     setMemberRole,
@@ -882,6 +1104,35 @@ export function ProjectConfigurationWorkbench({
     setInspectorOpen,
     setBaselinesRetry
   });
+
+  const [sourceReviewDialogOpen, setSourceReviewDialogOpen] = useState(false);
+  const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && activeCandidate?.status === "ready"
+    && sourcePreview?.kind === "canonical" && sourcePreview.candidateId === activeCandidate.id
+    && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && sourcePreview.proofToken
+    && sourcePreview.bindings && sourcePreview.bindings.length >= 2
+    && sourcePreview.bindings.every((binding) => binding.bindingId && binding.sourcePinId
+      && (binding.action === "delete" || binding.afterText !== undefined))
+    && new Set(sourcePreview.bindings.map((binding) => binding.bindingId)).size === sourcePreview.bindings.length
+    && permitsFreshBatchRequest(sourcePreview.request) && !sourcePreviewLoading && !sourcePreviewError
+    && memberRemovalRepository?.submitProjectValueBatchChangeRequest);
+  const handleOpenSourceReview = useCallback(() => {
+    if (canSubmitSourceReview || canSubmitBatchReview) setSourceReviewDialogOpen(true);
+  }, [canSubmitSourceReview, canSubmitBatchReview]);
+  const handleConfirmSourceReview = useCallback(
+    async (reason: string) => {
+      try {
+        const result = await candidateFlow.submitSourceReview(project.id, reason, fileRepository);
+        setSourceReviewDialogOpen(false);
+        notifyMutation(
+          `来源变更审核已提交（${result.status}）。审核通过前候选不会成为活跃版本。`
+        );
+        setSourceWorkflowReloadToken((value) => value + 1);
+      } catch {
+        // candidateFlow.sourceReviewError is projected in the dialog.
+      }
+    },
+    [candidateFlow, fileRepository, notifyMutation, project.id]
+  );
 
   useWorkbenchKeyboardShortcuts({
     searchInputRef,
@@ -1217,7 +1468,7 @@ export function ProjectConfigurationWorkbench({
                     ? { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: integer, value: integer }]] }
                     : { kind: "strings", values: [integer] }
                 });
-                if (saved.writeTarget.role !== "canonical-project-value") {
+                if (!saved.writeTarget.role.startsWith("canonical-project-value")) {
                   throw new Error("工作台保存未写入正式项目值。");
                 }
                 savedKeys.push(row.key);
@@ -1336,9 +1587,16 @@ export function ProjectConfigurationWorkbench({
             membersLoading={membersListLoading}
             membersError={membersError}
             onMembersRetry={() => workspaceLoadSession.retryMembers()}
+            sourceWorkflowSetLoading={sourceWorkflowSetLoading}
+            sourceWorkflowSetReady={sourceWorkflowSetReady}
+            sourceWorkflowSetCanonical={sourceWorkflowSetCanonical}
+            sourceWorkflowSetError={sourceWorkflowSetError}
             selectedMembers={selectedMembers}
             selectedMember={selectedMember ?? null}
-            onSelectMember={selectMember}
+            onSelectMember={(fileId) => {
+              setManualSyncTarget(null);
+              selectMember(fileId);
+            }}
             structureLoading={structureLoading}
             structureError={structureError}
             onStructureRetry={() => workspaceLoadSession.retryStructure()}
@@ -1429,8 +1687,26 @@ export function ProjectConfigurationWorkbench({
               onExitBaselineCompare={exitBaselineCompare}
               onSelectBaselineCompareMember={selectBaselineCompareMember}
               activeCandidate={activeCandidate}
+              projectId={project.id}
+              currentUserId={currentUserId}
+              onConflictSubmitted={(requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)}
+              sourcePreview={sourcePreview}
+              sourcePreviewLoading={sourcePreviewLoading}
+              sourcePreviewError={sourcePreviewError}
+              canSubmitSourceReview={canSubmitSourceReview}
+              canSubmitBatchReview={canSubmitBatchReview}
+              submittingSourceReview={submittingSourceReview}
+              sourceReviewError={sourceReviewError}
+              sourceReviewResult={sourceReviewResult}
+              onSubmitSourceReview={handleOpenSourceReview}
+              onOpenReview={() => {
+                const requestId = sourcePreview?.request?.id ?? sourceReviewResult?.requestId;
+                onNavigate(requestId
+                  ? `/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`
+                  : `/parameter-review?projectId=${encodeURIComponent(project.id)}`);
+              }}
               canRecompute={canRecompute}
-              canActivate={canActivate}
+              canActivate={canActivate && legacySourceWorkflowConfirmed}
               canAbandon={canAbandon}
               onRecomputeCandidate={handleRecomputeCandidate}
               onActivateCandidate={handleOpenActivateCandidate}
@@ -1455,8 +1731,26 @@ export function ProjectConfigurationWorkbench({
                   addMemberToConfigSet(memberFileId, memberRole, memberSortOrder)
                 )
               }
-              onRequestRemoveMember={requestRemoveMember}
+              onRequestRemoveMember={(member) => {
+                if (canRequestReviewedMemberRemoval && member.format === "json") setMemberRemovalTarget(member);
+                else requestRemoveMember(member);
+              }}
+              canRequestReviewedMemberRemoval={canRequestReviewedMemberRemoval}
               onSyncFile={() => void runAction("sync-file", syncSelectedFile)}
+              onOpenManualSync={manualSyncClient && apiMode && canAdmin && sourceWorkflow?.canonical
+                && sourceWorkflow.bindingCount >= 2 && sourceWorkflow.proofToken
+                && selectedMember?.currentVersionId
+                ? () => setManualSyncTarget({ member: selectedMember,
+                  currentVersionId: selectedMember.currentVersionId!,
+                  workflowProofToken: sourceWorkflow.proofToken! }) : undefined}
+              sourceWorkflow={sourceWorkflow}
+              sourceWorkflowLoading={sourceWorkflowLoading}
+              sourceWorkflowError={sourceWorkflowError}
+              sourceWorkflowSetLoading={sourceWorkflowSetLoading}
+              sourceWorkflowSetReady={sourceWorkflowSetReady}
+              sourceWorkflowSetCanonical={sourceWorkflowSetCanonical}
+              sourceWorkflowSetError={sourceWorkflowSetError}
+              onRetrySourceWorkflow={() => setSourceWorkflowReloadToken((value) => value + 1)}
               fileVersions={fileVersions}
               versionsLoading={versionsLoading}
               versionsError={versionsError}
@@ -1509,11 +1803,80 @@ export function ProjectConfigurationWorkbench({
         onConfirm={handleConfirmActivateCandidate}
       />
 
+      <WorkbenchCandidateSourceReviewDialog
+        open={sourceReviewDialogOpen && !canSubmitBatchReview}
+        activeCandidate={activeCandidate}
+        sourcePreview={sourcePreview}
+        submitting={submittingSourceReview}
+        error={sourceReviewError}
+        onCancel={() => {
+          if (!submittingSourceReview) setSourceReviewDialogOpen(false);
+        }}
+        onConfirm={(reason) => void handleConfirmSourceReview(reason)}
+      />
+      {sourceReviewDialogOpen && canSubmitBatchReview && sourcePreview && activeCandidate ? (
+        <CanonicalBatchSubmitDialog projectId={project.id} currentUserId={currentUserId}
+          candidate={activeCandidate} preview={sourcePreview} repository={memberRemovalRepository}
+          fileRepository={fileRepository}
+          onDismiss={() => setSourceReviewDialogOpen(false)}
+          onSubmitted={(requestId) => {
+            setSourceReviewDialogOpen(false);
+            setSourceWorkflowReloadToken((value) => value + 1);
+            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+          }} />
+      ) : null}
+
+      {rollbackReviewVersion ? <WorkbenchSourceRollbackDialog
+        key={`${rollbackReviewVersion.id}:${rollbackBatchContext?.fileId ?? "single"}`}
+        open={Boolean(rollbackReviewVersion)}
+        version={rollbackReviewVersion}
+        currentVersionId={rollbackBatchContext?.currentVersionId ?? selectedMember?.currentVersionId}
+        pending={rollbackReviewPending}
+        error={rollbackReviewError}
+        onCancel={() => {
+          if (!rollbackReviewPending) setRollbackReviewVersion(null);
+        }}
+        onConfirm={(reason) => void handleConfirmSourceRollback(reason)}
+        batch={rollbackBatchContext && batchRollbackClient ? {
+          projectId: project.id, fileId: rollbackBatchContext.fileId, currentUserId,
+          workflowProofToken: rollbackBatchContext.workflowProofToken, client: batchRollbackClient,
+          onSubmitted: (requestId) => {
+            setRollbackReviewVersion(null);
+            setSourceWorkflowReloadToken((value) => value + 1);
+            setVersionsReloadToken((value) => value + 1);
+            notifyMutation("多目标历史回滚审核已提交；审核通过前当前 Value、来源 pin 和活跃文件版本不变。");
+            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+          },
+          onOpenExisting: (requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)
+        } : undefined}
+      /> : null}
+
+      {manualSyncTarget && manualSyncClient ? <WorkbenchCanonicalManualSyncDialog
+          context={{ projectId: project.id, fileId: manualSyncTarget.member.fileId,
+            fileName: manualSyncTarget.member.fileName, format: manualSyncTarget.member.format,
+            currentVersionId: manualSyncTarget.currentVersionId,
+            workflowProofToken: manualSyncTarget.workflowProofToken, currentUserId,
+            client: manualSyncClient,
+            onOpenExisting: (requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`),
+            onSubmitted: (requestId) => {
+              setManualSyncTarget(null);
+              setSourceWorkflowReloadToken((value) => value + 1);
+              setVersionsReloadToken((value) => value + 1);
+              onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+            } }} sourceState={{
+            currentVersionId: selectedMembers.find((member) => member.fileId === manualSyncTarget.member.fileId)?.currentVersionId ?? null,
+            workflowProofToken: sourceWorkflowsByFileId[manualSyncTarget.member.fileId]?.proofToken ?? null,
+            loading: sourceWorkflowSetLoading,
+            error: sourceWorkflowErrorsByFileId[manualSyncTarget.member.fileId] || membersError || "",
+            canonical: sourceWorkflowsByFileId[manualSyncTarget.member.fileId]?.canonical ?? null
+          }} onDismiss={() => setManualSyncTarget(null)} /> : null}
+
       <WorkbenchTaskDock
         tasksOpen={tasksOpen}
         onTasksOpenChange={setTasksOpen}
         sessionDraftRows={sessionDraftRows}
         syncEvidence={syncEvidence}
+        canonicalSyncCheck={canonicalSyncCheck}
         exportEvidence={exportEvidence}
         syncConflicts={syncConflicts}
         releaseReadiness={releaseReadiness}
@@ -1540,6 +1903,8 @@ export function ProjectConfigurationWorkbench({
         submitError={submitError}
         projectId={project.id}
         fileRepository={fileRepository}
+        sourceWorkflowByFileId={sourceWorkflowByFileId}
+        sourceWorkflowLoading={sourceWorkflowLoading || filesLoading}
         onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
         onLocateConflict={(conflict) => {
           const target = conflictLocateFacade.locate(conflict);
@@ -1555,6 +1920,20 @@ export function ProjectConfigurationWorkbench({
         onReadinessRetry={() => setReadinessRetry((value) => value + 1)}
       />
 
+      {memberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog
+        projectId={project.id}
+        configSetId={selectedConfigSet.id}
+        configSetName={selectedConfigSet.name}
+        member={memberRemovalTarget}
+        members={selectedMembers}
+        currentUserId={currentUserId}
+        repository={memberRemovalRepository}
+        onDismiss={() => setMemberRemovalTarget(null)}
+        onSubmitted={(requestId) => {
+          setMemberRemovalTarget(null);
+          onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&memberRequest=${encodeURIComponent(requestId)}`);
+        }}
+      /> : null}
       <WorkbenchBaselineDialogs
         createOpen={createBaselineOpen}
         releaseOpen={releaseBaselineOpen}

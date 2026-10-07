@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -62,10 +63,30 @@ function openConflict(overrides: Partial<ParameterFileSyncConflict> = {}): Param
   };
 }
 
+const legacySourceWorkflowByFileId = {
+  "file-board": { canonical: false, bindingCount: 0 }
+} satisfies ComponentProps<typeof WorkbenchConflictArbitrationDock>["sourceWorkflowByFileId"];
+
+type TestConflictArbitrationDockProps = Omit<
+  ComponentProps<typeof WorkbenchConflictArbitrationDock>,
+  "sourceWorkflowByFileId" | "sourceWorkflowLoading"
+> &
+  Partial<Pick<ComponentProps<typeof WorkbenchConflictArbitrationDock>, "sourceWorkflowLoading">>;
+
+function TestConflictArbitrationDock(props: TestConflictArbitrationDockProps) {
+  return (
+    <WorkbenchConflictArbitrationDock
+      {...props}
+      sourceWorkflowByFileId={legacySourceWorkflowByFileId}
+      sourceWorkflowLoading={props.sourceWorkflowLoading ?? false}
+    />
+  );
+}
+
 describe("WorkbenchConflictArbitrationDock", () => {
   it("returns null when there are no open conflicts", () => {
     const { container } = render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={createStubRepository()}
         conflicts={[]}
@@ -76,7 +97,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
 
   it("renders three-way values with equal-weight outcome buttons", () => {
     render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={createStubRepository()}
         conflicts={[openConflict()]}
@@ -106,7 +127,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
 
   it("shows an em dash when base value is missing", () => {
     render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={createStubRepository()}
         conflicts={[openConflict({ baseValue: undefined })]}
@@ -124,7 +145,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
     const repository = createStubRepository({ resolveConflict, listConflicts });
 
     render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={repository}
         conflicts={[openConflict()]}
@@ -168,7 +189,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
     const repository = createStubRepository({ resolveConflict, listConflicts });
 
     const { rerender } = render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={repository}
         conflicts={[first, second]}
@@ -186,7 +207,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
     expect(onQueueEmpty).not.toHaveBeenCalled();
 
     rerender(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={repository}
         conflicts={[second]}
@@ -204,7 +225,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
     const onLocateConflict = vi.fn();
     const conflict = openConflict();
     render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={createStubRepository()}
         conflicts={[conflict]}
@@ -221,7 +242,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
     const onLocateConflict = vi.fn();
     const conflict = openConflict();
     render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={createStubRepository()}
         conflicts={[conflict]}
@@ -267,7 +288,7 @@ describe("WorkbenchConflictArbitrationDock", () => {
     const onQueueEmpty = vi.fn();
 
     render(
-      <WorkbenchConflictArbitrationDock
+      <TestConflictArbitrationDock
         projectId="aurora"
         repository={createStubRepository({
           previewBulkConflictResolution,
@@ -306,5 +327,24 @@ describe("WorkbenchConflictArbitrationDock", () => {
     );
     await waitFor(() => expect(onConflictsChange).toHaveBeenCalledWith([]));
     expect(onQueueEmpty).toHaveBeenCalled();
+  });
+
+  it("blocks canonical and unknown source conflicts before single or bulk resolution", () => {
+    render(
+      <WorkbenchConflictArbitrationDock
+        projectId="aurora"
+        repository={createStubRepository()}
+        conflicts={[openConflict(), openConflict({ id: "conflict-2", fileId: "file-unknown" })]}
+        sourceWorkflowByFileId={{
+          "file-board": { canonical: true, bindingCount: 1 }
+        }}
+        sourceWorkflowLoading={false}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "使用文件值" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保留界面值" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "批量裁决" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("canonical 来源冲突");
   });
 });

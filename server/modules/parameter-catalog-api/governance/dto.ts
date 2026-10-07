@@ -71,7 +71,8 @@ export function mapRegistrationRecord(
     subjectId: record.subjectId,
     status: record.status,
     method: record.method,
-    placement: record.placement,
+    impact: record.impact,
+    placement: mapPlacement(record.placement),
     catalogReleaseId: record.catalogReleaseId,
   });
 }
@@ -94,7 +95,8 @@ export function mapRegistrationResult(
 export function mapPlacement(
   placement: RegistrationRecord["placement"],
 ): ReturnType<typeof catalogPlacementDtoSchema.parse> {
-  return catalogPlacementDtoSchema.parse(placement);
+  const { version: _version, ...dto } = placement;
+  return catalogPlacementDtoSchema.parse(dto);
 }
 
 export function mapObservation(
@@ -209,8 +211,8 @@ export function registrationEtag(result: RegistrationResult | RegistrationRecord
   return quoteEtag(`${result.registrationId}:${result.registrationStatus}`);
 }
 
-export function placementEtag(placementId: string): string {
-  return quoteEtag(placementId);
+export function placementEtag(placementId: string, version?: string): string {
+  return quoteEtag(version ? `${placementId}:${version}` : placementId);
 }
 
 export function reviewEtag(etag: string): string {
