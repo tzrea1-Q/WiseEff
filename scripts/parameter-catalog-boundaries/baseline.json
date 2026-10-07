@@ -227,7 +227,7 @@
       "unresolved-boundary-expression": 2
     },
     "server/modules/parameter-modules/driverRegistration.test.ts": {
-      "legacy-catalog-raw-read": 11,
+      "legacy-catalog-raw-read": 12,
       "legacy-catalog-sql-write": 7,
       "legacy-parameter-spec-identifier": 4
     },
@@ -631,7 +631,7 @@
       "legacy-parameter-spec-identifier": 1
     },
     "server/modules/parameters/createParameterModuleForAuth.test.ts": {
-      "legacy-catalog-raw-read": 3,
+      "legacy-catalog-raw-read": 4,
       "legacy-catalog-sql-write": 4
     },
     "server/modules/parameters/dashboard/legacyDashboardAdapter.ts": {
@@ -639,6 +639,9 @@
     },
     "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts": {
       "legacy-catalog-sql-write": 10
+    },
+    "server/modules/parameters/dashboard/repository.test.ts": {
+      "forbidden-catalog-internal-import": 1
     },
     "server/modules/parameters/dashboard/repository.ts": {
       "unresolved-boundary-expression": 3
@@ -701,13 +704,20 @@
     "server/modules/parameters/mergeInitializationBindings.ts": {
       "legacy-parameter-spec-identifier": 5
     },
+    "server/modules/parameters/moduleNameConflict.test.ts": {
+      "legacy-catalog-raw-read": 7,
+      "legacy-catalog-sql-write": 3,
+      "legacy-catalog-table-name": 1
+    },
     "server/modules/parameters/moduleParentRepairMigration.test.ts": {
       "legacy-catalog-table-name": 6,
       "unresolved-boundary-expression": 3
     },
     "server/modules/parameters/moduleRename.integration.test.ts": {
-      "legacy-catalog-raw-read": 6,
-      "legacy-catalog-sql-write": 5
+      "canonical-catalog-raw-access": 17,
+      "legacy-catalog-raw-read": 21,
+      "legacy-catalog-sql-write": 7,
+      "unresolved-boundary-expression": 1
     },
     "server/modules/parameters/parameterModuleRepository.test.ts": {
       "legacy-catalog-sql-write": 8
@@ -715,7 +725,7 @@
     "server/modules/parameters/parameterModuleRepository.ts": {
       "legacy-catalog-raw-read": 11,
       "legacy-catalog-sql-write": 10,
-      "unresolved-boundary-expression": 1
+      "unresolved-boundary-expression": 2
     },
     "server/modules/parameters/repository.test.ts": {
       "legacy-catalog-sql-write": 1
