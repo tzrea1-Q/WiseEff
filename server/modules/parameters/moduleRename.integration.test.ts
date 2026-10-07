@@ -1,4 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import pg from "pg";
+import { createDatabase } from "../../shared/database/client";
+import { withTestClusterRoleCatalogLock } from "../../testing/testDatabase";
+import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/index";
+import { installParameterModuleRegistryProjectionFixture, registerParameterModuleRegistryProjectionDriver } from "../../testing/parameterCatalog/registryProjection";
+import { CatalogSubjectId } from "../parameter-catalog-contract/index";
+import { createParameterModule } from "./parameterModuleRepository";
 
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
@@ -138,6 +146,153 @@ async function bootstrapLegacyDatabase(db: Database) {
 
 afterEach(() => {
   setParameterIdentityMode(null);
+});
+
+async function withLegacyApiLogin(
+  populated: boolean,
+  fn: (fixture: { db: Database; apiDb: Database; moduleId: string; errors: string[]; statements: string[] }) => Promise<void>
+) {
+  await withTestClusterRoleCatalogLock(() => withTempDatabase({ prefix: "modrenameapi", migrate: "template" }, async ({ db, connectionString }) => {
+    await seedCoreGraph(db, {
+      organization: { id: ORG, name: "Module Rename Org" },
+      users: [{ id: USER, name: "Module Admin", email: "module-admin@example.com" }]
+    });
+    await seedCoreGraph(db, { organization: { id: FOREIGN_ORG, name: "Foreign Org" } });
+    const pool = new pg.Pool({ connectionString });
+    const runToken = randomUUID().replaceAll("-", "").slice(0, 24);
+    let client: pg.Client | undefined;
+    try {
+      const catalog = await installParameterModuleRegistryProjectionFixture(pool);
+      const root = await createParameterModule(db, { organizationId: ORG, name: "API Root", kind: "business" });
+      const module = await createParameterModule(db, {
+        organizationId: ORG, parentId: root.id, name: "API Driver", kind: "driver-group", sourceKey: "compatible:acme,power"
+      });
+      await registerParameterModuleRegistryProjectionDriver(pool, {
+        organizationId: ORG, subjectId: CatalogSubjectId("csub_acme_power"), destinationModuleId: module.id, release: catalog.pin
+      });
+      // A foreign row referencing the same module must not make the scoped legacy branch writable.
+      await db.query(
+        `insert into parameter_definitions (
+           id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk, parameter_module_id
+         ) values ('pd-api-foreign', $1, 'foreign_parameter', '', '', 'ENV', 'Foreign Legacy', '', '', 'Low', $2)`,
+        [FOREIGN_ORG, module.id]
+      );
+      if (populated) {
+        await db.query(
+          `insert into parameter_definitions (
+             id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk, parameter_module_id
+           ) values ('pd-api-local', $1, 'local_parameter', '', '', 'ENV', 'API Driver', '', '', 'Low', $2)`,
+          [ORG, module.id]
+        );
+      }
+      const login = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken });
+      client = new pg.Client({ connectionString: login.apiUrl });
+      await client.connect();
+      const errors: string[] = [];
+      const statements: string[] = [];
+      const apiDb = createDatabase({ query: async (text, values = []) => {
+        statements.push(text);
+        try {
+          const result = await client!.query(text, values);
+          return { rows: result.rows, rowCount: result.rowCount };
+        } catch (error) {
+          errors.push((error as { code: string }).code);
+          throw error;
+        }
+      } });
+      expect(await resolveParameterIdentityMode(apiDb)).toBe("legacy");
+      const boundary = await apiDb.query(
+        `select current_user, session_user, rolsuper, rolbypassrls,
+                has_table_privilege(current_user, 'public.parameter_definitions', 'SELECT') as legacy_select,
+                has_table_privilege(current_user, 'public.parameter_definitions', 'UPDATE') as legacy_update,
+                (select count(*)::int from parameter_definitions where organization_id = $1 and parameter_module_id = $2) as matching
+         from pg_roles where rolname = current_user`, [ORG, module.id]
+      );
+      console.info("module-rename-login-boundary", JSON.stringify(boundary.rows));
+      expect(boundary.rows).toEqual([{
+        current_user: login.apiRole, session_user: login.apiRole, rolsuper: false, rolbypassrls: false,
+        legacy_select: true, legacy_update: false, matching: populated ? 1 : 0
+      }]);
+      await fn({ db, apiDb, moduleId: module.id, errors, statements });
+    } finally {
+      await client?.end();
+      await pool.end();
+      const cleanup = await dropLabRuntimeLogins(connectionString, runToken);
+      console.info("module-rename-login-cleanup", JSON.stringify(cleanup));
+      expect(cleanup.failed).toEqual([]);
+    }
+  }));
+}
+
+describe.skipIf(!databaseAvailable)("parameter module rename with the standard API SQL LOGIN", () => {
+  it("renames a canonical target with zero scoped legacy rows and preserves identity, audit and foreign rows", async () => {
+    await withLegacyApiLogin(false, async ({ db, apiDb, moduleId, errors, statements }) => {
+      const identity = await db.query("select id, organization_id, parent_id, path, kind, source_key, attribution_subject_id from parameter_modules where id = $1", [moduleId]);
+      const placement = await db.query("select * from parameter_catalog.subject_placements where module_id = $1", [moduleId]);
+      const canonicalSql = `select
+        (select jsonb_agg(r order by id) from parameter_catalog.organization_subject_registrations r) as registrations,
+        (select jsonb_agg(s order by id) from parameter_catalog.catalog_subjects s) as subjects,
+        (select jsonb_agg(d order by id) from parameter_catalog.parameter_definitions d) as definitions,
+        (select jsonb_agg(b order by id) from parameter_catalog.project_parameter_bindings b) as bindings,
+        (select jsonb_agg(h order by id) from parameter_catalog.binding_history_events h) as history`;
+      const canonical = await db.query(canonicalSql);
+      const response = await requestJson(makeServer(apiDb), `/api/v1/parameter-modules/${moduleId}`, {
+        method: "PATCH", body: JSON.stringify({ name: "API Driver Renamed" })
+      });
+      const persisted = await db.query("select name from parameter_modules where id = $1", [moduleId]);
+      const audit = await db.query("select target_id, metadata from audit_events where kind = 'parameter-module-admin-update' and organization_id = $1", [ORG]);
+      console.info("module-rename-zero-result", JSON.stringify({ status: response.status, errors, persisted: persisted.rows, audit: audit.rows }));
+      expect(response.status).toBe(200);
+      expect(errors).toEqual([]);
+      expect(persisted.rows).toEqual([{ name: "API Driver Renamed" }]);
+      expect((await db.query("select id, organization_id, parent_id, path, kind, source_key, attribution_subject_id from parameter_modules where id = $1", [moduleId])).rows).toEqual(identity.rows);
+      expect((await db.query("select * from parameter_catalog.subject_placements where module_id = $1", [moduleId])).rows).toEqual(placement.rows);
+      expect((await db.query(canonicalSql)).rows).toEqual(canonical.rows);
+      expect(audit.rows).toEqual([{ target_id: moduleId, metadata: expect.objectContaining({ name: "API Driver Renamed", previousName: "API Driver" }) }]);
+      expect((await db.query("select module from parameter_definitions where id = 'pd-api-foreign'")).rows).toEqual([{ module: "Foreign Legacy" }]);
+
+      statements.length = 0;
+      for (const body of [{ name: "API Driver Renamed" }, { description: "API description" }]) {
+        expect((await requestJson(makeServer(apiDb), `/api/v1/parameter-modules/${moduleId}`, { method: "PATCH", body: JSON.stringify(body) })).status).toBe(200);
+      }
+      expect(statements.some((text) => /select exists/i.test(text))).toBe(false);
+    });
+  });
+
+  it("retains 42501 and rolls back the module and audit when scoped legacy rows exist", async () => {
+    await withLegacyApiLogin(true, async ({ db, apiDb, moduleId, errors }) => {
+      const response = await requestJson(makeServer(apiDb), `/api/v1/parameter-modules/${moduleId}`, {
+        method: "PATCH", body: JSON.stringify({ name: "Must Roll Back" })
+      });
+      const persisted = await db.query("select name from parameter_modules where id = $1", [moduleId]);
+      const audit = await db.query("select id from audit_events where kind = 'parameter-module-admin-update' and organization_id = $1", [ORG]);
+      console.info("module-rename-populated-result", JSON.stringify({ status: response.status, errors, persisted: persisted.rows, audit: audit.rows }));
+      expect(response.status).toBe(500);
+      expect(errors).toEqual(["42501"]);
+      expect(persisted.rows).toEqual([{ name: "API Driver" }]);
+      expect(audit.rows).toEqual([]);
+      expect((await db.query("select id, module from parameter_definitions order by id")).rows).toEqual([
+        { id: "pd-api-foreign", module: "Foreign Legacy" }, { id: "pd-api-local", module: "API Driver" }
+      ]);
+    });
+  });
+
+  it("rolls back a zero-legacy target when the API LOGIN audit write fails", async () => {
+    await withLegacyApiLogin(false, async ({ db, apiDb, moduleId, errors }) => {
+      const auth = { ...adminAuth(), user: { ...adminAuth().user, id: "missing-audit-actor" } };
+      const response = await requestJson(makeServer(apiDb, auth), `/api/v1/parameter-modules/${moduleId}`, {
+        method: "PATCH", body: JSON.stringify({ name: "Must Roll Back" })
+      });
+      const persisted = await db.query("select name from parameter_modules where id = $1", [moduleId]);
+      const audit = await db.query("select id from audit_events where kind = 'parameter-module-admin-update' and organization_id = $1", [ORG]);
+      console.info("module-rename-zero-audit-result", JSON.stringify({ status: response.status, errors, persisted: persisted.rows, audit: audit.rows }));
+      expect(response.status).toBe(500);
+      expect(errors).toEqual(["23503"]);
+      expect(persisted.rows).toEqual([{ name: "API Driver" }]);
+      expect(audit.rows).toEqual([]);
+      expect((await db.query("select module from parameter_definitions where id = 'pd-api-foreign'")).rows).toEqual([{ module: "Foreign Legacy" }]);
+    });
+  });
 });
 
 describe.skipIf(!databaseAvailable)("parameter module rename after identity cutover", () => {
