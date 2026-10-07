@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { emptyCheckpoint, ERROR } from "@langchain/langgraph-checkpoint";
 import { MemorySaver } from "@langchain/langgraph";
 import pg from "pg";
@@ -21,7 +21,7 @@ const anyAuth = {
 
 const testDatabaseUrl =
   process.env.XIAOZE_CHECKPOINTER_TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
-const runtimeDatabaseUrl = process.env.XIAOZE_CHECKPOINTER_RUNTIME_TEST_DATABASE_URL?.trim() || "";
+let runtimeDatabaseUrl = process.env.XIAOZE_CHECKPOINTER_RUNTIME_TEST_DATABASE_URL?.trim() || "";
 const ownedHandles: ReturnType<typeof createPostgresCheckpointerSaver>[] = [];
 afterEach(async () => {
   await Promise.all(ownedHandles.splice(0).map((handle) => handle.saver.end()));
@@ -116,7 +116,61 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
   });
 });
 
-describe.skipIf(!runtimeDatabaseUrl)("runtime checkpointer under explicit least privilege LOGIN", () => {
+describe.skipIf(!(runtimeDatabaseUrl || testDatabaseUrl))("runtime checkpointer under explicit least privilege LOGIN", () => {
+  const role = `checkpoint_runtime_${randomUUID().replaceAll("-", "")}`;
+  let admin: pg.Pool | undefined;
+  let database = "";
+  let roleCreated = false;
+  const ddl = async (format: string, ...values: string[]) => {
+    const placeholders = values.map((_, index) => `$${index + 2}::text`).join(", ");
+    const result = await admin!.query<{ statement: string }>(
+      `select format($1::text, ${placeholders}) as statement`, [format, ...values]
+    );
+    await admin!.query(result.rows[0]!.statement);
+  };
+
+  beforeAll(async () => {
+    if (runtimeDatabaseUrl) return;
+    const setup = createPostgresCheckpointerSaver({ connectionString: testDatabaseUrl });
+    try {
+      await setup.ensureSetup();
+    } finally {
+      await setup.saver.end();
+    }
+    admin = new pg.Pool({ connectionString: testDatabaseUrl });
+    database = (await admin.query<{ name: string }>("select current_database() as name")).rows[0]!.name;
+    const password = randomUUID();
+    await ddl("create role %I login nosuperuser nocreatedb nocreaterole noinherit nobypassrls password %L", role, password);
+    roleCreated = true;
+    await ddl("grant connect on database %I to %I", database, role);
+    await ddl("grant usage on schema public to %I", role);
+    await ddl("grant select on public.checkpoint_migrations to %I", role);
+    await ddl("grant select, insert, update, delete on public.checkpoints, public.checkpoint_blobs, public.checkpoint_writes to %I", role);
+    const roleUrl = new URL(testDatabaseUrl);
+    roleUrl.username = role;
+    roleUrl.password = password;
+    roleUrl.searchParams.delete("options");
+    runtimeDatabaseUrl = roleUrl.toString();
+  });
+
+  afterAll(async () => {
+    try {
+      if (roleCreated) {
+        const errors: unknown[] = [];
+        for (const cleanup of [
+          () => ddl("revoke connect on database %I from %I", database, role),
+          () => ddl("drop owned by %I", role),
+          () => ddl("drop role %I", role)
+        ]) {
+          try { await cleanup(); } catch (error) { errors.push(error); }
+        }
+        if (errors.length) throw new AggregateError(errors, "Checkpoint runtime LOGIN cleanup failed");
+      }
+    } finally {
+      await admin?.end();
+    }
+  });
+
   it("validates concurrently and persists writes, updates and deletion through an independent reader", async () => {
     const writer = createPostgresCheckpointerSaver({ connectionString: runtimeDatabaseUrl, initialization: "runtime" });
     const reader = createPostgresCheckpointerSaver({ connectionString: runtimeDatabaseUrl, initialization: "runtime" });
