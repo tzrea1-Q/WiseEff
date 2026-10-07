@@ -2,7 +2,7 @@
 
 > Chinese: [Development workflow](../zh-CN/agents/development-workflow.md)
 
-This is the default path for ordinary development. Existing explicitly accepted sealed programs, independent-review requirements, and release evidence contracts retain their gates. The PC-first viewport policy in `docs/developer/ui-quality-checklist.md` replaces the old repository-wide three-viewport default; it does not cancel specialized release acceptance.
+This is the default path for all development outside the sealed scope named in `AGENTS.md` (Wayfinder #668 launch children #683–#735). That sealed scope, independent-review requirements, and release evidence contracts retain their gates. The PC-first viewport policy in `docs/developer/ui-quality-checklist.md` replaces the old repository-wide three-viewport default; it does not cancel specialized release acceptance.
 
 ## Select the evidence, not a ceremony
 
@@ -10,8 +10,8 @@ This is the default path for ordinary development. Existing explicitly accepted 
 | --- | --- |
 | Bounded documentation or mechanical change | Task/PR summary; relevant static and focused checks. No artificial failing test for prose. |
 | Behavior, API, or UI change | State the acceptance cases; test the changed public seam and relevant failure cases; perform a focused review. |
-| Authorization, tenancy, migration, concurrency, recovery, or destructive behavior | Explicit invariants and adversarial cases; independent review; real environment evidence where required. |
-| A program explicitly requiring seals, lineage, fingerprints, or staged release approval | Existing `agent-delivery-protocol.md` and its accepted program profile. |
+| Authorization, tenancy, migration, concurrency, recovery, or destructive behavior | Explicit invariants and adversarial tests at the changed seam; one independent review of the PR diff; a real PostgreSQL test where the invariant lives in the database. |
+| Wayfinder #668 launch children, or an Issue whose body explicitly requires seals, lineage, fingerprints, or staged release approval | Existing `agent-delivery-protocol.md` and its accepted program profile. |
 
 Risk-sensitive evidence is mandatory where relevant. A large orchestration state machine is not mandatory merely because a task edits more than one file. When an accepted plan specifies two independent reviews, keep both unless its owner explicitly amends that contract.
 
