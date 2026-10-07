@@ -27,6 +27,8 @@ import {
 import { catalogPendingWorkLabel } from "../parameter-catalog/copy";
 import { RegistrationDialog } from "./RegistrationDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
+import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 
 import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
@@ -79,6 +81,8 @@ export function CatalogOrganizationSurface({
   const [catalogSubjects, setCatalogSubjects] = useState<
     Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]
   >([]);
+  const [subjectLoad, setSubjectLoad] = useState<"loading" | "ready" | "error">("loading");
+  const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
 
   const handleAction = useCallback(
     (next: CatalogAuthorizedAction, context?: { subjectId?: string | null; registrationId?: string | null }) => {
@@ -97,22 +101,26 @@ export function CatalogOrganizationSurface({
 
   useEffect(() => {
     let cancelled = false;
+    setCatalogSubjects([]);
+    setSubjectLoad("loading");
     void (async () => {
       try {
-        const listed = await catalog.listSubjects({ limit: 100 });
+        const subjects = await listAllCanonicalPages((query) => catalog.listSubjects(query));
         if (!cancelled) {
-          setCatalogSubjects([...listed.items]);
+          setCatalogSubjects(subjects);
+          setSubjectLoad("ready");
         }
       } catch {
         if (!cancelled) {
           setCatalogSubjects([]);
+          setSubjectLoad("error");
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [catalog, surfaceEpoch]);
+  }, [catalog, surfaceEpoch, subjectReadEpoch]);
 
 
   useEffect(() => {
@@ -192,6 +200,14 @@ export function CatalogOrganizationSurface({
         renderDefinitionEditor={
           domainState
             ? (definition, history) => (
+          <>
+          {subjectLoad === "loading" ? <SectionSkeleton label="正在读取主体列表" /> : null}
+          {subjectLoad === "error" ? (
+            <SectionError
+              message="无法读取主体列表，请重试。"
+              onRetry={() => setSubjectReadEpoch((value) => value + 1)}
+            />
+          ) : null}
           <DefinitionEditorBody
             actor={actor}
             sessionPermissions={sessionPermissions}
@@ -216,6 +232,7 @@ export function CatalogOrganizationSurface({
               />
             }
           />
+          </>
               )
             : undefined
         }

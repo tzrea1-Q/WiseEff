@@ -72,6 +72,46 @@ const moduleRegistry: ParameterModuleRegistry = {
 };
 
 describe("JsonBindingPanel", () => {
+  it("keeps one mixed JSON workbench with editing only for eligible exact Binding IDs", async () => {
+    const props = { bindings: [jsonBinding, secondBinding], canEdit: true,
+      editableBindingIds: new Set([jsonBinding.id]), onValidateEdit: vi.fn() };
+    const rendered = render(<JsonBindingPanel {...props} requestedBindingId={secondBinding.id} />);
+    expect(screen.getAllByRole("table", { name: "JSON 参数列表" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: `编辑 ${jsonBinding.propertyKey}` })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `编辑 ${secondBinding.propertyKey}` })).not.toBeInTheDocument();
+    const readonlyDialog = await screen.findByRole("dialog");
+    expect(within(readonlyDialog).queryByRole("button", { name: "编辑此参数" })).not.toBeInTheDocument();
+    rendered.rerender(<JsonBindingPanel {...props} requestedBindingId={jsonBinding.id} />);
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("button", { name: "编辑此参数" })).toBeInTheDocument());
+    expect(props.onValidateEdit).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, new Set([jsonBinding.id])])("global canEdit=false overrides optional eligible IDs %s", (editableBindingIds) => {
+    render(<JsonBindingPanel bindings={[jsonBinding]} canEdit={false} editableBindingIds={editableBindingIds} requestedBindingId={jsonBinding.id} />);
+    expect(screen.queryByRole("button", { name: `编辑 ${jsonBinding.propertyKey}` })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑此参数" })).not.toBeInTheDocument();
+  });
+
+  it.each(["eligible IDs", "global permission"])("blocks active JSON draft actions when %s is revoked", (revocation) => {
+    const onValidateEdit = vi.fn();
+    const props = { bindings: [jsonBinding], canEdit: true, editableBindingIds: new Set([jsonBinding.id]), onValidateEdit };
+    const rendered = render(<JsonBindingPanel {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: `编辑 ${jsonBinding.propertyKey}` }));
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    fireEvent.change(within(dialog).getByLabelText("修改原因"), { target: { value: "bounded edit" } });
+    expect(within(dialog).getByRole("button", { name: "校验并创建草稿" })).toBeEnabled();
+    rendered.rerender(<JsonBindingPanel {...props} canEdit={revocation === "eligible IDs"}
+      editableBindingIds={revocation === "eligible IDs" ? new Set() : props.editableBindingIds} />);
+    expect(within(dialog).getByLabelText("目标值")).toBeDisabled();
+    expect(within(dialog).getByLabelText("修改原因")).toBeDisabled();
+    for (const name of ["校验并创建草稿", "创建删除草稿"]) {
+      const button = within(dialog).getByRole("button", { name });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    expect(onValidateEdit).not.toHaveBeenCalled();
+  });
+
   it("opens the exact JSON Binding deep link for viewing", async () => {
     render(<JsonBindingPanel bindings={[jsonBinding, secondBinding]} requestedBindingId="binding-json-2" />);
 

@@ -11,6 +11,20 @@ const anyAuth = {
 } as never;
 
 describe("createPlanningAgent", () => {
+  it.each([false, true])("blocks first checkpoint I/O when readiness fails (resume=%s)", async (resume) => {
+    const checkpointer = createXiaozeCheckpointer();
+    const failure = new Error("runtime not ready");
+    vi.spyOn(checkpointer, "ensureReady").mockRejectedValue(failure);
+    const getTuple = vi.spyOn(checkpointer.saver, "getTuple");
+    const put = vi.spyOn(checkpointer.saver, "put");
+    const auxiliaryPut = vi.spyOn(checkpointer, "put");
+    const agent = createPlanningAgent({ model: fakeModelSequence([{ content: "unused" }]), runTool: vi.fn(), listTools: () => [], checkpointer });
+    await expect(agent.run({ message: "hi", context: {}, threadId: "not-ready", ...(resume ? { resume: { approvalId: "a1", decision: "reject" as const } } : {}) })).rejects.toBe(failure);
+    expect(getTuple).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+    expect(auxiliaryPut).not.toHaveBeenCalled();
+  });
+
   it("grounds a read-only answer (P0 parity)", async () => {
     const runTool = vi.fn().mockResolvedValue({ summary: "12 parameters", data: {}, citations: [] });
     const model = fakeModelSequence([
@@ -98,6 +112,7 @@ describe("createPlanningAgent", () => {
   it("resumes the plan after approval and observes the result", async () => {
     const checkpointer = createXiaozeCheckpointer();
     const approvalResolver = {
+      preflightApproval: vi.fn().mockResolvedValue(undefined),
       resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created",
         citations: [{ type: "parameter", id: "cr-1", label: "Change request cr-1", href: "/parameter-review?request=cr-1&project=p1" }] })
     };
@@ -273,6 +288,7 @@ describe("createPlanningAgent", () => {
   it("halts gracefully on reject without mutation", async () => {
     const checkpointer = createXiaozeCheckpointer();
     const approvalResolver = {
+      preflightApproval: vi.fn().mockResolvedValue(undefined),
       resolveApproval: vi.fn().mockResolvedValue({ text: "The proposed action was rejected." })
     };
     const model = fakeModelSequence([
@@ -311,6 +327,7 @@ describe("createPlanningAgent", () => {
     const { ApiError } = await import("../../../shared/http/errors");
     const checkpointer = createXiaozeCheckpointer();
     const approvalResolver = {
+      preflightApproval: vi.fn().mockResolvedValue(undefined),
       resolveApproval: vi.fn().mockRejectedValue(
         new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", {
           reason: "stale-working-tip"

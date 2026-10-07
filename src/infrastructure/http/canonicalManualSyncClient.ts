@@ -1,7 +1,9 @@
 import {
   canonicalManualSyncPrepareResponseSchema,
   catalogSubmitBatchValueChangeRequestSchema,
-  catalogBatchValueChangeRequestResponseSchema
+  catalogBatchValueChangeRequestResponseSchema,
+  canonicalManualSyncSingleSubmitRequestSchema, canonicalManualSyncSingleSubmitResponseSchema,
+  catalogValueChangeRequestListResponseSchema, catalogValueChangeSourceDiffResponseSchema
 } from "@wiseeff/dto-schemas";
 import type { z } from "zod";
 import { createDefaultApiClient } from "./defaultApiClient";
@@ -20,6 +22,21 @@ export function createCanonicalManualSyncClient(client = createDefaultApiClient(
       body: JSON.stringify(body)
     })).json();
   return {
+    async submitSingle(projectId: string, candidateId: string,
+      body: z.infer<typeof canonicalManualSyncSingleSubmitRequestSchema>, requestId: string) {
+      return canonicalManualSyncSingleSubmitResponseSchema.parse(await post(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/parameter-file-candidates/${encodeURIComponent(candidateId)}/source-submit`,
+        canonicalManualSyncSingleSubmitRequestSchema.parse(body), requestId
+      )).item;
+    },
+    async readSingleReceipt(projectId: string, requestId: string) {
+      const path = `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests`;
+      const [requests, source] = await Promise.all([client.get(`${path}?mine=true`),
+        client.get(`${path}/${encodeURIComponent(requestId)}/source-diff`)]);
+      const receipt = catalogValueChangeRequestListResponseSchema.parse(requests).items.find((item) => item.id === requestId);
+      if (!receipt) throw new Error("Owned single source receipt is unavailable.");
+      return { receipt, diff: catalogValueChangeSourceDiffResponseSchema.parse(source).item };
+    },
     async prepare(projectId: string, fileId: string, body: {
       contentBase64: string; expectedCurrentVersionId: string; expectedWorkflowProofToken: string
     }, requestId: string): Promise<ManualSyncPreparation> {

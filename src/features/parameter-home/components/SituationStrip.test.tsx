@@ -22,6 +22,37 @@ const personalKpis = {
 };
 
 describe("SituationStrip", () => {
+  it.each(["idle", "loading", "error", "ready", "empty"] as const)(
+    "only shows retained zero personal KPIs as empty when the summary is available (%s)",
+    (status) => {
+      render(
+        <SituationStrip
+          status={status}
+          kpis={overallKpis}
+          personalKpis={{ ...personalKpis, contributionCount: 0, workflowCount: 0, openItemCount: 0, pendingTodoCount: 0 }}
+          scope="personal"
+          roleView="user"
+          onScopeChange={() => undefined}
+          error="态势指标加载失败"
+        />
+      );
+
+      const emptyMessage = screen.queryByText("当前时间窗口暂无个人活动");
+      if (status === "ready" || status === "empty") {
+        expect(emptyMessage).toBeInTheDocument();
+      } else {
+        expect(emptyMessage).not.toBeInTheDocument();
+      }
+      if (status === "idle" || status === "loading") {
+        expect(screen.getByRole("status")).toBeInTheDocument();
+      }
+      if (status === "error") {
+        expect(screen.getByText("态势指标加载失败")).toBeInTheDocument();
+      }
+      expect(screen.queryAllByText("0")).toHaveLength(status === "ready" ? 4 : 0);
+    }
+  );
+
   it("renders KPIs when ready", () => {
     render(
       <SituationStrip

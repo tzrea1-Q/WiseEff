@@ -94,6 +94,11 @@ export type ApprovalResolveResult = {
   citations?: AgentCitation[];
 };
 
+export type ApprovalResumePreflightInput = Pick<ApprovalResolveInput, "auth" | "requestId" | "approvalId"> & {
+  expectedSessionId: string;
+  expectedToolCallId: string;
+};
+
 function newId(prefix: string) {
   return `${prefix}-${randomUUID()}`;
 }
@@ -819,6 +824,23 @@ export function createAgentOrchestrator(options: {
     };
   }
 
+  async function preflightApproval(input: ApprovalResumePreflightInput): Promise<void> {
+    if (!input.expectedSessionId || !input.expectedToolCallId) {
+      throw resumeTargetMismatch(input.approvalId);
+    }
+    const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
+    if (!approval || approval.status !== "pending") {
+      throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", { approvalId: input.approvalId });
+    }
+    requireApprovalRequester(approval, input.auth);
+    const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
+    if (!toolCall) {
+      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: approval.toolCallId });
+    }
+    await loadSessionOrThrow(input, toolCall.sessionId);
+    assertApprovalTarget(approval, toolCall, input);
+  }
+
   async function resolveApproval(input: ApprovalResolveInput): Promise<ApprovalResolveResult> {
     if (input.decision === "reject") {
       const turn = await rejectToolCall({
@@ -854,7 +876,8 @@ export function createAgentOrchestrator(options: {
     rejectToolCall,
     recordToolRequest: recordSessionToolRequest,
     beginApproval,
-    resolveApproval
+    resolveApproval,
+    preflightApproval
   };
 }
 

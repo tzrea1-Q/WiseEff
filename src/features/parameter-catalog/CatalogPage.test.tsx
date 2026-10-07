@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useCallback, useState, type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { catalogSubjectListResponseSchema, catalogDefinitionResponseSchema } from "@wiseeff/dto-schemas";
 
 import {
   catalogResultCountLabel,
@@ -11,6 +12,8 @@ import {
   CATALOG_ORGANIZATION_ID,
   CATALOG_RELEASE_ID,
   CATALOG_SUBJECT_ID,
+  activeDefinition,
+  registeredSubject,
   readyCatalogDocument
 } from "@/application/parameter-catalog/fixtures";
 import {
@@ -21,6 +24,7 @@ import {
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import { buildCatalogHref, parseCatalogUrlAnchor } from "@/application/parameter-catalog/urlAnchor";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { CatalogListQuery, CatalogSubjectListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { CatalogPage } from "./CatalogPage";
 import type { CatalogLayoutMode } from "./catalogLayout";
 import { catalogEmptyMessages } from "./copy";
@@ -185,6 +189,179 @@ function renderCatalog(
 }
 
 describe("CatalogPage", () => {
+  function pagedInventory() {
+    const subjects = Array.from({ length: 101 }, (_, index) => ({
+      ...registeredSubject,
+      id: `csub_inventory_${index}`,
+      canonicalName: `inventory-subject-${index}`,
+      registration: {
+        ...registeredSubject.registration,
+        id: `creg_inventory_${index}`,
+        placement: {
+          id: `cpl_inventory_${index}`,
+          moduleId: `module_inventory_${index}`,
+          displayName: `Inventory module ${index}`,
+          parentPlacementId: index === 0 ? null : "cpl_inventory_0"
+        }
+      }
+    }));
+    const last = subjects[100];
+    const definition = {
+      ...activeDefinition,
+      subject: { id: last.id, type: last.type, canonicalName: last.canonicalName },
+      registration: last.registration
+    };
+    const first: CatalogSubjectListResponse = {
+      items: subjects.slice(0, 100), catalogReleaseId: CATALOG_RELEASE_ID,
+      totalCount: 101, hasMore: true, nextCursor: "subject-page-2"
+    };
+    const second: CatalogSubjectListResponse = {
+      ...first, items: [last], hasMore: false, nextCursor: null
+    };
+    catalogSubjectListResponseSchema.parse(first);
+    catalogSubjectListResponseSchema.parse(second);
+    catalogDefinitionResponseSchema.parse({ item: definition });
+    const ready = createMockParameterCatalogRepository({ scenario: "ready" });
+    const listSubjects = vi.fn(async (query?: CatalogListQuery) => query?.cursor ? second : first);
+    const listDefinitions = vi.fn(async () => ({
+      items: [definition], catalogReleaseId: CATALOG_RELEASE_ID,
+      totalCount: 1, hasMore: false, nextCursor: null
+    }));
+    const repository: ParameterCatalogRepository = {
+      ...ready, listSubjects, listDefinitions,
+      listSubjectDefinitions: vi.fn(async () => listDefinitions()),
+      getSubject: async (id) => ({ item: subjects.find((item) => item.id === id)! })
+    };
+    return { repository, listSubjects, listDefinitions, first, second, last };
+  }
+
+  it("loads all 101 subjects before publishing the navigator and scopes the second-page definition", async () => {
+    const user = userEvent.setup();
+    const inventory = pagedInventory();
+    const gate = deferred<CatalogSubjectListResponse>();
+    inventory.listSubjects.mockImplementation(async (query) => query?.cursor ? gate.promise : inventory.first);
+    const { onHref } = renderCatalog({
+      repository: inventory.repository,
+      search: `?catalogReleaseId=${CATALOG_RELEASE_ID}&moduleNodeId=module_inventory_0`
+    });
+    await waitFor(() => expect(inventory.listSubjects).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("navigation", { name: "参数定义模块树" })).not.toBeInTheDocument();
+    expect(inventory.listDefinitions).not.toHaveBeenCalled();
+    gate.resolve(inventory.second);
+    expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
+    expect(screen.getByText("已选模块子树 · 101 个主体")).toBeVisible();
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(inventory.listSubjects.mock.calls.slice(0, 2)).toEqual([
+      [{ catalogReleaseId: CATALOG_RELEASE_ID, limit: 100 }],
+      [{ catalogReleaseId: CATALOG_RELEASE_ID, limit: 100, cursor: "subject-page-2" }]
+    ]);
+    expect(inventory.listDefinitions).toHaveBeenCalledWith(expect.objectContaining({
+      placementModuleId: "module_inventory_0", catalogReleaseId: CATALOG_RELEASE_ID
+    }));
+    await user.click(screen.getByRole("button", { name: "清除选择" }));
+    await waitFor(() => expect(screen.queryByText("已选模块子树 · 101 个主体")).not.toBeInTheDocument());
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^Inventory module 100\s*1$/ }));
+    await waitFor(() => expect(screen.getByText("已选模块子树 · 1 个主体")).toBeVisible());
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "选择主体 inventory-subject-100" }));
+    await waitFor(() => expect(inventory.repository.listSubjectDefinitions).toHaveBeenCalledWith(
+      inventory.last.id, expect.objectContaining({ catalogReleaseId: CATALOG_RELEASE_ID })
+    ));
+    expect(onHref).toHaveBeenCalledWith(expect.stringContaining(`subjectId=${inventory.last.id}`), "push");
+  }, 15_000);
+
+  it("fails closed on a second subject page failure and recovers through explicit retry", async () => {
+    const user = userEvent.setup();
+    const inventory = pagedInventory();
+    inventory.listSubjects.mockImplementation(async (query) => {
+      if (query?.cursor) throw new Error("second page failed");
+      return inventory.first;
+    });
+    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-writes-enabled", "false");
+    expect(screen.queryByRole("navigation", { name: "参数定义模块树" })).not.toBeInTheDocument();
+    expect(inventory.listDefinitions).not.toHaveBeenCalled();
+    inventory.listSubjects.mockImplementation(async (query) => query?.cursor ? inventory.second : inventory.first);
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
+    expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-writes-enabled", "true");
+  });
+
+  it("retains a valid first-page descendant definition under the selected ancestor", async () => {
+    const inventory = pagedInventory();
+    inventory.listSubjects.mockResolvedValue({
+      ...inventory.first, items: [inventory.first.items[0], inventory.last],
+      hasMore: false, nextCursor: null, totalCount: 2
+    });
+    renderCatalog({ repository: inventory.repository,
+      search: `?catalogReleaseId=${CATALOG_RELEASE_ID}&moduleNodeId=module_inventory_0` });
+    expect(await screen.findByRole("button", { name: /^Inventory module 0\s*2$/ })).toBeVisible();
+    expect(screen.getByText("已选模块子树 · 2 个主体")).toBeVisible();
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(inventory.listDefinitions).toHaveBeenCalledWith(expect.objectContaining({
+      placementModuleId: "module_inventory_0"
+    }));
+  });
+
+  it.each([null, "subject-page-2"])("fails closed for invalid or repeated subject cursor %s", async (cursor) => {
+    const inventory = pagedInventory();
+    inventory.listSubjects.mockImplementation(async (query) => query?.cursor
+      ? { ...inventory.second, hasMore: true, nextCursor: cursor }
+      : { ...inventory.first, nextCursor: cursor });
+    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
+    expect(inventory.listSubjects).toHaveBeenCalledTimes(cursor ? 2 : 1);
+    expect(inventory.listDefinitions).not.toHaveBeenCalled();
+    expect(screen.queryByRole("navigation", { name: "参数定义模块树" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-writes-enabled", "false");
+  });
+
+  it("preserves the real empty subject metadata instead of inventing a successful collection", async () => {
+    const inventory = pagedInventory();
+    inventory.listSubjects.mockResolvedValue({
+      items: [], catalogReleaseId: CATALOG_RELEASE_ID, totalCount: 0,
+      hasMore: false, nextCursor: null, emptyReason: "no-registrations"
+    });
+    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" }))
+      .toHaveAttribute("data-empty-reason", "no-registrations"));
+    expect(inventory.listDefinitions).not.toHaveBeenCalled();
+    expect(inventory.listSubjects).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-writes-enabled", "false");
+  });
+
+  it("pins every subject page to the captured document release before the URL is pinned", async () => {
+    const inventory = pagedInventory();
+    renderCatalog({ repository: inventory.repository });
+    expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
+    expect(inventory.listSubjects.mock.calls.slice(0, 2)).toEqual([
+      [{ catalogReleaseId: CATALOG_RELEASE_ID, limit: 100 }],
+      [{ catalogReleaseId: CATALOG_RELEASE_ID, limit: 100, cursor: "subject-page-2" }]
+    ]);
+    expect(inventory.first.items).toHaveLength(100);
+    expect(inventory.first).toMatchObject({ hasMore: true, nextCursor: "subject-page-2", totalCount: 101 });
+  });
+
+  it("keeps the previous complete snapshot read-only if a later subject page fails", async () => {
+    const user = userEvent.setup();
+    const inventory = pagedInventory();
+    renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
+    inventory.listSubjects.mockImplementation(async (query) => {
+      if (query?.cursor) throw new Error("refresh second page failed");
+      return inventory.first;
+    });
+    await user.click(screen.getByRole("button", { name: /^Inventory module 100\s*1$/ }));
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" }))
+      .toHaveAttribute("data-catalog-state", "error"));
+    expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-writes-enabled", "false");
+    expect(screen.getByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
+    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(inventory.listDefinitions).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the unpublished empty state without requesting pinned collections", async () => {
     const repository = createMockParameterCatalogRepository({ scenario: "ready" });
     repository.getCatalog = async () => ({ item: null, publicationState: "unpublished" });

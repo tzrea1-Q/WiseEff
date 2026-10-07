@@ -490,6 +490,7 @@ export const listRegistrations = async (
         semantics: GOVERNANCE_CURRENT_PROJECTION_SEMANTICS,
         items,
         nextCursor,
+        totalCount: rows.length,
         emptyReason: emptyReasonForView("registrations", items.length, Boolean(query.cursor)),
       },
     };

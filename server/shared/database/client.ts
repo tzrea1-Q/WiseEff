@@ -98,7 +98,11 @@ export function createDatabase(queryable: Queryable, options: DatabaseOptions = 
         await query("commit");
         return result;
       } catch (error) {
-        await query("rollback");
+        try {
+          await query("rollback");
+        } catch {
+          // traceQuery records the cleanup failure; preserve the initiating error.
+        }
         throw error;
       }
     }
@@ -159,6 +163,7 @@ export function createPostgresDatabase(connectionString: string, options: Databa
             return { rows: result.rows as Row[], rowCount: result.rowCount };
           })
       };
+      let releaseError: Error | true | undefined;
 
       try {
         await session.query("begin");
@@ -166,10 +171,15 @@ export function createPostgresDatabase(connectionString: string, options: Databa
         await session.query("commit");
         return result;
       } catch (error) {
-        await session.query("rollback");
+        try {
+          await session.query("rollback");
+        } catch (rollbackError) {
+          releaseError = rollbackError instanceof Error ? rollbackError : true;
+        }
         throw error;
       } finally {
-        client.release();
+        if (releaseError) client.release(releaseError);
+        else client.release();
       }
     },
     close: async () => {

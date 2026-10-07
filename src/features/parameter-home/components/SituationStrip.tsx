@@ -36,6 +36,7 @@ export function SituationStrip({
   const isSidebar = variant === "sidebar";
   const presentation = deriveOverviewPresentation(roleView, scope, kpis, personalKpis);
   const isPersonalEmpty =
+    status === "ready" &&
     scope === "personal" &&
     personalKpis !== null &&
     [

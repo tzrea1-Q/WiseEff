@@ -49,7 +49,7 @@ export function OverviewRow({
         error={summaryError}
         onRetry={onSummaryRetry}
       />
-      <Panel title={presentation.trendTitle} subtitle={summary?.windowLabel} className="parameter-home__panel--trend">
+      <Panel title={presentation.trendTitle} subtitle={summaryStatus === "ready" || summaryStatus === "empty" ? summary?.windowLabel : undefined} className="parameter-home__panel--trend">
         {summaryStatus === "loading" || summaryStatus === "idle" ? <SectionSkeleton label="加载趋势" /> : null}
         {summaryStatus === "error" ? (
           <SectionError message={summaryError ?? "趋势加载失败"} onRetry={onSummaryRetry} />

@@ -1,3 +1,4 @@
+import { decodeCatalogCursor, encodeCatalogCursor, fingerprintCatalogQuery } from "../../catalog-kernel/runtime/cursors";
 import {
   catalogAcceptProposalRequestSchema,
   catalogContinueReplacementRequestSchema,
@@ -94,6 +95,7 @@ import {
   idempotencyKeyHeader,
   ifMatchHeader,
   parseEtagVersion,
+  queryValue,
   stripSpoofHeaders,
   unquoteEtag,
 } from "./query";
@@ -730,9 +732,38 @@ async function handleListRegistrations(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
-  const items = await ports.listRegistrations(queryScope(scope, request, pin.pin));
+  const offeredRelease = queryValue(request.query, "catalogReleaseId");
+  if (offeredRelease !== undefined && offeredRelease !== pin.pin.id) {
+    return releaseDrift(request.requestId, offeredRelease, pin.pin.id);
+  }
+  const rawLimit = queryValue(request.query, "limit");
+  const limit = rawLimit === undefined ? undefined : Number(rawLimit);
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)) {
+    return validationFailed(request.requestId, "limit");
+  }
+  const query = queryScope(scope, request, pin.pin);
+  const queryFingerprint = fingerprintCatalogQuery({ route: "catalog.listRegistrations", organizationId: query.organizationId, principalId: scope.principalId });
+  const offeredCursor = queryValue(request.query, "cursor");
+  let cursor: string | undefined;
+  if (offeredCursor !== undefined) {
+    const decoded = decodeCatalogCursor(offeredCursor);
+    if ("malformed" in decoded || decoded.queryFingerprint !== queryFingerprint || decoded.last.length !== 1
+      || typeof decoded.last[0] !== "string" || !decoded.last[0].trim()) {
+      return validationFailed(request.requestId, "cursor");
+    }
+    if (decoded.releaseId !== pin.pin.id || decoded.digest !== pin.pin.digest) {
+      return releaseDrift(request.requestId, decoded.releaseId, pin.pin.id);
+    }
+    cursor = decoded.last[0];
+  }
+  const page = await ports.listRegistrations({ ...query, limit, cursor });
+  const nextCursor = page.nextCursor === null ? null : encodeCatalogCursor({
+    releaseId: pin.pin.id, digest: pin.pin.digest, queryFingerprint, last: [page.nextCursor],
+  });
   return catalogGovernanceOk({
-    body: listEnvelope(items.map(mapRegistrationRecord), pin.pin.id, "no-registrations"),
+    body: { items: page.items.map(mapRegistrationRecord), totalCount: page.totalCount, nextCursor,
+      hasMore: nextCursor !== null, catalogReleaseId: pin.pin.id,
+      ...(page.emptyReason ? { emptyReason: page.emptyReason } : {}) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
   });
@@ -1475,7 +1506,7 @@ export async function handleCatalogGovernance(
   try {
   switch (matched.id) {
     case "catalog.listRegistrations":
-      return handleListRegistrations(ports, auth.scope, scopedRequest);
+      return await handleListRegistrations(ports, auth.scope, scopedRequest);
     case "catalog.createRegistration":
       return handleCreateRegistration(ports, auth.scope, scopedRequest);
     case "catalog.getRegistration":

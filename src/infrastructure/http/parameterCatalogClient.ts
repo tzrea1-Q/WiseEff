@@ -63,6 +63,8 @@ import {
   parameterCatalogClientMethodByRouteId,
   parameterCatalogLegacyWriteRouteIds,
   projectParameterBindingListResponseSchema,
+  projectBindingDtoSchema,
+  itemsEnvelopeSchema,
   projectValueDraftListResponseSchema,
   projectValueDraftRemovedResponseSchema,
   catalogSubmitValueChangeRequestSchema,
@@ -649,6 +651,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         }),
         catalogLegacyIdentifierResponseSchema,
         "CatalogLegacyIdentifierResponse"
+      ),
+    listProtectedProjectBindings: (projectId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings`,
+        itemsEnvelopeSchema(projectBindingDtoSchema),
+        "CatalogProtectedProjectBindingListResponse"
       ),
     listProjectBindings: (projectId: string, query?: CatalogListQuery) =>
       request(

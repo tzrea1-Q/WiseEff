@@ -153,6 +153,8 @@ const syncFileBodySchema = z.object({
 const canonicalSourceSubmitBodySchema = z.object({
   expectedCurrentVersionId: z.string().min(1),
   expectedProofToken: z.string().min(1),
+  expectedWorkflowProofToken: z.string().min(1).optional(),
+  assignedToUserId: z.string().min(1).optional(),
   reason: z.string().trim().min(1).max(2000)
 }).strict();
 
@@ -1095,6 +1097,8 @@ export function registerParameterFileRoutes(
       candidateId: params.candidateId,
       expectedCurrentVersionId: body.expectedCurrentVersionId,
       expectedProofToken: body.expectedProofToken,
+      expectedWorkflowProofToken: body.expectedWorkflowProofToken,
+      assignedToUserId: body.assignedToUserId,
       reason: body.reason,
       requestId: request.requestId,
       refusalSink: requireSubmissionRefusalSink()

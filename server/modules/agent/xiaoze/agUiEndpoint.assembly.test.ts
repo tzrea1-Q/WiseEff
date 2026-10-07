@@ -136,6 +136,94 @@ function readInterruptApprovalId(events: SseEvent[]) {
  * planning graph, the real orchestrator, and the shared memory agent DB.
  */
 describe("registerXiaozeRoutes approval assembly", () => {
+  it("recovers an owned first-turn approval from the parameters page without a prior read tool", async () => {
+    primeParameterMocks("<3100>");
+    mockedSubmit.mockClear();
+    const { db, tables } = createMemoryAgentDb();
+    const owner = developmentAuthContext;
+    let currentAuth = owner;
+    const options = {
+      db,
+      refusalAuditSink: testRefusalAuditSink,
+      getCurrentAuthContext: () => currentAuth
+    };
+    const router = createRouter();
+    registerXiaozeRoutes(router, options);
+    const threadId = "thread-first-pending-parameters";
+    const pageContext = { pageKey: "parameters", projectId: "aurora", path: "/parameters?project=aurora" };
+    expect(tables.sessions).toHaveLength(0);
+    const started = await postXiaoze(router, "req-first-pending", {
+      threadId,
+      runId: "run-first-pending",
+      messages: [{ id: "m-first-pending", role: "user", content: "set pd-1 to <3100>" }],
+      context: [{ description: "wiseeff.page", value: pageContext }]
+    });
+    const interrupt = readInterruptApprovalId(started.events);
+    expect(interrupt.outcomeType).toBe("interrupt");
+    expect(interrupt.approvalId).toBeTruthy();
+    expect(tables.toolCalls).toHaveLength(1);
+    expect(tables.toolCalls[0]).toMatchObject({
+      session_id: threadId,
+      name: "action.submitParameterChange",
+      status: "pending_approval"
+    });
+    expect(tables.approvals[0]).toMatchObject({
+      id: interrupt.approvalId,
+      session_id: threadId,
+      tool_call_id: tables.toolCalls[0].id,
+      requested_by_user_id: owner.user.id,
+      organization_id: owner.organization.id,
+      project_id: "aurora",
+      status: "pending"
+    });
+    expect(mockedSubmit).not.toHaveBeenCalled();
+
+    const recoveredRouter = createRouter();
+    registerXiaozeRoutes(recoveredRouter, options);
+    const recover = (targetRouter: ReturnType<typeof createRouter>) => targetRouter.handle({
+      method: "GET",
+      path: `/api/v1/agent/xiaoze/threads/${threadId}`,
+      params: { threadId },
+      query: {},
+      headers: { authorization: "Bearer dev" },
+      requestId: "req-recover-first-pending",
+      body: undefined
+    });
+    for (const targetRouter of [router, recoveredRouter]) {
+      const recovered = await recover(targetRouter);
+      expect(recovered.status).toBe(200);
+      expect(recovered).toMatchObject({ body: {
+        thread: { id: threadId, context: pageContext },
+        messages: expect.arrayContaining([expect.objectContaining({ id: "m-first-pending", role: "user" })])
+      } });
+    }
+    expect(tables.sessions[0]).toMatchObject({
+      page_key: "xiaoze",
+      actor_user_id: owner.user.id,
+      organization_id: owner.organization.id,
+      project_id: "aurora"
+    });
+
+    currentAuth = { ...owner, user: { ...owner.user, id: "u-intruder" } };
+    await expect(recover(recoveredRouter)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    currentAuth = { ...owner, organization: { ...owner.organization, id: "org-foreign" } };
+    await expect(recover(recoveredRouter)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    currentAuth = owner;
+    const rejected = await postXiaoze(router, "req-reject-first-pending", {
+      threadId,
+      runId: "run-reject-first-pending",
+      messages: [{ id: "m-reject-first-pending", role: "user", content: "reject" }],
+      resume: [{ interruptId: interrupt.approvalId, status: "resolved", payload: {
+        approvalId: interrupt.approvalId, decision: "reject"
+      } }]
+    });
+    expect(rejected.events.some((event) => event.event === EventType.RUN_ERROR)).toBe(false);
+    expect(tables.approvals[0]).toMatchObject({ status: "rejected" });
+    expect(tables.toolCalls[0]).toMatchObject({ status: "rejected" });
+    expect(mockedSubmit).not.toHaveBeenCalled();
+    expect((await recover(recoveredRouter)).status).toBe(200);
+  });
+
   it("normalizes a partial route env before resolving the Xiaoze model label", async () => {
     const { db } = createMemoryAgentDb();
     const router = createRouter();

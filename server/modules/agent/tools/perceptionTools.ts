@@ -129,7 +129,7 @@ export function createPerceptionTools(options: ToolOptions): AgentToolDefinition
             type: "parameter" as const,
             id: item.id,
             label: item.name,
-            href: `/parameters?bindingId=${encodeURIComponent(item.id)}`,
+            href: `/parameters?project=${encodeURIComponent(item.project_id)}&bindingId=${encodeURIComponent(item.id)}`,
             snippet: item.description || item.explanation || item.current_value
           }))
         };

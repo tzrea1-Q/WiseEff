@@ -398,16 +398,26 @@ export async function updateParameterModule(
   );
 
   if (result.rows[0] && nextName !== existing.name && parameterIdentityMode() === "legacy") {
-    await db.query(
-      `
+    const linked = await db.query<{ present: boolean }>(
+      `select exists (
+        select 1 from ${LEGACY_IDENTITY_SQL.definitionsTable}
+        where organization_id = $1
+          and parameter_module_id = $2
+      ) as present`,
+      [input.organizationId, input.moduleId]
+    );
+    if (linked.rows[0].present) {
+      await db.query(
+        `
       update ${LEGACY_IDENTITY_SQL.definitionsTable}
       set module = $3,
         updated_at = now()
       where organization_id = $1
         and parameter_module_id = $2
       `,
-      [input.organizationId, input.moduleId, nextName]
-    );
+        [input.organizationId, input.moduleId, nextName]
+      );
+    }
   }
 
   return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;

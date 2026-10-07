@@ -18,6 +18,9 @@ export function canonicalBatchConflictReady(proof: ManualSyncPreparation,
   if (!target) return false;
   const file = item.choices.file;
   const draft = item.choices.draft;
+  if (proof.kind === "canonical-source-single" && (proof.targets.length !== 1
+    || target.configRevisionId !== proof.configRevisionId || proof.cohort.length < 1
+    || new Set(proof.cohort.map((entry) => entry.bindingId)).size !== proof.cohort.length)) return false;
   return file.choice === "file" && draft.choice === "draft"
     && file.action === target.action && file.targetText === target.afterText
     && file.selectedDraftProof === draft.selectedDraftProof
@@ -47,10 +50,13 @@ export function createCanonicalConflictClient(client: ReturnType<typeof createAp
       return canonicalSourceConflictListResponseSchema.parse(await client.get(`${candidate(projectId, candidateId)}/source-conflicts`));
     },
     async submitCandidateSourceConflict(projectId: string, candidateId: string,
-      input: CanonicalSourceConflictSubmitInput): Promise<CanonicalSourceConflictSubmitResult> {
-      return canonicalSourceConflictSubmitResponseSchema.parse(await client.post(
-        `${candidate(projectId, candidateId)}/source-conflict-submit`, input
-      )).item;
+      input: CanonicalSourceConflictSubmitInput, requestId?: string): Promise<CanonicalSourceConflictSubmitResult> {
+      const path = `${candidate(projectId, candidateId)}/source-conflict-submit`;
+      const body = canonicalSourceConflictSubmitRequestSchema.parse(input);
+      const result = requestId ? await (await client.raw(path, { method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", "X-Request-Id": requestId },
+        body: JSON.stringify(body) })).json() : await client.post(path, body);
+      return canonicalSourceConflictSubmitResponseSchema.parse(result).item;
     }
   };
 }

@@ -260,7 +260,7 @@ export function CanonicalProjectValueReviewPanel({
             }
             setRequests(nextRequests);
             setBatchRequest(listedBatch);
-            setBatchDetailLoadedId(mineOnly ? listedBatch.id : null);
+            setBatchDetailLoadedId(null);
             setBatchSelected(true);
             setSelectedId(null);
             deepLinkRequestRef.current = null;
@@ -308,7 +308,7 @@ export function CanonicalProjectValueReviewPanel({
         setSelectedId(nextSelectedId);
         if (!nextSelectedId && nextBatches.length > 0) {
           setBatchRequest(nextBatches[0]);
-          setBatchDetailLoadedId(mineOnly ? nextBatches[0].id : null);
+          setBatchDetailLoadedId(null);
           setBatchSelected(true);
         }
         if (deepLinkRequestId) {
@@ -327,27 +327,31 @@ export function CanonicalProjectValueReviewPanel({
   }, [batchRefresh, canReview, canonicalRepository, currentUserId, initialRequestId, mineOnly, projectId, view]);
 
   useEffect(() => {
-    if (!batchSelected || !batchRequest || mineOnly || batchDetailLoadedId === batchRequest.id) return;
+    if (!batchSelected || !batchRequest || batchDetailLoadedId === batchRequest.id) return;
     const read = canonicalRepository?.getProjectValueBatchChangeRequest;
     if (!read) return;
     let cancelled = false;
     const requestId = batchRequest.id;
     void read(projectId, requestId).then(({ item }) => {
       if (cancelled) return;
+      if (item.id !== requestId || item.projectId !== projectId
+        || (mineOnly && item.submitterUserId !== currentUserId)) {
+        throw new Error("请求详情与本人提交身份不一致，已阻止显示固定源差异。");
+      }
       setBatchRequest(item);
       setBatchDetailLoadedId(requestId);
     }).catch((cause) => {
       if (!cancelled) setError(presentError(cause, "加载批量请求详情失败，已阻止审核。"));
     });
     return () => { cancelled = true; };
-  }, [batchSelected, batchRequest, batchDetailLoadedId, canonicalRepository, mineOnly, projectId]);
+  }, [batchSelected, batchRequest, batchDetailLoadedId, canonicalRepository, currentUserId, mineOnly, projectId]);
 
   useEffect(() => {
     const requestId = effectiveSelectedId;
     const loadSourceDiff = canonicalRepository?.getProjectValueChangeSourceDiff;
     setSourceDiff(null);
     setSourceDiffError(null);
-    if (!requestId || (mineOnly && batchSelected)) {
+    if (!requestId || (batchSelected && batchDetailLoadedId !== requestId)) {
       setSourceDiffState("idle");
       return undefined;
     }
@@ -372,7 +376,7 @@ export function CanonicalProjectValueReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [canonicalRepository, projectId, effectiveSelectedId, mineOnly, batchSelected, batchRefresh]);
+  }, [canonicalRepository, projectId, effectiveSelectedId, batchSelected, batchDetailLoadedId, batchRefresh]);
 
   useEffect(() => {
     setConflictDecision(null);
@@ -620,7 +624,7 @@ export function CanonicalProjectValueReviewPanel({
                     <td><button type="button" disabled={busy} aria-current={batchSelected && batchRequest?.id === request.id ? "true" : undefined}
                       className="button subtle" onClick={() => {
                         setBatchRequest(request);
-                        setBatchDetailLoadedId(mineOnly ? request.id : null);
+                        setBatchDetailLoadedId(null);
                         setBatchSelected(true);
                         setSelectedId(null);
                         onSelectRequest?.(request.id);
@@ -778,7 +782,7 @@ export function CanonicalProjectValueReviewPanel({
                 <div><dt>实际审核人 ID</dt><dd><code>{batchRequest.reviewerUserId ?? "—"}</code></dd></div>
               </dl>
               {sourceDiffState === "loading" ? <p role="status">正在加载全部目标的固定源差异…</p> : null}
-              {mineOnly ? <p role="note">提交者可查看服务端冻结的全部目标；固定源差异由被指派审核人核对。</p> : null}
+              {mineOnly ? <p role="note">这里显示本人提交时冻结的目标与源差异；审核仍由被指派审核人处理。</p> : null}
               {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}
               <button type="button" className="button subtle" disabled={busy} onClick={() => {
                 deepLinkRequestRef.current = batchRequest.id;

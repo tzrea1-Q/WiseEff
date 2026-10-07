@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCanonicalManualSyncClient } from "./canonicalManualSyncClient";
+import { canonicalManualSyncPrepareResponseSchema } from "@wiseeff/dto-schemas";
 
 const digest = "a".repeat(64);
 const prepared = {
@@ -22,6 +23,38 @@ const prepared = {
 };
 
 describe("canonical manual sync HTTP client", () => {
+  it("keeps the single alternative closed and preserves batch target cardinality and parsing", () => {
+    const { batchProofDigest: _batch, ...base } = prepared;
+    const single = { ...base, kind: "canonical-source-single", configRevisionId: "revision",
+      targets: [base.targets[0]], before: "before", after: "after" };
+    expect(canonicalManualSyncPrepareResponseSchema.safeParse({ item: single }).success).toBe(true);
+    for (const item of [{ ...single, targets: base.targets }, { ...single, targets: [] },
+      { ...single, cohort: [] }, { ...single, configRevisionId: undefined },
+      { ...single, batchProofDigest: digest }, { ...single, kind: "caller-single" },
+      { ...prepared, targets: [prepared.targets[0]] }]) {
+      expect(canonicalManualSyncPrepareResponseSchema.safeParse({ item }).success, JSON.stringify(item)).toBe(false);
+    }
+    expect(canonicalManualSyncPrepareResponseSchema.parse({ item: { ...prepared, before: "unknown" } }).item).toEqual(prepared);
+  });
+  it("accepts one target with a full sibling cohort and submits the frozen single body", async () => {
+    const { batchProofDigest: _batch, ...base } = prepared;
+    const single = { ...base, kind: "canonical-source-single", configRevisionId: "revision",
+      targets: [base.targets[0]], cohort: [...base.cohort, { ...base.cohort[1]!, bindingId: "c" }],
+      before: "before", after: "after" };
+    const raw = vi.fn().mockResolvedValueOnce({ json: async () => ({ item: single }) })
+      .mockResolvedValue({ json: async () => ({ item: { requestId: "single-request", status: "pending", replayed: false } }) });
+    const client = createCanonicalManualSyncClient({ raw } as never);
+    expect((await client.prepare("project/1", "file/1", { contentBase64: "e30=",
+      expectedCurrentVersionId: "current", expectedWorkflowProofToken: "workflow" }, "prepare-single")).kind)
+      .toBe("canonical-source-single");
+    const body = { expectedCurrentVersionId: "current", expectedProofToken: "candidate-proof",
+      expectedWorkflowProofToken: "workflow", reason: "single", assignedToUserId: "reviewer" };
+    expect(await client.submitSingle("project/1", "candidate/1", body, "submit-single"))
+      .toMatchObject({ requestId: "single-request" });
+    expect(raw.mock.calls[1]?.[0]).toBe("/api/v1/projects/project%2F1/parameter-file-candidates/candidate%2F1/source-submit");
+    expect(raw.mock.calls[1]?.[1].headers["X-Request-Id"]).toBe("submit-single");
+    expect(JSON.parse(raw.mock.calls[1]?.[1].body)).toEqual(body);
+  });
   it("uses C prepare and v2 batch submit DTOs with distinct caller-owned X-Request-Id values", async () => {
     const raw = vi.fn().mockResolvedValueOnce({ json: async () => ({ item: prepared }) })
       .mockResolvedValueOnce({ json: async () => ({ item: {

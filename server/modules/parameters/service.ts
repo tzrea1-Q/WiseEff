@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { requiresCanonicalSourceImport } from "../parameter-bindings/values";
 
 import {
@@ -2777,6 +2778,16 @@ export async function createParameterModuleForAuth(
     );
 
     return module;
+  }).catch((error: unknown) => {
+    if (error instanceof pg.DatabaseError
+      && error.code === "23505"
+      && error.constraint === "parameter_modules_org_parent_name_unique_idx") {
+      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", {
+        name,
+        parentId
+      });
+    }
+    throw error;
   });
 }
 
@@ -2902,6 +2913,16 @@ export async function updateParameterModuleForAuth(
     );
 
     return module;
+  }).catch((error: unknown) => {
+    if (error instanceof pg.DatabaseError
+      && error.code === "23505"
+      && error.constraint === "parameter_modules_org_parent_name_unique_idx") {
+      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", {
+        name: nextName,
+        parentId: current.parentId
+      });
+    }
+    throw error;
   });
 }
 
@@ -2966,6 +2987,14 @@ export async function moveParameterModuleForAuth(
       return module;
     });
   } catch (error) {
+    if (error instanceof pg.DatabaseError
+      && error.code === "23505"
+      && error.constraint === "parameter_modules_org_parent_name_unique_idx") {
+      throw new ApiError("CONFLICT", "Parameter module already exists under the target parent.", {
+        name: nextName,
+        parentId
+      });
+    }
     if (error instanceof Error && /cycle/i.test(error.message)) {
       throw new ApiError("CONFLICT", error.message, { moduleId, parentId });
     }

@@ -20,6 +20,7 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "createDefinitionReplacement",
   "getDefinitionReplacement",
   "continueDefinitionReplacement",
+  "listProtectedProjectBindings",
   "listProjectValueDrafts",
   "deleteProjectValueDraft",
   "submitProjectValueDraft",

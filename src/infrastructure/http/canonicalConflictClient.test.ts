@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { createCanonicalConflictClient } from "./canonicalConflictClient";
 
 describe("createCanonicalConflictClient", () => {
+  it("keeps caller-owned request identity for the selected single conflict", async () => {
+    const raw = vi.fn().mockResolvedValue({ json: async () => ({ item: {
+      requestId: "selected-request", status: "pending", replayed: false
+    } }) });
+    const client = createCanonicalConflictClient({ raw } as never);
+    const input = { selectedBindingId: "binding", selectedDraftId: "selected", choice: "draft" as const,
+      expectedDecisionProofDigest: "a".repeat(64), reason: "selected reason", assignedToUserId: "reviewer" };
+    await client.submitCandidateSourceConflict("project", "candidate", input, "frozen-id");
+    expect(raw.mock.calls[0]?.[1].headers["X-Request-Id"]).toBe("frozen-id");
+    expect(JSON.parse(raw.mock.calls[0]?.[1].body)).toEqual(input);
+  });
   it("uses C's single-conflict discovery and submission routes", async () => {
     const get = vi.fn().mockResolvedValue({ items: [], ineligible: [] });
     const post = vi.fn().mockResolvedValue({ item: { requestId: "request-1", status: "pending", replayed: true } });

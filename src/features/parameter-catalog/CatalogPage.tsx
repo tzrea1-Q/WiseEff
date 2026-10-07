@@ -23,6 +23,7 @@ import {
 import type { CatalogActorKind, CatalogAuthorizedAction } from "@/application/parameter-catalog/authority";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { DataTable, type Column } from "@/components/admin";
+import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
@@ -329,7 +330,15 @@ export function CatalogPage({
       }
       // The navigator needs every organization placement, so the subject
       // inventory is complete while the definition table stays paged.
-      const subjects = await catalog.listSubjects({ ...pin, limit: 100 });
+      let firstSubjectPage: CatalogSubjectListResponse | undefined;
+      const subjectItems = await listAllCanonicalPages(async (query) => {
+        const page = await catalog.listSubjects(query);
+        firstSubjectPage ??= page;
+        return page;
+      }, { catalogReleaseId: document.item.catalogReleaseId, limit: 100 });
+      const subjects: CatalogSubjectListResponse = {
+        ...firstSubjectPage!, items: subjectItems, hasMore: false, nextCursor: null
+      };
       let subject: SubjectItem | null = null;
       let definition: DefinitionItem | null = null;
       let revisions: RevisionItem[] = [];
@@ -631,10 +640,11 @@ export function CatalogPage({
         renderLabel: (value) => moduleFilterLabel(subjects, value),
         onToggle: (value) => selectModuleNode(value === anchor.moduleNodeId ? null : value),
         onClear: () => selectModuleNode(null),
+        // visibleDefinitions already applies the selected module's full subtree.
         getValue: (row) =>
-          row.registration.status === "unregistered"
+          anchor.moduleNodeId ?? (row.registration.status === "unregistered"
             ? ""
-            : row.registration.placement?.moduleId ?? ""
+            : row.registration.placement?.moduleId ?? "")
       }
     },
     {

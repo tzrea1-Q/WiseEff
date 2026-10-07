@@ -1,4 +1,4 @@
-import type { Database } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import type { HotspotDimension } from "../../../src/domain/parameters/dashboardTypes";
 
 export type BindingDashboardScope = {
@@ -124,6 +124,21 @@ const ACTIVE_SOURCE_BACKED_BINDINGS = `
   join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
   join parameter_catalog.definition_revisions revision
     on revision.id = b.effective_revision_id and revision.definition_id = b.definition_id`;
+
+/** Tenant-wide inventory of displayable current source-backed Binding identities. */
+export async function countSourceBackedBindingsByProject(
+  db: Queryable,
+  organizationId: string,
+): Promise<Map<string, number>> {
+  const result = await db.query<{ project_id: string; parameter_count: string }>(
+    `select b.project_id, count(distinct b.id)::text as parameter_count
+       ${ACTIVE_SOURCE_BACKED_BINDINGS}
+      where b.organization_id = $1
+      group by b.project_id`,
+    [organizationId],
+  );
+  return new Map(result.rows.map((row) => [row.project_id, Number(row.parameter_count)]));
+}
 
 export async function readBindingDashboardKpis(
   db: Database,

@@ -71,6 +71,8 @@ import type {
   catalogWithdrawProposalRequestSchema,
   nodeEnablementDraftResponseSchema,
   projectParameterBindingListResponseSchema,
+  projectBindingDtoSchema,
+  itemsEnvelopeSchema,
   projectValueDraftListResponseSchema,
   projectValueDraftRemovedResponseSchema
 } from "@wiseeff/dto-schemas";
@@ -135,6 +137,7 @@ export type CatalogLegacyIdentifierResponse = z.infer<typeof catalogLegacyIdenti
 export type CatalogLegacyGoneResponse = z.infer<typeof catalogLegacyGoneResponseSchema>;
 export type CatalogProjectBindingDto = z.infer<typeof catalogProjectBindingDtoSchema>;
 export type CatalogProjectBindingListResponse = z.infer<typeof projectParameterBindingListResponseSchema>;
+export type CatalogProtectedProjectBindingListResponse = z.infer<ReturnType<typeof itemsEnvelopeSchema<typeof projectBindingDtoSchema>>>;
 export type CatalogBindingHistoryListResponse = z.infer<typeof bindingHistoryListResponseSchema>;
 export type CatalogBindingChangeHistoryListResponse = z.infer<
   typeof catalogBindingChangeHistoryListResponseSchema
