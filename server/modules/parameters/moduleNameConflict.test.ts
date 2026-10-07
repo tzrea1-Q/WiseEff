@@ -5,6 +5,7 @@ import { createDatabase, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { updateParameterModuleForAuth } from "./service";
+import { moveParameterModuleForAuth } from "./service";
 
 const constraint = "parameter_modules_org_parent_name_unique_idx";
 const auth = makeTestAuthContext({ organizationId: "org-1" });
@@ -77,5 +78,90 @@ describe("module name transaction conflicts", () => {
     ["lookalike exception", Object.assign(new Error("duplicate"), { code: "23505", constraint })]
   ])("rethrows %s unchanged after rollback", async (_label, original) => {
     expect(await failedUpdate(original, "parent-1")).toBe(original);
+  });
+});
+
+async function failedMove(error: unknown, parentId: string | null) {
+  const statements: string[] = [];
+  const current = {
+    id: "module-1", organization_id: "org-1", parent_id: "old-parent",
+    name: "Shared name", path: "old-parent/module-1", depth: 2, sort_order: 0,
+    description: "", scope: "", importance: "medium", kind: "business",
+    origin: "curated", source_key: null, attribution_subject_id: null
+  };
+  const parent = { ...current, id: "parent-1", parent_id: null, name: "Target", path: "parent-1", depth: 1 };
+  const queryable: Queryable = {
+    async query<Row>(text: string, values: unknown[] = []) {
+      const sql = text.trim();
+      statements.push(sql.split(/\s+/, 1)[0]);
+      if (sql === "begin" || sql === "rollback") return { rows: [], rowCount: null };
+      if (sql.startsWith("update parameter_modules")) {
+        expect(values).toEqual([
+          "org-1", "module-1", parentId,
+          parentId ? "parent-1/module-1" : "module-1", "old-parent/module-1",
+          parentId ? 0 : -1, true
+        ]);
+        throw error;
+      }
+      if (sql.includes("from parameter_modules") && sql.includes("name = $2")) {
+        expect(values).toEqual(["org-1", "Shared name", parentId]);
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("from parameter_modules") && sql.includes("id = $2")) {
+        expect(values).toEqual(["org-1", values[1]]);
+        expect(["module-1", "parent-1"]).toContain(values[1]);
+        return { rows: [values[1] === "module-1" ? current : parent] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("from parameter_modules") && sql.includes("order by path asc")) {
+        expect(values).toEqual(["org-1"]);
+        return { rows: [current, parent] as Row[], rowCount: 2 };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    }
+  };
+
+  let rejected: unknown;
+  try {
+    await moveParameterModuleForAuth(createDatabase(queryable), auth, "module-1", { parentId });
+    throw new Error("Expected move to reject");
+  } catch (caught) {
+    rejected = caught;
+    // Rejection is observable only after rollback; no commit or success audit INSERT.
+    expect(statements).toEqual(parentId
+      ? ["select", "select", "select", "begin", "select", "select", "select", "update", "rollback"]
+      : ["select", "select", "begin", "select", "select", "update", "rollback"]);
+  }
+  return rejected;
+}
+
+describe("module move transaction conflicts", () => {
+  it.each([null, "parent-1"])("maps the exact PostgreSQL constraint after rollback (target parent %s)", async (parentId) => {
+    const error = await failedMove(databaseError("23505"), parentId);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT", status: 409,
+      message: "Parameter module already exists under the target parent.",
+      details: { name: "Shared name", parentId }
+    });
+  });
+
+  it.each([
+    ["another unique constraint", databaseError("23505", "unrelated_unique_idx")],
+    ["another SQLSTATE", databaseError("23503")],
+    ["ordinary exception", new Error("move failed")],
+    ["ApiError", new ApiError("FORBIDDEN", "denied")],
+    ["lookalike exception", Object.assign(new Error("duplicate"), { code: "23505", constraint })]
+  ])("rethrows %s unchanged after rollback", async (_label, original) => {
+    expect(await failedMove(original, "parent-1")).toBe(original);
+  });
+
+  it("preserves cycle conflict mapping after rollback", async () => {
+    const original = new Error("Cannot move module: cycle detected");
+    const error = await failedMove(original, "parent-1");
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT", status: 409, message: original.message,
+      details: { moduleId: "module-1", parentId: "parent-1" }
+    });
   });
 });

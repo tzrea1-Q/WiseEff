@@ -2977,6 +2977,14 @@ export async function moveParameterModuleForAuth(
       return module;
     });
   } catch (error) {
+    if (error instanceof pg.DatabaseError
+      && error.code === "23505"
+      && error.constraint === "parameter_modules_org_parent_name_unique_idx") {
+      throw new ApiError("CONFLICT", "Parameter module already exists under the target parent.", {
+        name: nextName,
+        parentId
+      });
+    }
     if (error instanceof Error && /cycle/i.test(error.message)) {
       throw new ApiError("CONFLICT", error.message, { moduleId, parentId });
     }
