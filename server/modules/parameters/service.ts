@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { requiresCanonicalSourceImport } from "../parameter-bindings/values";
 
 import {
@@ -2902,6 +2903,16 @@ export async function updateParameterModuleForAuth(
     );
 
     return module;
+  }).catch((error: unknown) => {
+    if (error instanceof pg.DatabaseError
+      && error.code === "23505"
+      && error.constraint === "parameter_modules_org_parent_name_unique_idx") {
+      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", {
+        name: nextName,
+        parentId: current.parentId
+      });
+    }
+    throw error;
   });
 }
 
