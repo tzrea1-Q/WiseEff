@@ -29,7 +29,7 @@ Start with the affected code and tests. Use `rg`/file search and read relevant s
 | Security or operations | Relevant `docs/SECURITY.md`, `docs/RELIABILITY.md`, or runbook |
 | Multi-step implementation | `docs/agents/development-workflow.md` |
 | Parallel worktrees | `docs/agents/fleet-coordination.md` |
-| Accepted sealed delivery / Wayfinder launch | `docs/agents/agent-delivery-protocol.md` and the named program rules |
+| Wayfinder #668 launch children (#683–#735) only | `docs/agents/agent-delivery-protocol.md` and the named program rules |
 
 ## Verify proportionately
 
@@ -41,9 +41,20 @@ Use existing scripts: `npm test -- <files>`, `npm run test:server -- <files>`, `
 
 Local frontend development defaults to API mode. Mock mode must be explicit and cannot establish backend, integration, or production acceptance.
 
+## Keep delivery lean
+
+Process cost must stay proportional to the change. These apply to all work outside the sealed scope below:
+
+- The sealed protocol (`agent-delivery-protocol.md`) applies only to Wayfinder #668 launch children #683–#735 and to an Issue whose body explicitly adopts it. Do not extend it to other work by analogy, risk level, or size.
+- Evidence lives in the PR description: base/head, commands run, pass/fail/skip counts, and screenshots for visible changes. Do not create out-of-repo evidence ledgers, one-time run approvals, byte/hash manifests, custom supervisors, or readback audits of your own artifacts.
+- Ship small. One PR per Issue or coherent slice, based on current `main`, merged once green. Do not accumulate unmerged work on a long-lived integration branch.
+- Review once per PR: an independent review of the diff for authorization, tenancy, migration, concurrency, or destructive seams, otherwise a focused self-review. Fix findings on the same PR, then re-check only what changed.
+- A dirty file you do not own: leave it untouched and work in a separate worktree. Ask its owner instead of designing a handling procedure.
+- Blocked on a human decision: ask once, with concrete options, and continue unblocked work.
+
 ## Delivery and skills
 
-Use one coordinating agent by default; delegate independent work when it reduces the critical path. Required independent review remains independent. Only the coordinating agent may open or merge PRs, and only within user authorization. For ordinary work, follow the development workflow; accepted sealed programs retain their existing protocol.
+Use one coordinating agent by default; delegate independent work when it reduces the critical path. Required independent review remains independent. Only the coordinating agent may open or merge PRs, and only within user authorization. Follow the development workflow; only the sealed scope above uses the delivery protocol.
 
 Repository-owned skills live in `.agents/skills/` and load only when their descriptions match. External skill packs are optional, not a required delivery dependency. Do not recreate retired `docs/superpowers/` workflows.
 
