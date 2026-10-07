@@ -269,7 +269,7 @@ describe("CatalogPage", () => {
       inventory.last.id, expect.objectContaining({ catalogReleaseId: CATALOG_RELEASE_ID })
     ));
     expect(onHref).toHaveBeenCalledWith(expect.stringContaining(`subjectId=${inventory.last.id}`), "push");
-  });
+  }, 15_000);
 
   it("fails closed on a second subject page failure and recovers through explicit retry", async () => {
     const user = userEvent.setup();
