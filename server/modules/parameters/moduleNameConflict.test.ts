@@ -165,3 +165,79 @@ describe("module move transaction conflicts", () => {
     });
   });
 });
+
+import { createParameterModuleForAuth } from "./service";
+
+async function failedCreate(error: unknown, parentId: string | null) {
+  const statements: string[] = [];
+  const parent = {
+    id: "parent-1", organization_id: "org-1", parent_id: null,
+    name: "Parent", path: "parent-1", depth: 1, sort_order: 0,
+    description: "", scope: "", importance: "medium", kind: "business",
+    origin: "curated", source_key: null, attribution_subject_id: null
+  };
+  const queryable: Queryable = {
+    async query<Row>(text: string, values: unknown[] = []) {
+      const sql = text.trim();
+      statements.push(sql.split(/\s+/, 1)[0]);
+      if (sql === "begin" || sql === "rollback") return { rows: [], rowCount: null };
+      if (sql.startsWith("insert into parameter_modules")) {
+        const id = values[0];
+        expect(id).toEqual(expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i));
+        expect(values).toEqual([
+          id, "org-1", parentId, "Shared name",
+          parentId ? `parent-1/${id}` : id, parentId ? 2 : 1,
+          0, "", "", "medium", "business", "curated", null, null
+        ]);
+        throw error;
+      }
+      if (sql.includes("from parameter_modules") && sql.includes("name = $2")) {
+        expect(values).toEqual(["org-1", "Shared name", parentId]);
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("from parameter_modules") && sql.includes("id = $2")) {
+        expect(parentId).toBe("parent-1");
+        expect(values).toEqual(["org-1", "parent-1"]);
+        return { rows: [parent] as Row[], rowCount: 1 };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    }
+  };
+
+  let rejected: unknown;
+  try {
+    await createParameterModuleForAuth(createDatabase(queryable), auth, {
+      name: "  Shared name  ", parentId, kind: "business"
+    });
+    throw new Error("Expected create to reject");
+  } catch (caught) {
+    rejected = caught;
+    // Rejection is observable only after rollback; no commit or success audit INSERT.
+    expect(statements).toEqual(parentId
+      ? ["select", "select", "begin", "select", "insert", "rollback"]
+      : ["select", "begin", "insert", "rollback"]);
+  }
+  return rejected;
+}
+
+describe("module create transaction conflicts", () => {
+  it.each([null, "parent-1"])("maps the exact PostgreSQL constraint after rollback (parent %s)", async (parentId) => {
+    const error = await failedCreate(databaseError("23505"), parentId);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT", status: 409,
+      message: "Parameter module already exists under this parent.",
+      details: { name: "Shared name", parentId }
+    });
+  });
+
+  it.each([
+    ["another unique constraint", databaseError("23505", "unrelated_unique_idx")],
+    ["another SQLSTATE", databaseError("23503")],
+    ["ordinary exception", new Error("create failed")],
+    ["ApiError", new ApiError("FORBIDDEN", "denied")],
+    ["lookalike exception", Object.assign(new Error("duplicate"), { code: "23505", constraint })]
+  ])("rethrows %s unchanged after rollback", async (_label, original) => {
+    expect(await failedCreate(original, "parent-1")).toBe(original);
+  });
+});

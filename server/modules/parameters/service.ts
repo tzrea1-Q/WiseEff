@@ -2778,6 +2778,16 @@ export async function createParameterModuleForAuth(
     );
 
     return module;
+  }).catch((error: unknown) => {
+    if (error instanceof pg.DatabaseError
+      && error.code === "23505"
+      && error.constraint === "parameter_modules_org_parent_name_unique_idx") {
+      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", {
+        name,
+        parentId
+      });
+    }
+    throw error;
   });
 }
 
