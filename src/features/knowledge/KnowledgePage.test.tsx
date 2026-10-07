@@ -32,6 +32,32 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("shows unavailable statistics through cold failure and restores counts only after a successful list", async () => {
+    const repository = createMockKnowledgeRepository();
+    const entries = await repository.list();
+    const cold = deferred<{ items: KnowledgeEntry[] }>();
+    const retry = deferred<{ items: KnowledgeEntry[] }>();
+    vi.spyOn(repository, "list").mockImplementationOnce(() => cold.promise)
+      .mockImplementationOnce(() => retry.promise).mockResolvedValue(entries);
+    render(<KnowledgePage repository={repository} capability={viewerCapability} />);
+    const user = userEvent.setup();
+
+    expect(screen.getByText("知识条目统计加载中…")).toBeInTheDocument();
+    expect(screen.queryByText(/已发布 \d+ 条 · 草稿 \d+ 条/)).not.toBeInTheDocument();
+    await act(async () => cold.reject(new Error("Request failed.")));
+    expect(screen.getByText("知识条目统计暂不可用")).toBeInTheDocument();
+    expect(screen.queryByText(/已发布 \d+ 条 · 草稿 \d+ 条/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    expect(screen.getByText("知识条目统计加载中…")).toBeInTheDocument();
+    await act(async () => retry.resolve({ items: [] }));
+    expect(screen.getByText("已发布 0 条 · 草稿 0 条")).toBeInTheDocument();
+    expect(screen.getByText(/知识库还是空的/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    expect(await screen.findByText(`已发布 ${entries.items.filter((entry) => entry.status === "published").length} 条 · 草稿 ${entries.items.filter((entry) => entry.status === "draft").length} 条`)).toBeInTheDocument();
+    expect(screen.queryByText("知识条目统计暂不可用")).not.toBeInTheDocument();
+    expect(screen.queryByText("知识条目统计加载中…")).not.toBeInTheDocument();
+  });
+
   it("recognizes a new citation completion even when get returns the same object", async () => {
     const repository = createMockKnowledgeRepository();
     const entry = (await repository.get("mock-kb-1"))!;
