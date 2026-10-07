@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, FilePlus2, RefreshCw, SquarePen } from "lucide-react";
 
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
@@ -65,7 +65,8 @@ export function KnowledgePage({
 }: KnowledgePageProps) {
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [listError, setListError] = useState("");
+  const [searchError, setSearchError] = useState("");
   const [citationError, setCitationError] = useState("");
   const [citationLoading, setCitationLoading] = useState(Boolean(initialEntryId));
   const [citationRetry, setCitationRetry] = useState(0);
@@ -82,26 +83,53 @@ export function KnowledgePage({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadEntry, setUploadEntry] = useState<KnowledgeEntry | null>(null);
   const [revisionsEntry, setRevisionsEntry] = useState<KnowledgeEntry | null>(null);
+  const listRequest = useRef(0);
+  const searchRequest = useRef(0);
+  const citationResult = useRef<{ entry: KnowledgeEntry } | null>(null);
 
   const loadEntries = useCallback(async () => {
+    const request = ++listRequest.current;
+    const citationAtStart = citationResult.current;
     setLoading(true);
-    setErrorMessage("");
+    setListError("");
     try {
       const result = await repository.list();
-      setRows(result.items);
+      if (request !== listRequest.current) return;
+      // Preserve only a get completed after this list started, never an older cached lookup.
+      const citation = citationResult.current !== citationAtStart ? citationResult.current?.entry : null;
+      setRows(citation
+        ? [citation, ...result.items.filter((entry) => entry.id !== citation.id)]
+        : result.items);
     } catch (error) {
-      setErrorMessage(presentError(error, "知识条目加载失败，请稍后重试。"));
+      if (request === listRequest.current) setListError(presentError(error, "知识条目加载失败，请稍后重试。"));
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
   }, [repository]);
 
   useEffect(() => {
+    setRows([]);
+    setSearchInput("");
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchRetrieval(null);
+    setSearchError("");
+    setSearching(false);
+    setEditorOpen(false);
+    setEditorEntry(null);
+    setUploadOpen(false);
+    setUploadEntry(null);
+    setRevisionsEntry(null);
     void loadEntries();
+    return () => {
+      ++listRequest.current;
+      ++searchRequest.current;
+    };
   }, [loadEntries]);
 
   // Citation deep link (/knowledge?entryId=…) opens the entry detail directly.
   useEffect(() => {
+    citationResult.current = null;
     setCitationError("");
     setCitationLoading(Boolean(initialEntryId));
     setSelectedId(null);
@@ -115,6 +143,7 @@ export function KnowledgePage({
         setCitationError("引用的知识条目不存在或不可访问。");
         return;
       }
+      citationResult.current = { entry };
       setRows((current) => (current.some((item) => item.id === entry.id)
         ? current.map((item) => item.id === entry.id ? entry : item)
         : [entry, ...current]));
@@ -130,27 +159,33 @@ export function KnowledgePage({
   }, [initialEntryId, repository, citationRetry]);
 
   const runSearch = async () => {
+    const request = ++searchRequest.current;
     const q = searchInput.trim();
     setSearchQuery(q);
+    setSearchError("");
+    setSearchResults([]);
+    setSearchRetrieval(null);
     if (!q) {
-      setSearchResults([]);
-      setSearchRetrieval(null);
+      setSearching(false);
       return;
     }
     setSearching(true);
-    setErrorMessage("");
     try {
       const response = await repository.search(q);
+      if (request !== searchRequest.current) return;
       setSearchResults(response.items);
       setSearchRetrieval(response.retrieval);
     } catch (error) {
-      setErrorMessage(presentError(error, "检索失败，请稍后重试。"));
+      if (request === searchRequest.current) setSearchError(presentError(error, "检索失败，请稍后重试。"));
     } finally {
-      setSearching(false);
+      if (request === searchRequest.current) setSearching(false);
     }
   };
 
   const clearSearch = () => {
+    ++searchRequest.current;
+    setSearching(false);
+    setSearchError("");
     setSearchInput("");
     setSearchQuery("");
     setSearchResults([]);
@@ -181,6 +216,7 @@ export function KnowledgePage({
     [rows, statusFilter, tagFilter]
   );
   const selectedEntry = selectedId ? rows.find((entry) => entry.id === selectedId) ?? null : null;
+  const errorMessage = (searchQuery ? searchError : listError) || citationError;
   const publishedCount = useMemo(() => rows.filter((entry) => entry.status === "published").length, [rows]);
   const draftCount = useMemo(() => rows.filter((entry) => entry.status === "draft").length, [rows]);
 
@@ -385,6 +421,7 @@ export function KnowledgePage({
             {capability.canEdit ? (
               <>
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => {
@@ -396,6 +433,7 @@ export function KnowledgePage({
                   新建条目
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => {
@@ -408,9 +446,9 @@ export function KnowledgePage({
                 </Button>
               </>
             ) : null}
-            <Button variant="outline" size="sm" onClick={() => {
+            <Button type="button" variant="outline" size="sm" onClick={() => {
               void loadEntries();
-              if (citationError) setCitationRetry((current) => current + 1);
+              if (citationError || (initialEntryId && selectedId === initialEntryId)) setCitationRetry((current) => current + 1);
             }} disabled={loading || citationLoading} aria-busy={loading || citationLoading || undefined}>
               <RefreshCw data-icon="inline-start" />
               刷新
@@ -418,11 +456,11 @@ export function KnowledgePage({
           </span>
         </form>
 
-        {errorMessage || citationError ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage || citationError}</p> : null}
+        {errorMessage ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</p> : null}
 
         {searchQuery ? (
           <div className="flex flex-col gap-2" aria-label="检索结果">
-            {!searching && !errorMessage ? <p className="text-xs text-muted-foreground">
+            {!searching && !searchError ? <p className="text-xs text-muted-foreground">
               “{searchQuery}” 命中 {searchResults.length} 条已发布知识(草稿与已归档不参与检索)。
               {searchRetrieval ? (
                 <span className="ml-1" data-retrieval-mode={searchRetrieval.mode}>
@@ -446,7 +484,7 @@ export function KnowledgePage({
                   </button>
                 </li>
               ))}
-              {!searching && !errorMessage && !citationError && searchResults.length === 0 ? (
+              {!searching && !searchError && searchResults.length === 0 ? (
                 <li className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
                   没有命中已发布的知识条目。
                 </li>
@@ -465,7 +503,7 @@ export function KnowledgePage({
             emptyState={
               loading || citationLoading ? (
                 <p className="text-sm text-muted-foreground">正在加载知识条目…</p>
-              ) : errorMessage || citationError ? null : (
+              ) : listError || citationError ? <></> : (
                 <p className="text-sm text-muted-foreground">
                   {rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。"}
                 </p>
