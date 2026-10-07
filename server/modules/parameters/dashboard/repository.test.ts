@@ -26,11 +26,10 @@ import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJson
 import { createCandidate } from "../../parameter-files/candidateService";
 import { previewCanonicalCandidate, freezeCanonicalCandidateBatchSnapshotInTransaction } from "../../parameter-files/canonicalFileWorkflow";
 import { loadPublishedCatalog } from "../../parameter-bindings/catalogProjectValueSync";
-import { submitCanonicalMemberAddition, listCanonicalMemberAdditionsForAuth, withdrawCanonicalMemberAddition } from "../../parameter-bindings/drafts/memberAdditionChangeService";
 import { submitCanonicalMemberRemoval, listCanonicalMemberRemovalsForAuth, reviewCanonicalMemberRemoval } from "../../parameter-bindings/drafts/memberRemovalChangeService";
 import { submitCanonicalBatchValueChange, listCanonicalBatchValueChangesForAuth } from "../../parameter-bindings/drafts/batchChangeService";
 import { createCanonicalValueDraft } from "../../parameter-bindings/drafts/service";
-import { submitCanonicalValueChange, listCanonicalValueChangesForAuth } from "../../parameter-bindings/drafts/changeService";
+import { submitCanonicalValueChange, listCanonicalValueChangesForAuth, withdrawCanonicalValueChange } from "../../parameter-bindings/drafts/changeService";
 import { createParameterModuleForAuth } from "../service";
 import { executeRegistration } from "../../parameter-governance/registration";
 import { CatalogSubjectId } from "../../parameter-catalog-contract";
@@ -72,20 +71,19 @@ describe.skipIf(!databaseAvailable)("canonical dashboard assigned review queue",
       const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
       if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
       // Each producer owns a separate source cohort so no sibling pending conflict is bypassed.
-      const source = async (kind: "addition" | "removal" | "batch" | "single", actor = c, sourceProjectId = projectId) => {
+      const source = async (kind: "removal" | "batch" | "single", actor = c, sourceProjectId = projectId) => {
         const projectId = sourceProjectId;
         const configSet = await createConfigSet(db, actor, { projectId, name: "Counter " + randomUUID() });
         const files = [];
         const bindings = [];
-        for (let index = 0; index < (kind === "addition" || kind === "removal" ? 2 : 1); index++) {
+        for (let index = 0; index < (kind === "removal" ? 2 : 1); index++) {
           const uploaded = await uploadProjectParameterFile(db, storage, actor, { projectId,
             fileName: randomUUID() + ".json", bytes: Buffer.from(kind === "batch"
               ? '{"settings":{"limit":36.5},"other":{"limit":48}}\n' : '{"limit":36.5}\n') });
           files.push(uploaded);
           await addConfigSetFile(db, actor, { configSetId: configSet.id, fileId: uploaded.file.id, role: index === 0 ? "base" : "overlay", sortOrder: index });
         }
-        for (const [index, file] of files.entries()) {
-          if (kind === "addition" && index === 1) continue;
+        for (const file of files) {
           for (const mapping of kind === "batch" ? [{ rootPointer: "", pointer: "/settings/limit" }, { rootPointer: "/other", pointer: "/other/limit" }] : [{ rootPointer: "", pointer: "/limit" }]) {
             const registered = await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, actor, snapshot, {
               projectId, configSetId: configSet.id, fileId: file.file.id, fileVersionId: file.version.id, configurationSchemaId: schemaId,
@@ -96,18 +94,6 @@ describe.skipIf(!databaseAvailable)("canonical dashboard assigned review queue",
         }
         const revision = (await db.query<{ id: string }>("select config_revision_id as id from parameter_catalog.project_value_source_pins where project_value_id=$1", [bindings[0]!.currentValueId])).rows[0]!.id;
         return { configSet, files, bindings, revision };
-      };
-      const addition = async (assignedToUserId: string, actor = c) => {
-        const f = await source("addition", actor);
-        const added = await uploadProjectParameterFile(db, storage, actor, { projectId, fileName: randomUUID() + ".json", bytes: Buffer.from('{"limit":37.5}\n') });
-        const result = await submitCanonicalMemberAddition(db, storage, actor, {
-          projectId, configSetId: f.configSet.id, fileId: added.file.id, fileVersionId: added.version.id,
-          expectedConfigRevisionId: f.revision, sourceName: "added.json", role: "misc", sortOrder: 2,
-          assignedToUserId, reason: "Counter addition", mapping: { establishedBindingId: f.bindings[0]!.id,
-            configurationSchemaId: schemaId, definitionId, definitionRevisionId: f.bindings[0]!.effectiveRevisionId, rootPointer: "", pointer: "/limit" }, ...context(actor)
-        });
-        expect(result.item.status).toBe("pending");
-        return result.item;
       };
       const removal = async (assignedToUserId: string) => {
         const f = await source("removal");
@@ -142,31 +128,22 @@ describe.skipIf(!databaseAvailable)("canonical dashboard assigned review queue",
         expect(result.status).toBe("pending");
         return result;
       };
-      const additions = [await addition(aId), await addition(bId)];
       const removals = [await removal(aId), await removal(bId)];
       const batches = [await batch(aId), await batch(bId)];
       const singles = [await single(bId), await single(null)];
       const scope = { organizationId, projectId, authorizedProjectIds: [projectId], reviewableProjectIds: [projectId] };
       const queue = (userId: string, overrides = {}) => aggregateWorkbenchSignals(db, { ...scope, userId, ...overrides });
       const census = async (actor: typeof a) => {
-        const visibleAdditions = [];
-        let afterRequestId: string | undefined;
-        do {
-          const page = await listCanonicalMemberAdditionsForAuth(db, actor, { projectId, afterRequestId, context: context(actor) });
-          visibleAdditions.push(...page.items.filter((item) => item.status === "pending" && item.submitterUserId !== actor.user.id));
-          afterRequestId = page.nextAfterRequestId ?? undefined;
-        } while (afterRequestId);
         const index = actor.user.id === aId ? 0 : 1;
-        expect(visibleAdditions.map((item) => item.id)).toEqual([additions[index]!.id]);
         const visibleRemovals = await listCanonicalMemberRemovalsForAuth(db, actor, { projectId, status: "pending" });
         expect(visibleRemovals.map((item) => item.id)).toEqual([removals[index]!.id]);
         const visibleBatches = await listCanonicalBatchValueChangesForAuth(db, actor, { projectId, status: "pending" });
         expect(visibleBatches.map((item) => item.id)).toEqual([batches[index]!.id]);
         const visibleSingles = await listCanonicalValueChangesForAuth(db, actor, { projectId, status: "pending" });
         expect(new Set(visibleSingles.map((item) => item.id))).toEqual(new Set(singles.map((item) => item.id)));
-        const ids = new Set([...visibleAdditions, ...visibleRemovals, ...visibleBatches, ...visibleSingles]
+        const ids = new Set([...visibleRemovals, ...visibleBatches, ...visibleSingles]
           .filter((item) => item.submitterUserId !== actor.user.id).map((item) => item.id));
-        expect(ids.size).toBe(5);
+        expect(ids.size).toBe(4);
         return ids;
       };
       for (const actor of [a, b]) {
@@ -182,9 +159,9 @@ describe.skipIf(!databaseAvailable)("canonical dashboard assigned review queue",
       await db.query("insert into projects(id,organization_id,name,code,status) values($1,$2,'Other counter','OTHER','initialized')", [otherProjectId, organizationId]);
       await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values('counter-other-review',$1,$2,$3,'software-committer')", [bId, organizationId, otherProjectId]);
       const other = await single(bId, c, otherProjectId);
-      expect((await queue(aId, { projectId: null, authorizedProjectIds: null, reviewableProjectIds: [projectId, otherProjectId] })).reviewQueue).toBe(6);
-      expect((await queue(aId, { projectId: null, reviewableProjectIds: [projectId, otherProjectId] })).reviewQueue).toBe(5);
-      expect((await queue(aId, { reviewableProjectIds: [projectId, otherProjectId] })).reviewQueue).toBe(5);
+      expect((await queue(aId, { projectId: null, authorizedProjectIds: null, reviewableProjectIds: [projectId, otherProjectId] })).reviewQueue).toBe(5);
+      expect((await queue(aId, { projectId: null, reviewableProjectIds: [projectId, otherProjectId] })).reviewQueue).toBe(4);
+      expect((await queue(aId, { reviewableProjectIds: [projectId, otherProjectId] })).reviewQueue).toBe(4);
       await db.query("insert into organizations(id,name) values($1,'Foreign counter')", [foreignOrgId]);
       await db.query("insert into users(id,organization_id,name,title,is_active) values('counter-foreign-admin',$1,'Foreign','Admin',true),('counter-foreign-review',$1,'Foreign review','Software',true)", [foreignOrgId]);
       await db.query("insert into projects(id,organization_id,name,code,status) values($1,$2,'Foreign counter','FOREIGN','initialized')", [foreignProjectId, foreignOrgId]);
@@ -199,24 +176,24 @@ describe.skipIf(!databaseAvailable)("canonical dashboard assigned review queue",
         idempotencyKey: "counter-foreign-registration", context: { actorKind: "org-admin", principalId: foreign.user.id } });
       expect(registration.ok).toBe(true);
       const foreignRequest = await single("counter-foreign-review", foreign, foreignProjectId);
-      expect((await queue(aId, { projectId: null, authorizedProjectIds: null, reviewableProjectIds: [projectId, otherProjectId, foreignProjectId] })).reviewQueue).toBe(6);
+      expect((await queue(aId, { projectId: null, authorizedProjectIds: null, reviewableProjectIds: [projectId, otherProjectId, foreignProjectId] })).reviewQueue).toBe(5);
       expect((await queue(aId, { projectId: foreignProjectId, authorizedProjectIds: null, reviewableProjectIds: [foreignProjectId] })).reviewQueue).toBe(0);
-      const own = await addition(bId, a);
-      expect((await queue(aId)).reviewQueue).toBe(5);
-      expect((await queue(bId)).reviewQueue).toBe(6);
-      expect((await withdrawCanonicalMemberAddition(db, a, { projectId, requestId: own.id, context: context(a) })).item.status).toBe("withdrawn");
-      expect((await queue(bId)).reviewQueue).toBe(5);
-      expect((await reviewCanonicalMemberRemoval(db, storage, a, { projectId, requestId: removals[0]!.id,
-        proofDigest: removals[0]!.proofDigest, decision: "reject", ...removalContext(a) })).status).toBe("rejected");
+      const own = await single(bId, a);
       expect((await queue(aId)).reviewQueue).toBe(4);
       expect((await queue(bId)).reviewQueue).toBe(5);
+      expect((await withdrawCanonicalValueChange(db, a, { projectId, requestId: own.id, ...removalContext(a) })).status).toBe("withdrawn");
+      expect((await queue(bId)).reviewQueue).toBe(4);
+      expect((await reviewCanonicalMemberRemoval(db, storage, a, { projectId, requestId: removals[0]!.id,
+        proofDigest: removals[0]!.proofDigest, decision: "reject", ...removalContext(a) })).status).toBe("rejected");
+      expect((await queue(aId)).reviewQueue).toBe(3);
+      expect((await queue(bId)).reviewQueue).toBe(4);
       const failure = new Error("dashboard query failed");
       const failedDb = { query: vi.fn().mockRejectedValue(failure), transaction: vi.fn() } as unknown as Database;
       await expect(aggregateWorkbenchSignals(failedDb, { ...scope, userId: aId })).rejects.toBe(failure);
       if (process.env.WISEEFF_DASHBOARD_COUNTER_EVIDENCE_ROOT) {
         await writeFile(join(process.env.WISEEFF_DASHBOARD_COUNTER_EVIDENCE_ROOT, "producer-receipts.json"), JSON.stringify({
           label: "local native PostgreSQL bootstrap; repository scopes, not application LOGIN/API/browser acceptance",
-          additions, removals, batches, singles, other, foreignRequest, own,
+          removals, batches, singles, other, foreignRequest, own,
           finalSignals: { a: await queue(aId), b: await queue(bId) }
         }, null, 2));
       }

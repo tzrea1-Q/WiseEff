@@ -282,7 +282,7 @@ describe("canonical batch reviewer", () => {
       currentUserId="reviewer-1" initialRequestId={batch.id} />);
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
     expect(await within(detail).findByText("删除（无替换值）")).toBeVisible();
-    expect(within(detail).getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
+    await waitFor(() => expect(within(detail).getByRole("button", { name: "批准全部 2 项" })).toBeEnabled());
   });
 
   it("hides review actions for the submitter", async () => {

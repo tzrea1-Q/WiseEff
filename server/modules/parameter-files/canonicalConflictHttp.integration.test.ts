@@ -351,9 +351,16 @@ describe("#906 C canonical conflict HTTP", () => {
     expect(after.history).toEqual(before.history);
     expect(after.drafts.some((draft) => draft.id === f.uiDraft.id)).toBe(true);
     expect((await requestJson(f.route(), `${requestPath}/conflict-decision`)).status).toBe(200);
-    expect((await requestJson<{ item: { requestId: string; status: string; replayed: boolean } }>(
-      f.route(), `${path}/source-conflict-submit`, { method: "POST", body: JSON.stringify(body) })).body.item)
-      .toMatchObject({ requestId, status: result.body.item.status, replayed: true });
+    expect(await requestJson(f.route(), `${path}/source-conflict-submit`, {
+      method: "POST", body: JSON.stringify(body)
+    })).toMatchObject({ status: 409, body: { error: { code: "CONFLICT",
+      details: { reason: "source-receipt-replay-mismatch" } } } });
+    const afterRetry = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    expect(afterRetry.bindings).toEqual(after.bindings);
+    expect(afterRetry.values).toEqual(after.values);
+    expect(afterRetry.pins).toEqual(after.pins);
+    expect(afterRetry.history).toEqual(after.history);
+    expect(afterRetry.requests).toEqual(after.requests);
   }, 120_000);
 
   it("hides cross-tenant discovery, refuses stale proof and preserves all rows", async () => {

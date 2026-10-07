@@ -449,9 +449,11 @@ describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL physical backend loss", (
         const lockEntry = trace.filter((entry) => entry.sql.includes("pg_try_advisory_lock") && entry.key?.includes(namespace)).at(-1)!;
         const owner = lockEntry.pid;
         expect(trace.filter((entry) => entry.pid === owner).some((entry) => entry.sql.includes("checkpoint_writes"))).toBe(true);
-        const current = (await db.query<{ name: string }>("select current_database() as name")).rows[0].name;
+        const current = (await db.query<{ datname: string; usename: string }>(
+          "select current_database() as datname, session_user as usename"
+        )).rows[0];
         const backend = await db.query<{ datname: string; usename: string }>("select datname, usename from pg_stat_activity where pid = $1", [owner]);
-        expect(backend.rows).toEqual([{ datname: current, usename: "postgres" }]);
+        expect(backend.rows).toEqual([current]);
         const terminated = await db.query<{ terminated: boolean }>("select pg_terminate_backend($1, 2000) as terminated", [owner]);
         expect(terminated.rows[0].terminated).toBe(true);
         expect((await db.query("select pid from pg_stat_activity where pid = $1", [owner])).rows).toEqual([]);
