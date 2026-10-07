@@ -147,3 +147,46 @@ describe("dashboardReducer", () => {
     expect(next.summary.status).toBe("ready");
   });
 });
+
+const retainedSummary: import("@/domain/parameters/dashboardTypes").DashboardSummary = {
+  window: "30d",
+  windowLabel: "近 30 天",
+  projectId: null,
+  kpis: {
+    totalParameters: 0, totalBindings: 0, totalDefinitions: 0, managedProjects: 0,
+    changeFrequency: 0, activeContributors: 0, highRiskParameters: null, riskAvailability: "unavailable"
+  },
+  trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 0, workflowEventCount: 0 }],
+  personalKpis: {
+    contributionCount: 0, workflowCount: 0, openItemCount: 0, pendingTodoCount: 0,
+    highRiskTouchCount: null, riskAvailability: "unavailable"
+  },
+  personalTrend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 0, workflowEventCount: 0 }],
+  riskBuckets: [],
+  workbenchSignals: {
+    reviewQueue: 0, myDrafts: 0, returnedChanges: 0, waitingMerge: 0,
+    unappliedImportBatches: 0, inactiveAccounts: 0
+  }
+};
+
+describe("dashboard overview scope during refresh", () => {
+  it.each([
+    { action: { type: "DASHBOARD_SUMMARY_ERROR", error: "Refresh failed" } as const, status: "error", error: "Refresh failed" },
+    { action: { type: "DASHBOARD_SUMMARY_LOADING" } as const, status: "loading", error: null }
+  ])("preserves retained summary $status when switching scope", ({ action, status, error }) => {
+    const ready = dashboardReducer(initialDashboardState, { type: "DASHBOARD_SUMMARY_READY", data: retainedSummary });
+    const state = dashboardReducer(ready, action);
+    const before = structuredClone(state);
+    const summary = state.summary;
+
+    const next = dashboardReducer(state, { type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope: "overall" });
+
+    expect(next.overviewScope).toBe("overall");
+    expect(next.summary).toBe(summary);
+    expect(next.summary.status).toBe(status);
+    expect(next.summary.error).toBe(error);
+    expect(next.summary.data).toBe(retainedSummary);
+    expect(next).toEqual({ ...state, overviewScope: "overall" });
+    expect(state).toEqual(before);
+  });
+});

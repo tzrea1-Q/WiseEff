@@ -45,13 +45,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
     case "DASHBOARD_SET_DIMENSION":
       return { ...state, dimension: action.dimension };
     case "DASHBOARD_SET_OVERVIEW_SCOPE":
-      return {
-        ...state,
-        overviewScope: action.scope,
-        summary: state.summary.data
-          ? { ...state.summary, status: "ready", error: null }
-          : state.summary
-      };
+      return { ...state, overviewScope: action.scope };
     case "DASHBOARD_SET_PROJECT":
       return { ...state, projectScope: action.projectId };
     case "DASHBOARD_SUMMARY_LOADING":
