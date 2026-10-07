@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,99 @@ function renderPage(
 }
 
 describe("KnowledgePage", () => {
+  it("recovers the same failed citation on refresh without reopening a closed successful detail", async () => {
+    const repository = createMockKnowledgeRepository();
+    const get = vi.spyOn(repository, "get").mockRejectedValueOnce(new Error("Request failed."));
+    vi.spyOn(repository, "list").mockRejectedValueOnce(new Error("Request failed."));
+    render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId="mock-kb-1" />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("知识条目加载失败，请稍后重试。")).toBeInTheDocument();
+    expect(screen.queryByText(/知识库还是空的/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
+    expect(within(detail).getByText(/当电池温度超过 45 度/)).toBeInTheDocument();
+    expect(get.mock.calls).toEqual([["mock-kb-1"], ["mock-kb-1"]]);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled());
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not describe failed search results as zero successful matches", async () => {
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "search").mockRejectedValue(new Error("Request failed."));
+    render(<KnowledgePage repository={repository} capability={viewerCapability} />);
+    const user = userEvent.setup();
+    await screen.findByText("快充温控调参经验");
+    await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "快充");
+    await user.click(screen.getByRole("button", { name: "检索" }));
+    expect(await screen.findByText("检索失败，请稍后重试。")).toBeInTheDocument();
+    expect(screen.queryByText("没有命中已发布的知识条目。")).not.toBeInTheDocument();
+    expect(screen.queryByText(/命中 0 条/)).not.toBeInTheDocument();
+  });
+
+  it.each([null, "different-id"])("shows an unavailable citation without opening a replacement (%s)", async (replacementId) => {
+    const repository = createMockKnowledgeRepository();
+    const entry = await repository.get("mock-kb-1");
+    vi.spyOn(repository, "list").mockResolvedValue({ items: [] });
+    vi.spyOn(repository, "get").mockResolvedValue(replacementId && entry ? { ...entry, id: replacementId } : null);
+    render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId="missing-id" />);
+    expect(await screen.findByText("引用的知识条目不存在或不可访问。")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(/知识库还是空的/)).not.toBeInTheDocument();
+  });
+
+  it.each(["resolve", "reject"])("ignores a superseded citation's late %s", async (outcome) => {
+    const repository = createMockKnowledgeRepository();
+    const oldEntry = await repository.get("mock-kb-1");
+    let resolve!: (value: typeof oldEntry) => void;
+    let reject!: (error: Error) => void;
+    vi.spyOn(repository, "get").mockImplementationOnce(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+    const { rerender, unmount } = render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId="mock-kb-1" />);
+    rerender(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId="mock-kb-2" />);
+    await screen.findByRole("dialog", { name: /SC8562 充电泵比率切换草稿/ });
+    await act(async () => { if (outcome === "resolve") resolve(oldEntry); else reject(new Error("旧引用错误")); });
+    expect(screen.getByRole("dialog", { name: /SC8562 充电泵比率切换草稿/ })).toBeInTheDocument();
+    expect(screen.queryByText("旧引用错误")).not.toBeInTheDocument();
+    unmount();
+  });
+
+  it("handles a citation rejection after unmount", async () => {
+    const repository = createMockKnowledgeRepository();
+    let reject!: (error: Error) => void;
+    vi.spyOn(repository, "get").mockImplementationOnce(() => new Promise((_, no) => { reject = no; }));
+    const { unmount } = render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId="mock-kb-1" />);
+    unmount();
+    await act(async () => reject(new Error("Request failed.")));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("presents citation permission errors while preserving rows after a failed refresh", async () => {
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "get").mockRejectedValue(new WiseEffApiError("FORBIDDEN", "Forbidden", {}, "req-kb-citation"));
+    const list = vi.spyOn(repository, "list");
+    render(<KnowledgePage repository={repository} capability={viewerCapability} initialEntryId="foreign-entry" />);
+    expect(await screen.findByText("没有权限执行该操作。")).toBeInTheDocument();
+    await screen.findByText("快充温控调参经验");
+    list.mockRejectedValueOnce(new Error("Request failed."));
+    await userEvent.setup().click(screen.getByRole("button", { name: "刷新" }));
+    expect(await screen.findByText("知识条目加载失败，请稍后重试。")).toBeInTheDocument();
+    expect(screen.getByText("快充温控调参经验")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows empty-library guidance only after a successful empty list", async () => {
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "list").mockResolvedValue({ items: [] });
+    render(<KnowledgePage repository={repository} capability={viewerCapability} />);
+    expect(await screen.findByText(/知识库还是空的/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("lists knowledge entries with status badges and extraction status", async () => {
     renderPage();
 

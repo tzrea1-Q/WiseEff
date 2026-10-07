@@ -66,6 +66,9 @@ export function KnowledgePage({
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [citationError, setCitationError] = useState("");
+  const [citationLoading, setCitationLoading] = useState(Boolean(initialEntryId));
+  const [citationRetry, setCitationRetry] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -99,19 +102,32 @@ export function KnowledgePage({
 
   // Citation deep link (/knowledge?entryId=…) opens the entry detail directly.
   useEffect(() => {
+    setCitationError("");
+    setCitationLoading(Boolean(initialEntryId));
+    setSelectedId(null);
     if (!initialEntryId) {
       return;
     }
     let cancelled = false;
     void repository.get(initialEntryId).then((entry) => {
-      if (cancelled || !entry) return;
-      setRows((current) => (current.some((item) => item.id === entry.id) ? current : [entry, ...current]));
+      if (cancelled) return;
+      if (!entry || entry.id !== initialEntryId) {
+        setCitationError("引用的知识条目不存在或不可访问。");
+        return;
+      }
+      setRows((current) => (current.some((item) => item.id === entry.id)
+        ? current.map((item) => item.id === entry.id ? entry : item)
+        : [entry, ...current]));
       setSelectedId(entry.id);
+    }).catch((error: unknown) => {
+      if (!cancelled) setCitationError(presentError(error, "知识条目加载失败，请稍后重试。"));
+    }).finally(() => {
+      if (!cancelled) setCitationLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [initialEntryId, repository]);
+  }, [initialEntryId, repository, citationRetry]);
 
   const runSearch = async () => {
     const q = searchInput.trim();
@@ -392,25 +408,28 @@ export function KnowledgePage({
                 </Button>
               </>
             ) : null}
-            <Button variant="outline" size="sm" onClick={() => void loadEntries()} disabled={loading} aria-busy={loading || undefined}>
+            <Button variant="outline" size="sm" onClick={() => {
+              void loadEntries();
+              if (citationError) setCitationRetry((current) => current + 1);
+            }} disabled={loading || citationLoading} aria-busy={loading || citationLoading || undefined}>
               <RefreshCw data-icon="inline-start" />
               刷新
             </Button>
           </span>
         </form>
 
-        {errorMessage ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</p> : null}
+        {errorMessage || citationError ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage || citationError}</p> : null}
 
         {searchQuery ? (
           <div className="flex flex-col gap-2" aria-label="检索结果">
-            <p className="text-xs text-muted-foreground">
+            {!searching && !errorMessage ? <p className="text-xs text-muted-foreground">
               “{searchQuery}” 命中 {searchResults.length} 条已发布知识(草稿与已归档不参与检索)。
               {searchRetrieval ? (
                 <span className="ml-1" data-retrieval-mode={searchRetrieval.mode}>
                   检索模式:{knowledgeRetrievalModeLabels[searchRetrieval.mode]}
                 </span>
               ) : null}
-            </p>
+            </p> : null}
             <ul className="flex flex-col gap-2">
               {searchResults.map((result) => (
                 <li key={result.entryId}>
@@ -427,7 +446,7 @@ export function KnowledgePage({
                   </button>
                 </li>
               ))}
-              {!searching && searchResults.length === 0 ? (
+              {!searching && !errorMessage && !citationError && searchResults.length === 0 ? (
                 <li className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
                   没有命中已发布的知识条目。
                 </li>
@@ -444,9 +463,9 @@ export function KnowledgePage({
             selectedRowKey={selectedId ?? undefined}
             pageSize={10}
             emptyState={
-              loading ? (
+              loading || citationLoading ? (
                 <p className="text-sm text-muted-foreground">正在加载知识条目…</p>
-              ) : (
+              ) : errorMessage || citationError ? null : (
                 <p className="text-sm text-muted-foreground">
                   {rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。"}
                 </p>
