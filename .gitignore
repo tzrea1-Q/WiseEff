@@ -3,6 +3,7 @@ node_modules
 
 # Build output
 dist/
+outputs/
 ops/self-hosted/bridge-installer/staging/
 ops/self-hosted/bridge-installer/macos/build/
 
