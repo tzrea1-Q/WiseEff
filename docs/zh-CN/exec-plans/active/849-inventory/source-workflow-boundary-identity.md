@@ -8,7 +8,7 @@
 
 未修改的边界门禁拒绝 T1.1 变更后的历史 destination blob 后，用户授权此独立身份修复。原始 fixture、全部 allowance shard、五份旧记录及其固定 digest 保持不变。下述额外七条映射原已拥有 allowance，并非新增债务。
 
-拟议[后继记录](../../../../../scripts/fixtures/parameter-catalog-allowlist/source-workflow-relocation.json) SHA-256 为 `6ae5ba0609e64987e195e282236a4429fe02b50e9c3a0d3473097d9aa9d12a48`，共 82 对原始至当前身份：
+拟议后继记录 (removed: `scripts/fixtures/parameter-catalog-allowlist/source-workflow-relocation.json`) SHA-256 为 `6ae5ba0609e64987e195e282236a4429fe02b50e9c3a0d3473097d9aa9d12a48`，共 82 对原始至当前身份：
 
 | `server/modules/parameter-topology/` 下文件 | 数量 | 精确 destination blob |
 | --- | ---: | --- |
@@ -49,7 +49,7 @@
 
 82 对后继生效后，未变的完整 inventory 比较暴露另外十文件的 210 条 unallowlisted 与 210 条 stale：parameter-files 验收 2、导入向导验收 2、topology 验收 83、file writeback 21、topology repository 1、import-batch repository 16、parameter service 29、topology port 1、topology client 测试 22、topology client 33。正式门禁仍失败（3303/3513 获允许）；四文件聚焦测试 109/110 通过，仅完整 inventory 断言失败。这是此前阻断后新暴露的身份漂移，不代表 82 对设计已通过完整门禁。
 
-独立的 [210 对提案记录](../../../../../scripts/fixtures/parameter-catalog-allowlist/source-workflow-consumer-relocation.json)，SHA-256 `ab82be7c29d061c27131b07badce45112c7881630f03ad248db8613b78f69240`，只对应原已允许身份与当前观察，保留精确 slice、锚点和全部权限／evidence 元数据。不改旧记录、82 对 digest、fixture 或 allowance。提案在 82 对步骤后复用严格 runner，只有两名独立设计评审批准精确字节后才形成 348 个活动 alias。它没有历史前驱记录，不得走 historical proof 路径。
+独立的 210 对提案记录 (removed: `scripts/fixtures/parameter-catalog-allowlist/source-workflow-consumer-relocation.json`)，SHA-256 `ab82be7c29d061c27131b07badce45112c7881630f03ad248db8613b78f69240`，只对应原已允许身份与当前观察，保留精确 slice、锚点和全部权限／evidence 元数据。不改旧记录、82 对 digest、fixture 或 allowance。提案在 82 对步骤后复用严格 runner，只有两名独立设计评审批准精确字节后才形成 348 个活动 alias。它没有历史前驱记录，不得走 historical proof 路径。
 
 部分 import-batch 观察拥有相同锚点及字节区间，但 scanner evidence 不同（literal 与 resolved-template 检测）。Ordinal 以**锚点加原已要求不变的 token、evidence、column**分组，不能因 offset 相同就配对不同 evidence；组内 old／new offset 必须严格保序。现有精确元数据比较独立拒绝跨组交换。保留同锚点／同 evidence 交换拒绝用例，新增同区间不同 evidence 不混淆的用例。不允许 SQL 归一化或 evidence 字段豁免。
 

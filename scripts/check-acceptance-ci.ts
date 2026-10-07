@@ -529,8 +529,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   }
   await client.end();
 '`;
-  const trustedBase = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
-  const catalogCommand = 'set -euo pipefail\ngit fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\ntest "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\n# The checker CLI exits 1 while T1.4 leftover remains. The inventory test\n# is the ratchet: leftover may exist, stale/growth/mismatch may not.\nnpm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts';
+  const catalogCommand = 'set -euo pipefail\nnpm run parameter-catalog-boundaries:check\nnpm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts';
   const expectedStepProjection = (ids: readonly string[]) => "{" + ids.map((id) => '"' + id + '":${{ toJSON(steps.' + id + ') }}').join(", ") + "}";
   const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.trim() : "";
   const expectedNeedsProjection = "{\"detect\":${{ toJSON(needs.detect) }}, \"l1-static\":{\"result\":${{ toJSON(needs.l1-static.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-static.outputs.receipt) }}}}, \"l1-frontend\":{\"result\":${{ toJSON(needs.l1-frontend.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-frontend.outputs.receipt) }}}}, \"l1-scripts\":{\"result\":${{ toJSON(needs.l1-scripts.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-scripts.outputs.receipt) }}}}, \"l1-server\":{\"result\":${{ toJSON(needs.l1-server.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-server.outputs.receipt) }}}}}";
@@ -607,7 +606,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       check(step("vector")?.run?.trim() === vectorCommand, `${id} requires the original vector create/read assertion.`);
     }
     if (id === "l1-static") {
-      check(step("catalog")?.env?.PARAMETER_CATALOG_TRUSTED_BASE_SHA === trustedBase && step("catalog")?.run?.trim() === catalogCommand, "Static trusted-base ratchet changed.");
+      check(step("catalog")?.env === undefined && step("catalog")?.run?.trim() === catalogCommand, "Static Catalog boundary baseline check changed.");
       check(step("eslint_cache")?.uses === "actions/cache@v4" && step("eslint_cache")?.with?.path === "node_modules/.cache/eslint", "ESLint cache must be retained.");
     }
     for (const [output, expression] of Object.entries(shadowOutputs[id] ?? {})) check(job.outputs?.[output] === expression, `${id}/${output} must publish its fixed shadow sibling output.`);

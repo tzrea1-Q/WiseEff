@@ -8,6 +8,12 @@ The L2 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` artifact is
 
 For changes to this channel, run `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` and `npm run acceptance:ci`. These extract and exercise the real isolated workflow publisher; synthetic failures are diagnostic checks, not full acceptance. All bounded diagnostic steps count toward the L2 platform budget (151-minute floor, 155-minute job ceiling); the Gate0 owner and existing scan/upload allowances are unchanged.
 
+## Parameter Catalog boundary baseline
+
+Run `npm run parameter-catalog-boundaries:check` to compare current AST/SQL detections with `scripts/parameter-catalog-boundaries/baseline.json`. Counts are tracked per repository-relative file and rule across the configured consumer families; unchanged counts pass without Git history, blob hashes, or external proof files. A new file/rule or higher count fails and prints its evidence. Lower counts also fail as a stale baseline: run `npm run parameter-catalog-boundaries:check -- --update` to lock in the improvement.
+
+`--update` refuses any increase without writing the baseline. Only an explicitly reviewed increase should use `--update --allow-increase`; this also initializes a missing baseline. Files with zero occurrences are omitted and keys are sorted. Counts do not distinguish same-count replacements within a file/rule. Verify changes with `npm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts`.
+
 ## CI shadow observations
 
 The `Build and test` aggregator first enforces existing native L1 receipts and required outcomes. Only after that gate succeeds does it publish a bounded, non-authoritative shadow summary. Applicable PRs with four fresh matching native observations report `observed` and `planValid:true`; missing, malformed or mismatched evidence reports `unavailable` and `planValid:false`. Documentation-only and non-PR runs report `not-applicable` and `planValid:false`. Native Detect output determines applicability. An unavailable observation cannot suppress a native failure or make a valid plan.

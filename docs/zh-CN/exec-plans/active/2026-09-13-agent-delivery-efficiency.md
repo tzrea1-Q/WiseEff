@@ -150,7 +150,7 @@ CI shadow 候选 `2fb1403217e2bb4dbad4547d4cf5e7234148e976` 在六文件通过19
 
 ## 最终前置身份跟进——2026-09-14
 
-最终检查在 push 前拒绝了 `fc776086a9c163ec048a231133cc6292bbfbda8c`：已审测试事务包装还移动了 29 个已有出现位置身份。[独立固定身份决定](../../agents/catalog-runtime-boundary-relocation.md#post-cutover-测试身份跟进) 保留每个原始切片、allowance 和原 39 对记录。实现 `135a4edada7fcff307136496619813c2e6f66769`、tree `5388cb81093c3a2810331f757e14431343748219` 通过 93 项定向测试、3513 条 allowance 与 68 对 relocation 的直接检查、build 及直接文档治理；新增 29-record 契约先证明了真实断言失败。五文件增量不修改后端源码，下述完整 4180 项后端证据仍绑定 `69fd38c152108f610786b269e9337e57f73a24bc`。
+最终检查在 push 前拒绝了 `fc776086a9c163ec048a231133cc6292bbfbda8c`：已审测试事务包装还移动了 29 个已有出现位置身份。独立固定身份决定 (removed: `agents/catalog-runtime-boundary-relocation.md`) 保留每个原始切片、allowance 和原 39 对记录。实现 `135a4edada7fcff307136496619813c2e6f66769`、tree `5388cb81093c3a2810331f757e14431343748219` 通过 93 项定向测试、3513 条 allowance 与 68 对 relocation 的直接检查、build 及直接文档治理；新增 29-record 契约先证明了真实断言失败。五文件增量不修改后端源码，下述完整 4180 项后端证据仍绑定 `69fd38c152108f610786b269e9337e57f73a24bc`。
 
 父代理已收齐精确五文件代码增量的独立 Standards、Spec PASS，包括有限畸形输入反例及独立重算的记录/blob/端点证据。原候选与后端增量也已分别通过两个独立角色审查；最终中英文文档单独复核。尚无第二轮 Hosted 或合入。PR #833 在新候选封板前仍保持关闭及原远端 head，已接受的一次第二轮 Hosted 例外尚未使用。刷新 origin/main 后仍为 `9dc751690a615b162bb41feef6392289b2ca7f6a`；实际保护查询没有受保护分支配置或有效规则。父代理仍要求全部原有选中门禁成功，不使用 bypass，不将 skipped/missing/cancelled 算作通过。
 
@@ -176,7 +176,7 @@ CI shadow 返工 `bec050199d1f9af7fb25f78047cd0ac20aa85176` 在首次双审 FAIL
 
 用户再次授权完成项目并解决阻塞。最新 accepted main 为 `9dc751690a615b162bb41feef6392289b2ca7f6a`，tree `a0edd814abc6fd73b03d0470641e416b04031195`，不授权回退初始基线。PR #830 已合入为 `75f3514b213f07f177773a077021e1485f9f173b`。W0 [PR #829](https://github.com/tzrea1-Q/WiseEff/pull/829) 的 head 为 `fb6087f1fdb352953f63b46ca711cee5775e2607`，经 [Hosted 34762290769](https://github.com/tzrea1-Q/WiseEff/actions/runs/34762290769) attempt 1 成功后合入为 `ef88c0964e158d7effbd0ce6062260e5eb1c5a21`。实际执行 checkout 为 `41de2cbb95d788168d97d7b8e52711ffbd0dfa63`，tree `652590339d4a16415d935b624753fa7c68421a11`。前端/scripts/bridge/后端原生 pass 数为 3411/1279/134/4168，对应 skip 为 0/21 个既有可选/4 个平台/0；未选中 L2 和目标工作保持 skipped。工作流耗时 1061 秒，job 耗时之和 30.85 分钟，均非计费 usage 或已证实收益。
 
-[已领取的 main-red 前置修复](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5655466658) 仅修复 [16 对精确已有边界身份及 M1 收集隔离](../../agents/catalog-runtime-boundary-relocation.md)。代码 head `e31226b6cc06c2278230b810bb1becd8dbc1f32a`、tree `d55df1260ea99a60fa38a3101a5e9f5af7c29fc8` 保持业务字节和原 allowance。边界定向测试 82/82、收集运行器测试 53/53 通过。在已提交收集修复 `07be2ecddba7614724728c7bf05dae1826793034`，原生收集列出 39 个文件中的 196 项；单独缺证据的 M1 按要求 1/1 失败。build 和直接文档治理通过。本检查点的最终代码双审和 Hosted 仍待完成。
+[已领取的 main-red 前置修复](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5655466658) 仅修复 16 对精确已有边界身份及 M1 收集隔离 (removed: `agents/catalog-runtime-boundary-relocation.md`)。代码 head `e31226b6cc06c2278230b810bb1becd8dbc1f32a`、tree `d55df1260ea99a60fa38a3101a5e9f5af7c29fc8` 保持业务字节和原 allowance。边界定向测试 82/82、收集运行器测试 53/53 通过。在已提交收集修复 `07be2ecddba7614724728c7bf05dae1826793034`，原生收集列出 39 个文件中的 196 项；单独缺证据的 M1 按要求 1/1 失败。build 和直接文档治理通过。本检查点的最终代码双审和 Hosted 仍待完成。
 
 W1 本地 head `51aaa732e93b31d3e047b72d568581b7b4d90ab0` 修复首轮 Hosted 工程失败后，通过独立 Standards/Spec；旧 PR #831 已关闭，待前置刷新及已审第二候选。Git 预览 `7286c02ed9d25b75a8cf020aa614e9c26cfc843c`、tree `645a764b9252f67ec1c461d6dfa5e37ea1f15da3` 通过两项独立审查、22 项定向测试和 build；它仅为不可执行的本地预览，尚未合入。此前被拒执行器/摘要候选保持拒绝。独立 CI shadow Scratch 仅复用已审 W1/预览依赖，不能在前置合入前发布合并大 PR。
 

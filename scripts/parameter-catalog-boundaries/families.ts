@@ -1,14 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-
-import {
-  allowlistShardSchema,
-  boundaryViolationFixtureSchema,
-  type AllowlistEntry,
-  type AllowlistShard,
-} from "./schema";
-
 export const consumerShardDefinitions = [
   {
     family: "S12-CGH",
@@ -18,7 +7,6 @@ export const consumerShardDefinitions = [
       { pattern: "server/modules/parameter-specs/parameterCatalogComparisonContribution.ts", required: false },
       { pattern: "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-cgh.json",
   },
   {
     family: "S12-TOP",
@@ -30,7 +18,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/parameterTopologyClient.test.ts", required: true },
       { pattern: "e2e/acceptance/parameter-topology.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-top.json",
   },
   {
     family: "S12-PRJ",
@@ -45,7 +32,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/parameterDtos.test.ts", required: true },
       { pattern: "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-prj.json",
   },
   {
     family: "S12-FIL",
@@ -57,7 +43,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/parameterFileClient.test.ts", required: true },
       { pattern: "e2e/acceptance/parameter-files.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-fil.json",
   },
   {
     family: "S12-AGT",
@@ -74,7 +59,6 @@ export const consumerShardDefinitions = [
       { pattern: "server/modules/agent/tools/perceptionTools.ts", required: true },
       { pattern: "server/modules/agent/tools/perceptionTools.test.ts", required: true },
     ],
-    shardFile: "s12-agt.json",
   },
   {
     family: "S12-LOG",
@@ -88,7 +72,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/logDtos.test.ts", required: true },
       { pattern: "e2e/acceptance/log-analysis.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-log.json",
   },
   {
     family: "S12-DBG",
@@ -102,7 +85,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/debuggingDtos.test.ts", required: true },
       { pattern: "e2e/acceptance/debugging-admin.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-dbg.json",
   },
   {
     family: "S12-DTS",
@@ -114,7 +96,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/dtsReloadClient.test.ts", required: false },
       { pattern: "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-dts.json",
   },
   {
     family: "S12-KNW",
@@ -128,7 +109,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/knowledgeClient.test.ts", required: true },
       { pattern: "e2e/acceptance/knowledge.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-knw.json",
   },
   {
     family: "S12-MOD",
@@ -140,7 +120,6 @@ export const consumerShardDefinitions = [
       { pattern: "src/infrastructure/http/parameterModuleRegistryClient.test.ts", required: false },
       { pattern: "e2e/acceptance/hierarchical-modules.acceptance.spec.ts", required: true },
     ],
-    shardFile: "s12-mod.json",
   },
   {
     family: "S12-OPS",
@@ -150,87 +129,7 @@ export const consumerShardDefinitions = [
       { pattern: "server/modules/operations/parameterCatalogComparisonContribution.ts", required: false },
       { pattern: "scripts/reconcile-parameter-definitions.test.ts", required: false },
     ],
-    shardFile: "s12-ops.json",
   },
 ] as const;
 
-export const allowlistShardDirectory = "scripts/parameter-catalog-allowlist/shards";
-export const boundaryViolationFixturePath = "scripts/fixtures/parameter-catalog-allowlist/current-violations.json";
-
-export type AllowlistIndex = {
-  shards: AllowlistShard[];
-  entries: AllowlistEntry[];
-  entriesById: Map<string, AllowlistEntry>;
-};
-
-export type BoundaryFixtureIntegrity = {
-  trustedBaseSha: string;
-  fixtureSha256: string;
-};
-
-export async function loadAllowlistIndex(repoRoot: string): Promise<AllowlistIndex> {
-  const shards: AllowlistShard[] = [];
-  const entries: AllowlistEntry[] = [];
-  const entriesById = new Map<string, AllowlistEntry>();
-
-  for (const definition of consumerShardDefinitions) {
-    const relativePath = `${allowlistShardDirectory}/${definition.shardFile}`;
-    const parsed = allowlistShardSchema.parse(await readJson(repoRoot, relativePath));
-    const expectedPaths = definition.paths.map(({ pattern }) => pattern);
-    if (parsed.family !== definition.family || JSON.stringify(parsed.paths) !== JSON.stringify(expectedPaths)) {
-      throw new Error(
-        `Allow-list shard metadata mismatch for ${relativePath}: expected ${definition.family} at ${expectedPaths.join(", ")}.`,
-      );
-    }
-
-    shards.push(parsed);
-    for (const entry of parsed.entries) {
-      if (entriesById.has(entry.id)) {
-        throw new Error(`Duplicate allow-list violation ID across shards: ${entry.id}.`);
-      }
-      entriesById.set(entry.id, entry);
-      entries.push(entry);
-    }
-  }
-
-  return { shards, entries, entriesById };
-}
-
-export async function loadBoundaryViolationFixture(repoRoot: string, integrity?: BoundaryFixtureIntegrity) {
-  const document = await readJsonDocument(repoRoot, boundaryViolationFixturePath);
-  const fixture = boundaryViolationFixtureSchema.parse(document.value);
-  if (integrity) {
-    const actualDigest = createHash("sha256").update(document.contents).digest("hex");
-    if (actualDigest !== integrity.fixtureSha256) {
-      throw new Error(
-        `Parameter-catalog baseline fixture digest mismatch: expected ${integrity.fixtureSha256}, received ${actualDigest}.`,
-      );
-    }
-    if (fixture.trustedBaseSha !== integrity.trustedBaseSha) {
-      throw new Error(
-        `Parameter-catalog baseline fixture SHA mismatch: expected ${integrity.trustedBaseSha}, received ${fixture.trustedBaseSha}.`,
-      );
-    }
-  }
-  return fixture;
-}
-
-async function readJson(repoRoot: string, relativePath: string) {
-  return (await readJsonDocument(repoRoot, relativePath)).value;
-}
-
-async function readJsonDocument(repoRoot: string, relativePath: string) {
-  const absolutePath = resolve(repoRoot, relativePath);
-  let contents: string;
-  try {
-    contents = await readFile(absolutePath, "utf8");
-  } catch (error) {
-    throw new Error(`Unable to read required parameter-catalog allow-list artifact ${relativePath}.`, { cause: error });
-  }
-
-  try {
-    return { contents, value: JSON.parse(contents) as unknown };
-  } catch (error) {
-    throw new Error(`Invalid JSON in parameter-catalog allow-list artifact ${relativePath}.`, { cause: error });
-  }
-}
+export type ConsumerFamilyId = (typeof consumerShardDefinitions)[number]["family"];

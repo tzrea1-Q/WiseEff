@@ -236,16 +236,11 @@ jobs:
         id: lint
         run: npm run lint
 
-      - name: Verify parameter Catalog trusted base and boundary ratchet
+      - name: Verify parameter Catalog boundary baseline
         id: catalog
-        env:
-          PARAMETER_CATALOG_TRUSTED_BASE_SHA: 9b3ba7df7e21f5589684bc92c872da593ad4c246
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
-          test "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
-          # The checker CLI exits 1 while T1.4 leftover remains. The inventory test
-          # is the ratchet: leftover may exist, stale/growth/mismatch may not.
+          npm run parameter-catalog-boundaries:check
           npm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts
 
       - name: Contract check
