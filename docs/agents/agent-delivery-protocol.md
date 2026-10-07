@@ -4,6 +4,8 @@
 
 This protocol governs goal-driven delivery by a parent coordinator and one or more implementation and review agents. It complements [fleet coordination](fleet-coordination.md): fleet coordination handles collisions between worktrees, while this document controls when work is designed, reviewed, sealed, sent to CI, merged, and unlocked.
 
+**Scope.** This protocol applies only to Wayfinder #668 launch children (#683–#735) and to an Issue whose body explicitly adopts it. It is not the default for other parameter-model, canonical-integration, or high-risk work; those follow [development workflow](development-workflow.md). Do not extend it by analogy.
+
 ## Authority and invariants
 
 Apply rules in this order:
