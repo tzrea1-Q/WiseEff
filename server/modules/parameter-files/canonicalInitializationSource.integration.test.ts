@@ -10,6 +10,7 @@ import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
+import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
 import { createLocalObjectStore } from "./../logs/objectStore";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
 import { uploadProjectParameterFile } from "./service";
@@ -42,6 +43,7 @@ const SOURCE = "project-init-dts-source";
 const TARGET = "project-init-dts-target";
 const FAILURE_TARGET = "project-init-dts-failure-target";
 const DRIFT_TARGET = "project-init-dts-drift-target";
+const COMMIT_TARGET = "project-init-dts-commit-target";
 const USER = "user-init-dts";
 const REVIEWER = "reviewer-init-dts";
 
@@ -271,6 +273,86 @@ describe("canonical DTS initialization source", () => {
     expect(sourceAfter).toEqual(sourceBefore);
     expect(targetAfter?.files.some((file) => file.content.includes("<77>"))).toBe(true);
     expect(targetAfter?.files).not.toEqual(targetBefore?.files);
+
+    if (!sourceBefore) throw new Error("Expected source canonical binding source.");
+    await db.query(
+      "insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,$4,'software-committer')",
+      ["role-init-dts-source-reviewer", REVIEWER, ORG, SOURCE],
+    );
+    const sourceReviewerAuth = makeTestAuthContext({
+      userId: REVIEWER,
+      organizationId: ORG,
+      permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+      roles: [{ roleId: "software-committer", projectId: SOURCE }],
+    });
+    const targetPinsBefore = await db.query(
+      "select * from parameter_catalog.project_value_source_pins where organization_id=$1 and project_id=$2 order by id",
+      [ORG, TARGET],
+    );
+    const targetFilesBefore = await db.query<{ id: string; current_version_id: string; storage_key: string }>(
+      `select file.id,file.current_version_id,version.storage_key
+         from project_parameter_files file
+         join project_parameter_file_versions version on version.id=file.current_version_id
+        where file.organization_id=$1 and file.project_id=$2 order by file.id`,
+      [ORG, TARGET],
+    );
+    expect(targetFilesBefore.rows).toHaveLength(2);
+    const targetBytesBefore = await Promise.all(targetFilesBefore.rows.map((file) => storage.get(file.storage_key)));
+    const sourceDraft = await createCanonicalValueDraft(db, auth, {
+      projectId: SOURCE,
+      bindingId: selected.sourceBindingId,
+      targetValue: importTextToDtsValue("iin_max", "88"),
+      reason: "Verify source approval cannot mutate initialized target",
+      baseRevisionId: sourceBefore.configRevisionId,
+      baseCurrentValueId: sourceBefore.currentValueId,
+    }, {
+      objectStore: storage,
+      invocation: createUserInvocation(auth),
+      requestId: "init902-dts-source-draft",
+      refusalSink,
+    });
+    const sourceRequest = await submitCanonicalValueChange(db, auth, {
+      projectId: SOURCE,
+      draftId: sourceDraft.id,
+      assignedToUserId: REVIEWER,
+      invocation: createUserInvocation(auth),
+      requestId: "init902-dts-source-submit",
+      refusalSink,
+    });
+    const sourceApplied = await reviewCanonicalValueChange(db, sourceReviewerAuth, {
+      projectId: SOURCE,
+      requestId: sourceRequest.id,
+      decision: "approve",
+    }, {
+      objectStore: storage,
+      snapshot: catalogSnapshot,
+      invocation: createUserInvocation(sourceReviewerAuth),
+      traceId: "init902-dts-source-approve",
+      refusalSink,
+    });
+    expect(sourceApplied.status).toBe("approved");
+    const changedSource = await exportCanonicalBindingSource(db, storage, auth, {
+      projectId: SOURCE,
+      bindingId: selected.sourceBindingId,
+    });
+    expect(changedSource?.currentValueId).not.toBe(sourceBefore.currentValueId);
+    expect(changedSource?.files.some((file) => file.content.includes("<88>"))).toBe(true);
+    expect(await exportCanonicalBindingSource(db, storage, auth, {
+      projectId: TARGET,
+      bindingId: targetBindings[0]!.id,
+    })).toEqual(targetAfter);
+    expect((await db.query(
+      "select * from parameter_catalog.project_value_source_pins where organization_id=$1 and project_id=$2 order by id",
+      [ORG, TARGET],
+    )).rows).toEqual(targetPinsBefore.rows);
+    expect((await db.query(
+      `select file.id,file.current_version_id,version.storage_key
+         from project_parameter_files file
+         join project_parameter_file_versions version on version.id=file.current_version_id
+        where file.organization_id=$1 and file.project_id=$2 order by file.id`,
+      [ORG, TARGET],
+    )).rows).toEqual(targetFilesBefore.rows);
+    expect(await Promise.all(targetFilesBefore.rows.map((file) => storage.get(file.storage_key)))).toEqual(targetBytesBefore);
   }, 60_000);
 
   async function createPendingReview(projectId: string, requestId: string) {
@@ -317,6 +399,60 @@ describe("canonical DTS initialization source", () => {
       catalogSnapshot,
     };
   }
+
+  it("cleans uploaded target objects after a deferred constraint rejects COMMIT", async () => {
+    await db.query(
+      "insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,'Commit target','DTS-C','initialized','not_initialized')",
+      [COMMIT_TARGET, ORG],
+    );
+    const pending = await createPendingReview(COMMIT_TARGET, "init902-dts-commit-failure");
+    const sourceBefore = await exportCanonicalBindingSource(db, storage, auth, {
+      projectId: SOURCE,
+      bindingId: pending.selected.sourceBindingId,
+    });
+    const storageKeys: string[] = [];
+    const trackedStore: ObjectStore = {
+      ...storage,
+      async put(input) {
+        const stored = await storage.put(input);
+        storageKeys.push(stored.storageKey);
+        return stored;
+      },
+    };
+    await db.query(`
+      create function init902_reject_commit() returns trigger language plpgsql as $$
+      begin
+        raise exception 'injected initialization COMMIT failure' using errcode='23514';
+      end $$;
+      create constraint trigger init902_reject_commit
+      after update on projects deferrable initially deferred for each row
+      when (new.id='${COMMIT_TARGET}' and new.initialization_status='initialized')
+      execute function init902_reject_commit();
+    `);
+    try {
+      await expect(approveReview(db, auth, { reviewId: pending.review.id },
+        await approvalContext("init902-dts-commit-attempt", trackedStore),
+      )).rejects.toMatchObject({ code: "23514" });
+      expect(storageKeys).toHaveLength(2);
+      for (const storageKey of storageKeys) await expect(storage.get(storageKey)).rejects.toThrow();
+      const targetState = await captureConfigurationSourceState(db, { organizationId: ORG, projectId: COMMIT_TARGET });
+      expect(targetState).toMatchObject({ bindings: [], values: [], pins: [], files: [], versions: [], revisions: [], members: [] });
+      const counts = (await db.query(`select
+        (select count(*)::int from dts_config_set where project_id=$1) as config_sets,
+        (select count(*)::int from project_parameter_files where project_id=$1) as files,
+        (select initialization_status from projects where id=$1) as status`,
+      [COMMIT_TARGET])).rows[0];
+      expect({ ...counts, bindings: targetState.bindings.length, values: targetState.values.length }).toEqual({ config_sets: 0, files: 0, bindings: 0, values: 0, status: "initialization_pending_review" });
+      expect(await exportCanonicalBindingSource(db, storage, auth, {
+        projectId: SOURCE, bindingId: pending.selected.sourceBindingId,
+      })).toEqual(sourceBefore);
+    } finally {
+      await db.query("drop trigger init902_reject_commit on projects; drop function init902_reject_commit()");
+    }
+    expect((await approveReview(db, auth, { reviewId: pending.review.id },
+      await approvalContext("init902-dts-commit-retry", storage),
+    )).status).toBe("approved");
+  }, 60_000);
 
   it("cleans objects and rolls back the target when a later source object write fails", async () => {
     const pending = await createPendingReview(FAILURE_TARGET, "init902-dts-object-failure");
