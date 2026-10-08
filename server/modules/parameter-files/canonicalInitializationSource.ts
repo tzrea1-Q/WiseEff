@@ -262,9 +262,10 @@ async function cloneSourceGroup(
     const file = group.files.find((candidate) => candidate.name === member.sourceName);
     if (!file) throw new ApiError("CONFLICT", "Canonical source manifest member content is missing.");
     const bytes = Buffer.from(file.content, "utf8");
+    const fileName = targetFileName(targetConfigSetId, member.sourceName);
     const stored = await objectStore.put({
       organizationId: auth.organization.id,
-      fileName: targetFileName(targetConfigSetId, member.sourceName),
+      fileName,
       contentType: member.format === "json" ? "application/json" : "text/plain",
       bytes,
     });
@@ -274,7 +275,7 @@ async function cloneSourceGroup(
       id: fileId,
       organizationId: auth.organization.id,
       projectId: targetProjectId,
-      fileName: stored.fileName,
+      fileName,
       format: member.format,
       enabled: true,
     });
