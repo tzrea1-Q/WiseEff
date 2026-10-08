@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reducer } from "@/application/state/appState";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
@@ -388,6 +389,19 @@ describe("LogsPage api upload wiring", () => {
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy();
+  });
+
+  it("keeps upload open and explains unavailable related parameter context", async () => {
+    const repository = renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockRejectedValue(
+      new WiseEffApiError("CONFLICT", "Unavailable", { reason: "related-parameter-unavailable" }, "request-904")
+    ) }));
+    await waitForApiRuntime(repository);
+    vi.useFakeTimers();
+    openUploadDialog();
+    chooseFile(new File(["line"], "unavailable.log", { type: "text/plain" }));
+    await confirmSelectedFile();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(toastWithText("关联参数已删除或其规范值、来源快照不可用")).toBeTruthy();
   });
 
   it("auto-dismisses the api-mode failure toast and supports manual close", async () => {
