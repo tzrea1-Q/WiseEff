@@ -39,6 +39,36 @@ function pendingHardwareReviewIds(state: PrototypeState) {
 }
 
 describe("ParameterReviewPage deep link", () => {
+  it("loads terminal legacy links through project-scoped calls without enabling legacy review", async () => {
+    const state = hardwareCommitterState();
+    const legacy = { ...state.changeRequests[0], id: "loaded-terminal", status: "已合入" as const };
+    const listChangeRequests = vi.fn().mockResolvedValue([legacy]);
+    const listSubmissionRounds = vi.fn().mockResolvedValue([]);
+    const reviewChange = vi.fn();
+    const getProjectValueChangeSourceDiff = vi.fn();
+    const runtime = {
+      parameterRepository: { listChangeRequests, listSubmissionRounds, reviewChange },
+      parameterCatalogRepository: {
+        listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] }),
+        getProjectValueChangeSourceDiff,
+        reviewProjectValueChangeRequest: vi.fn()
+      }
+    } as unknown as AppRuntime;
+    window.history.replaceState(null, "", `/parameter-review?project=aurora&request=${legacy.id}`);
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <ParameterReviewPage state={{ ...state, changeRequests: [], parameterSubmissionRounds: [] }}
+        dispatch={vi.fn()} onNavigate={() => {}} search={`?project=aurora&request=${legacy.id}`}
+        runtime={runtime} runtimeMode="api" />
+    </TopBarActionsContext.Provider>);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "历史审阅" })).toHaveAttribute("aria-selected", "true"));
+    expect(listChangeRequests).toHaveBeenCalledWith({ projectId: "aurora", status: ["已合入", "已打回"] });
+    expect(listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora", status: ["已合入", "已打回"] });
+    expect(document.querySelector("tr.selected-row")?.textContent).toContain(legacy.title);
+    expect(screen.queryByRole("toolbar", { name: "批量审阅操作" })).not.toBeInTheDocument();
+    expect(reviewChange).not.toHaveBeenCalled();
+    expect(getProjectValueChangeSourceDiff).not.toHaveBeenCalled();
+  });
+
   it.each([
     { roleProject: "nebula", roleId: "software-committer" as const, allowed: false },
     { roleProject: "aurora", roleId: "software-committer" as const, allowed: true },

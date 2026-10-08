@@ -1,4 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
+import type { AuthContext } from "../auth/types";
+import { legacyRequestAccessSql } from "./legacySubmissionAccess";
 import {
   trustedDomainAttributionFromRow,
   type TrustedInvocationDomainAttribution,
@@ -1141,10 +1143,32 @@ export async function createEnablementSubmissionItem(
 
 export async function listSubmissionRounds(
   db: Queryable,
-  query: { organizationId: string; projectId?: string; status?: ParameterSubmissionRoundStatus[] }
+  query: { organizationId: string; auth?: AuthContext; projectId?: string; status?: ParameterSubmissionRoundStatus[] }
 ) {
   const values: unknown[] = [query.organizationId];
   const where = ["psr.organization_id = $1"];
+  if (query.auth?.user.isActive) {
+    const access = legacyRequestAccessSql(query.auth, values, "scoped_request", false);
+    values.push(query.auth.user.id);
+    const owner = `$${values.length}`;
+    const organizationWide = query.auth.roles.some((role) =>
+      role.projectId === null || role.roleId === "admin" || role.roleId === "platform-admin"
+    );
+    const projectIds = [...new Set(query.auth.roles.flatMap((role) => role.projectId ? [role.projectId] : []))];
+    if (!organizationWide) values.push(projectIds);
+    const projectAccess = organizationWide ? "true" : `psr.project_id = any($${values.length}::text[])`;
+    where.push(`(
+      (psr.submitter_user_id = ${owner} and ${projectAccess})
+      or (exists (select 1 from parameter_change_requests scoped_request
+        where scoped_request.organization_id = psr.organization_id
+          and scoped_request.project_id = psr.project_id and scoped_request.submission_round_id = psr.id
+          and ${access})
+        and not exists (select 1 from parameter_change_requests scoped_request
+          where scoped_request.organization_id = psr.organization_id
+            and scoped_request.submission_round_id = psr.id
+            and (scoped_request.project_id <> psr.project_id or not ${access})))
+    )`);
+  } else if (query.auth) where.push("false");
 
   if (query.projectId) {
     addCondition(where, values, (placeholder) => `psr.project_id = ${placeholder}`, query.projectId);
@@ -1287,10 +1311,11 @@ export async function updateSubmissionRoundStatus(
 
 export async function listChangeRequests(
   db: Queryable,
-  query: { organizationId: string; projectId?: string; status?: ParameterChangeRequestStatus[]; assignedTo?: string }
+  query: { organizationId: string; auth?: AuthContext; projectId?: string; status?: ParameterChangeRequestStatus[]; assignedTo?: string }
 ) {
   const values: unknown[] = [query.organizationId];
   const where = ["pcr.organization_id = $1"];
+  if (query.auth) where.push(legacyRequestAccessSql(query.auth, values, "pcr"));
 
   if (query.projectId) {
     addCondition(where, values, (placeholder) => `pcr.project_id = ${placeholder}`, query.projectId);

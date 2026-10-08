@@ -80,6 +80,37 @@ export function ParameterReviewPage({
   runtime,
   runtimeMode
 }: PageProps) {
+  const [legacyHistory, setLegacyHistory] = useState<{
+    projectId: string;
+    requests: ChangeRequest[];
+    rounds: ParameterSubmissionRound[];
+  } | null>(null);
+  const legacyProjectId = getContextQuery(search).projectId || state.activeProjectId;
+  const parameterRepository = runtime?.parameterRepository;
+  useEffect(() => {
+    if (runtimeMode !== "api" || !parameterRepository || !legacyProjectId) return;
+    let cancelled = false;
+    setLegacyHistory(null);
+    void Promise.all([
+      parameterRepository.listChangeRequests({ projectId: legacyProjectId, status: ["已合入", "已打回"] }),
+      parameterRepository.listSubmissionRounds({ projectId: legacyProjectId, status: ["已合入", "已打回"] })
+    ]).then(([requests, rounds]) => {
+      if (!cancelled) setLegacyHistory({ projectId: legacyProjectId, requests, rounds });
+    }).catch((error) => {
+      if (!cancelled) {
+        setLegacyHistory({ projectId: legacyProjectId, requests: [], rounds: [] });
+        dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "旧版审阅归档加载失败，请稍后重试。") });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [dispatch, legacyProjectId, parameterRepository, runtimeMode]);
+  if (runtimeMode === "api" && parameterRepository) {
+    state = {
+      ...state,
+      changeRequests: legacyHistory?.projectId === legacyProjectId ? legacyHistory.requests : [],
+      parameterSubmissionRounds: legacyHistory?.projectId === legacyProjectId ? legacyHistory.rounds : []
+    };
+  }
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
   const searchParams = new URLSearchParams(search);
   const requestedUrlRequestId = searchParams.get("request") ?? "";
@@ -123,12 +154,19 @@ export function ParameterReviewPage({
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [reviewMode, setReviewMode] = useState<ParameterReviewMode>(requestedLegacyIsHistory ? "history" : "pending");
+  useEffect(() => {
+    if (requestedLegacyIsHistory) {
+      setSelectedId(requestedLegacyStateId);
+      setReviewMode("history");
+    }
+  }, [requestedLegacyIsHistory, requestedLegacyStateId]);
   const [filterModules, setFilterModules] = useState<string[]>([]);
   const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const requestedRequestId = requestedLegacyStateId ? "" : requestedUrlRequestId;
+  const legacyHistoryPending = runtimeMode === "api" && parameterRepository && legacyHistory?.projectId !== legacyProjectId;
+  const requestedRequestId = requestedLegacyStateId || legacyHistoryPending ? "" : requestedUrlRequestId;
   const canonicalProjectId = contextQuery.projectId || state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const canReviewCanonical = Boolean(currentUser?.isActive && currentUser.roles?.some((role) =>

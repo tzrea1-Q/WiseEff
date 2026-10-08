@@ -410,7 +410,7 @@ export function WorkbenchInspectorPanel({
                     <dt>来源工作流</dt>
                     <dd>
                       {sourcePreview.request ? "已关联来源审核" : sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
-                      {sourcePreview.reason && !(batchPreview && sourcePreview.reason === "canonical-batch-writer-unavailable")
+                      {sourcePreview.reason && !(batchPreview && sourcePreview.reason === "canonical-batch-review-required")
                         ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
                     </dd>
                   </div>

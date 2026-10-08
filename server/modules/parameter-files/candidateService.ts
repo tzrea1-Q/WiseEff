@@ -29,6 +29,7 @@ import {
   updateParameterFileCandidateParseResult
 } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
+import { getCanonicalSourceWorkflow } from "./canonicalFileWorkflow";
 import {
   assertLegacySourceMutationAllowed,
   getFileVersionById,
@@ -228,6 +229,7 @@ export async function computeCandidateImpact(input: {
   baseLabel: string;
   candidateLabel: string;
   registeredCompatibles: string[];
+  canonicalSourceWorkflow?: boolean;
   openConflicts: Array<{
     id: string;
     parameterName?: string;
@@ -319,7 +321,7 @@ export async function computeCandidateImpact(input: {
     uiDraftValue: conflict.uiDraftValue
   }));
 
-  for (const conflict of conflicts) {
+  for (const conflict of input.canonicalSourceWorkflow ? [] : conflicts) {
     blockers.push({
       code: "open-conflict",
       message: `Open file/UI conflict ${conflict.id}${conflict.parameterName ? ` (${conflict.parameterName})` : ""} must be resolved before activation.`
@@ -522,6 +524,8 @@ async function createCandidateInScope(
         : [];
 
     const computed = await computeCandidateImpact({
+      canonicalSourceWorkflow: openConflicts.length > 0 && fileId != null
+        && (await getCanonicalSourceWorkflow(tx, auth, { projectId: input.projectId, fileId })).canonical,
       format,
       candidateSource: source,
       baseSource,
@@ -752,6 +756,8 @@ export async function recomputeCandidateImpact(
       : [];
 
   const computed = await computeCandidateImpact({
+    canonicalSourceWorkflow: openConflicts.length > 0 && existing.fileId != null
+      && (await getCanonicalSourceWorkflow(db, auth, { projectId: input.projectId, fileId: existing.fileId })).canonical,
     format: existing.format,
     candidateSource,
     baseSource,

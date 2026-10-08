@@ -177,7 +177,7 @@ describe("#906 exact historical double-Binding rollback", () => {
         reason: "restore exact historical cohort" }) }
     );
     expect(response).toMatchObject({ status: 409,
-      body: { error: { code: "CONFLICT", details: { reason: "canonical-batch-writer-unavailable" } } } });
+      body: { error: { code: "CONFLICT", details: { reason: "canonical-batch-review-required" } } } });
     expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
     expect(await objects(f.directory)).toEqual(stored);
   }, 120_000);

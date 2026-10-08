@@ -179,18 +179,14 @@ export function createParameterRuntimeActions({
     try {
       const api = requireRepository(repository);
       const projectsPromise = api.listProjects();
-      const changeRequestsPromise = api.listChangeRequests();
-      const submissionRoundsPromise = api.listSubmissionRounds();
       const projects = await projectsPromise;
-      const [parameterGroups, changeRequests, parameterSubmissionRounds, draftGroups] = await Promise.all([
+      const [parameterGroups, draftGroups] = await Promise.all([
         Promise.all(projects.map((project) => api.listParameters({ projectId: project.id, limit: 500 }))),
-        changeRequestsPromise,
-        submissionRoundsPromise,
         Promise.all(projects.map((project) => api.listDrafts(project.id)))
       ]);
       const parameterDrafts = draftGroups.flat();
       const parameters = parameterGroups.flat();
-      const snapshot = { projects, parameters, changeRequests, parameterSubmissionRounds, parameterDrafts };
+      const snapshot = { projects, parameters, changeRequests: [], parameterSubmissionRounds: [], parameterDrafts };
 
       dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", ...snapshot });
       return snapshot;

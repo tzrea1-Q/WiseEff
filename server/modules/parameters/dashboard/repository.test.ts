@@ -107,7 +107,7 @@ describe.skipIf(!databaseAvailable)("canonical dashboard assigned review queue",
         const candidate = await createCandidate(db, storage, c, { projectId, fileId: file.file.id, fileName: file.file.fileName,
           bytes: Buffer.from('{"settings":{"limit":50},"other":{"limit":60}}\n') });
         const preview = await previewCanonicalCandidate(db, storage, c, { projectId, candidateId: candidate.id });
-        expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-writer-unavailable" });
+        expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-review-required" });
         const frozen = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, c,
           { projectId, candidateId: candidate.id, expectedProofToken: preview.proofToken! }));
         const result = await submitCanonicalBatchValueChange(db, storage, c, { projectId, candidateId: candidate.id,

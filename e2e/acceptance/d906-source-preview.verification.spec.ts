@@ -73,7 +73,7 @@ test("D #906 real API JSON batch source preview shows complete targets and B sub
     const previewResponse = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${candidateId}/source-preview`), { headers });
     expect(previewResponse.ok(), await previewResponse.text()).toBe(true);
     const preview = (await previewResponse.json()).item as { canSubmit: boolean; reason: string; bindings: unknown[]; baseDigest: string; proposedDigest: string };
-    expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-writer-unavailable" });
+    expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-review-required" });
     expect(preview.bindings).toHaveLength(2);
     expect(preview.baseDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(preview.proposedDigest).toMatch(/^[0-9a-f]{64}$/);
