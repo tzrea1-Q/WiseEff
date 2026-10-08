@@ -1,22 +1,23 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { expect, test, type Page } from "playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "playwright/test";
 
-import { acceptanceUserIdForRole, authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import {
+  startCanonicalReloadRun,
+  startCanonicalReloadRuntime,
+  type CanonicalReloadRuntime
+} from "./helpers/canonicalReloadRuntime";
 import { withPgClient } from "./helpers/database";
+import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
-import type { IsolatedBinding } from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const databaseUrl = process.env.DATABASE_URL?.trim() || "";
-const organizationId = "org-chargelab";
-const userId = acceptanceUserIdForRole("admin");
+const debugValue = "<1200>";
 
 async function dismissXiaozeHint(page: Page) {
   const dismiss = page.getByRole("button", { name: "不再提示" });
@@ -25,153 +26,28 @@ async function dismissXiaozeHint(page: Page) {
   }
 }
 
-async function pickAuroraNumericBinding(offset = 0): Promise<IsolatedBinding> {
-  return withPgClient(async (client) => {
-    const found = await client.query<{
-      id: string;
-      parameter_spec_id: string;
-      revision_id: string;
-      raw_value: string;
-      property_key: string;
-      node_locator: string | null;
-      config_set_id: string;
-    }>(
-      `
-      select
-        b.id,
-        b.parameter_spec_id,
-        br.config_revision_id as revision_id,
-        br.raw_value,
-        coalesce(dps.property_key, 'iin_max') as property_key,
-        lnr.node_locator,
-        cr.config_set_id
-      from project_parameter_bindings b
-      join dts_config_set cs
-        on cs.organization_id = b.organization_id
-       and cs.project_id = b.project_id
-       and cs.name = 'default'
-      join dts_config_revisions cr
-        on cr.config_set_id = cs.id
-       and cr.id = (
-         select id from dts_config_revisions
-         where config_set_id = cs.id
-         order by revision_number desc
-         limit 1
-       )
-      join project_parameter_binding_revisions br
-        on br.binding_id = b.id
-       and br.config_revision_id = cr.id
-      left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-      left join dts_logical_node_revisions lnr
-        on lnr.logical_node_id = b.logical_node_id
-       and lnr.config_revision_id = cr.id
-      where b.organization_id = $1
-        and b.project_id = 'aurora'
-        and br.raw_value ~ '^<[0-9]+>$'
-        and coalesce(lnr.node_locator, '') <> ''
-        and br.parameter_spec_version_id is not null
-        and not exists (
-          select 1 from project_parameter_value_drafts d
-          where d.binding_id = b.id
-        )
-        and not exists (
-          select 1 from parameter_drafts pd
-          where pd.project_parameter_binding_id = b.id
-        )
-      order by cr.revision_number desc, b.id
-      offset $2
-      limit 1
-      `,
-      [organizationId, offset]
-    );
-    const row = found.rows[0];
-    expect(row, "aurora default config set must have a numeric cell binding free of drafts").toBeTruthy();
-    return {
-      projectId: "aurora",
-      bindingId: row!.id,
-      parameterSpecId: row!.parameter_spec_id,
-      revisionId: row!.revision_id,
-      rawValue: row!.raw_value,
-      configSetId: row!.config_set_id,
-      fileName: "aurora-default.dts",
-      propertyKey: row!.property_key,
-      nodeLocator: row!.node_locator ?? ""
-    };
-  });
-}
-
-function nextCellValue(rawValue: string) {
-  const numeric = Number(rawValue.replace(/^<|>$/g, ""));
-  return `<${Number.isFinite(numeric) ? numeric + 1 : 1}>`;
-}
-
-async function seedOrdinaryReloadRun(input: {
-  binding: IsolatedBinding;
-  status: "verified" | "unverifiable";
-  debugValue: string;
-}) {
-  const runId = randomUUID();
-  const sourceBytes = Buffer.from("/dts-v1/;\n/plugin/;\n");
-  const artifactBytes = Buffer.from("dtbo-promote-e2e");
-  const sourceSha = createHash("sha256").update(sourceBytes).digest("hex");
-  const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-  const sourceKey = `${organizationId}/${sourceSha}-debug-overlay-${runId}.dts`;
-  const artifactKey = `${organizationId}/${artifactSha}-debug-overlay-${runId}.dtbo`;
-  const objectRoot = process.env.OBJECT_STORE_ROOT?.trim() || ".wiseeff-object-store";
-  await mkdir(join(objectRoot, organizationId), { recursive: true });
-  await writeFile(join(objectRoot, sourceKey), sourceBytes);
-  await writeFile(join(objectRoot, artifactKey), artifactBytes);
-
+/**
+ * Starts a real canonical reload run (exact Binding, Source Pin and compiled overlay) and
+ * settles it at the terminal status under test. Deployment itself is covered by the
+ * fake-bridge and controlled-device specs; this spec starts at the promote step.
+ */
+async function startSettledReloadRun(
+  request: APIRequestContext,
+  fixture: CanonicalReloadRuntime,
+  status: "verified" | "unverifiable"
+) {
+  const run = await startCanonicalReloadRun(request, fixture, debugValue);
+  expect(run.status).toBe("validated");
   await withPgClient(async (client) => {
-    await client.query(
-      `
-      insert into dts_reload_runs (
-        id, organization_id, project_id, status, purpose, failure_code, steps, diagnostics, tool_versions,
-        overlay_source_storage_key, overlay_source_sha256,
-        overlay_artifact_storage_key, overlay_artifact_sha256, overlay_artifact_bytes,
-        created_by_user_id, completed_at
-      ) values (
-        $1, $2, $3, $4, 'ordinary', null, '[]'::jsonb, '[]'::jsonb, '{}'::jsonb,
-        $5, $6, $7, $8, $9, $10, now()
-      )
-      `,
-      [
-        runId,
-        organizationId,
-        input.binding.projectId,
-        input.status,
-        sourceKey,
-        sourceSha,
-        artifactKey,
-        artifactSha,
-        artifactBytes.length,
-        userId
-      ]
-    );
-    await client.query(
-      `
-      insert into dts_reload_run_targets (
-        id, reload_run_id, binding_id, node_path, property_key, baseline_value, debug_value, sort_order
-      ) values ($1, $2, $3, $4, $5, $6, $7, 0)
-      `,
-      [
-        randomUUID(),
-        runId,
-        input.binding.bindingId,
-        input.binding.nodeLocator || "/td079_cell",
-        input.binding.propertyKey,
-        input.binding.rawValue || "<2300>",
-        input.debugValue
-      ]
-    );
+    const updated = await client.query("update dts_reload_runs set status=$2 where id=$1", [run.id, status]);
+    expect(updated.rowCount).toBe(1);
   });
-
-  return runId;
+  return run.id;
 }
 
 async function countOpenChangeRequests(bindingId: string) {
   return withPgClient(async (client) => {
-    const canonical = await client.query<{ count: string }>(
+    const result = await client.query<{ count: string }>(
       `
       select count(*)::text as count
       from project_parameter_value_change_requests
@@ -180,47 +56,37 @@ async function countOpenChangeRequests(bindingId: string) {
       `,
       [bindingId]
     );
-    const legacy = await client.query<{ count: string }>(
-      `
-      select count(*)::text as count
-      from parameter_change_requests
-      where project_parameter_binding_id = $1
-        and status not in ('merged', 'rejected')
-      `,
-      [bindingId]
-    );
-    return Number(canonical.rows[0]?.count ?? 0) + Number(legacy.rows[0]?.count ?? 0);
+    return Number(result.rows[0]?.count ?? 0);
   });
 }
 
-async function clearAdminOpenDrafts() {
+async function clearOpenDrafts(projectId: string) {
   await withPgClient(async (client) => {
-    await client.query(
-      `
-      delete from project_parameter_value_drafts
-      where organization_id = $1
-        and project_id = 'aurora'
-        and user_id = $2
-      `,
-      [organizationId, userId]
-    );
-    await client.query(
-      `
-      delete from parameter_drafts
-      where organization_id = $1
-        and project_id = 'aurora'
-        and user_id = $2
-      `,
-      [organizationId, userId]
-    );
+    await client.query("delete from project_parameter_value_drafts where project_id = $1", [projectId]);
   });
 }
 
 test.describe("DTS reload promote-to-drafts", () => {
-  test.skip(!databaseUrl, "DATABASE_URL is required to seed a verified ordinary reload run.");
+  test.skip(!databaseUrl, "DATABASE_URL is required to run against a disposable canonical runtime.");
+
+  let canonical: CanonicalReloadRuntime;
+
+  test.beforeAll(async ({ request }) => {
+    test.setTimeout(180_000);
+    canonical = await startCanonicalReloadRuntime(request, "dts_reload_promote");
+  });
+
+  test.afterAll(async ({}, info) => {
+    test.setTimeout(60_000);
+    try {
+      await canonical?.runtime.dispose(disposableRuntimeOutcomeFromTestInfo(info));
+    } finally {
+      canonical?.restoreProcessEnv();
+    }
+  });
 
   test.beforeEach(async () => {
-    await clearAdminOpenDrafts();
+    await clearOpenDrafts(canonical.projectId);
   });
 
   test("DTS-RELOAD-PROMOTE-001: promote a verified ordinary run into parameter drafts", async ({
@@ -230,17 +96,16 @@ test.describe("DTS reload promote-to-drafts", () => {
     // @acceptance DTS-RELOAD-PROMOTE-001
     // @operation DTS-RELOAD-PROMOTE-001
     test.setTimeout(120_000);
-    const binding = await pickAuroraNumericBinding(0);
-    const debugValue = nextCellValue(binding.rawValue);
-    const runId = await seedOrdinaryReloadRun({
-      binding,
-      status: "verified",
-      debugValue
-    });
+    const binding = { projectId: canonical.projectId, bindingId: canonical.bindingId };
+    const runId = await startSettledReloadRun(request, canonical, "verified");
     const requestsBefore = await countOpenChangeRequests(binding.bindingId);
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await signInBrowserAsRole(page, "admin", `/dts-reload?runId=${encodeURIComponent(runId)}`);
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      `${canonical.runtime.frontendUrl}/dts-reload?runId=${encodeURIComponent(runId)}`
+    );
     await dismissXiaozeHint(page);
     const promote = page.getByRole("button", { name: "晋升为草稿" });
     await expect(promote).toBeVisible({ timeout: 30_000 });
@@ -264,11 +129,7 @@ test.describe("DTS reload promote-to-drafts", () => {
     );
     expect(drafts.ok(), await drafts.text()).toBe(true);
     const draftBody = (await drafts.json()) as { items?: Array<{ bindingId?: string; targetValue?: string }> };
-    expect(
-      draftBody.items?.some(
-        (item) => item.bindingId === binding.bindingId || String(item.targetValue ?? "").includes("9999")
-      )
-    ).toBe(true);
+    expect(draftBody.items?.some((item) => item.bindingId === binding.bindingId)).toBe(true);
     const requestsAfter = await countOpenChangeRequests(binding.bindingId);
     expect(requestsAfter).toBe(requestsBefore);
 
@@ -300,15 +161,15 @@ test.describe("DTS reload promote-to-drafts", () => {
     // @acceptance DTS-RELOAD-PROMOTE-001
     // @operation DTS-RELOAD-PROMOTE-001
     test.setTimeout(120_000);
-    const binding = await pickAuroraNumericBinding(1);
-    const runId = await seedOrdinaryReloadRun({
-      binding,
-      status: "unverifiable",
-      debugValue: nextCellValue(binding.rawValue)
-    });
+    const binding = { projectId: canonical.projectId, bindingId: canonical.bindingId };
+    const runId = await startSettledReloadRun(request, canonical, "unverifiable");
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await signInBrowserAsRole(page, "admin", `/dts-reload?runId=${encodeURIComponent(runId)}`);
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      `${canonical.runtime.frontendUrl}/dts-reload?runId=${encodeURIComponent(runId)}`
+    );
     await dismissXiaozeHint(page);
     await page.getByRole("button", { name: "晋升为草稿" }).click();
     const dialog = page.getByRole("dialog", { name: "确认晋升不可验证的运行" });

@@ -49,6 +49,9 @@ export function buildPlaywrightWebServers({
       env: {
         PORT: apiPort,
         XIAOZE_DETERMINISTIC: "true",
+        // Loopback receivers (LOG-DOMAIN-WEBHOOK-001) need the local-development flag; the owned
+        // acceptance runtime sets it too, so a root .env without it must not decide the result.
+        LOG_WEBHOOK_ALLOW_INSECURE_LOCAL: "true",
         AUTH_MODE: authMode ?? process.env.AUTH_MODE ?? "production",
         AUTH_PROVIDER: apiAuthProvider,
         ...(process.env.AUTH_TOKEN_ISSUER ? { AUTH_TOKEN_ISSUER: process.env.AUTH_TOKEN_ISSUER } : {}),
