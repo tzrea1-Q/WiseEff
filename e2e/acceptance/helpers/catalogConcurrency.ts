@@ -17,6 +17,7 @@ import { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
 import { assertNoPageOverflow, confirmGovernanceDialog, dismissXiaozeHint } from "./catalogBrowser";
 import { catalogParentLaneUrl } from "./catalogFixtureRuntime";
 import { startDisposablePostCutoverRuntime } from "./disposablePostCutoverRuntime";
+import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV, OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
 
 async function proposalBusinessSnapshot(pool: pg.Pool) {
   return {
@@ -33,7 +34,12 @@ async function proposalBusinessSnapshot(pool: pg.Pool) {
 
 /** Catalog uses the production installer; identity uses password hashes and real session persistence. */
 export async function startCatalogScenarioRuntime(mode: "api" | "mock" = "api", initialRelease: "A" | "F" = "F") {
-  const baseLane = await catalogLaneConnectionString({ ...process.env, DATABASE_URL: catalogParentLaneUrl() });
+  // The worker's fixture runtime moved the owned descriptor to the parent slot; verify the parent lane against it.
+  const baseLane = await catalogLaneConnectionString({
+    ...process.env,
+    DATABASE_URL: catalogParentLaneUrl(),
+    [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV] || process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV],
+  });
   const runtime = await startDisposablePostCutoverRuntime(baseLane, {
     catalog: "fixture-owned",
     label: "catalog819",
