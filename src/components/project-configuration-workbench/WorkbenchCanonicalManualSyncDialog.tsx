@@ -175,7 +175,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
       setError(cause instanceof WiseEffApiError && cause.code === "CONFLICT"
         ? cause.details.reason === "candidate-changed-unbound-or-non-target-bytes"
           ? "上传内容未形成可验证的目标变更，或修改了非目标区域（409）。请检查文件并重新选择；只需核查当前来源时可使用“来源一致性校验”。"
-          : cause.details.reason === "canonical-batch-writer-unavailable"
+          : cause.details.reason === "canonical-batch-targets-required"
             ? "当前文件未形成至少两个可验证的变更目标（409）；配置集总绑定数不代表本文件目标数。请检查上传文件后重新选择。"
           : `来源或证明已变化（409）；请刷新工作台重新选择文件。${presentError(cause, "")}`
         : presentError(cause, "准备上传候选失败；可用同一请求重试。"));

@@ -26,6 +26,7 @@ const CODE_MESSAGES: Record<string, string> = {
 
 /** Known machine-readable `details.reason` values that deserve sharper copy than their code. */
 const REASON_MESSAGES: Record<string, string> = {
+  "related-parameter-unavailable": "关联参数已删除或其规范值、来源快照不可用，无法开始分析。请重新选择可用参数后上传或重跑；已有报告保持不变。",
   "schema-failure": "内容不符合参数结构要求，请核对格式。",
   "gate-token-expired": "发布门凭据已过期，页面数据可能已陈旧，请刷新后重新发起。"
 };

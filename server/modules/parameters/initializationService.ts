@@ -34,10 +34,8 @@ import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
-import {
-  cleanupCanonicalInitializationObjects,
-  cloneCanonicalInitializationSource,
-} from "../parameter-files/canonicalInitializationSource";
+import { cloneCanonicalInitializationSource } from "../parameter-files/canonicalInitializationSource";
+import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
 
 export type InitializationServiceContext = AuditCorrelationContext & {
   invocation?: TrustedInvocationContext;
@@ -401,13 +399,10 @@ export async function approveReview(
 ): Promise<InitializationReviewDto> {
   requireCanAdmin(auth);
 
-  return db.transaction(async (tx) => {
+  const approve = async (tx: Database, objectStore?: ObjectStore) => {
     // Every lifecycle mutation takes the project lock before the review lock.
     // This keeps approval/rejection ordered with draft upsert/submit and
     // prevents a submitted review from being paired with a later draft edit.
-    const createdStorageKeys: string[] = [];
-    let cleanupStore: ObjectStore | undefined;
-    try {
     const reviewHint = await getReviewById(tx, {
       organizationId: auth.organization.id,
       reviewId: input.reviewId
@@ -456,11 +451,10 @@ export async function approveReview(
 
     if (!draft.emptyLibrary) {
       const canonical = requireCanonicalApprovalContext(context);
-      cleanupStore = canonical.objectStore;
-      await cloneCanonicalInitializationSource(tx, canonical.objectStore, auth, {
+      await cloneCanonicalInitializationSource(tx, objectStore ?? canonical.objectStore, auth, {
         targetProjectId: review.projectId,
         snapshots: draft.bindingSnapshots,
-      }, { ...canonical, createdStorageKeys });
+      }, { ...canonical, createdStorageKeys: [] });
     }
 
     const approved = await markReviewApproved(tx, {
@@ -498,13 +492,10 @@ export async function approveReview(
     });
 
     return approved;
-    } catch (error) {
-      if (cleanupStore) {
-        await cleanupCanonicalInitializationObjects(cleanupStore, createdStorageKeys, error);
-      }
-      throw error;
-    }
-  });
+  };
+  return context.objectStore
+    ? withCanonicalSourceAttemptTransaction(db, context.objectStore, (tx, attempt) => approve(tx, attempt.objectStore))
+    : db.transaction((tx) => approve(tx));
 }
 
 export async function rejectReview(
