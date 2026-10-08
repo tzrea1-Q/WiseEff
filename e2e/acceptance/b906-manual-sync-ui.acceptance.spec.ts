@@ -123,7 +123,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector.getByRole("button", { name: "来源一致性校验" })).toBeVisible();
       await inspector.getByRole("button", { name: "上传来源并预览批量候选" }).click();
-      const dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备批量审核` });
+      const dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备审核` });
       let unchangedKey: string | undefined;
       if (outcomeKind === "approve") {
         await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,

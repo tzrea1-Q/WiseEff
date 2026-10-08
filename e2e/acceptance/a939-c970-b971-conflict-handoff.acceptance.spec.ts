@@ -185,7 +185,7 @@ for (const format of ["json", "dts"] as const) {
         let dialog;
         if (workflow === "manual") {
           await inspector.getByRole("button", { name: "上传来源并预览批量候选" }).click();
-          dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备批量审核` });
+          dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备审核` });
           await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,
             mimeType: format === "json" ? "application/json" : "text/plain",
             buffer: Buffer.from(changed[format]) });
