@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import ts from "typescript";
+import { acceptanceOperations } from "../e2e/acceptance/operationMatrix";
 import {
   evaluateOperationEvidence,
   parseOperationEvidenceCheckArgs,
@@ -31,6 +33,44 @@ import {
   readLatestFullEvidenceRun,
   resolveEvidenceRunContext
 } from "../e2e/acceptance/helpers/evidenceRun";
+
+describe("required operation recorder wiring", () => {
+  it.each([
+    "PARAM-FILE-SYNC-001",
+    "PARAM-FILE-RESOLVE-001",
+    "PROJ-CONFIG-CONFLICT-001",
+    "PARAM-DTS-EDIT-002",
+  ])("records every required assertion in the declared owner of %s", (operationId) => {
+    const operation = acceptanceOperations.find((candidate) => candidate.id === operationId)!;
+    const file = operation.specFiles[0]!;
+    const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+    const assertions = new Set<string>();
+    let recordCount = 0;
+    function visit(node: ts.Node) {
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "recordOperationEvidence") {
+        const input = node.arguments[0];
+        if (input && ts.isObjectLiteralExpression(input)) {
+          const fields = new Map(input.properties.filter(ts.isPropertyAssignment)
+            .map((property) => [property.name.getText(source), property.initializer]));
+          const id = fields.get("operationId");
+          const recordedAssertions = fields.get("assertions");
+          if (id && ts.isStringLiteral(id) && id.text === operationId) {
+            recordCount += 1;
+            if (recordedAssertions && ts.isArrayLiteralExpression(recordedAssertions)) {
+              for (const assertion of recordedAssertions.elements) {
+                if (ts.isStringLiteral(assertion)) assertions.add(assertion.text);
+              }
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    expect(recordCount, `${file} must emit ${operationId}, not just an @operation marker`).toBeGreaterThan(0);
+    expect([...assertions]).toEqual(expect.arrayContaining(operation.assertions));
+  });
+});
 
 function createNestedOwnedEvidenceFixture() {
   const root = mkdtempSync(join(tmpdir(), "wiseeff-d30-nested-evidence-"));

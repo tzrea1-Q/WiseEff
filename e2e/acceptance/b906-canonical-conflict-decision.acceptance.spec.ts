@@ -24,6 +24,7 @@ import { acceptanceCast } from "./helpers/cast";
 import { dismissXiaozeHint } from "./helpers/catalogBrowser";
 import { startSwappedDisposablePostCutoverRuntime, type RestoreDisposablePostCutoverRuntime } from "./helpers/semanticBindingFixture";
 import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import { recordOperationEvidence, summarizeApiResponse, writeOperationJsonArtifact } from "./helpers/operationEvidence";
 
 const projectId = "aurora";
 const organizationId = "org-chargelab";
@@ -241,6 +242,29 @@ for (const [format, choice, decision] of [
           && response.url().endsWith(`/parameter-file-candidates/${candidateId}/source-conflict-submit`));
         await conflict.getByRole("button", { name: "提交所选一项人工审核" }).click();
         const submitResponse = await submitted;
+        const recordEvidence = async () => {
+          const finalState = await state();
+          const artifact = await writeOperationJsonArtifact(testInfo, "conflict-decision-proof.json", {
+            format, choice, decision, selectedBindingId, siblingBindingId, beforeState, finalState, network
+          });
+          const evidence = {
+            title: testInfo.title,
+            status: "passed" as const,
+            page, testInfo,
+            role: decision === "stale-submit" || decision === "withdraw" ? "Admin" : "Admin, Software Committer",
+            route: page.url(),
+            artifacts: [artifact],
+            api: [summarizeApiResponse(submitResponse, {
+              method: "POST", path: `/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-conflict-submit`,
+              responseSummary: `choice=${choice}; decision=${decision}; bindingId=${selectedBindingId}`
+            })],
+            db: [{ table: "parameter_catalog.project_parameter_bindings",
+              predicate: `id in (${selectedBindingId}, ${siblingBindingId})`, rowCount: before.length,
+              observed: JSON.stringify({ before: beforeState.bindings, after: finalState.bindings }) }]
+          };
+          await recordOperationEvidence({ ...evidence, operationId: "PARAM-FILE-RESOLVE-001", assertions: ["ui", "api", "db"] });
+          await recordOperationEvidence({ ...evidence, operationId: "PROJ-CONFIG-CONFLICT-001", assertions: ["ui", "api", "screenshot"] });
+        };
         expect(submitResponse.request().postDataJSON()).toMatchObject({
           selectedBindingId, selectedDraftId: draft.id, choice,
           expectedDecisionProofDigest: selectedDigest,
@@ -256,6 +280,7 @@ for (const [format, choice, decision] of [
           await testInfo.attach("json-stale-submit-network.txt", {
             body: Buffer.from(network.join("\n")), contentType: "text/plain"
           });
+          await recordEvidence();
           outcome = "success";
           return;
         }
@@ -363,6 +388,7 @@ for (const [format, choice, decision] of [
         expect(network.some((entry) => entry.startsWith("POST 201") && entry.endsWith("/source-conflict-submit"))).toBe(true);
         if (decision !== "withdraw") expect(network.some((entry) => entry.startsWith("GET 200") && entry.endsWith("/conflict-decision"))).toBe(true);
         await testInfo.attach(`${format}-${choice}-${decision}-network.txt`, { body: Buffer.from(network.join("\n")), contentType: "text/plain" });
+        await recordEvidence();
         outcome = "success";
       } finally { await db.close(); }
     } finally { await restore?.(outcome); }

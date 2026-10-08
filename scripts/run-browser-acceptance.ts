@@ -373,6 +373,11 @@ export function assertAcceptanceShardPlan(planned: ReturnType<typeof collectAcce
   if (full) {
     const fullKeys = new Set(full.map((test) => `${test.project}:${test.id}`));
     if (planned.some((test) => !fullKeys.has(`${test.project}:${test.id}`))) throw new Error("Acceptance shard contains tests outside the full collection.");
+    const plannedKeys = new Set(planned.map((test) => `${test.project}:${test.id}`));
+    const browserFiles = new Set(planned.filter((test) => test.project === "Desktop Chrome").map((test) => test.file));
+    for (const test of full.filter((test) => test.project === "Desktop Chrome" && browserFiles.has(test.file))) {
+      if (!plannedKeys.has(`${test.project}:${test.id}`)) throw new Error(`Acceptance shard split browser spec ${test.file}; operation evidence requires complete spec ownership.`);
+    }
   }
 }
 
@@ -625,7 +630,7 @@ async function main() {
   prepareEvidenceRun(evidenceRun);
   const fullTests = options.shard ? collectBrowserAcceptanceTests(buildBrowserAcceptanceCommand({ ...options, shard: undefined }, loadedEnv, evidenceRun)) : undefined;
   const plannedTests = options.shard ? collectBrowserAcceptanceTests(playwrightCommand) : undefined;
-  const plannedFiles = plannedTests?.map((test) => test.file);
+  const plannedFiles = plannedTests?.filter((test) => test.project === "Desktop Chrome").map((test) => test.file);
   const operations = plannedFiles ? acceptanceShardOperations(plannedFiles, fullTests?.filter((test) => test.project === "Desktop Chrome").map((test) => test.file)) : acceptanceOperations;
   if (plannedTests) {
     assertAcceptanceShardPlan(plannedTests, fullTests);

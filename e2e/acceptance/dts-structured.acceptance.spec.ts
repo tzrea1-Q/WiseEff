@@ -874,12 +874,30 @@ test.describe("DTS structured canonical typed edits", () => {
       groups: [[{ kind: "integer", raw: "0x6E", value: "110" }]]
     });
 
-    const reviewResponse = await request.post(
-      apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/review`),
-      { headers: authHeadersForRole("software-committer"), data: { decision: "approve" } }
-    );
+    await signInBrowserAsRole(page, "software-committer",
+      `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}&request=${requestId}`);
+    const detail = page.getByRole("article", { name: "源文件请求详情" });
+    await expect(detail).toContainText("待审核");
+    await expect(detail.getByLabel("固定源目标内容")).toHaveText(rawValue);
+    const reviewed = page.waitForResponse((response) => response.request().method() === "POST"
+      && response.url().endsWith(`/parameter-value-change-requests/${requestId}/review`));
+    await detail.getByRole("button", { name: "批准软件配置" }).click();
+    const reviewResponse = await reviewed;
     expect(reviewResponse.status(), await reviewResponse.text()).toBe(200);
     expect(((await reviewResponse.json()) as { item: { status: string } }).item.status).toBe("approved");
+    await signInBrowserAsRole(page, "software-user",
+      `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}&request=${requestId}`);
+    await expect(detail).toContainText("已批准");
+    await expect(detail.getByLabel("固定源目标内容")).toHaveText(rawValue);
+
+    const approvedRequestRow = await withPgClient(async (client) => {
+      const result = await client.query<{ target_value: unknown; status: string }>(
+        `select target_value, status from project_parameter_value_change_requests where id = $1`,
+        [requestId]
+      );
+      return result.rows[0];
+    });
+    expect(approvedRequestRow).toMatchObject({ status: "approved", target_value: requestRow?.target_value });
 
     const written = await withPgClient(async (client) => {
       const result = await client.query<{ id: string; file_id: string; version_number: number }>(
@@ -908,7 +926,9 @@ test.describe("DTS structured canonical typed edits", () => {
       status: "passed",
       page,
       testInfo,
-      assertions: ["api", "db"],
+      role: "Software User, Software Committer",
+      route: page.url(),
+      assertions: ["api", "ui", "db"],
       api: [
         summarizeApiResponse(draftResponse, {
           method: "POST",
@@ -925,7 +945,13 @@ test.describe("DTS structured canonical typed edits", () => {
         {
           table: "project_parameter_value_change_requests",
           predicate: `id=${requestId}`,
-          observed: `target_value=${JSON.stringify(requestRow?.target_value)}; status=approved`,
+          observed: `target_value=${JSON.stringify(approvedRequestRow?.target_value)}; status=${approvedRequestRow?.status}`,
+          rowCount: 1
+        },
+        {
+          table: "project_parameter_file_versions",
+          predicate: `id=${written!.id}; file_id=${written!.file_id}`,
+          observed: `version_number=${written!.version_number}; source contains iin_max = ${rawValue}; normalized spelling absent`,
           rowCount: 1
         }
       ],

@@ -68,6 +68,22 @@ describe("browser acceptance runner", () => {
       expect.objectContaining({ id: "B", status: "skipped" }), expect.objectContaining({ id: "C", status: "skipped" }),
     ]);
   });
+  it("rejects a partial owner spec even when the operation owner file is present", () => {
+    const planned = collectAcceptanceTests(shardReport);
+    const full = [...planned, { id: "joint-ui-proof", project: "Desktop Chrome", file: "parameters.acceptance.spec.ts" }];
+    expect(() => assertAcceptanceShardPlan(planned, full)).toThrow(/split browser spec/);
+    expect(() => assertAcceptanceShardPlan(full, full)).not.toThrow();
+  });
+  it("retains all four affected operation contracts in their actual owner specs", () => {
+    const operations = acceptanceShardOperations([
+      "b906-manual-sync-ui.acceptance.spec.ts",
+      "b906-canonical-conflict-decision.acceptance.spec.ts",
+      "dts-structured.acceptance.spec.ts",
+    ]);
+    for (const id of ["PARAM-FILE-SYNC-001", "PARAM-FILE-RESOLVE-001", "PROJ-CONFIG-CONFLICT-001", "PARAM-DTS-EDIT-002"]) {
+      expect(operations.find((operation) => operation.id === id)?.assertions).toContain("ui");
+    }
+  });
   it("uses the owned descriptor pre-run source identity after visual artifacts dirty the worktree", () => {
     expect(
       resolveBrowserSourceMetadata(
