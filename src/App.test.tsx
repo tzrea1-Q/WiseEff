@@ -1014,8 +1014,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalled();
     expect(parameterRepository.listParameters).toHaveBeenCalled();
-    expect(parameterRepository.listChangeRequests).toHaveBeenCalled();
-    expect(parameterRepository.listSubmissionRounds).toHaveBeenCalled();
+    // Legacy history is no longer prefetched organization-wide; consumers load it through scoped calls.
+    expect(parameterRepository.listChangeRequests).not.toHaveBeenCalled();
+    expect(parameterRepository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(parameterRepository.listDrafts).toHaveBeenCalled();
     expect(parameterTopologyRepository.getTopology).toHaveBeenCalled();
     expect(listParameterConfigSets).toHaveBeenCalledWith(initialState.activeProjectId);

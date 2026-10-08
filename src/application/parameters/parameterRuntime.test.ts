@@ -166,12 +166,14 @@ describe("createParameterRuntimeActions", () => {
     await actions.submitChanges(input);
 
     expect(repository.submitParameterChanges).toHaveBeenCalledWith(input);
+    expect(repository.listChangeRequests).not.toHaveBeenCalled();
+    expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(dispatch).toHaveBeenCalledWith({
       type: "HYDRATE_PARAMETER_RUNTIME",
       projects: apiProjects,
       parameters: [apiParameter],
-      changeRequests: [apiChangeRequest],
-      parameterSubmissionRounds: [apiRound],
+      changeRequests: [],
+      parameterSubmissionRounds: [],
       parameterDrafts: [apiDraft]
     });
   });
@@ -283,16 +285,16 @@ describe("createParameterRuntimeActions", () => {
     expect(repository.listProjects).toHaveBeenCalledTimes(1);
     expect(repository.listParameters).toHaveBeenCalledTimes(1);
     expect(repository.listParameters).toHaveBeenCalledWith({ projectId: "api-project", limit: 500 });
-    expect(repository.listChangeRequests).toHaveBeenCalledTimes(1);
-    expect(repository.listSubmissionRounds).toHaveBeenCalledTimes(1);
+    expect(repository.listChangeRequests).not.toHaveBeenCalled();
+    expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);
     expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
     expect(dispatch).toHaveBeenCalledWith({
       type: "HYDRATE_PARAMETER_RUNTIME",
       projects: apiProjects,
       parameters: [apiParameter],
-      changeRequests: [apiChangeRequest],
-      parameterSubmissionRounds: [apiRound],
+      changeRequests: [],
+      parameterSubmissionRounds: [],
       parameterDrafts: [apiDraft]
     });
   });
@@ -403,16 +405,16 @@ describe("createParameterRuntimeActions", () => {
     expect(repository.createImportPreview).toHaveBeenCalledWith(input);
     expect(repository.listProjects).toHaveBeenCalledTimes(1);
     expect(repository.listParameters).toHaveBeenCalledTimes(1);
-    expect(repository.listChangeRequests).toHaveBeenCalledTimes(1);
-    expect(repository.listSubmissionRounds).toHaveBeenCalledTimes(1);
+    expect(repository.listChangeRequests).not.toHaveBeenCalled();
+    expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);
     expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
     expect(dispatch).toHaveBeenCalledWith({
       type: "HYDRATE_PARAMETER_RUNTIME",
       projects: apiProjects,
       parameters: [apiParameter],
-      changeRequests: [apiChangeRequest],
-      parameterSubmissionRounds: [apiRound],
+      changeRequests: [],
+      parameterSubmissionRounds: [],
       parameterDrafts: [apiDraft]
     });
   });

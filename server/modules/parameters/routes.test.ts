@@ -107,6 +107,18 @@ describe("parameter routes", () => {
     expect(projectRepository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
   });
 
+  it.each([
+    ["parameter-submission-rounds", "listSubmissionRounds"],
+    ["parameter-change-requests", "listChangeRequests"]
+  ] as const)("GET /api/v1/%s delegates default reads with authenticated scope", async (resource, method) => {
+    const db = makeDb();
+    vi.mocked(service[method]).mockResolvedValue([]);
+    const response = await requestJson(makeServer({ db }), `/api/v1/${resource}`);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [] });
+    expect(service[method]).toHaveBeenCalledWith(db, makeAuth(), { status: undefined });
+  });
+
   it("GET /api/v1/parameter-submission-rounds binds the personal archive to the submitter and project scope", async () => {
     const db = makeDb();
     const rounds = [

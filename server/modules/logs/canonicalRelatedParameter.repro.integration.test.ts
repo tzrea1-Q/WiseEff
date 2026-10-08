@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -8,7 +9,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
 import { readProjectProtectedParameters } from "../parameter-bindings/adapters";
-import { resolveAuthorizedRelatedParameter } from "./relatedParameter";
+import { resolveAuthorizedRelatedParameter, requireRelatedParameterRunSnapshot } from "./relatedParameter";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
 import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
@@ -18,7 +19,7 @@ import { getLogWorkerRunSnapshot, listLogs } from "./repository";
 import { buildLogResultWebhookPayload } from "./webhookDelivery";
 import { processLogAnalysisJobById } from "./worker";
 import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
-import { appendSourceCommittedValue } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { parseDtsValue } from "../dts";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
@@ -27,6 +28,9 @@ import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
 import { seedCanonicalParameterFixture } from "../agent/testing/canonicalParameterFixture";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
+import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
+import { reviewCanonicalValueChange, submitCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 
 describe("project-scoped canonical related-parameter analysis", () => {
   let disposable: ParameterCatalogDatabase | undefined;
@@ -64,6 +68,10 @@ describe("project-scoped canonical related-parameter analysis", () => {
       }
     };
     const fixture = await seedCanonicalParameterFixture(db, objectStore);
+    expect((await db.query(`select
+      (select count(*)::int from public.project_parameter_bindings where project_id=$1) as bindings,
+      (select count(*)::int from public.parameter_specs where id=$2) as specs`,
+    [fixture.projectId, fixture.definitionId])).rows).toEqual([{ bindings: 0, specs: 0 }]);
 
     const authorizedAuth = await getAuthContext(db, fixture.editorAuth.user.id);
     const readable = await readProjectProtectedParameters(pool, {
@@ -271,6 +279,12 @@ describe("project-scoped canonical related-parameter analysis", () => {
     });
     if (!frozenRun) throw new Error("Expected the worker LOGIN to read the frozen run snapshot.");
     const firstRunSnapshot = frozenRun.relatedParameterSnapshot as RelatedParameterRunSnapshot;
+    const snapshotScope = { organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId };
+    const { recentChanges: firstHistory, ...oldSnapshot } = firstRunSnapshot;
+    expect(firstHistory).toBeDefined();
+    expect(requireRelatedParameterRunSnapshot(oldSnapshot, snapshotScope)).toEqual(oldSnapshot);
+    expect(() => requireRelatedParameterRunSnapshot({ ...oldSnapshot, recentChanges: [{}] }, snapshotScope)).toThrow(/invalid/);
+    expect(() => requireRelatedParameterRunSnapshot({ ...oldSnapshot, recentChanges: Array(11).fill(firstHistory?.[0]) }, snapshotScope)).toThrow(/invalid/);
     await expect(
       workerPool.query("update log_analysis_runs set related_parameter_snapshot = '{}'::jsonb where id = $1", [frozenRun.runId])
     ).rejects.toThrow(/immutable/);
@@ -376,24 +390,35 @@ describe("project-scoped canonical related-parameter analysis", () => {
     const nextValue = resolved.pin.payload.value + 1;
     const catalogSnapshot = await loadPublishedCatalog(pool);
     if (!catalogSnapshot) throw new Error("Expected the fixture Catalog release to remain available.");
-    const advanced = await appendSourceCommittedValue(pool, {
-      snapshot: catalogSnapshot,
-      binding: fixture.binding,
-      definitionRevisionId: fixture.definitionRevisionId,
-      source: resolved.pin.source,
-      payload: { kind: "number", value: nextValue },
-      expectedTip: fixture.currentValueId
+    const valueDraft = await createCanonicalValueDraft(db, authorizedAuth, {
+      projectId: fixture.projectId, bindingId: fixture.bindingId, reason: "Advance the pinned source before rerun",
+      baseRevisionId: resolved.sourcePin.configRevisionId, baseCurrentValueId: fixture.currentValueId,
+      targetValue: parseDtsValue(resolved.propertyKey, `<${nextValue}>`).value
+    }, {
+      objectStore, invocation: createUserInvocation(authorizedAuth), requestId: randomUUID(),
+      refusalSink: createTrustedRefusalAuditSink(db)
     });
-    expect(advanced.ok).toBe(true);
-    if (!advanced.ok) throw new Error("Expected the canonical fixture source writer to advance the current value.");
-    expect(advanced.value.outcome).toBe("committed");
+    const valueChange = await submitCanonicalValueChange(db, authorizedAuth, {
+      projectId: fixture.projectId, draftId: valueDraft.id, assignedToUserId: fixture.reviewerAuth.user.id,
+      invocation: createUserInvocation(authorizedAuth), requestId: randomUUID(), refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    const advanced = await reviewCanonicalValueChange(db, fixture.reviewerAuth, {
+      projectId: fixture.projectId, requestId: valueChange.id, decision: "approve"
+    }, {
+      objectStore, snapshot: catalogSnapshot, invocation: createUserInvocation(fixture.reviewerAuth),
+      traceId: randomUUID(), refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    expect(advanced).toMatchObject({ status: "approved", applyOutcome: "committed", appliedValueId: expect.any(String) });
+    const advancedValueId = advanced.appliedValueId!;
 
     const currentParameter = await resolveAuthorizedRelatedParameter(apiPool, {
       invocation: createUserInvocation(authorizedAuth),
       projectId: fixture.projectId,
       bindingId: fixture.bindingId
     });
-    expect(currentParameter.pin.currentValueId).toBe(advanced.value.value.id);
+    expect(currentParameter.pin.currentValueId).toBe(advancedValueId);
+    expect(currentParameter.pin.payload).toEqual({ kind: "number", value: nextValue });
+    expect(currentParameter.sourcePin.fileVersionId).not.toBe(fixture.sourceFileVersionId);
     expect(currentParameter.pin.currentValueId).not.toBe(firstRunSnapshot.pin.currentValueId);
 
     // Rerun is an explicit fresh analysis: resolve the then-current pin and freeze it in a new run.
@@ -415,7 +440,7 @@ describe("project-scoped canonical related-parameter analysis", () => {
         pin: {
           bindingId: fixture.bindingId,
           projectId: fixture.projectId,
-          currentValueId: advanced.value.value.id,
+          currentValueId: advancedValueId,
           valueDigest: currentParameter.pin.valueDigest,
           definitionRevisionId: currentParameter.pin.definitionRevisionId,
           catalogRelease: currentParameter.pin.catalogRelease
@@ -428,6 +453,16 @@ describe("project-scoped canonical related-parameter analysis", () => {
       }
     });
     expect(rerunSnapshot?.relatedParameterSnapshot).not.toEqual(firstRunSnapshot);
+    const rerunHistory = (rerunSnapshot?.relatedParameterSnapshot as RelatedParameterRunSnapshot).recentChanges;
+    expect(rerunHistory?.length).toBeLessThanOrEqual(10);
+    expect(rerunHistory).toEqual(expect.arrayContaining([expect.objectContaining({
+      valueId: advancedValueId,
+      payload: { kind: "number", value: nextValue },
+      definitionRevisionId: fixture.definitionRevisionId,
+      effectiveRevisionId: fixture.definitionRevisionId,
+      sourcePin: expect.objectContaining({ sourcePinId: currentParameter.sourcePin.sourcePinId }),
+      changedAt: expect.any(String)
+    })]));
 
     const rerunModel = createScriptedLogAnalysisModel([
       { content: { action: "tool", tool: "get_related_parameter_context", args: {} } },
@@ -469,16 +504,19 @@ describe("project-scoped canonical related-parameter analysis", () => {
       })
     ).resolves.toMatchObject({ status: "processed" });
     const rerunMission = rerunModel.calls[0]?.find((message) => message.role === "user")?.content;
-    expect(rerunMission).toContain(advanced.value.value.id);
+    expect(rerunMission).toContain(advancedValueId);
     expect(rerunMission).toContain(currentParameter.pin.definitionRevisionId);
     expect(rerunMission).toContain(currentParameter.sourcePin.fileVersionId);
     expect(rerunMission).toContain(JSON.stringify(nextValue));
     const rerunToolResult = rerunModel.calls[1]?.find(
       (message) => message.role === "user" && message.content.startsWith("Tool result for get_related_parameter_context:")
     );
-    expect(rerunToolResult?.content).toContain(advanced.value.value.id);
+    expect(rerunToolResult?.content).toContain(advancedValueId);
     expect(rerunToolResult?.content).toContain(currentParameter.sourcePin.fileVersionId);
     expect(rerunToolResult?.content).toContain(JSON.stringify(nextValue));
+    expect(rerunToolResult?.content).toContain('"recentChanges"');
+    expect(rerunToolResult?.content).toContain('"valueId"');
+    expect(rerunToolResult?.content).toContain(fixture.currentValueId);
     expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledTimes(2);
     for (const [webhookInput] of webhooks.notifyAnalysisTerminal.mock.calls) {
       expect(webhookInput.conclusion).toBeUndefined();
@@ -606,6 +644,90 @@ describe("project-scoped canonical related-parameter analysis", () => {
     expect(rerunResponse.status).toBe(403);
     expect(rerunResponse.body.error.code).toBe("FORBIDDEN");
 
+    requestAuth = authorizedAuth;
+    async function expectUnavailableIntake() {
+      const before = await db!.query(`select
+        (select count(*)::int from jobs where organization_id=$1) as jobs,
+        (select count(*)::int from log_analysis_runs where organization_id=$1) as runs`, [fixture.organizationId]);
+      const logsBefore = await listLogs(db!, authorizedAuth, {});
+      const putsBefore = objectStorePutCalls;
+      // Same organization-wide analyst grant the successful rerun above uses.
+      const editorBinding = (await db!.query<{ role_id: string; project_id: string | null }>(
+        "select role_id, project_id from user_role_bindings where id = $1", ["urb-905-editor"])).rows[0]!;
+      await db!.query("update user_role_bindings set role_id = 'admin', project_id = null where id = $1", ["urb-905-editor"]);
+      const editorAuth = await getAuthContext(db!, fixture.editorAuth.user.id);
+      for (const request of [
+        { auth: authorizedAuth, url: "/api/v1/log-files", body: {
+          fileName: "unavailable.log", contentType: "text/plain",
+          contentBase64: Buffer.from("INFO rejected\n").toString("base64"),
+          relatedParameterPin: { kind: "canonical-pin", projectId: fixture.projectId, bindingId: fixture.bindingId }
+        } },
+        // Reruns need logs:analyze, which the uploader role does not have.
+        { auth: editorAuth, url: `/api/v1/logs/${uploadBody.log.id}/rerun`, body: {} }
+      ]) {
+        requestAuth = request.auth;
+        const response = await requestJson<{ error: { details: { reason: string } } }>(createHttpServer(router), request.url,
+          { method: "POST", body: JSON.stringify(request.body) });
+        expect(response.status).toBe(409);
+        expect(response.body.error.details.reason).toBe("related-parameter-unavailable");
+      }
+      await db!.query("update user_role_bindings set role_id = $2, project_id = $3 where id = $1",
+        ["urb-905-editor", editorBinding.role_id, editorBinding.project_id]);
+      requestAuth = authorizedAuth;
+      expect(objectStorePutCalls).toBe(putsBefore);
+      expect(await listLogs(db!, authorizedAuth, {})).toEqual(logsBefore);
+      expect((await db!.query(`select
+        (select count(*)::int from jobs where organization_id=$1) as jobs,
+        (select count(*)::int from log_analysis_runs where organization_id=$1) as runs`, [fixture.organizationId])).rows).toEqual(before.rows);
+      expect((await db!.query(`select id, conclusion, impact, severity, confidence, suggested_actions, raw_lines
+        from log_analysis_reports where organization_id=$1 and run_id=$2`,
+      [fixture.organizationId, frozenRun!.runId])).rows).toEqual(oldReportBeforeRerun.rows);
+    }
+
+    await db.query("alter table parameter_catalog.project_value_source_pins enable row level security");
+    try {
+      expect((await apiPool.query("select count(*)::int as count from parameter_catalog.project_value_source_pins where project_value_id=$1",
+        [advancedValueId])).rows).toEqual([{ count: 0 }]);
+      expect((await pool.query("select count(*)::int as count from parameter_catalog.project_value_source_pins where project_value_id=$1",
+        [advancedValueId])).rows).toEqual([{ count: 1 }]);
+      await expectUnavailableIntake();
+    } finally {
+      await db.query("alter table parameter_catalog.project_value_source_pins disable row level security");
+    }
+
+    const deletionDraft = await createCanonicalValueDraft(db, authorizedAuth, {
+      projectId: fixture.projectId, bindingId: fixture.bindingId, action: "delete", reason: "WP4 deleted context",
+      baseRevisionId: currentParameter.sourcePin.configRevisionId, baseCurrentValueId: currentParameter.pin.currentValueId
+    }, {
+      objectStore, invocation: createUserInvocation(authorizedAuth), requestId: randomUUID(),
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    const deletion = await submitCanonicalValueChange(db, authorizedAuth, {
+      projectId: fixture.projectId, draftId: deletionDraft.id, assignedToUserId: fixture.reviewerAuth.user.id,
+      invocation: createUserInvocation(authorizedAuth), requestId: randomUUID(), refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    const approvedDeletion = await reviewCanonicalValueChange(db, fixture.reviewerAuth, {
+      projectId: fixture.projectId, requestId: deletion.id, decision: "approve"
+    }, {
+      objectStore, snapshot: catalogSnapshot, invocation: createUserInvocation(fixture.reviewerAuth),
+      traceId: randomUUID(), refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    expect(approvedDeletion).toMatchObject({ action: "delete", status: "approved", applyOutcome: "committed", appliedValueId: expect.any(String) });
+    expect((await db.query(`select value.value_state from parameter_catalog.project_parameter_bindings binding
+      join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id where binding.id=$1`,
+    [fixture.bindingId])).rows).toEqual([{ value_state: "deleted" }]);
+    await expectUnavailableIntake();
+
+    const unrelated = await requestJson<{ log: { id: string }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
+      method: "POST", body: JSON.stringify({ fileName: "unrelated.log", contentType: "text/plain",
+        contentBase64: Buffer.from("INFO unrelated log\n").toString("base64") })
+    });
+    expect(unrelated.status).toBe(201);
+    expect((await getLogWorkerRunSnapshot(workerDb, unrelated.body.job.id))?.relatedParameterSnapshot).toBeNull();
+    await expect(processLogAnalysisJobById({ db: workerDb, objectStore, jobId: unrelated.body.job.id,
+      analyzer: rerunAnalyzer, workerId: "log904-repro-worker", webhooks })).resolves.toMatchObject({ status: "processed" });
+    expect((await listLogs(db, authorizedAuth, {})).find((log) => log.id === unrelated.body.log.id)?.status).toBe("complete");
+
     // A real broken API connection must fail the authorized source read before
     // upload storage or log creation. Keep the admin connection for verification.
     requestAuth = authorizedAuth;
@@ -625,5 +747,39 @@ describe("project-scoped canonical related-parameter analysis", () => {
     expect(failedSourceRead.status).toBe(500);
     expect(objectStorePutCalls).toBe(putsBeforeQueryFailure);
     expect(await listLogs(db, authorizedAuth, {})).toEqual(priorLogs);
+  }, 120_000);
+
+  it("approves a canonical DTS deletion on a fresh fixture", async () => {
+    const freshDatabase = await createDisposableParameterCatalogDatabase("log904-delete");
+    const freshDb = createPostgresDatabase(freshDatabase.url);
+    const freshObjectRoot = await mkdtemp(path.join(os.tmpdir(), "wiseeff-logs904-delete-"));
+    try {
+      const objectStore = createLocalObjectStore(freshObjectRoot);
+      const fixture = await seedCanonicalParameterFixture(freshDb, objectStore);
+      const snapshot = await loadPublishedCatalog(getRootPostgresPool(freshDb)!);
+      if (!snapshot) throw new Error("Expected a published fixture Catalog.");
+      const draft = await createCanonicalValueDraft(freshDb, fixture.editorAuth, {
+        projectId: fixture.projectId, bindingId: fixture.bindingId, action: "delete", reason: "Fresh deletion proof",
+        baseRevisionId: fixture.configRevisionId, baseCurrentValueId: fixture.currentValueId
+      }, {
+        objectStore, invocation: createUserInvocation(fixture.editorAuth), requestId: randomUUID(),
+        refusalSink: createTrustedRefusalAuditSink(freshDb)
+      });
+      const submitted = await submitCanonicalValueChange(freshDb, fixture.editorAuth, {
+        projectId: fixture.projectId, draftId: draft.id, assignedToUserId: fixture.reviewerAuth.user.id,
+        invocation: createUserInvocation(fixture.editorAuth), requestId: randomUUID(), refusalSink: createTrustedRefusalAuditSink(freshDb)
+      });
+      const approved = await reviewCanonicalValueChange(freshDb, fixture.reviewerAuth, {
+        projectId: fixture.projectId, requestId: submitted.id, decision: "approve"
+      }, {
+        objectStore, snapshot, invocation: createUserInvocation(fixture.reviewerAuth), traceId: randomUUID(),
+        refusalSink: createTrustedRefusalAuditSink(freshDb)
+      });
+      expect(approved).toMatchObject({ action: "delete", status: "approved", applyOutcome: "committed", appliedValueId: expect.any(String) });
+    } finally {
+      await freshDb.close();
+      await freshDatabase.close();
+      await rm(freshObjectRoot, { recursive: true, force: true });
+    }
   }, 120_000);
 });

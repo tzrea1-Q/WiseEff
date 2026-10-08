@@ -1,7 +1,7 @@
 import type { LogDomainKnowledgeSearchResult } from "../../../knowledge/logDomainRetrieval";
 import type { ParseResult } from "../../parser";
 import type { PrefilterFindings } from "../../prefilter";
-import type { RelatedParameterRunSnapshot } from "../../relatedParameter";
+import type { RelatedParameterChange, RelatedParameterRunSnapshot } from "../../relatedParameter";
 
 /**
  * Execution context the agent-loop kernel hands to its read-only tools (ADR-0022:
@@ -41,7 +41,7 @@ export type RelatedParameterContext = {
   protectedReference?: RelatedParameterProtectedReference;
   /** Same immutable value/revision/source data supplied in the analyzer mission. */
   snapshot?: RelatedParameterRunSnapshot;
-  recentChanges?: Array<{
+  recentChanges?: Array<Partial<RelatedParameterChange> & {
     value?: string;
     changedAt: string;
   }>;
