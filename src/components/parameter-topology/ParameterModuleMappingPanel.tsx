@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { presentError } from "@/infrastructure/http/presentError";
@@ -87,6 +87,8 @@ export function ParameterModuleMappingPanel({
   );
   const [registry, setRegistry] = useState<ParameterModuleRegistry>(EMPTY_PARAMETER_MODULE_REGISTRY);
   const [driverRegistry, setDriverRegistry] = useState<DriverRegistryEntry[]>([]);
+  const [driverRegistryLoading, setDriverRegistryLoading] = useState(false);
+  const [driverRegistryError, setDriverRegistryError] = useState<string | null>(null);
   const [observedCompatibles, setObservedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
   const [dismissedCompatibles, setDismissedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,6 +145,28 @@ export function ParameterModuleMappingPanel({
     setOrganizationDriverSchemas(await (client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])));
   };
 
+  const refreshDriverRegistry = useCallback(async (isCancelled: () => boolean = () => false) => {
+    setDriverRegistryLoading(true);
+    setDriverRegistryError(null);
+    try {
+      const list = await client.listDriverRegistry();
+      if (!isCancelled()) setDriverRegistry(list.items);
+    } catch (loadError) {
+      if (!isCancelled()) {
+        setDriverRegistry([]);
+        setDriverRegistryError(presentError(loadError, "无法加载历史驱动注册表，请重试。"));
+      }
+    } finally {
+      if (!isCancelled()) setDriverRegistryLoading(false);
+    }
+  }, [client]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void refreshDriverRegistry(() => cancelled);
+    return () => { cancelled = true; };
+  }, [refreshDriverRegistry]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -150,13 +174,11 @@ export function ParameterModuleMappingPanel({
     Promise.all([
       client.getRegistry(),
       canonicalEnabled ? Promise.resolve(null) : client.getDiscoveryHints(),
-      client.listDriverRegistry(),
       client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])
     ])
-      .then(([nextRegistry, hints, driverList, schemas]) => {
+      .then(([nextRegistry, hints, schemas]) => {
         if (cancelled) return;
         setRegistry(nextRegistry);
-        setDriverRegistry(driverList.items);
         setOrganizationDriverSchemas(schemas);
         setObservedCompatibles(
           (hints?.compatibles ?? []).map((hint) =>
@@ -183,7 +205,6 @@ export function ParameterModuleMappingPanel({
         if (cancelled) return;
         setError(presentError(loadError, "无法加载模块注册表，请稍后重试。"));
         setRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
-        setDriverRegistry([]);
         setOrganizationDriverSchemas([]);
         setObservedCompatibles([]);
         setDismissedCompatibles([]);
@@ -462,11 +483,6 @@ export function ParameterModuleMappingPanel({
     }
   };
 
-  const refreshDriverRegistry = async () => {
-    const list = await client.listDriverRegistry();
-    setDriverRegistry(list.items);
-  };
-
   const registerDriver = async (input: RegisterOrClaimDriverInput) => {
     if (!canAdmin) return;
     setBusy(true);
@@ -699,6 +715,21 @@ export function ParameterModuleMappingPanel({
             onChanged={refreshAfterCanonicalChange}
           />
         ) : null}
+        <section aria-label="历史驱动注册表" aria-busy={driverRegistryLoading}>
+          {driverRegistryLoading ? <p role="status">正在加载历史驱动注册表…</p> : null}
+          {driverRegistryError ? (
+            <div role="alert">
+              <p>{driverRegistryError}</p>
+              <button
+                type="button"
+                className="button subtle"
+                disabled={driverRegistryLoading}
+                onClick={() => void refreshDriverRegistry()}
+              >
+                重试历史驱动注册表
+              </button>
+            </div>
+          ) : null}
         {activeSubView === "queue" && !canonicalEnabled ? (
             <UnclassifiedCompatibleQueue
               hints={unmappedCompatibles}
@@ -931,6 +962,7 @@ export function ParameterModuleMappingPanel({
             }}
           />
         )}
+        </section>
       </div>
 
       {registerDialogOpen ? (

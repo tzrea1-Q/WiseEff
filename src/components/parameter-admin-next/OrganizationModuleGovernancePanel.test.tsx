@@ -26,6 +26,7 @@ describe("listModuleOverlayLibrarySpecs", () => {
     expect(listDefinitions).toHaveBeenCalledTimes(1);
     expect(listSpecs).not.toHaveBeenCalled();
     expect(rows[0]?.id).toBe(CATALOG_DEFINITION_ID);
+    expect(rows[0]?.identityKind).toBe("canonical-definition");
     expect(rows[0]?.propertyKey).toBe("gpio-int");
     expect(rows[0]?.declaredPlacement).toEqual({
       moduleId: CATALOG_MODULE_ID,
@@ -59,6 +60,7 @@ describe("listModuleOverlayLibrarySpecs", () => {
     expect(listSpecs.mock.calls[0]?.[0]).toBeUndefined();
     expect(JSON.stringify(listSpecs.mock.calls[0])).not.toContain("governance");
     expect(rows[0]?.id).toBe("spec-1");
+    expect(rows[0]?.identityKind).toBe("legacy-spec");
     expect(rows[0]?.propertyKey).toBe("gpio_int");
   });
 

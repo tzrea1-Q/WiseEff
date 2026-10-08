@@ -121,6 +121,21 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     finally { restoreProcessEnvFromDisposableRuntime(environment); }
   });
 
+  test("reports a stale binding deep link without substituting a current Binding after reload", async ({ page }) => {
+    await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${projectId}&binding=issue899-stale-binding`);
+    const dismiss = page.getByRole("button", { name: "不再提示" });
+    if (await dismiss.isVisible()) await dismiss.click();
+    await expect(page.getByText("关联参数在当前项目中不可用。")).toBeVisible();
+    await expect(page.locator(`[data-binding-id="${bindingId}"]`)).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /参数详情/ })).toHaveCount(0);
+    await page.waitForLoadState("networkidle");
+    await page.reload();
+    await expect(page.getByText("关联参数在当前项目中不可用。")).toBeVisible();
+    await expect(page.locator(`[data-binding-id="${bindingId}"]`)).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /参数详情/ })).toHaveCount(0);
+    await page.waitForLoadState("networkidle");
+  });
+
   test("loads exact canonical details and preserves each comparable instance after reload", async ({ page, request }, info) => {
     test.setTimeout(120_000);
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${projectId}`);

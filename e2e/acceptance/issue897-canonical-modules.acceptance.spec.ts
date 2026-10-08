@@ -567,8 +567,11 @@ test.describe("Issue 897 canonical module ownership", () => {
     await expect(picker.getByText("Output hardware", { exact: true })).toBeVisible();
     await picker.getByText("extra_119", { exact: true }).click();
     await page.screenshot({ path: info.outputPath("canonical-overlay-page-two.png"), animations: "disabled" });
-    await picker.getByRole("button", { name: "使用所选", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "配置组织级解析", exact: true }).getByText("extra_119", { exact: true })).toBeVisible();
+    // Overlay authoring has no canonical owner: a canonical Definition is selectable but cannot be submitted as a legacy spec.
+    await expect(picker.getByRole("button", { name: "使用所选", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("status")).toContainText("暂不支持为规范 Definition 编写 Overlay");
+    await picker.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(picker).toHaveCount(0);
     await page.goto(`${runtime.frontendUrl}/parameter-admin/specs?q=iin_max`);
     const definitionRow = page.getByRole("table", { name: "参数定义列表" }).getByRole("row").filter({ hasText: "iin_max" });
     await expect(definitionRow).toContainText("Output hardware");
