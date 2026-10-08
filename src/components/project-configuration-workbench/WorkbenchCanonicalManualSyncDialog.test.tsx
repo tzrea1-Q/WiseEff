@@ -376,7 +376,7 @@ describe("canonical manual sync dialog", () => {
 
   it("explains a one-target file within a larger configuration set", async () => {
     const { submit } = show(proof, new WiseEffApiError("CONFLICT", "No multi-Binding change",
-      { reason: "canonical-batch-writer-unavailable" }, "request"));
+      { reason: "canonical-batch-targets-required" }, "request"));
     const dialog = screen.getByRole("dialog", { name: "上传 JSON 来源并准备审核" });
     uploadFile(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));

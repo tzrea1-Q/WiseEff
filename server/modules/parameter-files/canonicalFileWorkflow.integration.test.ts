@@ -279,7 +279,7 @@ describe("#906 canonical JSON candidate workflow", () => {
     expect(multiPreview).toMatchObject({
       kind: "canonical",
       canSubmit: false,
-      reason: "canonical-batch-writer-unavailable",
+      reason: "canonical-batch-review-required",
       candidateId: changedBoth.id,
       fileId,
       format: "json",
@@ -337,7 +337,7 @@ describe("#906 canonical JSON candidate workflow", () => {
       reason: "batch writer remains unavailable",
       requestId: "906-json-multi-submit-refused",
       refusalSink: createTrustedRefusalAuditSink(db)
-    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-writer-unavailable" } });
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-review-required" } });
 
     const afterMultiPreview = {
       cohort: await loadSourceBindingCohortReadOnly(db, {
@@ -428,6 +428,9 @@ describe("#906 canonical JSON candidate workflow", () => {
     });
     const reservedPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: JSON_PROJECT, candidateId: changedReservedBinding.id });
     expect(reservedPreview).toMatchObject({ kind: "canonical", canSubmit: true, bindingId: bindings[0]!.id });
+    await expect(db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT, candidateId: changedReservedBinding.id, expectedProofToken: reservedPreview.proofToken!
+    }))).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-targets-required" } });
     await expect(submitCanonicalCandidate(db, storage, otherEditor, {
       projectId: JSON_PROJECT,
       candidateId: reservedPreview.candidateId,
@@ -1025,7 +1028,7 @@ describe("#906 canonical DTS candidate workflow", () => {
       bytes: Buffer.from(source.replaceAll("iin_max = <36>", "iin_max = <77>"))
     });
     const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: DTS_PROJECT, candidateId: candidate.id });
-    expect(preview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "canonical-batch-writer-unavailable", format: "dts" });
+    expect(preview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "canonical-batch-review-required", format: "dts" });
     expect(preview.bindings).toHaveLength(2);
     expect(preview.bindings?.map((binding) => [binding.beforeText, binding.afterText])).toEqual([
       ["<36>", "<77>"], ["<36>", "<77>"]
@@ -1063,7 +1066,7 @@ describe("#906 canonical DTS candidate workflow", () => {
     const deletePreview = await previewCanonicalCandidate(db, storage, admin, {
       projectId: DTS_PROJECT, candidateId: deletedBoth.id
     });
-    expect(deletePreview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "canonical-batch-writer-unavailable" });
+    expect(deletePreview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "canonical-batch-review-required" });
     expect(deletePreview.bindings).toHaveLength(2);
     expect(deletePreview.bindings?.map((binding) => binding.action)).toEqual(["delete", "delete"]);
     expect(deletePreview.bindings?.map((binding) => [binding.beforeText, binding.afterText])).toEqual([
@@ -1094,7 +1097,7 @@ describe("#906 canonical DTS candidate workflow", () => {
       reason: "batch request schema unavailable",
       requestId: "906-dts-batch-refused",
       refusalSink: createTrustedRefusalAuditSink(db)
-    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-writer-unavailable" } });
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-review-required" } });
     const state = await db.query<{ current_version_id: string; request_count: number }>(
       `select file.current_version_id,
               (select count(*)::int from project_parameter_value_change_requests where candidate_id=$2) as request_count
