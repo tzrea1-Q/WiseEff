@@ -16,6 +16,7 @@ import type {
   SourceTopologyNode
 } from "./domain/parameter-topology/types";
 import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
+import { createTestAppPorts } from "./test/harness";
 
 beforeEach(() => {
   cleanup();
@@ -1765,6 +1766,42 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
+  it.each(["binding", "bindingId"])("reports a stale ?%s= target without opening another Binding or probing Archive", async (queryKey) => {
+    const topologyRepository = createApiBoundaryRepository();
+    const parameterActions = createParameterActions();
+    const listProtectedProjectBindings = vi.fn().mockResolvedValue({ items: [] });
+    const canonicalRepository = {
+      ...createTestAppPorts().parameterCatalogRepository,
+      listProtectedProjectBindings,
+      listProjectValueDrafts: vi.fn().mockResolvedValue({ items: [] })
+    };
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={createParametersPageState()}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search={`?project=aurora&${queryKey}=stale-binding`}
+          runtimeMode="api"
+          canEdit={false}
+          parameterActions={parameterActions}
+          topologyRepository={topologyRepository}
+          canonicalRepository={canonicalRepository}
+          listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(await screen.findByText("关联参数在当前项目中不可用。")).toBeInTheDocument();
+    expect(await screen.findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("该参数旧链接已归档")).not.toBeInTheDocument();
+    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+    expect(topologyRepository.getSpec).not.toHaveBeenCalled();
+    expect(topologyRepository.createBindingDraft).not.toHaveBeenCalled();
+    expect(listProtectedProjectBindings).toHaveBeenCalledWith("aurora");
+  });
+
   it("combines the mature workbench boundary with semantic DTS rows in API mode", async () => {
     const listWorkflowAssignees = vi.fn().mockResolvedValue({
       hardwareCommitters: [{ id: "u-hw", name: "Hardware API" }],

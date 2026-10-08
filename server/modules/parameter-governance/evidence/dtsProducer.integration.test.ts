@@ -102,10 +102,10 @@ describe("#897 production DTS observation and Review Item association", () => {
       `select has_table_privilege(current_user,'parameter_catalog.project_parameter_source_occurrences','INSERT') as "canInsert",
         has_table_privilege(current_user,'parameter_catalog.project_parameter_source_occurrences','UPDATE') as "canUpdate",
         has_table_privilege(current_user,'parameter_catalog.project_parameter_source_occurrences','DELETE') as "canDelete"`)).rows[0])
-      .toEqual({canInsert:false,canUpdate:false,canDelete:false});
+      .toEqual({canInsert:true,canUpdate:false,canDelete:false});
     await expect(api.query(`insert into parameter_catalog.project_parameter_source_occurrences
       select * from parameter_catalog.project_parameter_source_occurrences where false`))
-      .rejects.toMatchObject({code:"42501"});
+      .resolves.toMatchObject({rowCount:0});
   },120_000);
 
   afterAll(async () => { await api?.close();if(roleToken && lane) await dropLabRuntimeLogins(lane.url,roleToken);

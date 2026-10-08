@@ -112,6 +112,16 @@ describe("JsonBindingPanel", () => {
     expect(onValidateEdit).not.toHaveBeenCalled();
   });
 
+  it("labels rows with the registry module name, then the driver module, never a known module id", () => {
+    const unregistered = { ...secondBinding, id: "binding-json-3", propertyKey: "fan-curve", moduleId: "d461e6d6-unregistered", driverModule: "Configuration" };
+    render(<JsonBindingPanel bindings={[jsonBinding, unregistered]} moduleRegistry={moduleRegistry} />);
+    const table = screen.getByRole("table", { name: "JSON 参数列表" });
+    expect(within(table).getByRole("row", { name: /charging-policy/ })).toHaveTextContent("充电管理");
+    expect(within(table).getByRole("row", { name: /fan-curve/ })).toHaveTextContent("Configuration");
+    expect(table).not.toHaveTextContent("module-charging");
+    expect(table).not.toHaveTextContent("d461e6d6-unregistered");
+  });
+
   it("opens the exact JSON Binding deep link for viewing", async () => {
     render(<JsonBindingPanel bindings={[jsonBinding, secondBinding]} requestedBindingId="binding-json-2" />);
 

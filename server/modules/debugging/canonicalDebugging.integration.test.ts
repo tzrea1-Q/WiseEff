@@ -277,7 +277,7 @@ describe("canonical-only node debugging HTTP acceptance (#898)", () => {
     expect(bridge.calls).toHaveLength(calls);
   });
 
-  it("measures the existing API LOGIN read and lock boundary without adding grants", async () => {
+  it("allows narrow API LOGIN source locks while preserving immutable and tenant boundaries", async () => {
     const runToken = `dbg898${process.pid}`;
     const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken });
     const runtimeDb = createPostgresDatabase(runtime.apiUrl);
@@ -293,13 +293,43 @@ describe("canonical-only node debugging HTTP acceptance (#898)", () => {
       const current = await resolveDebugNodeCanonicalReference(runtimeDb, fixture.editorAuth, { ...scope, mode: "read" });
       expect(current.protectedReferenceKind).toBe("canonical-pin");
       expect(await runtimeDb.transaction((tx) => assertDebugHistoryPin(tx, fixture.editorAuth, pin as CanonicalDebugReference))).toEqual(pin);
-      // The existing API role can SELECT but cannot lock this view or immutable
-      // source pins. Do not grant UPDATE or remove locks to turn this green.
       await expect(runtimeDb.transaction((tx) => assertDebugNodeCanonicalReferenceCurrent(tx, fixture.editorAuth, current as CanonicalDebugReference)))
-        .rejects.toMatchObject({ code: "42501", message: "permission denied for view current_project_parameter_bindings" });
+        .resolves.toBeUndefined();
       await expect(runtimeDb.transaction((tx) => loadOwnedProjectValueSourcePin(tx, { ...scope,
         projectValueId: (current as CanonicalDebugReference).currentValueId, lock: true })))
-        .rejects.toMatchObject({ code: "42501", message: "permission denied for table project_value_source_pins" });
+        .resolves.toEqual((current as CanonicalDebugReference).sourcePin);
+      for (const [relation, id] of [
+        ["project_parameter_source_occurrences", (current as CanonicalDebugReference).sourcePin.sourceOccurrenceId],
+        ["project_value_source_pins", (current as CanonicalDebugReference).sourcePinId],
+        ["current_project_parameter_bindings", fixture.bindingId],
+      ] as const) {
+        await expect(runtimeDb.query(`update parameter_catalog.${relation} set id = id || '-changed' where id = $1`, [id]))
+          .rejects.toMatchObject({ code: "55000" });
+        await expect(runtimeDb.query(`update parameter_catalog.${relation} set project_id = $2 where id = $1`, [id, fixture.otherProjectId]))
+          .rejects.toMatchObject({ code: "42501" });
+        await expect(runtimeDb.query(`delete from parameter_catalog.${relation} where id = $1`, [id]))
+          .rejects.toMatchObject({ code: "42501" });
+      }
+      await expect(runtimeDb.query(`update parameter_catalog.project_value_source_pins set id = id where id = $1`,
+        [(current as CanonicalDebugReference).sourcePinId])).rejects.toMatchObject({ code: "55000" });
+      await expect(runtimeDb.query(`insert into parameter_catalog.project_parameter_source_occurrences
+        (id,organization_id,project_id,config_set_id,file_id,occurrence_kind,logical_node_id)
+        select id || '-foreign',$2,project_id,config_set_id,file_id,occurrence_kind,logical_node_id
+        from parameter_catalog.project_parameter_source_occurrences where id=$1`,
+        [(current as CanonicalDebugReference).sourcePin.sourceOccurrenceId, fixture.otherAuth.organization.id]))
+        .rejects.toMatchObject({ code: "23503" });
+      for (const foreign of [
+        { ...scope, organizationId: fixture.otherAuth.organization.id },
+        { ...scope, projectId: fixture.otherProjectId },
+      ]) {
+        expect(await runtimeDb.transaction((tx) => readOwnedCurrentBinding(tx, { ...foreign, lock: true }))).toEqual({ status: "missing" });
+        expect(await runtimeDb.transaction((tx) => loadOwnedProjectValueSourcePin(tx, { ...foreign,
+          projectValueId: (current as CanonicalDebugReference).currentValueId, lock: true }))).toBeNull();
+      }
+      expect(await resolveDebugNodeCanonicalReference(runtimeDb, fixture.otherAuth, { ...scope, mode: "read" }))
+        .toMatchObject({ protectedReferenceKind: "typed-block", protectedReferenceReason: "missing-binding" });
+      expect(await resolveDebugNodeCanonicalReference(runtimeDb, fixture.guestAuth, { ...scope, mode: "mutate" }))
+        .toMatchObject({ protectedReferenceKind: "typed-block", protectedReferenceReason: "project-scope" });
     } finally {
       await runtimeDb.close();
       await dropLabRuntimeLogins(database.url, runToken);

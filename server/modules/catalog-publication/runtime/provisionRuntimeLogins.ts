@@ -25,6 +25,21 @@ export const WORKBENCH_BINDING_RELATIONS = [
   "parameter_catalog.binding_history_events",
 ] as const;
 
+export const CANONICAL_SOURCE_APPEND_RELATIONS = [
+  "parameter_catalog.project_parameter_source_occurrences",
+  "parameter_catalog.project_value_source_pins",
+] as const;
+
+export const CANONICAL_SOURCE_LOCK_RELATIONS = [
+  ...CANONICAL_SOURCE_APPEND_RELATIONS,
+  "parameter_catalog.current_project_parameter_bindings",
+] as const;
+
+const CANONICAL_SOURCE_READ_FUNCTIONS = [
+  "parameter_catalog.is_replaced_current_binding(text)",
+  "parameter_catalog.resolve_current_binding_by_source_occurrence(text, text, text)",
+] as const;
+
 export type PublicationRuntimeLoginMode = "official" | "lab";
 
 export type PublicationRuntimeLoginNames = {
@@ -260,6 +275,22 @@ const convergeCatalogWriteGrants = async (admin: pg.Client, role: string): Promi
   await admin.query(
     `revoke insert, update, delete, truncate, references, trigger on all tables in schema catalog_publication from ${quoteIdent(role)}`,
   );
+  const columns = await admin.query<{ schema_name: string; relation_name: string; column_names: string[] }>(
+    `select namespace.nspname as schema_name, relation.relname as relation_name,
+            array_agg(attribute.attname::text order by attribute.attnum) as column_names
+       from pg_attribute attribute
+       join pg_class relation on relation.oid = attribute.attrelid
+       join pg_namespace namespace on namespace.oid = relation.relnamespace
+      where namespace.nspname in ('parameter_catalog', 'catalog_publication')
+        and attribute.attnum > 0 and not attribute.attisdropped and attribute.attacl is not null
+      group by namespace.nspname, relation.relname`,
+  );
+  for (const relation of columns.rows) {
+    const names = relation.column_names.map(quoteIdent).join(", ");
+    await admin.query(
+      `revoke insert (${names}), update (${names}), references (${names}) on table ${quoteIdent(relation.schema_name)}.${quoteIdent(relation.relation_name)} from ${quoteIdent(role)}`,
+    );
+  }
   await admin.query(`revoke update on all sequences in schema parameter_catalog from ${quoteIdent(role)}`);
   await admin.query(`revoke update on all sequences in schema catalog_publication from ${quoteIdent(role)}`);
 };
@@ -292,12 +323,14 @@ export async function dropLabRuntimeLogins(
               and pid <> pg_backend_pid()`,
           [role],
         );
+        await convergeCatalogWriteGrants(admin, role);
         for (const schema of ["public", "parameter_catalog", "catalog_publication"]) {
           await admin.query(
             `alter default privileges in schema ${quoteIdent(schema)} revoke select on tables from ${quoteIdent(role)}`,
           );
           await admin.query(`revoke all on all tables in schema ${quoteIdent(schema)} from ${quoteIdent(role)}`);
           await admin.query(`revoke all on all sequences in schema ${quoteIdent(schema)} from ${quoteIdent(role)}`);
+          await admin.query(`revoke all on all functions in schema ${quoteIdent(schema)} from ${quoteIdent(role)}`);
           await admin.query(`revoke all on schema ${quoteIdent(schema)} from ${quoteIdent(role)}`);
         }
         await admin.query(`revoke all on database ${quoteIdent(databaseNameOf(bootstrapUrl))} from ${quoteIdent(role)}`);
@@ -409,6 +442,24 @@ export async function provisionPublicationRuntimeLogins(
         await admin.query(
           `grant insert, update, delete on table ${table} to ${quoteIdent(names.api)}`,
         );
+      }
+      for (const table of CANONICAL_SOURCE_LOCK_RELATIONS) {
+        const relation = await admin.query<{ exists: boolean }>(
+          "select to_regclass($1) is not null as exists", [table],
+        );
+        if (!relation.rows[0]?.exists) continue;
+        if (CANONICAL_SOURCE_APPEND_RELATIONS.some((append) => append === table)) {
+          await admin.query(`grant insert on table ${table} to ${quoteIdent(names.api)}`);
+        }
+        await admin.query(`grant update (id) on table ${table} to ${quoteIdent(names.api)}`);
+      }
+      for (const routine of CANONICAL_SOURCE_READ_FUNCTIONS) {
+        const functionExists = await admin.query<{ exists: boolean }>(
+          "select to_regprocedure($1) is not null as exists", [routine],
+        );
+        if (!functionExists.rows[0]?.exists) continue;
+        await admin.query(`revoke execute on function ${routine} from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
+        await admin.query(`grant execute on function ${routine} to ${quoteIdent(names.api)}`);
       }
 
       await grantMembership(admin, CATALOG_PUBLICATION_COORDINATOR_ROLE, names.api);

@@ -141,7 +141,7 @@ export const AGENT_TOOL_METADATA = [
     permission: "parameter:edit",
     requiresApproval: true,
     description:
-      "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval. Pass the binding id from perception.searchParameters as parameterId, and write targetValue as DTS source text in the same format as the parameter's current value (for example <3600> for cells or \"fast\" for strings).",
+      "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval. Pass the binding id from perception.searchParameters as parameterId. Write targetValue as source text matching the Binding's real source format: DTS (for example <3600> for cells) or a JSON value (for example 3600 or \"fast\"). Delete is not supported.",
     schema: {
       type: "object",
       properties: {
@@ -153,7 +153,7 @@ export const AGENT_TOOL_METADATA = [
         targetValue: {
           type: "string",
           description:
-            'Requested new value as DTS source text, matching the format of the current value: cells like <3600>, strings like "fast", bytes like [01 02].'
+            'Requested new value as source text matching the Binding\'s real source format: DTS cells like <3600>, strings like "fast", bytes like [01 02], or a JSON value like 3600 or "fast". Delete is not supported.'
         },
         reason: { type: "string", description: "Human-readable reason for the change." }
       },

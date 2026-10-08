@@ -362,6 +362,26 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("does not substitute a same-Definition Binding for a stale deep link alongside ready DTS", async () => {
+    const sibling = protectedJsonBinding("aurora", "current-sibling-binding");
+    const repository = createRepository();
+    const listProtectedProjectBindings = vi.fn().mockResolvedValue({ items: [sibling] });
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId="stale-binding"
+      topologyRepository={repository}
+      listConfigSets={vi.fn().mockResolvedValue([{ id: "config", name: "default" }])}
+      canonicalRepository={protectedRepository(listProtectedProjectBindings)} />);
+
+    expect(await screen.findByText("关联参数在当前项目中不可用。")).toBeInTheDocument();
+    await waitFor(() => expect(repository.listBindings).toHaveBeenCalledWith("aurora", "rev-real-1"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("tab", { name: /JSON 参数/ }));
+    expect(await screen.findByRole("table", { name: "JSON 参数列表" })).toHaveTextContent(sibling.propertyKey);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(repository.getSpec).not.toHaveBeenCalled();
+    expect(repository.createBindingDraft).not.toHaveBeenCalled();
+    expect(listProtectedProjectBindings).toHaveBeenCalledWith("aurora");
+  });
+
   it("reports a missing protected Binding port instead of masking it as DTS empty", async () => {
     render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId="json-current"
       topologyRepository={createRepository()} listConfigSets={vi.fn().mockResolvedValue([])} />);

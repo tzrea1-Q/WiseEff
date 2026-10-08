@@ -12,7 +12,10 @@ import { createParameterModuleForAuth } from "../../modules/parameters/service";
 /** Explicit local-test Catalog bootstrap, not publication-manager qualification.
  * Module creation and registration use their actual production owners.
  */
-export async function installConfigurationSourceFixture(db: Database, auth: AuthContext, input: { subjectId: string; schemaId: string }) {
+export async function installConfigurationSourceFixture(db: Database, auth: AuthContext, input: {
+  subjectId: string; schemaId: string;
+  additionalDefinitionWithSameName?: { definitionId: string; revisionId: string; propertyKey: string };
+}) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new Error("Configuration fixture requires native PostgreSQL");
   const full = validCatalogReleaseBundle();
@@ -30,6 +33,16 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
       document.content.revision.matching.selectorKind = "configuration-schema-id";
       document.content.revision.valueSchema = { type: "number",minimum: 0 };
     }
+  }
+  if (input.additionalDefinitionWithSameName) {
+    const definition = release.documents.find((document) => document.kind === "definition");
+    if (!definition || definition.kind !== "definition") throw new Error("Missing canonical Definition fixture");
+    const sameName = structuredClone(definition);
+    sameName.content.id = input.additionalDefinitionWithSameName.definitionId;
+    sameName.content.propertyKey = input.additionalDefinitionWithSameName.propertyKey;
+    sameName.content.revision.id = input.additionalDefinitionWithSameName.revisionId;
+    sameName.content.revision.matching.sourceProperty = input.additionalDefinitionWithSameName.propertyKey;
+    release.documents.push(sameName);
   }
   refreshAuthoritativeSource(release);
   const bundle = { schemaVersion: full.schemaVersion,targetReleaseId: release.manifest.release.id,releases: [release] };
@@ -85,6 +98,40 @@ export async function captureConfigurationSourceState(db: Queryable, input: { or
       (select coalesce(jsonb_agg(jsonb_build_object('id',id,'target',target_id,'action',action,'trace',trace_id) order by id),'[]')
         from audit_events where organization_id=$1 and project_id=$2) as audits`, [input.organizationId,input.projectId]);
   return result.rows[0]!;
+}
+
+export async function countLegacyProjectBindings(db: Queryable, input: { organizationId: string; projectIds: string[] }) {
+  const result = await db.query<{ count: number }>(
+    "select count(*)::int as count from public.project_parameter_bindings where organization_id=$1 and project_id=any($2::text[])",
+    [input.organizationId, input.projectIds],
+  );
+  return result.rows[0]!.count;
+}
+
+export async function seedIncompleteCurrentValueProbe(tx: Queryable, input: {
+  organizationId: string; projectId: string; bindingId: string; valueId: string;
+  kind: "missing-value" | "missing-pin";
+}) {
+  const inserted = input.kind === "missing-pin" ? await tx.query<{ id: string }>(`insert into parameter_catalog.project_parameter_values
+    (id,binding_id,definition_id,definition_revision_id,source_ref,config_revision_id,value_digest,value_kind,value)
+    select $1,value.binding_id,value.definition_id,value.definition_revision_id,value.source_ref,
+      value.config_revision_id,value.value_digest,value.value_kind,value.value
+    from parameter_catalog.project_parameter_values value
+    join parameter_catalog.project_parameter_bindings binding on binding.id=value.binding_id and binding.current_value_id=value.id
+    where binding.organization_id=$2 and binding.project_id=$3 and binding.id=$4 returning id`,
+  [input.valueId, input.organizationId, input.projectId, input.bindingId]) : undefined;
+  const updated = await tx.query<{ id: string }>(
+    "update parameter_catalog.project_parameter_bindings set current_value_id=$1 where organization_id=$2 and project_id=$3 and id=$4 returning id",
+    [input.valueId, input.organizationId, input.projectId, input.bindingId],
+  );
+  const current = await tx.query<{ current_value_id: string; value_id: string | null; pin_id: string | null }>(`select
+    binding.current_value_id,value.id as value_id,pin.id as pin_id
+    from parameter_catalog.project_parameter_bindings binding
+    left join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id and value.binding_id=binding.id
+    left join parameter_catalog.project_value_source_pins pin on pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id
+    where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3`,
+  [input.organizationId, input.projectId, input.bindingId]);
+  return { inserted: inserted?.rows, updated: updated.rows, current: current.rows };
 }
 
 /** Native historical-state counterexample, only inside a caller-owned rollback probe.
