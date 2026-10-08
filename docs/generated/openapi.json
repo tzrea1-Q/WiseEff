@@ -31478,7 +31478,10 @@
         "type": "object",
         "properties": {
           "item": {
-            "type": "object",
+            "type": [
+              "object",
+              "null"
+            ],
             "properties": {
               "request": {
                 "type": "object",
