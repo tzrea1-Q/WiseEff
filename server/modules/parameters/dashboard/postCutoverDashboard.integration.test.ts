@@ -467,6 +467,36 @@ function hotspotWindowBounds() {
 }
 
 describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () => {
+  it("returns errors rather than zero-filled success when a canonical database dependency fails", async () => {
+    await withTempDatabase(async (db) => {
+      await bootstrapPostCutoverDatabase(db);
+      const server = makeDashboardServer(db);
+      const paths = [
+        "/api/v1/parameters/dashboard/summary?window=30d",
+        "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=project"
+      ];
+      for (const path of paths) {
+        expect((await requestJson(server, path)).status).toBe(200);
+      }
+      await db.query("alter table parameter_catalog.project_value_source_pins rename to dashboard_unavailable_source_pins");
+      try {
+        await expect(db.query("select * from parameter_catalog.project_value_source_pins")).rejects.toMatchObject({ code: "42P01" });
+        for (const path of paths) {
+          const response = await requestJson(server, path);
+          expect(response.status).toBe(500);
+          expect(response.body).toMatchObject({ error: { code: "INTERNAL_ERROR" } });
+          expect(response.body).not.toHaveProperty("item");
+          expect(response.body).not.toHaveProperty("items");
+        }
+      } finally {
+        await db.query("alter table parameter_catalog.dashboard_unavailable_source_pins rename to project_value_source_pins");
+      }
+      for (const path of paths) {
+        expect((await requestJson(server, path)).status).toBe(200);
+      }
+    });
+  }, 120_000);
+
   it(
     "does not count migrated legacy semantic rows in canonical dashboard summary or hotspots",
     async () => {

@@ -1950,6 +1950,7 @@ export async function listSubmissionRounds(db: Queryable, auth: AuthContext, que
   const organizationId = auth.organization.id;
   const rounds = await listSubmissionRoundRows(db, {
     organizationId,
+    auth,
     projectId: query.projectId,
     status: query.status
   });
@@ -2047,6 +2048,7 @@ export async function listChangeRequests(db: Queryable, auth: AuthContext, query
 
   return listChangeRequestRows(db, {
     organizationId: auth.organization.id,
+    auth,
     projectId: query.projectId,
     status: query.status,
     assignedTo: query.assignedTo

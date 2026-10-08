@@ -25,7 +25,7 @@ import {
 import {
   aggregateHotspotGroups
 } from "./hotspotRepository";
-import { aggregatePersonalTrend, aggregateTrend, countKpis } from "./repository";
+import { aggregatePersonalTrend, aggregateRiskDistribution, aggregateTrend, aggregateWorkbenchSignals, countKpis } from "./repository";
 
 const ORGANIZATION_ID = "org-dashboard-canonical-repository";
 const PROJECT_ID = "project-dashboard-canonical-repository";
@@ -314,4 +314,141 @@ describe("canonical dashboard repository", () => {
     // the new exact file-version pin, so both are modified scope members.
     expect(changed[0]?.modifiedParamCount).toBe(2);
   });
+
+  it("isolates non-zero canonical inventory, history and workflow across projects and organizations", async () => {
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!snapshot) throw new Error("Published catalog fixture is unavailable");
+    const projects = [
+      { organizationId: "org-dashboard-isolation-a", projectId: "project-dashboard-isolation-a1" },
+      { organizationId: "org-dashboard-isolation-a", projectId: "project-dashboard-isolation-a2" },
+      { organizationId: "org-dashboard-isolation-b", projectId: "project-dashboard-isolation-b1" }
+    ];
+    const historyCounts = new Map<string, number>();
+    const bindingIds = new Map<string, string[]>();
+    const moduleIds = new Map<string, string>();
+    for (const organizationId of new Set(projects.map((project) => project.organizationId))) {
+      const context = makeTestAuthContext({ organizationId, userId: `${organizationId}-author` });
+      await db.query("insert into organizations(id,name) values ($1,$1)", [organizationId]);
+      for (const userId of [context.user.id, `${organizationId}-reviewer`]) {
+        await db.query(
+          "insert into users(id,organization_id,name,title,is_active) values ($1,$2,$1,'Admin',true)",
+          [userId, organizationId]
+        );
+      }
+      const module = await installConfigurationSourceFixture(db, context, { subjectId: SUBJECT_ID, schemaId: SCHEMA_ID });
+      moduleIds.set(organizationId, module.id);
+    }
+    for (const { organizationId, projectId } of projects) {
+      const context = makeTestAuthContext({ organizationId, userId: `${organizationId}-author` });
+      await db.query(
+        "insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')",
+        [projectId, organizationId]
+      );
+      await db.query(
+        `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+         values ($1,$2,$3,$4,'software-committer')`,
+        [`${projectId}-committer`, `${organizationId}-reviewer`, organizationId, projectId]
+      );
+      const configSet = await createConfigSet(db, context, { projectId, name: "Isolation" });
+      const uploaded = await uploadProjectParameterFile(db, storage, context, {
+        projectId, fileName: "settings.json", bytes: Buffer.from('{"first":{"value":36.5},"second":{"value":42}}\n')
+      });
+      await addConfigSetFile(db, context, {
+        configSetId: configSet.id, fileId: uploaded.file.id, role: "base", sortOrder: 0
+      });
+      const bindings: typeof canonicalBindings = [];
+      for (const property of ["first", "second"]) {
+        const registration = await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, context, snapshot, {
+          projectId, configSetId: configSet.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+          configurationSchemaId: SCHEMA_ID, rootPointer: `/${property}`,
+          mappings: [{ definitionId: DEFINITION_ID, pointer: `/${property}/value` }],
+          invocation: createUserInvocation(context), requestId: `${projectId}-${property}-register`,
+          refusalSink: createTrustedRefusalAuditSink(db)
+        }));
+        bindings.push(...registration.bindings);
+      }
+      expect(bindings).toHaveLength(2);
+      bindingIds.set(projectId, bindings.map((binding) => binding.id));
+      for (const [index, binding] of bindings.entries()) {
+        const pins = await loadCanonicalBindingPins(db, { organizationId, projectId, bindingId: binding.id });
+        if (!pins) throw new Error("Isolation Binding pins are unavailable");
+        const draft = await createCanonicalValueDraft(db, context, {
+          projectId, bindingId: binding.id,
+          sourceTarget: { format: "json", sourceText: index === 0 ? "37.5" : "43" },
+          reason: "Dashboard isolation", baseRevisionId: pins.configRevisionId, baseCurrentValueId: pins.currentValueId
+        }, {
+          objectStore: storage, invocation: createUserInvocation(context),
+          requestId: `${projectId}-${index}-draft`, refusalSink: createTrustedRefusalAuditSink(db)
+        });
+        if (index === 0) {
+          const request = await submitCanonicalValueChange(db, context, {
+            projectId, draftId: draft.id, invocation: createUserInvocation(context),
+            requestId: `${projectId}-submit`, refusalSink: createTrustedRefusalAuditSink(db)
+          });
+          expect(request.status).toBe("pending");
+        }
+      }
+      let historyCount = 0;
+      for (const binding of bindings) {
+        const history = await readProjectValueHistory(getRootPostgresPool(db)!, {
+          binding, definitionRevisionId: binding.effectiveRevisionId
+        });
+        expect(history.ok).toBe(true);
+        if (!history.ok) throw new Error("Isolation value history is unavailable");
+        const sourceHistory = history.value.filter((value) => value.source.sourceRef !== "canonical-binding-identity");
+        expect(sourceHistory).toHaveLength(1);
+        historyCount += sourceHistory.length;
+      }
+      historyCounts.set(projectId, historyCount);
+    }
+
+    const [first, second, foreign] = projects;
+    for (const scope of [
+      { organizationId: first.organizationId, projectId: first.projectId, authorizedProjectIds: null, visible: [first] },
+      { organizationId: first.organizationId, projectId: second.projectId, authorizedProjectIds: null, visible: [second] },
+      { organizationId: foreign.organizationId, projectId: foreign.projectId, authorizedProjectIds: null, visible: [foreign] },
+      { organizationId: first.organizationId, projectId: null, authorizedProjectIds: null, visible: [first, second] },
+      { organizationId: first.organizationId, projectId: null, authorizedProjectIds: [first.projectId], visible: [first] },
+      { organizationId: first.organizationId, projectId: null, authorizedProjectIds: [first.projectId, foreign.projectId], visible: [first] },
+      { organizationId: foreign.organizationId, projectId: null, authorizedProjectIds: null, visible: [foreign] },
+      { organizationId: first.organizationId, projectId: foreign.projectId, authorizedProjectIds: null, visible: [] },
+      { organizationId: first.organizationId, projectId: second.projectId, authorizedProjectIds: [first.projectId], visible: [] },
+      { organizationId: first.organizationId, projectId: null, authorizedProjectIds: [], visible: [] }
+    ]) {
+      const input = { ...scope, windowStart: "2000-01-01T00:00:00.000Z", windowEnd: "2999-01-01T00:00:00.000Z" };
+      const visibleIds = scope.visible.map((project) => project.projectId);
+      const expectedHistory = visibleIds.reduce((count, projectId) => count + historyCounts.get(projectId)!, 0);
+      expect(await countKpis(db, input)).toMatchObject({
+        totalParameters: visibleIds.length * 2, totalBindings: visibleIds.length * 2,
+        totalDefinitions: visibleIds.length ? 1 : 0, managedProjects: visibleIds.length,
+        changeFrequency: expectedHistory, activeContributors: 0,
+        highRiskParameters: null, riskAvailability: "unavailable"
+      });
+      const signals = await aggregateWorkbenchSignals(db, {
+        ...input, userId: `${scope.organizationId}-author`, reviewableProjectIds: projects.map((project) => project.projectId)
+      });
+      expect(signals.myDrafts).toBe(visibleIds.length);
+      const reviewerSignals = await aggregateWorkbenchSignals(db, {
+        ...input, userId: `${scope.organizationId}-reviewer`, reviewableProjectIds: projects.map((project) => project.projectId)
+      });
+      expect(reviewerSignals.reviewQueue).toBe(visibleIds.length);
+      const risk = await aggregateRiskDistribution(db, input);
+      expect(risk.map((bucket) => bucket.projectId).sort()).toEqual([...visibleIds].sort());
+      expect(risk.every((bucket) => bucket.high === null && bucket.riskAvailability === "unavailable")).toBe(true);
+      for (const dimension of ["project", "module", "parameter"] as const) {
+        const groups = await aggregateHotspotGroups(db, { ...input, dimension });
+        expect(groups.reduce((count, group) => count + group.parameterCount, 0)).toBe(visibleIds.length * 2);
+        expect(groups.reduce((count, group) => count + group.historyEventsInWindow, 0)).toBe(expectedHistory);
+        expect(groups.reduce((count, group) => count + group.openRequestCount, 0)).toBe(visibleIds.length);
+        expect(groups.reduce((count, group) => count + group.relatedRequestCount, 0)).toBe(visibleIds.length);
+        if (dimension === "project") {
+          expect(groups.map((group) => group.projectId).sort()).toEqual([...visibleIds].sort());
+        } else if (dimension === "parameter") {
+          expect(groups.map((group) => group.groupId).sort()).toEqual(visibleIds.flatMap((projectId) => bindingIds.get(projectId)!).sort());
+        } else {
+          expect(groups.map((group) => group.groupId)).toEqual(visibleIds.length ? [moduleIds.get(scope.organizationId)] : []);
+        }
+      }
+    }
+  }, 120_000);
 });

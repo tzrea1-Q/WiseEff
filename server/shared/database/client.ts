@@ -11,7 +11,7 @@ export type Queryable = {
 };
 
 export type Database = Queryable & {
-  transaction<T>(fn: (tx: Database) => Promise<T>): Promise<T>;
+  transaction<T>(fn: (tx: Database) => Promise<T>, options?: { onConfirmedRollback?: () => void }): Promise<T>;
 };
 
 const rootDatabaseBrand = Symbol("wiseeff.root-database");
@@ -154,7 +154,7 @@ export function createPostgresDatabase(connectionString: string, options: Databa
   const rootDatabase: RootDatabase = {
     [rootDatabaseBrand]: true,
     query,
-    transaction: async (fn) => {
+    transaction: async (fn, transactionOptions) => {
       const client = await pool.connect();
       const session: Queryable = {
         query: <Row,>(text: string, values: unknown[] = []) =>
@@ -164,15 +164,20 @@ export function createPostgresDatabase(connectionString: string, options: Databa
           })
       };
       let releaseError: Error | true | undefined;
+      let callbackCompleted = false;
 
       try {
         await session.query("begin");
         const result = await fn(savepointHandle(session, 1));
+        callbackCompleted = true;
         await session.query("commit");
         return result;
       } catch (error) {
         try {
           await session.query("rollback");
+          if (!callbackCompleted || (error instanceof pg.DatabaseError && error.severity === "ERROR")) {
+            transactionOptions?.onConfirmedRollback?.();
+          }
         } catch (rollbackError) {
           releaseError = rollbackError instanceof Error ? rollbackError : true;
         }

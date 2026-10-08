@@ -11,7 +11,7 @@ describe("candidateService impact helpers", () => {
     expect(diff).toContain("+c");
   });
 
-  it("marks parse failures as failed without blockers from conflicts", async () => {
+  it.each([true, false])("marks parse failures as failed with canonical workflow %s", async (canonicalSourceWorkflow) => {
     const result = await computeCandidateImpact({
       format: "json",
       candidateSource: "{not-json",
@@ -19,6 +19,7 @@ describe("candidateService impact helpers", () => {
       baseLabel: "base",
       candidateLabel: "cand",
       registeredCompatibles: [],
+      canonicalSourceWorkflow,
       openConflicts: []
     });
     expect(result.status).toBe("failed");
@@ -86,5 +87,19 @@ describe("candidateService impact helpers", () => {
     });
     expect(result.status).toBe("blocked");
     expect(result.blockers.some((item) => item.code === "open-conflict")).toBe(true);
+  });
+
+  it.each([true, false])("retains legacy conflict history with canonical workflow %s", async (canonicalSourceWorkflow) => {
+    const openConflicts = [{ id: "legacy-conflict", status: "open", fileValue: "50", uiDraftValue: "200" }];
+    const result = await computeCandidateImpact({
+      format: "json", candidateSource: '{"limit":50}', baseSource: '{"limit":36.5}',
+      baseLabel: "base", candidateLabel: "cand", registeredCompatibles: [],
+      canonicalSourceWorkflow, openConflicts
+    });
+    expect(result.status).toBe(canonicalSourceWorkflow ? "ready" : "blocked");
+    expect(result.blockers).toEqual(canonicalSourceWorkflow ? [] : [{
+      code: "open-conflict", message: "Open file/UI conflict legacy-conflict must be resolved before activation."
+    }]);
+    expect(result.impact.conflicts).toEqual(openConflicts);
   });
 });

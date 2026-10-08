@@ -40,7 +40,10 @@ export function createWorkerLogAnalysisToolBackends(input: {
           definitionId: snapshot.pin.definitionId,
           definitionRevisionId: snapshot.pin.definitionRevisionId
         },
-        snapshot
+        snapshot,
+        ...(snapshot.recentChanges ? {
+          recentChanges: snapshot.recentChanges.map((change) => ({ ...change, value: JSON.stringify(change.payload.value) }))
+        } : {})
       }
     : undefined;
 

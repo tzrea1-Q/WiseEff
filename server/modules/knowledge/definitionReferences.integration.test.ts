@@ -341,12 +341,41 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
   });
 
   it("keeps reverse lookup tenant-scoped and projects unavailable IDs without catalog labels", async () => {
-    const entryA = await createEntry(auth, "Org A related entry");
+    const entryA = await createEntry(auth, "Org A related entry wp8tenantalpha");
     const entryB = await createEntry(authB, "Org B related entry");
-    for (const [context, entryId] of [[auth, entryA], [authB, entryB]] as const) {
-      const added = await request(context, "PUT", `/api/v1/knowledge/entries/${entryId}/definition-references/${activeDefinitionId}`);
-      expect(added.status).toBe(200);
+    const addedA = await request(auth, "PUT", `/api/v1/knowledge/entries/${entryA}/definition-references/${activeDefinitionId}`);
+    expect(addedA.status).toBe(200);
+    const searchQuery = new URLSearchParams({ search: activeDefinitionId, limit: "25" });
+    const catalogB = await request(authB, "GET", `/api/v2/catalog/definitions?${searchQuery}`);
+    expect(catalogB.status).toBe(200);
+    expect(catalogB.body.items).toContainEqual(expect.objectContaining({ id: activeDefinitionId }));
+    const definitionB = await request(authB, "GET", `/api/v2/catalog/definitions/${activeDefinitionId}`);
+    expect(definitionB.status).toBe(200);
+    expect(JSON.stringify(definitionB.body)).not.toContain(entryA);
+    expect(JSON.stringify(definitionB.body)).not.toContain(ORG_A);
+    const beforeSelectionB = await request(authB, "GET", `/api/v1/knowledge/related-to-definition?definitionId=${activeDefinitionId}`);
+    expect(beforeSelectionB.status).toBe(200);
+    expect(beforeSelectionB.body.items).toEqual([]);
+    const hiddenA = await request(authB, "GET", `/api/v1/knowledge/entries/${entryA}`);
+    expect(hiddenA.status).toBe(404);
+    for (const path of [
+      "/api/v1/knowledge/entries?q=wp8tenantalpha",
+      "/api/v1/knowledge/search?q=wp8tenantalpha"
+    ]) {
+      const visibleEntries = await request(auth, "GET", path);
+      expect(visibleEntries.status).toBe(200);
+      expect(visibleEntries.body.items).toContainEqual(expect.objectContaining(
+        path.startsWith("/api/v1/knowledge/search") ? { entryId: entryA } : { id: entryA }
+      ));
+      const hiddenEntries = await request(authB, "GET", path);
+      expect(hiddenEntries.status).toBe(200);
+      expect(hiddenEntries.body.items).toEqual([]);
     }
+    const addedB = await request(authB, "PUT", `/api/v1/knowledge/entries/${entryB}/definition-references/${activeDefinitionId}`);
+    expect(addedB.status).toBe(200);
+    expect(addedB.body.item.parameterReferences).toEqual([expect.objectContaining({
+      kind: "definition", definitionId: activeDefinitionId, availability: "current"
+    })]);
 
     const pool = getRootPostgresPool(db)!;
     await pool.query(
@@ -373,8 +402,22 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     expect(relatedA.body.items.map((item: { entryId: string }) => item.entryId)).toContain(entryA);
     expect(relatedA.body.items.map((item: { entryId: string }) => item.entryId)).not.toContain(entryB);
     expect(relatedB.status).toBe(200);
+    expect(relatedB.body.items.map((item: { entryId: string }) => item.entryId)).toEqual([entryB]);
     expect(relatedB.body.items.map((item: { entryId: string }) => item.entryId)).toContain(entryB);
     expect(relatedB.body.items.map((item: { entryId: string }) => item.entryId)).not.toContain(entryA);
+
+    const detailB = await request(authB, "GET", `/api/v1/knowledge/entries/${entryB}`);
+    expect(detailB.status).toBe(200);
+    expect(detailB.body.item.parameterReferences).toEqual(addedB.body.item.parameterReferences);
+    expect(JSON.stringify(detailB.body)).not.toContain(entryA);
+    expect(JSON.stringify(detailB.body)).not.toContain("pdef_unavailable_private_label");
+    const document = createKnowledgeTools({ db }).find((tool) => tool.name === "knowledge.getDocument")!;
+    const projectedB = await document.run({ auth: authB, requestId: "kb903-org-b-detail", sessionId: "kb903" }, { entryId: entryB });
+    expect(projectedB.data.referencedParameters).toContainEqual(expect.objectContaining({
+      kind: "definition", definitionId: activeDefinitionId
+    }));
+    expect(JSON.stringify(projectedB.data)).not.toContain(entryA);
+    expect(JSON.stringify(projectedB.data)).not.toContain("pdef_unavailable_private_label");
 
     const crossTenant = await request(authB, "PUT", `/api/v1/knowledge/entries/${entryA}/definition-references/${activeDefinitionId}`);
     expect(crossTenant.status).toBe(404);
