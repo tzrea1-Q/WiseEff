@@ -14,6 +14,7 @@ import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { createDebugDeviceGatewayRegistry } from "../../server/modules/debugging/gatewayRegistry";
 import { seedCanonicalParameterFixture } from "../../server/modules/dts-reload/testing/canonicalReloadFixture";
 import { createControlledReloadBridge } from "../../server/modules/dts-reload/testing/controlledReloadBridge";
+import { canonicalLaneConnectionString } from "./helpers/catalogAcceptanceEnvironment";
 
 // Only the physical device socket is controlled. The browser, HTTP/auth, real
 // DTS compiler, source/draft/request/review writers and PostgreSQL stay real.
@@ -21,10 +22,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 test("workbench handoff reaches canonical target, promotion survives re-entry and awaits product review", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
-  const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!databaseUrl || new URL(databaseUrl).port !== "55438") {
-    throw new Error("Issue 898 requires the dedicated Catalog PostgreSQL lane on port 55438.");
-  }
+  await canonicalLaneConnectionString(898);
   const responses: Array<{ method: string; path: string; status: number }> = [];
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
