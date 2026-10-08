@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test } from "playwright/test";
+import { expect } from "playwright/test";
+import { catalogAppUrl, test } from "./helpers/catalogFixtureRuntime";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
@@ -18,7 +19,6 @@ import {
 } from "./helpers/catalogBrowser";
 import {
   countSubjectRegistrations,
-  ensureCatalogAcceptanceFixture,
   ingestOpenReview,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
@@ -29,8 +29,8 @@ useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES
 
 let fixture: CatalogAcceptanceFixture;
 
-test.beforeAll(async () => {
-  fixture = await ensureCatalogAcceptanceFixture();
+test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
+  fixture = catalogAcceptanceRuntime.fixture;
 });
 
 test.describe("canonical parameter catalog governance interactions", () => {
@@ -182,11 +182,13 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await editor.getByRole("button", { name: /关闭/ }).click();
 
     await page.goto(
-      catalogHref(fixture, {
-        subjectId: fixture.powerSubjectId,
-        definitionId: fixture.xDefinitionId,
-        catalogReleaseId: fixture.chain.pinC.id
-      })
+      catalogAppUrl(
+        catalogHref(fixture, {
+          subjectId: fixture.powerSubjectId,
+          definitionId: fixture.xDefinitionId,
+          catalogReleaseId: fixture.chain.pinC.id
+        })
+      )
     );
     await expect(page.getByRole("region", { name: "定义详情" })).toContainText("iin_max");
     await page.getByRole("button", { name: /查看历史/ }).click();

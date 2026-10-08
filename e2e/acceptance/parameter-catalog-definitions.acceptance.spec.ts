@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test } from "playwright/test";
+import { expect } from "playwright/test";
+import { test } from "./helpers/catalogFixtureRuntime";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
@@ -15,7 +16,6 @@ import {
   waitForCatalogState
 } from "./helpers/catalogBrowser";
 import {
-  ensureCatalogAcceptanceFixture,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
@@ -25,8 +25,8 @@ useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES
 
 let fixture: CatalogAcceptanceFixture;
 
-test.beforeAll(async () => {
-  fixture = await ensureCatalogAcceptanceFixture();
+test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
+  fixture = catalogAcceptanceRuntime.fixture;
 });
 
 /**
