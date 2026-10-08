@@ -15,6 +15,7 @@ import { registerGate0GeneratedSecrets } from "../../../scripts/gate0-secret-reg
 import { acceptanceCast } from "./cast";
 import { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
 import { assertNoPageOverflow, confirmGovernanceDialog, dismissXiaozeHint } from "./catalogBrowser";
+import { catalogParentLaneUrl } from "./catalogFixtureRuntime";
 import { startDisposablePostCutoverRuntime } from "./disposablePostCutoverRuntime";
 
 async function proposalBusinessSnapshot(pool: pg.Pool) {
@@ -32,7 +33,7 @@ async function proposalBusinessSnapshot(pool: pg.Pool) {
 
 /** Catalog uses the production installer; identity uses password hashes and real session persistence. */
 export async function startCatalogScenarioRuntime(mode: "api" | "mock" = "api", initialRelease: "A" | "F" = "F") {
-  const baseLane = await catalogLaneConnectionString();
+  const baseLane = await catalogLaneConnectionString({ ...process.env, DATABASE_URL: catalogParentLaneUrl() });
   const runtime = await startDisposablePostCutoverRuntime(baseLane, {
     catalog: "fixture-owned",
     label: "catalog819",

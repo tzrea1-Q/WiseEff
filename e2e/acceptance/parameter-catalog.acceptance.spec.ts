@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test } from "playwright/test";
+import { expect } from "playwright/test";
+import { catalogAppUrl, test } from "./helpers/catalogFixtureRuntime";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
@@ -20,7 +21,6 @@ import {
   waitForCatalogState
 } from "./helpers/catalogBrowser";
 import {
-  ensureCatalogAcceptanceFixture,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
@@ -32,8 +32,8 @@ const CHARGER_SUBJECT = /^charger/;
 
 let fixture: CatalogAcceptanceFixture;
 
-test.beforeAll(async () => {
-  fixture = await ensureCatalogAcceptanceFixture();
+test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
+  fixture = catalogAcceptanceRuntime.fixture;
 });
 
 test.describe("canonical parameter catalog page", () => {
@@ -81,11 +81,13 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page).toHaveURL(new RegExp(`catalogReleaseId=${fixture.chain.pinF.id}`));
 
     await page.goto(
-      catalogHref(fixture, {
-        subjectId: fixture.powerSubjectId,
-        definitionId: fixture.xDefinitionId,
-        catalogReleaseId: fixture.chain.pinC.id
-      })
+      catalogAppUrl(
+        catalogHref(fixture, {
+          subjectId: fixture.powerSubjectId,
+          definitionId: fixture.xDefinitionId,
+          catalogReleaseId: fixture.chain.pinC.id
+        })
+      )
     );
     await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinC.id);
     await expect(page.getByRole("region", { name: "定义详情" })).toContainText(`修订 #${fixture.oracle.xOnC.revisionNumber}`);

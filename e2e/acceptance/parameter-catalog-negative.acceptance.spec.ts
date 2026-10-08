@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test } from "playwright/test";
+import { expect } from "playwright/test";
+import { catalogAppUrl, test } from "./helpers/catalogFixtureRuntime";
 
 import { installBrowserDiagnostics, useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { collectProposalOperationTrace, startCatalogScenarioRuntime, verifyCommittedProposalResponseFailure, verifyRealProposalConflict } from "./helpers/catalogConcurrency";
@@ -23,7 +24,6 @@ import {
   CATALOG_ORG_B_ADMIN,
   countProposals,
   countSubjectRegistrations,
-  ensureCatalogAcceptanceFixture,
   ingestOpenReview,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
@@ -44,8 +44,8 @@ useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES
 let fixture: CatalogAcceptanceFixture;
 
 test.describe("canonical parameter catalog negative and responsive contract", () => {
-  test.beforeAll(async () => {
-    fixture = await ensureCatalogAcceptanceFixture();
+  test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
+    fixture = catalogAcceptanceRuntime.fixture;
   });
   test("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
     page
@@ -212,7 +212,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     expect(hidden.status).toBe(404);
     expect(JSON.stringify(hidden.body)).not.toMatch(new RegExp(fixture.xDefinitionId));
 
-    await page.goto(`${CATALOG_PAGE_PATH}?spec=${fixture.legacy.unknown}`);
+    await page.goto(catalogAppUrl(`${CATALOG_PAGE_PATH}?spec=${fixture.legacy.unknown}`));
     await expect(catalogPage(page)).toHaveAttribute("data-catalog-state", /error|conflict|retired/);
     await expect(page.getByText("iin_max")).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-11-legacy");

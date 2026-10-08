@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test } from "playwright/test";
+import { expect } from "playwright/test";
+import { test } from "./helpers/catalogFixtureRuntime";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
@@ -11,7 +12,7 @@ import {
   openCatalogAt,
   signInCatalogActor
 } from "./helpers/catalogBrowser";
-import { ensureCatalogAcceptanceFixture, type CatalogAcceptanceFixture } from "./helpers/catalogEvidence";
+import { type CatalogAcceptanceFixture } from "./helpers/catalogEvidence";
 
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
@@ -24,8 +25,8 @@ useBrowserDiagnostics(test, {
 
 let fixture: CatalogAcceptanceFixture;
 
-test.beforeAll(async () => {
-  fixture = await ensureCatalogAcceptanceFixture();
+test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
+  fixture = catalogAcceptanceRuntime.fixture;
 });
 
 test.describe("catalog M1 publication operator loop", () => {
