@@ -1,9 +1,11 @@
 import { execFile, spawn } from "node:child_process";
 import {
   closeSync,
+  constants,
   existsSync,
   mkdirSync,
   openSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -22,6 +24,7 @@ import {
   writeAcceptanceFailureInventory,
 } from "./acceptance-failure-inventory";
 import { provisionOwnedLocalAcceptanceRuntime } from "./owned-local-acceptance-runtime";
+import { validateAcceptanceShard } from "./run-browser-acceptance";
 import {
   captureGate0SourceOutputs,
   restoreAndArchiveGate0SourceOutputs,
@@ -53,6 +56,14 @@ import {
 type RuntimeEnv = Record<string, string | undefined>;
 const execFileAsync = promisify(execFile);
 type Gate0Phase = "visual" | "browser";
+type Gate0Options = { shard?: string };
+
+export function parseGate0Args(args: readonly string[]): Gate0Options {
+  if (args.length === 0) return {};
+  if (args.length === 1 && args[0].startsWith("--shard=")) return { shard: validateAcceptanceShard(args[0].slice("--shard=".length)) };
+  if (args.length === 2 && args[0] === "--shard") return { shard: validateAcceptanceShard(args[1]) };
+  throw new Error("Gate0 accepts only --shard=i/N, or no arguments for the full local run.");
+}
 
 type Gate0PrerequisiteCommandResult = {
   status: number | null;
@@ -210,7 +221,9 @@ function runGate0PrerequisiteCommand(
 export function buildGate0Commands(
   descriptorPath: string,
   ownedDatabaseName: string,
+  options: Gate0Options = {},
 ): Gate0Command[] {
+  const shard = options.shard ? validateAcceptanceShard(options.shard) : undefined;
   const runRoot = path.dirname(descriptorPath);
   const sharedEnv = {
     [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: descriptorPath,
@@ -219,7 +232,7 @@ export function buildGate0Commands(
     WISEEFF_QUALITY_SKIP_SEED: "true",
     ...buildOwnedRuntimeArtifactEnv(runRoot),
   };
-  return [
+  const commands: Gate0Command[] = [
     {
       phase: "visual",
       command: "npm",
@@ -241,21 +254,26 @@ export function buildGate0Commands(
         "local-non-hdc",
         "--runtime-descriptor",
         descriptorPath,
+        ...(shard ? [`--shard=${shard}`] : []),
       ],
       env: { ...sharedEnv },
     },
   ];
+  return commands.filter((command) => command.phase !== "visual" || !shard || shard.startsWith("1/"));
 }
 
 export function evaluateGate0Outcome(input: {
   visualPassed: boolean;
   browserPassed: boolean;
   failureCount: number;
+  visualRequired?: boolean;
 }) {
-  return input.visualPassed && input.browserPassed && input.failureCount === 0 ? "success" : "failure";
+  return (input.visualRequired === false || input.visualPassed) && input.browserPassed && input.failureCount === 0 ? "success" : "failure";
 }
 
-export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
+export async function runAcceptanceGate0(owner: Gate0OwnerDeadline, options: Gate0Options = {}) {
+  const shard = options.shard ? validateAcceptanceShard(options.shard) : undefined;
+  const visualRequired = !shard || shard.startsWith("1/");
   const baseDatabaseUrl =
     process.env.WISEEFF_ACCEPTANCE_ADMIN_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
   if (!baseDatabaseUrl) {
@@ -284,6 +302,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
   });
   const runtimeEnv = { ...runtime.env, ...secretRegistry.env };
   const phaseResults = new Map<Gate0Phase, boolean>();
+  const phaseErrors = new Map<Gate0Phase, string>();
   let timedOutPhase: Gate0Phase | undefined;
   let sourceOutputs: Gate0SourceOutputSnapshot | undefined;
   let sourceOutputsRestored = false;
@@ -294,17 +313,21 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       worktreeRoot: process.cwd(),
       runRoot: runtime.descriptor.artifacts.runRoot,
     });
-    owner.remainingMs("visual baseline staging");
-    await stageGate0VisualBaselines({
-      worktreeRoot: process.cwd(),
-      runRoot: runtime.descriptor.artifacts.runRoot,
-      sourceCommit: runtime.descriptor.run.sourceCommit,
-      signal: owner.signal,
-    });
-    for (const command of buildGate0Commands(
+    if (visualRequired) {
+      owner.remainingMs("visual baseline staging");
+      await stageGate0VisualBaselines({
+        worktreeRoot: process.cwd(),
+        runRoot: runtime.descriptor.artifacts.runRoot,
+        sourceCommit: runtime.descriptor.run.sourceCommit,
+        signal: owner.signal,
+      });
+    }
+    const commands = buildGate0Commands(
       runtime.descriptorPath,
       runtime.descriptor.database.name,
-    )) {
+      options,
+    );
+    for (const command of commands) {
       const startedAt = new Date().toISOString();
       runtime.updatePhase(command.phase, { status: "launching", startedAt });
       const phaseLog = path.join(runtime.descriptor.artifacts.runRoot, `${command.phase}.log`);
@@ -328,6 +351,24 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
         },
       );
       const passed = !result.error && result.status === 0;
+      if (!passed) {
+        let phaseError = result.error?.message ?? `${command.phase} acceptance exited ${result.status ?? "unknown"}; see ${phaseLog}.`;
+        const browserFailurePath = path.join(runtime.descriptor.artifacts.runRoot, "browser-phase-failure.json");
+        if (command.phase === "browser" && existsSync(browserFailurePath)) {
+          try {
+            const failureFile = openSync(browserFailurePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+            try {
+              const failure = JSON.parse(readFileSync(failureFile, "utf8"));
+              if (typeof failure.message === "string") phaseError = failure.message;
+            } finally {
+              closeSync(failureFile);
+            }
+          } catch {
+            phaseError += " Browser phase failure diagnostic was unreadable.";
+          }
+        }
+        phaseErrors.set(command.phase, sanitizeGate0DiagnosticText(phaseError).value);
+      }
       phaseResults.set(command.phase, passed);
       const archived = archivePhaseArtifacts(command.phase, runtime.descriptor.artifacts.runRoot);
       runtime.updatePhase(command.phase, {
@@ -350,10 +391,10 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     const inventory = buildAcceptanceFailureInventory({
       runId: runtime.descriptor.run.id,
       sourceCommit: runtime.descriptor.run.sourceCommit,
-      reports: [
-        readFailureInventoryReport("visual", gate0PhaseArtifactSources("visual", runtime.descriptor.artifacts.runRoot).resultJson),
-        readFailureInventoryReport("browser", gate0PhaseArtifactSources("browser", runtime.descriptor.artifacts.runRoot).resultJson),
-      ],
+      reports: commands.map(({ phase }) => ({
+        ...readFailureInventoryReport(phase, gate0PhaseArtifactSources(phase, runtime.descriptor.artifacts.runRoot).resultJson),
+        phaseError: phaseErrors.get(phase),
+      })),
     });
     writeAcceptanceFailureInventory(runtime.descriptor.artifacts.failureInventory, inventory);
     finalizationOwner.remainingMs("source-output restoration");
@@ -364,12 +405,15 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       visualPassed: phaseResults.get("visual") === true,
       browserPassed: phaseResults.get("browser") === true,
       failureCount: inventory.failureCount,
+      visualRequired,
     });
     writeGate0Result(runtime.descriptor.artifacts.runRoot, {
       runId: runtime.descriptor.run.id,
       sourceCommit: runtime.descriptor.run.sourceCommit,
       outcome,
       visualPassed: phaseResults.get("visual") === true,
+      visualRequired,
+      shard,
       browserPassed: phaseResults.get("browser") === true,
       failureCount: inventory.failureCount,
       ownerTimeoutMs: GATE0_OWNER_TIMEOUT_MS,
@@ -384,7 +428,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       finalizationOwner,
     );
     if (outcome === "success") {
-      publishLatestFullEvidenceRun(resolveEvidenceRunContext(runtime.env));
+      if (!shard) publishLatestFullEvidenceRun(resolveEvidenceRunContext(runtime.env));
       console.log(`[acceptance:gate0] passed; exact runtime cleanup completed for ${runtime.descriptor.run.id}.`);
       return;
     }
@@ -662,7 +706,7 @@ export async function runGate0Cli(options: {
   process.on("SIGINT", handlers.SIGINT);
   process.on("SIGTERM", handlers.SIGTERM);
   try {
-    const execution = Promise.resolve().then(() => (options.execute ?? runAcceptanceGate0)(owner));
+    const execution = Promise.resolve().then(() => options.execute ? options.execute(owner) : runAcceptanceGate0(owner, parseGate0Args(process.argv.slice(2))));
     await settleBeforeAbort(execution, owner.finalizationSignal);
   } catch (error) {
     if (!receivedSignal) throw error;

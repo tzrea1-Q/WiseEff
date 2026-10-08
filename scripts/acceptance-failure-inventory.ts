@@ -33,6 +33,7 @@ export type FailureInventoryReportInput = {
   reportPath: string;
   report?: unknown;
   error?: string;
+  phaseError?: string;
 };
 
 export function buildAcceptanceFailureInventory(input: {
@@ -42,7 +43,7 @@ export function buildAcceptanceFailureInventory(input: {
   now?: string;
 }): AcceptanceFailureInventory {
   const failures = input.reports.flatMap((report) =>
-    report.report
+    (report.report
       ? collectReportFailures(report.phase, report.report)
       : [
           {
@@ -55,7 +56,16 @@ export function buildAcceptanceFailureInventory(input: {
             message: report.error ?? `Report was not available at ${report.reportPath}.`,
             attachments: [],
           } satisfies AcceptanceFailure,
-        ],
+        ]).concat(report.phaseError ? [{
+          phase: report.phase,
+          project: "owner",
+          file: report.reportPath,
+          title: "Acceptance phase command failed",
+          route: "unknown",
+          errorClass: "PhaseFailure",
+          message: report.phaseError,
+          attachments: [],
+        }] : []),
   );
 
   return {

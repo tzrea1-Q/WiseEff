@@ -25,6 +25,7 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "name: Merge bar",
   "acceptance-smoke:",
   "acceptance-local-non-hdc:",
+  "acceptance-local-non-hdc-shards:",
   "target-synthetic-acceptance:",
   "workflow_dispatch",
   "acceptance_mode",
@@ -117,7 +118,7 @@ export type AcceptanceLocalNonHdcBudgetResult = {
 export function evaluateAcceptanceLocalNonHdcBudget(
   workflowText: string,
 ): AcceptanceLocalNonHdcBudgetResult {
-  const job = workflowJobBlock(workflowText, "acceptance-local-non-hdc");
+  const job = workflowJobBlock(workflowText, "acceptance-local-non-hdc-shards");
   const jobTimeoutMinutes = workflowTimeoutMinutes(job);
   const steps = workflowStepBudgets(job);
   const stepTimeouts = new Map(steps.map((step) => [step.name, step.timeoutMinutes]));
@@ -215,7 +216,7 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
   } catch {
     return { status: "failed", errors: ["CI workflow YAML is malformed."] };
   }
-  const steps = workflow.jobs?.["acceptance-local-non-hdc"]?.steps;
+  const steps = workflow.jobs?.["acceptance-local-non-hdc-shards"]?.steps;
   if (!Array.isArray(steps)) return { status: "failed", errors: ["Acceptance local non-HDC steps are missing."] };
   const safety = steps.find((step) => step.name === ACCEPTANCE_ARTIFACT_SAFETY_STEP);
   const uploads = steps.filter((step) => String(step.uses).startsWith("actions/upload-artifact@"));
@@ -239,6 +240,7 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
     }
     if (upload["continue-on-error"] === true) errors.push("Acceptance evidence upload cannot continue on error.");
     const withInput = upload.with as Record<string, unknown> | undefined;
+    if (withInput?.name !== "wiseeff-acceptance-local-non-hdc-shard-${{ matrix.shard }}") errors.push("Acceptance evidence upload must have a per-shard name.");
     if (withInput?.path !== archivePath) errors.push("Acceptance evidence upload must name the exact immutable ZIP archive.");
     if (withInput?.["if-no-files-found"] !== "error") errors.push("Acceptance evidence upload must fail when the archive is absent.");
     if (Number(withInput?.["compression-level"]) !== 0) errors.push("Acceptance evidence upload must not recompress the frozen ZIP.");
@@ -265,7 +267,7 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
       || diagnostic.if !== "always() && (steps.acceptance_diagnostic.outcome == 'success' || steps.acceptance_diagnostic_fallback.outcome == 'success')"
       || input?.path !== "${{ steps.acceptance_diagnostic.outcome == 'success' && steps.acceptance_diagnostic.outputs.path || steps.acceptance_diagnostic_fallback.outputs.path }}"
       || input?.["if-no-files-found"] !== "error"
-      || input?.name !== "wiseeff-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc") {
+      || input?.name !== "wiseeff-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc-shard-${{ matrix.shard }}") {
       errors.push("Minimal diagnostics must upload only the exact private generated file with run/attempt identity.");
     }
   }
@@ -495,6 +497,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     with?: Record<string, unknown>; env?: Record<string, unknown> };
   type Job = { name?: string; needs?: string | string[]; if?: string; "runs-on"?: string; steps?: Step[];
     "continue-on-error"?: boolean; "timeout-minutes"?: number;
+    strategy?: { "fail-fast"?: boolean; matrix?: Record<string, unknown>; "max-parallel"?: number };
     outputs?: Record<string, string>; services?: Record<string, { image?: string; env?: Record<string, string> }>; env?: Record<string, string> };
   let workflow: { jobs: Record<string, Job>; env?: Record<string, string> };
   try { workflow = YAML.parse(workflowText) as typeof workflow; }
@@ -614,21 +617,33 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   }
   const gateNeeds = {
     "build-and-test": ["detect", ...l1Jobs],
+    "acceptance-local-non-hdc": ["detect", "acceptance-local-non-hdc-shards"],
     required: ["detect", "build-and-test", "acceptance-quality", "acceptance-smoke", "acceptance-local-non-hdc", "target-synthetic-acceptance", "minimal-upgrade"],
   };
   for (const [id, needs] of Object.entries(gateNeeds)) {
     const job = jobs?.[id];
     const steps = job?.steps ?? [];
-    check(job?.if === "always()" && job?.name === (id === "required" ? "Merge bar" : "Build and test"), `${id} stable gate must always run.`);
+    const name = id === "required" ? "Merge bar" : id === "build-and-test" ? "Build and test" : "Acceptance local non-HDC";
+    const mode = id === "required" ? "required" : id === "build-and-test" ? "l1" : "l2";
+    check(job?.if === "always()" && job?.name === name, `${id} stable gate must always run.`);
     check(job?.["continue-on-error"] === undefined && job?.["timeout-minutes"] === 5, `${id} must retain timeout and strict job failure semantics.`);
     check(JSON.stringify(job?.needs) === JSON.stringify(needs), `${id} has missing or unmapped dependencies.`);
     check(steps.length === 3 && steps[0]?.uses === "actions/checkout@v4" && steps[1]?.uses === "actions/setup-node@v4"
-      && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[2]?.run === `${cli} ${id === "required" ? "required" : "l1"}`
+      && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[2]?.run === `${cli} ${mode}`
       && steps[2]?.env?.EFF_NEEDS === (id === "build-and-test" ? expectedNeedsProjection : "${{ toJSON(needs) }}")
-      && (id === "required" || steps[2]?.env?.EFF_SHADOW === expectedShadowProjection)
+      && (id !== "build-and-test" || steps[2]?.env?.EFF_SHADOW === expectedShadowProjection)
       && steps.every((step) => step.if === undefined && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
   }
   check(jobs?.["build-and-test"]?.outputs?.identity === "${{ steps.results.outputs.identity }}", "Build and test must publish its verified execution identity.");
+  const shards = jobs?.["acceptance-local-non-hdc-shards"];
+  check(shards?.needs === "detect" && shards.if === "needs.detect.outputs.run_l2 == 'true'"
+    && shards["continue-on-error"] === undefined && shards["runs-on"] === "ubuntu-latest", "L2 shards must retain strict detect scheduling on separate runners.");
+  check(shards?.strategy?.["fail-fast"] === false && shards.strategy["max-parallel"] === undefined
+    && JSON.stringify(shards.strategy.matrix) === JSON.stringify({ shard: [1, 2, 3, 4] }), "L2 must run all four shards without fail-fast, exclusions, or throttling.");
+  check(shards?.steps?.find((step) => step.id === "acceptance_gate0")?.run === "npm run acceptance:gate0 -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}"
+    && shards.steps.find((step) => step.id === "acceptance_gate0")?.["continue-on-error"] === undefined, "Every L2 shard must run its owned Gate0 with the matrix shard arguments.");
+  check(shards?.services?.postgres?.image === "pgvector/pgvector:pg16"
+    && shards.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff", "Every L2 shard requires its own local PostgreSQL service.");
   return { status: errors.length ? "failed" : "passed", errors };
 }
 

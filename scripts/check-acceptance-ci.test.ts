@@ -250,6 +250,40 @@ describe("equivalent fixed L1 scheduling", () => {
 });
 
 describe("M5.12 acceptance CI configuration", () => {
+  it("keeps four independent owned-runtime shards and the stable always-running L2 aggregate", () => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const shards = workflow.jobs["acceptance-local-non-hdc-shards"];
+    expect(shards.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3, 4] } });
+    expect(shards.services.postgres.image).toBe("pgvector/pgvector:pg16");
+    expect(shards.steps.find((step: any) => step.id === "acceptance_gate0").run).toBe("npm run acceptance:gate0 -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}");
+    expect(workflow.jobs["acceptance-local-non-hdc"]).toMatchObject({ name: "Acceptance local non-HDC", if: "always()", needs: ["detect", "acceptance-local-non-hdc-shards"], "timeout-minutes": 5 });
+    expect(workflow.jobs.required.needs).toContain("acceptance-local-non-hdc");
+  });
+  it.each(["missing-shard", "duplicate-shard", "exclude", "fail-fast", "throttle", "unsharded", "suppressed", "detect", "service", "aggregate-if", "aggregate-needs", "aggregate-command", "aggregate-name"])("rejects unsafe L2 scheduling drift: %s", (mutation) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const shards = workflow.jobs["acceptance-local-non-hdc-shards"];
+    const aggregate = workflow.jobs["acceptance-local-non-hdc"];
+    if (mutation === "missing-shard") shards.strategy.matrix.shard.pop();
+    if (mutation === "duplicate-shard") shards.strategy.matrix.shard = [1, 2, 2, 4];
+    if (mutation === "exclude") shards.strategy.matrix.exclude = [{ shard: 1 }];
+    if (mutation === "fail-fast") shards.strategy["fail-fast"] = true;
+    if (mutation === "throttle") shards.strategy["max-parallel"] = 1;
+    if (mutation === "unsharded") shards.steps.find((step: any) => step.id === "acceptance_gate0").run = "npm run acceptance:gate0";
+    if (mutation === "suppressed") shards.steps.find((step: any) => step.id === "acceptance_gate0")["continue-on-error"] = true;
+    if (mutation === "detect") shards.if = "always()";
+    if (mutation === "service") delete shards.services;
+    if (mutation === "aggregate-if") aggregate.if = "success()";
+    if (mutation === "aggregate-needs") aggregate.needs = ["detect"];
+    if (mutation === "aggregate-command") aggregate.steps[2].run = "true";
+    if (mutation === "aggregate-name") aggregate.name = "Acceptance local non-HDC aggregate";
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it.each(["evidence", "diagnostic"])("rejects colliding per-shard artifact names: %s", (kind) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const steps = workflow.jobs["acceptance-local-non-hdc-shards"].steps;
+    steps.find((step: any) => step.id === (kind === "evidence" ? "acceptance_evidence_upload" : "acceptance_diagnostic_upload")).with.name = "unsharded-name";
+    expect(evaluateImmutableAcceptanceUpload(YAML.stringify(workflow)).status).toBe("failed");
+  });
   it("keeps the L2 platform budget strictly above bounded prelude, Gate0 owner, and always finalization", () => {
     const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
     const budget = evaluateAcceptanceLocalNonHdcBudget(workflow);
@@ -528,14 +562,14 @@ jobs:
   it("rejects extra diagnostic uploads, raw fallbacks, skipped safety and late identity", () => {
     for (const mutate of [
       ...["v3", "unreviewed"].map((ref) => (w: any) => {
-        w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.name === "Upload acceptance evidence").uses = `actions/upload-artifact@${ref}`;
+        w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.name === "Upload acceptance evidence").uses = `actions/upload-artifact@${ref}`;
       }),
-      (w: any) => w.jobs["acceptance-local-non-hdc"].steps.push({ uses: "actions/upload-artifact@v3", with: { path: "." } }),
-      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic_upload").with.path = "test-results/**"; },
-      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic")["continue-on-error"] = true; },
-      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic").shell = "python3 {0}"; },
-      (w: any) => { const steps = w.jobs["acceptance-local-non-hdc"].steps; steps.push(...steps.splice(1, 1)); },
-      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps = w.jobs["acceptance-local-non-hdc"].steps.filter((s: any) => s.id !== "acceptance_diagnostic_fallback"); },
+      (w: any) => w.jobs["acceptance-local-non-hdc-shards"].steps.push({ uses: "actions/upload-artifact@v3", with: { path: "." } }),
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_diagnostic_upload").with.path = "test-results/**"; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_diagnostic")["continue-on-error"] = true; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_diagnostic").shell = "python3 {0}"; },
+      (w: any) => { const steps = w.jobs["acceptance-local-non-hdc-shards"].steps; steps.push(...steps.splice(1, 1)); },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps = w.jobs["acceptance-local-non-hdc-shards"].steps.filter((s: any) => s.id !== "acceptance_diagnostic_fallback"); },
     ]) {
       const workflow = YAML.parse(compliantWorkflow);
       mutate(workflow);

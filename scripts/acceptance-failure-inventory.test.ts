@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
 import { buildAcceptanceFailureInventory } from "./acceptance-failure-inventory";
 
 describe("acceptance Gate 0 failure inventory", () => {
+  it("inventories collection/evidence failures even when all reported tests passed", () => {
+    const inventory = buildAcceptanceFailureInventory({
+      runId: "shard-2", sourceCommit: "a".repeat(40),
+      reports: [{ phase: "browser", reportPath: "browser/results.json", report: { suites: [] }, phaseError: "Acceptance shard changed its planned test inventory." }],
+    });
+    expect(inventory.failureCount).toBe(1);
+    expect(inventory.failures).toEqual([expect.objectContaining({ phase: "browser", errorClass: "PhaseFailure", message: "Acceptance shard changed its planned test inventory." })]);
+  });
+  it("retains report-unavailable evidence alongside the actual phase failure", () => {
+    const inventory = buildAcceptanceFailureInventory({
+      runId: "shard-3", sourceCommit: "b".repeat(40),
+      reports: [{ phase: "browser", reportPath: "browser/results.json", error: "Report absent", phaseError: "Acceptance shard test collection failed." }],
+    });
+    expect(inventory.failureCount).toBe(2);
+    expect(inventory.failures.map((failure) => failure.errorClass)).toEqual(["ReportUnavailable", "PhaseFailure"]);
+  });
   it("preserves exact phase, project, file, title, error class, route, and attachments", () => {
     const inventory = buildAcceptanceFailureInventory({
       runId: "full-owned-1",

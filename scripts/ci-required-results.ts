@@ -90,11 +90,20 @@ export function assertRequiredResults(input: unknown): void {
   assertJobs(needs, {
     detect: true, "build-and-test": true,
     "acceptance-quality": flags.run_quality, "acceptance-smoke": flags.run_smoke,
-    "acceptance-local-non-hdc": flags.run_l2,
+    "acceptance-local-non-hdc": true,
     "target-synthetic-acceptance": identity.event === "workflow_dispatch" && ["target-non-hdc", "full-pilot"].includes(identity.mode),
     "minimal-upgrade": identity.event === "workflow_dispatch" && identity.mode === "minimal-upgrade",
   });
   sameIdentity(parseJson(record(record(needs["build-and-test"]).outputs).identity), identity);
+}
+
+export function assertL2Results(input: unknown): void {
+  const value = record(input);
+  const identity = readIdentity(value.identity);
+  const needs = record(value.needs);
+  const flags = flagsFor(identity, needs);
+  assertJobs(needs, { detect: true, "acceptance-local-non-hdc-shards": flags.run_l2 });
+  requireCi(record(needs["acceptance-local-non-hdc-shards"]).result === (flags.run_l2 ? "success" : "skipped"), "L2_SHARD_RESULT");
 }
 
 export type ReportOptions = {
@@ -512,6 +521,7 @@ function main() {
     writeOutput("identity", identity);
   }
   else if (mode === "required") assertRequiredResults(input);
+  else if (mode === "l2") assertL2Results(input);
   else throw new Error("CI_UNKNOWN_COMMAND");
   console.log(`CI ${mode}: required results and execution identity verified.`);
 }

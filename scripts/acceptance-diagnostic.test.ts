@@ -6,11 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import YAML from "yaml";
 
 const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
-const steps = workflow.jobs["acceptance-local-non-hdc"].steps as Array<Record<string, any>>;
+const steps = workflow.jobs["acceptance-local-non-hdc-shards"].steps as Array<Record<string, any>>;
 const roots: string[] = [];
 const sha = "1".repeat(40);
 const env = {
-  EFF_RUN_ID: "1234", EFF_ATTEMPT: "2", EFF_WORKFLOW_SHA: sha,
+  EFF_RUN_ID: "1234", EFF_ATTEMPT: "2", EFF_SHARD: "2", EFF_WORKFLOW_SHA: sha,
   EFF_BASE: "2".repeat(40), EFF_PR_HEAD: "3".repeat(40),
   EFF_EXECUTED_SHA: "4".repeat(40), EFF_TREE: "5".repeat(40),
   EFF_EXECUTION: "failure", EFF_ARCHIVE: "failure", EFF_UPLOAD: "skipped",
@@ -52,11 +52,24 @@ function runStep(id: string, overrides: Record<string, string> = {}) {
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
 
 describe("workflow-owned minimal acceptance diagnostics (EFF-T01–09)", () => {
+  it.each(["1", "2", "3", "4"])("identifies shard %s in both private diagnostic paths", (shard) => {
+    expect(runStep("acceptance_diagnostic", { EFF_SHARD: shard }).record.identity.job).toBe(`acceptance-local-non-hdc-shard-${shard}`);
+    expect(runStep("acceptance_diagnostic_fallback", { EFF_SHARD: shard }).record.identity.job).toBe(`acceptance-local-non-hdc-shard-${shard}`);
+  });
+  it.each(["", "0", "5", "SYNTHETIC_SECRET"])("rejects invalid shard identity without leaking it: %s", (shard) => {
+    const rejected = runStep("acceptance_diagnostic", { EFF_SHARD: shard });
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.stderr).toContain("DIAGNOSTIC_REJECTED");
+    expect(rejected.stderr).not.toContain("SYNTHETIC_SECRET");
+    const fallback = runStep("acceptance_diagnostic_fallback", { EFF_SHARD: shard });
+    expect(fallback.record.identity.job).toBe("acceptance-local-non-hdc-shard-unknown");
+    expect(fallback.text).not.toContain("SYNTHETIC_SECRET");
+  });
   it("records dual failure independently without claiming cleanup or upload completion", () => {
     const { record } = runStep("acceptance_diagnostic");
     expect(record.schemaVersion).toBe(1);
     expect(record.scope).toBe("workflow-context-only");
-    expect(record.identity).toMatchObject({ runId: "1234", attempt: "2", job: "acceptance-local-non-hdc",
+    expect(record.identity).toMatchObject({ runId: "1234", attempt: "2", job: "acceptance-local-non-hdc-shard-2",
       workflowSha: sha, acceptedBase: env.EFF_BASE, prHead: env.EFF_PR_HEAD,
       executedSha: env.EFF_EXECUTED_SHA, tree: env.EFF_TREE });
     expect(record.states).toEqual({ execution: "failure", cleanup: "unknown", diagnostic: "generated",
@@ -111,7 +124,7 @@ describe("workflow-owned minimal acceptance diagnostics (EFF-T01–09)", () => {
   it("provides fixed rejection when the generator failed and omits candidate inputs", () => {
     const { record, text } = runStep("acceptance_diagnostic_fallback", { EFF_EXECUTION: "SYNTHETIC_SECRET", EFF_TREE: "SYNTHETIC_SECRET" });
     expect(record.code).toBe("DIAGNOSTIC_REJECTED");
-    expect(record.identity).toEqual({ runId: "1234", attempt: "2", job: "acceptance-local-non-hdc" });
+    expect(record.identity).toEqual({ runId: "1234", attempt: "2", job: "acceptance-local-non-hdc-shard-2" });
     expect(text).not.toContain("SYNTHETIC_SECRET");
   });
 

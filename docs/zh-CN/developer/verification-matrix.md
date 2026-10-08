@@ -6,9 +6,13 @@
 
 ## 使用方式
 
-L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` 产物是有界的工作流状态快照，与经过安全门禁的完整 ZIP 分开。它记录候选初始化前实测的 checkout SHA/tree、workflow SHA、PR head/base（非 PR 事件使用 push 前驱或定时运行的 head），以及执行、归档、完整上传的结果。首版内部阶段、清理和测试数量仍是 unknown，不读取候选报告或原始日志。发布器失败时只生成 `DIAGNOSTIC_REJECTED`；后备诊断或上传成功不能覆盖先前失败。诊断自身上传在快照中为 pending，最终状态见 Actions 和作业摘要；runner 丢失时可能 incomplete。完整产物的大小、所有权及安全要求保持不变。
+L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` 产物是有界的工作流状态快照，与经过安全门禁的各分片完整 ZIP 分开。它记录候选初始化前实测的 checkout SHA/tree、workflow SHA、PR head/base（非 PR 事件使用 push 前驱或定时运行的 head），以及执行、归档、完整上传的结果。首版内部阶段、清理和测试数量仍是 unknown，不读取候选报告或原始日志。发布器失败时只生成 `DIAGNOSTIC_REJECTED`；后备诊断或上传成功不能覆盖先前失败。诊断自身上传在快照中为 pending，最终状态见 Actions 和作业摘要；runner 丢失时可能 incomplete。完整产物的大小、所有权及安全要求保持不变。
 
 修改此通道时运行 `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` 和 `npm run acceptance:ci`。测试提取并执行实际工作流内的隔离发布器，合成失败只证明诊断行为，不是完整验收通过。新增有界步骤均计入 L2 平台预算（下界 151 分钟、作业上限 155 分钟），Gate0 owner 及原安全扫描/上传预算不变。
+
+L2 浏览器验收使用 `--shard=i/4` 分为四个独立 Gate0 作业，各自拥有 PostgreSQL 服务及运行时。视觉验收仅在分片 1 执行，浏览器预热依赖在每个分片执行。执行前由原生 Playwright 收集确定非空测试清单及按文件划分的工作流/操作证据义务，结果清单必须一致；整套静态覆盖检查及所有运行时归属证据检查继续保留。每个必须自动验收的操作只能有一个浏览器 spec 所有者。分片不发布最新完整证据指针。稳定的 `Acceptance local non-HDC` 汇总门要求矩阵全部成功，或由成功的 detect 有意跳过矩阵，之后 `Merge bar` 才能通过。不带参数的 `npm run acceptance:gate0` 仍在本地执行两个完整阶段。
+
+分片执行前，不分片的原生测试收集必须仍包含所有必需操作的浏览器所有者。分片参数仅用于具备有效归属描述符及归属输出路径的本地非 HDC 运行；独立、target 或 full-pilot 片段不能覆盖完整运行证据。收集、清单及其他阶段命令失败均进入 Gate0 的结构化失败清单，即使原生报告中没有失败测试结果。
 
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
 - 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。

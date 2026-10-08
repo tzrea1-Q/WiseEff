@@ -39,6 +39,7 @@ import {
   loadOwnedRuntimeDescriptorFromEnv,
 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 import { OWNED_ACCEPTANCE_RUNTIME_FLAG_ENV } from "../e2e/acceptance/helpers/acceptanceEnvironment";
+import { sanitizeGate0DiagnosticText } from "./gate0-artifact-sanitizer";
 
 export { buildBrowserAcceptanceEvidence } from "../e2e/acceptance/helpers/evidence";
 
@@ -53,6 +54,7 @@ export type BrowserAcceptanceOptions = {
   startRuntime: boolean;
   headed: boolean;
   runtimeDescriptor?: string;
+  shard?: string;
 };
 
 export type CommandInvocation = {
@@ -238,6 +240,11 @@ export function parseBrowserAcceptanceArgs(
       options.startRuntime = false;
     } else if (arg === "--headed") {
       options.headed = true;
+    } else if (arg.startsWith("--shard=")) {
+      options.shard = validateAcceptanceShard(arg.slice("--shard=".length));
+    } else if (arg === "--shard" && next) {
+      options.shard = validateAcceptanceShard(next);
+      index += 1;
     } else if (arg === "--runtime-descriptor" && next) {
       options.runtimeDescriptor = next;
       options.startRuntime = false;
@@ -247,6 +254,9 @@ export function parseBrowserAcceptanceArgs(
     }
   }
 
+  if (options.shard && (options.mode !== "local-non-hdc" || !options.runtimeDescriptor)) {
+    throw new Error("Sharded browser acceptance requires local-non-hdc mode and an owned Gate0 runtime descriptor.");
+  }
   return options;
 }
 
@@ -325,8 +335,61 @@ export function buildBrowserAcceptanceCommand(
   if (options.headed) {
     args.push("--headed");
   }
+  if (options.shard) args.push(`--shard=${validateAcceptanceShard(options.shard)}`);
 
   return { command: npmCommand(), args, env: buildPlaywrightEnv(options, loadedEnv, evidenceRun) };
+}
+
+export function validateAcceptanceShard(value: string): string {
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(value);
+  if (!match || !Number.isSafeInteger(Number(match[1])) || !Number.isSafeInteger(Number(match[2]))
+    || Number(match[1]) > Number(match[2])) throw new Error(`Invalid acceptance shard: ${value}`);
+  return value;
+}
+
+export function collectAcceptanceTests(report: unknown): Array<{ id: string; project: string; file: string }> {
+  const tests: Array<{ id: string; project: string; file: string }> = [];
+  function visit(value: unknown, inheritedFile = "") {
+    if (!isRecord(value)) return;
+    const file = typeof value.file === "string" ? normalizeSpecFile(value.file) : inheritedFile;
+    for (const spec of Array.isArray(value.specs) ? value.specs : []) {
+      if (!isRecord(spec) || typeof spec.id !== "string") throw new Error("Malformed acceptance test inventory.");
+      for (const test of Array.isArray(spec.tests) ? spec.tests : []) {
+        if (!isRecord(test) || typeof test.projectName !== "string" || !file) throw new Error("Malformed acceptance test inventory.");
+        tests.push({ id: spec.id, project: test.projectName, file });
+      }
+    }
+    for (const suite of Array.isArray(value.suites) ? value.suites : []) visit(suite, file);
+  }
+  visit(report);
+  return tests;
+}
+
+export function assertAcceptanceShardPlan(planned: ReturnType<typeof collectAcceptanceTests>, full?: ReturnType<typeof collectAcceptanceTests>) {
+  if (!planned.some((test) => test.project === "Desktop Chrome")
+    || !planned.some((test) => test.project === "runtime-warmup")) {
+    throw new Error("Acceptance shard collected zero browser tests or lost runtime-warmup.");
+  }
+  if (full) {
+    const fullKeys = new Set(full.map((test) => `${test.project}:${test.id}`));
+    if (planned.some((test) => !fullKeys.has(`${test.project}:${test.id}`))) throw new Error("Acceptance shard contains tests outside the full collection.");
+  }
+}
+
+export function assertAcceptanceShardReport(planned: ReturnType<typeof collectAcceptanceTests>, report: unknown) {
+  assertAcceptanceShardPlan(planned);
+  const actual = collectAcceptanceTests(report);
+  const keys = (tests: typeof planned) => tests.map((test) => `${test.project}:${test.id}`).sort();
+  if (JSON.stringify(keys(planned)) !== JSON.stringify(keys(actual))) throw new Error("Acceptance shard changed its planned test inventory.");
+}
+
+export function acceptanceShardOperations(files: string[], fullFiles?: string[]) {
+  for (const operation of acceptanceOperations.filter((operation) => operation.coverage === "automated" && operation.priority !== "P2")) {
+    const owners = operation.specFiles.filter((file) => file.startsWith("e2e/acceptance/") && file.endsWith(".spec.ts"));
+    if (owners.length !== 1) throw new Error(`Sharded acceptance requires one browser spec owner for ${operation.id}.`);
+    if (fullFiles && !fullFiles.includes(normalizeSpecFile(owners[0]))) throw new Error(`Full browser collection omitted required operation ${operation.id}.`);
+  }
+  return acceptanceOperations.filter((operation) => operation.specFiles.some((file) => files.includes(normalizeSpecFile(file))));
 }
 
 export function buildPlaywrightEnv(
@@ -506,11 +569,12 @@ export function buildDefaultBrowserAcceptanceWorkflows(input: DefaultWorkflowInp
 
 export function deriveBrowserAcceptanceWorkflowsFromPlaywrightReport(
   report: unknown,
-  artifactPath: string
+  artifactPath: string,
+  plannedFiles?: string[],
 ): BrowserAcceptanceWorkflowEvidence[] {
   const specStatuses = collectSpecStatuses(report);
 
-  return workflowDefinitions.map((workflow) => {
+  return workflowDefinitions.filter((workflow) => !plannedFiles || (workflowSpecs[workflow.id ?? ""] ?? []).some((file) => plannedFiles.includes(file))).map((workflow) => {
     const specFiles = workflow.id ? workflowSpecs[workflow.id] ?? [] : [];
     const statuses = specFiles.flatMap((specFile) => specStatuses.get(specFile) ?? []);
     const status = summarizeStatuses(statuses);
@@ -533,6 +597,9 @@ async function main() {
     loadedEnv[OWNED_ACCEPTANCE_DESCRIPTOR_ENV] = options.runtimeDescriptor;
   }
   const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv(loadedEnv);
+  if (options.shard && options.evidenceOut !== loadedEnv.WISEEFF_ACCEPTANCE_BROWSER_EVIDENCE_OUT) {
+    throw new Error("Sharded browser evidence must use the owned Gate0 artifact path.");
+  }
   const sourceMetadata = resolveBrowserSourceMetadata(
     observedSourceMetadata,
     ownedRuntime
@@ -556,12 +623,21 @@ async function main() {
 
   const playwrightCommand = buildBrowserAcceptanceCommand(options, loadedEnv, evidenceRun);
   prepareEvidenceRun(evidenceRun);
+  const fullTests = options.shard ? collectBrowserAcceptanceTests(buildBrowserAcceptanceCommand({ ...options, shard: undefined }, loadedEnv, evidenceRun)) : undefined;
+  const plannedTests = options.shard ? collectBrowserAcceptanceTests(playwrightCommand) : undefined;
+  const plannedFiles = plannedTests?.map((test) => test.file);
+  const operations = plannedFiles ? acceptanceShardOperations(plannedFiles, fullTests?.filter((test) => test.project === "Desktop Chrome").map((test) => test.file)) : acceptanceOperations;
+  if (plannedTests) {
+    assertAcceptanceShardPlan(plannedTests, fullTests);
+    writeFileSync(`${evidenceRun.runRoot}/shard-plan.json`, `${JSON.stringify({ shard: options.shard, tests: plannedTests }, null, 2)}\n`);
+  }
   const playwright = runPlaywright(playwrightCommand);
+  if (plannedTests) assertAcceptanceShardReport(plannedTests, JSON.parse(readFileSync(defaultPlaywrightJsonReport, "utf8")));
   const workflows = readBrowserAcceptanceWorkflows(defaultPlaywrightJsonReport, {
     playwrightStatus: playwright.status,
     hdcStatus: playwright.hdc,
     artifactPath: playwright.artifactPath
-  });
+  }, plannedFiles);
   const requirementCoverage = evaluateAcceptanceCoverage({
     requirements: acceptanceRequirements,
     specFiles: readAcceptanceSpecFiles(),
@@ -573,7 +649,7 @@ async function main() {
     knownAcceptanceIds: acceptanceRequirements.map((requirement) => requirement.id)
   });
   const operationEvidence = evaluateOperationEvidence({
-    operations: acceptanceOperations,
+    operations,
     records: readOperationEvidenceRecords(evidenceRun.recordsRoot),
     expectedRun: { runId: evidenceRun.runId, sourceCommit: evidenceRun.sourceCommit }
   });
@@ -585,6 +661,7 @@ async function main() {
   if (
     playwright.status === "passed" &&
     operationEvidence.status === "passed" &&
+    !options.shard &&
     !sourceMetadata.dirty &&
     loadedEnv.WISEEFF_ACCEPTANCE_DEFER_LATEST_PUBLISH !== "true"
   ) {
@@ -676,19 +753,31 @@ function runPlaywright(command: CommandInvocation) {
   };
 }
 
-function readBrowserAcceptanceWorkflows(reportPath: string, fallback: DefaultWorkflowInput) {
+function readBrowserAcceptanceWorkflows(reportPath: string, fallback: DefaultWorkflowInput, plannedFiles?: string[]) {
   if (!existsSync(reportPath)) {
     return buildDefaultBrowserAcceptanceWorkflows(fallback);
   }
 
   try {
-    return deriveBrowserAcceptanceWorkflowsFromPlaywrightReport(JSON.parse(readFileSync(reportPath, "utf8")), fallback.artifactPath);
+    return deriveBrowserAcceptanceWorkflowsFromPlaywrightReport(JSON.parse(readFileSync(reportPath, "utf8")), fallback.artifactPath, plannedFiles);
   } catch {
     return buildDefaultBrowserAcceptanceWorkflows(fallback);
   }
 }
 
-function runCommand(command: CommandInvocation) {
+function requireSuccessfulCollection(result: SpawnSyncReturns<string>) {
+  if (result.error || result.status !== 0) throw new Error("Acceptance shard test collection failed.");
+  return result.stdout;
+}
+
+function collectBrowserAcceptanceTests(command: CommandInvocation) {
+  return collectAcceptanceTests(JSON.parse(requireSuccessfulCollection(runCommand({
+    ...command,
+    args: ["--silent", ...command.args, "--list", "--reporter=json"],
+  }, false))));
+}
+
+function runCommand(command: CommandInvocation, printOutput = true) {
   const result = spawnSync(command.command, command.args, {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -697,11 +786,11 @@ function runCommand(command: CommandInvocation) {
     shell: commandUsesShell()
   });
 
-  if (result.stdout) {
+  if (printOutput && result.stdout) {
     process.stdout.write(result.stdout);
   }
 
-  if (result.stderr) {
+  if (printOutput && result.stderr) {
     process.stderr.write(result.stderr);
   }
 
@@ -883,6 +972,16 @@ function unquoteEnvValue(value: string) {
   return value;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    await main();
+  } catch (error) {
+    const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv(process.env);
+    if (ownedRuntime) {
+      writeFileSync(`${ownedRuntime.artifacts.runRoot}/browser-phase-failure.json`, `${JSON.stringify({
+        message: sanitizeGate0DiagnosticText(error instanceof Error ? error.message : String(error)).value,
+      })}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    }
+    throw error;
+  }
 }
