@@ -392,6 +392,11 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     console.error(
       `[acceptance:gate0] failed with ${inventory.failureCount} inventoried failures; database, object store, descriptor, and artifacts retained at ${runtime.descriptor.artifacts.runRoot}.`,
     );
+    // The retained artifacts can exceed the upload limit, so keep a short, bounded failure list in the job log.
+    for (const failure of inventory.failures.slice(0, 100)) {
+      const firstLine = failure.message.split("\n").find((line) => line.trim())?.trim().slice(0, 160) ?? "";
+      console.error(`[acceptance:gate0] - ${failure.phase} ${path.basename(failure.file)} › ${failure.title} :: ${failure.errorClass}: ${firstLine}`);
+    }
     process.exitCode = 1;
   } catch (error) {
     const failures = [asGate0Error(error)];
