@@ -434,19 +434,60 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
 
     const parent = await createParameterModule(request, { name: parentName });
     await createParameterModule(request, { name: childName, parentId: parent.item.id });
+    // A module is "non-empty" when a canonical Registration Placement points at it.
     const leaf = await createParameterModule(request, { name: leafName });
-    const binding = await seedAssignableBinding(request, "MOD-TREE-AUTHZ-001 semantic binding", "ichg_max");
-    await assignBindingToModule(binding.bindingId, leaf.item.id);
+    await withPgClient(async (client) => {
+      await client.query(
+        `insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
+         values ('modtree-authz-attr',$1,'driver-registration','ModTree battery info','compatible:huawei,batt_info')`,
+        [organizationId]
+      );
+      await client.query(
+        `insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
+         values ('modtree-authz-attr','physical-device','multiple')`
+      );
+      await client.query(
+        `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
+         values ('modtree-authz-driver',$1,$2,'modtree-authz-driver',1,'driver-group','curated','modtree-authz-attr')`,
+        [organizationId, `${moduleNamePrefix}Authz Driver ${suffix}`]
+      );
+    });
+    const catalogRelease = await withPgClient(async (client) => {
+      const current = await client.query<{ id: string }>(
+        "select current_catalog_release_id as id from parameter_catalog.catalog_state"
+      );
+      return current.rows[0]!.id;
+    });
+    const registration = await request.post(
+      apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations`),
+      {
+        headers: {
+          ...adminHeaders(),
+          "X-WiseEff-Catalog-Release": catalogRelease,
+          "Idempotency-Key": `modtree-authz-${suffix}`
+        },
+        data: {
+          subjectId: "csub_drv_huawei_batt_info",
+          destinationModuleId: "modtree-authz-driver",
+          placement: { mode: "use-default" }
+        }
+      }
+    );
+    expect(registration.status(), await registration.text()).toBe(201);
 
     const deleteParentResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${parent.item.id}`), {
       headers: adminHeaders()
     });
     expect(deleteParentResponse.status()).toBe(409);
 
-    const deleteLeafResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${leaf.item.id}`), {
+    const deleteLeafResponse = await page.request.delete(apiRoute("/api/v1/parameter-modules/modtree-authz-driver"), {
       headers: adminHeaders()
     });
-    expect(deleteLeafResponse.status()).toBe(409);
+    expect(deleteLeafResponse.status(), await deleteLeafResponse.text()).toBe(409);
+    const deleteEmptyLeafResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${leaf.item.id}`), {
+      headers: adminHeaders()
+    });
+    expect(deleteEmptyLeafResponse.status(), await deleteEmptyLeafResponse.text()).toBeLessThan(300);
 
     await recordOperationEvidence({
       operationId: "MOD-TREE-AUTHZ-001",
@@ -469,11 +510,11 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         }),
         summarizeApiResponse(deleteLeafResponse, {
           method: "DELETE",
-          path: `/api/v1/parameter-modules/${leaf.item.id}`,
-          responseSummary: "CONFLICT bindings remain"
+          path: "/api/v1/parameter-modules/modtree-authz-driver",
+          responseSummary: "CONFLICT Catalog placements remain"
         })
       ],
-      notes: "Non-admin module create returned 403; deleting modules with child modules or assigned bindings returned 409."
+      notes: "Non-admin module create returned 403; deleting modules with child modules or canonical Catalog placements returned 409, and an empty leaf could be deleted."
     });
   });
 });

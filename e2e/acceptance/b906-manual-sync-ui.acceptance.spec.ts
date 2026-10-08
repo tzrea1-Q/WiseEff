@@ -27,6 +27,8 @@ const after = { json: '{ "settings": { "limit": 50 }, "other": { "limit": 60 } }
   dts: before.dts.replace("iin_max = <36>", "iin_max = <50>").replace("iin_max = <36>", "iin_max = <60>") };
 type Format = "json" | "dts";
 
+// @acceptance PARAM-FILE-ADMIN-001
+// @operation PARAM-FILE-SYNC-001
 for (const { format, outcomeKind } of [
   { format: "json", outcomeKind: "approve" }, { format: "dts", outcomeKind: "approve" },
   { format: "json", outcomeKind: "reject" }, { format: "dts", outcomeKind: "withdraw" },
