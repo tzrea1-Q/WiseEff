@@ -620,7 +620,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async getProjectValueConflictDecision() {
       assertReadyForRead(store);
-      throw catalogApiFailure("unsupported-catalog-capability");
+      return { item: null };
     },
     async getCanonicalBindingChangeHistory() {
       assertReadyForRead(store);

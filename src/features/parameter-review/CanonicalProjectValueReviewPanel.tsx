@@ -33,7 +33,7 @@ type ReviewView = "pending" | "history";
 type SourceDiff = CatalogValueChangeSourceDiffResponse["item"];
 type BatchRequest = CatalogBatchValueChangeRequestResponse["item"];
 type BatchSourceDiff = Extract<SourceDiff, { kind: "batch" }>;
-type ConflictDecision = CatalogSourceConflictDecisionResponse["item"];
+type ConflictDecision = NonNullable<CatalogSourceConflictDecisionResponse["item"]>;
 type SourceDiffState = "idle" | "loading" | "ready" | "error";
 
 function matchesFrozenConflict(request: CanonicalRequest, diff: SourceDiff | null,
@@ -390,7 +390,7 @@ export function CanonicalProjectValueReviewPanel({
     void canonicalRepository.getProjectValueConflictDecision(projectId, selectedRequestId).then(({ item }) => {
       if (cancelled) return;
       setConflictDecision(item);
-      setConflictDecisionState("ready");
+      setConflictDecisionState(item ? "ready" : "ordinary");
     }).catch((cause) => {
       if (cancelled) return;
       if (cause instanceof WiseEffApiError && cause.code === "NOT_FOUND") {

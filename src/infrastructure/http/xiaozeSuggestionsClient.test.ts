@@ -26,6 +26,7 @@ describe("requestXiaozeSuggestions", () => {
       authorization: "Bearer test-token",
       fetchImpl
     });
+    const controller = new AbortController();
 
     await expect(
       requestXiaozeSuggestions(
@@ -35,7 +36,8 @@ describe("requestXiaozeSuggestions", () => {
           projectId: "project-1",
           projectName: "Demo 项目"
         },
-        apiClient
+        apiClient,
+        controller.signal
       )
     ).resolves.toEqual([
       {
@@ -50,6 +52,7 @@ describe("requestXiaozeSuggestions", () => {
       "http://127.0.0.1:8787/api/v1/agent/xiaoze/suggest",
       expect.objectContaining({
         method: "POST",
+        signal: controller.signal,
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",

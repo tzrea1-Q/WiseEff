@@ -15,6 +15,7 @@ import type {
   CatalogSubmitMemberRemovalRequest,
   CatalogReviewMemberRemovalRequest,
   CatalogValueChangeSourceDiffResponse,
+  CatalogSourceConflictDecisionResponse,
   CatalogCreateReplacementRequest,
   CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
@@ -207,7 +208,7 @@ export interface ParameterCatalogRepository {
   getProjectValueConflictDecision?(
     projectId: string,
     requestId: string
-  ): Promise<import("@/infrastructure/http/parameterCatalogDtos").CatalogSourceConflictDecisionResponse>;
+  ): Promise<CatalogSourceConflictDecisionResponse>;
   getCanonicalBindingChangeHistory?(
     projectId: string,
     bindingId: string,

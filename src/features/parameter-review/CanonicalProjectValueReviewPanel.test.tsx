@@ -339,6 +339,29 @@ describe("CanonicalProjectValueReviewPanel", () => {
     expect(repository.getProjectValueChangeSourceDiff).not.toHaveBeenCalled();
   });
 
+  it.each([null, new WiseEffApiError("NOT_FOUND", "Not found", {}, "request-id")])(
+    "treats an absent conflict decision (%s) as an ordinary review", async (absence) => {
+      const getProjectValueConflictDecision = absence === null
+        ? vi.fn().mockResolvedValue({ item: null }) : vi.fn().mockRejectedValue(absence);
+      const repository = {
+        listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
+        getProjectValueConflictDecision,
+        getProjectValueChangeSourceDiff: vi.fn().mockResolvedValue({ item: {
+          requestId: request.id, bindingId: request.bindingId, candidateId: request.candidateId,
+          sourcePinId: request.sourcePinId, format: "json", bindings: [{ bindingId: request.bindingId }],
+          before: "before", after: "after"
+        } }),
+        reviewProjectValueChangeRequest: vi.fn()
+      } as unknown as ParameterCatalogRepository;
+      render(<CanonicalProjectValueReviewPanel projectId="project-1" currentUserId="reviewer-1"
+        repository={repository} />);
+      await waitFor(() => expect(screen.getByRole("button", { name: "批准软件配置" })).toBeEnabled());
+      expect(getProjectValueConflictDecision).toHaveBeenCalledWith("project-1", request.id);
+      expect(screen.queryByRole("heading", { name: "单项来源冲突决策" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    }
+  );
+
   it("shows one frozen conflict choice and blocks approval when its target or source order disagrees", async () => {
     const assigned = { ...request, candidateId: "prepared-candidate", assignedToUserId: "reviewer-1" };
     const source = { requestId: assigned.id, bindingId: assigned.bindingId, candidateId: assigned.candidateId,

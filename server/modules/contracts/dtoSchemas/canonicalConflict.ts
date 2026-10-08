@@ -76,7 +76,7 @@ export const canonicalSourceConflictDecisionResponseSchema = z.object({
       format: z.enum(["json", "dts"]), sourcePinId: id,
       baseDigest: digest, proposedDigest: digest, diffDigest: digest,
       before: z.string(), after: z.string() }).passthrough()
-  })
+  }).nullable()
 });
 
 export const canonicalConflictDtoSchemaCatalog = {

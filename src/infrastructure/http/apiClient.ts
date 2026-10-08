@@ -78,9 +78,10 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
         method: "GET",
         headers: { Accept: "application/json" }
       }),
-    post: <T>(path: string, body: unknown) =>
+    post: <T>(path: string, body: unknown, options?: { signal?: AbortSignal }) =>
       request<T>(path, {
         method: "POST",
+        ...options,
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body)
       }),

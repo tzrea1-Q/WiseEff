@@ -59,7 +59,7 @@ describe("useXiaozeSuggestions", () => {
       pageKey: "parameters",
       projectId: "p1",
       projectName: "Demo 项目"
-    });
+    }, undefined, expect.any(AbortSignal));
   });
 
   it("fetches nothing when disabled", async () => {
@@ -107,7 +107,19 @@ describe("useXiaozeSuggestions", () => {
     expect(report).toHaveBeenCalledWith("Failed to load Xiaoze suggestions.", error);
   });
 
-  it("ignores a request rejected after the page context unmounts", async () => {
+  it("does not log an aborted request as an error", async () => {
+    vi.mocked(requestXiaozeSuggestions).mockRejectedValueOnce(new DOMException("Aborted", "AbortError"));
+    const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await act(async () => {
+      render(<XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters", projectId: "p1" }}>
+        <SuggestionsProbe enabled />
+      </XiaozePageContext.Provider>);
+    });
+    expect(requestXiaozeSuggestions).toHaveBeenCalledTimes(1);
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it("aborts on unmount and ignores a late fetch rejection", async () => {
     const pending = Promise.withResolvers<Awaited<ReturnType<typeof requestXiaozeSuggestions>>>();
     vi.mocked(requestXiaozeSuggestions).mockReturnValueOnce(pending.promise);
     const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -118,8 +130,11 @@ describe("useXiaozeSuggestions", () => {
       </XiaozePageContext.Provider>
     );
     await waitFor(() => expect(requestXiaozeSuggestions).toHaveBeenCalledTimes(1));
+    const signal = vi.mocked(requestXiaozeSuggestions).mock.calls[0]![2]!;
+    expect(signal.aborted).toBe(false);
 
     unmount();
+    expect(signal.aborted).toBe(true);
     await act(async () => pending.reject(new TypeError("Failed to fetch")));
 
     expect(report).not.toHaveBeenCalled();

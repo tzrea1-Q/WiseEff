@@ -438,6 +438,13 @@ describe("parameter catalog client contract", () => {
     );
   });
 
+  it("accepts a null conflict decision for an ordinary request", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item: null }));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    await expect(client.getProjectValueConflictDecision("project-1", "request-1"))
+      .resolves.toEqual({ item: null });
+  });
+
   it("reads the frozen conflict decision through the request-scoped route", async () => {
     const sourceDiff = { requestId: "request-1", bindingId: "binding-1", candidateId: "prepared-1",
       format: "json", sourcePinId: "pin-1", baseDigest: "a".repeat(64), proposedDigest: "b".repeat(64),

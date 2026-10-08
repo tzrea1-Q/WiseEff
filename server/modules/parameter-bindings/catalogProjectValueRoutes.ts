@@ -1089,7 +1089,13 @@ export function registerCatalogProjectValueConsumerRoutes(
     const params = parseWithSchema(z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }), request.params);
     const item = await db.transaction(async (tx) => {
       const decision = await visibleConflictDecision(tx, auth, params);
-      if (!decision) throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
+      if (!decision) {
+        const requests = await visibleValueChangeRequests(tx, auth, { projectId: params.projectId }, true);
+        if (!requests.some((item) => item.id === params.requestId)) {
+          throw new ApiError("NOT_FOUND", "Source conflict decision was not found.");
+        }
+        return null;
+      }
       if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
       const sourceDiff = await readCanonicalSourceDiff(tx, options.objectStore, auth, params);
       if (sourceDiff.bindingId !== decision.selectedBindingId

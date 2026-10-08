@@ -174,6 +174,31 @@ async function fixture(format: "json" | "dts") {
 }
 
 describe("#906 C canonical conflict HTTP", () => {
+  it("returns null for a visible ordinary request and conceals unavailable requests", async () => {
+    const f = await fixture("json");
+    const submitted = await requestJson<{ item: { id: string } }>(f.route(author),
+      `/api/v2/projects/${PROJECT}/parameter-value-drafts/${f.uiDraft.id}/submit`, {
+        method: "POST", body: JSON.stringify({ assignedToUserId: REVIEWER }) });
+    expect(submitted.status).toBe(201);
+    const path = `/api/v2/projects/${PROJECT}/parameter-value-change-requests/${submitted.body.item.id}/conflict-decision`;
+    for (const auth of [author, reviewer]) {
+      const response = await requestJson(f.route(auth, null), path);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ item: null });
+      canonicalSourceConflictDecisionResponseSchema.parse(response.body);
+    }
+    const unavailable = [
+      await requestJson(f.route(foreign), path),
+      await requestJson(f.route(author), `/api/v2/projects/${PROJECT}/parameter-value-change-requests/missing/conflict-decision`)
+    ];
+    await f.db.query("delete from user_role_bindings where user_id=$1", [REVIEWER]);
+    unavailable.push(await requestJson(f.route(reviewer), path));
+    for (const response of unavailable) {
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: "NOT_FOUND" } });
+    }
+  }, 120_000);
+
   it.each([
     ["json", "file"], ["json", "draft"], ["dts", "file"], ["dts", "draft"]
   ] as const)("freezes and approves one %s %s value", async (format, choice) => {
