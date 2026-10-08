@@ -61,8 +61,13 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    // A full page unload (reload or link navigation) never unmounts the hook, and the browser then rejects the
+    // in-flight fetch with a TypeError; abort on pagehide so that is treated as cancellation, not a failure.
+    const abort = () => controller.abort();
+    window.addEventListener("pagehide", abort);
     void fetchSuggestions(controller.signal);
     return () => {
+      window.removeEventListener("pagehide", abort);
       controller.abort();
     };
   }, [fetchSuggestions]);
