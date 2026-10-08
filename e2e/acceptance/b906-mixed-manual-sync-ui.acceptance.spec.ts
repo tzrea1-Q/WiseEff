@@ -44,6 +44,7 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
     });
     let outcome: "success" | "failure" = "failure";
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: `b906_mixed_${format}_${firstChoice}${stalePreview ? "_stale" : ""}`,
       markerPurpose: `b906-mixed-${format}-${firstChoice}${stalePreview ? "-stale" : ""}`
     });

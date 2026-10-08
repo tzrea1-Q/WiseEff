@@ -353,6 +353,8 @@ export function createHttpServer(
       }
       response.setHeader("X-Request-Id", requestId);
       const status = getErrorStatus(error);
+      // Unexpected errors are hidden from the client as INTERNAL_ERROR; keep them diagnosable server-side.
+      if (!(error instanceof ApiError) || status >= 500) console.error(`[http] ${status} error requestId=${requestId}`, error);
       sendJson(response, status, serializeApiError(error, requestId));
       try {
         const url = new URL(request.url ?? "/", "http://localhost");

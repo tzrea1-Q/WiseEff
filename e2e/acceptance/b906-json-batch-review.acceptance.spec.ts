@@ -22,6 +22,7 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
   let outcome: "success" | "failure" = "failure";
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: "b906_ui", markerPurpose: "b906-batch-review"
     });
     runtime = started.runtime;

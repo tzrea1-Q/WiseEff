@@ -56,6 +56,7 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft
   });
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: `b906_rollback_${format}_${outcomeKind}${withDraft ? "_draft" : ""}`,
       markerPurpose: `b906-rollback-${format}-${outcomeKind}${withDraft ? "-draft" : ""}`
     });

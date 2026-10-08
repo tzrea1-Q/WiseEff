@@ -35,7 +35,7 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
     if (!environment.databaseUrl) throw new Error("An explicit dedicated PostgreSQL lane is required");
-    runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "issue899_query" });
+    runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "issue899_query", catalog: "fixture-owned" });
     applyDisposableRuntimeEnv(runtime);
     const bundle = firstReleaseBundle();
     const compiled = compileCatalogRelease(bundle);
@@ -304,7 +304,7 @@ test.describe("Issue 899 JSON query regression", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
     if (!environment.databaseUrl) throw new Error("An explicit dedicated PostgreSQL lane is required");
-    runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "issue899_json" });
+    runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "issue899_json", catalog: "fixture-owned" });
     applyDisposableRuntimeEnv(runtime);
     const db = createPostgresDatabase(runtime.databaseUrl);
     try {

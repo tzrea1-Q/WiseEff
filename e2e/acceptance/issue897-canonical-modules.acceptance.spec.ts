@@ -35,7 +35,7 @@ test.describe("Issue 897 canonical module ownership", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
     if (!environment.databaseUrl) throw new Error("An explicit dedicated PostgreSQL lane is required");
-    runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "issue897_modules" });
+    runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "issue897_modules", catalog: "fixture-owned" });
     applyDisposableRuntimeEnv(runtime);
     const bundle = firstReleaseBundle();
     const release = structuredClone(bundle.releases[0]!) as Parameters<typeof refreshAuthoritativeSource>[0];

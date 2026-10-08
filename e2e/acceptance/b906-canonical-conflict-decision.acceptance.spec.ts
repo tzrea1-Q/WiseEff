@@ -55,6 +55,7 @@ for (const [format, choice, decision] of [
     });
     try {
       const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+        catalog: "fixture-owned",
         label: `b906_conflict_${format}_${choice}_${decision}`, markerPurpose: "b906-conflict-ui"
       });
       runtime = started.runtime;

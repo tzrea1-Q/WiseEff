@@ -39,6 +39,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
   });
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: "b906_dts_batch_ui", markerPurpose: "b906-dts-batch"
     });
     runtime = started.runtime;

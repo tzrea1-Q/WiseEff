@@ -28,6 +28,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
   });
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: "b906_batch_submit_ui", markerPurpose: "b906-batch-submit"
     });
     runtime = started.runtime;

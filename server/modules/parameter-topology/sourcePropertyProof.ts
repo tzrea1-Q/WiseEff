@@ -55,7 +55,11 @@ export async function proveExactDtsProperty(tx: Queryable, objectStore: ObjectSt
   if (resolved.diagnostics.some((diagnostic) => diagnostic.code === "source-proof-limit")) {
     throw new ApiError("CONFLICT", "Exact source proof exceeds its bounded capacity.", { reason: "source-proof-limit" });
   }
-  if (resolved.diagnostics.length) refuse("DTS source has unresolved or ambiguous provenance.");
+  // Only the supported self-anchored overlay warning keeps exact provenance; any other diagnostic refuses.
+  if (resolved.diagnostics.some((diagnostic) =>
+    !(diagnostic.severity === "warning" && diagnostic.code === "dangling-reference"))) {
+    refuse("DTS source has unresolved or ambiguous provenance.");
+  }
   const node = resolved.effective.nodesByLocator.get(logical[0]!.nodeLocator);
   const property = node?.properties.get(input.propertyName);
   if (!node || node.deleted || !property || property.deleted || !property.sourceChain.length) refuse("DTS property is not a final active source value.");

@@ -40,6 +40,7 @@ test.describe("issue902 canonical-only JSON project initialization", () => {
     test.setTimeout(180_000);
     if (!environment.databaseUrl) throw new Error("Explicit disposable-runtime parent DATABASE_URL is required");
     runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, {
+      catalog: "fixture-owned",
       label: "issue902_canonical_initialization", apiEnv: { LOG_ANALYSIS_DETERMINISTIC: "true" }
     });
     applyDisposableRuntimeEnv(runtime);

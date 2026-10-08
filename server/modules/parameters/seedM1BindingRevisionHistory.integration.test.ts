@@ -128,7 +128,17 @@ describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
     await seedM1DtsFiles(db!, objectStore, [projectFile]);
     await seedM1SemanticTopology(db!, [projectFile]);
     await seedM1BindingRevisionHistory(db!, objectStore, [projectFile]);
+    await seedM1DtsFiles(db!, objectStore, [projectFile]);
+    await seedM1SemanticTopology(db!, [projectFile]);
     await seedM1BindingRevisionHistory(db!, objectStore, [projectFile]);
+
+    const currentVersion = await db!.query<{ version_number: number }>(
+      `select version.version_number from project_parameter_files file
+       join project_parameter_file_versions version on version.id = file.current_version_id
+       where file.project_id = $1 and file.file_name = $2`,
+      [PROJECT_ID, projectFile.fileName]
+    );
+    expect(currentVersion.rows[0]?.version_number).toBe(2);
 
     const revisions = await db!.query<{ count: string }>(
       `select count(*)::text as count from dts_config_revisions where project_id = $1`,

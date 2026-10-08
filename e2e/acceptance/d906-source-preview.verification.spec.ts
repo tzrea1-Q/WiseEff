@@ -16,7 +16,7 @@ test("D #906 real API JSON batch source preview shows complete targets and B sub
   let restore: RestoreDisposablePostCutoverRuntime | undefined;
   let outcome: "success" | "failure" = "failure";
   try {
-    const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, { label: "d906_ui", markerPurpose: "d906-source-preview" });
+    const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, { catalog: "fixture-owned", label: "d906_ui", markerPurpose: "d906-source-preview" });
     runtime = started.runtime;
     restore = started.restore;
     const db = createPostgresDatabase(runtime.databaseUrl);

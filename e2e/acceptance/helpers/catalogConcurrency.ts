@@ -34,6 +34,7 @@ async function proposalBusinessSnapshot(pool: pg.Pool) {
 export async function startCatalogScenarioRuntime(mode: "api" | "mock" = "api", initialRelease: "A" | "F" = "F") {
   const baseLane = await catalogLaneConnectionString();
   const runtime = await startDisposablePostCutoverRuntime(baseLane, {
+    catalog: "fixture-owned",
     label: "catalog819",
     markerPurpose: "catalog-r2-819",
     apiEnv: { AUTH_PROVIDER: "local" },

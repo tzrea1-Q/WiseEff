@@ -30,6 +30,7 @@ test("#939 blocks a pending sibling JSON request, then allows refreshed batch su
   test.setTimeout(180_000);
   let outcome: "success" | "failure" = "failure";
   const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+    catalog: "fixture-owned",
     label: "a939_pending_sibling", markerPurpose: "a939-pending-sibling"
   });
   const runtime = started.runtime;

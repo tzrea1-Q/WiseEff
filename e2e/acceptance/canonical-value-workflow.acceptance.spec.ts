@@ -119,6 +119,7 @@ test.describe("canonical value workflow on real sources", () => {
     if (!environment.databaseUrl) throw new Error("Explicit disposable-runtime parent DATABASE_URL is required");
     runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, {
       label: "canonical_value_workflow", apiEnv: { LOG_ANALYSIS_DETERMINISTIC: "true" },
+      catalog: "fixture-owned",
     });
     applyDisposableRuntimeEnv(runtime);
     // Fixture-only setup stays in this owned database. Catalog installation is
@@ -458,6 +459,7 @@ test.describe("canonical JSON deletion on a real source", () => {
     if (!environment.databaseUrl) throw new Error("Explicit disposable-runtime parent DATABASE_URL is required");
     runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, {
       label: "canonical_json_workflow", apiEnv: { LOG_ANALYSIS_DETERMINISTIC: "true" },
+      catalog: "fixture-owned",
     });
     applyDisposableRuntimeEnv(runtime);
     const db = createPostgresDatabase(runtime.databaseUrl);
