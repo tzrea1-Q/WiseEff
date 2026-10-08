@@ -3,10 +3,12 @@ import { test as base } from "playwright/test";
 import { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
 import { installCatalogAcceptanceFixtureOn, type CatalogAcceptanceFixture } from "./catalogEvidence";
 import { startDisposablePostCutoverRuntime, type DisposablePostCutoverRuntime } from "./disposablePostCutoverRuntime";
+import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
 import {
   applyDisposableRuntimeEnv,
   captureProcessEnvForDisposableRuntime,
   restoreProcessEnvFromDisposableRuntime,
+  type DisposableEnvSnapshot,
 } from "./semanticBindingFixture";
 
 /**
@@ -28,12 +30,25 @@ type CatalogAcceptanceFixtureWorker = {
 };
 
 let parentLaneUrl: string | undefined;
+let parentEnvSnapshot: DisposableEnvSnapshot | undefined;
 let frontendOrigin: string | undefined;
 
 /** The shared lane URL captured before the disposable runtime replaces DATABASE_URL. */
 export function catalogParentLaneUrl(): string {
   if (!parentLaneUrl) throw new Error("Catalog fixture runtime has not started in this worker.");
   return parentLaneUrl;
+}
+
+/** The environment the shared lane was verified with, before the fixture runtime replaced its auth and descriptor. */
+export function catalogParentLaneEnv(): Record<string, string | undefined> {
+  if (!parentLaneUrl || !parentEnvSnapshot) throw new Error("Catalog fixture runtime has not started in this worker.");
+  return {
+    ...process.env,
+    DATABASE_URL: parentLaneUrl,
+    AUTH_TOKEN_ISSUER: parentEnvSnapshot.authIssuer,
+    AUTH_TOKEN_HMAC_SECRET: parentEnvSnapshot.authSecret,
+    [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: parentEnvSnapshot.ownedDescriptor,
+  };
 }
 
 /** Absolute URL of a catalog app route in the fixture runtime, or the path when no runtime is active. */
@@ -54,11 +69,13 @@ export const catalogRuntimeTest = base.extend<{}, CatalogFixtureRuntimeWorker>({
     try {
       applyDisposableRuntimeEnv(runtime);
       parentLaneUrl = lane;
+      parentEnvSnapshot = snapshot;
       frontendOrigin = runtime.frontendUrl;
       await use(runtime);
     } finally {
       frontendOrigin = undefined;
       parentLaneUrl = undefined;
+      parentEnvSnapshot = undefined;
       restoreProcessEnvFromDisposableRuntime(snapshot);
       await runtime.dispose("success");
     }
