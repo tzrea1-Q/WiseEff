@@ -233,11 +233,16 @@ export function JsonBindingPanel({
     }
   }, [activeViewBinding]);
 
+  // Module ids are opaque; show the registry name, else the driver module, before falling back to the id.
+  const moduleLabel = useCallback((binding: { moduleId?: string | null; driverModule?: string | null }) =>
+    moduleRegistry?.modules.find((m) => m.id === binding.moduleId)?.name
+      ?? binding.driverModule ?? binding.moduleId ?? "固定配置", [moduleRegistry]);
+
   // Build module navigation tree
   const jsonRows = useMemo(() => {
     return jsonBindings.map((b) => {
       const mod = moduleRegistry?.modules.find((m) => m.id === b.moduleId);
-      const moduleName = mod?.name ?? b.moduleId ?? b.driverModule ?? "固定配置";
+      const moduleName = moduleLabel(b);
       const moduleSortOrder = mod?.sortOrder ?? 100;
       return {
         bindingId: b.id,
@@ -251,7 +256,7 @@ export function JsonBindingPanel({
         governanceState: "valid" as const
       };
     });
-  }, [jsonBindings, moduleRegistry]);
+  }, [jsonBindings, moduleRegistry, moduleLabel]);
 
   const tree = useMemo(() => {
     return buildModuleTree({
@@ -605,7 +610,7 @@ export function JsonBindingPanel({
                       filteredBindings.map((binding) => {
                         const isDraft = draftBindingIds?.has(binding.id) ?? false;
                         const isSelected = viewingBindingId === binding.id || editingBindingId === binding.id;
-                        const moduleLabel = binding.moduleId ?? binding.driverModule ?? "固定配置";
+                        const rowModuleLabel = moduleLabel(binding);
 
                         return (
                           <tr
@@ -623,7 +628,7 @@ export function JsonBindingPanel({
                             </td>
                             <td>
                               <span className="dts-parameter-workbench-table__module">
-                                <strong>{moduleLabel}</strong>
+                                <strong>{rowModuleLabel}</strong>
                               </span>
                             </td>
                             <td className="dts-parameter-workbench-table__identity">
@@ -728,7 +733,7 @@ export function JsonBindingPanel({
                   </div>
                   <div>
                     <dt>所属模块</dt>
-                    <dd>{activeViewBinding.moduleId ?? activeViewBinding.driverModule ?? "固定配置"}</dd>
+                    <dd>{moduleLabel(activeViewBinding)}</dd>
                   </div>
                   <div>
                     <dt>器件 / 定位</dt>
@@ -848,7 +853,7 @@ export function JsonBindingPanel({
                   <div>
                     <strong><code>{activeEditBinding.propertyKey}</code></strong>
                     <small>
-                      {activeEditBinding.moduleId ?? activeEditBinding.driverModule ?? "固定配置"} · {activeEditBinding.instanceName ?? "器件实例不可用"}
+                      {moduleLabel(activeEditBinding)} · {activeEditBinding.instanceName ?? "器件实例不可用"}
                     </small>
                   </div>
                 </div>
