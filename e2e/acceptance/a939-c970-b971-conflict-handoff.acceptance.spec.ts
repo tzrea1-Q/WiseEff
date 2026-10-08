@@ -178,8 +178,33 @@ for (const format of ["json", "dts"] as const) {
         expect(single.status(), await single.text()).toBe(201);
         const singleId = (await single.json()).item.id as string;
 
+        const beforeReadiness = await captureConfigurationSourceState(db,
+          { organizationId: "org-chargelab", projectId: "aurora" });
+        const readinessResponse = page.waitForResponse((response) => response.request().method() === "GET"
+          && new URL(response.url()).pathname === `/api/v1/projects/aurora/config-sets/${setId}/release-readiness`);
         await signInBrowserAsRole(page, "admin",
           `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${setId}&file=${fileId}`);
+        const readiness = await readinessResponse;
+        expect(readiness.status(), await readiness.text()).toBe(200);
+        await readiness.finished();
+        const readinessAudits = (await db.query<{
+          id: string; app: string; kind: string; action: string; target_type: string; target_id: string;
+          actor_user_id: string; actor_type: string; trace_id: string;
+        }>(`select id,app,kind,action,target_type,target_id,actor_user_id,actor_type,trace_id
+          from audit_events where organization_id='org-chargelab' and project_id='aurora'
+          and not (id=any($1::text[])) order by id`, [beforeReadiness.audits.map((audit) => audit.id)])).rows;
+        expect(readinessAudits).toEqual([{
+          id: expect.any(String), app: "parameters", kind: "validation.gate", action: "run",
+          target_type: "dts-config-set", target_id: setId, actor_user_id: admin.user.id,
+          actor_type: "user", trace_id: expect.any(String),
+        }]);
+        expect(await captureConfigurationSourceState(db,
+          { organizationId: "org-chargelab", projectId: "aurora" })).toEqual({
+          ...beforeReadiness,
+          audits: [...beforeReadiness.audits, ...readinessAudits.map((audit) => ({
+            id: audit.id, target: setId, action: "run", trace: audit.trace_id,
+          }))].sort((left, right) => left.id.localeCompare(right.id)),
+        });
         await dismissXiaozeHint(page);
         await page.getByRole("button", { name: "检查器", exact: true }).click();
         const inspector = page.getByRole("complementary", { name: "配置检查器" });

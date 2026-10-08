@@ -19,6 +19,11 @@ import {
  * build absolute URLs with `catalogAppUrl`.
  */
 type CatalogFixtureRuntimeWorker = {
+  catalogRuntimeDatabaseUrl: string | undefined;
+  catalogRuntime: DisposablePostCutoverRuntime;
+};
+
+type CatalogAcceptanceFixtureWorker = {
   catalogAcceptanceRuntime: { runtime: DisposablePostCutoverRuntime; fixture: CatalogAcceptanceFixture };
 };
 
@@ -36,9 +41,10 @@ export function catalogAppUrl(route: string): string {
   return frontendOrigin ? new URL(route, frontendOrigin).toString() : route;
 }
 
-export const test = base.extend<{}, CatalogFixtureRuntimeWorker>({
-  catalogAcceptanceRuntime: [async ({}, use) => {
-    const lane = await catalogLaneConnectionString();
+export const catalogRuntimeTest = base.extend<{}, CatalogFixtureRuntimeWorker>({
+  catalogRuntimeDatabaseUrl: [undefined, { scope: "worker", option: true }],
+  catalogRuntime: [async ({ catalogRuntimeDatabaseUrl }, use) => {
+    const lane = catalogRuntimeDatabaseUrl ?? await catalogLaneConnectionString();
     const snapshot = captureProcessEnvForDisposableRuntime();
     const runtime = await startDisposablePostCutoverRuntime(lane, {
       label: "catalog-acceptance",
@@ -49,17 +55,23 @@ export const test = base.extend<{}, CatalogFixtureRuntimeWorker>({
       applyDisposableRuntimeEnv(runtime);
       parentLaneUrl = lane;
       frontendOrigin = runtime.frontendUrl;
-      const fixture = await installCatalogAcceptanceFixtureOn(runtime.databaseUrl);
-      try {
-        await use({ runtime, fixture });
-      } finally {
-        await fixture.pool.end();
-      }
+      await use(runtime);
     } finally {
       frontendOrigin = undefined;
       parentLaneUrl = undefined;
       restoreProcessEnvFromDisposableRuntime(snapshot);
       await runtime.dispose("success");
+    }
+  }, { scope: "worker" }],
+});
+
+export const test = catalogRuntimeTest.extend<{}, CatalogAcceptanceFixtureWorker>({
+  catalogAcceptanceRuntime: [async ({ catalogRuntime }, use) => {
+    const fixture = await installCatalogAcceptanceFixtureOn(catalogRuntime.databaseUrl);
+    try {
+      await use({ runtime: catalogRuntime, fixture });
+    } finally {
+      await fixture.pool.end();
     }
   }, { scope: "worker" }],
 });
