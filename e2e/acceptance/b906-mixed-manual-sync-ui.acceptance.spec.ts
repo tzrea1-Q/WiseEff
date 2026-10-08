@@ -146,7 +146,7 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       const openDialog = inspector.getByRole("button", { name: "上传来源并预览批量候选" });
       await openDialog.click();
-      const dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备批量审核` });
+      const dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备审核` });
       if (format === "json" && firstChoice === "draft" && !stalePreview) {
         await page.keyboard.press("Tab");
         expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
