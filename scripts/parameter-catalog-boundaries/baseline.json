@@ -1,9 +1,6 @@
 {
   "schemaVersion": 1,
   "counts": {
-    "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts": {
-      "legacy-catalog-raw-read": 4
-    },
     "e2e/acceptance/hierarchical-modules.acceptance.spec.ts": {
       "canonical-catalog-raw-access": 1,
       "legacy-catalog-raw-read": 2,

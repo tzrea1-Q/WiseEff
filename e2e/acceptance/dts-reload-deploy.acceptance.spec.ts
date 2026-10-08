@@ -14,22 +14,30 @@
  * (including behavioural verify via debug.readNode and residue set/clear) lives in
  * server/modules/dts-reload/deploy.test.ts and residue.test.ts / restoreBaseline.test.ts.
  */
-import { createHash, randomUUID } from "node:crypto";
-import { Client } from "pg";
+import { createHash } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
 import WebSocket from "ws";
 
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
-import { acceptanceUserIdForRole, authHeadersForRole } from "./helpers/bearerAuth";
+import { authHeadersForRole } from "./helpers/bearerAuth";
+import {
+  startCanonicalReloadRun,
+  startCanonicalReloadRuntime,
+  type CanonicalReloadRuntime
+} from "./helpers/canonicalReloadRuntime";
+import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 const databaseUrl = process.env.DATABASE_URL?.trim() || "";
-const apiBase = process.env.VITE_WISEEFF_API_BASE_URL ?? process.env.WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
-const userId = acceptanceUserIdForRole("admin");
+
+// The disposable runtime applies its own API URL to the process environment.
+function apiBase() {
+  return process.env.VITE_WISEEFF_API_BASE_URL ?? process.env.WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
+}
 
 function apiRoute(path: string) {
-  return new URL(path, apiBase).toString();
+  return new URL(path, apiBase()).toString();
 }
 
 /** Bearer + x-wiseeff-user so the spec works under both AUTH_MODE=production (hmac) and development. */
@@ -38,7 +46,7 @@ function authHeaders() {
 }
 
 function bridgeWebSocketUrl() {
-  const url = new URL(apiBase);
+  const url = new URL(apiBase());
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/api/v1/device-bridges/ws";
   url.search = "";
@@ -177,131 +185,24 @@ async function connectFakeBridge(
   return { socket, artifactSha };
 }
 
-async function seedValidatedReloadRun(input: {
-  organizationId: string;
-  projectId: string;
-  userId: string;
-  artifactSha: string;
-  artifactBytes: Buffer;
-}) {
-  const client = new Client({ connectionString: databaseUrl });
-  await client.connect();
-  const runId = randomUUID();
-  const sourceBytes = Buffer.from("/dts-v1/;\n/plugin/;\n");
-  const sourceSha = createHash("sha256").update(sourceBytes).digest("hex");
-  const sourceKey = `${input.organizationId}/${sourceSha}-debug-overlay-${runId}.dts`;
-  const artifactKey = `${input.organizationId}/${input.artifactSha}-debug-overlay-${runId}.dtbo`;
-  try {
-    const objectRoot = process.env.OBJECT_STORE_ROOT?.trim() || ".wiseeff-object-store";
-    const { mkdir, writeFile } = await import("node:fs/promises");
-    const { join } = await import("node:path");
-    await mkdir(join(objectRoot, input.organizationId), { recursive: true });
-    await writeFile(join(objectRoot, sourceKey), sourceBytes);
-    await writeFile(join(objectRoot, artifactKey), input.artifactBytes);
-
-    // One library binding is required so behavioural verification can emit the
-    // unbound outcome (no debug-node mapping) that DTS-RELOAD-VERIFY-001 asserts.
-    const bindingResult = await client.query<{
-      binding_id: string;
-      property_key: string;
-      node_path: string | null;
-      baseline_value: string | null;
-    }>(
-      `
-      select
-        b.id as binding_id,
-        coalesce(
-          dps.property_key,
-          nullif(
-            (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
-            ''
-          ),
-          'e2e_reload'
-        ) as property_key,
-        lnr.node_locator as node_path,
-        br.raw_value as baseline_value
-      from project_parameter_bindings b
-      join parameter_specs ps on ps.id = b.parameter_spec_id
-      left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-      left join lateral (
-        select parameter_spec_version_id, config_revision_id, raw_value
-        from project_parameter_binding_revisions
-        where binding_id = b.id
-        order by created_at desc
-        limit 1
-      ) br on true
-      left join lateral (
-        select node_locator
-        from dts_logical_node_revisions
-        where logical_node_id = b.logical_node_id
-          and config_revision_id = br.config_revision_id
-        limit 1
-      ) lnr on true
-      where b.organization_id = $1
-        and b.project_id = $2
-        and br.parameter_spec_version_id is not null
-      order by coalesce(lnr.node_locator, ''), b.id
-      limit 1
-      `,
-      [input.organizationId, input.projectId]
-    );
-    const binding = bindingResult.rows[0];
-    if (!binding) {
-      throw new Error(
-        `No project_parameter_bindings available for ${input.projectId}; cannot seed DTS reload run targets.`
-      );
-    }
-
-    await client.query(
-      `
-      insert into dts_reload_runs (
-        id, organization_id, project_id, status, failure_code, steps, diagnostics, tool_versions,
-        overlay_source_storage_key, overlay_source_sha256,
-        overlay_artifact_storage_key, overlay_artifact_sha256, overlay_artifact_bytes,
-        created_by_user_id, completed_at
-      ) values (
-        $1, $2, $3, 'validated', null, '[]'::jsonb, '[]'::jsonb, '{}'::jsonb,
-        $4, $5, $6, $7, $8, $9, now()
-      )
-      `,
-      [
-        runId,
-        input.organizationId,
-        input.projectId,
-        sourceKey,
-        sourceSha,
-        artifactKey,
-        input.artifactSha,
-        input.artifactBytes.length,
-        input.userId
-      ]
-    );
-
-    const baselineValue = binding.baseline_value ?? "<1>";
-    await client.query(
-      `
-      insert into dts_reload_run_targets (
-        id, reload_run_id, binding_id, node_path, property_key, baseline_value, debug_value, sort_order
-      ) values ($1, $2, $3, $4, $5, $6, $7, 0)
-      `,
-      [
-        randomUUID(),
-        runId,
-        binding.binding_id,
-        binding.node_path?.trim() || "/plugin/e2e-reload",
-        binding.property_key || "e2e_reload",
-        baselineValue,
-        "<e2e-debug>"
-      ]
-    );
-  } finally {
-    await client.end();
-  }
-  return runId;
-}
-
 test.describe("DTS reload deploy fake-bridge wiring", () => {
   test.skip(!databaseUrl, "DATABASE_URL required");
+
+  let canonical: CanonicalReloadRuntime;
+
+  test.beforeAll(async ({ request }) => {
+    test.setTimeout(180_000);
+    canonical = await startCanonicalReloadRuntime(request, "dts_reload_deploy");
+  });
+
+  test.afterAll(async ({}, info) => {
+    test.setTimeout(60_000);
+    try {
+      await canonical?.runtime.dispose(disposableRuntimeOutcomeFromTestInfo(info));
+    } finally {
+      canonical?.restoreProcessEnv();
+    }
+  });
 
   test("DTS-RELOAD-DEPLOY-001 mounts, pushes, and triggers through the real bridge RPC envelope", async ({
     page
@@ -313,32 +214,10 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
     const fake = await connectFakeBridge(pair.bridgeToken, observed);
 
     try {
-      // Resolve org/project from seeded M0/M1 user context via /api/v1/me and projects list.
-      const me = await page.request.get(apiRoute("/api/v1/me"), { headers: authHeaders() });
-      expect(me.ok()).toBe(true);
-      const meBody = (await me.json()) as {
-        user?: { id?: string; organizationId?: string };
-        organization?: { id?: string };
-      };
-      const organizationId = meBody.organization?.id ?? meBody.user?.organizationId;
-      expect(organizationId).toBeTruthy();
-
-      const projects = await page.request.get(apiRoute("/api/v1/projects"), { headers: authHeaders() });
-      expect(projects.ok()).toBe(true);
-      const projectBody = (await projects.json()) as { items?: Array<{ id: string }> };
-      const projectId =
-        projectBody.items?.find((item) => item.id === "aurora")?.id ?? projectBody.items?.[0]?.id;
-      expect(projectId).toBeTruthy();
-
-      const artifactBytes = Buffer.from("dtbo-e2e");
-      const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-      const runId = await seedValidatedReloadRun({
-        organizationId: organizationId!,
-        projectId: projectId!,
-        userId,
-        artifactSha,
-        artifactBytes
-      });
+      const projectId = canonical.projectId;
+      const started = await startCanonicalReloadRun(page.request, canonical, "<1200>");
+      expect(started.status).toBe("validated");
+      const runId = started.id;
 
       const deploy = await page.request.post(apiRoute(`/api/v1/dts-reload/runs/${runId}/deploy`), {
         headers: authHeaders(),
