@@ -1251,10 +1251,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     action: "Approve a Xiaoze parameter change and persist agent-audited change request.",
     coverage: "automated",
     acceptanceIds: ["XIAOZE-ACTION-APPROVE-001"],
-    specFiles: [
-      "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
-      "e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts"
-    ],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
     assertions: ["api", "audit"]
   },
   {

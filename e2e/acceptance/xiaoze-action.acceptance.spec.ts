@@ -1,6 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { createHmac } from "node:crypto";
-import { expect, test } from "playwright/test";
+import { expect, test, type APIRequestContext } from "playwright/test";
 
 import { signInBrowserAsRole } from "./helpers/bearerAuth";
 import { runNpmScript, withPgClient } from "./helpers/database";
@@ -11,6 +11,7 @@ import {
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
 import { assertPostCutoverIdentity } from "./helpers/semanticBindingFixture";
+import { resolveSeededSingleCellBinding } from "./helpers/xiaozeCanonicalBinding";
 import { assertDeterministicXiaozeReady } from "./helpers/xiaozeDeterministicEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -19,11 +20,14 @@ const actorUserId = "u-xu-yun";
 const threadId = "xiaoze-action-thread";
 
 /**
- * Shared CI acceptance is post-cutover. This spec addresses parameters by
- * `project_parameter_binding_id` and DTS cell text. It never falls back to
- * `project_parameter_value_id` or `aurora-fast-charge-current`.
+ * Shared CI acceptance is post-cutover. This spec addresses canonical
+ * Catalog Bindings (`parameter_catalog.project_parameter_bindings.id`, the id the
+ * Parameters page and Xiaoze approval payload use) and DTS cell text, and it
+ * observes canonical value change requests
+ * (`project_parameter_value_change_requests`). It never falls back to the retired
+ * semantic `project_parameter_bindings` table or `aurora-fast-charge-current`.
  *
- * Edited-args assertions must scope by binding id. A project-wide latest-CR
+ * Request assertions must scope by binding id. A project-wide latest-request
  * query can read a rejected row from an earlier case in this file.
  */
 let parameterId = "";
@@ -33,40 +37,10 @@ function cellValue(offset: number) {
   return `<${baseCellValue + offset}>`;
 }
 
-async function resolveSeededBinding() {
-  await withPgClient(async (client) => {
-    const result = await client.query<{ id: string; raw_value: string | null }>(
-      `
-      select b.id, latest.raw_value
-      from project_parameter_bindings b
-      join dts_config_set cs
-        on cs.organization_id = b.organization_id
-       and cs.project_id = b.project_id
-       and cs.name = 'default'
-      join dts_config_revisions cr
-        on cr.config_set_id = cs.id
-      join project_parameter_binding_revisions latest
-        on latest.binding_id = b.id
-       and latest.config_revision_id = cr.id
-      join dts_logical_node_revisions lnr
-        on lnr.logical_node_id = b.logical_node_id
-       and coalesce(lnr.node_locator, '') <> ''
-      where b.organization_id = 'org-chargelab'
-        and b.project_id = $1
-        and latest.raw_value ~ '^<[0-9]+>$'
-        and coalesce(lnr.node_locator, '') <> ''
-      order by cr.revision_number desc, b.id
-      limit 1
-      `,
-      [projectId]
-    );
-    const row = result.rows[0];
-    if (!row) {
-      throw new Error("No seeded aurora binding with a single-cell value was found for Xiaoze action acceptance.");
-    }
-    parameterId = row.id;
-    baseCellValue = Number((row.raw_value ?? "<3000>").replace(/[<>]/g, ""));
-  });
+async function resolveSeededBinding(request: APIRequestContext) {
+  const binding = await resolveSeededSingleCellBinding(request, projectId);
+  parameterId = binding.bindingId;
+  baseCellValue = binding.baseValue;
 }
 
 function bearerTokenFor(input: {
@@ -186,12 +160,12 @@ async function resetOpenChangeRequestsForParameter() {
   await withPgClient(async (client) => {
     await client.query(
       `
-      update parameter_change_requests
-      set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
+      update project_parameter_value_change_requests
+      set status = 'rejected', reviewer_note = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_binding_id = $2
-        and status not in ('merged', 'rejected')
+        and binding_id = $2
+        and status = 'pending'
       `,
       [projectId, parameterId]
     );
@@ -203,11 +177,11 @@ async function countOpenChangeRequests() {
     const result = await client.query<{ count: string }>(
       `
       select count(*)::text as count
-      from parameter_change_requests
+      from project_parameter_value_change_requests
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_binding_id = $2
-        and status not in ('merged', 'rejected')
+        and binding_id = $2
+        and status = 'pending'
       `,
       [projectId, parameterId]
     );
@@ -240,14 +214,14 @@ async function latestAgentAuditForSession(sessionId: string) {
 
 test.skip(!databaseUrl, "DATABASE_URL is required for Xiaoze action acceptance evidence.");
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ request }) => {
   runNpmScript("db:migrate");
   runNpmScript("db:seed:m0");
   runNpmScript("db:seed:m1");
   await assertPostCutoverIdentity();
-  await resolveSeededBinding();
+  await resolveSeededBinding(request);
   expect(parameterId).not.toBe("aurora-fast-charge-current");
-  expect(parameterId).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(parameterId).toMatch(/^pbind_[0-9a-f]{64}$/);
   await withPgClient(async (client) => {
     await client.query(`update users set is_active = true where id = $1`, [actorUserId]);
     await client.query(
@@ -271,12 +245,12 @@ test.beforeAll(async () => {
     );
     await client.query(
       `
-      update parameter_change_requests
-      set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
+      update project_parameter_value_change_requests
+      set status = 'rejected', reviewer_note = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_binding_id = $2
-        and status not in ('merged', 'rejected')
+        and binding_id = $2
+        and status = 'pending'
       `,
       [projectId, parameterId]
     );
@@ -334,6 +308,27 @@ test.describe("Xiaoze P1 action", () => {
     const openAfterApprove = await countOpenChangeRequests();
     expect(openAfterApprove).toBeGreaterThan(openBefore);
 
+    const persisted = await withPgClient(async (client) => {
+      const result = await client.query<{
+        binding_id: string;
+        status: string;
+        target_value: { groups?: Array<Array<{ raw?: string }>> } | null;
+      }>(
+        `
+        select binding_id, status, target_value
+        from project_parameter_value_change_requests
+        where organization_id = 'org-chargelab' and project_id = $1 and binding_id = $2
+        order by created_at desc
+        limit 1
+        `,
+        [projectId, parameterId]
+      );
+      return result.rows[0];
+    });
+    expect(persisted?.binding_id).toBe(parameterId);
+    expect(persisted?.status).toBe("pending");
+    expect(persisted?.target_value?.groups?.[0]?.[0]?.raw).toBe(String(baseCellValue + 1));
+
     const followUp = await postXiaoze(request, adminHeaders(), {
       threadId: approveThread,
       runId: `run-follow-up-${Date.now()}`,
@@ -364,10 +359,10 @@ test.describe("Xiaoze P1 action", () => {
           `
           select ae.id, ae.kind, ae.action, ae.actor_type, ae.target_id, ae.trace_id
           from audit_events ae
-          join parameter_change_requests cr on cr.id = ae.target_id
+          join project_parameter_value_change_requests cr on cr.id = ae.target_id
           where cr.organization_id = 'org-chargelab'
             and cr.project_id = $1
-            and cr.project_parameter_binding_id = $2
+            and cr.binding_id = $2
           order by ae.created_at desc
           limit 1
           `,
@@ -464,13 +459,13 @@ test.describe("Xiaoze P1 action", () => {
     expect(resumed.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
 
     const latestChangeRequest = await withPgClient(async (client) => {
-      const result = await client.query<{ target_value: string | null; status: string }>(
+      const result = await client.query<{ target_value: { groups?: Array<Array<{ raw?: string }>> } | null; status: string }>(
         `
         select target_value, status
-        from parameter_change_requests
+        from project_parameter_value_change_requests
         where organization_id = 'org-chargelab'
           and project_id = $1
-          and project_parameter_binding_id = $2
+          and binding_id = $2
         order by created_at desc
         limit 1
         `,
@@ -478,8 +473,9 @@ test.describe("Xiaoze P1 action", () => {
       );
       return result.rows[0];
     });
-    expect(String(latestChangeRequest?.target_value ?? "")).toContain(editedTargetValue);
-    expect(latestChangeRequest?.status).not.toBe("rejected");
+    // Canonical requests store the parsed DTS cell value, not the typed text.
+    expect(latestChangeRequest?.target_value?.groups?.[0]?.[0]?.raw).toBe(String(baseCellValue + 3));
+    expect(latestChangeRequest?.status).toBe("pending");
 
     const auditRows = await latestAgentAuditForSession(thread);
     const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");
@@ -734,9 +730,10 @@ test.describe("Xiaoze P1 action", () => {
     expect(crossUser.status).toBe(403);
     expect(await countOpenChangeRequests()).toBe(openBefore);
 
-    // A requester without the write capability (guest role) can plan and
-    // approve their own action, but execution is refused with the
-    // in-conversation safe reply instead of an executed write.
+    // A requester without the write capability (guest role) is refused when the
+    // action is proposed: authorization runs before any approval is created, so
+    // no interrupt is issued, the reply is the in-conversation safe message and
+    // nothing is written.
     const guestThread = `${threadId}-authz-self-${Date.now()}`;
     const readOnlyStarted = await postXiaoze(request, readOnlyHeaders(), {
       threadId: guestThread,
@@ -751,22 +748,9 @@ test.describe("Xiaoze P1 action", () => {
     });
     expect(readOnlyStarted.status, readOnlyStarted.body.slice(0, 800)).toBe(200);
     const readOnlyInterrupt = readInterruptValue(readOnlyStarted.events);
-    expect(readOnlyInterrupt?.approvalId).toBeTruthy();
-
-    const resumed = await postXiaoze(request, readOnlyHeaders(), {
-      threadId: guestThread,
-      runId: `run-resume-authz-${Date.now()}`,
-      messages: [{ id: "m-resume", role: "user", content: "approve" }],
-      forwardedProps: {
-        command: {
-          resume: { decision: "approve" },
-          interruptEvent: readOnlyInterrupt
-        }
-      }
-    });
-
-    expect(resumed.status).toBe(200);
-    const answer = parseSseEvents(resumed.body)
+    expect(readOnlyInterrupt?.approvalId).toBeUndefined();
+    expect(readOnlyStarted.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
+    const answer = readOnlyStarted.events
       .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
       .map((event) => String(event.delta ?? ""))
       .join("");
@@ -774,9 +758,9 @@ test.describe("Xiaoze P1 action", () => {
     const openAfter = await countOpenChangeRequests();
     expect(openAfter).toBe(openBefore);
     const authzArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-authz-denied.json", {
-      approvalId: readOnlyInterrupt?.approvalId,
+      approvalId: interruptValue?.approvalId,
       crossUserStatus: crossUser.status,
-      resumedStatus: resumed.status,
+      guestProposalStatus: readOnlyStarted.status,
       answer,
       openBefore,
       openAfter
@@ -790,13 +774,13 @@ test.describe("Xiaoze P1 action", () => {
       testInfo,
       artifacts: [authzArtifact],
       api: [
-        summarizeApiResponse(resumed.response, {
+        summarizeApiResponse(readOnlyStarted.response, {
           method: "POST",
           path: "/api/v1/agent/xiaoze",
           responseSummary: answer.slice(0, 240)
         })
       ],
-      notes: "A read-only user could not approve Xiaoze mutating actions beyond their permissions."
+      notes: "A read-only user could neither take over another requester's approval nor propose a Xiaoze mutating action beyond their permissions."
     });
   });
 
@@ -848,7 +832,7 @@ test.describe("Xiaoze P1 action", () => {
       testInfo,
       db: [
         {
-          table: "parameter_change_requests",
+          table: "project_parameter_value_change_requests",
           predicate: `organization_id = 'org-chargelab' and project_id = '${projectId}' and the approved parameter`,
           observed: `open change requests ${openBefore} -> ${openAfter} after the browser approval`,
           rowCount: openAfter

@@ -97,7 +97,7 @@
 - `XIAOZE-PERCEPTION-001`：Admin 在 `/parameters` 向小泽提问，验收基于页面上下文与感知工具的只读 grounded 回答（`e2e/acceptance/xiaoze-perception.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-AUTHZ-001`：Guest 用户询问无权限项目时，小泽返回安全非数据回答，不泄露越权内容。
 - `XIAOZE-POPUP-MOVE-001`：Admin 在 `/parameters` 关闭态拖动悬浮球、展开态整体移动悬浮球和非模态弹窗，并继续覆盖缩放、复位、恢复、业务页面操作和切换；手机保持全屏，自动化归属 `e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts`。
-- `XIAOZE-ACTION-APPROVE-001`：Admin 批准小泽参数变更。共享 CI 验收库走 `e2e/acceptance/xiaoze-action.acceptance.spec.ts`（binding id + DTS cell）；额外隔离由 `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` 在可丢弃 cutover 库上证明。
+- `XIAOZE-ACTION-APPROVE-001`：Admin 批准小泽参数变更。共享 CI 验收库走 `e2e/acceptance/xiaoze-action.acceptance.spec.ts`（canonical Catalog Binding id + DTS cell）。
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`：批准后工具执行失败时，用户应看到中文失败气泡、线程仍可继续，且「新对话」清掉 CopilotKit pending interrupt。浏览器自动化待补（`coverage: future`）；阻断证明是图与 AG-UI 装配测试。
 - `XIAOZE-PLAN-MULTISTEP-001`：Admin 在 `/parameters` 完成多步计划并经批准 resume，验收 checkpoint 恢复与执行结果报告（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
 - `XIAOZE-PROACTIVE-001`：opt-in 主动建议在启用时出现、为只读且受 authz 限制；关闭时不出现（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
