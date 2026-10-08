@@ -708,14 +708,18 @@ jobs:
       - name: Acceptance smoke
         run: npm run acceptance:smoke
 
-  acceptance-local-non-hdc:
-    name: Acceptance local non-HDC
+  acceptance-local-non-hdc-shards:
+    name: Acceptance local non-HDC shard ${{ matrix.shard }}/4
     needs: detect
     if: needs.detect.outputs.run_l2 == 'true'
     runs-on: ubuntu-latest
-    # Enforced by acceptance:ci: 5m platform overhead + 71m bounded prelude
-    # + the 60m Gate0 owner + 5m safety scan + 5m upload = 146m. The job
-    # + 1m identity + 4m diagnostic generation/fallback/upload/settlement = 151m.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    # Enforced per shard by acceptance:ci: 5m platform overhead + 72m prelude
+    # (including identity) + 60m Gate0 owner + 5m safety scan + 5m upload
+    # + 4m diagnostic generation/fallback/upload/settlement = 151m.
     # Keep the job budget strictly greater than the complete platform path.
     timeout-minutes: 155
 
@@ -797,7 +801,7 @@ jobs:
       - name: Owned visual and browser acceptance Gate 0
         id: acceptance_gate0
         timeout-minutes: 65
-        run: npm run acceptance:gate0
+        run: npm run acceptance:gate0 -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       - name: Acceptance artifact safety
         id: acceptance_artifact_safety
@@ -811,7 +815,7 @@ jobs:
         timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:
-          name: wiseeff-acceptance-local-non-hdc
+          name: wiseeff-acceptance-local-non-hdc-shard-${{ matrix.shard }}
           path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
           if-no-files-found: error
           compression-level: 0
@@ -827,6 +831,7 @@ jobs:
         env:
           EFF_RUN_ID: ${{ github.run_id }}
           EFF_ATTEMPT: ${{ github.run_attempt }}
+          EFF_SHARD: ${{ matrix.shard }}
           EFF_WORKFLOW_SHA: ${{ github.workflow_sha }}
           EFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
           EFF_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -857,7 +862,7 @@ jobs:
                   "identity": {
                       "runId": identity("EFF_RUN_ID", r"[1-9][0-9]{0,19}"),
                       "attempt": identity("EFF_ATTEMPT", r"[1-9][0-9]{0,9}"),
-                      "job": "acceptance-local-non-hdc",
+                      "job": "acceptance-local-non-hdc-shard-" + identity("EFF_SHARD", r"[1-4]"),
                       "workflowSha": identity("EFF_WORKFLOW_SHA", r"[0-9a-f]{40}"),
                       "acceptedBase": identity("EFF_BASE", r"[0-9a-f]{40}"),
                       "prHead": identity("EFF_PR_HEAD", r"[0-9a-f]{40}"),
@@ -910,6 +915,7 @@ jobs:
         env:
           EFF_RUN_ID: ${{ github.run_id }}
           EFF_ATTEMPT: ${{ github.run_attempt }}
+          EFF_SHARD: ${{ matrix.shard }}
         run: |
           import json, os, pathlib, re, sys, tempfile
           try:
@@ -919,7 +925,7 @@ jobs:
               record = {"schemaVersion": 1, "scope": "workflow-context-only",
                         "identity": {"runId": number("EFF_RUN_ID", r"[1-9][0-9]{0,19}"),
                                      "attempt": number("EFF_ATTEMPT", r"[1-9][0-9]{0,9}"),
-                                     "job": "acceptance-local-non-hdc"},
+                                     "job": "acceptance-local-non-hdc-shard-" + (number("EFF_SHARD", r"[1-4]") or "unknown")},
                         "code": "DIAGNOSTIC_REJECTED", "detailsSuppressed": True}
               root = os.environ["RUNNER_TEMP"]
               if "\n" in root or "\r" in root:
@@ -942,7 +948,7 @@ jobs:
         timeout-minutes: 1
         uses: actions/upload-artifact@v4
         with:
-          name: wiseeff-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc
+          name: wiseeff-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc-shard-${{ matrix.shard }}
           path: ${{ steps.acceptance_diagnostic.outcome == 'success' && steps.acceptance_diagnostic.outputs.path || steps.acceptance_diagnostic_fallback.outputs.path }}
           if-no-files-found: error
           retention-days: 7
@@ -965,6 +971,22 @@ jobs:
                   sys.exit(1)
           except Exception:
               sys.exit("DIAGNOSTIC_UPLOAD_INCOMPLETE")
+
+  acceptance-local-non-hdc:
+    name: Acceptance local non-HDC
+    if: always()
+    needs: [detect, acceptance-local-non-hdc-shards]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Verify every L2 shard result
+        env:
+          EFF_NEEDS: ${{ toJSON(needs) }}
+        run: node --experimental-strip-types scripts/ci-required-results.ts l2
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance

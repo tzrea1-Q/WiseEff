@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertL1Results, assertRequiredResults, assertShadowResults, assertShadowSummary, createL1Receipt, l1CommandIds, readPrivateReport, settleShadowResults, validateNativeReport } from "./ci-required-results";
+import { assertL1Results, assertL2Results, assertRequiredResults, assertShadowResults, assertShadowSummary, createL1Receipt, l1CommandIds, readPrivateReport, settleShadowResults, validateNativeReport } from "./ci-required-results";
 import { createNotApplicableShadow, createUnavailableShadow } from "./verification/ci-shadow";
 
 const identity = {
@@ -16,11 +16,14 @@ const docNeeds = {
   detect: { result: "success", outputs: docs },
   "build-and-test": { result: "success", outputs: { identity: JSON.stringify(identity) } },
   "acceptance-quality": { result: "skipped" }, "acceptance-smoke": { result: "skipped" },
-  "acceptance-local-non-hdc": { result: "skipped" }, "target-synthetic-acceptance": { result: "skipped" },
+  "acceptance-local-non-hdc": { result: "success" }, "target-synthetic-acceptance": { result: "skipped" },
   "minimal-upgrade": { result: "skipped" },
 };
 
 describe("strict CI required results", () => {
+  it.each(["failure", "cancelled", "skipped", "missing"])("requires a successful L2 aggregate even on docs-only changes: %s", (result) => {
+    expect(() => assertRequiredResults({ identity, needs: { ...docNeeds, "acceptance-local-non-hdc": { result } } })).toThrow();
+  });
   it("accepts docs-only with a successful stable Build and test", () => {
     expect(() => assertRequiredResults({ identity, needs: docNeeds })).not.toThrow();
   });
@@ -42,7 +45,7 @@ describe("strict CI required results", () => {
   it.each(["local-non-hdc", "target-non-hdc", "full-pilot", "minimal-upgrade"])("retains %s manual dispatch requirements", (mode) => {
     const local = mode === "local-non-hdc";
     const target = mode === "target-non-hdc" || mode === "full-pilot";
-    const needs = { ...docNeeds, detect: { result: "success", outputs: { docs_only: "false", run_l1: "false", run_quality: String(local), run_smoke: "false", run_l2: String(local) } }, "acceptance-quality": { result: local ? "success" : "skipped" }, "acceptance-local-non-hdc": { result: local ? "success" : "skipped" }, "target-synthetic-acceptance": { result: target ? "success" : "skipped" }, "minimal-upgrade": { result: mode === "minimal-upgrade" ? "success" : "skipped" } };
+    const needs = { ...docNeeds, detect: { result: "success", outputs: { docs_only: "false", run_l1: "false", run_quality: String(local), run_smoke: "false", run_l2: String(local) } }, "acceptance-quality": { result: local ? "success" : "skipped" }, "acceptance-local-non-hdc": { result: "success" }, "target-synthetic-acceptance": { result: target ? "success" : "skipped" }, "minimal-upgrade": { result: mode === "minimal-upgrade" ? "success" : "skipped" } };
     const dispatchIdentity = { ...identity, event: "workflow_dispatch", base: "", head: "", mode };
     needs["build-and-test"] = { result: "success", outputs: { identity: JSON.stringify(dispatchIdentity) } };
     expect(() => assertRequiredResults({ identity: dispatchIdentity, needs })).not.toThrow();
@@ -62,6 +65,33 @@ describe("strict CI required results", () => {
       detect: { result: "success", outputs: { ...docs, run_quality: "true", run_l2: "true" } },
       "acceptance-quality": { result: "success" }, "acceptance-local-non-hdc": { result: "success" } };
     expect(() => assertRequiredResults({ identity: labeled, needs })).not.toThrow();
+  });
+});
+
+describe("strict L2 shard aggregation", () => {
+  const input = (selected: boolean, result: string) => ({
+    identity: { ...identity, fullAcceptance: selected },
+    needs: {
+      detect: { result: "success", outputs: { ...docs, run_l2: String(selected), run_quality: String(selected) } },
+      "acceptance-local-non-hdc-shards": { result },
+    },
+  });
+  it("accepts all shards succeeded, or detect intentionally skipped the entire matrix", () => {
+    expect(() => assertL2Results(input(true, "success"))).not.toThrow();
+    expect(() => assertL2Results(input(false, "skipped"))).not.toThrow();
+  });
+  it.each(["failure", "cancelled", "skipped", "missing", ""])("rejects selected matrix result %s", (result) => {
+    expect(() => assertL2Results(input(true, result))).toThrow();
+  });
+  it.each(["failure", "cancelled", "success", "missing", ""])("rejects unselected matrix result %s", (result) => {
+    expect(() => assertL2Results(input(false, result))).toThrow();
+  });
+  it("rejects failed detection, missing dependencies, extra dependencies and inconsistent flags", () => {
+    const valid = input(true, "success");
+    expect(() => assertL2Results({ ...valid, needs: { ...valid.needs, detect: { ...valid.needs.detect, result: "failure" } } })).toThrow();
+    expect(() => assertL2Results({ ...valid, needs: { detect: valid.needs.detect } })).toThrow();
+    expect(() => assertL2Results({ ...valid, needs: { ...valid.needs, extra: { result: "success" } } })).toThrow();
+    expect(() => assertL2Results({ ...valid, identity })).toThrow();
   });
 });
 

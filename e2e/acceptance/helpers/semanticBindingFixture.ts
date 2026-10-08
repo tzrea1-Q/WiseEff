@@ -88,7 +88,7 @@ export function disposablePageUrl(runtime: DisposablePostCutoverRuntime, path: s
   return `${base}${normalized}`;
 }
 
-type DisposableEnvSnapshot = {
+export type DisposableEnvSnapshot = {
   databaseUrl: string | undefined;
   apiUrl: string | undefined;
   wiseEffApiUrl: string | undefined;

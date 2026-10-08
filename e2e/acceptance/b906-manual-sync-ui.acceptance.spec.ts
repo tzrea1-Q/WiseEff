@@ -19,6 +19,7 @@ import { dismissXiaozeHint } from "./helpers/catalogBrowser";
 import { acceptanceCast } from "./helpers/cast";
 import { startSwappedDisposablePostCutoverRuntime, type RestoreDisposablePostCutoverRuntime } from "./helpers/semanticBindingFixture";
 import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import { recordOperationEvidence, summarizeApiResponse, writeOperationJsonArtifact } from "./helpers/operationEvidence";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 const before = { json: '{ "settings": { "limit": 36.5 }, "other": { "limit": 48 } }\n',
@@ -175,6 +176,29 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         path: testInfo.outputPath(`b906-${format}-manual-prepare-1440x900.png`)
       });
       const afterPrepare = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
+      const recordEvidence = async () => {
+        const finalState = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
+        const artifact = await writeOperationJsonArtifact(testInfo, "manual-sync-proof.json", {
+          format, outcomeKind, prepared, baseline, afterPrepare, finalState, network
+        });
+        await recordOperationEvidence({
+          operationId: "PARAM-FILE-SYNC-001",
+          title: testInfo.title,
+          status: "passed",
+          page, testInfo,
+          role: outcomeKind === "refresh" || outcomeKind === "withdraw" ? "Admin" : "Admin, Software Committer",
+          route: page.url(),
+          assertions: ["ui", "api", "db"],
+          artifacts: [artifact],
+          api: [summarizeApiResponse(preparation, {
+            method: "POST", path: `/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`,
+            responseSummary: `candidateId=${prepared.candidateId}; batchProofDigest=${prepared.batchProofDigest}; outcome=${outcomeKind}`
+          })],
+          db: [{ table: "parameter_catalog.project_parameter_bindings", predicate: `id in (${prepared.targets.map((target) => target.bindingId).join(", ")})`,
+            rowCount: prepared.targets.length,
+            observed: JSON.stringify({ before: baseline.bindings, afterPrepare: afterPrepare.bindings, after: finalState.bindings }) }]
+        });
+      };
       expect(afterPrepare.values).toEqual(baseline.values);
       expect(afterPrepare.pins).toEqual(baseline.pins);
       expect(afterPrepare.history).toEqual(baseline.history);
@@ -240,6 +264,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         await testInfo.attach("b906-json-manual-background-refresh-network", { body: JSON.stringify(network, null, 2),
           contentType: "application/json" });
         expect(pageErrors).toEqual([]);
+        await recordEvidence();
         outcome = "success";
         return;
       }
@@ -285,6 +310,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         expect(withdrawn.versions).toEqual(baseline.versions);
         await page.screenshot({ path: testInfo.outputPath("b906-dts-manual-withdraw-1440x900.png") });
         expect(pageErrors).toEqual([]);
+        await recordEvidence();
         outcome = "success";
         return;
       }
@@ -378,6 +404,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       await detail.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath(`b906-${format}-manual-${outcomeKind}-1440x900.png`) });
       await testInfo.attach(`b906-${format}-manual-network`, { body: JSON.stringify(network, null, 2), contentType: "application/json" });
+      await recordEvidence();
       outcome = "success";
     } finally { await db.close(); }
   } finally { await restore?.(outcome); }

@@ -10,6 +10,7 @@ import {
   GATE0_FINALIZATION_RESERVE_MS,
   assertGate0DtsToolchainReady,
   buildGate0Commands,
+  parseGate0Args,
   createGate0OwnerDeadline,
   evaluateGate0Outcome,
   gate0PhaseArtifactSources,
@@ -21,6 +22,32 @@ import {
 } from "./run-acceptance-gate0";
 
 describe("acceptance Gate 0 runner", () => {
+  it("keeps local runs unsharded and runs visual exactly once across four browser shards", () => {
+    expect(parseGate0Args([])).toEqual({});
+    const shards = [1, 2, 3, 4].map((current) => buildGate0Commands("/tmp/owned/runtime.json", "owned", parseGate0Args([`--shard=${current}/4`])));
+    expect(shards.flat().filter((command) => command.phase === "visual")).toHaveLength(1);
+    expect(shards[0].map((command) => command.phase)).toEqual(["visual", "browser"]);
+    shards.forEach((commands, index) => {
+      const browser = commands.find((command) => command.phase === "browser")!;
+      expect(browser.args).toEqual(["run", "acceptance:browser", "--", "--mode", "local-non-hdc", "--runtime-descriptor", "/tmp/owned/runtime.json", `--shard=${index + 1}/4`]);
+      expect(browser.env.WISEEFF_ACCEPTANCE_OWNED_RUNTIME).toBe("true");
+      expect(browser.env).not.toHaveProperty("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE");
+    });
+    expect(shards[0][0].args).toEqual(["run", "acceptance:visual"]);
+    expect(parseGate0Args(["--shard", "2/4"])).toEqual({ shard: "2/4" });
+  });
+  it.each(["0/4", "5/4", "1/0", "2", "1/4;true", "1/4 --no-deps", "01/4"])("rejects invalid shard before provisioning: %s", (shard) => {
+    expect(() => parseGate0Args([`--shard=${shard}`])).toThrow();
+    expect(() => buildGate0Commands("/tmp/owned/runtime.json", "owned", { shard })).toThrow();
+  });
+  it("does not expose an unrestricted skip-visual argument", () => {
+    expect(() => parseGate0Args(["--skip-visual"])).toThrow();
+    expect(() => parseGate0Args(["--shard=2/4", "--skip-visual"])).toThrow();
+    expect(evaluateGate0Outcome({ visualRequired: false, visualPassed: false, browserPassed: true, failureCount: 0 })).toBe("success");
+    expect(evaluateGate0Outcome({ visualRequired: false, visualPassed: false, browserPassed: false, failureCount: 0 })).toBe("failure");
+    expect(evaluateGate0Outcome({ visualRequired: false, visualPassed: false, browserPassed: true, failureCount: 1 })).toBe("failure");
+    expect(evaluateGate0Outcome({ visualPassed: false, browserPassed: true, failureCount: 0 })).toBe("failure");
+  });
   it("runs the pinned required DTS check through the public command", async () => {
     const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
 

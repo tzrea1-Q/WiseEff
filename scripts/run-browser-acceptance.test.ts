@@ -4,6 +4,10 @@ import { buildBrowserAcceptanceEvidence } from "../e2e/acceptance/helpers/eviden
 import { apiBaseUrl, apiRoute, smokeHeaders } from "../e2e/acceptance/helpers/runtime";
 import {
   buildBrowserAcceptanceCommand,
+  acceptanceShardOperations,
+  assertAcceptanceShardPlan,
+  assertAcceptanceShardReport,
+  collectAcceptanceTests,
   deriveBrowserAcceptanceWorkflowsFromPlaywrightReport,
   buildDefaultBrowserAcceptanceWorkflows,
   buildPreflightCommand,
@@ -18,6 +22,68 @@ import {
 } from "./run-browser-acceptance";
 
 describe("browser acceptance runner", () => {
+  const shardReport = {
+    suites: [
+      { file: "runtime-warmup.spec.ts", specs: [{ id: "warmup", tests: [{ projectName: "runtime-warmup", results: [{ status: "passed" }] }] }] },
+      { file: "parameters.acceptance.spec.ts", suites: [{ specs: [{ id: "browser", tests: [{ projectName: "Desktop Chrome", results: [{ status: "passed" }] }] }] }] },
+    ],
+  };
+  it("forwards browser-only sharding without restricting projects or suppressing dependency warmup", () => {
+    for (const args of [["--shard=2/4"], ["--shard", "2/4"]]) {
+      const options = parseBrowserAcceptanceArgs(args, { WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR: "/tmp/owned/runtime.json" });
+      expect(buildBrowserAcceptanceCommand({ ...options, runtimeDescriptor: undefined }, {}).args).toEqual(["run", "acceptance:e2e", "--", "--shard=2/4"]);
+    }
+  });
+  it("refuses standalone or target/full-pilot shards rather than publishing partial full-run evidence", () => {
+    expect(() => parseBrowserAcceptanceArgs(["--shard=2/4"], {})).toThrow(/owned Gate0/);
+    for (const mode of ["target-non-hdc", "full-pilot"]) {
+      expect(() => parseBrowserAcceptanceArgs([`--mode=${mode}`, "--shard=2/4", "--runtime-descriptor", "/tmp/owned/runtime.json"], {})).toThrow(/local-non-hdc/);
+    }
+  });
+  it.each(["0/4", "5/4", "1/0", "1/4 --no-deps", "1/9007199254740992", ""])("rejects invalid browser shard %s", (shard) => {
+    expect(() => parseBrowserAcceptanceArgs([`--shard=${shard}`], {})).toThrow();
+  });
+  it("requires nonzero browser collection and warmup, and refuses missing/extra/duplicate tests in shard reports", () => {
+    const planned = collectAcceptanceTests(shardReport);
+    expect(planned).toEqual([
+      { id: "warmup", project: "runtime-warmup", file: "runtime-warmup.spec.ts" },
+      { id: "browser", project: "Desktop Chrome", file: "parameters.acceptance.spec.ts" },
+    ]);
+    expect(() => assertAcceptanceShardReport(planned, shardReport)).not.toThrow();
+    expect(() => assertAcceptanceShardPlan([])).toThrow(/zero/);
+    expect(() => assertAcceptanceShardPlan(planned.slice(0, 1))).toThrow(/zero/);
+    expect(() => assertAcceptanceShardPlan(planned.slice(1))).toThrow(/warmup/);
+    expect(() => assertAcceptanceShardReport(planned, { suites: [] })).toThrow(/inventory/);
+    expect(() => assertAcceptanceShardReport(planned, { suites: [shardReport.suites[0]] })).toThrow(/inventory/);
+    expect(() => assertAcceptanceShardReport(planned, { suites: [...shardReport.suites, shardReport.suites[1]] })).toThrow(/inventory/);
+    expect(() => assertAcceptanceShardPlan(planned, planned.slice(0, 1))).toThrow(/outside the full collection/);
+  });
+  it("scopes existing operation and workflow requirements by planned files, not by successful result files", () => {
+    const operations = acceptanceShardOperations(["parameters.acceptance.spec.ts"]);
+    expect(operations.map((operation) => operation.id)).toContain("PARAM-ADMIN-001");
+    expect(operations.map((operation) => operation.id)).not.toContain("AUTH-RUNTIME-001");
+    expect(() => acceptanceShardOperations(["parameters.acceptance.spec.ts"], ["parameters.acceptance.spec.ts"])).toThrow(/omitted required operation/);
+    expect(deriveBrowserAcceptanceWorkflowsFromPlaywrightReport(shardReport, "report", ["parameters.acceptance.spec.ts"]).map((workflow) => workflow.id)).toEqual(["B", "C"]);
+    expect(deriveBrowserAcceptanceWorkflowsFromPlaywrightReport({ suites: [] }, "report", ["parameters.acceptance.spec.ts"])).toEqual([
+      expect.objectContaining({ id: "B", status: "skipped" }), expect.objectContaining({ id: "C", status: "skipped" }),
+    ]);
+  });
+  it("rejects a partial owner spec even when the operation owner file is present", () => {
+    const planned = collectAcceptanceTests(shardReport);
+    const full = [...planned, { id: "joint-ui-proof", project: "Desktop Chrome", file: "parameters.acceptance.spec.ts" }];
+    expect(() => assertAcceptanceShardPlan(planned, full)).toThrow(/split browser spec/);
+    expect(() => assertAcceptanceShardPlan(full, full)).not.toThrow();
+  });
+  it("retains all four affected operation contracts in their actual owner specs", () => {
+    const operations = acceptanceShardOperations([
+      "b906-manual-sync-ui.acceptance.spec.ts",
+      "b906-canonical-conflict-decision.acceptance.spec.ts",
+      "dts-structured.acceptance.spec.ts",
+    ]);
+    for (const id of ["PARAM-FILE-SYNC-001", "PARAM-FILE-RESOLVE-001", "PROJ-CONFIG-CONFLICT-001", "PARAM-DTS-EDIT-002"]) {
+      expect(operations.find((operation) => operation.id === id)?.assertions).toContain("ui");
+    }
+  });
   it("uses the owned descriptor pre-run source identity after visual artifacts dirty the worktree", () => {
     expect(
       resolveBrowserSourceMetadata(
