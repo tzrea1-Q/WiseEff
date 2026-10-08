@@ -175,6 +175,13 @@ describe("LogsPage api rerun wiring", () => {
 });
 
 describe("getContextQuery", () => {
+  it("accepts the binding alias without replacing an explicit bindingId", () => {
+    expect(getContextQuery("?project=aurora&binding=binding-1")).toMatchObject({
+      projectId: "aurora", bindingId: "binding-1", parameterId: ""
+    });
+    expect(getContextQuery("?bindingId=binding-1&binding=binding-2").bindingId).toBe("binding-1");
+  });
+
   it("keeps an exact Binding target separate from the legacy parameter id", () => {
     const query = getContextQuery("?project=aurora&bindingId=binding-1&logId=log-1");
 

@@ -44,6 +44,7 @@ export async function listModuleOverlayLibrarySpecs(input: {
     return definitions.map((definition) =>
       mapParameterSpecToLibraryRow({
         id: definition.id,
+        identityKind: "canonical-definition",
         propertyKey: definition.propertyKey,
         lifecycle: definition.lifecycle,
         currentVersion: definition.currentRevision.revisionNumber,

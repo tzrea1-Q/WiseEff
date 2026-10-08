@@ -49,7 +49,8 @@ export function OverlaySpecPickerDialog({
     : specs;
 
   const selected = availableSpecs.find((spec) => spec.id === selectedSpecId) ?? null;
-  const canConfirm = !busy && selected != null;
+  const unsupportedSelection = selected?.identityKind === "canonical-definition";
+  const canConfirm = !busy && selected != null && !unsupportedSelection;
 
   return (
     <>
@@ -110,6 +111,12 @@ export function OverlaySpecPickerDialog({
             />
           </div>
 
+          {unsupportedSelection ? (
+            <p id={`${titleId}-unsupported`} role="status">
+              暂不支持为规范 Definition 编写 Overlay。Overlay 仅支持历史参数规格，不能将规范 Definition 作为历史参数规格保存。
+            </p>
+          ) : null}
+
           <div className="dialog-actions">
             <button className="button subtle" type="button" onClick={onBack} disabled={busy}>
               取消
@@ -118,8 +125,9 @@ export function OverlaySpecPickerDialog({
               className="button primary"
               type="button"
               disabled={!canConfirm}
+              aria-describedby={unsupportedSelection ? `${titleId}-unsupported` : undefined}
               onClick={() => {
-                if (!selected) return;
+                if (!canConfirm || !selected) return;
                 onConfirm({
                   kind: "link",
                   parameterSpecId: selected.id,

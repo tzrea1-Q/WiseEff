@@ -40,6 +40,30 @@ const SPECS: ParameterSpecLibraryRow[] = [
 ];
 
 describe("OverlaySpecPickerDialog", () => {
+  it("blocks canonical Definitions without blocking a subsequent legacy spec selection", () => {
+    const onConfirm = vi.fn();
+    render(<OverlaySpecPickerDialog
+      specs={[{ ...SPECS[0], identityKind: "canonical-definition" }, SPECS[1]]}
+      onBack={vi.fn()} onConfirm={onConfirm}
+    />);
+    const dialog = screen.getByRole("dialog", { name: "选择参数定义" });
+    const confirm = within(dialog).getByRole("button", { name: "使用所选" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /选用 enable-gpios/i }));
+    expect(within(dialog).getByRole("status")).toHaveTextContent("暂不支持为规范 Definition 编写 Overlay");
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAccessibleDescription(/不能将规范 Definition 作为历史参数规格保存/);
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /选用 battery_tbl/i }));
+    expect(within(dialog).queryByText(/暂不支持为规范 Definition 编写 Overlay/)).not.toBeInTheDocument();
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledWith({
+      kind: "link", parameterSpecId: "pspec-2", propertyKey: "battery_tbl", driverModule: "battery_cccv"
+    });
+  });
+
   it("confirms a selected library row", async () => {
     const onConfirm = vi.fn();
     const onBack = vi.fn();

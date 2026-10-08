@@ -24,6 +24,7 @@ const DEFAULT_SPEC_LIBRARY_PAGE_SIZE: (typeof SPEC_LIBRARY_PAGE_SIZE_OPTIONS)[nu
 
 export type ParameterSpecLibraryRow = {
   id: string;
+  identityKind?: "canonical-definition" | "legacy-spec";
   /** Null means platform-global catalog; Admins may still update via PATCH. */
   organizationId: string | null;
   propertyKey: string;
@@ -54,6 +55,7 @@ export type ParameterSpecLibraryRow = {
 /** Maps topology API / mock payloads into library rows. Never uses path as identity. */
 export function mapParameterSpecToLibraryRow(input: {
   id: string;
+  identityKind?: ParameterSpecLibraryRow["identityKind"];
   organizationId?: string | null;
   propertyKey?: string | null;
   specificationKey?: string | null;
@@ -95,6 +97,7 @@ export function mapParameterSpecToLibraryRow(input: {
 
   return {
     id: input.id,
+    identityKind: input.identityKind ?? "legacy-spec",
     organizationId: input.organizationId ?? null,
     propertyKey,
     attributionSubjectId: input.attributionSubjectId ?? null,
