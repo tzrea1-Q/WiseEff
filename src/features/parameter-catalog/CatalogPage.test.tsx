@@ -188,7 +188,8 @@ function renderCatalog(
   return { ...view, ports, repository, onHref };
 }
 
-describe("CatalogPage", () => {
+// These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
+describe("CatalogPage", { timeout: 15_000 }, () => {
   function pagedInventory() {
     const subjects = Array.from({ length: 101 }, (_, index) => ({
       ...registeredSubject,

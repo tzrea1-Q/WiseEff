@@ -482,7 +482,7 @@ describe("#906 C canonical conflict HTTP", () => {
     expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
   }, 120_000);
 
-  it("marks an old conflict on a canonical file ineligible before bulk arbitration", async () => {
+  it("keeps historical conflicts untouched without blocking canonical candidate creation, recompute or submit", async () => {
     const database = await createEphemeralTestDatabase("issue906-c-historical-conflict");
     const db = createPostgresDatabase(database.url);
     const directory = await mkdtemp(join(tmpdir(), "wiseeff-906-c-historical-conflict-"));
@@ -521,6 +521,9 @@ describe("#906 C canonical conflict HTTP", () => {
       "select parameter_definition_id from project_parameter_values where id=$1", [uiDraft.project_parameter_value_id]
     )).rows[0]!;
     await seedUser(db, { id: "c906-historical-sync", organizationId });
+    await seedUser(db, { id: "c906-historical-reviewer", organizationId });
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('c906-historical-reviewer-role','c906-historical-reviewer',$1,$2,'software-committer')",
+      [organizationId, projectId]);
     await db.query(`insert into parameter_drafts(id,organization_id,project_id,project_parameter_value_id,user_id,
       target_value,reason,origin,origin_file_version_id) values
       ('legacy-file-c906',$1,$2,$3,'c906-historical-sync','50','old sync','file_sync',$4)`,
@@ -548,5 +551,42 @@ describe("#906 C canonical conflict HTTP", () => {
     expect(await captureConfigurationSourceState(db, { organizationId, projectId })).toEqual(before);
     expect((await db.query("select id from parameter_file_sync_conflicts where id=$1", [conflict.id])).rows).toHaveLength(1);
     expect((await db.query("select id from parameter_drafts where id in ('legacy-file-c906','dashboard-fixture-draft-1')")).rows).toHaveLength(2);
+    const legacyConflictsBefore = (await db.query(
+      "select * from parameter_file_sync_conflicts where id=$1", [conflict.id])).rows;
+    const legacyDraftsBefore = (await db.query(
+      "select * from parameter_drafts where id in ('legacy-file-c906','dashboard-fixture-draft-1') order by id")).rows;
+    const created = await requestJson<{ item: { id: string; status: string; baseVersionId: string; blockers: unknown[];
+      impact: { conflicts: Array<{ id: string; status: string }> } } }>(
+      server, `/api/v1/projects/${projectId}/parameter-file-candidates`, { method: "POST", body: JSON.stringify({
+        fileId: uploaded.file.id, fileName: uploaded.file.fileName,
+        contentBase64: Buffer.from('{"settings":{"limit":50}}\n').toString("base64")
+      }) });
+    expect(created.status).toBe(201);
+    const candidate = created.body.item;
+    expect(candidate).toMatchObject({ status: "ready", baseVersionId: uploaded.version.id, blockers: [] });
+    expect(candidate.impact?.conflicts).toMatchObject([{ id: conflict.id, status: "open" }]);
+    const candidatePath = `/api/v1/projects/${projectId}/parameter-file-candidates/${candidate.id}`;
+    const recomputed = await requestJson<{ item: { status: string; blockers: unknown[];
+      impact: { conflicts: Array<{ id: string; status: string }> } } }>(server, `${candidatePath}/recompute`, { method: "POST" });
+    expect(recomputed.status).toBe(200);
+    expect(recomputed.body.item).toMatchObject({ status: "ready", blockers: [],
+      impact: { conflicts: [{ id: conflict.id, status: "open" }] } });
+    const sourcePreview = await requestJson<{ item: { kind: string; canSubmit: boolean; proofToken: string } }>(
+      server, `${candidatePath}/source-preview`);
+    expect(sourcePreview.status).toBe(200);
+    expect(sourcePreview.body.item).toMatchObject({ kind: "canonical", canSubmit: true });
+    const submitted = await requestJson<{ item: { requestId: string; status: string } }>(
+      server, `${candidatePath}/source-submit`, { method: "POST", body: JSON.stringify({
+        expectedCurrentVersionId: uploaded.version.id, expectedProofToken: sourcePreview.body.item.proofToken,
+        assignedToUserId: "c906-historical-reviewer", reason: "Review canonical source despite historical legacy conflict"
+      }) });
+    expect(submitted.status).toBe(200);
+    expect(submitted.body.item).toMatchObject({ status: "pending" });
+    expect(submitted.body.item.requestId).toBeTruthy();
+    expect((await db.query("select * from parameter_file_sync_conflicts where id=$1", [conflict.id])).rows)
+      .toEqual(legacyConflictsBefore);
+    expect((await db.query(
+      "select * from parameter_drafts where id in ('legacy-file-c906','dashboard-fixture-draft-1') order by id")).rows)
+      .toEqual(legacyDraftsBefore);
   }, 120_000);
 });

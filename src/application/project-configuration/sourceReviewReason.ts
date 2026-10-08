@@ -3,8 +3,10 @@ export function sourceReviewReason(reason?: string): string {
   switch (reason) {
     case "candidate-changes-multiple-bindings":
       return "候选同时修改多个参数绑定；请核对完整来源证明后提交一次批量审核。";
-    case "canonical-batch-writer-unavailable":
-      return "候选含多个来源目标；请核对完整证明与提交条件。";
+    case "canonical-batch-review-required":
+      return "候选含多个来源目标；请使用批量审核，核对完整证明后一次提交。";
+    case "canonical-batch-targets-required":
+      return "当前文件未形成至少两个可验证的变更目标；请检查候选文件。";
     case "dts-batch-source-proof-failed":
       return "DTS 批量来源差异无法逐项证明；请核对目标属性和文件内容。";
     case "candidate-changed-unbound-or-non-target-bytes":

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getContextQuery } from "@/workbenchUi";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import { initialState } from "./mockData";
 import {
@@ -154,6 +155,22 @@ describe("LogsPage api rerun wiring", () => {
     });
     await waitFor(() => expect(document.body).toHaveTextContent(logRuntimeFailureNotification));
     expect(screen.getByRole("main")).toBeInTheDocument();
+  });
+
+  it("explains unavailable canonical context without replacing the old report", async () => {
+    const repository = renderApiLogs(createLogRepository({
+      rerunLog: vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "Unavailable", {
+        reason: "related-parameter-unavailable"
+      }, "request-904"))
+    }));
+    await waitForApiRuntime(repository);
+    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    const reportBefore = document.querySelector(".logs-conclusion-actions")?.parentElement?.textContent;
+    fireEvent.click(document.querySelector(".logs-conclusion-actions .button.danger") as HTMLButtonElement);
+    await waitFor(() => expect(document.body).toHaveTextContent("关联参数已删除或其规范值、来源快照不可用"));
+    expect(document.body).toHaveTextContent("已有报告保持不变");
+    expect(document.querySelector(".logs-conclusion-actions")?.parentElement?.textContent).toBe(reportBefore);
   });
 });
 

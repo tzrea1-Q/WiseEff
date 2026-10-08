@@ -7,8 +7,8 @@ import {
 
 /**
  * Run a non-Agent database transaction with an attempt-owned source store.
- * Only the pool-backed root guarantees that rethrowing the callback error
- * follows a successful ROLLBACK. Other Database adapters retain objects.
+ * Only the pool-backed root can confirm rollback, including a server-rejected
+ * COMMIT. Other Database adapters and unknown COMMIT outcomes retain objects.
  */
 export async function withCanonicalSourceAttemptTransaction<T>(
   db: Database,
@@ -16,20 +16,13 @@ export async function withCanonicalSourceAttemptTransaction<T>(
   callback: (tx: Database, attempt: CanonicalSourceAttempt) => Promise<T>,
 ): Promise<T> {
   const attempt = createCanonicalSourceAttempt(objectStore);
-  let callbackFailed = false;
-  let callbackError: unknown;
+  let rollbackConfirmed = false;
   try {
-    return await db.transaction(async (tx) => {
-      try {
-        return await callback(tx, attempt);
-      } catch (error) {
-        callbackFailed = true;
-        callbackError = error;
-        throw error;
-      }
+    return await db.transaction((tx) => callback(tx, attempt), {
+      onConfirmedRollback: () => { rollbackConfirmed = true; },
     });
   } catch (error) {
-    if (!isRootDatabase(db) || !callbackFailed || !Object.is(error, callbackError)) {
+    if (!isRootDatabase(db) || !rollbackConfirmed) {
       // COMMIT or ROLLBACK failed, or its result is unknown. Deleting the
       // object could destroy a source referenced by a transaction that committed.
       throw error;

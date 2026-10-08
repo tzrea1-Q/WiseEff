@@ -169,7 +169,12 @@ export async function readOwnedProjectValueIdentity(tx: Queryable, input: { orga
   if (!binding || binding.organization_id !== input.organizationId || binding.project_id !== input.projectId) return null;
   const value = await loadProjectValueById(tx as ValueClient, input.projectValueId);
   if (!value || value.binding_id !== binding.id) return null;
-  return { bindingId: binding.id, definitionId: binding.definition_id, definitionRevisionId: value.definition_revision_id };
+  return {
+    bindingId: binding.id,
+    definitionId: binding.definition_id,
+    definitionRevisionId: value.definition_revision_id,
+    value: toProjectValue(value)
+  };
 }
 
 export async function isCurrentGovernedSourceValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
