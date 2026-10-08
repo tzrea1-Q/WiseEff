@@ -132,7 +132,7 @@ describe("#906 C frozen multi-target request", () => {
       projectId: PROJECT, candidateId: candidate.id, selectedBindingId: bindings[0]!.id,
       selectedDraftId: olderDraft.id, choice: "file"
     });
-    expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-writer-unavailable" });
+    expect(preview).toMatchObject({ canSubmit: false, reason: "canonical-batch-review-required" });
     let expectedProofToken = "stale-proof";
     const submit = () => submitCanonicalBatchValueChange(db, storage, admin, {
       projectId: PROJECT, candidateId: candidate.id,

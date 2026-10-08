@@ -834,7 +834,7 @@ async function inspectCandidate(
       candidate,
       changes: orderedChanges,
       proofToken: workflow.proofToken ? candidateProofToken(workflow.proofToken, candidate, candidateDigest) : undefined,
-      reason: "canonical-batch-writer-unavailable"
+      reason: "canonical-batch-review-required"
     };
   }
   if (changes.length !== 1) {
@@ -890,7 +890,7 @@ function previewFromInspection(inspection: SourceInspection,
       kind: "canonical",
       canSubmit: false,
       ...common,
-      reason: inspection.reason ?? "canonical-batch-writer-unavailable",
+      reason: inspection.reason ?? "canonical-batch-review-required",
       baseDigest: inspection.changes[0]!.baseDigest,
       proposedDigest: inspection.changes[0]!.proposedDigest,
       bindings: inspection.changes.map(previewBinding),
@@ -1012,7 +1012,7 @@ async function prepareCanonicalCandidateBatchLocked(
   }
   if ((lockedCandidate.format !== "json" && lockedCandidate.format !== "dts") || !inspection.changes || inspection.changes.length < 2 || !inspection.workflow.configSetId || !inspection.workflow.proofToken) {
     throw new ApiError("CONFLICT", "Candidate has no exact multi-Binding source change.", {
-      reason: inspection.reason ?? "canonical-batch-writer-unavailable"
+      reason: inspection.reason ?? "canonical-batch-targets-required"
     });
   }
   const changes = inspection.changes;
@@ -1942,7 +1942,7 @@ export async function prepareCanonicalBatchRollbackCandidate(
     });
     if (!inspection.proofToken || !inspection.changes || inspection.changes.length < 2) {
       throw new ApiError("CONFLICT", "Historical version has no exact multi-Binding source proof.", {
-        reason: inspection.reason ?? "canonical-batch-writer-unavailable"
+        reason: inspection.reason ?? "canonical-batch-targets-required"
       });
     }
     const proof = await prepareCanonicalCandidateBatchInTransaction(tx, objectStore, auth, {
