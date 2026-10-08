@@ -109,15 +109,29 @@ export type CatalogAcceptanceFixture = {
 
 let fixturePromise: Promise<CatalogAcceptanceFixture> | null = null;
 
+/**
+ * Returns this worker's Catalog fixture. Specs that need the A-to-F chain request the
+ * `catalogAcceptanceRuntime` fixture first (catalogFixtureRuntime.ts), which installs it
+ * into a fixture-owned runtime; the shared lane is only a fallback.
+ */
 export function ensureCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixture> {
   if (!fixturePromise) {
-    fixturePromise = installCatalogAcceptanceFixture();
+    fixturePromise = catalogLaneConnectionString().then(installCatalogAcceptanceFixture);
   }
   return fixturePromise;
 }
 
-async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixture> {
-  const connectionString = await catalogLaneConnectionString();
+/**
+ * Installs the fixture chain into a database that has no published Catalog.
+ * `DATABASE_URL` must already name that database because the role seed reads it.
+ */
+export function installCatalogAcceptanceFixtureOn(connectionString: string): Promise<CatalogAcceptanceFixture> {
+  if (fixturePromise) throw new Error("Catalog acceptance fixture is already installed for this worker.");
+  fixturePromise = installCatalogAcceptanceFixture(connectionString);
+  return fixturePromise;
+}
+
+async function installCatalogAcceptanceFixture(connectionString: string): Promise<CatalogAcceptanceFixture> {
   const root = createPostgresDatabase(connectionString);
   const pool = getRootPostgresPool(root);
   if (!pool) {

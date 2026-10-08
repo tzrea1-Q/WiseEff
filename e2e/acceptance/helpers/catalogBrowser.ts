@@ -11,6 +11,7 @@ import {
   type CatalogAcceptanceFixture
 } from "./catalogEvidence";
 import { apiRoute } from "./runtime";
+import { catalogAppUrl } from "./catalogFixtureRuntime";
 import { recordOperationEvidence } from "./operationEvidence";
 
 export const CATALOG_PAGE_PATH = "/parameter-admin/specs";
@@ -62,6 +63,7 @@ export async function dismissXiaozeHint(page: Page) {
 }
 
 export async function signInCatalogActor(page: Page, actor: CatalogBrowserActor, route = CATALOG_PAGE_PATH) {
+  route = catalogAppUrl(route);
   if (actor === "org-admin") {
     await signInBrowserAsUser(
       page,

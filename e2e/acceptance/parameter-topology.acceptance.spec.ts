@@ -14,7 +14,7 @@ import {
   startDisposablePostCutoverRuntime,
   type DisposablePostCutoverRuntime,
 } from "./helpers/disposablePostCutoverRuntime";
-import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
@@ -24,22 +24,27 @@ import {
   captureProcessEnvForDisposableRuntime,
   restoreProcessEnvFromDisposableRuntime,
 } from "./helpers/semanticBindingFixture";
-import { ensureAuroraSemanticTopology, ensureProjectSemanticTopology } from "./helpers/topologyFixture";
+import {
+  auroraPrimarySource,
+  ensureAuroraSemanticTopology,
+  ensureDedicatedProjectTopology,
+  withNodeStatus,
+  ensureProjectSemanticTopology,
+  registerCatalogDriverSubjects,
+  seedAmbiguousIdentityMappingConfigSet
+} from "./helpers/topologyFixture";
 import {
   annotateFailureRoute,
   PARAMETER_TOPOLOGY_FAILURE_ROUTE,
 } from "../shared/failureRouteMetadata";
 
-useBrowserDiagnostics(test, {
-  expectedApiFailures: [
-    // Typed-edit schema rejection and stale-revision conflict are intentional.
-    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 400 },
-    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 },
-    // CatalogPage on /parameter-admin reads subjects; M1 seed leaves Catalog unpublished.
-    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 }
-  ]
-});
-test.use({ viewport: { width: 1440, height: 900 } });
+const expectedApiFailures: ExpectedApiFailure[] = [
+  // CatalogPage on /parameter-admin reads subjects; the first-release fixture leaves
+  // lineage subjects unpublished for some orgs.
+  { method: "GET", path: "/api/v2/catalog/subjects", status: 404 }
+];
+useBrowserDiagnostics(test, { expectedApiFailures });
+test.use({ viewport: { width: 1440, height: 900 }, actionTimeout: 15_000 });
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
@@ -81,13 +86,11 @@ const brokenOverlay = `/dts-v1/;
 const mappingR1 = `/dts-v1/;
 / {
 	compatible = "wiseeff,board";
-	model = "Acceptance Mapping R1";
 	bus {
 		compatible = "wiseeff,amba";
 		dev@10 {
 			compatible = "wiseeff,acceptance-map";
 			reg = <0x10>;
-			gpio_int = <1>;
 			status = "okay";
 		};
 	};
@@ -97,70 +100,35 @@ const mappingR1 = `/dts-v1/;
 const mappingR2 = `/dts-v1/;
 / {
 	compatible = "wiseeff,board";
-	model = "Acceptance Mapping R2";
 	bus {
 		compatible = "wiseeff,amba";
 		left@10 {
 			compatible = "wiseeff,acceptance-map";
 			reg = <0x10>;
-			gpio_int = <1>;
 			status = "okay";
 		};
 		right@10 {
 			compatible = "wiseeff,acceptance-map";
 			reg = <0x10>;
-			gpio_int = <2>;
 			status = "okay";
 		};
 	};
 };
 `;
 
-/** Dedicated enablement fixture. Do not reuse `mappingR1` — sibling identity-mapping tests own that text. */
-function enablementVisibleDts(modelSuffix: string) {
-  return `/dts-v1/;
-/plugin/;
-
-/* Enablement Visible ${modelSuffix}: disable sc8562 parent bus and mt5788 itself. */
-&amba {
-	i2c@FDF5E000 {
-		status = "disabled";
-	};
-	i2c@FF24E000 {
-		mt5788@2B {
-			status = "disabled";
-		};
-	};
-};
-`;
-}
-
-/** Unique overlay for PARAM-ENABLE-GATE-001. Structural `status` must not become a review task. */
-function enablementGateDts(modelSuffix: string, prop: string) {
-  return `/dts-v1/;
+/**
+ * PARAM-ENABLE-GATE-001 source: Aurora's primary DTS plus one extra disabled node that
+ * declares an unmatched key. Canonical source history is immutable, so the node is part
+ * of the dedicated project's first ingested source instead of a later overlay.
+ */
+function enablementGateSource(modelSuffix: string, prop: string) {
+  return `${auroraPrimarySource()}
 / {
-	compatible = "wiseeff,board";
-	model = "Enablement Gate ${modelSuffix}";
 	egate_${modelSuffix}@60 {
 		compatible = "wiseeff,enable-gate";
 		reg = <0x60>;
 		${prop} = <1>;
 		status = "disabled";
-	};
-};
-`;
-}
-
-/** Overlay reserved status onto the seeded sc8562 node (recognized gpio_int binding). */
-function enablementGuardDts() {
-  return `/dts-v1/;
-/plugin/;
-
-&amba {
-	i2c@FDF5E000 {
-		sc8562@6E {
-			status = "reserved";
-		};
 	};
 };
 `;
@@ -221,6 +189,7 @@ async function waitForRevision(
   timeoutMs = 20_000
 ): Promise<{ id: string; status: string }> {
   const started = Date.now();
+  let lastSeen: { id: string; status: string } | null = null;
   while (Date.now() - started < timeoutMs) {
     const row = await withPgClient(async (client) => {
       const result = await client.query<{ id: string; status: string }>(
@@ -234,80 +203,24 @@ async function waitForRevision(
       );
       return result.rows[0] ?? null;
     });
+    lastSeen = row;
     if (row && predicate(row)) return row;
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
-  throw new Error(`Timed out waiting for revision on config set ${configSetId}`);
-}
-
-async function waitForRevisionWhere(
-  configSetId: string,
-  previousRevisionId: string,
-  predicate: (row: { id: string; status: string }) => Promise<boolean>,
-  timeoutMs = 60_000
-): Promise<{ id: string; status: string }> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const row = await withPgClient(async (client) => {
-      const result = await client.query<{ id: string; status: string }>(
-        `
-        select id, status from dts_config_revisions
-        where config_set_id = $1
-        order by revision_number desc
-        limit 1
-        `,
-        [configSetId]
-      );
-      return result.rows[0] ?? null;
-    });
-    if (row && row.id !== previousRevisionId && (await predicate(row))) {
-      return row;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 400));
-  }
-  throw new Error(`Timed out waiting for revision on config set ${configSetId}`);
-}
-
-/** Overlay on aurora `default` Config Set. Do not reuse `mappingR1`. */
-async function attachDedicatedDefaultOverlay(
-  request: APIRequestContext,
-  input: {
-    fileName: string;
-    dtsText: string;
-    configSetId: string;
-    previousRevisionId: string;
-    revisionReady: (row: { id: string; status: string }) => Promise<boolean>;
-  }
-): Promise<{ id: string; status: string }> {
-  const upload = await uploadDts(request, input.fileName, input.dtsText);
-  const addFile = await request.post(
-    apiRoute(`/api/v1/projects/${projectId}/config-sets/${input.configSetId}/files`),
-    {
-      headers: adminHeaders(),
-      data: {
-        fileId: upload.fileId,
-        role: "overlay",
-        sortOrder: 80 + Number.parseInt(randomUUID().slice(0, 4), 16) % 200
-      }
-    }
-  );
-  expect([201, 409]).toContain(addFile.status());
-  await uploadDts(request, input.fileName, input.dtsText);
-  return waitForRevisionWhere(
-    input.configSetId,
-    input.previousRevisionId,
-    input.revisionReady
+  throw new Error(
+    `Timed out waiting for revision on config set ${configSetId}; latest=${lastSeen ? `${lastSeen.id}:${lastSeen.status}` : "none"}`
   );
 }
 
 async function listEffectiveTopologyNodes(
   request: APIRequestContext,
   configSetId: string,
-  revisionId: string
+  revisionId: string,
+  targetProjectId: string = projectId
 ) {
   const topologyApi = await request.get(
     apiRoute(
-      `/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/${revisionId}/topology?view=effective`
+      `/api/v2/projects/${targetProjectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/${revisionId}/topology?view=effective`
     ),
     { headers: adminHeaders() }
   );
@@ -443,68 +356,27 @@ async function resolveReviewsForCurrentRevision(
   };
   for (const task of body.items) {
     const candidates = task.candidateSchemas ?? task.candidates ?? [];
-    let parameterSpecId: string;
-    if (candidates.length > 0) {
-      parameterSpecId = pickReviewCandidate(task, {
-        propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
-        nodeLocator: task.sourceEvidence?.nodeLocator
-      }).id;
-    } else {
-      const createDraft = await request.post(
+    if (candidates.length === 0) {
+      // No Catalog-compatible candidate exists, so the occurrence is dismissed as
+      // governance evidence rather than activating a spec (spec activation now
+      // requires an explicit coverage claim and is owned by Catalog governance).
+      const dismiss = await request.post(
         apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
         {
           headers: adminHeaders(),
           data: {
-            decision: "resolved",
-            createSpec: true,
-            reason: `${descriptionPrefix} create occurrence-derived draft for ${task.id}`
+            decision: "dismissed",
+            reason: `${descriptionPrefix} dismiss uncovered occurrence for revision ${revisionId}`
           }
         }
       );
-      expect(createDraft.ok(), `create draft spec for review ${task.id}`).toBe(true);
-      const created = (await createDraft.json()) as { item: { parameterSpecId?: string | null } };
-      parameterSpecId = created.item.parameterSpecId ?? "";
-      expect(parameterSpecId, `review ${task.id} did not return a draft spec id`).toBeTruthy();
-
-      const detailResponse = await request.get(
-        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
-        { headers: adminHeaders() }
-      );
-      expect(detailResponse.ok(), `load draft spec ${parameterSpecId}`).toBe(true);
-      const detailBody = (await detailResponse.json()) as {
-        item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };
-      };
-      const shape = detailBody.item.valueShape;
-      expect(shape && typeof shape.kind === "string", `draft ${parameterSpecId} missing valueShape`).toBeTruthy();
-      const kind = String(shape!.kind);
-      let constraints: Record<string, unknown> = {};
-      if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
-        const cells = shape!.cellsPerGroup ?? shape!.cells;
-        expect(Number.isInteger(cells) && Number(cells) > 0, `draft ${parameterSpecId} missing cells`).toBe(true);
-        constraints = { cells };
-      } else if (kind === "bytes") {
-        const length = shape!.length;
-        expect(Number.isInteger(length) && Number(length) >= 0, `draft ${parameterSpecId} missing byte length`).toBe(true);
-        constraints = { minLength: length, maxLength: length };
-      } else {
-        expect(["bool", "empty", "string", "string-list"]).toContain(kind);
-      }
-      if (detailBody.item.lifecycle !== "active") {
-        const activate = await request.post(
-          apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
-          {
-            headers: adminHeaders(),
-            data: {
-              valueShape: shape,
-              constraints,
-              documentation: `${descriptionPrefix} occurrence-derived acceptance spec`,
-              reason: `${descriptionPrefix} activate occurrence-derived acceptance spec`
-            }
-          }
-        );
-        expect(activate.ok(), `activate draft spec ${parameterSpecId}: ${await activate.text()}`).toBe(true);
-      }
+      expect(dismiss.ok(), `dismiss review ${task.id}: ${await dismiss.text()}`).toBe(true);
+      continue;
     }
+    const parameterSpecId = pickReviewCandidate(task, {
+      propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
+      nodeLocator: task.sourceEvidence?.nodeLocator
+    }).id;
     const resolve = await request.post(
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
       {
@@ -524,7 +396,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
   const originalEnvironment = captureProcessEnvForDisposableRuntime();
 
-  test.beforeAll(async () => {
+  test.beforeAll(async ({ request }) => {
     test.setTimeout(120_000);
     const baseDatabaseUrl = originalEnvironment.databaseUrl?.trim();
     if (!baseDatabaseUrl) throw new Error("DATABASE_URL is required to create the disposable topology database.");
@@ -532,6 +404,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       label: "parameter_topology",
     });
     applyDisposableRuntimeEnv(disposableRuntime);
+    // Canonical Bindings exist only for registered Catalog driver Subjects.
+    await registerCatalogDriverSubjects(request, [
+      { subjectId: "csub_drv_sc8562", canonicalName: "sc8562" },
+      { subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }
+    ]);
   });
 
   test.afterAll(async ({}, testInfo) => {
@@ -578,6 +455,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       data: { id: "nebula", name: "Nebula 高频调试项目", code: "NEB-RD" }
     });
     expect([201, 409]).toContain(createNebula.status());
+    // Project views are scoped by project role bindings; the disposable runtime only
+    // binds Aurora, so the software user needs an explicit Nebula binding to switch.
+    await withPgClient(async (client) => {
+      await client.query(
+        `insert into user_role_bindings(id, user_id, organization_id, project_id, role_id)
+         values ('topology-nebula-software-user', 'u-liu-min', $1, 'nebula', 'software-user')
+         on conflict (id) do nothing`,
+        [organizationId]
+      );
+    });
     const nebulaTopology = await ensureProjectSemanticTopology(request, "nebula");
     const topology = await ensureAuroraSemanticTopology(request);
     let { configSetId, revisionId } = topology;
@@ -750,7 +637,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       timeout: 20_000
     });
     await expect(workspace.getByRole("columnheader", { name: /所属模块/ })).toBeVisible();
-    await workspace.getByRole("button", { name: "技术视图" }).click();
+    await workspace.getByRole("button", { name: "DTS 源码" }).click();
     await expect(workspace.getByRole("tree", { name: "业务模块树" })).toBeVisible({
       timeout: 20_000
     });
@@ -758,7 +645,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       timeout: 20_000
     });
     await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toHaveCount(0);
-    await workspace.getByRole("button", { name: "模块导航" }).click();
+    await workspace.getByRole("button", { name: "参数列表" }).click();
     await expect(workspace.getByRole("region", { name: "DTS 参数列表" })).toBeVisible({
       timeout: 20_000
     });
@@ -807,6 +694,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         driverModule: string | null;
         locator: string | null;
         rawValue: string;
+        currentValueId: string;
         parameterSpecId?: string;
       }>;
     };
@@ -854,17 +742,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(unscopedMt5788Row.locator('[data-label="参数名"]')).toBeVisible({ timeout: 20_000 });
     await expect(unscopedMt5788Row).toContainText("mt5788@2B");
 
-    const baseBindingSnapshot = await withPgClient(async (client) => {
-      const result = await client.query<{ raw_value: string | null }>(
-        `
-        select br.raw_value
-        from project_parameter_binding_revisions br
-        where br.binding_id = $1 and br.config_revision_id = $2
-        `,
-        [scBinding!.id, revisionId]
-      );
-      return result.rows[0]?.raw_value ?? null;
-    });
+    // Canonical Binding value as published by the Bindings read model (no legacy revision table).
+    const baseBindingSnapshot = scBinding!.rawValue;
     expect(baseBindingSnapshot).toBeTruthy();
 
     await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
@@ -917,11 +796,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await sc8562Row.getByRole("button", { name: /^(编辑|继续编辑) gpio_int/ }).click();
     const draftDialog = page.getByRole("dialog", { name: "修改草稿" });
     await expect(draftDialog).toBeVisible();
-    await draftDialog.getByLabel("目标值", { exact: true }).fill("<&gpio13 29>");
-    await draftDialog.getByLabel("修改原因", { exact: true }).fill(`${descriptionPrefix} invalid cell-count probe`);
+    expectedApiFailures.push({
+      method: "POST",
+      path: `/api/v2/projects/${projectId}/parameter-bindings/${scBinding!.id}/drafts`,
+      status: 400
+    });
+    await draftDialog.getByLabel("目标值", { exact: true }).fill("<&gpio13 29 0");
+    await draftDialog.getByLabel("修改原因", { exact: true }).fill(`${descriptionPrefix} invalid typed-value probe`);
     await draftDialog.getByRole("button", { name: "校验并加入本轮" }).click();
     await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toBeVisible({ timeout: 20_000 });
-    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toContainText(/cell count must be 3/);
+    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toContainText(/DTS_VALUE_PARSE/);
 
     const staleEdit = await request.post(
       apiRoute(
@@ -1126,14 +1010,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(successfulDraft.status(), await successfulDraft.text()).toBe(201);
     draftBody = (await successfulDraft.json()) as typeof draftBody;
     expect(draftBody.item.candidateRevisionId).toBeTruthy();
-    // Draft-time candidate is preview only — no open CR for this binding yet.
+    // Draft-time candidate is preview only — no open canonical request for this binding yet.
     const openCrBefore = await withPgClient(async (client) => {
       const result = await client.query<{ c: string }>(
         `
         select count(*)::text as c
-        from parameter_change_requests
-        where project_parameter_binding_id = $1
-          and status not in ('merged', 'rejected', 'cancelled')
+        from project_parameter_value_change_requests
+        where binding_id = $1
+          and status not in ('approved', 'rejected', 'withdrawn')
         `,
         [scBinding!.id]
       );
@@ -1141,23 +1025,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(openCrBefore).toBe(0);
 
+    // Canonical review is single-stage: the submitter only picks the eligible software
+    // committer; hardware and software-developer stages no longer exist.
     const submissionPanel = page.getByRole("region", { name: "参数修改提交" });
     await expect(submissionPanel).toBeVisible({ timeout: 20_000 });
-    const hardwareAssignee = submissionPanel.getByLabel("硬件 MDE");
-    const softwareCommitterAssignee = submissionPanel.getByLabel("软件 MDE");
-    const softwareUserAssignee = submissionPanel.getByLabel("软件开发");
-    const optionTexts = async (select: typeof hardwareAssignee) =>
+    const softwareCommitterAssignee = submissionPanel.getByLabel("软件 MDE", { exact: true });
+    await expect(submissionPanel.getByLabel("硬件 MDE", { exact: true })).toHaveCount(0);
+    await expect(submissionPanel.getByLabel("软件开发", { exact: true })).toHaveCount(0);
+    const optionTexts = async (select: typeof softwareCommitterAssignee) =>
       (await select.locator("option").allTextContents()).map((text) => text.trim()).sort();
-    await expect(hardwareAssignee).not.toHaveValue("");
     await expect(softwareCommitterAssignee).not.toHaveValue("");
-    await expect(softwareUserAssignee).not.toHaveValue("");
-    await expect.poll(() => optionTexts(hardwareAssignee)).toEqual(["Li Peng", "Wang Jie"]);
-    await expect.poll(() => optionTexts(softwareCommitterAssignee)).toEqual(["Sun Mei"]);
-    await expect.poll(() => optionTexts(softwareUserAssignee)).toEqual(["Chen Na", "Liu Min", "Sun Mei"]);
-    for (const select of [hardwareAssignee, softwareCommitterAssignee, softwareUserAssignee]) {
-      await expect(select).not.toContainText("Xu Yun");
-      await expect(select).not.toContainText("Tao Lin");
-    }
+    await expect.poll(() => optionTexts(softwareCommitterAssignee)).toEqual(["Sun Mei", "软件审核池（未指定）"]);
+    await expect(softwareCommitterAssignee).not.toContainText("Xu Yun");
+    await expect(softwareCommitterAssignee).not.toContainText("Tao Lin");
+    await expect(softwareCommitterAssignee).not.toContainText("Liu Min");
     await recordOperationEvidence({
       operationId: "PARAM-ASSIGNEE-001",
       title: "binding workflow assignee defaults are eligible",
@@ -1172,10 +1053,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           method: "GET",
           path: `/api/v1/projects/${projectId}/parameter-workflow-assignees`,
           status: 200,
-          responseSummary: "project-scoped eligible assignees populated all three visible selectors"
+          responseSummary: "project-scoped eligible assignees populated the canonical software committer selector"
         }
       ],
-      notes: "Binding-centric submit panel defaulted every workflow selector to an eligible active user."
+      notes: "Canonical single-stage submit panel defaulted its only workflow selector to an eligible active software committer."
     });
     await recordOperationEvidence({
       operationId: "PARAM-ASSIGNEE-002",
@@ -1191,583 +1072,177 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           method: "GET",
           path: `/api/v1/projects/${projectId}/parameter-workflow-assignees`,
           status: 200,
-          responseSummary: "exact role-specific option sets excluded admin, inactive, guest, and role-ineligible users"
+          responseSummary: "exact software-committer option set excluded admin, submitter, inactive, guest, and role-ineligible users"
         }
       ],
-      notes: "Visible binding workflow selectors exposed only the exact project-scoped eligible option sets."
+      notes: "The visible canonical selector exposed only the exact project-scoped eligible software committer; no hardware or developer stage selector exists."
     });
-    await hardwareAssignee.selectOption("u-wang-jie");
     await softwareCommitterAssignee.selectOption("u-sun-mei");
-    await softwareUserAssignee.selectOption("u-liu-min");
-    await expect(hardwareAssignee).toHaveValue("u-wang-jie");
     await expect(softwareCommitterAssignee).toHaveValue("u-sun-mei");
-    await expect(softwareUserAssignee).toHaveValue("u-liu-min");
     const submitRoundPromise = page.waitForResponse((response) =>
-      response.request().method() === "POST" && response.url().includes("/api/v1/parameter-submission-rounds")
+      response.request().method() === "POST" && /parameter-value-drafts\/[^/]+\/submit$/.test(response.url())
     );
-    await submissionPanel.getByRole("button", { name: "提交审核" }).click();
+    await submissionPanel.getByRole("button", { name: /提交/ }).click();
     const submitRound = await submitRoundPromise;
     expect(submitRound.status(), await submitRound.text()).toBe(201);
-    const submitWire = submitRound.request().postDataJSON() as {
-      items?: Array<Record<string, unknown>>;
-    };
-    expect(submitWire.items?.[0]).toMatchObject({
-      draftId: draftBody.item.draftId,
-      // The binding id may have been re-issued when earlier rounds advanced the
-      // working tip; assert against the id the draft round actually returned.
-      projectParameterBindingId: draftBody.item.projectParameterBindingId,
-      parameterSpecId: scBinding!.parameterSpecId,
-      action: "set"
-    });
-    expect(submitWire.items?.[0]).not.toHaveProperty("parameterId");
     const submitBody = (await submitRound.json()) as {
-      item: {
-        status: string;
-        items: Array<{ requestId: string; parameterId: string; candidateConfigRevisionId?: string }>;
-      };
+      item: { id: string; status: string; assignedToUserId: string; bindingId?: string };
     };
-    const changeRequestId = submitBody.item.items[0]?.requestId;
+    const changeRequestId = submitBody.item.id;
     expect(changeRequestId).toBeTruthy();
-    expect(submitBody.item.status).toBe("hardware_review");
-    expect(submitBody.item.items[0]?.candidateConfigRevisionId).toBe(draftBody.item.candidateRevisionId);
-    // Since #331 the submitted round leaves the tray (its drafts are consumed), and
-    // the success notice renders as the standalone 参数提交结果 region instead of
-    // inside the submission panel.
-    const submitResultNotice = page.getByRole("region", { name: "参数提交结果" });
-    await expect(submitResultNotice.getByText(/已提交正式审核/)).toBeVisible();
-    await submitResultNotice.getByRole("button", { name: "查看变更审阅" }).click();
+    expect(submitBody.item.assignedToUserId).toBe("u-sun-mei");
+    expect(submitBody.item.status).toBe("pending");
 
-    const advanceReviewInUi = async (
-      role: "hardware-committer" | "software-committer" | "software-user",
-      expectedStage: RegExp,
-      targetRequestId = changeRequestId!,
-      rowText = editedRaw,
-    ) => {
-      await signInBrowserAsRole(
-        page,
-        role,
-        `${disposableRuntime.frontendUrl}/parameter-review`,
-      );
-      const requestRow = page.getByRole("row").filter({ hasText: rowText }).first();
-      await expect(requestRow).toBeVisible({ timeout: 30_000 });
-      await requestRow.click();
-      const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
-      await expect(reviewDetail).toBeVisible();
-      await reviewDetail.getByRole("button", { name: /查看提交详情/ }).click();
-      const submissionDetail = page.getByRole("dialog", { name: "提交详情" });
-      await expect(submissionDetail).toBeVisible();
-      await submissionDetail.getByRole("button", { name: "关闭" }).click();
-      await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(expectedStage);
-      const responsePromise = page.waitForResponse((response) =>
-        response.request().method() === "POST" &&
-        response.url().includes(`/api/v1/parameter-change-requests/${encodeURIComponent(targetRequestId)}/review`)
-      );
-      if (role === "software-user") {
-        await reviewDetail.locator("#review-merge-link").fill(`https://example.com/e2e/merge/${targetRequestId}`);
-      }
-      await reviewDetail.getByRole("button", {
-        name: role === "software-user" ? "确认合入" : "推进流程"
-      }).click();
-      const response = await responsePromise;
-      expect(response.ok(), await response.text()).toBe(true);
-      const body = (await response.json()) as {
-        item: { status: string; action?: "set" | "delete"; targetValue?: string };
-      };
-      return { response, body };
-    };
-
-    const { response: hardwareReview, body: hardwareReviewBody } = await advanceReviewInUi(
-      "hardware-committer",
-      /硬件(?:Committer|MDE)检视/,
-    );
-    expect(hardwareReviewBody.item.status).toBe("software_review");
-
-    const { response: softwareReview, body: softwareReviewBody } = await advanceReviewInUi(
-      "software-committer",
-      /软件(?:Committer|MDE)检视/,
-    );
-    expect(softwareReviewBody.item.status).toBe("software_merge");
-
-    const beforeMerge = await withPgClient(async (client) => {
+    const reviewRowBefore = await withPgClient(async (client) => {
       const result = await client.query<{
         status: string;
-        candidate_config_revision_id: string;
-        candidate_status: string;
-        history_count: string;
-        merge_audit_count: string;
-        writeback_audit_count: string;
+        action: string;
+        base_current_value_id: string;
+        binding_id: string;
+        applied_value_id: string | null;
       }>(
-        `
-        select
-          cr.status,
-          cr.candidate_config_revision_id,
-          candidate.status as candidate_status,
-          (select count(*)::text from parameter_history_entries h where h.request_id = cr.id) as history_count,
-          (
-            select count(*)::text from audit_events ae
-            where ae.kind = 'parameter-merge' and ae.target_id = cr.id
-          ) as merge_audit_count,
-          (
-            select count(*)::text from audit_events ae
-            where ae.kind = 'parameter-writeback-to-file'
-              and ae.metadata ->> 'projectParameterBindingId' = cr.project_parameter_binding_id
-              and ae.created_at >= cr.created_at
-          ) as writeback_audit_count
-        from parameter_change_requests cr
-        inner join dts_config_revisions candidate on candidate.id = cr.candidate_config_revision_id
-        where cr.id = $1
-        `,
+        `select status, action, base_current_value_id, binding_id, applied_value_id
+         from project_parameter_value_change_requests where id = $1`,
         [changeRequestId]
       );
       return result.rows[0];
     });
-    expect(beforeMerge?.status).toBe("software_merge");
-    expect(beforeMerge?.candidate_config_revision_id).toBe(draftBody.item.candidateRevisionId);
-    expect(beforeMerge?.candidate_status).toBe("pending_approval");
-    expect(Number(beforeMerge?.history_count ?? 0)).toBe(0);
-    expect(Number(beforeMerge?.merge_audit_count ?? 0)).toBe(0);
-    expect(Number(beforeMerge?.writeback_audit_count ?? 0)).toBe(0);
-
-    const { response: semanticMerge, body: semanticMergeBody } = await advanceReviewInUi(
-      "software-user",
-      /软件(?:User|开发人员?)合入/,
+    expect(reviewRowBefore).toMatchObject({
+      status: "pending",
+      action: "set",
+      base_current_value_id: scBinding!.currentValueId,
+      binding_id: scBinding!.id,
+      applied_value_id: null
+    });
+    // Submission alone never moves the Binding's current value.
+    const bindingBeforeReview = await request.get(
+      apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),
+      { headers: authHeadersForRole("software-user") }
     );
-    expect(semanticMergeBody.item.status).toBe("merged");
+    const bindingBeforeReviewBody = (await bindingBeforeReview.json()) as {
+      items: Array<{ id: string; currentValueId: string; rawValue: string }>;
+    };
+    expect(bindingBeforeReviewBody.items.find((item) => item.id === scBinding!.id)).toMatchObject({
+      currentValueId: scBinding!.currentValueId,
+      rawValue: originalRaw
+    });
+
+    // The independent software committer approves in the visible 软件配置审核 surface.
+    await signInBrowserAsRole(
+      page,
+      "software-committer",
+      `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}`
+    );
+    await dismissXiaozeHint(page);
+    const softwareReview = page.getByRole("region", { name: "软件配置审核" });
+    await expect(softwareReview.getByLabel("固定源变更后")).toContainText("30");
+    const approvedResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().endsWith(`/parameter-value-change-requests/${changeRequestId}/review`)
+    );
+    await softwareReview.getByRole("button", { name: "批准软件配置" }).click();
+    const semanticMerge = await approvedResponse;
+    expect(semanticMerge.ok(), await semanticMerge.text()).toBe(true);
+    const semanticMergeBody = (await semanticMerge.json()) as { item: { status: string; action: string } };
+    expect(semanticMergeBody.item).toMatchObject({ status: "approved", action: "set" });
     const mergeRequestId = semanticMerge.headers()["x-request-id"];
     expect(mergeRequestId).toBeTruthy();
 
     const mergeEvidence = await withPgClient(async (client) => {
-      const cr = await client.query<{
+      const applied = await client.query<{
         status: string;
-        project_parameter_binding_id: string | null;
+        binding_id: string;
+        applied_value_id: string | null;
+        applied_audit_ref: string | null;
+        applied_history_event_id: string | null;
+        base_current_value_id: string;
+        current_value_id: string;
+        config_revision_id: string;
+        value_digest: string;
+        file_id: string | null;
+        file_version_id: string | null;
+        file_origin: string | null;
+        file_checksum: string | null;
+        audit_kind: string | null;
+        history_new_value_id: string | null;
       }>(
-        `select status, project_parameter_binding_id from parameter_change_requests where id = $1`,
+        `
+        select request.status, request.binding_id, request.applied_value_id,
+               request.applied_audit_ref, request.applied_history_event_id,
+               request.base_current_value_id, binding.current_value_id,
+               value.config_revision_id, value.value_digest,
+               pin.file_id, pin.file_version_id,
+               version.origin as file_origin, version.checksum as file_checksum,
+               audit.kind as audit_kind, history.new_current_value_id as history_new_value_id
+        from project_parameter_value_change_requests request
+        join parameter_catalog.project_parameter_bindings binding on binding.id = request.binding_id
+        join parameter_catalog.project_parameter_values value on value.id = request.applied_value_id
+        left join parameter_catalog.project_value_source_pins pin
+          on pin.project_value_id = value.id and pin.binding_id = binding.id
+        left join project_parameter_file_versions version on version.id = pin.file_version_id
+        left join audit_events audit on audit.id = request.applied_audit_ref
+        left join parameter_catalog.binding_history_events history on history.id = request.applied_history_event_id
+        where request.id = $1
+        `,
         [changeRequestId]
       );
-      const base = await client.query<{ raw_value: string | null }>(
-        `
-        select raw_value from project_parameter_binding_revisions
-        where binding_id = $1 and config_revision_id = $2
-        `,
-        [scBinding!.id, revisionId]
-      );
-      const writebackAudit = await client.query<{
-        id: string;
-        trace_id: string;
-        target_id: string | null;
-        candidate_revision_id: string | null;
-      }>(
-        `
-        select
-          id,
-          trace_id,
-          target_id,
-          metadata ->> 'candidateRevisionId' as candidate_revision_id
-        from audit_events
-        where kind = 'parameter-writeback-to-file'
-          and trace_id = $1
-        order by created_at desc
-        limit 1
-        `,
-        [mergeRequestId]
-      );
-      const candidateRevisionId = writebackAudit.rows[0]?.candidate_revision_id ?? null;
-      const candidate = await client.query<{
-        raw_value: string | null;
-        config_revision_id: string;
-      }>(
-        `
-        select raw_value, config_revision_id
-        from project_parameter_binding_revisions
-        where binding_id = $1 and config_revision_id = $2
-        `,
-        [scBinding!.id, candidateRevisionId]
-      );
-      const writeback = await client.query<{ id: string; origin: string; checksum: string }>(
-        `
-        select id, checksum, origin
-        from project_parameter_file_versions
-        where file_id = $1 and origin = 'writeback'
-        order by created_at desc
-        limit 1
-        `,
-        [writebackAudit.rows[0]?.target_id]
-      );
-      const completion = await client.query<{
-        history_count: string;
-        merge_audit_count: string;
-      }>(
-        `
-        select
-          (select count(*)::text from parameter_history_entries where request_id = $1) as history_count,
-          (
-            select count(*)::text from audit_events
-            where kind = 'parameter-merge' and target_id = $1 and trace_id = $2
-          ) as merge_audit_count
-        `,
-        [changeRequestId, mergeRequestId]
-      );
+      const row = applied.rows[0];
       return {
-        crStatus: cr.rows[0]?.status ?? null,
-        bindingId: cr.rows[0]?.project_parameter_binding_id ?? null,
-        baseRaw: base.rows[0]?.raw_value ?? null,
-        latestRaw: candidate.rows[0]?.raw_value ?? null,
-        latestRevisionId: candidate.rows[0]?.config_revision_id ?? null,
-        writebackAuditId: writebackAudit.rows[0]?.id ?? null,
-        writebackTraceId: writebackAudit.rows[0]?.trace_id ?? null,
-        writebackFileId: writebackAudit.rows[0]?.target_id ?? null,
-        writebackVersionId: writeback.rows[0]?.id ?? null,
-        writebackOrigin: writeback.rows[0]?.origin ?? null,
-        writebackChecksum: writeback.rows[0]?.checksum?.slice(0, 12) ?? null,
-        historyCount: Number(completion.rows[0]?.history_count ?? 0),
-        mergeAuditCount: Number(completion.rows[0]?.merge_audit_count ?? 0)
+        crStatus: row?.status ?? null,
+        bindingId: row?.binding_id ?? null,
+        appliedValueId: row?.applied_value_id ?? null,
+        currentValueId: row?.current_value_id ?? null,
+        baseValueId: row?.base_current_value_id ?? null,
+        latestRevisionId: row?.config_revision_id ?? null,
+        writebackAuditId: row?.applied_audit_ref ?? null,
+        writebackAuditKind: row?.audit_kind ?? null,
+        writebackFileId: row?.file_id ?? null,
+        writebackVersionId: row?.file_version_id ?? null,
+        writebackOrigin: row?.file_origin ?? null,
+        writebackChecksum: row?.file_checksum?.slice(0, 19) ?? null,
+        historyEventId: row?.applied_history_event_id ?? null,
+        historyNewValueId: row?.history_new_value_id ?? null
       };
     });
-    expect(mergeEvidence.crStatus).toBe("merged");
+    expect(mergeEvidence.crStatus).toBe("approved");
     expect(mergeEvidence.bindingId).toBe(scBinding!.id);
-    expect(mergeEvidence.baseRaw).toBe(baseBindingSnapshot);
+    expect(mergeEvidence.baseValueId).toBe(scBinding!.currentValueId);
+    expect(mergeEvidence.appliedValueId).toBeTruthy();
+    expect(mergeEvidence.currentValueId).toBe(mergeEvidence.appliedValueId);
+    expect(mergeEvidence.appliedValueId).not.toBe(scBinding!.currentValueId);
     expect(mergeEvidence.latestRevisionId).toBeTruthy();
     expect(mergeEvidence.latestRevisionId).not.toBe(revisionId);
-    expect(mergeEvidence.latestRevisionId).not.toBe(draftBody.item.candidateRevisionId);
-    expect(mergeEvidence.latestRaw ?? "").toMatch(/30/);
     expect(mergeEvidence.writebackAuditId).toBeTruthy();
-    expect(mergeEvidence.writebackTraceId).toBe(mergeRequestId);
     expect(mergeEvidence.writebackVersionId).toBeTruthy();
     expect(mergeEvidence.writebackOrigin).toBe("writeback");
-    expect(mergeEvidence.historyCount).toBe(1);
-    expect(mergeEvidence.mergeAuditCount).toBe(1);
-
-    // A real typed delete uses the public API for the currently UI-less delete control,
-    // then the same visible role-review UI and semantic merge/writeback boundary.
-    await signInBrowserAsRole(
-      page,
-      "software-user",
-      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
-    );
-    const preDeleteWorkspace = page.getByRole("region", { name: "DTS 参数工作台" });
-    await expect(preDeleteWorkspace).toHaveAttribute(
-      "data-revision-id",
-      mergeEvidence.latestRevisionId!,
-      { timeout: 30_000 }
-    );
-    await preDeleteWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-    const preDeleteMt5788Row = bindingRowById(preDeleteWorkspace, mtBinding!.id);
-    await expect(preDeleteMt5788Row.locator('[data-label="参数名"]')).toBeVisible();
-    await expect(preDeleteMt5788Row).toContainText("mt5788@2B");
-    const deleteReason = `${descriptionPrefix} delete gpio_int through formal review`;
-    const deleteBaseBindingSnapshot = await withPgClient(async (client) => {
-      const result = await client.query<{ raw_value: string | null }>(
-        `select raw_value from project_parameter_binding_revisions
-         where binding_id = $1 and config_revision_id = $2`,
-        [mtBinding!.id, mergeEvidence.latestRevisionId]
-      );
-      return result.rows[0]?.raw_value ?? null;
-    });
-    expect(deleteBaseBindingSnapshot).toBeTruthy();
-    const deleteDraft = await request.post(
-      apiRoute(
-        `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(mtBinding!.id)}/drafts`
-      ),
-      {
-        headers: authHeadersForRole("software-user"),
-        data: {
-          baseRevisionId: mergeEvidence.latestRevisionId,
-          action: "delete",
-          reason: deleteReason
-        }
-      }
-    );
-    expect(deleteDraft.status(), await deleteDraft.text()).toBe(201);
-    const deleteDraftBody = (await deleteDraft.json()) as {
-      item: {
-        draftId: string;
-        candidateRevisionId: string;
-        rawText: string;
-        action: "delete";
-        parameterSpecId: string;
-        projectParameterBindingId: string;
-      };
-    };
-    expect(deleteDraftBody.item).toMatchObject({
-      action: "delete",
-      rawText: "",
-      projectParameterBindingId: mtBinding!.id
-    });
-    const deleteCandidateBeforeSubmit = await withPgClient(async (client) => {
-      const result = await client.query<{
-        binding_revision_count: string;
-        delete_effect_count: string;
-      }>(
-        `select
-           (
-             select count(*)::text from project_parameter_binding_revisions
-             where binding_id = $1 and config_revision_id = $2
-           ) as binding_revision_count,
-           (
-             select count(*)::text from dts_occurrence_effects oe
-             inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
-             inner join project_parameter_bindings b on b.logical_node_id = lnr.logical_node_id
-             inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-             where b.id = $1
-               and oe.config_revision_id = $2
-               and lnr.config_revision_id = $2
-               and oe.effect_kind = 'delete'
-               and oe.property_name = dps.property_key
-           ) as delete_effect_count`,
-        [mtBinding!.id, deleteDraftBody.item.candidateRevisionId]
-      );
-      return result.rows[0];
-    });
-    expect(deleteCandidateBeforeSubmit).toEqual({
-      binding_revision_count: "0",
-      delete_effect_count: "1"
-    });
-
-    const deleteSubmit = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: authHeadersForRole("software-user"),
-      data: {
-        projectId,
-        items: [
-          {
-            draftId: deleteDraftBody.item.draftId,
-            projectParameterBindingId: deleteDraftBody.item.projectParameterBindingId,
-            parameterSpecId: deleteDraftBody.item.parameterSpecId,
-            action: "delete",
-            targetValue: "",
-            reason: deleteReason
-          }
-        ],
-        assignees: {
-          hardwareCommitterId: "u-wang-jie",
-          softwareCommitterId: "u-sun-mei",
-          softwareUserId: "u-liu-min"
-        }
-      }
-    });
-    expect(deleteSubmit.status(), await deleteSubmit.text()).toBe(201);
-    const deleteSubmitBody = (await deleteSubmit.json()) as {
-      item: {
-        status: string;
-        items: Array<{
-          requestId: string;
-          action: "delete";
-          targetValue: string;
-          candidateConfigRevisionId?: string;
-        }>;
-      };
-    };
-    const deleteRequestId = deleteSubmitBody.item.items[0]?.requestId;
-    expect(deleteRequestId).toBeTruthy();
-    expect(deleteSubmitBody.item.status).toBe("hardware_review");
-    expect(deleteSubmitBody.item.items[0]).toMatchObject({
-      action: "delete",
-      targetValue: "",
-      candidateConfigRevisionId: deleteDraftBody.item.candidateRevisionId
-    });
-
-    const deleteBeforeMerge = await withPgClient(async (client) => {
-      const result = await client.query<{
-        request_action: string;
-        item_action: string;
-        request_candidate_id: string;
-        item_candidate_id: string;
-        candidate_status: string;
-        history_count: string;
-        merge_audit_count: string;
-        writeback_audit_count: string;
-      }>(
-        `select
-           cr.action as request_action,
-           psi.action as item_action,
-           cr.candidate_config_revision_id as request_candidate_id,
-           psi.candidate_config_revision_id as item_candidate_id,
-           candidate.status as candidate_status,
-           (select count(*)::text from parameter_history_entries where request_id = cr.id) as history_count,
-           (select count(*)::text from audit_events where kind = 'parameter-merge' and target_id = cr.id) as merge_audit_count,
-           (
-             select count(*)::text from audit_events
-             where kind = 'parameter-writeback-to-file'
-               and metadata ->> 'changeRequestId' = cr.id
-           ) as writeback_audit_count
-         from parameter_change_requests cr
-         inner join parameter_submission_items psi on psi.change_request_id = cr.id
-         inner join dts_config_revisions candidate on candidate.id = cr.candidate_config_revision_id
-         where cr.id = $1`,
-        [deleteRequestId]
-      );
-      return result.rows[0];
-    });
-    expect(deleteBeforeMerge).toEqual({
-      request_action: "delete",
-      item_action: "delete",
-      request_candidate_id: deleteDraftBody.item.candidateRevisionId,
-      item_candidate_id: deleteDraftBody.item.candidateRevisionId,
-      candidate_status: "pending_approval",
-      history_count: "0",
-      merge_audit_count: "0",
-      writeback_audit_count: "0"
-    });
-
-    const { response: deleteHardwareReview, body: deleteHardwareBody } = await advanceReviewInUi(
-      "hardware-committer",
-      /硬件(?:Committer|MDE)检视/,
-      deleteRequestId!,
-      "gpio_int"
-    );
-    expect(deleteHardwareBody.item.status).toBe("software_review");
-    const { response: deleteSoftwareReview, body: deleteSoftwareBody } = await advanceReviewInUi(
-      "software-committer",
-      /软件(?:Committer|MDE)检视/,
-      deleteRequestId!,
-      "gpio_int"
-    );
-    expect(deleteSoftwareBody.item.status).toBe("software_merge");
-    const { response: deleteMerge, body: deleteMergeBody } = await advanceReviewInUi(
-      "software-user",
-      /软件(?:User|开发人员?)合入/,
-      deleteRequestId!,
-      "gpio_int"
-    );
-    expect(deleteMergeBody.item).toMatchObject({ status: "merged", action: "delete", targetValue: "" });
-    const deleteMergeRequestId = deleteMerge.headers()["x-request-id"];
-    expect(deleteMergeRequestId).toBeTruthy();
-
-    const deleteMergeEvidence = await withPgClient(async (client) => {
-      const writebackAudit = await client.query<{
-        id: string;
-        trace_id: string;
-        target_id: string;
-        candidate_revision_id: string;
-        change_action: string;
-      }>(
-        `select id, trace_id, target_id,
-                metadata ->> 'candidateRevisionId' as candidate_revision_id,
-                metadata ->> 'changeAction' as change_action
-         from audit_events
-         where kind = 'parameter-writeback-to-file' and trace_id = $1
-         order by created_at desc limit 1`,
-        [deleteMergeRequestId]
-      );
-      const candidateRevisionId = writebackAudit.rows[0]?.candidate_revision_id;
-      const completion = await client.query<{
-        action: string;
-        value: string;
-        binding_revision_count: string;
-        delete_effect_count: string;
-        merge_audit_count: string;
-        source_text: string | null;
-      }>(
-        `select
-           cr.action,
-           phe.value,
-           (
-             select count(*)::text from project_parameter_binding_revisions
-             where binding_id = cr.project_parameter_binding_id and config_revision_id = $2
-           ) as binding_revision_count,
-           (
-             select count(*)::text from dts_occurrence_effects oe
-             inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
-             inner join project_parameter_bindings b on b.logical_node_id = lnr.logical_node_id
-             inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-             where b.id = cr.project_parameter_binding_id
-               and oe.config_revision_id = $2
-               and lnr.config_revision_id = $2
-               and oe.effect_kind = 'delete'
-               and oe.property_name = dps.property_key
-           ) as delete_effect_count,
-           (
-             select count(*)::text from audit_events
-             where kind = 'parameter-merge' and target_id = cr.id and trace_id = $3
-           ) as merge_audit_count,
-           (
-             select parsed_index ->> 'sourceText' from project_parameter_file_versions
-             where file_id = $4 order by version_number desc limit 1
-           ) as source_text
-         from parameter_change_requests cr
-         inner join parameter_history_entries phe on phe.request_id = cr.id
-         where cr.id = $1`,
-        [deleteRequestId, candidateRevisionId, deleteMergeRequestId, writebackAudit.rows[0]?.target_id]
-      );
-      return {
-        writebackAuditId: writebackAudit.rows[0]?.id ?? null,
-        traceId: writebackAudit.rows[0]?.trace_id ?? null,
-        fileId: writebackAudit.rows[0]?.target_id ?? null,
-        candidateRevisionId: candidateRevisionId ?? null,
-        changeAction: writebackAudit.rows[0]?.change_action ?? null,
-        action: completion.rows[0]?.action ?? null,
-        historyValue: completion.rows[0]?.value ?? null,
-        bindingRevisionCount: Number(completion.rows[0]?.binding_revision_count ?? 0),
-        deleteEffectCount: Number(completion.rows[0]?.delete_effect_count ?? 0),
-        mergeAuditCount: Number(completion.rows[0]?.merge_audit_count ?? 0),
-        sourceText: completion.rows[0]?.source_text ?? ""
-      };
-    });
-    expect(deleteMergeEvidence).toMatchObject({
-      traceId: deleteMergeRequestId,
-      changeAction: "delete",
-      action: "delete",
-      historyValue: "",
-      bindingRevisionCount: 0,
-      deleteEffectCount: 1,
-      mergeAuditCount: 1
-    });
-    expect(deleteMergeEvidence.candidateRevisionId).toBeTruthy();
-    expect(deleteMergeEvidence.candidateRevisionId).not.toBe(mergeEvidence.latestRevisionId);
-    expect(deleteMergeEvidence.sourceText).toMatch(/\/delete-property\/\s*gpio_int/);
-    const setCandidateStillImmutable = await withPgClient(async (client) => {
-      const result = await client.query<{ raw_value: string | null }>(
-        `select raw_value from project_parameter_binding_revisions
-         where binding_id = $1 and config_revision_id = $2`,
-        [mtBinding!.id, mergeEvidence.latestRevisionId]
-      );
-      return result.rows[0]?.raw_value ?? null;
-    });
-    expect(setCandidateStillImmutable).toBe(deleteBaseBindingSnapshot);
-
-    const deleteReload = await request.get(
-      apiRoute(
-        `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(deleteMergeEvidence.candidateRevisionId!)}`
-      ),
+    expect(mergeEvidence.historyEventId).toBeTruthy();
+    expect(mergeEvidence.historyNewValueId).toBe(mergeEvidence.appliedValueId);
+    const afterMerge = await request.get(
+      apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),
       { headers: authHeadersForRole("software-user") }
     );
-    expect(deleteReload.ok(), await deleteReload.text()).toBe(true);
-    const deleteReloadBody = (await deleteReload.json()) as { items: Array<{ id: string }> };
-    expect(deleteReloadBody.items.some((item) => item.id === mtBinding!.id)).toBe(false);
-    await signInBrowserAsRole(
-      page,
-      "software-user",
-      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
-    );
-    const deleteReloadWorkspace = page.getByRole("region", { name: "DTS 参数工作台" });
-    await expect(deleteReloadWorkspace).toHaveAttribute(
-      "data-revision-id",
-      deleteMergeEvidence.candidateRevisionId!,
-      { timeout: 30_000 }
-    );
-    await deleteReloadWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-    await expect(bindingRowById(deleteReloadWorkspace, mtBinding!.id)).toHaveCount(0);
-    await expect(semanticBindingRow(deleteReloadWorkspace, "mt5788@2B")).toHaveCount(0);
-    const sc8562DeleteRow = semanticBindingRow(deleteReloadWorkspace, "sc8562@6E");
-    await expect(sc8562DeleteRow.locator('[data-label="参数名"]')).toBeVisible();
+    const afterMergeBody = (await afterMerge.json()) as {
+      items: Array<{ id: string; currentValueId: string; rawValue: string }>;
+    };
+    const mergedBinding = afterMergeBody.items.find((item) => item.id === scBinding!.id);
+    expect(mergedBinding?.currentValueId).toBe(mergeEvidence.appliedValueId);
+    expect(mergedBinding?.rawValue ?? "").toMatch(/30/);
+    // The Binding keeps its identity; only its current ProjectValue advanced.
+    expect(mergedBinding?.rawValue).not.toBe(originalRaw);
 
     const writebackDb = {
       table: "project_parameter_file_versions",
-      predicate: "origin=writeback latest",
-      observed: `origin=${mergeEvidence.writebackOrigin}; checksum=${mergeEvidence.writebackChecksum}; candidate=${mergeEvidence.latestRevisionId}; history=${mergeEvidence.historyCount}; mergeAudit=${mergeEvidence.mergeAuditCount}`,
-      rowCount: 1
-    };
-    const deleteWritebackDb = {
-      table: "dts_occurrence_effects, project_parameter_binding_revisions, parameter_history_entries",
-      predicate: `delete candidate=${deleteMergeEvidence.candidateRevisionId}`,
-      observed: `action=${deleteMergeEvidence.action}; tombstones=${deleteMergeEvidence.deleteEffectCount}; candidateBindings=${deleteMergeEvidence.bindingRevisionCount}; historyValue=empty; mergeAudit=${deleteMergeEvidence.mergeAuditCount}`,
+      predicate: "origin=writeback applied by canonical request",
+      observed: `origin=${mergeEvidence.writebackOrigin}; checksum=${mergeEvidence.writebackChecksum}; candidate=${mergeEvidence.latestRevisionId}; history=${mergeEvidence.historyEventId}`,
       rowCount: 1
     };
 
     await recordOperationEvidence({
       operationId: "PARAM-TOPOLOGY-EDIT-001",
-      title: "typed edit submit review merge writeback",
+      title: "typed edit submit review apply writeback",
       status: "passed",
-      role: "Software User + Hardware/Software Committers",
+      role: "Software User + Software Committer",
       route: "/parameters",
       page,
       testInfo,
@@ -1790,72 +1265,34 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         }),
         summarizeApiResponse(submitRound, {
           method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
+          path: "/api/v2/projects/:projectId/parameter-value-drafts/:draftId/submit",
           responseSummary: `requestId=${changeRequestId}`
-        }),
-        summarizeApiResponse(hardwareReview, {
-          method: "POST",
-          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
-          responseSummary: `role=hardware-committer; status=${hardwareReviewBody.item.status}`
-        }),
-        summarizeApiResponse(softwareReview, {
-          method: "POST",
-          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
-          responseSummary: `role=software-committer; status=${softwareReviewBody.item.status}`
         }),
         summarizeApiResponse(semanticMerge, {
           method: "POST",
-          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
-          responseSummary: `role=software-user; status=${semanticMergeBody.item.status}; writeback.skipped=false; candidate=${mergeEvidence.latestRevisionId}`
-        }),
-        summarizeApiResponse(deleteDraft, {
-          method: "POST",
-          path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
-          responseSummary: `action=delete; tombstoneCandidate=${deleteDraftBody.item.candidateRevisionId}`
-        }),
-        summarizeApiResponse(deleteSubmit, {
-          method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
-          responseSummary: `action=delete; requestId=${deleteRequestId}`
-        }),
-        summarizeApiResponse(deleteMerge, {
-          method: "POST",
-          path: `/api/v1/parameter-change-requests/${deleteRequestId}/review`,
-          responseSummary: `role=software-user; action=delete; status=${deleteMergeBody.item.status}; writeback.skipped=false; candidate=${deleteMergeEvidence.candidateRevisionId}`
-        }),
-        summarizeApiResponse(deleteReload, {
-          method: "GET",
-          path: `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${deleteMergeEvidence.candidateRevisionId}`,
-          responseSummary: `deleted binding present=false; candidate=${deleteMergeEvidence.candidateRevisionId}`
+          path: `/api/v2/projects/${projectId}/parameter-value-change-requests/${changeRequestId}/review`,
+          responseSummary: `role=software-committer; status=${semanticMergeBody.item.status}; writeback.skipped=false; candidate=${mergeEvidence.latestRevisionId}`
         })
       ],
-      db: [writebackDb, deleteWritebackDb],
+      db: [writebackDb],
       audit: [
         {
           id: mergeEvidence.writebackAuditId ?? undefined,
-          kind: "parameter-writeback-to-file",
-          action: "writeback",
-          targetId: mergeEvidence.writebackFileId,
-          requestId: mergeEvidence.writebackTraceId ?? undefined,
+          kind: mergeEvidence.writebackAuditKind ?? "parameter-canonical-apply",
+          action: "apply",
+          targetId: changeRequestId,
+          requestId: mergeRequestId,
           metadataSummary: `candidateRevisionId=${mergeEvidence.latestRevisionId}; skipped=false`
-        },
-        {
-          id: deleteMergeEvidence.writebackAuditId ?? undefined,
-          kind: "parameter-writeback-to-file",
-          action: "writeback",
-          targetId: deleteMergeEvidence.fileId,
-          requestId: deleteMergeEvidence.traceId ?? undefined,
-          metadataSummary: `changeAction=delete; candidateRevisionId=${deleteMergeEvidence.candidateRevisionId}; skipped=false`
         }
       ],
       notes:
-        "API mode contains no legacy recommended-value workbench; UI schema cell-count block; stale 409; real bad-DTS fail-closed; set and delete typed drafts both traverse formal submit → visible role review → semantic merge/writeback. Delete is created through the public API because no delete UI exists, carries a same-chain tombstone, preserves prior revisions, creates no replacement binding revision, and remains absent after API/UI reload."
+        "API mode contains no legacy recommended-value workbench; UI value-parse diagnostic block; stale 409; real bad-DTS fail-closed; the typed set draft traverses submit → independent software-committer review → canonical apply/writeback. Typed delete and restart durability of the same chain are covered by canonical-value-workflow.acceptance.spec.ts › creates and removes a draft, selects a software reviewer, withdraws, rejects and resubmits for approval."
     });
     await recordOperationEvidence({
       operationId: "PARAM-HAPPY-001",
-      title: "binding-centric parameter submit review merge persistence audit",
+      title: "binding-centric parameter submit review apply persistence audit",
       status: "passed",
-      role: "Software User + Hardware/Software Committers + Admin",
+      role: "Software User + Software Committer + Admin",
       route: "/parameters → /parameter-review",
       page,
       testInfo,
@@ -1868,71 +1305,48 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         }),
         summarizeApiResponse(submitRound, {
           method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
+          path: "/api/v2/projects/:projectId/parameter-value-drafts/:draftId/submit",
           responseSummary: `UI submitted request=${changeRequestId}`
         }),
         summarizeApiResponse(semanticMerge, {
           method: "POST",
-          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
-          responseSummary: `role UI merge=${semanticMergeBody.item.status}; candidate=${mergeEvidence.latestRevisionId}`
+          path: `/api/v2/projects/${projectId}/parameter-value-change-requests/${changeRequestId}/review`,
+          responseSummary: `role UI approve=${semanticMergeBody.item.status}; candidate=${mergeEvidence.latestRevisionId}`
         })
       ],
       db: [writebackDb],
       audit: [
         {
           id: mergeEvidence.writebackAuditId ?? undefined,
-          kind: "parameter-writeback-to-file",
-          action: "writeback",
-          targetId: mergeEvidence.writebackFileId,
-          requestId: mergeEvidence.writebackTraceId ?? undefined,
+          kind: mergeEvidence.writebackAuditKind ?? "parameter-canonical-apply",
+          action: "apply",
+          targetId: changeRequestId,
+          requestId: mergeRequestId,
           metadataSummary: `candidateRevisionId=${mergeEvidence.latestRevisionId}; skipped=false`
         }
       ],
       notes:
-        "Binding-centric API-mode UI searched gpio_int, created the typed candidate, submitted with scoped assignees, advanced all three visible role stages, persisted writeback, and emitted audit evidence without rendering recommendedValue compatibility UI."
+        "Binding-centric API-mode UI searched gpio_int, created the typed candidate, submitted to the eligible software committer, approved it in the visible review surface, persisted the canonical ProjectValue/source pin, and emitted audit evidence without rendering recommendedValue compatibility UI."
     });
 
     // Identity mapping via real ambiguous ingest (throwaway Config Set).
     const mapSuffix = runSuffix;
     const mapCsName = `acceptance-map-${mapSuffix}`;
-    createdConfigSetNames.push(mapCsName);
-    const mapCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-      headers: adminHeaders(),
-      data: { name: mapCsName, description: `${descriptionPrefix} identity map` }
-    });
-    expect(mapCs.status()).toBe(201);
-    const mapCsBody = (await mapCs.json()) as { item: { id: string } };
     const r1Name = `acceptance-map-r1-${mapSuffix}.dts`;
     const r2Name = `acceptance-map-r2-${mapSuffix}.dts`;
+    createdConfigSetNames.push(mapCsName);
     createdFileNames.push(r1Name, r2Name);
-    const r1Upload = await uploadDts(request, r1Name, mappingR1);
-    await request.post(
-      apiRoute(`/api/v1/projects/${projectId}/config-sets/${mapCsBody.item.id}/files`),
-      {
-        headers: adminHeaders(),
-        data: { fileId: r1Upload.fileId, role: "base", sortOrder: 0 }
-      }
-    );
-    await uploadDts(request, r1Name, mappingR1);
-    const r1Revision = await waitForRevision(mapCsBody.item.id, (row) =>
-      ["resolved", "validated", "needs_mapping"].includes(row.status)
-    );
-    expect(r1Revision.status).not.toBe("invalid");
-
-    const r2Upload = await uploadDts(request, r2Name, mappingR2);
-    await request.post(
-      apiRoute(`/api/v1/projects/${projectId}/config-sets/${mapCsBody.item.id}/files`),
-      {
-        headers: adminHeaders(),
-        data: { fileId: r2Upload.fileId, role: "overlay", sortOrder: 1 }
-      }
-    );
-    await uploadDts(request, r2Name, mappingR2);
-    const r2Revision = await waitForRevision(
-      mapCsBody.item.id,
-      (row) => row.id !== r1Revision.id && row.status === "needs_mapping",
-      30_000
-    );
+    // Ambiguous continuity is seeded through the real ingest service (see fixture).
+    const seededMap = await seedAmbiguousIdentityMappingConfigSet(disposableRuntime, {
+      projectId,
+      configSetName: mapCsName,
+      baseFileName: r1Name,
+      baseText: mappingR1,
+      overlayFileName: r2Name,
+      overlayText: mappingR2,
+      adminUserId: "u-xu-yun"
+    });
+    const r2Revision = { id: seededMap.ambiguousRevisionId };
 
     const blockedValidate = await request.post(
       apiRoute(
@@ -2083,10 +1497,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     // 10) SUCCESSFUL validate on merge/writeback candidate (not schema-failed-as-success).
-    const validateTargetId = mergeEvidence.latestRevisionId!;
+    // Revisions pinned by a canonical ProjectValue (the base and the applied one) are
+    // immutable source history and are never validated or published in place. The gate
+    // runs on the previously blocked, now identity-resolved revision.
+    const validateTargetId = seededMap.ambiguousRevisionId;
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
-    expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
     await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
 
     const validateResponse = await request.post(
@@ -2095,7 +1511,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       ),
       { headers: adminHeaders(), data: { stage: "toolchain" } }
     );
-    expect(validateResponse.ok()).toBe(true);
+    expect(validateResponse.ok(), await validateResponse.text()).toBe(true);
     const validateBody = (await validateResponse.json()) as {
       item: { id: string; status: string; stage: string; failureCode?: string | null };
     };
@@ -2119,19 +1535,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(publishDb.observed).toContain("validated");
 
+    // The pre-edit canonical ProjectValue and its config revision stay immutable history.
     const baseRevisionUnchanged = await withPgClient(async (client) => {
-      const result = await client.query<{ raw_value: string | null; status: string }>(
+      const result = await client.query<{ value_digest: string; status: string; config_revision_id: string }>(
         `
-        select br.raw_value, cr.status
-        from project_parameter_binding_revisions br
-        inner join dts_config_revisions cr on cr.id = br.config_revision_id
-        where br.binding_id = $1 and br.config_revision_id = $2
+        select value.value_digest, cr.status, value.config_revision_id
+        from parameter_catalog.project_parameter_values value
+        inner join dts_config_revisions cr on cr.id = value.config_revision_id
+        where value.id = $1 and value.binding_id = $2
         `,
-        [scBinding!.id, revisionId]
+        [scBinding!.currentValueId, scBinding!.id]
       );
       return result.rows[0];
     });
-    expect(baseRevisionUnchanged?.raw_value).toBe(baseBindingSnapshot);
+    expect(baseRevisionUnchanged?.config_revision_id).toBe(revisionId);
+    expect(baseRevisionUnchanged?.value_digest).toBeTruthy();
     expect(baseRevisionUnchanged?.status).not.toBe("validated");
 
     const publishAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
@@ -2149,6 +1567,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(publishAuditItem).toBeTruthy();
 
     // 8) Reload bindingId/value/provenance from DB after UI reload.
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+    );
     await page.reload();
     await dismissXiaozeHint(page);
     const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });
@@ -2170,22 +1593,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const valueAfter = (await currentValueField.locator("code").innerText()).trim();
 
     const persistedDb = await withPgClient(async (client) => {
-      const result = await client.query<{ id: string; raw_value: string | null }>(
+      const result = await client.query<{ id: string; current_value_id: string; value: unknown }>(
         `
-        select b.id, br.raw_value
-        from project_parameter_bindings b
-        inner join project_parameter_binding_revisions br on br.binding_id = b.id
+        select b.id, b.current_value_id, v.value
+        from parameter_catalog.project_parameter_bindings b
+        inner join parameter_catalog.project_parameter_values v on v.id = b.current_value_id
         where b.id = $1
-        order by br.created_at desc nulls last
-        limit 1
         `,
         [bindingIdAfter]
       );
       return {
-        table: "project_parameter_binding_revisions",
+        table: "parameter_catalog.project_parameter_bindings",
         predicate: `binding=${bindingIdAfter}`,
         observed: result.rows[0]
-          ? `id=${result.rows[0].id}; raw=${result.rows[0].raw_value}`
+          ? `id=${result.rows[0].id}; currentValue=${result.rows[0].current_value_id}`
           : "missing",
         rowCount: result.rowCount ?? result.rows.length
       };
@@ -2366,41 +1787,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     try {
       await ensureAuroraSemanticTopology(request);
 
-      const mapCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-        headers: adminHeaders(),
-        data: { name: mapCsName, description: `${descriptionPrefix} admin identity map` }
+      // Ambiguous continuity is seeded through the real ingest service (see fixture).
+      const seeded = await seedAmbiguousIdentityMappingConfigSet(disposableRuntime, {
+        projectId,
+        configSetName: mapCsName,
+        baseFileName: r1Name,
+        baseText: mappingR1,
+        overlayFileName: r2Name,
+        overlayText: mappingR2,
+        adminUserId: "u-xu-yun"
       });
-      expect(mapCs.status()).toBe(201);
-      const mapCsBody = (await mapCs.json()) as { item: { id: string } };
-
-      const r1Upload = await uploadDts(request, r1Name, mappingR1);
-      await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/config-sets/${mapCsBody.item.id}/files`),
-        {
-          headers: adminHeaders(),
-          data: { fileId: r1Upload.fileId, role: "base", sortOrder: 0 }
-        }
-      );
-      await uploadDts(request, r1Name, mappingR1);
-      const r1Revision = await waitForRevision(mapCsBody.item.id, (row) =>
-        ["resolved", "validated", "needs_mapping"].includes(row.status)
-      );
-      expect(r1Revision.status).not.toBe("invalid");
-
-      const r2Upload = await uploadDts(request, r2Name, mappingR2);
-      await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/config-sets/${mapCsBody.item.id}/files`),
-        {
-          headers: adminHeaders(),
-          data: { fileId: r2Upload.fileId, role: "overlay", sortOrder: 1 }
-        }
-      );
-      await uploadDts(request, r2Name, mappingR2);
-      const r2Revision = await waitForRevision(
-        mapCsBody.item.id,
-        (row) => row.id !== r1Revision.id && row.status === "needs_mapping",
-        30_000
-      );
+      const r2Revision = { id: seeded.ambiguousRevisionId };
 
       const mappingList = await request.get(
         apiRoute(
@@ -2593,104 +1990,85 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @acceptance PARAM-ENABLE-VISIBLE-001
     // @operation PARAM-ENABLE-VISIBLE-001
     test.setTimeout(180_000);
-    const runSuffix = randomUUID().slice(0, 8);
-    const fileName = `acceptance-enable-visible-${runSuffix}.dts`;
-    const createdFileNames = [fileName];
-    const dtsText = enablementVisibleDts(runSuffix);
+    const enableProjectId = "enable-visible";
+    const topology = await ensureDedicatedProjectTopology(request, {
+      projectId: enableProjectId,
+      name: "Enablement visible acceptance",
+      code: "ENABLE-VISIBLE",
+      // Canonical source history is immutable, so the disabled parent bus and the
+      // disabled mt5788 node are part of this project's first ingested source.
+      source: withNodeStatus(
+        withNodeStatus(auroraPrimarySource(), /i2c@FDF5E000\s*\{/, "disabled"),
+        /mt5788@2B\s*\{/,
+        "disabled"
+      )
+    });
+    const enableRevision = { id: topology.revisionId };
 
-    try {
-      const topology = await ensureAuroraSemanticTopology(request);
+    const { topologyApi, nodes } = await listEffectiveTopologyNodes(
+      request,
+      topology.configSetId,
+      enableRevision.id,
+      enableProjectId
+    );
+    const parentNode = nodes.find((node) => (node.locator ?? "").endsWith("/i2c@FDF5E000"));
+    const childNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
+    const directNode = nodes.find((node) => (node.locator ?? "") === MT5788_LOCATOR);
+    expect(parentNode?.enablement?.selfEnabled, "disabled parent must report selfEnabled false").toBe(false);
+    expect(childNode?.enablement?.reachable, "child under disabled parent must be unreachable").toBe(false);
+    expect(directNode?.enablement?.selfEnabled, "directly disabled node must report selfEnabled false").toBe(
+      false
+    );
 
-      // `/parameters` always loads the project's `default` Config Set (`pickConfigSet`).
-      // Overlay status onto seeded sc8562/mt5788 so workbench rows stay recognized
-      // gpio_int bindings. Unique unmatched keys never become bindings.
-      const enableRevision = await attachDedicatedDefaultOverlay(request, {
-        fileName,
-        dtsText,
-        configSetId: topology.configSetId,
-        previousRevisionId: topology.revisionId,
-        revisionReady: async (row) => {
-          const { nodes } = await listEffectiveTopologyNodes(
-            request,
-            topology.configSetId,
-            row.id
-          );
-          const child = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
-          const direct = nodes.find((node) => (node.locator ?? "") === MT5788_LOCATOR);
-          return child?.enablement?.reachable === false && direct?.enablement?.selfEnabled === false;
-        }
-      });
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      `${disposableRuntime.frontendUrl}/parameters?project=${enableProjectId}`
+    );
+    await dismissXiaozeHint(page);
 
-      const { topologyApi, nodes } = await listEffectiveTopologyNodes(
-        request,
-        topology.configSetId,
-        enableRevision.id
-      );
-      const parentNode = nodes.find((node) => (node.locator ?? "").endsWith("/i2c@FDF5E000"));
-      const childNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
-      const directNode = nodes.find((node) => (node.locator ?? "") === MT5788_LOCATOR);
-      expect(parentNode?.enablement?.selfEnabled, "disabled parent must report selfEnabled false").toBe(false);
-      expect(childNode?.enablement?.reachable, "child under disabled parent must be unreachable").toBe(false);
-      expect(directNode?.enablement?.selfEnabled, "directly disabled node must report selfEnabled false").toBe(
-        false
-      );
+    const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
+    await expect(workspace).toBeVisible({ timeout: 30_000 });
+    await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, { timeout: 30_000 });
+    await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
 
-      await signInBrowserAsRole(
-        page,
-        "admin",
-        `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
-      );
-      await dismissXiaozeHint(page);
+    await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
+    const childRow = semanticBindingRow(workspace, "sc8562@6E");
+    await expect(childRow).toBeVisible({ timeout: 20_000 });
+    await expect(childRow).toContainText(/所属节点已禁用|所属节点不可达/);
 
-      const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
-      await expect(workspace).toBeVisible({ timeout: 30_000 });
-      await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, { timeout: 30_000 });
-      await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
+    const directRow = semanticBindingRow(workspace, "mt5788@2B");
+    await expect(directRow).toBeVisible({ timeout: 20_000 });
+    await expect(directRow).toContainText("所属节点已禁用");
 
-      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-      const childRow = semanticBindingRow(workspace, "sc8562@6E");
-      await expect(childRow).toBeVisible({ timeout: 20_000 });
-      await expect(childRow).toContainText(/所属节点已禁用|所属节点不可达/);
-
-      const directRow = semanticBindingRow(workspace, "mt5788@2B");
-      await expect(directRow).toBeVisible({ timeout: 20_000 });
-      await expect(directRow).toContainText("所属节点已禁用");
-
-      const enablementButton = workspace.getByRole("button", { name: /节点启用/ });
-      if (await enablementButton.isVisible().catch(() => false)) {
-        await enablementButton.click();
-        const enablementDialog = page.getByRole("dialog", { name: "节点启用状态" });
-        await expect(enablementDialog).toBeVisible();
-        await expect(enablementDialog).toContainText(/已禁用|不可达/);
-        await enablementDialog.getByRole("button", { name: "取消" }).click();
-      }
-
-      await recordOperationEvidence({
-        operationId: "PARAM-ENABLE-VISIBLE-001",
-        title: "workbench no-effect notice and topology enablement model",
-        status: "passed",
-        role: "Admin",
-        route: `/parameters?project=${projectId}`,
-        page,
-        testInfo,
-        assertions: ["ui", "api"],
-        api: [
-          summarizeApiResponse(topologyApi, {
-            method: "GET",
-            path: `/api/v2/projects/${projectId}/config-sets/.../topology?view=effective`,
-            responseSummary: `parent.selfEnabled=${String(parentNode?.enablement?.selfEnabled)}; child.reachable=${String(childNode?.enablement?.reachable)}; direct.selfEnabled=${String(directNode?.enablement?.selfEnabled)}`
-          })
-        ],
-        notes:
-          "Live /parameters workbench (DtsParameterWorkbench) shows no-effect notices. TopologyTree (aria-label=生效拓扑树) is not mounted on this page; tree-model evidence is GET topology?view=effective enablement fields."
-      });
-    } finally {
-      await cleanupSemanticAcceptanceArtifacts({
-        organizationId,
-        projectId,
-        fileNames: createdFileNames
-      });
+    const enablementButton = workspace.getByRole("button", { name: /节点启用/ });
+    if (await enablementButton.isVisible().catch(() => false)) {
+      await enablementButton.click();
+      const enablementDialog = page.getByRole("dialog", { name: "节点启用状态" });
+      await expect(enablementDialog).toBeVisible();
+      await expect(enablementDialog).toContainText(/已禁用|不可达/);
+      await enablementDialog.getByRole("button", { name: "取消" }).click();
     }
+
+    await recordOperationEvidence({
+      operationId: "PARAM-ENABLE-VISIBLE-001",
+      title: "workbench no-effect notice and topology enablement model",
+      status: "passed",
+      role: "Admin",
+      route: `/parameters?project=${enableProjectId}`,
+      page,
+      testInfo,
+      assertions: ["ui", "api"],
+      api: [
+        summarizeApiResponse(topologyApi, {
+          method: "GET",
+          path: `/api/v2/projects/${enableProjectId}/config-sets/.../topology?view=effective`,
+          responseSummary: `parent.selfEnabled=${String(parentNode?.enablement?.selfEnabled)}; child.reachable=${String(childNode?.enablement?.reachable)}; direct.selfEnabled=${String(directNode?.enablement?.selfEnabled)}`
+        })
+      ],
+      notes:
+        "Live /parameters workbench (DtsParameterWorkbench) shows no-effect notices. TopologyTree (aria-label=生效拓扑树) is not mounted on this page; tree-model evidence is GET topology?view=effective enablement fields."
+    });
   });
 
   test("PARAM-ENABLE-GATE-001: structural keys do not block publish gates", async ({ request }, testInfo) => {
@@ -2699,220 +2077,203 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     test.setTimeout(180_000);
     const runSuffix = randomUUID().slice(0, 8);
     const gateProp = `enable_gate_${runSuffix}`;
-    const fileName = `acceptance-enable-gate-${runSuffix}.dts`;
-    const createdFileNames = [fileName];
-    const dtsText = enablementGateDts(runSuffix, gateProp);
+    const enableProjectId = "enable-gate";
 
-    try {
-      const topology = await ensureAuroraSemanticTopology(request);
-      const locatorNeedle = `egate_${runSuffix}@60`;
-      const gateRevision = await attachDedicatedDefaultOverlay(request, {
-        fileName,
-        dtsText,
-        configSetId: topology.configSetId,
-        previousRevisionId: topology.revisionId,
-        revisionReady: async (row) => {
-          const { nodes } = await listEffectiveTopologyNodes(
-            request,
-            topology.configSetId,
-            row.id
-          );
-          return nodes.some((node) => (node.locator ?? "").includes(locatorNeedle));
+    const locatorNeedle = `egate_${runSuffix}@60`;
+    const topology = await ensureDedicatedProjectTopology(request, {
+      projectId: enableProjectId,
+      name: "Enablement gate acceptance",
+      code: "ENABLE-GATE",
+      source: enablementGateSource(runSuffix, gateProp)
+    });
+    const gateRevision = { id: topology.revisionId };
+
+    const reviewList = await request.get(
+      apiRoute(
+        `/api/v2/parameter-spec-review-tasks?status=open&enableProjectId=${encodeURIComponent(enableProjectId)}&configRevisionId=${encodeURIComponent(gateRevision.id)}&limit=100`
+      ),
+      { headers: adminHeaders() }
+    );
+    expect(reviewList.ok()).toBe(true);
+    const reviewBody = (await reviewList.json()) as {
+      items: Array<{
+        id: string;
+        propertyKey?: string | null;
+        sourceEvidence?: { propertyKey?: string };
+      }>;
+    };
+    const statusTasks = reviewBody.items.filter((task) => {
+      const key = (task.propertyKey ?? task.sourceEvidence?.propertyKey ?? "").toLowerCase();
+      return key === "status";
+    });
+    expect(statusTasks, "status overlay must not create spec-review tasks").toHaveLength(0);
+
+    const bindingsApi = await request.get(
+      apiRoute(
+        `/api/v2/projects/${enableProjectId}/parameter-bindings?revisionId=${encodeURIComponent(gateRevision.id)}`
+      ),
+      { headers: adminHeaders() }
+    );
+    expect(bindingsApi.ok()).toBe(true);
+    const bindingsBody = (await bindingsApi.json()) as {
+      items: Array<{ propertyKey: string; locator: string | null }>;
+    };
+    const statusBindings = bindingsBody.items.filter(
+      (item) => item.propertyKey === "status" && (item.locator ?? "").includes(locatorNeedle)
+    );
+    expect(statusBindings, "status must not become a parameter binding").toHaveLength(0);
+    expect(
+      bindingsBody.items.some((item) => item.propertyKey === gateProp),
+      "unmatched overlay keys stay review evidence, not recognized bindings"
+    ).toBe(false);
+
+    const { topologyApi, nodes } = await listEffectiveTopologyNodes(
+      request,
+      topology.configSetId,
+      gateRevision.id,
+      enableProjectId
+    );
+    const gateNode = nodes.find((node) => (node.locator ?? "").includes(locatorNeedle));
+    expect(gateNode?.enablement?.selfEnabled, "disabled overlay node stays selfEnabled false").toBe(
+      false
+    );
+
+    const gateDb = await withPgClient(async (client) => {
+      const revision = await client.query<{ status: string }>(
+        `select status from dts_config_revisions where id = $1`,
+        [gateRevision.id]
+      );
+      const structuralOpen = await client.query<{ count: string }>(
+        `
+        select count(*)::text as count
+        from parameter_spec_review_tasks t
+        where t.organization_id = $1
+          and t.status = 'open'
+          and (
+            lower(coalesce(t.source_evidence->>'propertyKey', '')) = any($2::text[])
+            or coalesce(t.source_evidence->>'propertyKey', '') like '#%'
+          )
+          and (
+            coalesce(nullif(t.config_revision_id, ''), nullif(t.source_evidence->>'configRevisionId', '')) = $3
+            or (
+              t.blocker_scope = 'project'
+              and coalesce(nullif(t.project_id, ''), nullif(t.source_evidence->>'enableProjectId', '')) = $4
+            )
+          )
+        `,
+        [organizationId, STRUCTURAL_REVIEW_PROPERTY_KEYS, gateRevision.id, enableProjectId]
+      );
+      const gateCounts = await client.query<{
+        open_spec_reviews: string;
+        unmatched_occurrences: string;
+      }>(
+        `
+        select
+          count(*) filter (
+            where coalesce(t.source_evidence->>'propertyKey', '') <> all($2::text[])
+              and coalesce(t.source_evidence->>'propertyKey', '') not like '#%'
+          )::text as open_spec_reviews,
+          count(*) filter (
+            where coalesce(t.source_evidence->>'propertyKey', '') <> all($2::text[])
+              and coalesce(t.source_evidence->>'propertyKey', '') not like '#%'
+              and (
+                coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
+                or coalesce(t.source_evidence->>'inferred', '') = 'true'
+              )
+          )::text as unmatched_occurrences
+        from parameter_spec_review_tasks t
+        where t.organization_id = $1
+          and t.status = 'open'
+          and (
+            (
+              t.blocker_scope = 'revision'
+              and coalesce(nullif(t.config_revision_id, ''), nullif(t.source_evidence->>'configRevisionId', '')) = $3
+            )
+            or (
+              t.blocker_scope = 'project'
+              and coalesce(nullif(t.project_id, ''), nullif(t.source_evidence->>'enableProjectId', '')) = $4
+            )
+            or t.blocker_scope = 'platform'
+          )
+        `,
+        [organizationId, STRUCTURAL_REVIEW_PROPERTY_KEYS, gateRevision.id, enableProjectId]
+      );
+      const dismissed = await client.query<{ count: string }>(
+        `
+        select count(*)::text as count
+        from parameter_spec_review_tasks
+        where organization_id = $1
+          and status = 'dismissed'
+          and reason = 'systemic:structural-property-not-a-parameter'
+        `,
+        [organizationId]
+      );
+      const cutover = await client.query<{ migration_run_id: string }>(
+        `
+        select migration_run_id
+        from parameter_identity_cutovers
+        where migration_run_id = $1
+        `,
+        [disposableRuntime.migrationRunId]
+      );
+      return {
+        revisionStatus: revision.rows[0]?.status ?? null,
+        structuralOpen: Number(structuralOpen.rows[0]?.count ?? 0),
+        openSpecReviews: Number(gateCounts.rows[0]?.open_spec_reviews ?? 0),
+        unmatchedOccurrences: Number(gateCounts.rows[0]?.unmatched_occurrences ?? 0),
+        dismissedSystemic: Number(dismissed.rows[0]?.count ?? 0),
+        cutoverRunId: cutover.rows[0]?.migration_run_id ?? null
+      };
+    });
+
+    expect(gateDb.revisionStatus, "structural unmatched must not invalidate the ingested revision").not.toBe(
+      "invalid"
+    );
+    expect(gateDb.structuralOpen, "no open structural spec-review tasks for this overlay").toBe(0);
+    expect(
+      gateDb.cutoverRunId,
+      "disposable post-cutover finalize already succeeded; structural reviews must not block migration finalize"
+    ).toBe(disposableRuntime.migrationRunId);
+
+    await recordOperationEvidence({
+      operationId: "PARAM-ENABLE-GATE-001",
+      title: "structural keys do not block publish gates",
+      status: "passed",
+      role: "Admin",
+      route: `/parameters?project=${enableProjectId}`,
+      testInfo,
+      assertions: ["api", "db"],
+      api: [
+        summarizeApiResponse(reviewList, {
+          method: "GET",
+          path: "/api/v2/parameter-spec-review-tasks",
+          responseSummary: `openStatusTasks=${statusTasks.length}; openTasks=${reviewBody.items.length}`
+        }),
+        summarizeApiResponse(bindingsApi, {
+          method: "GET",
+          path: `/api/v2/projects/${enableProjectId}/parameter-bindings`,
+          responseSummary: `statusBindingsForGateNode=${statusBindings.length}`
+        }),
+        summarizeApiResponse(topologyApi, {
+          method: "GET",
+          path: `/api/v2/projects/${enableProjectId}/config-sets/.../topology?view=effective`,
+          responseSummary: `gate.selfEnabled=${String(gateNode?.enablement?.selfEnabled)}`
+        })
+      ],
+      db: [
+        {
+          table: "parameter_spec_review_tasks, dts_config_revisions, parameter_identity_cutovers",
+          predicate: `revision=${gateRevision.id}; structuralKeys excluded from semantic gate`,
+          observed: `revisionStatus=${gateDb.revisionStatus}; structuralOpen=${gateDb.structuralOpen}; openSpecReviews=${gateDb.openSpecReviews}; unmatchedOccurrences=${gateDb.unmatchedOccurrences}; dismissedSystemic=${gateDb.dismissedSystemic}; cutover=${gateDb.cutoverRunId}`,
+          rowCount: 1
         }
-      });
-
-      const reviewList = await request.get(
-        apiRoute(
-          `/api/v2/parameter-spec-review-tasks?status=open&projectId=${encodeURIComponent(projectId)}&configRevisionId=${encodeURIComponent(gateRevision.id)}&limit=100`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(reviewList.ok()).toBe(true);
-      const reviewBody = (await reviewList.json()) as {
-        items: Array<{
-          id: string;
-          propertyKey?: string | null;
-          sourceEvidence?: { propertyKey?: string };
-        }>;
-      };
-      const statusTasks = reviewBody.items.filter((task) => {
-        const key = (task.propertyKey ?? task.sourceEvidence?.propertyKey ?? "").toLowerCase();
-        return key === "status";
-      });
-      expect(statusTasks, "status overlay must not create spec-review tasks").toHaveLength(0);
-
-      const bindingsApi = await request.get(
-        apiRoute(
-          `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(gateRevision.id)}`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(bindingsApi.ok()).toBe(true);
-      const bindingsBody = (await bindingsApi.json()) as {
-        items: Array<{ propertyKey: string; locator: string | null }>;
-      };
-      const statusBindings = bindingsBody.items.filter(
-        (item) => item.propertyKey === "status" && (item.locator ?? "").includes(locatorNeedle)
-      );
-      expect(statusBindings, "status must not become a parameter binding").toHaveLength(0);
-      expect(
-        bindingsBody.items.some((item) => item.propertyKey === gateProp),
-        "unmatched overlay keys stay review evidence, not recognized bindings"
-      ).toBe(false);
-
-      const { topologyApi, nodes } = await listEffectiveTopologyNodes(
-        request,
-        topology.configSetId,
-        gateRevision.id
-      );
-      const gateNode = nodes.find((node) => (node.locator ?? "").includes(locatorNeedle));
-      expect(gateNode?.enablement?.selfEnabled, "disabled overlay node stays selfEnabled false").toBe(
-        false
-      );
-
-      const gateDb = await withPgClient(async (client) => {
-        const revision = await client.query<{ status: string }>(
-          `select status from dts_config_revisions where id = $1`,
-          [gateRevision.id]
-        );
-        const structuralOpen = await client.query<{ count: string }>(
-          `
-          select count(*)::text as count
-          from parameter_spec_review_tasks t
-          where t.organization_id = $1
-            and t.status = 'open'
-            and (
-              lower(coalesce(t.source_evidence->>'propertyKey', '')) = any($2::text[])
-              or coalesce(t.source_evidence->>'propertyKey', '') like '#%'
-            )
-            and (
-              coalesce(nullif(t.config_revision_id, ''), nullif(t.source_evidence->>'configRevisionId', '')) = $3
-              or (
-                t.blocker_scope = 'project'
-                and coalesce(nullif(t.project_id, ''), nullif(t.source_evidence->>'projectId', '')) = $4
-              )
-            )
-          `,
-          [organizationId, STRUCTURAL_REVIEW_PROPERTY_KEYS, gateRevision.id, projectId]
-        );
-        const gateCounts = await client.query<{
-          open_spec_reviews: string;
-          unmatched_occurrences: string;
-        }>(
-          `
-          select
-            count(*) filter (
-              where coalesce(t.source_evidence->>'propertyKey', '') <> all($2::text[])
-                and coalesce(t.source_evidence->>'propertyKey', '') not like '#%'
-            )::text as open_spec_reviews,
-            count(*) filter (
-              where coalesce(t.source_evidence->>'propertyKey', '') <> all($2::text[])
-                and coalesce(t.source_evidence->>'propertyKey', '') not like '#%'
-                and (
-                  coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
-                  or coalesce(t.source_evidence->>'inferred', '') = 'true'
-                )
-            )::text as unmatched_occurrences
-          from parameter_spec_review_tasks t
-          where t.organization_id = $1
-            and t.status = 'open'
-            and (
-              (
-                t.blocker_scope = 'revision'
-                and coalesce(nullif(t.config_revision_id, ''), nullif(t.source_evidence->>'configRevisionId', '')) = $3
-              )
-              or (
-                t.blocker_scope = 'project'
-                and coalesce(nullif(t.project_id, ''), nullif(t.source_evidence->>'projectId', '')) = $4
-              )
-              or t.blocker_scope = 'platform'
-            )
-          `,
-          [organizationId, STRUCTURAL_REVIEW_PROPERTY_KEYS, gateRevision.id, projectId]
-        );
-        const dismissed = await client.query<{ count: string }>(
-          `
-          select count(*)::text as count
-          from parameter_spec_review_tasks
-          where organization_id = $1
-            and status = 'dismissed'
-            and reason = 'systemic:structural-property-not-a-parameter'
-          `,
-          [organizationId]
-        );
-        const cutover = await client.query<{ migration_run_id: string }>(
-          `
-          select migration_run_id
-          from parameter_identity_cutovers
-          where migration_run_id = $1
-          `,
-          [disposableRuntime.migrationRunId]
-        );
-        return {
-          revisionStatus: revision.rows[0]?.status ?? null,
-          structuralOpen: Number(structuralOpen.rows[0]?.count ?? 0),
-          openSpecReviews: Number(gateCounts.rows[0]?.open_spec_reviews ?? 0),
-          unmatchedOccurrences: Number(gateCounts.rows[0]?.unmatched_occurrences ?? 0),
-          dismissedSystemic: Number(dismissed.rows[0]?.count ?? 0),
-          cutoverRunId: cutover.rows[0]?.migration_run_id ?? null
-        };
-      });
-
-      expect(gateDb.revisionStatus, "structural unmatched must not invalidate the ingested revision").not.toBe(
-        "invalid"
-      );
-      expect(gateDb.structuralOpen, "no open structural spec-review tasks for this overlay").toBe(0);
-      expect(
-        gateDb.cutoverRunId,
-        "disposable post-cutover finalize already succeeded; structural reviews must not block migration finalize"
-      ).toBe(disposableRuntime.migrationRunId);
-
-      await recordOperationEvidence({
-        operationId: "PARAM-ENABLE-GATE-001",
-        title: "structural keys do not block publish gates",
-        status: "passed",
-        role: "Admin",
-        route: `/parameters?project=${projectId}`,
-        testInfo,
-        assertions: ["api", "db"],
-        api: [
-          summarizeApiResponse(reviewList, {
-            method: "GET",
-            path: "/api/v2/parameter-spec-review-tasks",
-            responseSummary: `openStatusTasks=${statusTasks.length}; openTasks=${reviewBody.items.length}`
-          }),
-          summarizeApiResponse(bindingsApi, {
-            method: "GET",
-            path: `/api/v2/projects/${projectId}/parameter-bindings`,
-            responseSummary: `statusBindingsForGateNode=${statusBindings.length}`
-          }),
-          summarizeApiResponse(topologyApi, {
-            method: "GET",
-            path: `/api/v2/projects/${projectId}/config-sets/.../topology?view=effective`,
-            responseSummary: `gate.selfEnabled=${String(gateNode?.enablement?.selfEnabled)}`
-          })
-        ],
-        db: [
-          {
-            table: "parameter_spec_review_tasks, dts_config_revisions, parameter_identity_cutovers",
-            predicate: `revision=${gateRevision.id}; structuralKeys excluded from semantic gate`,
-            observed: `revisionStatus=${gateDb.revisionStatus}; structuralOpen=${gateDb.structuralOpen}; openSpecReviews=${gateDb.openSpecReviews}; unmatchedOccurrences=${gateDb.unmatchedOccurrences}; dismissedSystemic=${gateDb.dismissedSystemic}; cutover=${gateDb.cutoverRunId}`,
-            rowCount: 1
-          }
-        ],
-        notes:
-          "API+DB: overlay with status on a unique node creates no status spec-review task or binding. Semantic gate counts exclude STRUCTURAL_PROPERTY_KEYS so structural unmatched does not fail-close candidate promotion. Disposable runtime already finalized cutover (0068 dismisses pre-existing structural tasks with systemic:structural-property-not-a-parameter; dismissedSystemic may be 0 when seed ingest ran after 0068)."
-      });
-    } finally {
-      await cleanupSemanticAcceptanceArtifacts({
-        organizationId,
-        projectId,
-        fileNames: createdFileNames
-      });
-    }
+      ],
+      notes:
+        "API+DB: overlay with status on a unique node creates no status spec-review task or binding. Semantic gate counts exclude STRUCTURAL_PROPERTY_KEYS so structural unmatched does not fail-close candidate promotion. Disposable runtime already finalized cutover (0068 dismisses pre-existing structural tasks with systemic:structural-property-not-a-parameter; dismissedSystemic may be 0 when seed ingest ran after 0068)."
+    });
   });
 
-  test("PARAM-ENABLE-TOGGLE-001: disable with reason shares working tip with binding edit", async ({
+  test("PARAM-ENABLE-TOGGLE-001: disable with reason stays independent of the canonical value round", async ({
     page,
     request
   }, testInfo) => {
@@ -3055,8 +2416,41 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       );
       expect(enablementAudit, "disable must write a distinct enablement-changed audit").toBeTruthy();
 
-      const workingTip =
-        enablementBody.item.workingCandidateRevisionId ?? enablementBody.item.candidateRevisionId;
+      // Canonical value drafts pin the Binding's own current source revision, so a
+      // value edit on the same node is created independently of the enablement
+      // candidate (a draft based on the enablement working tip is refused as stale).
+      const bindingBase = await withPgClient(async (client) => {
+        const result = await client.query<{ config_revision_id: string }>(
+          `select config_revision_id from parameter_catalog.project_parameter_values where id = $1`,
+          [scBinding!.currentValueId]
+        );
+        return result.rows[0]?.config_revision_id ?? null;
+      });
+      expect(bindingBase).toBeTruthy();
+      const staleOnEnablementTip = await request.post(
+        apiRoute(
+          `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`
+        ),
+        {
+          headers: authHeadersForRole("software-user"),
+          data: {
+            baseRevisionId: enablementBody.item.candidateRevisionId,
+            targetValue: {
+              kind: "cells",
+              bits: 32,
+              groups: [
+                [
+                  { kind: "phandle", label: "gpio13" },
+                  { kind: "integer", raw: "32", value: "32" },
+                  { kind: "integer", raw: "0", value: "0" }
+                ]
+              ]
+            },
+            reason: bindingReason
+          }
+        }
+      );
+      expect(staleOnEnablementTip.status(), await staleOnEnablementTip.text()).toBe(409);
       const bindingDraft = await request.post(
         apiRoute(
           `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`
@@ -3064,7 +2458,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         {
           headers: authHeadersForRole("software-user"),
           data: {
-            baseRevisionId: workingTip,
+            baseRevisionId: bindingBase,
             targetValue: {
               kind: "cells",
               bits: 32,
@@ -3081,82 +2475,42 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         }
       );
       expect(bindingDraft.status(), await bindingDraft.text()).toBe(201);
-      const bindingDraftBody = (await bindingDraft.json()) as {
-        item: {
-          draftId: string;
-          candidateRevisionId: string;
-          workingCandidateRevisionId?: string;
-          rawText?: string;
-          parameterSpecId: string;
-          projectParameterBindingId: string;
-        };
-      };
-      const bindingTip =
-        bindingDraftBody.item.workingCandidateRevisionId ?? bindingDraftBody.item.candidateRevisionId;
-      // Binding ingest rebases the enablement draft onto a new candidate and can
-      // drop the status proof (same-file serialize of the large aurora overlay).
-      // Re-apply disable on the shared tip so both items submit together.
-      const enablementOnSharedTip = await request.post(
-        apiRoute(`/api/v2/projects/${projectId}/node-enablement-drafts`),
-        {
-          headers: authHeadersForRole("software-user"),
-          data: {
-            logicalNodeId: toggleNode!.logicalNodeId,
-            baseRevisionId: bindingTip,
-            target: "force-disabled",
-            reason: disableReason
-          }
-        }
-      );
-      expect(enablementOnSharedTip.status(), await enablementOnSharedTip.text()).toBe(201);
-      const sharedEnablement = (await enablementOnSharedTip.json()) as {
-        item: {
-          draftId: string;
-          candidateRevisionId: string;
-          workingCandidateRevisionId?: string;
-          rawText?: string;
-          action?: string;
-          logicalNodeId: string;
-        };
-      };
+      const bindingDraftBody = (await bindingDraft.json()) as { item: { draftId: string } };
 
-      const mixedSubmit = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-        headers: authHeadersForRole("software-user"),
-        data: {
-          projectId,
-          items: [
-            {
-              draftId: sharedEnablement.item.draftId,
-              editSubjectKind: "node-enablement",
-              logicalNodeId: sharedEnablement.item.logicalNodeId,
-              action: sharedEnablement.item.action ?? "set",
-              targetValue: sharedEnablement.item.rawText ?? '"disabled"',
-              reason: disableReason
-            },
-            {
-              draftId: bindingDraftBody.item.draftId,
-              projectParameterBindingId: bindingDraftBody.item.projectParameterBindingId,
-              parameterSpecId: bindingDraftBody.item.parameterSpecId,
-              action: "set",
-              targetValue: bindingDraftBody.item.rawText ?? "<&gpio13 32 0>",
-              reason: bindingReason
-            }
-          ],
-          assignees: {
-            hardwareCommitterId: "u-wang-jie",
-            softwareCommitterId: "u-sun-mei",
-            softwareUserId: "u-liu-min"
-          }
-        }
+      // Submitting the value round reviews only the value; the enablement draft stays
+      // pending and is never swept into the canonical request.
+      const valueSubmit = await request.post(
+        apiRoute(
+          `/api/v2/projects/${projectId}/parameter-value-drafts/${encodeURIComponent(bindingDraftBody.item.draftId)}/submit`
+        ),
+        { headers: authHeadersForRole("software-user"), data: { assignedToUserId: "u-sun-mei" } }
+      );
+      expect(valueSubmit.status(), await valueSubmit.text()).toBe(201);
+      const valueRequest = ((await valueSubmit.json()) as { item: { id: string; bindingId: string; status: string } }).item;
+      expect(valueRequest).toMatchObject({ bindingId: scBinding!.id, status: "pending" });
+      const enablementStillPending = await withPgClient(async (client) => {
+        const result = await client.query<{ edit_subject_kind: string; logical_node_id: string | null }>(
+          `select edit_subject_kind, logical_node_id from parameter_drafts where id = $1`,
+          [enablementBody.item.draftId]
+        );
+        return result.rows[0] ?? null;
       });
-      expect(
-        mixedSubmit.status(),
-        `mixed enablement+binding submit must not 409 mixed-working-tips: ${await mixedSubmit.text()}`
-      ).toBe(201);
+      expect(enablementStillPending).toEqual({
+        edit_subject_kind: "node-enablement",
+        logical_node_id: toggleNode!.logicalNodeId
+      });
+      // Leave no open request on the shared fixture Binding.
+      const withdrawn = await request.post(
+        apiRoute(
+          `/api/v2/projects/${projectId}/parameter-value-change-requests/${encodeURIComponent(valueRequest.id)}/withdraw`
+        ),
+        { headers: authHeadersForRole("software-user"), data: {} }
+      );
+      expect(withdrawn.ok(), await withdrawn.text()).toBe(true);
 
       await recordOperationEvidence({
         operationId: "PARAM-ENABLE-TOGGLE-001",
-        title: "disable with reason shares working tip with binding edit",
+        title: "disable with reason stays independent of the canonical value round",
         status: "passed",
         role: "Software User",
         route: `/parameters?project=${projectId}`,
@@ -3167,22 +2521,22 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           summarizeApiResponse(enablementResponse, {
             method: "POST",
             path: `/api/v2/projects/${projectId}/node-enablement-drafts`,
-            responseSummary: `draft=${enablementBody.item.draftId}; tip=${workingTip}`
+            responseSummary: `draft=${enablementBody.item.draftId}; candidate=${enablementBody.item.candidateRevisionId}`
+          }),
+          summarizeApiResponse(staleOnEnablementTip, {
+            method: "POST",
+            path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
+            responseSummary: "value draft on the enablement candidate is refused stale"
           }),
           summarizeApiResponse(bindingDraft, {
             method: "POST",
             path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
             responseSummary: `draft=${bindingDraftBody.item.draftId}`
           }),
-          summarizeApiResponse(enablementOnSharedTip, {
+          summarizeApiResponse(valueSubmit, {
             method: "POST",
-            path: `/api/v2/projects/${projectId}/node-enablement-drafts`,
-            responseSummary: `sharedTip=${sharedEnablement.item.candidateRevisionId}`
-          }),
-          summarizeApiResponse(mixedSubmit, {
-            method: "POST",
-            path: "/api/v1/parameter-submission-rounds",
-            responseSummary: "enablement+binding same round; not mixed-working-tips"
+            path: `/api/v2/projects/${projectId}/parameter-value-drafts/.../submit`,
+            responseSummary: `canonical request=${valueRequest.id}; enablement draft stays pending`
           })
         ],
         db: [
@@ -3202,7 +2556,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           }
         ],
         notes:
-          "UI proves disable requires reason + confirmation on labeled seed sc8562. Mixed-round without mixed-working-tips is asserted at API: gpio_int draft on the enablement working tip, then re-apply disable on that shared tip (binding ingest of the large aurora overlay can drop the status proof), then POST /parameter-submission-rounds with both items. Live workbench mixed-round is not used because binding drafts pin loadState.revisionId at POST time and race the preferredRevision reload after enablement ingest."
+          "UI proves disable requires reason + confirmation on labeled seed sc8562 and writes a distinct audit event. Canonical value drafts pin the Binding's own source revision, so a value edit never shares the enablement working tip (stale 409 on the enablement candidate); the value round submits as a single-stage canonical request and the node-enablement draft stays pending on its own review flow."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({
@@ -3219,100 +2573,80 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @acceptance PARAM-ENABLE-GUARD-001
     // @operation PARAM-ENABLE-GUARD-001
     test.setTimeout(180_000);
-    const runSuffix = randomUUID().slice(0, 8);
-    const fileName = `acceptance-enable-guard-${runSuffix}.dts`;
-    const createdFileNames = [fileName];
-    const dtsText = enablementGuardDts();
+    const enableProjectId = "enable-guard";
 
-    try {
-      const topology = await ensureAuroraSemanticTopology(request);
-      const guardRevision = await attachDedicatedDefaultOverlay(request, {
-        fileName,
-        dtsText,
-        configSetId: topology.configSetId,
-        previousRevisionId: topology.revisionId,
-        revisionReady: async (row) => {
-          const { nodes } = await listEffectiveTopologyNodes(
-            request,
-            topology.configSetId,
-            row.id
-          );
-          const guardNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
-          return (
-            guardNode?.enablement?.rawToken === "reserved" ||
-            (guardNode?.enablement?.rawStatus ?? "").includes("reserved")
-          );
-        }
-      });
+    // The non-standard `reserved` token is part of the dedicated project's first
+    // ingested source (canonical source history is immutable after ingest).
+    const topology = await ensureDedicatedProjectTopology(request, {
+      projectId: enableProjectId,
+      name: "Enablement guard acceptance",
+      code: "ENABLE-GUARD",
+      source: withNodeStatus(auroraPrimarySource(), /sc8562@6E\s*\{/, "reserved")
+    });
+    const guardRevision = { id: topology.revisionId };
 
-      const { nodes } = await listEffectiveTopologyNodes(
-        request,
-        topology.configSetId,
-        guardRevision.id
-      );
-      const guardNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
-      expect(guardNode?.enablement?.override ?? guardNode?.enablement?.rawToken).toBeTruthy();
-      expect(
-        guardNode?.enablement?.rawToken === "reserved" ||
-          (guardNode?.enablement?.rawStatus ?? "").includes("reserved")
-      ).toBe(true);
+    const { nodes } = await listEffectiveTopologyNodes(
+      request,
+      topology.configSetId,
+      guardRevision.id,
+      enableProjectId
+    );
+    const guardNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
+    expect(guardNode?.enablement?.override ?? guardNode?.enablement?.rawToken).toBeTruthy();
+    expect(
+      guardNode?.enablement?.rawToken === "reserved" ||
+        (guardNode?.enablement?.rawStatus ?? "").includes("reserved")
+    ).toBe(true);
 
-      await signInBrowserAsRole(
-        page,
-        "admin",
-        `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
-      );
-      await dismissXiaozeHint(page);
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      `${disposableRuntime.frontendUrl}/parameters?project=${enableProjectId}`
+    );
+    await dismissXiaozeHint(page);
 
-      const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
-      await expect(workspace).toBeVisible({ timeout: 30_000 });
-      await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, {
-        timeout: 30_000
-      });
-      await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
+    const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
+    await expect(workspace).toBeVisible({ timeout: 30_000 });
+    await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, {
+      timeout: 30_000
+    });
+    await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
 
-      const enablementDialog = await openWorkbenchEnablementDialog(
-        page,
-        workspace,
-        "gpio_int",
-        /sc8562@6E/
-      );
-      await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
-      await expect(enablementDialog).toContainText(/reserved/);
-      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toHaveCount(0);
-      await expect(enablementDialog.getByRole("button", { name: "校验并加入本轮" })).toHaveCount(0);
+    const enablementDialog = await openWorkbenchEnablementDialog(
+      page,
+      workspace,
+      "gpio_int",
+      /sc8562@6E/
+    );
+    await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
+    await expect(enablementDialog).toContainText(/reserved/);
+    await expect(enablementDialog.getByRole("radio", { name: "启用" })).toHaveCount(0);
+    await expect(enablementDialog.getByRole("button", { name: "校验并加入本轮" })).toHaveCount(0);
 
-      await enablementDialog.getByRole("button", { name: "仍要修改" }).click();
-      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toBeVisible();
-      await enablementDialog.getByRole("radio", { name: "启用" }).click();
-      const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
-      await expect(confirm).toBeDisabled();
-      await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill("Override reserved token");
-      await expect(confirm).toBeDisabled();
-      await enablementDialog
-        .getByRole("checkbox", { name: "我了解将覆盖非标准 status 原文" })
-        .click();
-      await expect(confirm).toBeEnabled();
+    await enablementDialog.getByRole("button", { name: "仍要修改" }).click();
+    await expect(enablementDialog.getByRole("radio", { name: "启用" })).toBeVisible();
+    await enablementDialog.getByRole("radio", { name: "启用" }).click();
+    const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
+    await expect(confirm).toBeDisabled();
+    await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill("Override reserved token");
+    await expect(confirm).toBeDisabled();
+    await enablementDialog
+      .getByRole("checkbox", { name: "我了解将覆盖非标准 status 原文" })
+      .click();
+    await expect(confirm).toBeEnabled();
 
-      await recordOperationEvidence({
-        operationId: "PARAM-ENABLE-GUARD-001",
-        title: "non-standard status requires acknowledgement override",
-        status: "passed",
-        role: "Admin",
-        route: `/parameters?project=${projectId}`,
-        page,
-        testInfo,
-        assertions: ["ui"],
-        notes:
-          "Live DtsNodeEnablementDialog: status=reserved renders the read-only 非标准 status panel; 仍要修改 reveals the editor; 启用 is selected so confirm is not blocked by the disable checkbox; 校验并加入本轮 stays disabled until reason + 我了解将覆盖非标准 status 原文."
-      });
-    } finally {
-      await cleanupSemanticAcceptanceArtifacts({
-        organizationId,
-        projectId,
-        fileNames: createdFileNames
-      });
-    }
+    await recordOperationEvidence({
+      operationId: "PARAM-ENABLE-GUARD-001",
+      title: "non-standard status requires acknowledgement override",
+      status: "passed",
+      role: "Admin",
+      route: `/parameters?project=${enableProjectId}`,
+      page,
+      testInfo,
+      assertions: ["ui"],
+      notes:
+        "Live DtsNodeEnablementDialog: status=reserved renders the read-only 非标准 status panel; 仍要修改 reveals the editor; 启用 is selected so confirm is not blocked by the disable checkbox; 校验并加入本轮 stays disabled until reason + 我了解将覆盖非标准 status 原文."
+    });
   });
 
   // Planned markers (`@acceptance-planned` / `@operation-planned`) declare intended
