@@ -248,6 +248,16 @@ describe("catalog API and mock adapter parity", () => {
     }
   });
 
+  it("returns the same absent conflict decision on both adapters", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ item: null }));
+    const api = createApiCatalogPorts(createParameterCatalogClient({ baseUrl: "", fetchImpl }));
+    const mock = createMockCatalogPorts();
+    for (const ports of [api, mock]) {
+      await expect(ports.catalog.getProjectValueConflictDecision!("project-1", "request-1"))
+        .resolves.toEqual({ item: null });
+    }
+  });
+
   it("replays the closed state corpus with identical derived states", async () => {
     const cases: Array<{
       scenario: CatalogMockScenario;

@@ -12,9 +12,9 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
 
   const pageKeySupported = pageContext?.pageKey ? supportsXiaozeProactiveInsightPage(pageContext.pageKey) : false;
 
-  const fetchSuggestions = useCallback(async (isCurrent: () => boolean) => {
+  const fetchSuggestions = useCallback(async (signal: AbortSignal) => {
     if (!options.enabled || !pageContext?.projectId || !pageKeySupported) {
-      if (isCurrent()) setInsights([]);
+      if (!signal.aborted) setInsights([]);
       return;
     }
 
@@ -24,8 +24,8 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         pageKey: pageContext.pageKey,
         projectId: pageContext.projectId,
         projectName: pageContext.projectName
-      });
-      if (!isCurrent()) return;
+      }, undefined, signal);
+      if (signal.aborted) return;
       setInsights(
         suggestions.map((item) => ({
           id: item.id,
@@ -45,7 +45,8 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         }))
       );
     } catch (error) {
-      if (!isCurrent()) return;
+      // DOMException is not always an Error subclass, so check the name directly.
+      if (signal.aborted || (error as { name?: unknown } | null)?.name === "AbortError") return;
       setInsights([]);
       console.error("Failed to load Xiaoze suggestions.", error);
     }
@@ -59,10 +60,10 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
   ]);
 
   useEffect(() => {
-    let current = true;
-    void fetchSuggestions(() => current);
+    const controller = new AbortController();
+    void fetchSuggestions(controller.signal);
     return () => {
-      current = false;
+      controller.abort();
     };
   }, [fetchSuggestions]);
 

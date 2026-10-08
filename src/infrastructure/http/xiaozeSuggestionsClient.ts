@@ -15,11 +15,12 @@ export type XiaozeSuggestionsContext = {
 
 export async function requestXiaozeSuggestions(
   context: XiaozeSuggestionsContext,
-  apiClient: ApiClient = createDefaultApiClient()
+  apiClient: ApiClient = createDefaultApiClient(),
+  signal?: AbortSignal
 ) {
   const response = parseContractDto(
     xiaozeSuggestResponseSchema,
-    await apiClient.post<unknown>("/api/v1/agent/xiaoze/suggest", { context }),
+    await apiClient.post<unknown>("/api/v1/agent/xiaoze/suggest", { context }, { signal }),
     "XiaozeSuggestResponse"
   );
   return response.suggestions;
