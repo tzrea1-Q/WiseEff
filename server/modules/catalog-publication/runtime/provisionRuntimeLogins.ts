@@ -443,13 +443,21 @@ export async function provisionPublicationRuntimeLogins(
           `grant insert, update, delete on table ${table} to ${quoteIdent(names.api)}`,
         );
       }
-      for (const table of CANONICAL_SOURCE_APPEND_RELATIONS) {
-        await admin.query(`grant insert on table ${table} to ${quoteIdent(names.api)}`);
-      }
       for (const table of CANONICAL_SOURCE_LOCK_RELATIONS) {
+        const relation = await admin.query<{ exists: boolean }>(
+          "select to_regclass($1) is not null as exists", [table],
+        );
+        if (!relation.rows[0]?.exists) continue;
+        if (CANONICAL_SOURCE_APPEND_RELATIONS.some((append) => append === table)) {
+          await admin.query(`grant insert on table ${table} to ${quoteIdent(names.api)}`);
+        }
         await admin.query(`grant update (id) on table ${table} to ${quoteIdent(names.api)}`);
       }
       for (const routine of CANONICAL_SOURCE_READ_FUNCTIONS) {
+        const functionExists = await admin.query<{ exists: boolean }>(
+          "select to_regprocedure($1) is not null as exists", [routine],
+        );
+        if (!functionExists.rows[0]?.exists) continue;
         await admin.query(`revoke execute on function ${routine} from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
         await admin.query(`grant execute on function ${routine} to ${quoteIdent(names.api)}`);
       }

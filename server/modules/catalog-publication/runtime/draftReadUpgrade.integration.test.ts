@@ -19,6 +19,11 @@ describe("existing API LOGIN privilege refresh after a parameter schema upgrade"
       const login = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken: token });
       const api = createPostgresDatabase(login.apiUrl);
       try {
+        expect((await api.query(`select
+          to_regclass('parameter_catalog.project_parameter_source_occurrences') as occurrences,
+          to_regclass('parameter_catalog.project_value_source_pins') as pins,
+          to_regprocedure('parameter_catalog.resolve_current_binding_by_source_occurrence(text,text,text)') as resolver`
+        )).rows[0]).toEqual({ occurrences: null, pins: null, resolver: null });
         await db.query("insert into organizations (id,name) values ('org-draft-upgrade','Draft upgrade')");
         await db.query(`insert into users (id,organization_id,name,email,title)
           values ('user-draft-upgrade','org-draft-upgrade','Editor','draft-upgrade@example.com','Editor')`);
@@ -49,8 +54,29 @@ describe("existing API LOGIN privilege refresh after a parameter schema upgrade"
           .rejects.toMatchObject({ code: "42501" });
         await expect(api.query("delete from parameter_catalog.catalog_releases where false"))
           .rejects.toMatchObject({ code: "42501" });
-        await expect(api.query("insert into parameter_catalog.project_value_source_pins select * from parameter_catalog.project_value_source_pins where false"))
-          .rejects.toMatchObject({ code: "42501" });
+        for (const relation of [
+          "parameter_catalog.project_parameter_source_occurrences",
+          "parameter_catalog.project_value_source_pins",
+          "parameter_catalog.current_project_parameter_bindings",
+        ]) {
+          expect((await api.query(`select
+            has_table_privilege(current_user,$1,'INSERT') as insert,
+            has_table_privilege(current_user,$1,'UPDATE') as update,
+            has_column_privilege(current_user,$1,'id','UPDATE') as lock`, [relation]
+          )).rows[0]).toEqual({ insert: !relation.endsWith("current_project_parameter_bindings"), update: false, lock: true });
+          await expect(api.query(`select id from ${relation} where false for update nowait`)).resolves.toMatchObject({ rowCount: 0 });
+          await expect(api.query(`select id from ${relation} where false for share nowait`)).resolves.toMatchObject({ rowCount: 0 });
+          await expect(api.query(`update ${relation} set project_id=project_id where false`)).rejects.toMatchObject({ code: "42501" });
+          await expect(api.query(`delete from ${relation} where false`)).rejects.toMatchObject({ code: "42501" });
+        }
+        for (const relation of ["project_parameter_source_occurrences", "project_value_source_pins"]) {
+          await expect(api.query(`insert into parameter_catalog.${relation} select * from parameter_catalog.${relation} where false`))
+            .resolves.toMatchObject({ rowCount: 0 });
+        }
+        await expect(api.query("select parameter_catalog.is_replaced_current_binding('missing-binding') as replaced"))
+          .resolves.toMatchObject({ rows: [{ replaced: false }] });
+        await expect(api.query("select parameter_catalog.resolve_current_binding_by_source_occurrence('project-draft-upgrade','missing-occurrence','missing-definition') as binding"))
+          .resolves.toMatchObject({ rows: [{ binding: null }] });
       } finally {
         await api.close();
         const cleanup = await dropLabRuntimeLogins(connectionString, token);
