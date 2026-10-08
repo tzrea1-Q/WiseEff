@@ -17,6 +17,7 @@ import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { createDebugDeviceGatewayRegistry } from "../../server/modules/debugging/gatewayRegistry";
 import { closeSharedPostgresCheckpointerSaversForTests, setupXiaozeCheckpointerTables } from "../../server/modules/agent/xiaoze/durableCheckpointer";
 import { seedCanonicalParameterFixture } from "../../server/modules/agent/testing/canonicalParameterFixture";
+import { canonicalLaneConnectionString } from "./helpers/catalogAcceptanceEnvironment";
 
 // Only the external model is controlled. HTTP/auth, the frontend, ToolRegistry,
 // durable approval/checkpoint, source/draft/request/review writers all stay real.
@@ -112,10 +113,7 @@ async function legacySemanticCounts() {
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!databaseUrl || new URL(databaseUrl).port !== "55438") {
-    throw new Error("Issue 905 browser acceptance requires the dedicated Catalog PostgreSQL lane on port 55438.");
-  }
+  await canonicalLaneConnectionString(905);
   setParameterIdentityMode(null);
   process.env.XIAOZE_DETERMINISTIC = "false";
   database = await createEphemeralTestDatabase("905ui");
