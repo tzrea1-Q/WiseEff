@@ -23,11 +23,12 @@
       "legacy-catalog-table-name": 2
     },
     "e2e/acceptance/parameter-topology.acceptance.spec.ts": {
-      "legacy-catalog-raw-read": 21,
-      "legacy-catalog-route": 22,
-      "legacy-catalog-table-name": 2,
+      "canonical-catalog-raw-access": 7,
+      "legacy-catalog-raw-read": 9,
+      "legacy-catalog-route": 20,
+      "legacy-catalog-table-name": 1,
       "legacy-effective-governance-contract": 6,
-      "legacy-parameter-spec-identifier": 31
+      "legacy-parameter-spec-identifier": 11
     },
     "e2e/acceptance/xiaoze-action.acceptance.spec.ts": {
       "legacy-catalog-raw-read": 2
