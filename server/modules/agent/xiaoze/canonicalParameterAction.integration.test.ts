@@ -3,12 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { EventType } from "@ag-ui/core";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { ApiError } from "../../../shared/http/errors";
 import {
   createPostgresDatabase,
   getRootPostgresPool,
+  type Database,
   type RootDatabase,
 } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
@@ -33,11 +34,23 @@ import {
 } from "../../auth/trustedInvocation";
 import {
   listCanonicalValueChangesForAuth,
+  createCanonicalValueDraft,
+  loadCanonicalBindingPins,
   removeCanonicalValueDraft,
   reviewCanonicalValueChange,
   withdrawCanonicalValueChange,
+  submitCanonicalValueChange,
 } from "../../parameter-bindings/drafts";
 import { loadPublishedCatalog } from "../../parameter-bindings/catalogProjectValueSync";
+import { stabilizeCanonicalBinding } from "../../parameter-bindings/binding";
+import { loadCanonicalSourceSnapshot } from "../../parameter-files/canonicalSource";
+import { compileOrThrow, firstReleaseBundle } from "../../catalog-kernel/runtime/catalogChain.fixture";
+import { refreshAuthoritativeSource } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
+import { installPublishedRelease } from "../../catalog-kernel/install/installer";
+import { DefinitionRevisionId } from "../../parameter-catalog-contract";
+import { parseDtsValue } from "../../dts/valueAst";
+import type { AgentToolResult } from "../types";
 import { appendSourceCommittedValue } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import {
   createLocalObjectStore,
@@ -62,8 +75,6 @@ import {
   type CanonicalParameterFixture,
 } from "../testing/canonicalParameterFixture";
 
-// JSON source writeback remains a separate coverage gap; this canonical-only
-// acceptance intentionally seeds one real DTS source graph.
 const databaseAvailable = Boolean(
   (process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL)?.trim(),
 );
@@ -75,6 +86,11 @@ type XiaozeInstance = {
 };
 
 type SseEvent = { event: string; data: unknown };
+
+type ParameterActionInterceptor = (
+  db: Database,
+  run: () => Promise<AgentToolResult>,
+) => Promise<AgentToolResult>;
 
 function testEnv(connectionString: string) {
   return {
@@ -105,6 +121,7 @@ async function createInstance(input: {
   auth: AuthContext;
   objectStore: ObjectStore;
   model: ReturnType<typeof fakeModelSequence>;
+  parameterAction?: ParameterActionInterceptor;
 }): Promise<XiaozeInstance> {
   const saverHandle = createPostgresCheckpointerSaver({
     connectionString: input.connectionString,
@@ -121,6 +138,19 @@ async function createInstance(input: {
     db: input.db,
     objectStore: input.objectStore,
   });
+  if (input.parameterAction) {
+    const forDatabase = toolRegistry.forDatabase!;
+    toolRegistry.forDatabase = (db, objectStore) => {
+      const registry = forDatabase(db, objectStore);
+      return {
+        ...registry,
+        run: (name, context, payload, authorization) =>
+          name === "action.submitParameterChange"
+            ? input.parameterAction!(db, () => registry.run(name, context, payload, authorization))
+            : registry.run(name, context, payload, authorization),
+      };
+    };
+  }
   const orchestrator = createAgentOrchestrator({ db: input.db, toolRegistry });
   const factory = createXiaozeAgentFactory({
     db: input.db,
@@ -297,6 +327,7 @@ async function resumeAction(input: {
   approvalId: string;
   decision?: "approve" | "reject";
   editedArgs?: Record<string, unknown>;
+  parameterAction?: ParameterActionInterceptor;
 }) {
   const resumedRoot = createPostgresDatabase(input.connectionString);
   const instance = await createInstance({
@@ -304,6 +335,7 @@ async function resumeAction(input: {
     connectionString: input.connectionString,
     auth: input.auth,
     objectStore: input.objectStore,
+    parameterAction: input.parameterAction,
     model: fakeModelSequence([
       { content: "The canonical request has been recorded." },
     ]),
@@ -378,8 +410,8 @@ async function canonicalState(
       where binding_id=$1`,
     [fixture.bindingId],
   );
-  const candidates = await pool.query<{ count: number }>(
-    `select count(*)::int as count
+  const candidates = await pool.query<{ count: number; ids: string[] }>(
+    `select count(*)::int as count, coalesce(array_agg(id order by id), '{}') as ids
        from project_parameter_file_candidates
       where organization_id=$1 and project_id=$2`,
     [fixture.organizationId, fixture.projectId],
@@ -400,6 +432,7 @@ async function canonicalState(
     requests: requests.rows,
     historyCount: history.rows[0]?.count ?? 0,
     candidateCount: candidates.rows[0]?.count ?? 0,
+    candidateIds: candidates.rows[0]?.ids ?? [],
     file: file.rows[0],
   };
 }
@@ -438,6 +471,107 @@ async function sourceBytes(
   return objectStore.get(state.file.storage_key);
 }
 
+async function setupParameterActionFixture(
+  sourceFormat: "dts" | "json",
+  objectStoreWriteKeys: Set<string>,
+) {
+  const configuredUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+  const postgres = configuredUrl ? new URL(configuredUrl) : null;
+  const localLane = postgres?.port === "55438";
+  const ciBackend = process.env.GITHUB_ACTIONS === "true" &&
+    postgres?.hostname === "127.0.0.1" && postgres.port === "5432" &&
+    postgres.pathname === "/wiseeff_l1_server";
+  if (!localLane && !ciBackend) {
+    throw new Error(
+      "Issue 905 acceptance requires lane905 or the isolated CI backend PostgreSQL service.",
+    );
+  }
+  resetSharedPostgresCheckpointerSaverForTests();
+  const database = await createDisposableParameterCatalogDatabase("905agent");
+  const root = createPostgresDatabase(database.url);
+  const catalogLease = await getRootPostgresPool(root)!.connect();
+  await setupXiaozeCheckpointerTables({ mode: "postgres", connectionString: database.url });
+  const storageRoot = await mkdtemp(`${tmpdir()}/wiseeff-905-agent-`);
+  const localObjectStore = createLocalObjectStore(storageRoot);
+  const objectStore: ObjectStore = {
+    ...localObjectStore,
+    put: async (input) => {
+      const stored = await localObjectStore.put(input);
+      objectStoreWriteKeys.add(stored.storageKey);
+      return stored;
+    },
+  };
+  const fixture = await seedCanonicalParameterFixture(root, objectStore, { sourceFormat });
+  objectStoreWriteKeys.clear();
+  await root.query(`insert into parameter_identity_migration_runs (
+      id, mode, status, report, db_snapshot_id, object_snapshot_id, write_lock_confirmed, completed_at
+    ) values ('migration-905-agent-post-cutover', 'apply', 'completed', '{}'::jsonb,
+      'issue-905-agent-fixture', 'issue-905-agent-fixture', true, now())`);
+  await root.query(`insert into parameter_identity_cutovers (id, migration_run_id)
+    values ('cutover-905-agent-post-cutover', 'migration-905-agent-post-cutover')`);
+  return { database, root, catalogLease, storageRoot, objectStore, fixture };
+}
+
+async function driftDefinitionRevision(root: RootDatabase, fixture: CanonicalParameterFixture) {
+  const pool = getRootPostgresPool(root)!;
+  const current = await loadPublishedCatalog(pool);
+  if (!current) throw new Error("Issue 905 published snapshot is unavailable.");
+  const bundle = firstReleaseBundle();
+  const first = structuredClone(bundle.releases[0]!) as Parameters<typeof refreshAuthoritativeSource>[0];
+  if (fixture.sourceFormat === "json") {
+    for (const document of first.documents) {
+      if (document.kind === "subject") {
+        document.content = {
+          id: fixture.subjectId, kind: "configuration-schema", canonicalKey: "wiseeff.issue905.parameters",
+          lifecycle: "active", selector: {
+            kind: "configuration-schema-id", value: "wiseeff.issue905.parameters", provenance: { source: "issue-849" },
+          }, subtype: {}, tombstone: null,
+        };
+      } else if (document.kind === "alias") {
+        document.content.subjectId = fixture.subjectId;
+        document.content.selectorKind = "configuration-schema-id";
+        document.content.normalizedSelector = "wiseeff.issue905.parameters.v1";
+      } else {
+        document.content.subjectId = fixture.subjectId;
+        document.content.revision.matching.selectorKind = "configuration-schema-id";
+        document.content.revision.valueSchema = { type: "number", minimum: 0 };
+      }
+    }
+    refreshAuthoritativeSource(first);
+  }
+  expect(first.manifest.release.digest).toBe(current.release.digest);
+  const next = structuredClone(first);
+  next.manifest.release = {
+    ...first.manifest.release,
+    id: "crel_issue905_definition_drift", version: "1.1.0", sequence: 2,
+    publishedAt: "2026-09-02T00:00:00Z",
+    predecessor: { id: current.release.id, digest: current.release.digest },
+  };
+  const definition = next.documents.find((document) => document.kind === "definition" && document.content.id === fixture.definitionId);
+  if (!definition || definition.kind !== "definition") throw new Error("Issue 905 Definition fixture is unavailable.");
+  definition.content.revision.id = "drev_issue905_definition_drift";
+  definition.content.revision.number += 1;
+  definition.content.revision.documentation = "Issue 905 approved Definition revision drift.";
+  refreshAuthoritativeSource(next);
+  const successor = { ...bundle, targetReleaseId: next.manifest.release.id, releases: [first, next] };
+  const compiled = compileOrThrow(successor);
+  const installed = await installPublishedRelease(pool, {
+    mode: "advance", source: jsonCatalogReleaseSource(successor),
+    expectedCurrent: current.release, expectedTargetDigest: compiled.aggregateDigest,
+  });
+  expect(installed.ok).toBe(true);
+  const snapshot = await loadPublishedCatalog(pool);
+  if (!snapshot) throw new Error("Issue 905 successor snapshot is unavailable.");
+  const advanced = await stabilizeCanonicalBinding(pool, {
+    snapshot, organizationId: fixture.organizationId, projectId: fixture.projectId,
+    logicalNodeId: fixture.binding.logicalNodeId, sourceOccurrenceId: fixture.binding.sourceOccurrenceId,
+    registrationId: fixture.binding.registrationId, definitionId: fixture.binding.definitionId,
+    effectiveRevisionId: DefinitionRevisionId(definition.content.revision.id),
+    expectedEffectiveRevisionId: fixture.binding.effectiveRevisionId,
+  });
+  expect(advanced).toMatchObject({ ok: true, value: { outcome: "committed", binding: { id: fixture.bindingId } } });
+}
+
 describe.skipIf(!databaseAvailable)(
   "Issue 905 canonical Agent parameter action",
   () => {
@@ -450,44 +584,8 @@ describe.skipIf(!databaseAvailable)(
     let catalogLease: { release: () => void } | undefined;
 
     beforeAll(async () => {
-      const configuredUrl =
-        process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-      const postgres = configuredUrl ? new URL(configuredUrl) : null;
-      const localLane = postgres?.port === "55438";
-      const ciBackend = process.env.GITHUB_ACTIONS === "true" &&
-        postgres?.hostname === "127.0.0.1" && postgres.port === "5432" &&
-        postgres.pathname === "/wiseeff_l1_server";
-      if (!localLane && !ciBackend) {
-        throw new Error(
-          "Issue 905 acceptance requires lane905 or the isolated CI backend PostgreSQL service.",
-        );
-      }
-      resetSharedPostgresCheckpointerSaverForTests();
-      database = await createDisposableParameterCatalogDatabase("905agent");
-      root = createPostgresDatabase(database.url);
-      catalogLease = await getRootPostgresPool(root)!.connect();
-      await setupXiaozeCheckpointerTables({
-        mode: "postgres",
-        connectionString: database.url,
-      });
-      storageRoot = await mkdtemp(`${tmpdir()}/wiseeff-905-agent-`);
-      const localObjectStore = createLocalObjectStore(storageRoot);
-      objectStore = {
-        ...localObjectStore,
-        put: async (input) => {
-          const stored = await localObjectStore.put(input);
-          objectStoreWriteKeys.add(stored.storageKey);
-          return stored;
-        },
-      };
-      fixture = await seedCanonicalParameterFixture(root, objectStore);
-      objectStoreWriteKeys.clear();
-      await root.query(`insert into parameter_identity_migration_runs (
-          id, mode, status, report, db_snapshot_id, object_snapshot_id, write_lock_confirmed, completed_at
-        ) values ('migration-905-agent-post-cutover', 'apply', 'completed', '{}'::jsonb,
-          'issue-905-agent-fixture', 'issue-905-agent-fixture', true, now())`);
-      await root.query(`insert into parameter_identity_cutovers (id, migration_run_id)
-        values ('cutover-905-agent-post-cutover', 'migration-905-agent-post-cutover')`);
+      ({ database, root, catalogLease, storageRoot, objectStore, fixture } =
+        await setupParameterActionFixture("dts", objectStoreWriteKeys));
     }, 120_000);
 
     beforeEach(async () => {
@@ -1415,5 +1513,152 @@ describe.skipIf(!databaseAvailable)(
         dts_property_specs: 0,
       });
     });
+  },
+);
+
+describe.skipIf(!databaseAvailable).each(["dts", "json"] as const)(
+  "Issue 905 %s drift after human approval, before Agent execution resumes",
+  (sourceFormat) => {
+    let testFixture: Awaited<ReturnType<typeof setupParameterActionFixture>>;
+    const objectStoreWriteKeys = new Set<string>();
+
+    beforeEach(async () => {
+      testFixture = await setupParameterActionFixture(sourceFormat, objectStoreWriteKeys);
+      expect(await resolveParameterIdentityMode(testFixture.root)).toBe("semantic");
+    }, 120_000);
+
+    afterEach(async () => {
+      setParameterIdentityMode(null);
+      await closeSharedPostgresCheckpointerSaversForTests();
+      testFixture?.catalogLease.release();
+      await testFixture?.root.close();
+      await testFixture?.database.close();
+      if (testFixture?.storageRoot) await rm(testFixture.storageRoot, { recursive: true, force: true });
+      objectStoreWriteKeys.clear();
+    });
+
+    it.each([
+      { drift: "current ProjectValue", reason: "stale-base-value" },
+      { drift: "DefinitionRevision", reason: "approved-source-pin-mismatch" },
+      { drift: "source pin / config revision", reason: "stale-base-revision" },
+    ])("refuses $drift drift with $reason and leaves no Agent artifacts", async ({ drift, reason }) => {
+      const { root, database, fixture, objectStore } = testFixture;
+      const pool = getRootPostgresPool(root)!;
+      const before = await canonicalState(root, fixture);
+      const originalPins = await loadCanonicalBindingPins(root, {
+        organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId,
+      });
+      expect(originalPins?.sourceFormat).toBe(sourceFormat);
+      const pending = await startAction({
+        root, connectionString: database.url, objectStore, auth: fixture.editorAuth,
+        projectId: fixture.projectId, parameterId: fixture.bindingId,
+        targetValue: sourceFormat === "dts" ? "<2300>" : "7",
+      });
+      expect(pending.approval.status).toBe("pending");
+      expect(pending.call.status).toBe("pending_approval");
+      expect(await canonicalState(root, fixture)).toEqual(before);
+      let drifted: Awaited<ReturnType<typeof canonicalState>> | undefined;
+      let refusal: unknown;
+      let executions = 0;
+      const events = await resumeAction({
+        root, connectionString: database.url, objectStore, auth: fixture.editorAuth,
+        threadId: pending.threadId, approvalId: pending.approvalId,
+        parameterAction: async (tx, run) => {
+          executions += 1;
+          expect(await getAgentApproval(tx, fixture.organizationId, pending.approvalId)).toMatchObject({
+            status: "approved", decidedByUserId: fixture.editorAuth.user.id,
+          });
+          const snapshot = await loadPublishedCatalog(pool);
+          if (!snapshot || !before.current) throw new Error("Issue 905 canonical source is unavailable.");
+          const refusalSink = createTrustedRefusalAuditSink(root);
+          if (drift === "current ProjectValue") {
+            const appended = await appendSourceCommittedValue(pool, {
+              snapshot, binding: fixture.binding, definitionRevisionId: fixture.binding.effectiveRevisionId,
+              source: { sourceRef: fixture.sourceRef, configRevisionId: fixture.configRevisionId },
+              payload: { kind: "number", value: Number(before.current.value) }, expectedTip: fixture.binding.currentValueId,
+            });
+            expect(appended).toMatchObject({ ok: true, value: { outcome: "committed" } });
+            expect((await pool.query<{ format: string }>(
+              `select format from project_parameter_file_candidates where organization_id=$1 and project_id=$2`,
+              [fixture.organizationId, fixture.projectId],
+            )).rows).toEqual([{ format: sourceFormat }]);
+            const state = await canonicalState(root, fixture);
+            const request = state.requests.find((entry) => entry.status === "pending");
+            if (!request) throw new Error("Issue 905 drift fixture request is unavailable.");
+            await reviewCanonicalValueChange(root, fixture.reviewerAuth, {
+              projectId: fixture.projectId, requestId: request.id, decision: "reject",
+              note: "Close the current-value drift fixture request.",
+            }, { invocation: createUserInvocation(fixture.reviewerAuth), refusalSink, traceId: `drift-close-${randomUUID()}` });
+          } else if (drift === "DefinitionRevision") {
+            await driftDefinitionRevision(root, fixture);
+          } else {
+            const invocation = createUserInvocation(fixture.editorAuth);
+            const draft = await createCanonicalValueDraft(root, fixture.editorAuth, {
+              projectId: fixture.projectId, bindingId: fixture.bindingId,
+              baseRevisionId: fixture.configRevisionId, baseCurrentValueId: fixture.currentValueId,
+              ...(sourceFormat === "json"
+                ? { sourceTarget: { format: "json" as const, sourceText: "6" } }
+                : { targetValue: parseDtsValue("iin_max", "<1900>").value }),
+              reason: "Advance the real source revision before the approved Agent resumes.",
+            }, { objectStore, invocation, requestId: `drift-draft-${randomUUID()}`, refusalSink });
+            const request = await submitCanonicalValueChange(root, fixture.editorAuth, {
+              projectId: fixture.projectId, draftId: draft.id, invocation,
+              requestId: `drift-submit-${randomUUID()}`, refusalSink,
+            });
+            const applied = await reviewCanonicalValueChange(root, fixture.reviewerAuth, {
+              projectId: fixture.projectId, requestId: request.id, decision: "approve",
+            }, {
+              objectStore, snapshot, invocation: createUserInvocation(fixture.reviewerAuth),
+              refusalSink, traceId: `drift-review-${randomUUID()}`,
+            });
+            expect(applied).toMatchObject({ status: "approved", applyOutcome: "committed" });
+          }
+          const pins = await loadCanonicalBindingPins(root, {
+            organizationId: fixture.organizationId, projectId: fixture.projectId, bindingId: fixture.bindingId,
+          });
+          expect(pins).not.toBeNull();
+          if (drift === "current ProjectValue") {
+            expect(pins!.currentValueId).not.toBe(originalPins!.currentValueId);
+            expect(pins!.configRevisionId).toBe(originalPins!.configRevisionId);
+            expect(pins!.definitionRevisionId).toBe(originalPins!.definitionRevisionId);
+          } else if (drift === "DefinitionRevision") {
+            expect(pins!.definitionRevisionId).not.toBe(originalPins!.definitionRevisionId);
+            expect(pins!.currentValueId).toBe(originalPins!.currentValueId);
+            expect(pins!.sourcePinId).toBe(originalPins!.sourcePinId);
+            expect(pins!.configRevisionId).toBe(originalPins!.configRevisionId);
+          } else {
+            expect(pins!.configRevisionId).not.toBe(originalPins!.configRevisionId);
+            expect(pins!.sourcePinId).not.toBe(originalPins!.sourcePinId);
+          }
+          drifted = await canonicalState(root, fixture);
+          objectStoreWriteKeys.clear();
+          try {
+            return await run();
+          } catch (error) {
+            refusal = error;
+            throw error;
+          }
+        },
+      });
+      expect(executions).toBe(1);
+      expect(refusal).toBeInstanceOf(ApiError);
+      expect(refusal).toMatchObject({ code: "CONFLICT", details: { reason } });
+      expect(events.some((event) => event.event === EventType.RUN_ERROR)).toBe(false);
+      expect(JSON.stringify(events)).toContain("操作未能完成");
+      expect(await getAgentToolCall(root, fixture.organizationId, pending.toolCallId)).toMatchObject({ status: "failed" });
+      expect(await getAgentApproval(root, fixture.organizationId, pending.approvalId)).toMatchObject({
+        status: "approved", decidedByUserId: fixture.editorAuth.user.id,
+      });
+      expect(drifted).toBeDefined();
+      expect(await canonicalState(root, fixture)).toEqual(drifted);
+      expect(drifted!.drafts).toHaveLength(0);
+      expect(drifted!.requests.filter((request) => request.status === "pending")).toHaveLength(0);
+      expect(objectStoreWriteKeys.size).toBe(0);
+      const source = await loadCanonicalSourceSnapshot(root, objectStore, {
+        organizationId: fixture.organizationId, projectId: fixture.projectId,
+        bindingId: fixture.bindingId, projectValueId: drifted!.binding!.current_value_id,
+      });
+      expect(source.manifest.format).toBe(sourceFormat);
+    }, 120_000);
   },
 );

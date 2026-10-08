@@ -269,6 +269,7 @@ export const createPendingSourceCommit = async (
     source_ref: string;
     config_revision_id: string;
     source_pin_id: string;
+    source_format: "dts" | "json";
     file_id: string;
     file_version_id: string;
     member_id: string;
@@ -278,7 +279,7 @@ export const createPendingSourceCommit = async (
     `select binding.organization_id, binding.project_id, binding.definition_id,
             binding.effective_revision_id, binding.catalog_release_id,
             value.id as current_value_id, value.source_ref, value.config_revision_id,
-            pin.id as source_pin_id, pin.file_id, pin.file_version_id,
+            pin.id as source_pin_id, pin.format as source_format, pin.file_id, pin.file_version_id,
             member.id as member_id, member.source_name
        from parameter_catalog.project_parameter_bindings binding
        join parameter_catalog.project_parameter_values value
@@ -317,7 +318,7 @@ export const createPendingSourceCommit = async (
        base_version_id, storage_key, checksum, size_bytes, parsed_index,
        diagnostics, impact, blockers, base_digest, proposed_digest, diff_digest,
        frozen_member_manifest, frozen_binding_manifest
-     ) values ($1,$2,$3,$4,$5,'dts','ready',$6,$7,$8,1,'{}'::jsonb,
+     ) values ($1,$2,$3,$4,$5,$14,'ready',$6,$7,$8,1,'{}'::jsonb,
        '[]'::jsonb,'{}'::jsonb,'[]'::jsonb,$9,$10,$11,$12::jsonb,$13::jsonb)
      on conflict (id) do nothing`,
     [
@@ -334,6 +335,7 @@ export const createPendingSourceCommit = async (
       diffDigest,
       JSON.stringify(memberManifest),
       JSON.stringify(bindingManifest),
+      row.source_format,
     ],
   );
   await query(

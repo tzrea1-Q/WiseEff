@@ -12,6 +12,27 @@ describe("agent tool registry", () => {
     expect(registry.get("action.submitParameterChange")?.requiresApproval).toBe(true);
   });
 
+  it("describes Binding source formats and the unsupported delete action", () => {
+    const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+    const metadata = registry.require("action.submitParameterChange");
+
+    expect(metadata.description).toContain("DTS");
+    expect(metadata.description).toContain("JSON");
+    expect(metadata.description).toContain("binding id");
+    expect(metadata.description).toContain("explicit user approval");
+    expect(metadata.description).toContain("Delete is not supported");
+    expect(metadata.schema).toMatchObject({
+      properties: {
+        targetValue: { type: "string", description: expect.stringContaining("DTS") }
+      },
+      required: ["projectId", "parameterId", "targetValue", "reason"],
+      additionalProperties: false
+    });
+    expect(metadata.schema).toMatchObject({
+      properties: { targetValue: { description: expect.stringContaining("JSON") } }
+    });
+  });
+
   it("rejects unknown tools", async () => {
     const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
 
