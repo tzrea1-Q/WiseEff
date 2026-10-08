@@ -919,15 +919,8 @@ export async function seedM1BindingRevisionHistory(
       const versionId = alreadyIngested.rows[0]?.version_id;
       if (versionId) {
         await tx.query(
-          `
-          update project_parameter_file_versions
-          set storage_key = $2,
-            size_bytes = $3,
-            parsed_index = $4::jsonb,
-            created_by_user_id = $5
-          where id = $1
-          `,
-          [versionId, stored.storageKey, stored.fileSizeBytes, JSON.stringify(parsedIndex), seedUserId]
+          `update project_parameter_files set current_version_id = $2, updated_at = now() where id = $1`,
+          [primaryFile.id, versionId]
         );
       }
       return;

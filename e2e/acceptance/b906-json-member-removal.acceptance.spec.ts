@@ -32,6 +32,7 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
   page.on("pageerror", (error) => browserErrors.push(error.message));
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: "b906_member_ui", markerPurpose: "b906-member-review"
     });
     runtime = started.runtime;
@@ -224,6 +225,7 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
   page.on("pageerror", (error) => pageErrors.push(error.message));
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: `b906_member_limits_${format}`, markerPurpose: `b906-member-limits-${format}`
     });
     runtime = started.runtime;

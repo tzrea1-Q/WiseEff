@@ -48,6 +48,7 @@ for (const format of ["json", "dts"] as const) {
       test.setTimeout(420_000);
       let outcome: "success" | "failure" = "failure";
       const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+        catalog: "fixture-owned",
         label: `a939_${format}_${workflow}_ineligible`, markerPurpose: `a939-${format}-${workflow}-ineligible`
       });
       const runtime = started.runtime;

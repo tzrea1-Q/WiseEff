@@ -30,6 +30,7 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
     test.setTimeout(180_000);
     if (!environment.databaseUrl) throw new Error("Explicit disposable-runtime parent DATABASE_URL is required");
     runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, {
+      catalog: "fixture-owned",
       label: "issue900_dashboard", apiEnv: { LOG_ANALYSIS_DETERMINISTIC: "true" }
     });
     applyDisposableRuntimeEnv(runtime);

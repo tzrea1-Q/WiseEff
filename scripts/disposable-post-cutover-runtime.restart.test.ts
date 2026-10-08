@@ -14,6 +14,9 @@ const state = vi.hoisted(() => ({
 
 vi.mock("pg", () => ({
   default: {
+    Pool: class {
+      async end() {}
+    },
     Client: class {
       private readonly databaseName: string;
 
@@ -46,6 +49,10 @@ vi.mock("pg", () => ({
 
 vi.mock("../server/shared/database/migrations", () => ({
   applyMigrations: vi.fn(async () => undefined),
+}));
+
+vi.mock("../server/testing/parameterCatalog/seedPublishedCatalog", () => ({
+  seedPublishedCatalog: vi.fn(async () => undefined),
 }));
 
 vi.mock("../server/modules/auth/baselineCatalog", () => ({
@@ -125,8 +132,10 @@ vi.mock("../e2e/acceptance/helpers/nestedRuntimeManifest", async () => {
 });
 
 import {
+  preparePostCutoverDatabase,
   startDisposablePostCutoverRuntime,
 } from "../e2e/acceptance/helpers/disposablePostCutoverRuntime";
+import { seedPublishedCatalog } from "../server/testing/parameterCatalog/seedPublishedCatalog";
 import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV,
   initializeNestedRuntimeManifest,
@@ -165,12 +174,25 @@ afterEach(() => {
   state.stopCalls = 0;
   state.restartPublishAttempts = 0;
   state.identities.clear();
+  vi.clearAllMocks();
+});
+
+describe("disposable runtime Catalog ownership", () => {
+  it.each([undefined, "fixture-owned"] as const)("prepares the selected Catalog owner: %s", async (catalog) => {
+    await preparePostCutoverDatabase(
+      "postgres://owner:password@127.0.0.1:55438/disposable_catalog",
+      "catalog-owner",
+      catalog,
+    );
+    expect(seedPublishedCatalog).toHaveBeenCalledTimes(catalog === "fixture-owned" ? 0 : 1);
+  });
 });
 
 describe("disposable runtime restart failure closure", () => {
   it("latches identity capture failure through dispose and blocks a second restart", async () => {
     state.mode = "identity-failure";
     const runtime = await startFixture();
+    expect(seedPublishedCatalog).toHaveBeenCalledOnce();
 
     await expect(runtime.restartApi()).rejects.toThrow(/identity capture failed/i);
     await expect(runtime.restartApi()).rejects.toThrow(/blocked by an unresolved previous restart failure/i);

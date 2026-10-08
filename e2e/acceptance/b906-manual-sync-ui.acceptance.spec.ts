@@ -48,6 +48,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
   });
   try {
     const started = await startSwappedDisposablePostCutoverRuntime(process.env.DATABASE_URL!, {
+      catalog: "fixture-owned",
       label: `b906_manual_${format}`, markerPurpose: `b906-manual-${format}`
     });
     runtime = started.runtime;

@@ -20,6 +20,7 @@ test.describe("#904 canonical related log reanalysis", () => {
     test.setTimeout(180_000);
     if (!environment.databaseUrl) throw new Error("An explicit dedicated PostgreSQL lane is required.");
     runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, {
+      catalog: "fixture-owned",
       label: "log904_related",
       apiEnv: { LOG_ANALYSIS_DETERMINISTIC: "true" }
     });

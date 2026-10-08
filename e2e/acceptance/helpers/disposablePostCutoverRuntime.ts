@@ -22,6 +22,7 @@ import {
 } from "../../../server/modules/parameter-topology/migration";
 import { createDatabase, type Database } from "../../../server/shared/database/client";
 import { applyMigrations } from "../../../server/shared/database/migrations";
+import { seedPublishedCatalog } from "../../../server/testing/parameterCatalog/seedPublishedCatalog";
 import { ACCEPTANCE_ORGANIZATION, acceptanceCast, chargeLabCast } from "./cast";
 import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV,
@@ -179,6 +180,7 @@ export type StartDisposablePostCutoverRuntimeOptions = {
   apiPort?: number;
   frontendPort?: number;
   markerPurpose?: string;
+  catalog?: "fixture-owned";
   /** Extra env for the disposable API process (does not change topology defaults). */
   apiEnv?: Record<string, string>;
   /** Extra env for the disposable Vite process. */
@@ -466,7 +468,11 @@ async function seedAcceptanceScope(db: Database) {
   }
 }
 
-async function preparePostCutoverDatabase(databaseUrl: string, purpose: string) {
+export async function preparePostCutoverDatabase(
+  databaseUrl: string,
+  purpose: string,
+  catalog?: StartDisposablePostCutoverRuntimeOptions["catalog"],
+) {
   return withDatabase(databaseUrl, async (db) => {
     await applyMigrations(db, migrationsDir);
     await seedAcceptanceScope(db);
@@ -500,6 +506,14 @@ async function preparePostCutoverDatabase(databaseUrl: string, purpose: string) 
       throw new Error(
         "Disposable post-cutover schema must allow null parameter_drafts.project_parameter_binding_id for node-enablement drafts.",
       );
+    }
+    if (catalog !== "fixture-owned") {
+      const pool = new pg.Pool({ connectionString: databaseUrl });
+      try {
+        await seedPublishedCatalog(pool);
+      } finally {
+        await pool.end();
+      }
     }
     await db.query(
       `create table wiseeff_acceptance_test_markers (
@@ -887,7 +901,7 @@ export async function startDisposablePostCutoverRuntime(
     const ownedObjectStore = objectStore;
     const objectStoreRoot = ownedObjectStore.root;
     await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
-    const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose);
+    const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose, options.catalog);
     await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
     verifiedMigrationRunId = migrationRunId;
     if (nestedManifestPath) {
