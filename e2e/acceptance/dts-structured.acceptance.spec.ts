@@ -15,6 +15,11 @@ import {
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
+import { acceptanceCast } from "./helpers/cast";
+import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
+import { createPostgresDatabase } from "../../server/shared/database/client";
+import { makeTestAuthContext } from "../../server/testing/authContext";
+import { installDriverSourceFixture } from "../../server/testing/parameterCatalog/driverSource";
 import {
   bindHardwareUserToProject,
   createAndSubmitBindingDraft,
@@ -521,6 +526,8 @@ test.describe("DTS structured product browser acceptance", () => {
   });
 });
 
+// These tests run against a disposable database that is discarded with the runtime, so they do not
+// run the legacy semantic cleanup (it cannot delete append-only canonical source evidence).
 test.describe("DTS structured post-cutover typed edits", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
   let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
@@ -544,236 +551,81 @@ test.describe("DTS structured post-cutover typed edits", () => {
     await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
-  test("structured edit submit preserves rawText through review merge and CST writeback", async ({
-    page,
-    request
-  }, testInfo) => {
-    // @acceptance PARAM-DTS-EDIT-002
-    // @operation PARAM-DTS-EDIT-002
-    test.setTimeout(180_000);
-    const rawRegValue = "<0x6E>";
-    const normalizedRegValue = "<0x6e>";
-    let fileName = "";
-    let bindingIds: string[] = [];
-
-    try {
-      const chip = await seedIsolatedHexChipBindings(request, {
-        reason: `${descriptionPrefix} hex fidelity binding`,
-        unitAddress: "51"
-      });
-      fileName = chip.reg.fileName;
-      bindingIds = [chip.reg.bindingId];
-
-      const submitted = await createAndSubmitBindingDraft(request, {
-        binding: chip.reg,
-        targetValue: integerCellTarget("0x6E"),
-        reason: `${descriptionPrefix} uppercase hex fidelity`
-      });
-      expect(submitted.draft.rawText).toBe(rawRegValue);
-      expect(submitted.draft.rawText).not.toBe(normalizedRegValue);
-
-      const requestId = submitted.requestId;
-      const crRow = await withPgClient(async (client) => {
-        const result = await client.query<{ target_value: string; status: string }>(
-          `
-          select target_value, status
-          from parameter_change_requests
-          where id = $1
-          `,
-          [requestId]
-        );
-        return result.rows[0];
-      });
-      expect(crRow?.target_value).toBe(rawRegValue);
-      expect(crRow?.target_value).not.toBe(normalizedRegValue);
-
-      let status = crRow?.status ?? "submitted";
-      while (status !== "merged" && status !== "identity-mismatch") {
-        status = await advanceChangeRequestReview(request, requestId);
-      }
-      expect(["merged", "identity-mismatch"]).toContain(status);
-
-      const writebackDeadline = Date.now() + 15_000;
-      let writebackVersion: { id: string; origin: string; version_number: number; file_id: string } | undefined;
-      while (Date.now() < writebackDeadline) {
-        writebackVersion = await withPgClient(async (client) => {
-          const result = await client.query<{ id: string; origin: string; version_number: number; file_id: string }>(
-            `
-            select v.id, v.origin, v.version_number, v.file_id
-            from project_parameter_file_versions v
-            join project_parameter_files f on f.id = v.file_id
-            where f.organization_id = $1
-              and f.project_id = $2
-              and (f.file_name = $3 or f.id = $4 or v.origin = 'writeback')
-              and (v.origin = 'writeback' or v.version_number > 1)
-            order by case when v.origin = 'writeback' then 0 else 1 end, v.version_number desc
-            limit 1
-            `,
-            [organizationId, projectId, fileName, chip.reg.fileId ?? ""]
-          );
-          return result.rows[0];
-        });
-        if (writebackVersion) break;
-        await new Promise((resolve) => setTimeout(resolve, 400));
-      }
-      if (writebackVersion) {
-        const contentResponse = await request.get(
-          apiRoute(
-            `/api/v1/projects/${projectId}/parameter-files/${writebackVersion.file_id}/versions/${writebackVersion.id}/content`
-          ),
-          { headers: adminHeaders() }
-        );
-        expect(contentResponse.ok()).toBe(true);
-        const written = (await contentResponse.body()).toString("utf8");
-        expect(written).toContain(`vendor-id = ${rawRegValue};`);
-        expect(written).not.toContain(`vendor-id = ${normalizedRegValue};`);
-      } else {
-        expect(["merged", "submitted", "hardware_review", "software_review", "software_merge"]).toContain(
-          crRow?.status
-        );
-        expect(crRow?.target_value).toBe(rawRegValue);
-      }
-
-      await recordOperationEvidence({
-        operationId: "PARAM-DTS-EDIT-002",
-        title: "structured edit submit with rawText fidelity through merge writeback",
-        status: "passed",
-        page,
-        testInfo,
-        assertions: ["api", "ui", "db"],
-        api: [
-          {
-            method: "POST",
-            path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
-            status: 201,
-            responseSummary: `draftId=${submitted.draft.draftId}; targetValue=${rawRegValue}; review=${status}`
-          }
-        ],
-        db: [
-          {
-            table: "parameter_change_requests",
-            predicate: `id=${requestId}`,
-            observed: `target_value=${crRow?.target_value}; status=${status}`,
-            rowCount: 1
-          }
-        ],
-        notes: `${descriptionPrefix}: typed binding draft CR used rawText ${rawRegValue} on non-structural vendor-id (reg is structural per ADR-0003). Review status=${status}; writeback version ${writebackVersion?.id ?? "absent"}.`
-      });
-
-      try {
-        await signInBrowserAsRole(
-          page,
-          "admin",
-          disposablePageUrl(disposableRuntime, `/parameter-admin/projects/${projectId}/structure`)
-        );
-        await dismissXiaozeHint(page);
-        const structurePanel = page.getByRole("region", { name: "项目源结构" });
-        const structurePanelVisible = await structurePanel
-          .waitFor({ state: "visible", timeout: 10_000 })
-          .then(() => true)
-          .catch(() => false);
-        if (structurePanelVisible) {
-          const browser = page.getByRole("region", { name: "结构浏览" });
-          await expect(browser).toBeVisible({ timeout: 15_000 });
-          await expect(browser).toContainText("变更集");
-          await expect(browser).toContainText("回写载荷使用 rawText");
-        }
-      } catch {
-        // Projects UI availability is environment-dependent; API/db fidelity above is the required gate.
-      }
-    } finally {
-      if (!page.isClosed()) await page.goto("about:blank");
-      await cleanupDtsUploadedArtifacts(fileName ? [fileName] : [], { bindingIds });
-    }
-  });
-
   test("structural impact kinds when DTS bindings exist", async ({ request }, testInfo) => {
     // @acceptance PARAM-DTS-IMPACT-001
     // @operation PARAM-DTS-IMPACT-001
     test.setTimeout(180_000);
     const configSetName = `acceptance-impact-cs-${randomUUID().slice(0, 8)}`;
     const peerFileName = `acceptance-dts-impact-peer-${randomUUID()}.dts`;
-    let fileName = "";
-    let bindingIds: string[] = [];
 
-    try {
-      const binding = await seedIsolatedBinding(request, {
-        propertyKey: "vendor-id",
-        dts: impactDts,
-        configSetName,
-        nodeLocatorPattern: "chip@6E",
-        rawValuePattern: ".",
-        reason: `${descriptionPrefix} impact binding`,
-        timeoutMs: 60_000
-      });
-      fileName = binding.fileName;
-      bindingIds = [binding.bindingId];
+    const binding = await seedIsolatedBinding(request, {
+      propertyKey: "vendor-id",
+      dts: impactDts,
+      configSetName,
+      nodeLocatorPattern: "chip@6E",
+      rawValuePattern: ".",
+      reason: `${descriptionPrefix} impact binding`,
+      timeoutMs: 60_000
+    });
+    const peer = await uploadDtsFile(request, peerFileName, peerDts);
+    const addPeer = await request.post(
+      apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(binding.configSetId)}/files`),
+      {
+        headers: adminHeaders(),
+        data: { fileId: peer.fileId, role: "thermal", sortOrder: 1 }
+      }
+    );
+    expect([200, 201, 409]).toContain(addPeer.status());
 
-      const peer = await uploadDtsFile(request, peerFileName, peerDts);
-      const addPeer = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(binding.configSetId)}/files`),
-        {
-          headers: adminHeaders(),
-          data: { fileId: peer.fileId, role: "thermal", sortOrder: 1 }
-        }
-      );
-      expect([200, 201, 409]).toContain(addPeer.status());
+    const submitted = await createAndSubmitBindingDraft(request, {
+      binding,
+      targetValue: integerCellTarget("0x6f"),
+      reason: `${descriptionPrefix} impact submit`
+    });
+    const requestId = submitted.requestId;
+    expect(requestId).toBeTruthy();
 
-      const submitted = await createAndSubmitBindingDraft(request, {
-        binding,
-        targetValue: integerCellTarget("0x6f"),
-        reason: `${descriptionPrefix} impact submit`
-      });
-      const requestId = submitted.requestId;
-      expect(requestId).toBeTruthy();
+    const changesResponse = await request.get(
+      apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`),
+      { headers: adminHeaders() }
+    );
+    expect(changesResponse.ok()).toBe(true);
+    const changesBody = (await changesResponse.json()) as {
+      items: Array<{
+        id: string;
+        impact: Array<{ kind: string; name: string; note: string; risk: string }>;
+      }>;
+    };
+    const change = changesBody.items.find((item) => item.id === requestId);
+    expect(change).toBeTruthy();
+    expect(Array.isArray(change?.impact)).toBe(true);
+    expect(change!.impact.length).toBeGreaterThan(0);
+    const kinds = new Set(change!.impact.map((item) => item.kind));
+    expect(kinds.has("parameter")).toBe(true);
+    const structuralKinds = ["compatible", "config-set", "phandle"].filter((kind) => kinds.has(kind));
+    expect(structuralKinds.length).toBeGreaterThan(0);
+    const impactArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-impact.json", {
+      requestId,
+      impact: change!.impact,
+      structuralKinds
+    });
 
-      const changesResponse = await request.get(
-        apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`),
-        { headers: adminHeaders() }
-      );
-      expect(changesResponse.ok()).toBe(true);
-      const changesBody = (await changesResponse.json()) as {
-        items: Array<{
-          id: string;
-          impact: Array<{ kind: string; name: string; note: string; risk: string }>;
-        }>;
-      };
-      const change = changesBody.items.find((item) => item.id === requestId);
-      expect(change).toBeTruthy();
-      expect(Array.isArray(change?.impact)).toBe(true);
-      expect(change!.impact.length).toBeGreaterThan(0);
-      const kinds = new Set(change!.impact.map((item) => item.kind));
-      expect(kinds.has("parameter")).toBe(true);
-      const structuralKinds = ["compatible", "config-set", "phandle"].filter((kind) => kinds.has(kind));
-      expect(structuralKinds.length).toBeGreaterThan(0);
-      const impactArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-impact.json", {
-        requestId,
-        impact: change!.impact,
-        structuralKinds
-      });
-
-      await recordOperationEvidence({
-        operationId: "PARAM-DTS-IMPACT-001",
-        title: "change-request impact with structural kinds when available",
-        status: "passed",
-        testInfo,
-        assertions: ["api"],
-        artifacts: [impactArtifact],
-        api: [
-          summarizeApiResponse(changesResponse, {
-            method: "GET",
-            path: "/api/v1/parameter-change-requests",
-            responseSummary: `kinds=${[...kinds].join(",")} structural=${structuralKinds.join(",") || "none"}`
-          })
-        ],
-        notes: "Semantic CR list hydrates source_file_name and node/prop source_node_path so structural DTS impact attaches after cutover (TD-079)."
-      });
-    } finally {
-      await cleanupDtsUploadedArtifacts(fileName ? [fileName, peerFileName] : [peerFileName], {
-        configSetNames: [configSetName],
-        bindingIds
-      });
-    }
+    await recordOperationEvidence({
+      operationId: "PARAM-DTS-IMPACT-001",
+      title: "change-request impact with structural kinds when available",
+      status: "passed",
+      testInfo,
+      assertions: ["api"],
+      artifacts: [impactArtifact],
+      api: [
+        summarizeApiResponse(changesResponse, {
+          method: "GET",
+          path: "/api/v1/parameter-change-requests",
+          responseSummary: `kinds=${[...kinds].join(",")} structural=${structuralKinds.join(",") || "none"}`
+        })
+      ],
+      notes: "Semantic CR list hydrates source_file_name and node/prop source_node_path so structural DTS impact attaches after cutover (TD-079)."
+    });
   });
 
   test("sensitive-node RBAC denies missing capability; agent critical deny is enforced", async ({
@@ -782,16 +634,12 @@ test.describe("DTS structured post-cutover typed edits", () => {
     // @acceptance PARAM-DTS-RBAC-001
     // @operation PARAM-DTS-RBAC-001
     test.setTimeout(180_000);
-    let fileName = "";
-    let bindingIds: string[] = [];
 
     try {
       await bindHardwareUserToProject(projectId);
       const chip = await seedIsolatedHexChipBindings(request, {
         reason: `${descriptionPrefix} rbac binding`
       });
-      fileName = chip.reg.fileName;
-      bindingIds = [chip.reg.bindingId];
       const locatorPattern = `${chip.reg.nodeLocator || "amba/i2c@1/chip@6E"}*`;
       await insertSensitiveNodeRule({
         id: sensitiveRuleId,
@@ -889,7 +737,199 @@ test.describe("DTS structured post-cutover typed edits", () => {
       await withPgClient(async (client) => {
         await client.query(`delete from dts_sensitive_node_rules where id = $1`, [sensitiveRuleId]);
       });
-      await cleanupDtsUploadedArtifacts(fileName ? [fileName] : [], { bindingIds });
     }
+  });
+});
+
+test.describe("DTS structured canonical typed edits", () => {
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
+
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable DTS structured acceptance database.");
+    }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "dts_struct_canonical",
+      markerPurpose: "dts-structured-canonical",
+      catalog: "fixture-owned"
+    });
+    disposableRuntime = started.runtime;
+    restoreDisposable = started.restore;
+    await seedAcceptanceRoleMatrix();
+    const db = createPostgresDatabase(disposableRuntime.databaseUrl);
+    try {
+      const admin = makeTestAuthContext({
+        userId: acceptanceCast.xuYun.userId,
+        organizationId,
+        permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
+        roles: [{ roleId: "admin", projectId: null }]
+      });
+      await installDriverSourceFixture(db, admin, {
+        subjectId: "csub_acme_power",
+        compatible: "acme,power",
+        businessName: "DTS structured",
+        driverName: "Acme power",
+        idempotencyKey: "dts-structured-acme-power",
+        reason: "PARAM-DTS-EDIT-002 canonical fixture"
+      });
+    } finally {
+      await db.close();
+    }
+  });
+
+  test.afterAll(async ({}, testInfo) => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
+  });
+
+  test("structured edit submit preserves rawText through review merge and CST writeback", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PARAM-DTS-EDIT-002
+    // @operation PARAM-DTS-EDIT-002
+    test.setTimeout(180_000);
+    const rawValue = "<0x6E>";
+    const normalizedValue = "<0x6e>";
+    const fileName = `acceptance-dts-rawtext-${randomUUID().slice(0, 8)}.dts`;
+    const source = (value: string) => `/dts-v1/;
+/ {
+	charger {
+		compatible = "acme,power";
+		iin_max = ${value};
+	};
+};
+`;
+
+    const configSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+      headers: adminHeaders(),
+      data: { name: `acceptance-rawtext-${randomUUID().slice(0, 8)}`, description: "PARAM-DTS-EDIT-002" }
+    });
+    expect(configSet.status(), await configSet.text()).toBe(201);
+    const configSetId = ((await configSet.json()) as { item: { id: string } }).item.id;
+
+    // Canonical Bindings are synced from the first file version after membership, then the new
+    // version stages them (the same two-upload pattern as the canonical value workflow spec).
+    const first = await uploadDtsFile(request, fileName, source("<0x70>"));
+    const member = await request.post(
+      apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
+      { headers: adminHeaders(), data: { fileId: first.fileId, role: "base", sortOrder: 0 } }
+    );
+    expect(member.ok(), await member.text()).toBe(true);
+    await uploadDtsFile(request, fileName, source("<0x70>"));
+
+    const bindingsResponse = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
+      headers: adminHeaders()
+    });
+    expect(bindingsResponse.status(), await bindingsResponse.text()).toBe(200);
+    const bindings = ((await bindingsResponse.json()) as { items: Array<{ id: string; rawValue: string }> }).items;
+    expect(bindings).toHaveLength(1);
+    const binding = bindings[0]!;
+    const baseRevisionId = await withPgClient(async (client) => {
+      const revision = await client.query<{ id: string }>(
+        `select id from dts_config_revisions where config_set_id = $1 order by revision_number desc limit 1`,
+        [configSetId]
+      );
+      return revision.rows[0]?.id;
+    });
+    expect(baseRevisionId, "config set must have a current revision").toBeTruthy();
+
+    const draftResponse = await request.post(
+      apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${binding.id}/drafts`),
+      {
+        headers: authHeadersForRole("software-user"),
+        data: {
+          baseRevisionId,
+          targetValue: integerCellTarget("0x6E"),
+          reason: `${descriptionPrefix} uppercase hex fidelity`
+        }
+      }
+    );
+    expect(draftResponse.status(), await draftResponse.text()).toBe(201);
+    const draft = ((await draftResponse.json()) as { item: { draftId: string; rawText?: string } }).item;
+    expect(draft.rawText ?? rawValue).toBe(rawValue);
+
+    const submitResponse = await request.post(
+      apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts/${draft.draftId}/submit`),
+      {
+        headers: authHeadersForRole("software-user"),
+        data: { assignedToUserId: acceptanceCast.sunMei.userId }
+      }
+    );
+    expect(submitResponse.status(), await submitResponse.text()).toBe(201);
+    const requestId = ((await submitResponse.json()) as { item: { id: string } }).item.id;
+    const requestRow = await withPgClient(async (client) => {
+      const result = await client.query<{ target_value: unknown; status: string }>(
+        `select target_value, status from project_parameter_value_change_requests where id = $1`,
+        [requestId]
+      );
+      return result.rows[0];
+    });
+    // The frozen typed target keeps the operator's spelling (raw 0x6E), not the normalized 0x6e.
+    expect(requestRow?.target_value).toMatchObject({
+      kind: "cells",
+      groups: [[{ kind: "integer", raw: "0x6E", value: "110" }]]
+    });
+
+    const reviewResponse = await request.post(
+      apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/review`),
+      { headers: authHeadersForRole("software-committer"), data: { decision: "approve" } }
+    );
+    expect(reviewResponse.status(), await reviewResponse.text()).toBe(200);
+    expect(((await reviewResponse.json()) as { item: { status: string } }).item.status).toBe("approved");
+
+    const written = await withPgClient(async (client) => {
+      const result = await client.query<{ id: string; file_id: string; version_number: number }>(
+        `select v.id, v.file_id, v.version_number
+           from project_parameter_files f
+           join project_parameter_file_versions v on v.id = f.current_version_id
+          where f.organization_id = $1 and f.project_id = $2 and f.file_name = $3`,
+        [organizationId, projectId, fileName]
+      );
+      return result.rows[0];
+    });
+    expect(written, "approval must write a new current file version").toBeTruthy();
+    expect(written!.version_number).toBeGreaterThan(2);
+    const contentResponse = await request.get(
+      apiRoute(`/api/v1/projects/${projectId}/parameter-files/${written!.file_id}/versions/${written!.id}/content`),
+      { headers: adminHeaders() }
+    );
+    expect(contentResponse.ok()).toBe(true);
+    const content = (await contentResponse.body()).toString("utf8");
+    expect(content).toContain(`iin_max = ${rawValue};`);
+    expect(content).not.toContain(`iin_max = ${normalizedValue};`);
+
+    await recordOperationEvidence({
+      operationId: "PARAM-DTS-EDIT-002",
+      title: "structured edit submit with rawText fidelity through canonical approval writeback",
+      status: "passed",
+      page,
+      testInfo,
+      assertions: ["api", "db"],
+      api: [
+        summarizeApiResponse(draftResponse, {
+          method: "POST",
+          path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
+          responseSummary: `draftId=${draft.draftId}; targetValue=${rawValue}`
+        }),
+        summarizeApiResponse(reviewResponse, {
+          method: "POST",
+          path: `/api/v2/projects/${projectId}/parameter-value-change-requests/.../review`,
+          responseSummary: "approved; source writeback preserved rawText"
+        })
+      ],
+      db: [
+        {
+          table: "project_parameter_value_change_requests",
+          predicate: `id=${requestId}`,
+          observed: `target_value=${JSON.stringify(requestRow?.target_value)}; status=approved`,
+          rowCount: 1
+        }
+      ],
+      notes: `${descriptionPrefix}: typed canonical draft kept rawText ${rawValue}; approval wrote it to the DTS source as ${rawValue}, not ${normalizedValue}.`
+    });
   });
 });

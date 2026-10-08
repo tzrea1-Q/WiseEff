@@ -2,18 +2,15 @@
   "schemaVersion": 1,
   "counts": {
     "e2e/acceptance/hierarchical-modules.acceptance.spec.ts": {
+      "canonical-catalog-raw-access": 1,
       "legacy-catalog-raw-read": 2,
-      "legacy-catalog-sql-write": 3,
+      "legacy-catalog-sql-write": 6,
       "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/knowledge.acceptance.spec.ts": {
       "legacy-catalog-raw-read": 1,
       "legacy-catalog-route": 2,
       "legacy-catalog-sql-write": 3
-    },
-    "e2e/acceptance/parameter-files.acceptance.spec.ts": {
-      "legacy-catalog-raw-read": 1,
-      "legacy-catalog-sql-write": 1
     },
     "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts": {
       "legacy-catalog-raw-read": 2,

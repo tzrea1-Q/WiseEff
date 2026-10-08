@@ -330,7 +330,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PROJ-CONFIG-CONFLICT-001",
     workflow: "C",
-    title: "Source-located three-way conflict arbitration in the project configuration workbench: equal-weight file and UI outcomes with confirm plus optional audit reason, queue advance in source context, eligible bulk resolve with impact preview, open conflicts block candidate activation, and an empty queue keeps the Conflicts dock collapsed.",
+    title: "Canonical source conflict arbitration from the candidate page: equal-weight file and draft outcomes are frozen into the reviewed value change request.",
     required: false
   },
   {
@@ -694,13 +694,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PARAM-FILE-ADMIN-001",
     workflow: "C",
-    title: "Admin uploads a project parameter file, lists versions, and manual sync creates a file_sync draft with source binding.",
+    title: "Admin uploads a project parameter file, lists versions, and manual source sync prepares a proof-bound candidate for review.",
     required: true
   },
   {
     id: "PARAM-FILE-CONFLICT-001",
     workflow: "C",
-    title: "Admin resolves an open file/UI draft conflict by keeping the file or UI value.",
+    title: "Admin resolves a file/UI draft source conflict from the candidate page by keeping the file or UI value.",
     required: true
   },
   {

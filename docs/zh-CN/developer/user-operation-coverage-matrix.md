@@ -59,7 +59,7 @@
 - `PROJ-CONFIG-ACTIVITY-001`：Admin 在同一规范路由打开活动检查器、阅读项目范围审计投影、恢复可定位目标或优雅失败，并验证 toast + 刷新且无常驻审计横幅；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-ACTIVATE-001`：Admin 在同一规范路由验证既有/新文件候选激活、影响确认、过期基 CAS 与不可激活状态；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-OPS-001`：Admin 在同一规范路由验证配置集创建/配置、成员增删（角色/顺序/确认框）、未编组可见性与编入、手动同步任务证据、命令栏导出、空集上传/编入路径（不自动激活）以及非管理员只读保留；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
-- `PROJ-CONFIG-CONFLICT-001`：Admin 在同一规范路由验证源码定位三方冲突裁决（两侧等权、确认+可选审计原因、队列前进）、合格批量预览/裁决、开放冲突阻断候选激活，以及空队列时冲突坞保持折叠；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-CONFLICT-001`：Admin 在规范候选页裁决 file/UI 草稿来源冲突（两侧等权，决定冻结进被审核的请求）；自动化归属 `e2e/acceptance/b906-canonical-conflict-decision.acceptance.spec.ts`。
 - `PROJ-CONFIG-READINESS-001`：PC 1440×900 下，Admin 在同一规范路由验证服务端发布就绪摘要、Issues 坞 remediation、阻断/不可用/过期或本机会话脏时创建/发布失败关闭，以及前端不用客户端计数发明权限；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-BASELINE-001`：PC 1440×900 下，Admin 在同一规范路由验证基线创建/对比/警告确认/发布/恢复预览与原子恢复、已发布 tip 不变与就绪刷新；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-REVISION-GATE-001`：Admin 在配置工作台经拓扑接缝列出/选择真实配置修订并运行校验；`requiresConfirmation` 时发布确认框须勾选风险确认（单元/服务端 + playwright-cli `work/ui-checks/td-057-config-set-revision-gate/`；阻断 Playwright 等 TD-079）。
@@ -104,7 +104,7 @@
 - `MOD-TREE-PARAM-001`：Admin 在 `/parameter-admin` 创建嵌套参数模块、将参数挂到子模块，并按父模块筛选时包含子树（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-DEBUG-001`：Admin 在 `/debugging-admin/nodes` 创建嵌套调试节点模块，父模块筛选包含子模块节点（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
-- `MOD-TREE-AUTHZ-001`：Hardware User 不能变更模块树；Admin 删除仍含子模块或参数的模块时返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `MOD-TREE-AUTHZ-001`：Hardware User 不能变更模块树；Admin 删除仍含子模块或规范目录放置的模块时返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-ATTR-QUEUE-001`：Admin 在 `/parameter-admin` 浏览未分类 compatible 队列，忽略/恢复并写审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-CLASSIFY-001`：Admin 归类 compatible 时预览影响并按范围应用（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-BULK-001`：Admin 批量勾选 compatible 归入同一业务分类（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
@@ -125,9 +125,9 @@
 - `DRV-SCHEMA-002`：仅叠加层声明的 compatible 上传后类型化绑定（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-003`：钉扎已覆盖时拒绝激活叠加层（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-004`：激活时就地升级 provisional，无需重传（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-FILE-UPLOAD-001`：Admin 在 `/parameter-admin/projects` 上传 JSON 参数文件并列出文件与版本（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
-- `PARAM-FILE-SYNC-001`：Admin 手动同步参数文件，当解析值与 DB 当前值不一致时创建 `file_sync` 草稿（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
-- `PARAM-FILE-RESOLVE-001`：Admin 通过 API 裁决 file/UI 草稿冲突（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-UPLOAD-001`：Admin 在 `/parameter-admin/projects` 上传参数文件并列出文件与版本（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-SYNC-001`：Admin 手动来源同步参数文件，生成有序且绑定证明的候选，审核人批准前不改变任何 Catalog 值（`e2e/acceptance/b906-manual-sync-ui.acceptance.spec.ts`）。
+- `PARAM-FILE-RESOLVE-001`：Admin 在候选页裁决 file/UI 草稿来源冲突，保留文件值或 UI 草稿值（`e2e/acceptance/b906-canonical-conflict-decision.acceptance.spec.ts`）。
 - `PARAM-FILE-ROLLBACK-001`：Admin 在配置工作台版本历史经确认框把某版本恢复为当前；插入新回滚指针版本且不倒带历史；操作者显示名而非原始用户 ID（单元/服务端 + playwright-cli `work/ui-checks/param-file-rollback/`；阻断 Playwright 等 TD-079）。
 - `PARAM-SPEC-GOVERN-001`：Admin 检索 ingest 后的规格并决议审核任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-SPEC-VIEW-001`：Admin 默认打开生效目录，显式切换到治理历史，URL 保留所选投影，详情使用同一投影；单测与三视口 playwright-cli 证据先行，共享验收 marker 暂缓。

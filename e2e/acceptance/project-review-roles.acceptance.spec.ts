@@ -10,17 +10,32 @@ import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
 import { acceptanceCast } from "./helpers/cast";
 import {
-  createBindingDraftViaApi,
+  disposablePageUrl,
   integerCellTarget,
-  numericCellDts,
-  seedIsolatedBinding
+  startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime
 } from "./helpers/semanticBindingFixture";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime
+} from "./helpers/disposablePostCutoverRuntime";
+import { createPostgresDatabase } from "../../server/shared/database/client";
+import { makeTestAuthContext } from "../../server/testing/authContext";
+import { installDriverSourceFixture } from "../../server/testing/parameterCatalog/driverSource";
 
 useBrowserDiagnostics(test);
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const adminHeaders = () => authHeadersForRole("admin");
 const databaseUrl = process.env.DATABASE_URL;
+const readinessDts = `/dts-v1/;
+/ {
+  charger {
+    compatible = "acme,power";
+    iin_max = <2300>;
+  };
+};
+`;
 
 async function dismissXiaozeHint(page: Page) {
   const dismiss = page.getByRole("button", { name: "不再提示" });
@@ -106,6 +121,49 @@ test.describe("project review role configuration", () => {
     });
   });
 
+});
+
+test.describe("project review role readiness on a canonical Catalog fixture", () => {
+  let runtime: DisposablePostCutoverRuntime;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
+
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    if (!databaseUrl?.trim()) return;
+    const started = await startSwappedDisposablePostCutoverRuntime(databaseUrl.trim(), {
+      label: "review_readiness",
+      markerPurpose: "review-readiness",
+      catalog: "fixture-owned"
+    });
+    runtime = started.runtime;
+    restoreDisposable = started.restore;
+    await seedAcceptanceRoleMatrix();
+    const db = createPostgresDatabase(runtime.databaseUrl);
+    try {
+      const admin = makeTestAuthContext({
+        userId: acceptanceCast.xuYun.userId,
+        organizationId: "org-chargelab",
+        permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
+        roles: [{ roleId: "admin", projectId: null }]
+      });
+      await installDriverSourceFixture(db, admin, {
+        subjectId: "csub_acme_power",
+        compatible: "acme,power",
+        businessName: "Review readiness",
+        driverName: "Acme power",
+        idempotencyKey: "review-readiness-acme-power",
+        reason: "PROJ-REVIEW-READINESS-001 canonical fixture"
+      });
+    } finally {
+      await db.close();
+    }
+  });
+
+  test.afterAll(async ({}, testInfo) => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
+  });
+
   test("PROJ-REVIEW-READINESS-001: missing review roles block submit and keep staged drafts", async ({
     page,
     request
@@ -113,7 +171,7 @@ test.describe("project review role configuration", () => {
     // @acceptance PROJ-REVIEW-READINESS-001
     // @operation PROJ-REVIEW-READINESS-001
     test.skip(!databaseUrl, "DATABASE_URL is required to initialize a custom project and stage drafts.");
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
 
     const suffix = randomUUID().slice(0, 8);
     const projectId = `t32ready-${suffix}`;
@@ -128,32 +186,68 @@ test.describe("project review role configuration", () => {
     expect(created.status(), await created.text()).toBe(201);
     await markProjectInitialized(projectId);
 
-    const binding = await seedIsolatedBinding(request, {
-      projectId,
-      configSetName: "default",
-      propertyKey: "iin_max",
-      dts: numericCellDts("iin_max", 2300),
-      rawValuePattern: "^<2300>$",
-      nodeLocatorPattern: "td079_cell",
-      reason: `PROJ-REVIEW-READINESS-001 ${suffix}`
+    // Canonical Bindings exist only for registered Catalog subjects: stage the source twice
+    // (initial member, then a new file version) as the canonical value workflow does.
+    const configSets = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+      headers: adminHeaders()
     });
-    const softwareDraft = await createBindingDraftViaApi(request, {
-      binding,
-      targetValue: integerCellTarget("<2400>"),
-      reason: `readiness software-user ${suffix}`,
-      role: "software-user"
+    expect(configSets.status(), await configSets.text()).toBe(200);
+    const configSetId = ((await configSets.json()) as { items: Array<{ id: string; name: string }> }).items.find(
+      (item) => item.name === "default"
+    )?.id;
+    expect(configSetId, "project must be created with a default config set").toBeTruthy();
+    const upload = () =>
+      request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: { fileName: "charger.dts", contentBase64: Buffer.from(readinessDts).toString("base64") }
+      });
+    const first = await upload();
+    expect(first.status(), await first.text()).toBe(201);
+    const member = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`), {
+      headers: adminHeaders(),
+      data: { fileId: ((await first.json()) as { item: { id: string } }).item.id, role: "base", sortOrder: 0 }
     });
-    expect(softwareDraft.status, softwareDraft.bodyText).toBe(201);
-    const adminDraft = await createBindingDraftViaApi(request, {
-      binding,
-      targetValue: integerCellTarget("<2500>"),
-      reason: `readiness admin ${suffix}`,
-      role: "admin"
+    expect(member.ok(), await member.text()).toBe(true);
+    const second = await upload();
+    expect(second.status(), await second.text()).toBe(201);
+
+    const bindingsResponse = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
+      headers: adminHeaders()
     });
-    expect(adminDraft.status, adminDraft.bodyText).toBe(201);
+    expect(bindingsResponse.status(), await bindingsResponse.text()).toBe(200);
+    const bindings = ((await bindingsResponse.json()) as {
+      items: Array<{ id: string }>;
+    }).items;
+    expect(bindings).toHaveLength(1);
+    const binding = bindings[0]!;
+    const baseRevisionId = await withPgClient(async (client) => {
+      const revision = await client.query<{ id: string }>(
+        `select id from dts_config_revisions where config_set_id = $1 order by revision_number desc limit 1`,
+        [configSetId]
+      );
+      return revision.rows[0]?.id;
+    });
+    expect(baseRevisionId, "config set must have a current revision").toBeTruthy();
+    const createDraft = (role: "software-user" | "admin", raw: string, reason: string) =>
+      request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${binding.id}/drafts`), {
+        headers: authHeadersForRole(role),
+        data: {
+          baseRevisionId,
+          targetValue: integerCellTarget(raw),
+          reason
+        }
+      });
+    const softwareDraft = await createDraft("software-user", "<2400>", `readiness software-user ${suffix}`);
+    expect(softwareDraft.status(), await softwareDraft.text()).toBe(201);
+    const adminDraft = await createDraft("admin", "<2500>", `readiness admin ${suffix}`);
+    expect(adminDraft.status(), await adminDraft.text()).toBe(201);
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await signInBrowserAsRole(page, "software-user", `/parameters?project=${encodeURIComponent(projectId)}`);
+    await signInBrowserAsRole(
+      page,
+      "software-user",
+      disposablePageUrl(runtime, `/parameters?project=${encodeURIComponent(projectId)}`)
+    );
     await dismissXiaozeHint(page);
     const softwareTray = page.getByRole("region", { name: "参数修改提交" });
     await expect(softwareTray).toBeVisible({ timeout: 30_000 });
@@ -163,7 +257,11 @@ test.describe("project review role configuration", () => {
     await expect(softwareTray.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
     await expect(softwareTray.getByText(`readiness software-user ${suffix}`)).toBeVisible();
 
-    await signInBrowserAsRole(page, "admin", `/parameters?project=${encodeURIComponent(projectId)}`);
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      disposablePageUrl(runtime, `/parameters?project=${encodeURIComponent(projectId)}`)
+    );
     await dismissXiaozeHint(page);
     const adminTray = page.getByRole("region", { name: "参数修改提交" });
     await expect(adminTray).toBeVisible({ timeout: 30_000 });
@@ -174,7 +272,7 @@ test.describe("project review role configuration", () => {
     await expect(page).toHaveURL(new RegExp(`/parameter-admin/projects/${projectId}/review-roles`));
     await expect(page.getByRole("heading", { name: `${projectId} 项目审核角色配置` })).toBeVisible();
 
-    await page.goto(`/parameters?project=${encodeURIComponent(projectId)}`);
+    await page.goto(disposablePageUrl(runtime, `/parameters?project=${encodeURIComponent(projectId)}`));
     await dismissXiaozeHint(page);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toContainText(
       `readiness admin ${suffix}`,

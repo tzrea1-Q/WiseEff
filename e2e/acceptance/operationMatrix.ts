@@ -721,10 +721,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Open source-located three-way Conflicts arbitration from the workbench task dock; resolve with equal-weight file and UI outcomes plus optional audit reason; advance the queue in source context; preview and apply eligible bulk resolution; prove open conflicts block candidate activation; keep the dock collapsed when the queue is empty.",
+      "Resolve a file/UI draft source conflict from the canonical candidate page with equal-weight file and draft outcomes; the decision is frozen into the reviewed request and the review approves, rejects, withdraws or refuses drift.",
     coverage: "automated",
     acceptanceIds: ["PROJ-CONFIG-CONFLICT-001"],
-    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    specFiles: ["e2e/acceptance/b906-canonical-conflict-decision.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
   },
   {
@@ -1471,7 +1471,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin",
     roles: ["Hardware User", "Admin"],
-    action: "Reject non-admin module tree mutations and block deleting modules that still have children or assigned parameters.",
+    action: "Reject non-admin module tree mutations and block deleting modules that still have children or canonical Catalog placements.",
     coverage: "automated",
     acceptanceIds: ["MOD-TREE-AUTHZ-001"],
     specFiles: ["e2e/acceptance/hierarchical-modules.acceptance.spec.ts"],
@@ -1483,7 +1483,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin/projects",
     roles: ["Admin"],
-    action: "Upload a JSON project parameter file and list it with version metadata.",
+    action: "Upload a project parameter file and list it with version metadata.",
     coverage: "automated",
     acceptanceIds: ["PARAM-FILE-ADMIN-001"],
     specFiles: ["e2e/acceptance/parameter-files.acceptance.spec.ts"],
@@ -1493,25 +1493,25 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     id: "PARAM-FILE-SYNC-001",
     priority: "P1",
     area: "parameters",
-    route: "/api/v1/projects/:projectId/parameter-files/:fileId/sync",
+    route: "/api/v1/projects/:projectId/parameter-files/:fileId/source-manual-sync/prepare",
     roles: ["Admin"],
-    action: "Manual file sync creates a file_sync draft when parsed file value differs from the current DB value.",
+    action: "Manual source sync prepares an ordered, proof-bound candidate that changes no Catalog value until a reviewer approves it.",
     coverage: "automated",
     acceptanceIds: ["PARAM-FILE-ADMIN-001"],
-    specFiles: ["e2e/acceptance/parameter-files.acceptance.spec.ts"],
-    assertions: ["api", "db"]
+    specFiles: ["e2e/acceptance/b906-manual-sync-ui.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
   },
   {
     id: "PARAM-FILE-RESOLVE-001",
     priority: "P1",
     area: "parameters",
-    route: "/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve",
+    route: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/conflict-decision",
     roles: ["Admin"],
-    action: "Resolve an open file/UI draft conflict by keeping the file or UI draft value.",
+    action: "Resolve a file/UI draft source conflict from the candidate page by keeping the file or UI draft value.",
     coverage: "automated",
     acceptanceIds: ["PARAM-FILE-CONFLICT-001"],
-    specFiles: ["e2e/acceptance/parameter-files.acceptance.spec.ts"],
-    assertions: ["api", "db"]
+    specFiles: ["e2e/acceptance/b906-canonical-conflict-decision.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
   },
   {
     id: "PARAM-FILE-ROLLBACK-001",

@@ -32,6 +32,10 @@ const dtsSource = `/dts-v1/;\n/ {\n  charger: device@0 { compatible = "acme,powe
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
+// @acceptance PARAM-FILE-CONFLICT-001
+// @operation PARAM-FILE-RESOLVE-001
+// @acceptance PROJ-CONFIG-CONFLICT-001
+// @operation PROJ-CONFIG-CONFLICT-001
 for (const [format, choice, decision] of [
   ["json", "file", "approve"], ["json", "draft", "approve"],
   ["dts", "file", "approve"], ["dts", "draft", "approve"],
