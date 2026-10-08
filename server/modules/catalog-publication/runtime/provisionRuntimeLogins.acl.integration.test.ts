@@ -19,6 +19,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
 
 import {
+  CATALOG_MIGRATION_OWNER,
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
@@ -53,6 +54,72 @@ const catalogDml = [
 const assert42501 = async (client: pg.Client, sql: string): Promise<void> => {
   const error = await captureDatabaseError(client.query(sql));
   expect(error.code, sql).toBe("42501");
+};
+
+const assertCanonicalSourceAcl = async (client: pg.Client, api: boolean): Promise<void> => {
+  for (const [name, argumentsOid] of [
+    ["is_replaced_current_binding", "25"],
+    ["resolve_current_binding_by_source_occurrence", "25 25 25"],
+    ["resolve_current_binding", "25 25 25"],
+  ] as const) {
+    const routine = await client.query(
+      `select has_function_privilege(current_user, procedure.oid, 'EXECUTE') as execute,
+            procedure.prosecdef as security_definer,
+            exists(select 1 from aclexplode(coalesce(procedure.proacl, acldefault('f', procedure.proowner))) acl
+                    where acl.grantee=0 and acl.privilege_type='EXECUTE') as public_execute
+       from pg_proc procedure join pg_namespace namespace on namespace.oid=procedure.pronamespace
+      where namespace.nspname='parameter_catalog' and procedure.proname=$1
+        and procedure.proargtypes=$2::oidvector`,
+      [name, argumentsOid],
+    );
+    expect(routine.rows, name).toEqual([{ execute: api && name !== "resolve_current_binding", security_definer: false, public_execute: false }]);
+  }
+  if (api) {
+    expect((await client.query("select parameter_catalog.is_replaced_current_binding('missing-api-binding') as replaced")).rows)
+      .toEqual([{ replaced: false }]);
+    expect((await client.query(`select parameter_catalog.resolve_current_binding_by_source_occurrence(
+      'missing-api-project','missing-api-occurrence','missing-api-definition') as binding_id`)).rows)
+      .toEqual([{ binding_id: null }]);
+  }
+  for (const [relation, append] of [
+    ["parameter_catalog.project_parameter_source_occurrences", true],
+    ["parameter_catalog.project_value_source_pins", true],
+    ["parameter_catalog.current_project_parameter_bindings", false],
+  ] as const) {
+    const privileges = await client.query(
+      `with target as (select relation.oid from pg_class relation
+                      join pg_namespace namespace on namespace.oid=relation.relnamespace
+                      where namespace.nspname || '.' || relation.relname = $1)
+       select has_table_privilege(current_user, target.oid, 'INSERT') as insert,
+              has_table_privilege(current_user, target.oid, 'UPDATE') as update,
+              has_table_privilege(current_user, target.oid, 'DELETE') as delete,
+              has_table_privilege(current_user, target.oid, 'TRUNCATE') as truncate,
+              has_table_privilege(current_user, target.oid, 'REFERENCES') as references,
+              has_table_privilege(current_user, target.oid, 'TRIGGER') as trigger,
+              has_any_column_privilege(current_user, target.oid, 'INSERT') as column_insert,
+              array(select attname::text from pg_attribute
+                     where attrelid = target.oid and attnum > 0 and not attisdropped
+                       and has_column_privilege(current_user, attrelid, attnum, 'UPDATE')
+                     order by attnum) as update_columns,
+              exists(select 1 from pg_attribute
+                      where attrelid = target.oid and attnum > 0 and not attisdropped
+                        and has_column_privilege(current_user, attrelid, attnum, 'REFERENCES')) as column_references
+         from target`,
+      [relation],
+    );
+    expect(privileges.rows[0], relation).toEqual({
+      insert: api && append, column_insert: api && append, update: false, delete: false, truncate: false,
+      references: false, trigger: false, update_columns: api ? ["id"] : [], column_references: false,
+    });
+    if (api) {
+      await client.query(`select id from ${relation} where false for update nowait`);
+      await client.query(`select id from ${relation} where false for share nowait`);
+      await assert42501(client, `update ${relation} set project_id = project_id where false`);
+      await assert42501(client, `delete from ${relation} where false`);
+      if (append) await client.query(`insert into ${relation} select * from ${relation} where false`);
+      else await assert42501(client, `insert into ${relation} select * from ${relation} where false`);
+    }
+  }
 };
 
 describe("publication runtime login ACL threat matrix", () => {
@@ -96,6 +163,9 @@ describe("publication runtime login ACL threat matrix", () => {
     try {
       const selected = await api.query("select count(*)::int as n from parameter_catalog.catalog_state");
       expect(selected.rows[0]?.n).toBeGreaterThanOrEqual(0);
+      await assertCanonicalSourceAcl(api, true);
+      await assert42501(api, `set role ${quoteIdent(CATALOG_MIGRATION_OWNER)}`);
+      await assert42501(api, `set role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);
       for (const sql of catalogDml) {
         await assert42501(api, sql);
       }
@@ -140,6 +210,7 @@ describe("publication runtime login ACL threat matrix", () => {
     const worker = new pg.Client({ connectionString: workerUrl });
     await worker.connect();
     try {
+      await assertCanonicalSourceAcl(worker, false);
       await assert42501(worker, "select * from parameter_catalog.catalog_state");
       await assert42501(
         worker,
@@ -157,6 +228,7 @@ describe("publication runtime login ACL threat matrix", () => {
     const manager = new pg.Client({ connectionString: managerUrl });
     await manager.connect();
     try {
+      await assertCanonicalSourceAcl(manager, false);
       await assert42501(manager, "update parameter_catalog.catalog_releases set id = id where false");
       await manager.query("begin");
       await manager.query(`set local role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);
@@ -179,6 +251,13 @@ describe("publication runtime login ACL threat matrix", () => {
       await admin.query(
         `grant insert, update, delete on all tables in schema catalog_publication to ${quoteIdent(apiRole)}`,
       );
+      for (const role of [apiRole, (await inspectLoginBoundary(workerUrl)).user, (await inspectLoginBoundary(managerUrl)).user]) {
+        await admin.query(`grant update (project_id), references (id) on parameter_catalog.project_parameter_source_occurrences to ${quoteIdent(role)}`);
+        await admin.query(`grant update (project_id), references (id) on parameter_catalog.project_value_source_pins to ${quoteIdent(role)}`);
+        await admin.query(`grant insert (id), update (project_id) on parameter_catalog.current_project_parameter_bindings to ${quoteIdent(role)}`);
+        await admin.query(`grant execute on function parameter_catalog.is_replaced_current_binding(text) to ${quoteIdent(role)}`);
+        await admin.query(`grant execute on function parameter_catalog.resolve_current_binding_by_source_occurrence(text,text,text) to ${quoteIdent(role)}`);
+      }
     } finally {
       await admin.end();
     }
@@ -193,6 +272,7 @@ describe("publication runtime login ACL threat matrix", () => {
     const api = new pg.Client({ connectionString: apiUrl });
     await api.connect();
     try {
+      await assertCanonicalSourceAcl(api, true);
       await assert42501(api, "update parameter_catalog.catalog_releases set id = id where false");
       await assert42501(api, "insert into catalog_publication.publication_jobs select * from catalog_publication.publication_jobs where false");
       const boundary = await inspectLoginBoundary(apiUrl);
@@ -201,6 +281,15 @@ describe("publication runtime login ACL threat matrix", () => {
       expect(boundary.publicationDml).toEqual([]);
     } finally {
       await api.end();
+    }
+    for (const connectionString of [workerUrl, managerUrl]) {
+      const client = new pg.Client({ connectionString });
+      await client.connect();
+      try {
+        await assertCanonicalSourceAcl(client, false);
+      } finally {
+        await client.end();
+      }
     }
   }, 120_000);
 
