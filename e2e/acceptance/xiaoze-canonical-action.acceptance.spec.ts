@@ -178,6 +178,7 @@ test.beforeAll(async () => {
     server: { host: "127.0.0.1", port: 5191, strictPort: false, hmr: false, watch: null,
       proxy: { "/api": { target: apiUrl, changeOrigin: true }, "/downloads": { target: apiUrl, changeOrigin: true } } },
     define: { "import.meta.env.VITE_WISEEFF_RUNTIME_MODE": JSON.stringify("api"),
+      "import.meta.env.VITE_WISEEFF_API_AUTHORIZATION": JSON.stringify(""),
       "import.meta.env.VITE_WISEEFF_API_BASE_URL": JSON.stringify(apiUrl) } });
   await vite.listen();
   const port = (vite.httpServer!.address() as AddressInfo).port;
@@ -249,7 +250,9 @@ test("canonical JSON Agent search, edited approval, refresh, product review and 
   await composer.fill("搜索 iin_max");
   const searchResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/agent/xiaoze" && response.request().method() === "POST");
   await composer.press("Enter");
-  await (await searchResponse).finished();
+  const searched = await searchResponse;
+  expect(searched.status()).toBe(200);
+  await searched.finished();
   await expect.poll(async () => (await db.query<{ result: { data: { parameters: Array<{ id: string }> } } }>(
     "select result from agent_tool_calls where organization_id=$1 and name='perception.searchParameters' and status='succeeded' order by created_at desc limit 1",
     [fixture.organizationId]

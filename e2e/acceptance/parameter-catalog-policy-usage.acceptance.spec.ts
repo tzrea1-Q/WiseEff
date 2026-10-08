@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test } from "playwright/test";
+import { expect } from "playwright/test";
+import { catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
 import pg from "pg";
 import type { CatalogDefinitionResponse } from "../../src/infrastructure/http/parameterCatalogDtos";
 import type { CatalogReleaseBundle } from "../../server/modules/catalog-kernel/compiler/types";
@@ -13,10 +14,8 @@ import {
   openCatalogAt,
   waitForCatalogState,
 } from "./helpers/catalogBrowser";
-import { catalogLaneConnectionString } from "./helpers/catalogAcceptanceEnvironment";
 import { acceptanceCast } from "./helpers/cast";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
-import { loadOwnedRuntimeDescriptorFromEnv } from "./helpers/ownedRuntimeDescriptor";
 import { documentationOnlySuccessorBundle, installPublishedCatalogChain } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
 import { asQueryable } from "../../server/modules/catalog-kernel/install/publicationActivation";
 import { adoptPreexistingCatalog } from "../../server/modules/catalog-publication/runtime/adoption";
@@ -25,17 +24,18 @@ import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../server/modules/catal
 import { getAuthContext } from "../../server/modules/auth/repository";
 import { createUserInvocation } from "../../server/modules/auth/trustedInvocation";
 
-test.use({ viewport: { width: 1440, height: 900 } });
+test.use({
+  viewport: { width: 1440, height: 900 },
+  catalogRuntimeDatabaseUrl: process.env.DATABASE_URL ?? process.env.TEST_DATABASE_URL,
+});
 useBrowserDiagnostics(test, {
   expectedApiFailures: [{ method: "GET", path: "/api/v1/parameters/projects", status: 404 }],
 });
 
 let pool: pg.Pool;
 test.afterAll(async () => { await pool?.end(); });
-test.beforeAll(async () => {
-  // Publication setup is permitted only in a fully verified disposable owned runtime.
-  expect(loadOwnedRuntimeDescriptorFromEnv(process.env)).toBeDefined();
-  pool = new pg.Pool({ connectionString: await catalogLaneConnectionString() });
+test.beforeAll(async ({ catalogRuntime }) => {
+  pool = new pg.Pool({ connectionString: catalogRuntime.databaseUrl });
   await seedAcceptanceRoleMatrix();
   // The generic OP-08 fixture retires this subject; lifecycle preview needs the active C fixture.
   const chain = await installPublishedCatalogChain(pool);
