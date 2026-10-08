@@ -65,7 +65,7 @@ export function createDeterministicPerceptionModel(): PerceptionChatModel {
             ]
           };
         }
-        const changeMatch = text.match(/(?:set|change)\s+([a-z0-9-]+)\s+(?:to|=)\s+(\S+)/i);
+        const changeMatch = text.match(/(?:set|change)\s+([a-z0-9_-]+)\s+(?:to|=)\s+(\S+)/i);
         if (changeMatch) {
           return {
             toolCalls: [

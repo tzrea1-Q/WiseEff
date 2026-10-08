@@ -23,9 +23,6 @@
       "legacy-effective-governance-contract": 6,
       "legacy-parameter-spec-identifier": 31
     },
-    "e2e/acceptance/xiaoze-action.acceptance.spec.ts": {
-      "legacy-catalog-raw-read": 2
-    },
     "server/modules/agent/tools/actionTools.integration.test.ts": {
       "legacy-catalog-raw-read": 1,
       "legacy-catalog-sql-write": 14,
