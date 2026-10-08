@@ -45,6 +45,7 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
     context: { actorKind: "org-admin",principalId: auth.user.id },
   });
   if (!registration.ok) throw new Error(JSON.stringify(registration.error));
+  return module;
 }
 
 type SourceState = {
