@@ -651,10 +651,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    // The login heading can render before the config effect runs; assert the hidden tab only after the config loaded.
+    await waitFor(() => expect(authClient.getLocalAuthConfig).toHaveBeenCalled());
     expect(screen.queryByText(/新账号将加入评估组织/)).not.toBeInTheDocument();
     expect(screen.queryByText("3–64 个字符，仅限字母、数字、点、下划线和连字符。")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "注册" })).not.toBeInTheDocument();
-    expect(authClient.getLocalAuthConfig).toHaveBeenCalled();
   });
 
   it("shows a bootstrap hint when no local Admin exists", async () => {
