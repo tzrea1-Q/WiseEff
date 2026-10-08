@@ -139,4 +139,24 @@ describe("useXiaozeSuggestions", () => {
 
     expect(report).not.toHaveBeenCalled();
   });
+
+  it("aborts on pagehide so a fetch broken by page unload is not logged", async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof requestXiaozeSuggestions>>>();
+    vi.mocked(requestXiaozeSuggestions).mockReturnValueOnce(pending.promise);
+    const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    render(
+      <XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters", projectId: "p1" }}>
+        <SuggestionsProbe enabled />
+      </XiaozePageContext.Provider>
+    );
+    await waitFor(() => expect(requestXiaozeSuggestions).toHaveBeenCalledTimes(1));
+    const signal = vi.mocked(requestXiaozeSuggestions).mock.calls[0]![2]!;
+
+    window.dispatchEvent(new Event("pagehide"));
+    expect(signal.aborted).toBe(true);
+    await act(async () => pending.reject(new TypeError("Failed to fetch")));
+
+    expect(report).not.toHaveBeenCalled();
+  });
 });
