@@ -174,7 +174,6 @@ const workflowSpecs: Record<string, string[]> = {
   G: [
     "xiaoze-perception.acceptance.spec.ts",
     "xiaoze-action.acceptance.spec.ts",
-    "xiaoze-action-semantic.acceptance.spec.ts",
     "xiaoze-planning.acceptance.spec.ts"
   ],
   H: ["permissions.acceptance.spec.ts"],

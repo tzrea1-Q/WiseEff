@@ -1,34 +1,29 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, test, type APIRequestContext } from "playwright/test";
+import { expect, test } from "playwright/test";
 
 import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
-import {
-  disposableRuntimeOutcomeFromTestInfo,
-  type DisposablePostCutoverRuntime,
-} from "./helpers/disposablePostCutoverRuntime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
-import {
-  createAndSubmitBindingDraft,
-  integerCellTarget,
-  seedIsolatedNumericCellBinding,
-  startSwappedDisposablePostCutoverRuntime,
-  type RestoreDisposablePostCutoverRuntime,
-  type IsolatedBinding
-} from "./helpers/semanticBindingFixture";
-
+import { resolveSeededSingleCellBinding, type XiaozeCanonicalBinding } from "./helpers/xiaozeCanonicalBinding";
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
 const organizationId = "org-chargelab";
 const threadId = "xiaoze-planning-thread";
 
-test.skip(!databaseUrl, "DATABASE_URL is required for disposable post-cutover Xiaoze planning acceptance.");
+/**
+ * Runs on the shared post-cutover acceptance database. Parameters are addressed
+ * by seeded canonical Catalog Binding id (`parameter_catalog.project_parameter_bindings.id`)
+ * and DTS cell text; open requests are canonical
+ * `project_parameter_value_change_requests` rows scoped by binding id.
+ */
+
+test.skip(!databaseUrl, "DATABASE_URL is required for Xiaoze planning acceptance.");
 
 function adminHeaders() {
   return { ...authHeadersForRole("admin"), Accept: "text/event-stream" };
@@ -125,12 +120,12 @@ async function resetOpenChangeRequestsForBinding(bindingId: string) {
   await withPgClient(async (client) => {
     await client.query(
       `
-      update parameter_change_requests
-      set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
+      update project_parameter_value_change_requests
+      set status = 'rejected', reviewer_note = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = $1
         and project_id = $2
-        and project_parameter_binding_id = $3
-        and status not in ('merged', 'rejected')
+        and binding_id = $3
+        and status = 'pending'
       `,
       [organizationId, projectId, bindingId]
     );
@@ -142,11 +137,11 @@ async function countOpenChangeRequests(bindingId: string) {
     const result = await client.query<{ count: string }>(
       `
       select count(*)::text as count
-      from parameter_change_requests
+      from project_parameter_value_change_requests
       where organization_id = $1
         and project_id = $2
-        and project_parameter_binding_id = $3
-        and status not in ('merged', 'rejected', 'withdrawn')
+        and binding_id = $3
+        and status = 'pending'
       `,
       [organizationId, projectId, bindingId]
     );
@@ -154,46 +149,47 @@ async function countOpenChangeRequests(bindingId: string) {
   });
 }
 
-async function ensureOpenChangeRequestForSuggest(request: APIRequestContext, binding: IsolatedBinding) {
+/** Opens one pending canonical request through the real propose + approve flow. */
+async function ensureOpenChangeRequestForSuggest(
+  request: Parameters<typeof postXiaoze>[0],
+  binding: XiaozeCanonicalBinding
+) {
   if ((await countOpenChangeRequests(binding.bindingId)) > 0) {
     return;
   }
-  const baseCellValue = Number(binding.rawValue.replace(/[<>]/g, ""));
-  await createAndSubmitBindingDraft(request, {
-    binding,
-    targetValue: integerCellTarget(String(baseCellValue + 50)),
-    reason: "XIAOZE-PROACTIVE-001 open request fixture"
+  const thread = `${threadId}-suggest-fixture-${Date.now()}`;
+  const started = await postXiaoze(request, adminHeaders(), {
+    threadId: thread,
+    runId: `run-suggest-fixture-${Date.now()}`,
+    messages: [{ id: "m-user", role: "user", content: `set ${binding.bindingId} to <${binding.baseValue + 50}>` }],
+    context: [
+      {
+        description: "wiseeff.page",
+        value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
+      }
+    ]
   });
+  const interrupt = readInterruptValue(started.events);
+  expect(interrupt?.approvalId, started.body.slice(-800)).toBeTruthy();
+  const resumed = await postXiaoze(request, adminHeaders(), {
+    threadId: thread,
+    runId: `run-suggest-fixture-resume-${Date.now()}`,
+    messages: [{ id: "m-resume", role: "user", content: "approve" }],
+    forwardedProps: { command: { resume: { decision: "approve" }, interruptEvent: interrupt } }
+  });
+  expect(resumed.status).toBe(200);
+  expect(resumed.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
+  expect(await countOpenChangeRequests(binding.bindingId)).toBeGreaterThan(0);
 }
 
 test.describe("Xiaoze P2 planning", () => {
-  let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
-  let seededBinding: IsolatedBinding;
+  let seededBinding: XiaozeCanonicalBinding;
 
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
-    const baseDatabaseUrl = databaseUrl?.trim();
-    if (!baseDatabaseUrl) {
-      throw new Error("DATABASE_URL is required to create the disposable Xiaoze planning database.");
-    }
-    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
-      label: "xiaoze_plan",
-      markerPurpose: "xiaoze-planning",
-      apiEnv: { XIAOZE_PROACTIVE_ENABLED: "true" }
-    });
-    disposableRuntime = started.runtime;
-    restoreDisposable = started.restore;
-    expect(disposableRuntime.markerPurpose).toBe("xiaoze-planning");
     await seedPlanningGuestUser();
-    seededBinding = await seedIsolatedNumericCellBinding(request, {
-      reason: "XIAOZE-PLAN semantic binding"
-    });
-  });
-
-  test.afterAll(async ({}, testInfo) => {
-    test.setTimeout(60_000);
-    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
+    seededBinding = await resolveSeededSingleCellBinding(request, projectId);
+    expect(seededBinding.bindingId).toMatch(/^pbind_[0-9a-f]{64}$/);
   });
 
   test.beforeEach(async () => {
@@ -206,7 +202,7 @@ test.describe("Xiaoze P2 planning", () => {
     test.setTimeout(180_000);
     const openBefore = await countOpenChangeRequests(seededBinding.bindingId);
     const thread = `${threadId}-multistep-${Date.now()}`;
-    const targetValue = `<${Number(seededBinding.rawValue.replace(/[<>]/g, "")) + 1}>`;
+    const targetValue = `<${seededBinding.baseValue + 1}>`;
     const actionPrompt = `project ${projectId} charges slowly; set ${seededBinding.bindingId} to ${targetValue}`;
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: thread,
@@ -277,7 +273,7 @@ test.describe("Xiaoze P2 planning", () => {
           responseSummary: finalText.slice(0, 120)
         })
       ],
-      notes: "Xiaoze resumes the same planning thread after approval and reports the observed execution result. Prompt addressed a runtime-resolved project_parameter_binding_id on disposable post-cutover identity (TD-079)."
+      notes: "Xiaoze resumes the same planning thread after approval and reports the observed execution result. Prompt addressed a runtime-resolved canonical Catalog Binding id on the shared post-cutover acceptance database."
     });
   });
 
@@ -327,7 +323,7 @@ test.describe("Xiaoze P2 planning", () => {
           responseSummary: String(enabledBody.suggestions?.[0]?.headline ?? "suggestion")
         })
       ],
-      notes: "Proactive suggest is read-only, authz-bounded, and gated by XIAOZE_PROACTIVE_ENABLED. Open CR fixture used a typed binding draft rather than a retired PPV insert (TD-079)."
+      notes: "Proactive suggest is read-only, authz-bounded, and gated by XIAOZE_PROACTIVE_ENABLED. The open canonical request fixture is created through the real Xiaoze propose + approve flow."
     });
   });
 });
