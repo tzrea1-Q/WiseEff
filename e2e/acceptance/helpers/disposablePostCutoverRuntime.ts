@@ -48,6 +48,7 @@ import {
   type ExactOwnedDirectoryIdentity,
 } from "../../../scripts/exact-owned-object-root";
 import { buildGate0OwnedChildProcessEnv } from "../../../scripts/gate0-child-process-env";
+import { clonePostCutoverDatabase } from "./postCutoverDatabaseTemplate";
 import {
   readGate0SupervisedProcessIdentity,
   spawnGate0SupervisedProcess,
@@ -473,6 +474,22 @@ export async function preparePostCutoverDatabase(
   purpose: string,
   catalog?: StartDisposablePostCutoverRuntimeOptions["catalog"],
 ) {
+  const migrationRunId = await preparePostCutoverDatabaseBase(databaseUrl, catalog);
+  await writePostCutoverRuntimeMarker(databaseUrl, purpose, migrationRunId);
+  return migrationRunId;
+}
+
+async function writePostCutoverRuntimeMarker(databaseUrl: string, purpose: string, migrationRunId: string) {
+  await withClient(databaseUrl, (client) => client.query(
+    `insert into wiseeff_acceptance_test_markers (purpose, migration_run_id) values ($1, $2)`,
+    [purpose, migrationRunId],
+  ));
+}
+
+async function preparePostCutoverDatabaseBase(
+  databaseUrl: string,
+  catalog?: StartDisposablePostCutoverRuntimeOptions["catalog"],
+) {
   return withDatabase(databaseUrl, async (db) => {
     await applyMigrations(db, migrationsDir);
     await seedAcceptanceScope(db);
@@ -521,10 +538,6 @@ export async function preparePostCutoverDatabase(
          migration_run_id text not null,
          created_at timestamptz not null default now()
        )`,
-    );
-    await db.query(
-      `insert into wiseeff_acceptance_test_markers (purpose, migration_run_id) values ($1, $2)`,
-      [purpose, report.migrationRunId],
     );
     return report.migrationRunId;
   });
@@ -900,8 +913,13 @@ export async function startDisposablePostCutoverRuntime(
     }
     const ownedObjectStore = objectStore;
     const objectStoreRoot = ownedObjectStore.root;
-    await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
-    const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose, options.catalog);
+    const migrationRunId = await clonePostCutoverDatabase({
+      baseDatabaseUrl,
+      databaseName,
+      catalog: options.catalog,
+      prepare: (templateUrl) => preparePostCutoverDatabaseBase(templateUrl, options.catalog),
+    });
+    await writePostCutoverRuntimeMarker(databaseUrl, purpose, migrationRunId);
     await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
     verifiedMigrationRunId = migrationRunId;
     if (nestedManifestPath) {

@@ -14,6 +14,7 @@ const outputDir = process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR ?? "test-
 const reportDir = process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR ?? "playwright-report/acceptance";
 
 export default defineConfig({
+  globalSetup: "./e2e/acceptance/helpers/postCutoverTemplateLifecycle.ts",
   testDir: "./e2e/acceptance",
   outputDir,
   fullyParallel: false,

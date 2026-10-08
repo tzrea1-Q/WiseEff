@@ -43,6 +43,7 @@ import {
   sanitizeGate0DiagnosticText,
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
+import { cleanupPostCutoverDatabaseTemplates } from "../e2e/acceptance/helpers/postCutoverDatabaseTemplate";
 import {
   readGate0SupervisedProcessIdentity,
   spawnGate0SupervisedProcess,
@@ -657,6 +658,8 @@ export async function provisionOwnedLocalAcceptanceRuntime(
           descriptor.cleanup.resources.database = { status: "verified" };
           verifyObjectRootForCleanup(descriptor);
           descriptor.cleanup.resources.objectStore = { status: "verified" };
+          await cleanupPostCutoverDatabaseTemplates(databaseUrl, descriptor.artifacts.nestedRuntimeManifest, cleanupOwnerDeadline);
+          assertNestedDatabaseTemplatesCleanedForSuccess(descriptor.artifacts.nestedRuntimeManifest);
           await dropExactDatabase(adminUrl, descriptor.database.name, cleanupOwnerDeadline);
           descriptor.cleanup.resources.database = { status: "removed" };
           cleanupOwnerDeadline?.remainingMs("exact object-store cleanup");
@@ -1241,6 +1244,12 @@ export function assertNestedRuntimesCleanedForSuccess(manifestPath: string) {
   if (unclean.length > 0) {
     throw new Error(`Nested runtimes are not clean for Gate0 success: ${unclean.map((child) => `${child.id}:${child.state}`).join(", ")}.`);
   }
+}
+
+export function assertNestedDatabaseTemplatesCleanedForSuccess(manifestPath: string) {
+  const manifest = readNestedRuntimeManifest(manifestPath);
+  const unclean = (manifest.databaseTemplates ?? []).filter((template) => template.state !== "removed");
+  if (unclean.length) throw new Error(`Nested database templates are not clean for Gate0 success: ${unclean.map((template) => template.databaseName).join(", ")}.`);
 }
 
 export async function finalizeRunningNestedRuntimesAfterFailure(

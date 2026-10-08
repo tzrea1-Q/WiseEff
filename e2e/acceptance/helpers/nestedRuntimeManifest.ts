@@ -79,8 +79,38 @@ export type NestedRuntimeManifest = {
   parentRunId: string;
   sourceCommit: string;
   children: NestedRuntimeRecord[];
+  databaseTemplates?: NestedDatabaseTemplateRecord[];
   updatedAt: string;
 };
+
+export type NestedDatabaseTemplateRecord = {
+  databaseName: string;
+  templateKey: string;
+  fingerprint: string;
+  state: "provisioning" | "ready" | "removed";
+};
+
+export function recordNestedDatabaseTemplate(manifestPath: string, template: NestedDatabaseTemplateRecord) {
+  assertNestedDatabaseTemplateRecord(template);
+  updateManifest(manifestPath, (manifest) => {
+    const templates = manifest.databaseTemplates ??= [];
+    const existing = templates.find((entry) => entry.databaseName === template.databaseName);
+    if (existing && existing.templateKey !== template.templateKey) {
+      throw new Error("Nested database template ownership cannot change.");
+    }
+    if (existing) Object.assign(existing, template);
+    else templates.push(template);
+  });
+}
+
+function assertNestedDatabaseTemplateRecord(template: NestedDatabaseTemplateRecord) {
+  if (
+    !template || !/^[a-f0-9]{64}$/u.test(template.templateKey) ||
+    template.databaseName !== `wiseeff_acceptance_template_${template.templateKey.slice(0, 32)}` ||
+    !/^[a-f0-9]{64}$/u.test(template.fingerprint) ||
+    !["provisioning", "ready", "removed"].includes(template.state)
+  ) throw new Error("Nested database template inventory is invalid.");
+}
 
 export function initializeNestedRuntimeManifest(
   manifestPath: string,
@@ -361,6 +391,14 @@ function assertNestedRuntimeManifest(
   const ids = new Set<string>();
   const databases = new Set<string>();
   const objectRoots = new Set<string>();
+  if (manifest.databaseTemplates !== undefined && !Array.isArray(manifest.databaseTemplates)) {
+    throw new Error("Nested database template inventory is invalid.");
+  }
+  for (const template of manifest.databaseTemplates ?? []) {
+    assertNestedDatabaseTemplateRecord(template);
+    if (databases.has(template.databaseName)) throw new Error("Nested database template inventory is invalid.");
+    databases.add(template.databaseName);
+  }
   for (const child of manifest.children) {
     assertNestedRuntimeRecord(child, realpathSync(path.dirname(manifestPath)));
     if (ids.has(child.id) || databases.has(child.databaseName) || objectRoots.has(child.objectStoreRoot)) {
