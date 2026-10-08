@@ -84,7 +84,7 @@
 - `PROJ-CONFIG-ACTIVITY-001`：在开关后的配置工作台中，Admin 从命令栏打开活动检查器（无常驻审计横幅），以产品用语阅读项目范围服务器审计投影，可定位事件恢复工作台上下文或优雅失败，变更 toast + 时间线刷新，并保持叠层/常驻检查器行为（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；组件测试；`work/ui-checks/project-configuration-workbench-activity-timeline/`）。
 - `PROJ-CONFIG-ACTIVATE-001`：在开关后的配置工作台中，Admin 对既有/新文件 ready 候选做影响确认后以 expected-current-version CAS 激活；过期基保留工作配置并要求重算；blocked/failed/abandoned/stale 不可激活（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；组件/集成测试；`work/ui-checks/project-configuration-workbench-candidate-activation/`）。
 - `PROJ-CONFIG-OPS-001`：在开关后的配置工作台中，Admin 创建/配置配置集（含校验与重名处理）、以角色与顺序增删成员并经 ConfirmDialog 确认影响范围、未编组文件保持在工作配置/发布就绪度之外直至编入、手动同步写入任务证据、从命令栏导出配置集；空配置集给出聚焦的上传/编入路径且不自动激活；非管理员拒绝变更但保留只读上下文（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；组件测试；`work/ui-checks/project-configuration-workbench-file-config-ops/`）。
-- `PROJ-CONFIG-CONFLICT-001`：在开关后的配置工作台中，Admin 从任务坞打开源码定位的三方冲突裁决；两侧等权结果经确认并可写审计原因；队列在源码上下文中前进；合格批量裁决需影响预览；开放冲突阻断候选激活；空队列保持冲突坞折叠（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；组件/集成测试；`work/ui-checks/project-configuration-workbench-conflict-arbitration/`）。
+- `PROJ-CONFIG-CONFLICT-001`：Admin 在规范候选页裁决 file/UI 草稿来源冲突，两侧等权结果冻结进被审核的请求（`e2e/acceptance/b906-canonical-conflict-decision.acceptance.spec.ts`；组件/集成测试；`work/ui-checks/project-configuration-workbench-conflict-arbitration/`）。
 - `PROJ-CONFIG-READINESS-001`：PC 1440×900 下，在开关后的配置工作台中，Admin 看到服务端发布就绪摘要；Issues 坞列出有序阻断/警告与 remediation；选中打开源码证据；阻断/不可用/过期或本机会话脏时创建/发布失败关闭；前端不用客户端计数发明权限（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；组件/集成测试；`work/ui-checks/project-configuration-workbench-release-readiness/`）。
 - `PROJ-CONFIG-BASELINE-001`：PC 1440×900 下，在开关后的配置工作台中，Admin 创建不改源文件的草稿基线快照，在统一/并排源码模式对比，确认警告后带影响确认发布并刷新 tip，恢复时预览 blast radius 且不改已发布 tip，并刷新就绪（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；组件/集成测试；`work/ui-checks/project-configuration-workbench-release-baselines/`）。
 - `PROJ-CONFIG-REVISION-GATE-001`：Admin 经拓扑接缝列出所选配置集的真实配置修订、选择列表中的 id（不发明教学兜底 id）、运行修订校验；当校验返回 `requiresConfirmation` 时，发布基线 ConfirmDialog 须勾选确认才能继续（工作台/session/mock/HTTP/服务端单测；playwright-cli 证据 `work/ui-checks/td-057-config-set-revision-gate/`；阻断 Playwright 等 TD-079）。
@@ -104,7 +104,7 @@
 - `MOD-TREE-PARAM-001`：Admin 创建嵌套参数模块、将参数挂到子模块，并按父模块筛选时包含子树（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动被拒绝（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-DEBUG-001`：Admin 创建嵌套调试节点模块，父模块筛选包含子模块下的节点（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
-- `MOD-TREE-AUTHZ-001`：非 Admin 不能变更模块树；删除非空模块返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `MOD-TREE-AUTHZ-001`：非 Admin 不能变更模块树；删除含子模块或规范目录放置的模块返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-ATTR-QUEUE-001`：未分类 compatible 队列只列非 scaffolding、未忽略项，并显示参数/项目数；忽略与恢复均写审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-CLASSIFY-001`：归类时展示影响预览，确认后按范围应用并回收空未分类桶（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-BULK-001`：勾选多个 compatible，一次确认归入同一业务分类（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
@@ -125,8 +125,8 @@
 - `DRV-SCHEMA-002`：仅组织叠加层声明的 compatible 上传后绑定类型化属性，且不进入未匹配审核（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-003`：钉扎 schema 已覆盖时激活叠加层被拒绝并说明原因（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-004`：激活叠加层时就地升级已有 provisional spec，无需重传（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-FILE-ADMIN-001`：Admin 上传项目参数文件、列出版本、手动同步生成 `file_sync` 草稿，并在 `/parameter-admin/projects` 打开参数文件面板（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
-- `PARAM-FILE-CONFLICT-001`：Admin 裁决 file/UI 草稿冲突，可选择保留文件值或 UI 值（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-ADMIN-001`：Admin 上传项目参数文件、列出版本、手动来源同步生成待审核的证明绑定候选，并在 `/parameter-admin/projects` 打开参数文件面板（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-CONFLICT-001`：Admin 在候选页裁决 file/UI 草稿来源冲突，可选择保留文件值或 UI 值（`e2e/acceptance/b906-canonical-conflict-decision.acceptance.spec.ts`）。
 - `PARAM-FILE-ROLLBACK-001`：Admin 把历史文件版本恢复为当前（插入 `origin=rollback` 指针版本，不倒带历史），版本列表展示操作者显示名（工作台/mock/服务端单测；playwright-cli 证据 `work/ui-checks/param-file-rollback/`；阻断 Playwright 等 TD-079）。
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-IMPORT-REVIEW-META-001`：带 `reviewMetadata.skippedRows` 的导入预览写入 `batch-import` 审计 metadata（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
