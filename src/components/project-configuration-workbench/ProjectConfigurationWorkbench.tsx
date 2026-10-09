@@ -819,8 +819,9 @@ export function ProjectConfigurationWorkbench({
         window.clearTimeout(scrollSyncTimerRef.current);
       }
       scrollSyncTimerRef.current = window.setTimeout(() => {
+        if (navigationSession.suppressScrollSync) return;
         const nearest = nearestNodeForLine(structureNodes, line);
-        if (!nearest || nearest.nodePath === selectedNodePath) return;
+        if (!nearest || nearest.nodePath === navigationSession.selectedNodePath) return;
         navigationSession.setStructureSelection(nearest.nodePath, null);
       }, 80);
     },

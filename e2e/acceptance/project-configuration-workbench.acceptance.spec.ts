@@ -431,6 +431,24 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     // @acceptance PROJ-CONFIG-EDIT-001
     // @operation PROJ-CONFIG-EDIT-001
     const headers = adminHeaders();
+    const previousRequests = await withPgClient(async (client) => (await client.query<{ id: string }>(
+      `select id from project_parameter_value_change_requests
+       where organization_id=$1 and project_id=$2 and submitter_user_id=$3
+         and reason=$4 and status='pending'`,
+      [organizationId, projectId, acceptanceCast.xuYun.userId, "Issue 1062 structured staging browser proof"]
+    )).rows);
+    for (const previous of previousRequests) {
+      const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${previous.id}/withdraw`),
+        { headers, data: { reason: "Clean up interrupted issue 1062 browser submission" } });
+      expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+    }
+    const previousDrafts = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`), { headers });
+    expect(previousDrafts.status(), await previousDrafts.text()).toBe(200);
+    for (const previous of (await previousDrafts.json()).items.filter((item: { reason: string }) =>
+      item.reason === "Issue 1062 structured staging browser proof")) {
+      const removed = await request.delete(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts/${previous.id}`), { headers });
+      expect(removed.status(), await removed.text()).toBe(200);
+    }
     const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
     expect(listed.status(), await listed.text()).toBe(200);
     const bindings = (await listed.json()).items as Array<{ id: string; propertyKey: string; currentValueId: string;
@@ -445,9 +463,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     })}`;
     await signInBrowserAsRole(page, "admin", route);
     await dismissXiaozeHint(page);
+    await page.getByRole("treeitem", {
+      name: `属性 ${binding!.sourceNodePath}/${binding!.propertyKey}`, exact: true
+    }).click();
     await ensureInspectorOpen(page);
     const inspector = page.getByRole("complementary", { name: "配置检查器" });
     const editor = inspector.getByRole("textbox", { name: "数值 1" });
+    await expect(editor).toBeVisible();
     const target = String(Number(binding!.effectiveValue.groups![0]![0]!.value) + 1);
     await editor.fill(target);
     const tasks = page.getByRole("region", { name: "配置任务" });

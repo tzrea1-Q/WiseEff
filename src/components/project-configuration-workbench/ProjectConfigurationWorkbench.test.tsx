@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -870,6 +870,23 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(await within(tasks).findByRole("alert")).toHaveTextContent("submit failed");
     expect(within(tasks).getByRole("checkbox", { name: /board\/model/ })).toBeInTheDocument();
     expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora-X");
+  });
+
+  it("does not let a queued source scroll clear a newly selected edit occurrence", async () => {
+    renderWorkbench({ syncSearch: true,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const property = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    ensureInspectorOpen();
+    vi.useFakeTimers();
+    try {
+      fireEvent.scroll(screen.getByLabelText("DTS 源码"));
+      fireEvent.click(property);
+      await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+      expect(screen.getByLabelText("字符串 1")).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the staged pending receipt and hands off to parameter submission without claiming a formal write", async () => {
