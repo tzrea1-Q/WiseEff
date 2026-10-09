@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { DtsStructuralNode } from "@/application/ports/DtsStructuredRepository";
 import { SESSION_DRAFT_STORAGE_KEY } from "./sessionDraftStorage";
 import { createStructuredEditSession } from "./structuredEditSession";
+import { createTestParameterTopologyRepository } from "@/test/harness";
+import type { BindingDraftResult, ProjectParameterBinding } from "@/application/ports/ParameterTopologyRepository";
 
 function createMemoryStorage(seed: Record<string, string> = {}): Storage {
   const map = new Map<string, string>(Object.entries(seed));
@@ -67,6 +69,172 @@ const NODES: DtsStructuralNode[] = [
     phandleRefs: []
   }
 ];
+
+function canonicalBinding(nodePath: string, fileId = SCOPE.fileId): ProjectParameterBinding {
+  return {
+    id: `pbind_${fileId}_${nodePath}`, definitionId: "pdef_model",
+    parameterSpecId: "pdef_model", parameterSpecVersionId: "pdrev_model",
+    currentValueId: `ppv_${nodePath}`, propertyKey: "model", logicalNodeId: `node_${nodePath}`,
+    sourceFileId: fileId, sourceNodePath: nodePath, sourceOccurrenceId: `occ_${fileId}_${nodePath}`,
+    instanceName: nodePath, locator: nodePath, driverModule: null, moduleId: "module",
+    effectiveValue: { kind: "strings", values: ["Aurora"] }, rawValue: '"Aurora"',
+    schemaState: "valid", policyState: "not_applicable"
+  };
+}
+
+function stagingReceipt(bindingId: string): BindingDraftResult {
+  return {
+    draftId: `pvdr_${bindingId}`, projectParameterBindingId: bindingId, parameterId: bindingId,
+    currentValueId: bindingId.endsWith("board") ? "ppv_board" : "ppv_sibling", pending: true,
+    candidateRevisionId: "revision-1", rawText: '"Updated"', action: "set", parameterSpecId: "pdef_model",
+    writeTarget: { role: "canonical-project-value-draft", propertyKey: "model" }, overlayFileId: "", overlayFileName: ""
+  };
+}
+
+async function editedCanonicalSession(paths = ["board", "sibling"], storage = createMemoryStorage()) {
+  const session = createStructuredEditSession({ storage });
+  session.setStructure(paths.map((nodePath) => ({ ...NODES[0]!, nodePath })), SCOPE.fileId);
+  await session.hydrate(SCOPE);
+  for (const nodePath of paths) {
+    session.change({ fileId: SCOPE.fileId, nodePath, propertyName: "model" },
+      { rawText: '"Updated"', normalizedValue: "Updated", valid: true });
+  }
+  session.setReason("Stage exact source edits");
+  return session;
+}
+
+describe("canonical structured staging", () => {
+  it("retains edits made while an earlier version is being staged", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    const createBindingDraft = vi.fn(async () => {
+      session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+        { rawText: '"Newer"', normalizedValue: "Newer", valid: true });
+      return stagingReceipt("pbind_file-board_board");
+    });
+    await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({ listBindings: vi.fn(async () => [canonicalBinding("board")]), createBindingDraft }) });
+    expect(session.rows).toEqual([expect.objectContaining({ rawText: '"Newer"' })]);
+    expect(session.stagedDrafts).toHaveLength(1);
+  });
+
+  it("preserves boolean removal rather than staging the still-present property", async () => {
+    const session = createStructuredEditSession({ storage: createMemoryStorage() });
+    session.setStructure([{ ...NODES[0]!, properties: [{ name: "model", valueType: "bool", rawText: "", normalizedValue: "true" }] }], SCOPE.fileId);
+    await session.hydrate(SCOPE);
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: "", normalizedValue: "true", valid: true, present: false });
+    session.setReason("Remove boolean property");
+    const createBindingDraft = vi.fn(async () => stagingReceipt("pbind_file-board_board"));
+    await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({ listBindings: vi.fn(async () => [canonicalBinding("board")]), createBindingDraft }) });
+    expect(createBindingDraft).toHaveBeenCalledWith(SCOPE.projectId, "pbind_file-board_board", {
+      baseRevisionId: "revision-1", action: "delete", reason: "Remove boolean property"
+    });
+  });
+
+  it("clears only confirmed edits on partial failure and reports the Definition constraint per edit", async () => {
+    const storage = createMemoryStorage();
+    const session = await editedCanonicalSession(["board", "sibling"], storage);
+    const createBindingDraft = vi.fn(async (_projectId: string, bindingId: string) => {
+      if (bindingId.endsWith("sibling")) throw new Error("Definition revision constraint: two strings required");
+      return { ...stagingReceipt(bindingId), draftId: "pvdr_confirmed" };
+    });
+    await expect(session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board"), canonicalBinding("sibling")]), createBindingDraft
+      }) })).rejects.toThrow(/file-board.*sibling\/model.*Definition revision constraint/);
+    expect(session.rows.map((row) => row.nodePath)).toEqual(["sibling"]);
+    expect(session.stagedDrafts).toEqual([expect.objectContaining({ draftId: "pvdr_confirmed", pending: true })]);
+    expect(session.submitStatus).toMatch(/已暂存 1 项待审核/);
+    expect(Object.keys(JSON.parse(storage.getItem(SESSION_DRAFT_STORAGE_KEY)!).buckets[0].drafts))
+      .toEqual(["file-board::sibling::model"]);
+  });
+
+  it("keeps an edit when the server does not confirm canonical pending staging", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    await expect(session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]),
+        createBindingDraft: vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), draftId: "pvdr_unconfirmed", pending: false }))
+      }) })).rejects.toThrow(/board\/model.*未确认/);
+    expect(session.rows).toHaveLength(1);
+    expect(session.stagedDrafts).toEqual([]);
+  });
+
+  it("returns a pending draft receipt with unchanged current value, not a committed value", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    const round = await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]),
+        createBindingDraft: vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), draftId: "pvdr_receipt" }))
+      }) });
+    expect(round.status).toBe("canonical-project-value-draft");
+    expect(session.stagedDrafts).toEqual([{ key: "file-board::board::model", draftId: "pvdr_receipt",
+      bindingId: "pbind_file-board_board", currentValueId: "ppv_board", pending: true }]);
+    expect(session.submitStatus).toMatch(/已暂存.*待审核.*当前值未变/);
+    expect(session.submitStatus).not.toMatch(/已写入正式项目值/);
+  });
+
+  it.each([
+    ['<1 0x02>, <3 4>', { kind: "cells", bits: 32, groups: [
+      [{ kind: "integer", raw: "1", value: "1" }, { kind: "integer", raw: "0x02", value: "2" }],
+      [{ kind: "integer", raw: "3", value: "3" }, { kind: "integer", raw: "4", value: "4" }]
+    ] }],
+    ['<&clock 2>, <&reset 0>', { kind: "cells", bits: 32, groups: [
+      [{ kind: "phandle", label: "clock" }, { kind: "integer", raw: "2", value: "2" }],
+      [{ kind: "phandle", label: "reset" }, { kind: "integer", raw: "0", value: "0" }]
+    ] }],
+    ['"first", "second"', { kind: "strings", values: ["first", "second"], items: [
+      { value: "first", raw: '"first"' }, { value: "second", raw: ' "second"' }
+    ] }],
+    ['[00 7f ff]', { kind: "bytes", values: [0, 127, 255] }]
+  ])("preserves the typed editor value %s at the repository port", async (rawText, targetValue) => {
+    const session = await editedCanonicalSession(["board"]);
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: rawText as string, normalizedValue: "display only", valid: true });
+    const createBindingDraft = vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), draftId: "pvdr_typed" }));
+    await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]), createBindingDraft
+      }) });
+    expect(createBindingDraft).toHaveBeenCalledWith(SCOPE.projectId, "pbind_file-board_board", {
+      baseRevisionId: "revision-1", action: "set", reason: "Stage exact source edits", targetValue
+    });
+  });
+
+  it("resolves duplicate property names to each exact source occurrence, never another file", async () => {
+    const session = await editedCanonicalSession();
+    const createBindingDraft = vi.fn(async (_projectId: string, bindingId: string) => stagingReceipt(bindingId));
+    const catalogRepository = createTestParameterTopologyRepository({
+      listBindings: vi.fn(async () => [canonicalBinding("board", "other-file"), canonicalBinding("sibling"), canonicalBinding("board")]),
+      createBindingDraft
+    });
+    await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", catalogRepository, dtsRepository: { submitStructuredEdits: vi.fn() } });
+    expect(createBindingDraft.mock.calls.map((call) => call[1])).toEqual([
+      "pbind_file-board_board", "pbind_file-board_sibling"
+    ]);
+    expect(session.rows).toHaveLength(0);
+  });
+
+  it("reports the missing exact Binding against the edit without falling back by name", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    const createBindingDraft = vi.fn();
+    await expect(session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("sibling"), canonicalBinding("board", "other-file")]), createBindingDraft
+      }) })).rejects.toThrow(/file-board.*board\/model.*Binding/);
+    expect(createBindingDraft).not.toHaveBeenCalled();
+    expect(session.rows).toHaveLength(1);
+  });
+});
 
 describe("createStructuredEditSession", () => {
   it("hydrates compatible drafts from storage and reports isDirty / rows", async () => {
@@ -216,42 +384,42 @@ describe("createStructuredEditSession", () => {
     expect(session.submitStatus).toMatch(/已提交变更请求/);
   });
 
-  it("writes catalog official values through catalogSave and does not call structured edits", async () => {
+  it("stages canonical drafts through the repository and does not call legacy structured edits", async () => {
     const storage = createMemoryStorage();
     const session = createStructuredEditSession({ storage, now: () => "2026-01-01T00:00:00.000Z" });
     session.setStructure(NODES, "file-board");
     await session.hydrate(SCOPE);
     session.change(
       { fileId: "file-board", nodePath: "board", propertyName: "model" },
-      { rawText: "24", normalizedValue: "24", valid: true }
+      { rawText: "<24>", normalizedValue: "24", valid: true }
     );
     session.setReason("official save");
     const submitStructuredEdits = vi.fn();
-    const catalogSave = vi.fn().mockResolvedValue({
-      savedKeys: ["file-board::board::model"],
-      currentValueId: "ppv_24"
-    });
     const round = await session.submit({
       projectId: SCOPE.projectId,
       fileId: SCOPE.fileId,
       fileName: "aurora-board.dts",
       dtsRepository: { submitStructuredEdits },
-      catalogSave
+      revisionId: "revision-1",
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]),
+        createBindingDraft: vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), draftId: "pvdr_24" }))
+      })
     });
     expect(submitStructuredEdits).not.toHaveBeenCalled();
-    expect(round.status).toBe("canonical-project-value");
-    expect(session.submitStatus).toMatch(/正式项目值/);
+    expect(round.status).toBe("canonical-project-value-draft");
+    expect(session.submitStatus).toMatch(/已暂存.*待审核/);
     expect(session.rows).toEqual([]);
   });
 
-  it("fails closed when catalogSave does not persist every selected row", async () => {
+  it("fails closed when canonical staging does not confirm the unchanged current value", async () => {
     const storage = createMemoryStorage();
     const session = createStructuredEditSession({ storage, now: () => "2026-01-01T00:00:00.000Z" });
     session.setStructure(NODES, "file-board");
     await session.hydrate(SCOPE);
     session.change(
       { fileId: "file-board", nodePath: "board", propertyName: "model" },
-      { rawText: "24", normalizedValue: "24", valid: true }
+      { rawText: "<24>", normalizedValue: "24", valid: true }
     );
     session.setReason("official save");
     const submitStructuredEdits = vi.fn();
@@ -261,10 +429,15 @@ describe("createStructuredEditSession", () => {
         fileId: SCOPE.fileId,
         fileName: "aurora-board.dts",
         dtsRepository: { submitStructuredEdits },
-        catalogSave: async () => ({ savedKeys: [], currentValueId: "ppv_none" })
+        revisionId: "revision-1",
+        catalogRepository: createTestParameterTopologyRepository({
+          listBindings: vi.fn(async () => [canonicalBinding("board")]),
+          createBindingDraft: vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), currentValueId: "ppv_other" }))
+        })
       })
-    ).rejects.toThrow(/未完整写入/);
+    ).rejects.toThrow(/未确认待审核/);
     expect(submitStructuredEdits).not.toHaveBeenCalled();
+    expect(session.rows).toHaveLength(1);
   });
 
   it("preserves drafts when submitStructuredEdits fails", async () => {

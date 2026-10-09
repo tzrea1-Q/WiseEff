@@ -44,6 +44,9 @@ export type ProjectBindingDto = {
   definitionRevisionId?: string;
   effectiveRevisionId?: string;
   currentValueId?: string;
+  sourceFileId?: string | null;
+  sourceNodePath?: string | null;
+  sourceOccurrenceId?: string | null;
   projectId?: string;
   propertyKey: string;
   driverModule: string | null;
@@ -206,6 +209,9 @@ export function bindingFromDto(
     ...(dto.definitionRevisionId !== undefined ? { definitionRevisionId: dto.definitionRevisionId } : {}),
     ...(dto.effectiveRevisionId !== undefined ? { effectiveRevisionId: dto.effectiveRevisionId } : {}),
     ...(dto.currentValueId !== undefined ? { currentValueId: dto.currentValueId } : {}),
+    ...(dto.sourceFileId !== undefined ? { sourceFileId: dto.sourceFileId } : {}),
+    ...(dto.sourceNodePath !== undefined ? { sourceNodePath: dto.sourceNodePath } : {}),
+    ...(dto.sourceOccurrenceId !== undefined ? { sourceOccurrenceId: dto.sourceOccurrenceId } : {}),
     ...(dto.projectId !== undefined ? { projectId: dto.projectId } : {}),
     propertyKey: dto.propertyKey,
     driverModule: dto.driverModule,
@@ -332,6 +338,8 @@ function configRevisionFromDto(
 function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
   return {
     draftId: dto.draftId,
+    pending: dto.pending,
+    currentValueId: dto.currentValueId,
     parameterId: dto.parameterId,
     candidateRevisionId: dto.candidateRevisionId,
     workingCandidateRevisionId: dto.workingCandidateRevisionId,

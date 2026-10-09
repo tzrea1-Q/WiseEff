@@ -427,6 +427,96 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
+  test("canonical structured save stages for review and hands off to submission", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-EDIT-001
+    // @operation PROJ-CONFIG-EDIT-001
+    const headers = adminHeaders();
+    const previousRequests = await withPgClient(async (client) => (await client.query<{ id: string }>(
+      `select id from project_parameter_value_change_requests
+       where organization_id=$1 and project_id=$2 and submitter_user_id=$3
+         and reason=$4 and status='pending'`,
+      [organizationId, projectId, acceptanceCast.xuYun.userId, "Issue 1062 structured staging browser proof"]
+    )).rows);
+    for (const previous of previousRequests) {
+      const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${previous.id}/withdraw`),
+        { headers, data: { reason: "Clean up interrupted issue 1062 browser submission" } });
+      expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+    }
+    const previousDrafts = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`), { headers });
+    expect(previousDrafts.status(), await previousDrafts.text()).toBe(200);
+    for (const previous of (await previousDrafts.json()).items.filter((item: { reason: string }) =>
+      item.reason === "Issue 1062 structured staging browser proof")) {
+      const removed = await request.delete(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts/${previous.id}`), { headers });
+      expect(removed.status(), await removed.text()).toBe(200);
+    }
+    const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
+    expect(listed.status(), await listed.text()).toBe(200);
+    const bindings = (await listed.json()).items as Array<{ id: string; propertyKey: string; currentValueId: string;
+      sourceFileId: string; sourceNodePath: string; effectiveValue: { kind: string; groups?: Array<Array<{ value: string }>> } }>;
+    const binding = bindings.find((item) => item.propertyKey === "r_charger_uohm");
+    expect(binding).toBeDefined();
+    const configSets = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), { headers });
+    const configSet = (await configSets.json()).items.find((item: { name: string }) => item.name === "default");
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({
+      configSet: configSet.id, file: binding!.sourceFileId, node: binding!.sourceNodePath,
+      property: binding!.propertyKey, sourceMode: "structured"
+    })}`;
+    await signInBrowserAsRole(page, "admin", route);
+    await dismissXiaozeHint(page);
+    await page.getByRole("treeitem", {
+      name: `属性 ${binding!.sourceNodePath}/${binding!.propertyKey}`, exact: true
+    }).click();
+    await ensureInspectorOpen(page);
+    const inspector = page.getByRole("complementary", { name: "配置检查器" });
+    const editor = inspector.getByRole("textbox", { name: "数值 1" });
+    await expect(editor).toBeVisible();
+    const target = String(Number(binding!.effectiveValue.groups![0]![0]!.value) + 1);
+    await editor.fill(target);
+    const tasks = page.getByRole("region", { name: "配置任务" });
+    await tasks.getByLabel("变更原因").fill("Issue 1062 structured staging browser proof");
+    const stagedResponse = page.waitForResponse((response) => response.request().method() === "POST"
+      && response.url().endsWith(`/parameter-bindings/${binding!.id}/drafts`));
+    await tasks.getByRole("button", { name: /提交所选/ }).click();
+    const staged = await stagedResponse;
+    expect(staged.status(), await staged.text()).toBe(201);
+    const draft = (await staged.json()).item;
+    expect(draft).toMatchObject({ pending: true, currentValueId: binding!.currentValueId,
+      projectParameterBindingId: binding!.id, writeTarget: { role: "canonical-project-value-draft" } });
+    await expect(tasks).toContainText("已暂存 1 项待审核草稿；当前值未变。");
+    const receipt = tasks.getByRole("region", { name: "待审核草稿回执" });
+    await expect(receipt).toContainText(draft.draftId);
+    await expect(receipt).toContainText(binding!.currentValueId);
+    await expect(tasks).not.toContainText("已写入正式项目值");
+    await page.screenshot({ path: testInfo.outputPath("structured-staged-receipt.png"), fullPage: true });
+    await tasks.getByRole("button", { name: "前往提交审核" }).click();
+    await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${projectId}`));
+    const submission = page.getByRole("region", { name: "参数修改提交" });
+    for (const select of await submission.getByRole("combobox").all()) {
+      await select.locator('option[value]:not([value=""]):not([disabled])').first().waitFor({ state: "attached" });
+      const option = await select.locator("option").evaluateAll((options) =>
+        options.find((item) => (item as HTMLOptionElement).value && !(item as HTMLOptionElement).disabled)?.getAttribute("value"));
+      if (option) await select.selectOption(option);
+    }
+    const submittedResponse = page.waitForResponse((response) => response.request().method() === "POST"
+      && response.url().endsWith(`/parameter-value-drafts/${draft.draftId}/submit`));
+    await submission.getByRole("button", { name: /提交/ }).click();
+    const submitted = await submittedResponse;
+    expect(submitted.status(), await submitted.text()).toBe(201);
+    expect((await submitted.json()).item).toMatchObject({ status: "pending", bindingId: binding!.id });
+    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
+    expect((await after.json()).items.find((item: { id: string }) => item.id === binding!.id).currentValueId).toBe(binding!.currentValueId);
+    await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Canonical structured staging and submission",
+      status: "passed", role: "Admin", route, page, testInfo, assertions: ["ui", "api", "screenshot"],
+      api: [summarizeApiResponse(staged, { method: "POST", path: `/api/v2/projects/${projectId}/parameter-bindings/${binding!.id}/drafts`,
+        responseSummary: "pending canonical draft; current value unchanged" }),
+      summarizeApiResponse(submitted, { method: "POST", path: `/api/v2/projects/${projectId}/parameter-value-drafts/${draft.draftId}/submit`,
+        responseSummary: "pending canonical change request; current value unchanged" })],
+      notes: "API mode at 1440x900; exact occurrence staged, receipt reference shown, user handed off to submission. No review approval or formal value apply." });
+    const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${(await submitted.json()).item.id}/withdraw`),
+      { headers, data: { reason: "Clean up issue 1062 browser submission" } });
+    expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+  });
+
   test("navigates source-located structure spans, search, and deep links in API mode", async ({ page, request }, testInfo) => {
     // @acceptance PROJ-CONFIG-SOURCE-001
     // @operation PROJ-CONFIG-SOURCE-001

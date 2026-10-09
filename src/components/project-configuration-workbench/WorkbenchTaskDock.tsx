@@ -10,7 +10,7 @@ import type {
   ParameterFileSyncConflict
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionDraftRow } from "@/application/project-configuration/sessionDrafts";
-import type { StructuredEditRecoveryStatus } from "@/application/project-configuration/structuredEditSession";
+import type { StagedStructuredDraft, StructuredEditRecoveryStatus } from "@/application/project-configuration/structuredEditSession";
 import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
 import { WorkbenchReleaseReadinessIssues } from "./WorkbenchReleaseReadiness";
 
@@ -38,6 +38,8 @@ export type WorkbenchTaskDockProps = {
   submittingEdits: boolean;
   validateStatus: string;
   submitStatus: string;
+  stagedDrafts: StagedStructuredDraft[];
+  onSubmitReview: () => void;
   submitError: string;
   projectId: string;
   fileRepository: ParameterFileRepository;
@@ -76,6 +78,8 @@ export function WorkbenchTaskDock({
   submittingEdits,
   validateStatus,
   submitStatus,
+  stagedDrafts,
+  onSubmitReview,
   submitError,
   projectId,
   fileRepository,
@@ -207,6 +211,18 @@ export function WorkbenchTaskDock({
           )}
           {validateStatus ? <p role="status">{validateStatus}</p> : null}
           {submitStatus ? <p role="status">{submitStatus}</p> : null}
+          {stagedDrafts.length > 0 ? (
+            <section aria-label="待审核草稿回执">
+              <ul>
+                {stagedDrafts.map((draft) => (
+                  <li key={draft.draftId}>
+                    <code>{draft.draftId}</code> · 待提交审核 · 当前值未变：<code>{draft.currentValueId}</code>
+                  </li>
+                ))}
+              </ul>
+              <button className="button primary" type="button" onClick={onSubmitReview}>前往提交审核</button>
+            </section>
+          ) : null}
           {submitError ? <p role="alert">{submitError}</p> : null}
           <strong>任务证据</strong>
           {syncEvidence ? <p role="status">{syncEvidence}</p> : null}

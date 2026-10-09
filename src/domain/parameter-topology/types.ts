@@ -237,6 +237,9 @@ export type ProjectParameterBinding = {
   /** Canonical wire alias used by project-value reads. */
   effectiveRevisionId?: string;
   currentValueId?: string;
+  sourceFileId?: string | null;
+  sourceNodePath?: string | null;
+  sourceOccurrenceId?: string | null;
   projectId?: string;
   propertyKey: string;
   driverModule: string | null;
