@@ -148,6 +148,8 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 
 基线创建和发布使用同一就绪门禁。门禁 token 包含待审核规范请求的确切 ID，因此在评估后出现新待审核工作时，使用旧评估确认会被判为过期并拒绝。就绪检查不再同步或创建旧身份映射任务；保留的历史任务仅被读取。
 
+两种基线写入都通过 `FOR UPDATE` 锁定所属配置集行，与规范提交和源写入使用同一串行化边界。在该事务内、写入之前，重新评估就绪状态并比较已确认的 token，包括该 cohort 待审核规范请求的确切 ID。并发提交要么先提交，使此次检查判定 token 过期；要么等待基线写入提交。预检查和发布验证仍在写入事务之外执行，确保写入被拒绝后原有审计证据保留；它们不能授权最终写入。
+
 ### 共享模块归属
 
 Registration 与 Placement 写入接受可选 `destinationModuleId`，它是可信 Organization 内现存模块的精确 ID。Driver 目标必须是 `driver-group`，NodeType 必须是 `node-type`，ConfigurationSchema 必须是 `business`。显式目标无效时拒绝，不回退到名称匹配。未传此字段的既有调用方保留 PlacementIntent 契约。

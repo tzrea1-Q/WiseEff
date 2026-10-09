@@ -125,23 +125,22 @@ export async function createBaseline(
 ): Promise<ReleaseBaselineDto> {
   requireParameterFileAdmin(auth);
 
-  await assertReleaseGateAllows(
-    db,
-    auth,
-    {
-      configSetId: input.configSetId,
-      gateToken: input.gateToken,
-      acknowledgedWarningIds: input.acknowledgedWarningIds,
-      action: "create"
-    },
-    readinessDeps
-  );
+  const gateInput = {
+    configSetId: input.configSetId,
+    gateToken: input.gateToken,
+    acknowledgedWarningIds: input.acknowledgedWarningIds,
+    action: "create" as const
+  };
+  await assertReleaseGateAllows(db, auth, gateInput, readinessDeps);
 
   return db.transaction(async (tx) => {
+    await tx.query(`select id from dts_config_set where organization_id=$1 and id=$2 for update`,
+      [auth.organization.id, input.configSetId]);
     const configSet = await getConfigSetById(tx, {
       organizationId: auth.organization.id,
       configSetId: input.configSetId
     });
+    await assertReleaseGateAllows(tx, auth, gateInput, readinessDeps);
     if (!configSet) {
       throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
     }
@@ -668,17 +667,14 @@ export async function releaseBaseline(
     });
   }
 
-  await assertReleaseGateAllows(
-    db,
-    auth,
-    {
-      configSetId: baseline.configSetId,
-      gateToken: gateInput.gateToken,
-      acknowledgedWarningIds: gateInput.acknowledgedWarningIds,
-      action: "release"
-    },
-    { objectStore: deps.objectStore, validator: deps.validator, toolchain: deps.toolchain }
-  );
+  const readinessInput = {
+    configSetId: baseline.configSetId,
+    gateToken: gateInput.gateToken,
+    acknowledgedWarningIds: gateInput.acknowledgedWarningIds,
+    action: "release" as const
+  };
+  const readinessDeps = { objectStore: deps.objectStore, validator: deps.validator, toolchain: deps.toolchain };
+  await assertReleaseGateAllows(db, auth, readinessInput, readinessDeps);
 
   const gate = await runValidationGate(
     db,
@@ -689,10 +685,13 @@ export async function releaseBaseline(
   );
 
   return db.transaction(async (tx) => {
+    await tx.query(`select id from dts_config_set where organization_id=$1 and id=$2 for update`,
+      [auth.organization.id, baseline.configSetId]);
     const configSet = await getConfigSetById(tx, {
       organizationId: auth.organization.id,
       configSetId: baseline.configSetId
     });
+    await assertReleaseGateAllows(tx, auth, readinessInput, readinessDeps);
 
     await demoteReleasedBaselinesExcept(tx, {
       configSetId: baseline.configSetId,
