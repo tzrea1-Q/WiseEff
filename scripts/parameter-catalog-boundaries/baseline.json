@@ -4,7 +4,8 @@
     "e2e/acceptance/hierarchical-modules.acceptance.spec.ts": {
       "canonical-catalog-raw-access": 1,
       "legacy-catalog-raw-read": 2,
-      "legacy-catalog-sql-write": 5
+      "legacy-catalog-sql-write": 5,
+      "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/knowledge.acceptance.spec.ts": {
       "legacy-catalog-raw-read": 1,

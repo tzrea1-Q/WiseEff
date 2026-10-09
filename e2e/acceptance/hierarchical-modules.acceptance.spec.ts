@@ -2,7 +2,11 @@ import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type APIRequestContext } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { moveParameterModule } from "../../server/modules/parameters/parameterModuleRepository";
+import {
+  countCanonicalPlacementsForModule,
+  getParameterModuleById,
+  moveParameterModule
+} from "../../server/modules/parameters/parameterModuleRepository";
 import { authHeadersForRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
@@ -250,6 +254,13 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     expect(listBody.items.filter((item) => subtreeModuleIds.includes(item.moduleId ?? "")).map((item) => item.id)).toContain(binding.bindingId);
     expect(listBody.items.filter((item) => item.moduleId === parent.item.id).map((item) => item.id)).not.toContain(binding.bindingId);
 
+    const persisted = await withPgClient(async (client) => ({
+      leaf: await getParameterModuleById(client, { organizationId, moduleId: placementModuleId }),
+      placements: await countCanonicalPlacementsForModule(client, { organizationId, moduleId: placementModuleId })
+    }));
+    expect(persisted.leaf).toMatchObject({ parentId: child.item.id, path: `${child.item.path}/${placementModuleId}` });
+    expect(Number(persisted.placements)).toBeGreaterThanOrEqual(1);
+
     await recordOperationEvidence({
       operationId: "MOD-TREE-PARAM-001",
       title: "nested parameter module subtree filter",
@@ -279,6 +290,20 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
           path: "/api/v1/parameter-modules",
           responseSummary: `leaf ${placementModuleId} beneath child ${child.item.id}`
         })
+      ],
+      db: [
+        {
+          table: "parameter_modules",
+          predicate: `organization_id=${organizationId} and id=${placementModuleId}`,
+          observed: `parent_id=${persisted.leaf?.parentId}; path=${persisted.leaf?.path}`,
+          rowCount: persisted.leaf ? 1 : 0
+        },
+        {
+          table: "parameter_catalog.subject_placements",
+          predicate: `module_id=${placementModuleId}`,
+          observed: `canonical placements=${persisted.placements}`,
+          rowCount: Number(persisted.placements)
+        }
       ],
       notes:
         "The API-returned module tree identifies the canonical Binding in the parent subtree, but not its direct members. Driver-leaf positioning is a test-only fixture; legacy movement remains 410."
