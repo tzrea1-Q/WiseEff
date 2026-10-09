@@ -45,7 +45,7 @@ export type WorkbenchBaselineDockProps = {
   pinnedMembers?: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
   canAdmin: boolean;
   canRelease: boolean;
-  canRestore: boolean;
+  canPreviewRestore: boolean;
   releaseBlockedReason?: string;
   onSelectBaseline: (baselineId: string) => void;
   onRetry?: () => void;
@@ -69,7 +69,7 @@ export function WorkbenchBaselineDock({
   pinnedMembers,
   canAdmin,
   canRelease,
-  canRestore,
+  canPreviewRestore,
   releaseBlockedReason,
   onSelectBaseline,
   onRetry,
@@ -177,10 +177,10 @@ export function WorkbenchBaselineDock({
                 <button
                   className="button subtle"
                   type="button"
-                  disabled={!canRestore}
+                  disabled={!canPreviewRestore}
                   onClick={onOpenRestore}
                 >
-                  恢复
+                  恢复预览
                 </button>
               ) : null}
               {comparing ? (
@@ -221,14 +221,16 @@ export function WorkbenchBaselineDock({
 export function formatRestorePreviewDescription(
   baselineName: string,
   members: DtsRestorePreviewMember[],
-  releasedBaselineUnchanged: boolean
+  releasedBaselineUnchanged: boolean,
+  readOnly = false
 ) {
   const drifted = members.filter((item) => item.action === "rollback-pointer");
   return (
     <div>
       <p>
-        将把 Working 配置恢复到基线「{baselineName}」钉住的成员版本。仅漂移成员会新建
-        origin=rollback 指针版本。
+        {readOnly
+          ? `基线「${baselineName}」与 Working 配置的只读漂移预览。`
+          : `将把 Working 配置恢复到基线「${baselineName}」钉住的成员版本。仅漂移成员会新建 origin=rollback 指针版本。`}
       </p>
       <p role="status">
         影响范围：{drifted.length} 个漂移成员
@@ -244,7 +246,7 @@ export function formatRestorePreviewDescription(
           ))}
         </ul>
       ) : (
-        <p>所有成员已对齐，恢复不会写入新版本。</p>
+        <p>{readOnly ? "所有成员已对齐。" : "所有成员已对齐，恢复不会写入新版本。"}</p>
       )}
     </div>
   );
