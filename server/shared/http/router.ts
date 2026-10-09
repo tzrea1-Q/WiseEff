@@ -95,13 +95,16 @@ function compareEqualStaticCountPrecedence(left: RouteEntry, right: RouteEntry) 
 export function createRouter() {
   const routes: RouteEntry[] = [];
 
-  function add(method: HttpMethod, path: string, handler: RouteHandler) {
+  function add(method: HttpMethod, path: string, handler: RouteHandler, prepend = false) {
     const segments = splitPath(path);
     const staticCount = segments.filter((segment) => !segment.startsWith(":")).length;
-    routes.push({ method, pattern: path, segments, staticCount, handler });
+    const route = { method, pattern: path, segments, staticCount, handler };
+    if (prepend) routes.unshift(route);
+    else routes.push(route);
   }
 
   return {
+    prepend: (method: HttpMethod, path: string, handler: RouteHandler) => add(method, path, handler, true),
     get: (path: string, handler: RouteHandler) => add("GET", path, handler),
     post: (path: string, handler: RouteHandler) => add("POST", path, handler),
     put: (path: string, handler: RouteHandler) => add("PUT", path, handler),
