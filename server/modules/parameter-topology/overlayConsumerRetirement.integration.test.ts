@@ -14,6 +14,7 @@ import { createLocalObjectStore } from "../logs/objectStore";
 import { catalogDriverCompatibleDiscoveryResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { seedBaselinePlatformRoles } from "../auth/baselineCatalog";
+import { ensureLocalPostCutoverIdentity } from "./localPostCutover";
 
 const organizationId = "t1066_consumers_org";
 const projectId = "t1066_consumers_project";
@@ -22,6 +23,32 @@ const configSetId = "t1066_consumers_config";
 const overlayCompatible = "t1066,overlay-only";
 const legacyTables = ["driver_schema_overlays", "driver_schema_overlay_properties", "driver_schema_overlay_promotions"];
 
+function disposableDatabaseOverride(value: string | undefined, sourceUrls: Array<string | undefined>) {
+  const override = value?.trim() || undefined;
+  if (override && sourceUrls.some(source => source &&
+    decodeURIComponent(new URL(source).pathname) === decodeURIComponent(new URL(override).pathname))) {
+    throw new Error("WISEEFF_TEST_EPHEMERAL_DATABASE_URL must be a disposable database distinct from the source lane.");
+  }
+  return override;
+}
+
+describe("disposable database override isolation", () => {
+  const source = "postgres://wiseeff:wiseeff@127.0.0.1:55438/t1066";
+  it.each([undefined, "", "   "])("treats absent or blank input as no override: %j", (value) => {
+    expect(disposableDatabaseOverride(value, [source])).toBeUndefined();
+  });
+  it.each([
+    "postgres://other:password@127.0.0.1:55438/t1066?application_name=override",
+    "postgres://wiseeff:wiseeff@localhost:55438/t1066",
+  ])("rejects another URL for the source database: %s", (value) => {
+    expect(() => disposableDatabaseOverride(value, [source])).toThrow("distinct from the source lane");
+  });
+  it("accepts a different disposable database", () => {
+    const value = "postgres://wiseeff:wiseeff@127.0.0.1:55438/t1066_disposable";
+    expect(disposableDatabaseOverride(value, [source])).toBe(value);
+  });
+});
+
 describe("assembled coverage and ingest ignore historical overlays on PostgreSQL", () => {
   let db: RootDatabase;
   let ephemeralDatabase: EphemeralTestDatabase | undefined;
@@ -29,15 +56,14 @@ describe("assembled coverage and ingest ignore historical overlays on PostgreSQL
   let harness: ReturnType<typeof createRetirementTestHarness>;
 
   beforeAll(async () => {
-    const override = process.env.WISEEFF_TEST_EPHEMERAL_DATABASE_URL?.trim();
-    if (override && [process.env.DATABASE_URL, process.env.TEST_DATABASE_URL].includes(override)) {
-      throw new Error("WISEEFF_TEST_EPHEMERAL_DATABASE_URL must be a disposable database distinct from the source lane.");
-    }
+    const override = disposableDatabaseOverride(process.env.WISEEFF_TEST_EPHEMERAL_DATABASE_URL,
+      [process.env.DATABASE_URL, process.env.TEST_DATABASE_URL]);
     if (!override) ephemeralDatabase = await createEphemeralTestDatabase("overlays");
     const url = override ?? ephemeralDatabase!.url;
     db = createPostgresDatabase(url);
     const pool = getRootPostgresPool(db);
     if (!pool) throw new Error("Coverage and ingest require a native PostgreSQL pool.");
+    await ensureLocalPostCutoverIdentity(db);
     await seedPublishedCatalog(pool);
     await seedBaselinePlatformRoles(db);
     storageDirectory = await mkdtemp(join(tmpdir(), "t1066_overlay_consumers-"));
