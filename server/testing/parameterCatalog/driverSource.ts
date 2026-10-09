@@ -15,6 +15,24 @@ import { writeGuardedRegistration } from "../../modules/parameter-governance/reg
 import type { RegisterSubjectCommand } from "../../modules/parameter-governance/registration/command";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
 
+export async function seedHistoricalSingletonMapping(
+  db: Database,
+  input: { organizationId: string; moduleId: string; compatible: string },
+): Promise<void> {
+  const subjectId = `${input.moduleId}-subject`;
+  await db.query(`insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
+    values ($1,$2,'driver-registration','Historical singleton',$3)`,
+  [subjectId, input.organizationId, `compatible:${input.compatible}`]);
+  await db.query(`insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
+    values ($1,'logical-service','singleton-per-project')`, [subjectId]);
+  await db.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
+    values ($1,$2,'Historical singleton',$1,1,'driver-group','curated',$3)`,
+  [input.moduleId, input.organizationId, subjectId]);
+  await db.query(`insert into parameter_module_mappings(id,organization_id,parameter_module_id,match_kind,match_value)
+    values ($1,$2,$3,'compatible',$4)`,
+  [`${input.moduleId}-mapping`, input.organizationId, input.moduleId, input.compatible]);
+}
+
 export async function installDriverSourceFixture(
   db: Database,
   auth: AuthContext,

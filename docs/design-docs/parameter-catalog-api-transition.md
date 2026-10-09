@@ -142,6 +142,12 @@ Every route below is a target contract, not current implementation evidence.
 | Project drafts | Existing binding and node-enablement draft paths | Retained product behavior; inputs resolve through canonical binding/definition identity. |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | Deployment-operator-only reconciliation and migration diagnostics; never linked from public DTOs. |
 
+### Release readiness
+
+Config-set release readiness reads pending canonical value change requests alongside the retained legacy workflow count. Source-occurrence requests count only for the config set whose source cohort they touch; project-only requests block all config sets in that project. Approval, rejection, or withdrawal clears the pending-change blocker without a legacy change-request mirror. Node-enablement workflows retain their separate rules.
+
+Baseline creation and release consume the same readiness gate. Its token includes the exact pending canonical request IDs, so confirmation against an evaluation made before new pending work appeared is refused as stale. Readiness never synchronizes or creates legacy identity-mapping tasks; retained historical tasks are read only.
+
 ### Shared module assignment
 
 Registration and Placement writes accept optional `destinationModuleId`, the exact ID of an existing module in the authenticated Organization. Driver targets require `driver-group`, NodeType targets require `node-type`, and ConfigurationSchema targets require `business`. Explicit invalid targets fail; they never fall back to a name match. Existing callers that omit the field retain the PlacementIntent contract.
