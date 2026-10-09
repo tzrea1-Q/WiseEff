@@ -12,7 +12,7 @@ import {
   readCompletedModComparisonManifestForComparison,
   type CompletedMappingManifest,
 } from "../../parameter-catalog-api/productionWire";
-import { getParameterModuleRegistry } from "../../parameter-modules/service";
+import { readRegistry } from "../../parameter-modules/repository";
 import type { ParameterModuleDto } from "../../parameter-modules/types";
 import { getRootPostgresPool, type Database } from "../../../shared/database/client";
 import { createProductionComparisonCaseProvidersV2 } from "./productionProviders";
@@ -608,13 +608,13 @@ export async function writeModParameterCatalogComparisonCasesV2(
       "lock table public.parameter_modules, parameter_catalog.organization_subject_registrations, parameter_catalog.subject_placements in share mode",
     );
 
-    const registry = await getParameterModuleRegistry(tx, auth);
-    const lockedInventory = inventoryFor(registry.item.modules, scope.organizationId);
+    const registry = await readRegistry(tx, auth.organization.id, null);
+    const lockedInventory = inventoryFor(registry.modules, scope.organizationId);
     if (lockedInventory.length !== batch.sourceInventoryCount ||
         inventoryChecksum(lockedInventory) !== batch.sourceInventoryChecksum) {
       failClosed("MOD source inventory changed between provider read and protected write transaction");
     }
-    verifyLockedLegacyObservations(registry.item.modules, batch);
+    verifyLockedLegacyObservations(registry.modules, batch);
     await verifyLockedGovernanceAssociations(tx, batch);
 
     for (const item of batch.cases) {

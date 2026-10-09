@@ -67,6 +67,26 @@ describe("disposable post-cutover acceptance database safety", () => {
     expect(databaseName.length).toBeLessThanOrEqual(63);
   });
 
+  it("keeps manual worktree fixtures inside their selected test database namespace", async () => {
+    vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", "review_fixes");
+    vi.resetModules();
+    const isolated = await import("../e2e/acceptance/helpers/disposablePostCutoverRuntime");
+    expect(isolated.buildDisposableDatabaseName("parameter_topology")).toMatch(/^review_fixes_disposable_/);
+    expect(() => isolated.assertDisposableDatabaseIdentity({
+      databaseName: "wiseeff_acceptance_disposable_foreign",
+      markerPurpose: "parameter-topology", markerMigrationRunId: "run-1",
+      cutoverMigrationRunId: "run-1", expectedMigrationRunId: "run-1",
+    })).toThrow(/disposable database name/i);
+  });
+
+  it.each(["0", "65536", "not-a-port"])("refuses invalid manual listener %s before creating a database", async (port) => {
+    vi.stubEnv("WISEEFF_ACCEPTANCE_NESTED_API_PORT", port);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT", "5199");
+    await expect(startDisposablePostCutoverRuntime("postgres://test@127.0.0.1/review_fixes"))
+      .rejects.toThrow("Invalid disposable runtime ports");
+    expect(pgState.queries).toEqual([]);
+  });
+
   it("rejects shared database names and migration marker mismatches", () => {
     expect(() =>
       assertDisposableDatabaseIdentity({

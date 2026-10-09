@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createWiseEffServer } from "../../app";
+import { requestJson } from "../../test/testClient";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { makeTestAuthContext } from "../../testing/authContext";
@@ -16,13 +17,15 @@ import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { insertReleaseBaseline, insertReleaseBaselineMember } from "./baselineRepository";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { uploadProjectParameterFile } from "./service";
+import * as sourceRepository from "./repository";
+import { ApiError } from "../../shared/http/errors";
 import type { RestorePreviewResult } from "./baselineService";
 
 const organizationId = "org-baseline-ownership";
 const projectId = "project-baseline-ownership";
 const userId = "user-baseline-ownership";
 const schemaId = "wiseeff.baseline.limits";
-const databaseName = `t1065_${randomUUID().replaceAll("-", "")}`;
+const databaseName = `${process.env.WISEEFF_TEST_DATABASE_PREFIX ?? "t1065"}_${randomUUID().replaceAll("-", "")}`;
 
 describe("assembled baseline source ownership API", () => {
   let db: ReturnType<typeof createPostgresDatabase>;
@@ -36,12 +39,11 @@ describe("assembled baseline source ownership API", () => {
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
   });
 
-  async function request(path: string, method = "GET", requestId = randomUUID()) {
-    const response = await fetch(`http://127.0.0.1:8855/api/v1/projects/${projectId}/baselines/${path}`, {
+  async function request<Body = unknown>(path: string, method = "GET", requestId = randomUUID()) {
+    return requestJson<Body>(server, `/api/v1/projects/${projectId}/baselines/${path}`, {
       method,
       headers: { "X-WiseEff-User": userId, "X-Request-Id": requestId }
     });
-    return { status: response.status, body: await response.json() };
   }
 
   async function seedBaseline(name: string, configSetId?: string) {
@@ -92,11 +94,9 @@ describe("assembled baseline source ownership API", () => {
       invocation: createUserInvocation(auth), requestId: "baseline-source-registration", refusalSink: createTrustedRefusalAuditSink(db)
     }));
     server = createWiseEffServer({ db, objectStore: storage, auth: { mode: "development" } });
-    await new Promise<void>((resolve) => server.listen(8855, "127.0.0.1", resolve));
   }, 120_000);
 
   afterAll(async () => {
-    if (server) await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await db?.close();
     const admin = new pg.Client({ connectionString: adminConnectionString() });
     await admin.connect();
@@ -109,7 +109,7 @@ describe("assembled baseline source ownership API", () => {
 
   it("exposes canonical ownership and drift, refusing rollback without changing source truth", async () => {
     const before = await captureConfigurationSourceState(db, { organizationId, projectId });
-    const preview = await request(`${canonical.baselineId}/restore-preview`);
+    const preview = await request<{ item: RestorePreviewResult }>(`${canonical.baselineId}/restore-preview`);
     expect(preview.status).toBe(200);
     expect(preview.body.item as RestorePreviewResult).toMatchObject({
       driftedCount: 1, releasedBaselineUnchanged: true,
@@ -118,7 +118,8 @@ describe("assembled baseline source ownership API", () => {
     const requestId = randomUUID();
     const rollback = await request(`${canonical.baselineId}/rollback`, "POST", requestId);
     expect(rollback).toMatchObject({ status: 409, body: { error: {
-      code: "CONFLICT", message: "Canonical source changes require a prepared and approved source transaction."
+      code: "CONFLICT", message: "Canonical source changes require a prepared and approved source transaction.",
+      details: { reason: "canonical-source-transaction-required" }
     } } });
     const after = await captureConfigurationSourceState(db, { organizationId, projectId });
     expect(after.audits.filter((event) => event.trace === requestId)).toEqual([
@@ -128,12 +129,12 @@ describe("assembled baseline source ownership API", () => {
   });
 
   it("exposes legacy ownership and still restores legacy-owned sources", async () => {
-    const preview = await request(`${legacy.baselineId}/restore-preview`);
+    const preview = await request<{ item: RestorePreviewResult }>(`${legacy.baselineId}/restore-preview`);
     expect(preview.status).toBe(200);
     expect(preview.body.item).toMatchObject({ driftedCount: 1, members: [{ canonicalOwned: false }] });
     const rollback = await request(`${legacy.baselineId}/rollback`, "POST");
     expect(rollback).toMatchObject({ status: 200, body: { item: { baselineId: legacy.baselineId, restored: 1 } } });
-    const restored = await request(`${legacy.baselineId}/restore-preview`);
+    const restored = await request<{ item: RestorePreviewResult }>(`${legacy.baselineId}/restore-preview`);
     expect(restored.body.item.members[0].fromVersionNumber).toBe(3);
   });
 
@@ -147,14 +148,46 @@ describe("assembled baseline source ownership API", () => {
       organization_id: organizationId, project_id: projectId, actor_user_id: userId, actor_type: "user",
       action: "deny", target_id: canonical.baselineId,
       metadata: expect.objectContaining({ initiator: "user", operation: "baseline-rollback",
-        reason: "Canonical source changes require a prepared and approved source transaction." })
+        reason: "canonical-source-transaction-required" })
     })]);
+  });
+
+  it("audits the canonical source transaction refusal independently of message wording", async () => {
+    const assertAllowed = sourceRepository.assertLegacySourceMutationAllowed;
+    const guard = vi.spyOn(sourceRepository, "assertLegacySourceMutationAllowed").mockImplementation(async (...args) => {
+      try {
+        await assertAllowed(...args);
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "CONFLICT") {
+          error.message = "Review and approve the canonical source transaction before restoring.";
+        }
+        throw error;
+      }
+    });
+    try {
+      const before = await captureConfigurationSourceState(db, { organizationId, projectId });
+      const requestId = randomUUID();
+      const rollback = await request(`${canonical.baselineId}/rollback`, "POST", requestId);
+      expect(rollback).toMatchObject({ status: 409, body: { error: {
+        code: "CONFLICT", message: "Review and approve the canonical source transaction before restoring.",
+        details: { reason: "canonical-source-transaction-required" }
+      } } });
+      const audit = await db.query(`select actor_user_id,actor_type,action,metadata from audit_events where trace_id=$1`, [requestId]);
+      expect(audit.rows).toEqual([expect.objectContaining({
+        actor_user_id: userId, actor_type: "user", action: "deny",
+        metadata: expect.objectContaining({ initiator: "user", operation: "baseline-rollback", reason: "canonical-source-transaction-required" })
+      })]);
+      const after = await captureConfigurationSourceState(db, { organizationId, projectId });
+      expect({ ...after, audits: after.audits.filter((event) => event.trace !== requestId) }).toEqual(before);
+    } finally {
+      guard.mockRestore();
+    }
   });
 
   it("marks a member canonically owned when only its Config set has a canonical source occurrence", async () => {
     expect((await db.query(`select id from parameter_catalog.project_parameter_source_occurrences where file_id=$1`,
       [cohortMember.fileId])).rows).toEqual([]);
-    const preview = await request(`${cohortMember.baselineId}/restore-preview`);
+    const preview = await request<{ item: RestorePreviewResult }>(`${cohortMember.baselineId}/restore-preview`);
     expect(preview).toMatchObject({ status: 200, body: { item: { driftedCount: 1,
       members: [{ fileId: cohortMember.fileId, canonicalOwned: true }] } } });
     const before = await captureConfigurationSourceState(db, { organizationId, projectId });

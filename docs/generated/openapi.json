@@ -17062,6 +17062,12 @@
           "item": {
             "type": "object",
             "properties": {
+              "navigationOnly": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
               "modules": {
                 "type": "array",
                 "items": {

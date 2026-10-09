@@ -14,6 +14,7 @@ import {
   type SessionPropertyDraft
 } from "./sessionDrafts";
 import {
+  classifySessionDraftRecovery,
   findRecoverableSessionDraft,
   formatSessionDraftCopyText,
   removeSessionDraftBucket,
@@ -41,7 +42,7 @@ export type StagedStructuredDraft = {
   key: string;
   draftId: string;
   bindingId: string;
-  currentValueId: string;
+  currentValueId: string | null;
   pending: true;
 };
 
@@ -281,20 +282,21 @@ export function createStructuredEditSession(
     },
 
     async hydrate(scope) {
+      if (scope && currentScope && classifySessionDraftRecovery(currentScope, scope) === "compatible") return;
       const generation = ++hydrateGeneration;
       persistEnabled = false;
       currentScope = scope;
       clearStatuses();
+      stagedDrafts = [];
+      submitting = false;
+      drafts = {};
+      selectedKeys = new Set();
+      reason = "";
+      recoveryStatus = "none";
+      persistScope = null;
+      emit();
 
-      if (!scope) {
-        drafts = {};
-        selectedKeys = new Set();
-        reason = "";
-        recoveryStatus = "none";
-        persistScope = null;
-        emit();
-        return;
-      }
+      if (!scope) return;
 
       await Promise.resolve();
       if (generation !== hydrateGeneration) return;
@@ -426,6 +428,10 @@ export function createStructuredEditSession(
         emit();
         throw new Error(message);
       }
+      const generation = hydrateGeneration;
+      const assertCurrentScope = () => {
+        if (generation !== hydrateGeneration) throw new Error("编辑会话范围已变更。");
+      };
       submitting = true;
       submitError = "";
       submitStatus = "";
@@ -436,14 +442,17 @@ export function createStructuredEditSession(
           let revisionId = input.revisionId;
           if (!revisionId && input.configSetId) {
             const revisions = await repository.listConfigRevisions(input.projectId, input.configSetId);
+            assertCurrentScope();
             revisionId = revisions.find((item) => item.status === "resolved")?.id;
           }
           if (!revisionId) throw new Error("没有已解析的配置修订，无法暂存待审核草稿。");
           const bindings = await repository.listBindings(input.projectId, revisionId);
+          assertCurrentScope();
           stagedDrafts = [];
           const failures: string[] = [];
           let draftId = "";
           for (const row of selected) {
+            assertCurrentScope();
             try {
               const matches = bindings.filter((binding) => binding.definitionId && binding.sourceOccurrenceId
                 && binding.sourceFileId === row.fileId && binding.sourceNodePath === row.nodePath
@@ -456,10 +465,12 @@ export function createStructuredEditSession(
                   action: "set", targetValue: parseDtsValue(row.propertyName, row.rawText).value
                 })
               });
+              assertCurrentScope();
               if (!saved.draftId || saved.pending !== true
                 || saved.writeTarget.role !== "canonical-project-value-draft"
                 || saved.projectParameterBindingId !== binding.id
-                || !saved.currentValueId || saved.currentValueId !== binding.currentValueId) {
+                || saved.currentValueId === undefined
+                || saved.currentValueId !== binding.currentValueId) {
                 throw new Error("未确认待审核草稿。");
               }
               stagedDrafts.push({ key: row.key, draftId: saved.draftId, bindingId: binding.id,
@@ -471,10 +482,14 @@ export function createStructuredEditSession(
                 selectedKeys.delete(row.key);
               }
               submitStatus = `已暂存 ${stagedDrafts.length} 项待审核草稿；当前值未变。`;
+              if (stagedDrafts.some((draft) => draft.currentValueId === null)) {
+                submitStatus += "无当前值的 Binding 仍为空。";
+              }
               validateStatus = "";
               emit();
               persist();
             } catch (error) {
+              assertCurrentScope();
               failures.push(`${row.fileId}: ${row.nodePath}/${row.propertyName}：${error instanceof Error ? error.message : "暂存失败。"}`);
             }
           }
@@ -489,6 +504,7 @@ export function createStructuredEditSession(
           edits: aggregate.edits,
           reason: trimmedReason
         });
+        assertCurrentScope();
         const submittedKeys = selected.map((row) => row.key);
         drafts = clearSubmittedDrafts(drafts, submittedKeys);
         submitStatus = `已提交变更请求 ${round.id}`;
@@ -497,12 +513,15 @@ export function createStructuredEditSession(
         persist();
         return round;
       } catch (error: unknown) {
+        if (generation !== hydrateGeneration) throw error;
         submitError = error instanceof Error ? error.message : "提交变更请求失败。";
         emit();
         throw error instanceof Error ? error : new Error(submitError);
       } finally {
-        submitting = false;
-        emit();
+        if (generation === hydrateGeneration) {
+          submitting = false;
+          emit();
+        }
       }
     },
 

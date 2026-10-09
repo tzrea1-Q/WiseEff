@@ -1,6 +1,24 @@
 import type { Queryable } from "../../shared/database/client";
 import { parseStoredEvidence } from "../../modules/parameter-governance/review/query";
 
+export async function captureDtsReviewEvidenceStateFixture(db: Queryable, input: {
+  organizationId: string; projectId: string;
+}) {
+  const evidence = (await db.query<{ id: string; observationId: string | null; evidence: unknown }>(
+    `select id,observation_id as "observationId",evidence from parameter_catalog.parameter_review_evidence
+     where organization_id=$1 order by id`, [input.organizationId],
+  )).rows.map((row) => ({ ...row, evidence: parseStoredEvidence(row.evidence) }));
+  const items = (await db.query<{ id: string; status: string }>(
+    `select id,status from parameter_catalog.parameter_review_items where organization_id=$1 order by id`,
+    [input.organizationId],
+  )).rows;
+  const observations = (await db.query<{ id: string }>(
+    `select id from parameter_catalog.parameter_observations where organization_id=$1 and project_id=$2 order by id`,
+    [input.organizationId,input.projectId],
+  )).rows;
+  return { evidence, items, observations };
+}
+
 /** Test-only Catalog provenance setup; production reads use the Catalog owner's typed seam. */
 export async function insertDtsObservationSourceFixture(db: Queryable, input: {
   organizationId: string; projectId: string; configSetId: string; fileId: string;

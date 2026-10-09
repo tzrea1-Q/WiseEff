@@ -195,9 +195,13 @@ describe("parameter spec HTTP adapter", () => {
         expect(response.status, route.path).not.toBe(410);
       } else {
         expect(response.status, route.path).toBe(410);
+        const successor = route.path.endsWith("/resolve")
+          ? "/parameter-admin/specs?review=open"
+          : "/api/v2/catalog";
         expect(catalogLegacyGoneResponseSchema.parse(response.body).error.details).toEqual({
-          reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+          reason: "legacy-surface-retired", successor, retryable: false,
         });
+        expect(response.headers.get("link")).toBe(`<${successor}>; rel="successor-version"`);
       }
     }
   });

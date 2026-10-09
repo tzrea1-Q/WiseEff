@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,10 +10,12 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { createRetirementTestHarness } from "../../testing/parameterCatalog/retirementHarness";
 import { seedHistoricalSingletonMapping } from "../../testing/parameterCatalog/driverSource";
-import { loadDtsReviewEvidenceSourceFixture } from "../../testing/parameterCatalog/dtsObservationSource";
+import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
+import { captureDtsReviewEvidenceStateFixture, loadDtsReviewEvidenceSourceFixture } from "../../testing/parameterCatalog/dtsObservationSource";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { catalogReviewItemListResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { createLocalObjectStore } from "../logs/objectStore";
+import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
@@ -22,6 +24,10 @@ import { listIdentityMappingTaskRows } from "./bindingService";
 import { ingestConfigRevision } from "./ingestService";
 import { loadCandidateSemanticGateCounts } from "./overlayWriteback";
 import { listPreviousLogicalNodeSnapshots, listRevisionDiagnostics } from "./repository";
+import { getRootPostgresPool } from "../../shared/database/client";
+import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { seedPublishedCatalog } from "../../testing/parameterCatalog/seedPublishedCatalog";
+import { applyParameterIdentityCutover, migrateParameterIdentities } from "./migration";
 
 const organizationId = `t1068-production-org-${randomUUID()}`;
 const auth = makeTestAuthContext({ organizationId, userId: `${organizationId}-admin` });
@@ -36,16 +42,21 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
   let storage: ReturnType<typeof createLocalObjectStore>;
   let databaseUrl: string;
   let roleToken: string;
+  let lane: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
 
   beforeAll(async () => {
-    databaseUrl = process.env.T1068_TEST_DATABASE_URL ?? "postgres://wiseeff:wiseeff@127.0.0.1:55438/t1068_identity_production";
-    if (!/^t1068(?:_|$)/.test(new URL(databaseUrl).pathname.slice(1))) {
-      throw new Error("#1068 requires an explicitly prepared, seeded t1068 database");
-    }
+    lane = await createEphemeralTestDatabase("identityproduction");
+    databaseUrl = lane.url;
     db = createPostgresDatabase(databaseUrl);
     await seedCoreGraph(db, { organization: { id: organizationId }, users: [{ id: auth.user.id }] });
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values($1,$2,$3,null,'admin')",
       [`${auth.user.id}-role`, auth.user.id, organizationId]);
+    await seedPublishedCatalog(getRootPostgresPool(db)!);
+    const report = await migrateParameterIdentities(db, { mode: "apply",
+      maintenanceToken: "test-maintenance", expectedMaintenanceToken: "test-maintenance", writeLockConfirmed: true,
+      dbSnapshotId: "identity-production-test", objectSnapshotId: "identity-production-test" });
+    expect(report.blockers).toEqual([]);
+    await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
     await seedHistoricalSingletonMapping(db, { organizationId, moduleId: `${organizationId}-module`, compatible });
     directory = await mkdtemp(join(tmpdir(), "wiseeff-t1068-production-"));
     storage = createLocalObjectStore(directory);
@@ -66,6 +77,7 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
     await api?.close();
     if (roleToken) await dropLabRuntimeLogins(databaseUrl, roleToken);
     await db?.close();
+    await lane?.drop();
     if (directory) await rm(directory, { recursive: true, force: true });
   });
 
@@ -253,7 +265,64 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
     }));
   });
 
-  it("refuses unrepresentable propertyless continuity without committing source or task changes", async () => {
+  it("propertyless ambiguous continuity enters canonical review as revision evidence without inventing a property locator or resolving identity", async () => {
+    const previous = `/dts-v1/; / { bus@0 { reg = <0>; dev@10 {}; }; };`;
+    const next = `/dts-v1/; / { bus@0 { reg = <0>; left@10 {}; right@10 {}; }; };`;
+    const seeded = await fixture(previous);
+    await upload(seeded.projectId, previous);
+    const beforeRevision = await latestRevision(seeded.projectId, seeded.configSetId);
+    const filesPath = `/api/v1/projects/${seeded.projectId}/parameter-files`;
+    const beforeQueue = await reviewQueue();
+    const response = await requestJson(harness.server, filesPath, {
+      method: "POST", headers, body: JSON.stringify({ fileName: "board.dts", contentBase64: Buffer.from(next).toString("base64") }),
+    });
+    expect(response.status, response.bodyText).toBe(201);
+    const revision = await latestRevision(seeded.projectId, seeded.configSetId);
+    expect(revision.id).not.toBe(beforeRevision.id);
+    expect(revision.status).toBe("needs_mapping");
+    const diagnostic = (await listRevisionDiagnostics(api, revision.id))
+      .find((item) => item.code === "logical-continuity-decision-needed")!;
+    const relation = JSON.parse(diagnostic.guidance!);
+    const state = await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId: seeded.projectId });
+    expect(state.items.filter((item) => item.status === "open" && !beforeQueue.items.some((existing) => existing.id === item.id))).toHaveLength(2);
+    const created = (await reviewQueue()).items.filter((item) => !beforeQueue.items.some((existing) => existing.id === item.id));
+    expect(created).toHaveLength(2);
+    const candidateIds: string[] = [];
+    for (const item of created) {
+      expect(item).toMatchObject({ reason: "ambiguous", status: "open", candidateState: { status: "current" } });
+      const detail = await requestJson(harness.server,
+        `/api/v2/organizations/${organizationId}/parameter-review-items/${item.id}`, { headers });
+      expect(detail.status, detail.bodyText).toBe(200);
+      expect(detail.body).toMatchObject({ item });
+      const persisted = state.evidence.find((entry) => entry.id === item.observation!.sourceRef.id)!;
+      expect(persisted.observationId).toBeNull();
+      expect(persisted.evidence!.payload).toMatchObject({ kind: "logical-continuity-decision-needed",
+        priorNodeEquivalent: false, relations: [relation], sourceRevision: {
+          organizationId, projectId: seeded.projectId, configSetId: seeded.configSetId, configRevisionId: revision.id,
+          logicalNodeId: expect.any(String), logicalNodeRevisionId: expect.any(String),
+          nodeLocator: expect.stringMatching(/^\/bus@0\/(left|right)@10$/),
+        }, sourceMembers: [{ fileId: seeded.fileId, fileVersionId: (response.body as { version: { id: string } }).version.id,
+          sourceName: "board.dts", sourceDigest: `sha256:${createHash("sha256").update(next).digest("hex")}` }] });
+      expect(persisted.evidence!.payload).not.toHaveProperty("sourceProof");
+      expect(persisted.evidence!.payload.sourceRevision).not.toHaveProperty("propertyOccurrenceId");
+      expect(persisted.evidence!.payload.sourceRevision).not.toHaveProperty("propertyName");
+      candidateIds.push((persisted.evidence!.payload.sourceRevision as { logicalNodeId: string }).logicalNodeId);
+    }
+    expect(candidateIds.sort()).toEqual(relation.continuity.candidates.map((item: { logicalNodeId: string }) => item.logicalNodeId).sort());
+    expect(candidateIds).not.toContain(relation.previous.logicalNodeId);
+    expect(state.observations).toEqual([]);
+    expect((await captureConfigurationSourceState(api, { organizationId, projectId: seeded.projectId })).bindings).toEqual([]);
+    expect(await legacyTasks(seeded.projectId)).toEqual([]);
+    const beforeReplay = await reviewQueue();
+    await api.transaction(async (tx) => {
+      await produceDtsReviewEvidenceInTransaction(tx, api, storage, auth, revision.id);
+      await produceDtsReviewEvidenceInTransaction(tx, api, storage, auth, revision.id);
+    });
+    expect(await reviewQueue()).toEqual(beforeReplay);
+    expect(await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId: seeded.projectId })).toEqual(state);
+  });
+
+  it("propertyless continuity refuses corrupt source bytes and rolls back activation and review evidence", async () => {
     const previous = `/dts-v1/; / { bus@0 { reg = <0>; dev@10 {}; }; };`;
     const next = `/dts-v1/; / { bus@0 { reg = <0>; left@10 {}; right@10 {}; }; };`;
     const seeded = await fixture(previous);
@@ -261,9 +330,12 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
     const beforeRevision = await latestRevision(seeded.projectId, seeded.configSetId);
     const filesPath = `/api/v1/projects/${seeded.projectId}/parameter-files`;
     const beforeFiles = await requestJson(harness.server, filesPath, { headers });
-    expect(beforeFiles.status).toBe(200);
     const beforeQueue = await reviewQueue();
-    const response = await requestJson(harness.server, filesPath, {
+    const beforeEvidence = await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId: seeded.projectId });
+    const brokenStorage = { ...storage, getBounded: async () => Buffer.from("corrupt") };
+    const brokenHarness = createRetirementTestHarness({ db: api, legacyTables: ["identity_mapping_tasks"],
+      objectStore: brokenStorage, auth: { mode: "production", verifier: { verify: async () => auth } } });
+    const response = await requestJson(brokenHarness.server, filesPath, {
       method: "POST", headers, body: JSON.stringify({ fileName: "board.dts", contentBase64: Buffer.from(next).toString("base64") }),
     });
     expect(response.status, response.bodyText).toBe(409);
@@ -271,6 +343,7 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
     expect((await requestJson(harness.server, filesPath, { headers })).body).toEqual(beforeFiles.body);
     expect(await latestRevision(seeded.projectId, seeded.configSetId)).toEqual(beforeRevision);
     expect(await reviewQueue()).toEqual(beforeQueue);
+    expect(await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId: seeded.projectId })).toEqual(beforeEvidence);
     expect(await legacyTasks(seeded.projectId)).toEqual([]);
   });
 
@@ -288,4 +361,5 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
     expect(created).toHaveLength(2);
     expect(created.every((item) => item.reason === "ambiguous" && item.status === "open")).toBe(true);
   });
+
 });

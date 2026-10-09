@@ -822,14 +822,14 @@ export function registerParameterFileRoutes(
       return { status: 200, body: { item } };
     } catch (error) {
       if (error instanceof ApiError && error.code === "CONFLICT"
-        && error.message === "Canonical source changes require a prepared and approved source transaction.") {
+        && error.details.reason === "canonical-source-transaction-required") {
         const { baseline } = await getBaseline(db, auth, params.baselineId);
         const configSet = await getConfigSetById(db, { organizationId: auth.organization.id, configSetId: baseline.configSetId });
         await requireSubmissionRefusalSink().write({
           invocation: createUserInvocation(auth), projectId: configSet?.projectId ?? null,
           app: "parameters", kind: "baseline", action: "deny", severity: "Medium",
           targetType: "dts-release-baseline", targetId: params.baselineId,
-          metadata: { operation: "baseline-rollback", reason: error.message }, traceId: request.requestId
+          metadata: { operation: "baseline-rollback", reason: error.details.reason }, traceId: request.requestId
         });
       }
       throw error;

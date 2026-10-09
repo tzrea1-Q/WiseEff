@@ -31,6 +31,14 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 编辑期间运行定向测试，交接前按受影响范围扩大验证；TypeScript、路由、Vite、共享类型变更保留 `npm run build`。文档变更仍运行 `npm run docs:check` 与 `git diff --check`。
 
+### 测试数据库隔离
+
+设置 `WISEEFF_TEST_DATABASE_PREFIX` 后，一次性切换后浏览器测试使用 `<prefix>_disposable_…`；未设置时保留 `wiseeff_acceptance_disposable_…`。手动运行可用 `WISEEFF_ACCEPTANCE_NESTED_API_PORT` 和 `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` 固定嵌套监听端口（1–65535 范围内的不同整数）。复用手动运行的端口时，设置 `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true`，使用 `--no-deps` 仅运行嵌套测试，不要同时在这些端口启动父运行时。CI 不设置端口覆盖，继续使用自动分配的隔离端口。
+
+PostgreSQL 测试工具（`server/testing/testDatabase.ts`）依次使用非空的 `TEST_DATABASE_URL`、`DATABASE_URL`，最后回退到本地 Compose 默认连接。同一集群上的并行工作树应在启动各自测试进程前设置不同的 `WISEEFF_TEST_DATABASE_PREFIX`。前缀会去除首尾空白；未设置或为空时默认 `wiseeff`。有效格式为 `^[a-z][a-z0-9_]{0,15}$`：1–16 个字符，以小写 ASCII 字母开头，后续仅允许小写 ASCII 字母、数字或下划线。无效前缀会在数据库准备前报错。
+
+该前缀用于迁移模板（`<prefix>_test_tpl_…`）、临时模板构建（`<prefix>_test_tplbuild_…`）与 worker/临时数据库（`<prefix>_test_wk_…`）。提供该变量时，托管实例测试使用 `<prefix>_m…`；未设置时保留 `wiseeffm…`。旧模板和孤立 worker 清理仅匹配所选模板/worker 前缀，下划线按字面匹配；worker 收尾清理还匹配当前运行标识。使用工作树独占的前缀（例如 `review_fixes`），避免一次清理选中其他工作树的测试数据库。该设置不改变连接 URL、不授予权限，也不取消共享集群角色目录锁。
+
 WiseEff 以 PC 为主，可见修改默认验证受影响页面和状态的 `1440x900` 视口，不要求三设备走查。具体布局风险才补充较窄 PC 窗口；平板和手机按需启用。真实浏览器证据及专门验收边界见[界面质量检查清单](../developer/ui-quality-checklist.md)。
 
 ## 同类中文文档

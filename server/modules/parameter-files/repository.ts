@@ -264,7 +264,9 @@ export async function assertLegacySourceMutationAllowed(db: Queryable, fileId: s
     `select 1 from parameter_catalog.project_parameter_source_occurrences where file_id=any($1::text[]) or config_set_id=any($2::text[]) limit 1`,
     [fileIds,setIds],
   );
-  if (canonical.rows.length) throw new ApiError("CONFLICT", "Canonical source changes require a prepared and approved source transaction.");
+  if (canonical.rows.length) throw new ApiError("CONFLICT", "Canonical source changes require a prepared and approved source transaction.", {
+    reason: "canonical-source-transaction-required",
+  });
 }
 
 export async function setCurrentVersion(

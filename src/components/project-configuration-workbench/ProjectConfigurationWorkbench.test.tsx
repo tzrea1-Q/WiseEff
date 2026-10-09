@@ -412,6 +412,57 @@ const BOARD_STRUCTURE = {
 };
 
 describe("ProjectConfigurationWorkbench", () => {
+  it.each(["approve", "reject", "withdraw"])("refreshes mounted readiness after canonical %s and on focus or visibility", async () => {
+    const ready = await createDtsRepository().getReleaseReadiness(PROJECT.id, "cs-default");
+    let pending = true;
+    const getReleaseReadiness = vi.fn(async () => ({ ...ready, level: pending ? "blocked" as const : "ready" as const,
+      canRelease: !pending, canCreateBaseline: !pending,
+      blockers: pending ? [{ id: "pending", severity: "blocker" as const, code: "pending-change",
+        message: "1 canonical request awaits review",
+        remediation: { kind: "complete-pending-change" as const, label: "Review pending requests" } }] : [] }));
+    renderWorkbench({ dtsRepository: createDtsRepository({ getReleaseReadiness }) });
+    const summary = await screen.findByRole("status", { name: "发布就绪" });
+    await waitFor(() => expect(summary).toHaveAttribute("data-can-release", "false"));
+    const evaluations = getReleaseReadiness.mock.calls.length;
+    act(() => window.dispatchEvent(new CustomEvent("wiseeff:canonical-requests-changed", { detail: { projectId: "other-project" } })));
+    expect(getReleaseReadiness).toHaveBeenCalledTimes(evaluations);
+    pending = false;
+    act(() => window.dispatchEvent(new CustomEvent("wiseeff:canonical-requests-changed", { detail: { projectId: PROJECT.id } })));
+    await waitFor(() => expect(summary).toHaveAttribute("data-can-release", "true"));
+    pending = true;
+    act(() => window.dispatchEvent(new Event("focus")));
+    await waitFor(() => expect(summary).toHaveAttribute("data-can-release", "false"));
+    const afterFocus = getReleaseReadiness.mock.calls.length;
+    const visibility = vi.spyOn(document, "visibilityState", "get");
+    try {
+      visibility.mockReturnValue("hidden");
+      act(() => document.dispatchEvent(new Event("visibilitychange")));
+      expect(getReleaseReadiness).toHaveBeenCalledTimes(afterFocus);
+      pending = false;
+      visibility.mockReturnValue("visible");
+      act(() => document.dispatchEvent(new Event("visibilitychange")));
+      await waitFor(() => expect(summary).toHaveAttribute("data-can-release", "true"));
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
+  it("navigates pending readiness remediation to the canonical request review surface", async () => {
+    const ready = await createDtsRepository().getReleaseReadiness(PROJECT.id, "cs-default");
+    const href = "/parameter-review?project=project-1&request=request-pending";
+    const { onNavigate } = renderWorkbench({ dtsRepository: createDtsRepository({
+      getReleaseReadiness: vi.fn(async () => ({ ...ready, level: "blocked", canRelease: false,
+        canCreateBaseline: false, blockers: [{ id: "pending", severity: "blocker", code: "pending-change",
+          message: "1 canonical request awaits review", target: { changeRequestId: "request-pending" },
+          remediation: { kind: "complete-pending-change", label: "Review pending requests", href } }] }))
+    }) });
+    const summary = await screen.findByRole("status", { name: "发布就绪" });
+    fireEvent.click(within(summary).getByRole("button"));
+    const issues = await screen.findByRole("region", { name: "发布就绪问题" });
+    fireEvent.click(within(issues).getByRole("button", { name: /Review pending requests/ }));
+    expect(onNavigate).toHaveBeenLastCalledWith(href);
+  });
+
   it("selects the deterministic default Config set and renders working source identities", async () => {
     const { onNavigate } = renderWorkbench();
 
@@ -889,10 +940,10 @@ describe("ProjectConfigurationWorkbench", () => {
     }
   });
 
-  it("shows the staged pending receipt and hands off to parameter submission without claiming a formal write", async () => {
+  it.each(["ppv_before", null])("shows the staged pending receipt with current value %s and hands off without claiming a formal write", async (currentValueId) => {
     const onNavigate = vi.fn();
     const createBindingDraft = vi.fn(async () => ({
-      draftId: "pvdr_workbench", pending: true, currentValueId: "ppv_before",
+      draftId: "pvdr_workbench", pending: true, currentValueId,
       parameterId: "pbind_board", projectParameterBindingId: "pbind_board", candidateRevisionId: "rev-cs-listed",
       rawText: '"Updated"', action: "set" as const, parameterSpecId: "pdef_model",
       writeTarget: { role: "canonical-project-value-draft", propertyKey: "model" }, overlayFileId: "", overlayFileName: ""
@@ -902,7 +953,7 @@ describe("ProjectConfigurationWorkbench", () => {
       topologyRepository: createTestParameterTopologyRepository({
         listConfigRevisions: createTopologyRepository().listConfigRevisions,
         listBindings: vi.fn(async () => [{ id: "pbind_board", definitionId: "pdef_model",
-          parameterSpecId: "pdef_model", parameterSpecVersionId: "pdrev_model", currentValueId: "ppv_before",
+          parameterSpecId: "pdef_model", parameterSpecVersionId: "pdrev_model", currentValueId,
           sourceFileId: "file-board", sourceNodePath: "board", sourceOccurrenceId: "occ_board", propertyKey: "model",
           logicalNodeId: "node_board", instanceName: "board", locator: "board", driverModule: null, moduleId: "module",
           effectiveValue: { kind: "strings" as const, values: ["Aurora"] }, rawValue: '"Aurora"',
@@ -919,7 +970,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
     await waitFor(() => expect(tasks).toHaveTextContent("已暂存 1 项待审核草稿；当前值未变。"));
     expect(tasks).toHaveTextContent("pvdr_workbench");
-    expect(tasks).toHaveTextContent("ppv_before");
+    expect(tasks).toHaveTextContent(currentValueId ?? "无当前值");
     expect(tasks).not.toHaveTextContent("已写入正式项目值");
     fireEvent.click(within(tasks).getByRole("button", { name: "前往提交审核" }));
     expect(onNavigate).toHaveBeenLastCalledWith("/parameters?project=project-1");

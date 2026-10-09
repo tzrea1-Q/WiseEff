@@ -462,7 +462,9 @@ describe("parameter catalog client contract", () => {
     );
   });
 
-  it.each(["json", "dts"] as const)("parses one ordered %s batch and sends its proof to the existing review route", async (format) => {
+  it.each([
+    ["json", "approve"], ["json", "reject"], ["dts", "approve"], ["dts", "reject"]
+  ] as const)("parses one ordered %s batch, sends its proof for %s and notifies review/withdrawal", async (format, decision) => {
     const proof = "a".repeat(64);
     const targets = ["binding-a", "binding-b"].map((bindingId, ordinal) => ({
       ordinal, draftId: null, decision: "file", bindingId, definitionId: "definition-1",
@@ -506,6 +508,7 @@ describe("parameter catalog client contract", () => {
     const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       const path = String(url);
       if (path.endsWith("/source-diff")) return jsonResponse(diff);
+      if (path.endsWith("/review")) return jsonResponse({ item: { ...batch.item, status: decision === "approve" ? "approved" : "rejected" } });
       if (path.endsWith("/withdraw")) return jsonResponse({ item: { ...batch.item, status: "withdrawn" } });
       if (path.includes("/batches") && init?.method === "GET") return jsonResponse({ items: [batch.item] });
       return jsonResponse(batch, init?.method === "POST" && path.endsWith("/batches") ? 201 : 200);
@@ -529,15 +532,43 @@ describe("parameter catalog client contract", () => {
       expect.objectContaining({ method: "GET" })
     );
     await expect(client.getProjectValueChangeSourceDiff("project-1", "batch-1")).resolves.toEqual(diff);
+    const changed = vi.fn();
+    window.addEventListener("wiseeff:canonical-requests-changed", changed);
     await expect(client.reviewProjectValueChangeRequest("project-1", "batch-1",
-      { decision: "approve", batchProofDigest: proof },
-      { catalogReleaseId: "release-1", idempotencyKey: "review-1" })).resolves.toEqual(batch);
+      { decision, batchProofDigest: proof },
+      { catalogReleaseId: "release-1", idempotencyKey: "review-1" })).resolves.toEqual({
+        item: { ...batch.item, status: decision === "approve" ? "approved" : "rejected" }
+      });
     const [url, options] = fetchMock.mock.lastCall!;
     expect(url).toBe("/api/v2/projects/project-1/parameter-value-change-requests/batch-1/review");
-    expect(options).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "approve", batchProofDigest: proof }) }));
+    expect(options).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ decision, batchProofDigest: proof }) }));
     await expect(client.withdrawProjectValueChangeRequest("project-1", "batch-1",
       { catalogReleaseId: "release-1", idempotencyKey: "withdraw-1" }))
       .resolves.toEqual({ item: { ...batch.item, status: "withdrawn" } });
+    window.removeEventListener("wiseeff:canonical-requests-changed", changed);
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(changed.mock.calls[0]![0].detail).toEqual({ projectId: "project-1" });
+    expect(changed.mock.calls[1]![0].detail).toEqual({ projectId: "project-1" });
+  });
+
+  it.each(["http", "contract", "network"])("does not notify a canonical request change on %s failure", async (failure) => {
+    const client = createParameterCatalogClient({ fetchImpl: vi.fn(async () => {
+      if (failure === "network") throw new Error("Network unavailable");
+      return failure === "http"
+        ? jsonResponse({ code: "CONFLICT", message: "Stale review" }, 409)
+        : jsonResponse({ item: {} });
+    }) });
+    const changed = vi.fn();
+    window.addEventListener("wiseeff:canonical-requests-changed", changed);
+    try {
+      await expect(client.reviewProjectValueChangeRequest("project/1", "request/1", { decision: "reject" },
+        { catalogReleaseId: "release", idempotencyKey: "failed-review" })).rejects.toThrow();
+      await expect(client.withdrawProjectValueChangeRequest("project/1", "request/1",
+        { catalogReleaseId: "release", idempotencyKey: "failed-withdrawal" })).rejects.toThrow();
+      expect(changed).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("wiseeff:canonical-requests-changed", changed);
+    }
   });
 
   it("sends the pending-review filter without the Catalog list whitelist dropping it", async () => {
@@ -549,7 +580,7 @@ describe("parameter catalog client contract", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=rejected&mine=true", expect.objectContaining({ method: "GET" }));
   });
 
-  it("carries the exact frozen member-removal proof through submit, detail and review", async () => {
+  it.each(["approve", "reject"] as const)("carries the exact frozen member-removal proof through %s and notifies review/withdrawal", async (decision) => {
     const proofDigest = "a".repeat(64);
     const member = (fileId: string) => ({ fileId, fileVersionId: `v-${fileId}`,
       sourceName: `${fileId}.json`, format: "json", role: "base", sortOrder: 0,
@@ -570,7 +601,11 @@ describe("parameter catalog client contract", () => {
       assignedToUserId: "reviewer", reviewerUserId: null, reviewerNote: null,
       appliedSourceResult: null, createdAt: "2026-09-24T00:00:00Z",
       updatedAt: "2026-09-24T00:00:00Z" };
-    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ item }));
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (String(url).endsWith("/review")) return jsonResponse({ item: { ...item, status: decision === "approve" ? "approved" : "rejected" } });
+      if (String(url).endsWith("/withdraw")) return jsonResponse({ item: { ...item, status: "withdrawn" } });
+      return jsonResponse({ item });
+    });
     const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
     const context = { catalogReleaseId: "release", idempotencyKey: "member-key" };
     const submitted = await client.submitMemberRemovalRequest("project-1", {
@@ -585,11 +620,22 @@ describe("parameter catalog client contract", () => {
       fileId: "file-a", assignedToUserId: "reviewer"
     });
     await expect(client.getMemberRemovalRequest("project-1", "request-1")).resolves.toEqual({ item });
-    await client.reviewMemberRemovalRequest("project-1", "request-1", {
-      decision: "approve", memberProofDigest: submitted.item.proofDigest
-    }, context);
+    const changed = vi.fn();
+    window.addEventListener("wiseeff:canonical-requests-changed", changed);
+    try {
+      await expect(client.reviewMemberRemovalRequest("project-1", "request-1", {
+        decision, memberProofDigest: submitted.item.proofDigest
+      }, context)).resolves.toMatchObject({ item: { status: decision === "approve" ? "approved" : "rejected" } });
+      await expect(client.withdrawMemberRemovalRequest("project-1", "request-1", context)).resolves.toMatchObject({ item: { status: "withdrawn" } });
+      expect(changed).toHaveBeenCalledTimes(2);
+      expect(changed.mock.calls.map(([event]) => event.detail)).toEqual([
+        { projectId: "project-1" }, { projectId: "project-1" }
+      ]);
+    } finally {
+      window.removeEventListener("wiseeff:canonical-requests-changed", changed);
+    }
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
-      decision: "approve", memberProofDigest: proofDigest
+      decision, memberProofDigest: proofDigest
     });
     expect(fetchMock.mock.calls[2]?.[0]).toBe(
       "/api/v2/projects/project-1/parameter-value-change-requests/request-1/review"

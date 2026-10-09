@@ -1,12 +1,12 @@
-import { createReviewQueueReader, type ReviewQueueTrustedContext } from "../../parameter-governance/review";
-import { mapReviewItem } from "../governance/dto";
-import { captureCurrentCatalogPin } from "../../catalog-publication/runtime";
-import { lookupProtectedIdentity } from "../../catalog-cutover/mapping";
-import type { AuthContext } from "../../auth/types";
-import { getRootPostgresPool, type Database } from "../../../shared/database/client";
-import { ApiError } from "../../../shared/http/errors";
+import { createReviewQueueReader, type ReviewQueueTrustedContext } from "../parameter-governance/review";
+import { mapReviewItem } from "./governance/dto";
+import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
+import { lookupProtectedIdentity } from "../catalog-cutover/mapping";
+import type { AuthContext } from "../auth/types";
+import { getRootPostgresPool, type Database } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import { boundedLegacyHeaders, CATALOG_SUNSET_HTTP_DATE, LEGACY_IDENTITY_CONTRACT,
-  LEGACY_IDENTITY_WARNING, LEGACY_SPEC_CONTRACT, LEGACY_SPEC_WARNING } from "./headers";
+  LEGACY_IDENTITY_WARNING, LEGACY_SPEC_CONTRACT, LEGACY_SPEC_WARNING } from "./legacy/headers";
 
 export function historicalTaskReadWindow<Task extends { id: string; status: string }>(
   tasks: readonly Task[],

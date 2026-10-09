@@ -160,6 +160,7 @@ export type DtsReleaseReadinessIssue = {
   remediation: {
     kind: DtsReleaseReadinessRemediationKind;
     label: string;
+    href?: string;
   };
   acknowledgementRequired?: boolean;
   acknowledged?: boolean;

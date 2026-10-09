@@ -10,6 +10,7 @@ import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatc
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
 import { parseDtsValue } from "../../dts";
 import { parseCanonicalCompatibleSelector } from "../../parameter-catalog-contract";
+import { loadExactSourceRevisionForProof } from "../../parameter-files/sourceVersion";
 import { canAdminParameters } from "../../parameter-kernel/policy";
 import type { ObjectStore } from "../../logs/objectStore";
 import { readCurrentDtsCompatibleSource, type CurrentDtsCompatibleSourceInput,
@@ -28,12 +29,12 @@ type Property = {
 };
 
 /** File-activation producer. The caller's source revision and these writes commit or roll back together. */
-export async function produceDtsCompatibleEvidenceInTransaction(
+export async function produceDtsReviewEvidenceInTransaction(
   tx: Database, root: Database, objectStore: ObjectStore, auth: AuthContext, configRevisionId: string,
 ): Promise<void> {
   if (!canAdminParameters(auth)) throw new Error("DTS evidence producer requires parameter administration");
-  const revision = (await tx.query<{ projectId: string }>(
-    `select project_id as "projectId" from dts_config_revisions
+  const revision = (await tx.query<{ projectId: string; configSetId: string }>(
+    `select project_id as "projectId",config_set_id as "configSetId" from dts_config_revisions
      where id=$1 and organization_id=$2`,[configRevisionId,auth.organization.id],
   )).rows;
   if (revision.length !== 1 || !auth.roles.some((role) => role.roleId === "admin"
@@ -97,14 +98,44 @@ export async function produceDtsCompatibleEvidenceInTransaction(
      order by logical.logical_node_id,(property.property_name='compatible') desc,property.id limit 201`,
     [configRevisionId,auth.organization.id,[...continuityByCandidate.keys()]],
   )).rows;
-  if (properties.length > 200) throw new Error("DTS compatible evidence source limit exceeded");
   const anchoredCandidates = new Set(properties.map((property) => property.logicalNodeId));
-  if ([...continuityByCandidate.keys()].some((candidate) => !anchoredCandidates.has(candidate))) {
-    throw new ApiError("CONFLICT", "Propertyless continuity needs an exact node evidence locator; source activation is refused.", {
-      reason: "source-proof-invalid",
-    });
-  }
+  const propertylessCandidates = [...continuityByCandidate.keys()].filter((candidate) => !anchoredCandidates.has(candidate));
+  if (properties.length + propertylessCandidates.length > 200) throw new Error("DTS review evidence source limit exceeded");
   const observationIds: string[] = [];
+  const reviewEvidenceIds: string[] = [];
+  if (propertylessCandidates.length) {
+    const member = (await tx.query<{ fileId: string; fileVersionId: string }>(
+      `select file_id as "fileId",file_version_id as "fileVersionId" from dts_config_revision_members
+       where config_revision_id=$1 order by sort_order,id limit 1`, [configRevisionId],
+    )).rows[0];
+    if (!member) throw new ApiError("CONFLICT", "DTS continuity revision has no source members.", { reason: "source-proof-invalid" });
+    const source = await loadExactSourceRevisionForProof(tx,objectStore,{
+      organizationId:auth.organization.id,...revision[0]!,configRevisionId,...member,
+    });
+    const nodes = (await tx.query<{ logicalNodeId: string; logicalNodeRevisionId: string; nodeLocator: string }>(
+      `select logical_node_id as "logicalNodeId",id as "logicalNodeRevisionId",node_locator as "nodeLocator"
+       from dts_logical_node_revisions where config_revision_id=$1 and logical_node_id=any($2::text[])`,
+      [configRevisionId,propertylessCandidates],
+    )).rows;
+    for (const logicalNodeId of propertylessCandidates) {
+      const matches = nodes.filter((node) => node.logicalNodeId === logicalNodeId);
+      const relations = continuityByCandidate.get(logicalNodeId)!;
+      if (matches.length !== 1 || relations.some((relation) => !relation.continuity.candidates.some((candidate) =>
+        candidate.logicalNodeId === logicalNodeId && candidate.nodeLocator === matches[0]!.nodeLocator))) {
+        throw new ApiError("CONFLICT", "DTS continuity candidate is absent from its exact revision.", { reason: "source-proof-invalid" });
+      }
+      const evidence = await ingestSourceBoundEvidenceInTransaction(tx,{
+        organizationId:auth.organization.id,sourceIdentity:`dts-continuity:${configRevisionId}:${logicalNodeId}`,
+        catalogReleaseId:pin.id,matcherRevision:subjectMatcherRevision,matcherOutput:{status:"ambiguous"},
+        evidence:{kind:"logical-continuity-decision-needed",priorNodeEquivalent:false,
+          relations:JSON.parse(JSON.stringify(relations)),
+          sourceRevision:{organizationId:auth.organization.id,...revision[0]!,configRevisionId,...matches[0]!},
+          sourceMembers:source.members.map((entry) => ({fileId:entry.fileId,fileVersionId:entry.fileVersionId,
+            sourceName:entry.sourceName,sourceDigest:`sha256:${entry.checksum.replace(/^sha256:/, "")}`}))},
+      },{kind:"revision-review",projectId:revision[0]!.projectId,configRevisionId,logicalNodeId,objectStore});
+      reviewEvidenceIds.push(evidence.id);
+    }
+  }
   const continuityProduced = new Set<string>();
   for (const property of properties) {
     const compatibleProperty = property.propertyName === "compatible";
@@ -213,8 +244,8 @@ export async function produceDtsCompatibleEvidenceInTransaction(
   if (!finalPin || finalPin.id !== pin.id || finalPin.digest !== pin.digest) {
     throw new Error("Catalog release changed during DTS evidence production");
   }
-  if (observationIds.length) {
-    const materialized = await materializeReviewItemsInTransaction(tx,auth.organization.id,pin,observationIds);
+  if (observationIds.length || reviewEvidenceIds.length) {
+    const materialized = await materializeReviewItemsInTransaction(tx,auth.organization.id,pin,observationIds,reviewEvidenceIds);
     if (!materialized.ok) throw new Error(`Review evidence grouping failed: ${materialized.error.kind}`);
   }
 }

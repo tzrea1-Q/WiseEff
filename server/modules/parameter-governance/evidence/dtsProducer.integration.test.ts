@@ -20,11 +20,14 @@ import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../c
 import { createReviewQueueReader } from "../review";
 import { resolveReviewItem } from "../resolveReviewItem";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
-import { produceDtsCompatibleEvidenceInTransaction } from "./dtsProducer";
+import { produceDtsReviewEvidenceInTransaction } from "./dtsProducer";
 import { ingestSourceBoundEvidenceInTransaction } from "./ingest";
 import { fingerprintCanonical, observationFingerprintModel } from "./fingerprint";
 import { CatalogReleaseId, type ContractJsonValue } from "../../parameter-catalog-contract";
 import { listDriverCompatibleDiscovery } from "../queries";
+import * as productionEvidence from "../../parameter-catalog-api/productionEvidence";
+import { captureDtsReviewEvidenceStateFixture } from "../../../testing/parameterCatalog/dtsObservationSource";
+import type { IngestEvidenceCommand } from "./types";
 
 const ORG = "org-c1-producer";
 const PROJECT = "project-c1-producer";
@@ -37,6 +40,10 @@ const auth = makeTestAuthContext({ organizationId: ORG,userId: "c1-producer-admi
 const source = `/dts-v1/;\n/ { charger { compatible = "vendor,device", "vendor,device", "acme,power"; limit = <10>; }; peer { compatible = "vendor,device"; }; known { compatible = "acme,power"; }; };\n`;
 
 describe("#897 production DTS observation and Review Item association", () => {
+  it("exposes the DTS review evidence producer through the public composition seam", () => {
+    expect(productionEvidence.produceDtsReviewEvidenceInTransaction).toBe(produceDtsReviewEvidenceInTransaction);
+    expect(productionEvidence).not.toHaveProperty("produceDtsCompatibleEvidenceInTransaction");
+  });
   let lane: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
   let db: ReturnType<typeof createPostgresDatabase>;
   let api: ReturnType<typeof createPostgresDatabase>;
@@ -193,8 +200,8 @@ describe("#897 production DTS observation and Review Item association", () => {
     expect(firstItem).toBeTruthy();
     const reviewCount = evidence.length;
     await db.transaction(async (tx) => {
-      await produceDtsCompatibleEvidenceInTransaction(tx,db,storage,auth,charger.configRevisionId);
-      await produceDtsCompatibleEvidenceInTransaction(tx,db,storage,auth,charger.configRevisionId);
+      await produceDtsReviewEvidenceInTransaction(tx,db,storage,auth,charger.configRevisionId);
+      await produceDtsReviewEvidenceInTransaction(tx,db,storage,auth,charger.configRevisionId);
     });
     expect((await db.query(`select id from parameter_catalog.parameter_review_evidence where organization_id=$1`,[ORG])).rows)
       .toHaveLength(reviewCount);
@@ -231,7 +238,7 @@ describe("#897 production DTS observation and Review Item association", () => {
     if (limited.status === "ready") expect(limited.items.find((item) => item.observationId === peer.observationId)
       ?.compatibles.find((entry) => entry.compatible === "vendor,device")?.candidate)
       .toMatchObject({kind:"review-required",reviewItemIds:null});
-    await expect(db.transaction(async (tx) => produceDtsCompatibleEvidenceInTransaction(tx,db,storage,
+    await expect(db.transaction(async (tx) => produceDtsReviewEvidenceInTransaction(tx,db,storage,
       makeTestAuthContext({organizationId:"foreign-org",userId:"foreign-admin",
         roles:[{roleId:"admin",projectId:null}]}),charger.configRevisionId)))
       .rejects.toThrow("outside the authorized organization or project");
@@ -250,7 +257,7 @@ describe("#897 production DTS observation and Review Item association", () => {
       matcherRevision:subjectMatcherRevision,matcherOutput:{status:"unknown"},evidence:{compatible:"vendor,device"},
     },{kind:"review",observationId:"absent-observation",projectId:PROJECT,
       configRevisionId:charger.configRevisionId}))).rejects.toThrow("does not match persisted source and pin");
-    await db.transaction(async (tx) => produceDtsCompatibleEvidenceInTransaction(tx,db,storage,auth,charger.configRevisionId));
+    await db.transaction(async (tx) => produceDtsReviewEvidenceInTransaction(tx,db,storage,auth,charger.configRevisionId));
     expect((await createReviewQueueReader(pool).list({organizationId:ORG,capturedRelease:pin,context})).ok).toBe(true);
     const nextProject = "project-c1-producer-failed";
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,'C1F','initialized')",
@@ -424,5 +431,63 @@ describe("#897 production DTS observation and Review Item association", () => {
       await emptyLane.drop();
       await rm(emptyDirectory,{recursive:true,force:true});
     }
+  });
+
+  it("refuses revision-review payloads that are not exact persisted continuity evidence", async () => {
+    const organizationId = ORG;
+    const projectId = `c1-continuity-${randomBytes(5).toString("hex")}`;
+    const previous = `/dts-v1/; / { bus@0 { reg = <0>; dev@10 {}; }; };`;
+    const next = `/dts-v1/; / { bus@0 { reg = <0>; left@10 {}; right@10 {}; }; };`;
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')", [projectId, ORG]);
+    const initial = await uploadProjectParameterFile(db, storage, auth, { projectId, fileName: "board.dts", bytes: Buffer.from(previous) });
+    const set = await createConfigSet(db, auth, { projectId, name: "Propertyless continuity" });
+    await addConfigSetFile(db, auth, { configSetId: set.id, fileId: initial.file.id, role: "base", sortOrder: 0 });
+    for (const content of [previous, next]) {
+      const uploaded = await requestJson(app(storage), `/api/v1/projects/${projectId}/parameter-files`, {
+        method: "POST", headers: { authorization: "Bearer admin" },
+        body: JSON.stringify({ fileName: "board.dts", contentBase64: Buffer.from(content).toString("base64") }),
+      });
+      expect(uploaded.status, uploaded.bodyText).toBe(201);
+    }
+    const revisions = await requestJson<{ items: { id: string; status: string }[] }>(app(storage),
+      `/api/v2/projects/${projectId}/config-sets/${set.id}/revisions`, { headers: { authorization: "Bearer admin" } });
+    expect(revisions.status, revisions.bodyText).toBe(200);
+    const revision = revisions.body.items[0]!;
+    expect(revision.status).toBe("needs_mapping");
+    const state = await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId });
+    const payload = state.evidence.find((entry) => entry.evidence?.payload.sourceRevision
+      && (entry.evidence.payload.sourceRevision as { configRevisionId: string }).configRevisionId === revision.id)!.evidence!.payload;
+    const logicalNodeId = (payload.sourceRevision as { logicalNodeId: string }).logicalNodeId;
+    const pin = (await captureCurrentCatalogPin(getRootPostgresPool(api)!))!;
+    const command: IngestEvidenceCommand = { organizationId, sourceIdentity: `dts-continuity:${revision.id}:${logicalNodeId}`,
+      catalogReleaseId: pin.id, matcherRevision: subjectMatcherRevision, matcherOutput: { status: "ambiguous" }, evidence: payload };
+    const input = { kind: "revision-review" as const, projectId, configRevisionId: revision.id, logicalNodeId, objectStore: storage };
+    const attempts: IngestEvidenceCommand[] = [
+      { ...command, sourceIdentity: "untrusted-revision-evidence" },
+      { ...command, matcherRevision: "untrusted-matcher" },
+      { ...command, catalogReleaseId: CatalogReleaseId("untrusted-release") },
+      { ...command, matcherOutput: { status: "unknown" } },
+      { ...command, evidence: { ...payload, sourceMembers: [] } },
+      { ...command, evidence: { ...payload, sourceProof: { propertyName: "compatible" } } },
+      { ...command, evidence: { ...payload, priorNodeEquivalent: true } },
+      { ...command, evidence: { ...payload, relations: [] } },
+    ];
+    for (const attempt of attempts) {
+      await expect(api.transaction((tx) => ingestSourceBoundEvidenceInTransaction(tx, attempt, input)))
+        .rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
+      expect(await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId })).toEqual(state);
+    }
+    for (const changed of [
+      { ...input, projectId: OTHER_PROJECT },
+      { ...input, logicalNodeId: "absent-node" },
+      { ...input, objectStore: { ...storage, getBounded: async () => Buffer.from("corrupt") } },
+    ]) {
+      await expect(api.transaction((tx) => ingestSourceBoundEvidenceInTransaction(tx, command, changed)))
+        .rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
+      expect(await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId })).toEqual(state);
+    }
+    await expect(api.transaction((tx) => ingestSourceBoundEvidenceInTransaction(tx, command, input)))
+      .resolves.toMatchObject({ kind: "review-evidence", status: "replayed" });
+    expect(await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId })).toEqual(state);
   });
 });

@@ -714,8 +714,7 @@
     "server/modules/parameters/moduleRename.integration.test.ts": {
       "canonical-catalog-raw-access": 17,
       "legacy-catalog-raw-read": 21,
-      "legacy-catalog-sql-write": 7,
-      "unresolved-boundary-expression": 1
+      "legacy-catalog-sql-write": 7
     },
     "server/modules/parameters/parameterModuleRepository.test.ts": {
       "legacy-catalog-sql-write": 8

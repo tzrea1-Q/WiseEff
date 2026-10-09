@@ -17,7 +17,6 @@ import {
 } from "./helpers/disposablePostCutoverRuntime";
 import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { loadAcceptanceEnvironment } from "./helpers/acceptanceEnvironment";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
@@ -515,39 +514,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     test.setTimeout(120_000);
     const baseDatabaseUrl = originalEnvironment.databaseUrl?.trim();
     if (!baseDatabaseUrl) throw new Error("DATABASE_URL is required to create the disposable topology database.");
-    if (process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true") {
-      const databaseName = new URL(baseDatabaseUrl).pathname.slice(1);
-      const frontendUrl = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL?.trim();
-      const objectStoreRoot = process.env.OBJECT_STORE_ROOT?.trim();
-      expect(loadAcceptanceEnvironment().mode).not.toBe("legacy");
-      for (const endpoint of [frontendUrl, apiRoute("/")]) {
-        if (!endpoint) throw new Error("Main's existing runtime URLs are required.");
-        const parsed = new URL(endpoint);
-        expect(parsed.protocol).toBe("http:");
-        expect(["127.0.0.1", "localhost", "[::1]"]).toContain(parsed.hostname);
-      }
-      if (!objectStoreRoot || !frontendUrl) throw new Error("Main's frontend URL and OBJECT_STORE_ROOT are required.");
-      const cutover = await withPgClient(async (client) => {
-        const result = await client.query<{ database_name: string; migration_run_id: string }>(`
-          select current_database() as database_name, marker.migration_run_id
-          from wiseeff_acceptance_test_markers marker
-          inner join parameter_identity_cutovers cutover
-            on cutover.migration_run_id = marker.migration_run_id
-          where marker.purpose = 'parameter-topology'
-        `);
-        expect(result.rows).toHaveLength(1);
-        expect(result.rows[0].database_name).toBe(databaseName);
-        return result.rows[0];
-      });
-      disposableRuntime = { databaseUrl: baseDatabaseUrl, databaseName, objectStoreRoot,
-        frontendUrl, migrationRunId: cutover.migration_run_id };
-    } else {
-      ownedDisposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
-        label: "parameter_topology",
-      });
-      disposableRuntime = ownedDisposableRuntime;
-      applyDisposableRuntimeEnv(ownedDisposableRuntime);
-    }
+    ownedDisposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "parameter_topology",
+    });
+    disposableRuntime = ownedDisposableRuntime;
+    applyDisposableRuntimeEnv(ownedDisposableRuntime);
     const fixturePool = new pg.Pool({ connectionString: disposableRuntime.databaseUrl });
     try {
       await seedSemanticBindingCatalog(fixturePool);
