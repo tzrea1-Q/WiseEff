@@ -37,18 +37,20 @@ import { MAX_PARAMETER_SOURCE_BYTES } from "./modules/parameter-files/jsonSource
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
+import { registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerCatalogProjectValueConsumerRoutes } from "./modules/parameter-bindings/catalogProjectValueRoutes";
 import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
-import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink";
+import { createTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink";
+import { createUserInvocation } from "./modules/auth/trustedInvocation";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { DEBUG_CATALOG_MAX_DOCUMENT_BYTES } from "./modules/debugging/schemas";
 import { createRouter, type RouteRequest } from "./shared/http/router";
-import type { Database } from "./shared/database/client";
+import { isRootDatabase, type Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import type { JsonWebKey } from "node:crypto";
 
@@ -122,6 +124,11 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     developmentAuthContext,
     getDevelopmentAuthContext: (request) => getCurrentAuthContext(options, request as RouteRequest)
   });
+
+  registerCatalogLegacyRetirementRoutes(router, options.db && isRootDatabase(options.db) ? {
+    resolveInvocation: async (request) => createUserInvocation(await authResolver(request)),
+    refusalAuditSink: createTrustedRefusalAuditSink(options.db),
+  } : undefined);
 
   registerOperationsRoutes(router, {
     db: options.db,

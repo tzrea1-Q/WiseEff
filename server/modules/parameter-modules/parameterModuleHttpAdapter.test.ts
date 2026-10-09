@@ -1,7 +1,8 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
-import { createWiseEffServer } from "../../app";
+import { buildWiseEffRouter, createWiseEffServer } from "../../app";
+import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { routeManifest } from "../contracts/routeManifest";
 import { createHttpServer } from "../../shared/http/server";
@@ -90,8 +91,11 @@ describe("parameter module HTTP adapter", () => {
           headers: { Authorization: authorization },
           body: JSON.stringify({ compatible: "header-fixture,device", reason: "Controlled header regression fixture" }),
         });
-        expect(dismissed.status).toBe(200);
-        expect(dismissed.body.item.dismissedCompatibles).toEqual(expect.arrayContaining([expect.objectContaining({ compatible: "header-fixture,device" })]));
+        expect(dismissed.status).toBe(410);
+        expect(catalogLegacyGoneResponseSchema.parse(dismissed.body).error.details).toEqual({
+          reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+        });
+        expect(await snapshot()).toEqual(before);
       } finally {
         try {
           try {
@@ -114,8 +118,8 @@ describe("parameter module HTTP adapter", () => {
     });
   });
 
-  it("does not 410 live module mapping or driver-registry writes", async () => {
-    const router = createRouter();
+  it("retires module mapping and driver-registry writes in the assembled router", async () => {
+    const { router } = buildWiseEffRouter();
     registerParameterModuleRoutes(router, {
       getCurrentAuthContext: () =>
         makeTestAuthContext({
@@ -132,7 +136,10 @@ describe("parameter module HTTP adapter", () => {
         method: route.method,
         body: JSON.stringify({}),
       });
-      expect(response.status, route.id).not.toBe(410);
+      expect(response.status, route.id).toBe(410);
+      expect(catalogLegacyGoneResponseSchema.parse(response.body).error.details).toEqual({
+        reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+      });
     }
   });
 
