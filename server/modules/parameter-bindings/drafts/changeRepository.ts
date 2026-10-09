@@ -11,6 +11,33 @@ import type { Queryable } from "../../../shared/database/client";
 export type CanonicalChangeRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
 export type CanonicalChangeApplyOutcome = "committed" | "replayed";
 
+export async function listPendingCanonicalValueChangeRequestIds(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; configSetId: string },
+): Promise<string[]> {
+  const result = await db.query<{ id: string }>(`
+    select request.id
+      from public.project_parameter_value_change_requests request
+     where request.organization_id=$1 and request.project_id=$2 and request.status='pending'
+       and (
+         request.batch_config_set_id=$3 or request.member_config_set_id=$3
+         or exists (
+           select 1 from public.project_parameter_value_change_targets target
+             left join parameter_catalog.project_value_source_pins pin
+               on pin.id=target.source_pin_id and pin.organization_id=target.organization_id
+              and pin.project_id=target.project_id
+             left join parameter_catalog.project_parameter_source_occurrences occurrence
+               on occurrence.id=pin.source_occurrence_id and occurrence.organization_id=pin.organization_id
+              and occurrence.project_id=pin.project_id
+            where target.request_id=request.id and target.organization_id=request.organization_id
+              and target.project_id=request.project_id
+              and (pin.source_occurrence_id is null or occurrence.config_set_id=$3)
+         )
+       )
+     order by request.id`, [input.organizationId, input.projectId, input.configSetId]);
+  return result.rows.map((row) => row.id);
+}
+
 export type CanonicalValueChangeRequestRow = {
   id: string;
   request_kind: "single" | "batch";

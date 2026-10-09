@@ -9,10 +9,8 @@ import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles, listReleaseBaselineMembers, listReleaseBaselinesByConfigSet } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
 import { getFileVersionById } from "./repository";
-import {
-  countBlockingIdentityMappingTasksForRevision,
-  syncSingletonCardinalityBlockingTasks
-} from "../parameter-topology/bindingService";
+import { countBlockingIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
+import { listPendingCanonicalValueChangeRequestIds } from "../parameter-bindings/drafts/changeRepository";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
 import { runValidationGate, type ValidationGateDeps, type ValidationGateResult } from "./validationGate";
 import type { DtsSourceLocatorDto } from "./structuralReadRepository";
@@ -321,12 +319,23 @@ export async function evaluateReleaseReadiness(
       return unavailable("Release readiness could not load pending change requests.");
     }
   }
-  if (pendingChangeCount > 0) {
+  let canonicalPendingRequestIds: string[];
+  try {
+    canonicalPendingRequestIds = await listPendingCanonicalValueChangeRequestIds(db, {
+      organizationId: auth.organization.id,
+      projectId: configSet.projectId,
+      configSetId: input.configSetId
+    });
+  } catch {
+    return unavailable("Release readiness could not load pending change requests.");
+  }
+  const totalPendingChangeCount = pendingChangeCount + canonicalPendingRequestIds.length;
+  if (totalPendingChangeCount > 0) {
     blockers.push({
       id: issueId("pending-change", configSet.projectId),
       severity: "blocker",
       code: "pending-change",
-      message: `${pendingChangeCount} server-visible pending change request(s) must complete before release.`,
+      message: `${totalPendingChangeCount} server-visible pending change request(s) must complete before release (${canonicalPendingRequestIds.length} canonical, ${pendingChangeCount} legacy).`,
       remediation: { kind: "complete-pending-change", label: "Complete or withdraw pending change requests" }
     });
   }
@@ -341,11 +350,6 @@ export async function evaluateReleaseReadiness(
     });
     if (revision) {
       configRevisionId = revision.id;
-      await syncSingletonCardinalityBlockingTasks(db, {
-        organizationId: auth.organization.id,
-        projectId: revision.projectId,
-        configRevisionId: revision.id
-      });
       blockingTaskCount = await countBlockingIdentityMappingTasksForRevision(db, {
         organizationId: auth.organization.id,
         configRevisionId: revision.id
@@ -494,6 +498,7 @@ export async function evaluateReleaseReadiness(
     blockerIds: sortedBlockers.map((item) => item.id),
     warningIds: sortedWarnings.map((item) => `${item.id}:${item.acknowledged ? "1" : "0"}`),
     pendingChangeCount,
+    canonicalPendingRequestIds,
     blockingTaskCount,
     acknowledged: [...acknowledged].sort()
   });
