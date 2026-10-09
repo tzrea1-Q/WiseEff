@@ -4,6 +4,7 @@ import { expect, test, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { withPgClient } from "./helpers/database";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
@@ -27,6 +28,42 @@ async function dismissXiaozeHint(page: Page) {
 test.describe("parameter-admin project list", () => {
   test.beforeAll(async () => {
     await seedAcceptanceRoleMatrix();
+  });
+
+  test("gates canonical project Delete with its retention explanation at PC 1440x900", async ({ page, request }, testInfo) => {
+    // @acceptance PARAM-ADMIN-003
+    // @operation PARAM-ADMIN-003
+    const list = await request.get(apiRoute("/api/v1/parameters/admin/projects"), { headers: adminHeaders() });
+    expect(list.status()).toBe(200);
+    const project = (await list.json()).items.find((item: { id: string }) => item.id === "aurora");
+    expect(project).toBeTruthy();
+    const bindings = await withPgClient((client) => client.query(
+      "select count(*)::int as count from parameter_catalog.project_parameter_bindings where project_id=$1", [project.id]
+    ));
+    expect(bindings.rows[0].count).toBeGreaterThan(0);
+    await signInBrowserAsRole(page, "admin");
+    await page.goto(`/parameter-admin/projects?q=${encodeURIComponent(project.name)}`);
+    await dismissXiaozeHint(page);
+    const row = page.getByRole("row").filter({ hasText: project.name }).first();
+    const deleteAction = row.getByRole("button", { name: `删除 ${project.name}`, exact: true });
+    await expect(deleteAction).toBeDisabled();
+    const explanation = "项目需保留规范历史，不能删除；归档或处置功能尚未开放。";
+    await expect(deleteAction).toHaveAccessibleDescription(explanation);
+    await expect(page.getByText(explanation, { exact: true })).toBeVisible();
+    expect(project.canonicalOwned).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    const screenshot = testInfo.outputPath("canonical-project-delete-1440.png");
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await testInfo.attach("canonical-project-delete-1440", { path: screenshot, contentType: "image/png" });
+    await recordOperationEvidence({
+      operationId: "PARAM-ADMIN-003", title: "canonical project deletion retention gate", status: "passed",
+      role: "Admin", route: "/parameter-admin/projects", page, testInfo, artifacts: [screenshot],
+      api: [summarizeApiResponse(list, { method: "GET", path: "/api/v1/parameters/admin/projects",
+        responseSummary: `project=${project.id}; canonicalOwned=true` })],
+      db: [{ table: "parameter_catalog.project_parameter_bindings", predicate: `project_id=${project.id}`,
+        observed: "Canonical Bindings retained", rowCount: bindings.rows[0].count }],
+      notes: "At 1440x900 the canonical project's Delete is disabled with an accessible, visible retention explanation; no archive or disposal action is offered."
+    });
   });
 
   test("preserves DataTable behavior and URL history at PC 1440x900", async ({ page, request }, testInfo) => {

@@ -1924,10 +1924,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
 
   "parameters.deleteAdminProject": {
-    summary: "Delete a project and its parameter-management data (cascade)",
+    summary: "Delete an empty or legacy-only project; retain canonical project history",
     tags: ["parameters"],
     responseBody: "ProjectDeleteResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameters.parseDtsImport": {
     summary: "Parse a full DTS source into import preview rows",

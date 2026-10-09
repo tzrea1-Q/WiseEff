@@ -1,5 +1,6 @@
-import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
+import { withAuditedWrite, writeTrustedAuditEventInTx, type AuditedWriteContext } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import { ensureDefaultConfigSetInTx } from "../parameter-files/configSetService";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -126,14 +127,30 @@ export async function deleteProjectForAuth(
   auth: AuthContext,
   input: DeleteProjectForAuthInput,
   context: ProjectServiceContext
-): Promise<{ deleted: boolean; reason?: "not_found" }> {
+): Promise<Awaited<ReturnType<typeof deleteProject>>> {
   requireCanAdmin(auth);
 
-  return withAuditedWrite(db, auth, context, async (tx) => {
+  const result = await withAuditedWrite(db, auth, context, async (tx) => {
     const result = await deleteProject(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId
     });
+
+    if (result.reason === "canonical-project-retained") {
+      await writeTrustedAuditEventInTx(tx, {
+        invocation: createUserInvocation(auth),
+        projectId: input.projectId,
+        app: "parameter-admin",
+        kind: "project-delete-refused",
+        action: "Canonical project history must be retained; deletion refused.",
+        severity: "Medium",
+        targetType: "project",
+        targetId: input.projectId,
+        metadata: { reason: result.reason },
+        traceId: context.requestId
+      });
+      return { result, audit: null };
+    }
 
     if (!result.deleted) {
       return { result, audit: null };
@@ -153,4 +170,11 @@ export async function deleteProjectForAuth(
       }
     };
   });
+  if (result.reason === "canonical-project-retained") {
+    throw new ApiError("CONFLICT", "Canonical project history must be retained. Archive and disposal are not yet available.", {
+      reason: result.reason,
+      projectId: input.projectId
+    });
+  }
+  return result;
 }
