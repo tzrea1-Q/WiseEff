@@ -138,6 +138,7 @@ export function ParametersPage({
   const [viewingParameterId, setViewingParameterId] = useState<string | null>(null);
   const [viewingParameterDetail, setViewingParameterDetail] = useState<ParameterRecord | null>(null);
   const [archivedLinkNotice, setArchivedLinkNotice] = useState<ArchivedParameterLinkNotice | null>(null);
+  const [historicalLinkNotice, setHistoricalLinkNotice] = useState<string | null>(null);
   const [comparisonTargetProjectId, setComparisonTargetProjectId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [stagingDrafts, setStagingDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
@@ -436,20 +437,51 @@ export function ParametersPage({
     }
   }, [contextQuery.parameterId, projectParameters]);
 
-  /**
-   * An old link whose parameter id is no longer in the current project list used
-   * to resolve to nothing at all. Ask the Catalog what happened to it so an
-   * archived record reports "archived" instead of the page silently showing
-   * unrelated current data.
-   *
-   * The probe runs whether or not the list has loaded. That is safe in both
-   * directions: a current id answers 200 and clears the notice, an unrelated id
-   * answers 404 and clears it, and only an archived id produces the banner — so a
-   * still-loading list cannot manufacture a false notice, and a project that
-   * genuinely has no parameters still reports an archived link.
-   */
   useEffect(() => {
     const requestedId = contextQuery.parameterId;
+    setHistoricalLinkNotice(null);
+    if (isApiMode && contextQuery.bindingId) {
+      setArchivedLinkNotice(null);
+      return;
+    }
+    if (isApiMode && requestedId && !contextQuery.bindingId) {
+      setArchivedLinkNotice(null);
+      const navigateToBinding = (bindingId: string) => {
+        const binding = parameterById.get(bindingId);
+        if (!binding) {
+          setHistoricalLinkNotice("该精确映射的 Binding 当前不可读，不能确定所属项目。");
+          return;
+        }
+        const params = new URLSearchParams(search);
+        params.delete("parameter");
+        params.set("project", binding.projectId);
+        params.set("binding", bindingId);
+        onNavigate(`/parameters?${params}`);
+      };
+      if (parameterById.has(requestedId)) {
+        navigateToBinding(requestedId);
+        return;
+      }
+      let cancelled = false;
+      if (!canonicalRepository) {
+        setHistoricalLinkNotice("当前无法解析旧参数链接的精确 Binding 映射。");
+        return;
+      }
+      void canonicalRepository.getLegacyIdentifier("project-parameter-binding", requestedId).then(({ item }) => {
+        if (cancelled) return;
+        if (item.target.kind === "parameter-binding" && !item.historicalOnly) {
+          navigateToBinding(item.target.id);
+        } else {
+          setHistoricalLinkNotice("该精确映射仅指向历史证据，不能作为当前 Binding 打开。");
+        }
+      }).catch((error: unknown) => {
+        if (cancelled) return;
+        const notice = archivedParameterLinkNotice(requestedId, error);
+        if (notice) setArchivedLinkNotice(notice);
+        else setHistoricalLinkNotice("该旧参数链接暂无可用的精确 Binding 映射，或当前账号无权读取。");
+      });
+      return () => { cancelled = true; };
+    }
     if (!requestedId) {
       setArchivedLinkNotice(null);
       return;
@@ -483,7 +515,14 @@ export function ParametersPage({
     activeParameterById,
     contextQuery.parameterId,
     parameterActions,
-    parameterRepository
+    parameterRepository,
+    parameterById,
+    canonicalRepository,
+    contextQuery.bindingId,
+    isApiMode,
+    onNavigate,
+    resolvedProjectId,
+    search
   ]);
 
   useEffect(() => {
@@ -1010,6 +1049,13 @@ export function ParametersPage({
             >
               知道了
             </button>
+          </div>
+        ) : null}
+        {historicalLinkNotice ? (
+          <div className="permission-inline-note" role="status" aria-live="polite">
+            <strong>旧参数链接仅供历史参考</strong>
+            <span>{historicalLinkNotice} 不会按名称猜测或载入旧参数数据。</span>
+            <code>{contextQuery.parameterId}</code>
           </div>
         ) : null}
         {isApiMode ? (

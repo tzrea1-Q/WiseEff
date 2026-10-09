@@ -1,0 +1,205 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import pg from "pg";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createWiseEffServer } from "../../app";
+import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { requestJson } from "../../test/testClient";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { countLegacyProjectBindings, installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
+import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { listCatalogBindingRowsForProject, loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { registerCanonicalJsonSource } from "../parameter-files/canonicalJsonSource";
+import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetService";
+import { uploadProjectParameterFile } from "../parameter-files/service";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { createProject } from "../projects/repository";
+
+const organizationId = "org-1075-compatibility-list";
+const projectId = "project-1075-compatibility-list";
+const otherProjectId = "project-1075-compatibility-other";
+const foreignProjectId = "project-1075-compatibility-foreign";
+const adminId = "admin-1075-compatibility-list";
+const readerId = "reader-1075-compatibility-list";
+const definitionId = "pdef_acme_power_iin_max";
+const schemaId = "wiseeff.1075.list";
+const admin = makeTestAuthContext({ userId: adminId, organizationId });
+
+describe("#1075 canonical v1 compatibility list", () => {
+  let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
+  let db: ReturnType<typeof createPostgresDatabase>;
+  let directory: string;
+  let storage: ReturnType<typeof createLocalObjectStore>;
+  let bindingId: string;
+  let otherBindingId: string;
+  let boundModuleId: string;
+  let rootModuleId: string;
+
+  beforeEach(() => setParameterIdentityMode("semantic"));
+
+  beforeAll(async () => {
+    setParameterIdentityMode("semantic");
+    database = await createEphemeralTestDatabase("canonicalcompatlist");
+    db = createPostgresDatabase(database.url);
+    directory = await mkdtemp(join(tmpdir(), "wiseeff-t1075-compatibility-list-"));
+    storage = createLocalObjectStore(directory);
+    await db.query("insert into organizations(id,name) values ($1,'Compatibility list')", [organizationId]);
+    await db.query(`insert into users(id,organization_id,name,title,is_active) values
+      ($1,$3,'Compatibility admin','Admin',true),($2,$3,'Compatibility reader','Software',true)`,
+    [adminId, readerId, organizationId]);
+    await createProject(db, { organizationId, id: projectId, name: "Canonical only", code: "COMPAT1075" });
+    await createProject(db, { organizationId, id: otherProjectId, name: "Other canonical", code: "OTHER1075" });
+    await db.query("insert into organizations(id,name) values ($1,'Foreign compatibility')", ["org-1075-foreign"]);
+    await createProject(db, { organizationId: "org-1075-foreign", id: foreignProjectId, name: "Foreign", code: "FOREIGN1075" });
+    await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values
+      ('1075-compat-admin',$1,$3,null,'admin'),('1075-compat-reader',$2,$3,$4,'software-user')`,
+    [adminId, readerId, organizationId, projectId]);
+    const module = await installConfigurationSourceFixture(db, admin, { subjectId: "csub_1075_compatibility_list", schemaId });
+    rootModuleId = module.id;
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!snapshot) throw new Error("Canonical compatibility list requires a published Catalog fixture");
+    const identities: string[] = [];
+    for (const [index, sourceProjectId] of [projectId, otherProjectId].entries()) {
+      const configSet = await createConfigSet(db, admin, { projectId: sourceProjectId, name: "Compatibility JSON" });
+      const uploaded = await uploadProjectParameterFile(db, storage, admin, {
+        projectId: sourceProjectId, fileName: "settings.json", bytes: Buffer.from(`{"limit":${36.5 + index}}\n`)
+      });
+      await addConfigSetFile(db, admin, { configSetId: configSet.id, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
+      const registered = await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, admin, snapshot, {
+        projectId: sourceProjectId, configSetId: configSet.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+        configurationSchemaId: schemaId, rootPointer: "", mappings: [{ definitionId, pointer: "/limit" }],
+        invocation: createUserInvocation(admin), requestId: `1075-compatibility-source-${index}`,
+        refusalSink: createTrustedRefusalAuditSink(db)
+      }));
+      expect(registered.bindings).toHaveLength(1);
+      identities.push(registered.bindings[0]!.id);
+    }
+    [bindingId, otherBindingId] = identities;
+    expect(bindingId).toMatch(/^pbind_/);
+    expect(await countLegacyProjectBindings(db, { organizationId, projectIds: [projectId, otherProjectId] })).toBe(0);
+    boundModuleId = (await listCatalogBindingRowsForProject(db, admin, { projectId }))[0]!.moduleId;
+  }, 60_000);
+
+  afterAll(async () => {
+    setParameterIdentityMode(null);
+    await db?.close();
+    await database?.drop();
+    if (directory) await rm(directory, { recursive: true, force: true });
+  });
+
+  async function observeReads<Result>(operation: () => Promise<Result>) {
+    const queries = vi.spyOn(pg.Client.prototype, "query");
+    try {
+      const result = await operation();
+      const legacyReads = queries.mock.calls.flatMap(([query]) => {
+        const text = typeof query === "string" ? query : query.text;
+        return [...text.matchAll(/\b(?:from|join)\s+(?:public\.)?(parameter_specs|parameter_spec_versions|dts_property_specs|project_parameter_bindings|project_parameter_binding_revisions|parameter_definitions|project_parameter_values)\b/gi)]
+          .map((match) => match[1]);
+      });
+      return { result, legacyReads };
+    } finally {
+      queries.mockRestore();
+    }
+  }
+
+  it("the assembled canonical source returns the source-owner-created Binding without legacy reads", async () => {
+    const { result, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string }> }>(
+      createWiseEffServer({ db, objectStore: storage }),
+      `/api/v2/projects/${projectId}/parameter-bindings`,
+      { headers: { "X-WiseEff-User": readerId } }
+    ));
+    expect(result.status, result.bodyText).toBe(200);
+    expect(result.body.items).toEqual([expect.objectContaining({ id: bindingId, definitionId, projectId, propertyKey: "iin_max", rawValue: "36.5\n" })]);
+    expect(legacyReads).toEqual([]);
+  });
+
+  it("the assembled v1 compatibility list returns pbind rows and never reads legacy spec truth", async () => {
+    const { result, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string }> }>(
+      createWiseEffServer({ db, objectStore: storage }),
+      `/api/v1/parameters?projectId=${projectId}`,
+      { headers: { "X-WiseEff-User": readerId } }
+    ));
+    expect(result.status, result.bodyText).toBe(200);
+    expect.soft(result.body.items).toEqual([expect.objectContaining({
+      id: bindingId, projectId, currentValue: "36.5\n", modulePath: ["Configuration"]
+    })]);
+    expect.soft(legacyReads).toEqual([]);
+  });
+
+  it("the unfiltered assembled v1 compatibility list resolves canonical identity without legacy reads", async () => {
+    const { result, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string }> }>(
+      createWiseEffServer({ db, objectStore: storage }),
+      "/api/v1/parameters",
+      { headers: { "X-WiseEff-User": readerId } }
+    ));
+    expect(result.status, result.bodyText).toBe(200);
+    expect.soft(result.body.items).toEqual([expect.objectContaining({ id: bindingId, definitionId })]);
+    expect.soft(legacyReads).toEqual([]);
+  });
+
+  it("an organization-wide reader lists both actual projects and applies the global limit", async () => {
+    for (const [suffix, expectedIds] of [["", [bindingId, otherBindingId]], ["?limit=1", [bindingId]]] as const) {
+      const { result, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string }> }>(
+        createWiseEffServer({ db, objectStore: storage }), `/api/v1/parameters${suffix}`,
+        { headers: { "X-WiseEff-User": adminId } }
+      ));
+      expect(result.status, result.bodyText).toBe(200);
+      expect(result.body.items.map((item) => item.id)).toEqual(expectedIds);
+      expect(legacyReads).toEqual([]);
+    }
+  });
+
+  it.each([
+    [otherProjectId, 403],
+    [foreignProjectId, 404]
+  ])("refuses the unauthorized project %s with %s", async (requestedProjectId, status) => {
+    const { result, legacyReads } = await observeReads(() => requestJson(
+      createWiseEffServer({ db, objectStore: storage }), `/api/v1/parameters?projectId=${requestedProjectId}`,
+      { headers: { "X-WiseEff-User": readerId } }
+    ));
+    expect(result.status, result.bodyText).toBe(status);
+    expect(legacyReads).toEqual([]);
+  });
+
+  it.each([
+    ["q=IIN_MAX", true],
+    ["q=INPUT%20CURRENT", true],
+    ["q=unrelated", false],
+    ["risk=Low", true],
+    ["risk=High", false],
+    ["risk=High&risk=Low", true],
+    ["module=Configuration", true],
+    ["module=unrelated", false]
+  ])("preserves the canonical compatibility filter %s", async (query, matches) => {
+    const { result, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string }> }>(
+      createWiseEffServer({ db, objectStore: storage }), `/api/v1/parameters?projectId=${projectId}&${query}`,
+      { headers: { "X-WiseEff-User": readerId } }
+    ));
+    expect(result.status, result.bodyText).toBe(200);
+    expect(result.body.items.map((item) => item.id)).toEqual(matches ? [bindingId] : []);
+    expect(legacyReads).toEqual([]);
+  });
+
+  it("preserves exact module and subtree selection without a legacy Binding projection", async () => {
+    for (const [moduleId, includeDescendants, matches] of [
+      [boundModuleId, false, true],
+      [rootModuleId, true, true],
+      [rootModuleId, false, rootModuleId === boundModuleId],
+      ["module-outside-organization", true, false]
+    ] as const) {
+      const { result, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string }> }>(
+        createWiseEffServer({ db, objectStore: storage }),
+        `/api/v1/parameters?projectId=${projectId}&moduleId=${moduleId}&includeDescendants=${includeDescendants}`,
+        { headers: { "X-WiseEff-User": readerId } }
+      ));
+      expect(result.status, result.bodyText).toBe(200);
+      expect(result.body.items.map((item) => item.id)).toEqual(matches ? [bindingId] : []);
+      expect(legacyReads).toEqual([]);
+    }
+  });
+});

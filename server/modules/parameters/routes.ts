@@ -8,7 +8,8 @@ import {
 } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { getRootPostgresPool, isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
-import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { listCatalogBindingRowsForProject, loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 import { catalogLegacyGoneResult, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -29,8 +30,7 @@ import {
 } from "./projectService";
 import {
   getParameterById,
-  listParameterHistory,
-  listParameters
+  listParameterHistory
 } from "./repository";
 import {
   attachBindingPinTo,
@@ -39,6 +39,7 @@ import {
 } from "./canonicalParameterPin";
 import {
   getProjectAdminDetail,
+  getProjectById,
   listProjectAdminSummaries,
   listProjectModules,
   listProjects
@@ -455,9 +456,65 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
+    if (!auth.user.isActive) {
+      throw new ApiError("FORBIDDEN", "Missing permission: parameter:view.");
+    }
     const query = parseWithSchema(listParametersQuerySchema, request.query) as ListParametersQuery;
     const resolved = await resolveParameterListQuery(db, auth.organization.id, query);
-    const items = (await listParameters(db, resolved)).map(attachSemanticBindingPin);
+    const project = resolved.projectId
+      ? await getProjectById(db, { organizationId: auth.organization.id, projectId: resolved.projectId })
+      : null;
+    if (resolved.projectId && !project) {
+      throw new ApiError("NOT_FOUND", "Project was not found for this organization.", { projectId: resolved.projectId });
+    }
+    const projects = project ? [project] : (await listProjects(db, { organizationId: auth.organization.id }))
+      .filter((candidate) => auth.roles.some((role) => role.projectId === null || role.projectId === candidate.id));
+    const modules = await listParameterModulesForAuth(db, auth);
+    const modulesById = new Map(modules.map((module) => [module.id, module]));
+    const moduleIds = new Set(modules.filter((module) =>
+      module.id === resolved.moduleId ||
+      (resolved.includeDescendants !== false && module.path.split("/").includes(resolved.moduleId!))
+    ).map((module) => module.id));
+    const bindings: z.infer<typeof projectBindingDtoSchema>[] = [];
+    for (const scopedProject of projects) {
+      const rows = await listCatalogBindingRowsForProject(db, auth, { projectId: scopedProject.id });
+      bindings.push(...rows.map((row) => projectBindingDtoSchema.parse({ ...row, effectiveValue: row.typedValue })));
+    }
+    const risks = resolved.risk === undefined ? null : Array.isArray(resolved.risk) ? resolved.risk : [resolved.risk];
+    const term = resolved.q?.toLowerCase();
+    const items = bindings.filter((binding) =>
+      (!resolved.moduleId || moduleIds.has(binding.moduleId)) &&
+      (!resolved.module || binding.driverModule === resolved.module) &&
+      (!risks || risks.includes("Low")) &&
+      (!term || [binding.propertyKey, binding.displayName, binding.description, binding.documentation]
+        .some((text) => text?.toLowerCase().includes(term)))
+    ).slice(0, resolved.limit ?? 100).map((binding) => ({
+      id: binding.id,
+      bindingId: binding.id,
+      projectParameterBindingId: binding.id,
+      definitionId: binding.definitionId,
+      effectiveRevisionId: binding.effectiveRevisionId,
+      currentValueId: binding.currentValueId,
+      projectId: binding.projectId,
+      name: binding.propertyKey,
+      description: binding.description ?? "",
+      explanation: binding.documentation ?? "",
+      configFormat: binding.effectiveValue.kind === "json" ? "JSON" : "DTS",
+      module: binding.driverModule ?? "",
+      moduleId: binding.moduleId || undefined,
+      modulePath: modulesById.get(binding.moduleId)?.path.split("/").map((id) => modulesById.get(id)?.name ?? id),
+      sourceFileId: binding.sourceFileId,
+      sourceNodePath: binding.sourceNodePath ?? undefined,
+      sourceOccurrenceId: binding.sourceOccurrenceId,
+      currentValue: binding.rawValue,
+      recommendedValue: "",
+      range: "",
+      unit: "",
+      risk: "Low",
+      updatedAt: "",
+      updatedAtTs: "",
+      history: []
+    }));
 
     return { status: 200, body: { items } };
   });
