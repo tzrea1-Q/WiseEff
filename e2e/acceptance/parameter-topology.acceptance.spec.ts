@@ -404,15 +404,18 @@ async function canonicalIdentityEvidence(request: APIRequestContext, revisionId:
     compatibles: Array<{ compatible: string; candidate: { kind: string; reason?: string; reviewItemIds?: string[] | null } }> }> = [];
   const discoveryResponses = [];
   let cursor: string | null = null;
+  let catalogReleaseId: string | null = null;
   do {
     const query = new URLSearchParams({ projectId, limit: "50" });
     if (cursor) query.set("cursor", cursor);
     const discovery = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/driver-compatible-discovery?${query}`), {
-      headers: adminHeaders()
+      headers: { ...adminHeaders(), ...(catalogReleaseId ? { "X-WiseEff-Catalog-Release": catalogReleaseId } : {}) }
     });
     expect(discovery.ok(), await discovery.text()).toBe(true);
-    const body = (await discovery.json()) as { status: string; items: typeof sourceItems; nextCursor: string | null };
+    const body = (await discovery.json()) as { status: string; catalogRelease: { id: string }; items: typeof sourceItems; nextCursor: string | null };
     expect(body.status).toBe("ready");
+    if (catalogReleaseId) expect(body.catalogRelease.id).toBe(catalogReleaseId);
+    catalogReleaseId = body.catalogRelease.id;
     sourceItems.push(...body.items.filter((item) => item.configRevisionId === revisionId));
     discoveryResponses.push(discovery);
     cursor = body.nextCursor;
