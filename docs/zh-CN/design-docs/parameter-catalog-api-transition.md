@@ -608,6 +608,10 @@ parameter-modules 导航适配器在 registry envelope 中标记 `navigationOnly
 
 Legacy read response 包含：
 
+spec 集合的精确 `id`/`specId` 筛选仍返回 `{ items, historicalItems }`，只有 `/:specId` 返回 `item` envelope。adapter 工作期间 Catalog 推进到新 release 时，返回 `409 release-drift`，并在 `X-WiseEff-Catalog-Release` 中标明新的当前 release，而不是已过期的捕获值。
+
+effective spec 列表与精确详情共用前置 read-window adapter，其 dispatch 优先于历史 spec handler。它只枚举 owner scope 内的 typed legacy identity 与 mapping head，不查询 `parameter_specs` 或 `parameter_spec_versions`。可操作的 `items` 包含精确 Definition mapping、规范 Definition 与 registration projection，以及独立映射的旧版本 ID 和不可变规范 Revision 内容组成的 `revisions`。版本映射不得以当前 Revision 替代其固定 target。非操作性映射，以及 `archived`、`ambiguous`、`not-found` disposition，单独放入只读 `historicalItems`；未映射的精确详情返回 404，歧义详情返回 409，已归档详情返回 410。不得通过规范 ID、property 或 display name 猜测旧 ID。governance、raw、migration 查询模式在身份认证和历史读取前返回退役合同。effective 读取保留有界 header、权限检查和 Catalog Release drift 拒绝，认证失败也带有有界 header。无调用方的 organization driver-schema client/port 方法已删除；有意保留的 410 合同覆盖不变。
+
 任务读窗口将可精确适配的规范 `items` 与只读 `historicalItems` 分开返回。规格审核适配使用组织范围内的类型映射头和已授权的当前规范审核队列，不按属性名或节点名推断。只有恰好对应一个当前规范审核项的未决任务才会适配。其他任务保留原始证据与状态，标记 `historicalOnly: true`；开放或已忽略的任务另标记 `needsCanonicalDecision: true`。身份连续性选择没有等价的规范决议，保留为历史证据。任务退役与历史证据链接到 `/parameter-admin/specs?review=open`，打开规范审核队列；没有未决历史任务时，身份映射入口重定向到此处。
 
 DTS 审核证据可以证明 `needs_mapping` 修订中的不可变属性，但不会因此获得 Binding 或源写入证明。连续性证据保留前驱与候选的关系及匹配理由，不选择身份；候选有属性时使用精确属性锚点。无属性节点的连续性以修订绑定的 Review Evidence 进入规范 Review Queue：物化前验证持久化候选归属和连续性诊断、完整源成员的归属与字节，以及当前 Catalog pin。不创建属性定位、Parameter Observation、Binding 或源写入证明，也不解决前驱身份选择。源证明无效时仍以 `source-proof-invalid` 拒绝并回滚；仅缺少属性不会丢弃歧义证据。

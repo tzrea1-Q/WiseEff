@@ -232,17 +232,6 @@ export type OrganizationDriverSchemaDeprecationImpact = {
     | null;
 };
 
-export type ActivateOrganizationDriverSchemaResult = {
-  schema: OrganizationDriverSchema;
-  upgradedSpecIds: string[];
-  resolvedReviewTaskIds: string[];
-};
-
-export type UpdateOrganizationDriverSchemaInput = {
-  displayName?: string;
-  notes?: string;
-};
-
 /**
  * Admin-maintained business-module registry (phase 1, additive).
  * Read path feeds the workbench grouping; write path is admin-only governance.
@@ -278,22 +267,4 @@ export interface ParameterModuleRegistryRepository {
     input: UpdateDriverRegistrationDefaultInput
   ): Promise<UpdateDriverRegistrationDefaultResult>;
   replayDriverPlacement(moduleId: string): Promise<ReplayDriverPlacementResult>;
-  createOrganizationDriverSchema(
-    input: CreateOrganizationDriverSchemaInput
-  ): Promise<OrganizationDriverSchema>;
-  listOrganizationDriverSchemas(): Promise<OrganizationDriverSchema[]>;
-  updateOrganizationDriverSchema(
-    schemaId: string,
-    input: UpdateOrganizationDriverSchemaInput
-  ): Promise<OrganizationDriverSchema>;
-  activateOrganizationDriverSchema(
-    schemaId: string
-  ): Promise<ActivateOrganizationDriverSchemaResult>;
-  previewOrganizationDriverSchemaDeprecation?(
-    schemaId: string
-  ): Promise<OrganizationDriverSchemaDeprecationImpact>;
-  deprecateOrganizationDriverSchema?(
-    schemaId: string,
-    input?: { confirmCoverageLoss?: boolean }
-  ): Promise<OrganizationDriverSchema>;
 }

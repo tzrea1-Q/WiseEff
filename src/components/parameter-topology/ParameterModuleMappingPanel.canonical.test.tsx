@@ -75,8 +75,7 @@ describe("canonical module page request boundary", () => {
       repository.updateDriverRegistrationDefault, repository.replayDriverPlacement,
       repository.registerOrClaimDriver, repository.createMapping, repository.deleteMapping,
       repository.dismissCompatible, repository.restoreDismissedCompatible,
-      repository.recomputeBindings, repository.createOrganizationDriverSchema,
-      repository.activateOrganizationDriverSchema, repository.deprecateOrganizationDriverSchema]) {
+      repository.recomputeBindings]) {
       expect(retiredWrite).not.toHaveBeenCalled();
     }
   });
@@ -86,7 +85,6 @@ describe("canonical module page request boundary", () => {
     const getDiscoveryHints = vi.fn();
     const listDriverRegistry = vi.fn().mockResolvedValue({ items: [] });
     const repository = { getRegistry, getDiscoveryHints, listDriverRegistry,
-      listOrganizationDriverSchemas: vi.fn().mockResolvedValue([]),
       recomputeBindings: vi.fn(), createMapping: vi.fn(), deleteMapping: vi.fn(),
       dismissCompatible: vi.fn(), restoreDismissedCompatible: vi.fn() } as unknown as ParameterModuleRegistryRepository;
     const listDriverCompatibleDiscovery = vi.fn().mockResolvedValue({
