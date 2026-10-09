@@ -3,6 +3,7 @@ import type {
   CreateBindingDraftInput,
   CreateNodeEnablementDraftInput,
   NodeEnablementDraftResult,
+  NodeEnablementDraft,
   ParameterTopologyRepository,
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -28,6 +29,8 @@ import type {
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { presentError } from "./presentError";
+import { parameterDraftListResponseSchema } from "@wiseeff/dto-schemas";
+import { parseContractDto } from "./parseContractDto";
 
 const DEFAULT_TOPOLOGY_ERROR_FALLBACK = "拓扑操作失败，请稍后重试。";
 
@@ -757,6 +760,16 @@ export function createHttpParameterTopologyRepository(
         input,
       );
       return bindingDraftFromDto(response.item);
+    },
+    async listNodeEnablementDrafts(projectId) {
+      const response = parseContractDto(
+        parameterDraftListResponseSchema,
+        await apiClient.get<unknown>(`/api/v1/parameter-drafts/mine?projectId=${encodeURIComponent(projectId)}`),
+        "NodeEnablementDraftListResponse"
+      );
+      return response.items.filter((draft): draft is typeof draft & NodeEnablementDraft =>
+        draft.projectId === projectId && draft.editSubjectKind === "node-enablement" && Boolean(draft.logicalNodeId)
+      );
     },
     async createNodeEnablementDraft(
       projectId,

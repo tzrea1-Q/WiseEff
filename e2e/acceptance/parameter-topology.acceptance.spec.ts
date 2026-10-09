@@ -2294,7 +2294,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const enablementPosted = page.waitForResponse(
         (response) =>
           response.request().method() === "POST" &&
-          response.url().includes(`/api/v2/projects/${projectId}/node-enablement-drafts`)
+          response.url().includes(`/api/v2/projects/${projectId}/node-enablement-drafts`),
+        { timeout: 60_000 }
       );
       await confirm.click();
       const enablementResponse = await enablementPosted;
@@ -2318,6 +2319,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const tray = page.getByRole("region", { name: "参数修改提交" });
       await expect(tray).toBeVisible({ timeout: 20_000 });
       await expect(tray).toContainText("节点启用");
+
+      const candidateBindings = await request.get(
+        apiRoute(`/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(enablementBody.item.candidateRevisionId)}`),
+        { headers: authHeadersForRole("software-user") }
+      );
+      expect(candidateBindings.status(), await candidateBindings.text()).toBe(200);
+      expect((await candidateBindings.json()).items).toEqual(bindingsBody.items);
+      await expect(semanticBindingRow(workspace, "sc8562@6E")).toBeVisible({ timeout: 20_000 });
+      await page.reload();
+      await dismissXiaozeHint(page);
+      await expect(tray).toBeVisible({ timeout: 20_000 });
+      await expect(tray).toContainText(disableReason);
+      await expect(tray).toContainText("节点启用");
+      await expect(workspace).toHaveAttribute("data-revision-id", enablementBody.item.candidateRevisionId);
+      await expect(semanticBindingRow(workspace, "sc8562@6E")).toBeVisible();
 
       const persistedDraft = await withPgClient(async (client) => {
         const result = await client.query<{
@@ -2467,6 +2483,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             method: "POST",
             path: `/api/v2/projects/${projectId}/node-enablement-drafts`,
             responseSummary: `draft=${enablementBody.item.draftId}; candidate=${enablementBody.item.candidateRevisionId}`
+          }),
+          summarizeApiResponse(candidateBindings, {
+            method: "GET",
+            path: `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${enablementBody.item.candidateRevisionId}`,
+            responseSummary: `currentBindings=${bindingsBody.items.length}; unchanged after staging and visible after reload`
           }),
           summarizeApiResponse(staleOnEnablementTip, {
             method: "POST",

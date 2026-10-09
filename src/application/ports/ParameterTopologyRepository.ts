@@ -1,3 +1,4 @@
+import type { ParameterDraftDto } from "./ParameterRepository";
 import type {
   BindingCompareEntry,
   BindingHistoryEntry,
@@ -157,6 +158,11 @@ export type RestoreParameterSpecInput = {
   reason: string;
 };
 
+export type NodeEnablementDraft = Omit<ParameterDraftDto, "parameterId"> & {
+  editSubjectKind: "node-enablement";
+  logicalNodeId: string;
+};
+
 export type ReattributeParameterSpecInput = {
   attributionSubjectId: string;
   reason: string;
@@ -275,4 +281,5 @@ export interface ParameterTopologyRepository {
     projectId: string,
     input: CreateNodeEnablementDraftInput,
   ): Promise<NodeEnablementDraftResult>;
+  listNodeEnablementDrafts(projectId: string): Promise<NodeEnablementDraft[]>;
 }

@@ -891,10 +891,32 @@ export async function listCatalogBindingRowsForProject(
     invocation: createUserInvocation(auth),
     projectId: input.projectId,
   });
+  const currentRevisions = input.revisionId
+    ? await db.query<{ config_revision_id: string }>(
+      `select distinct pin.config_revision_id
+       from dts_config_revisions candidate
+       join parameter_catalog.project_value_source_pins pin
+         on pin.organization_id = candidate.organization_id
+        and pin.project_id = candidate.project_id
+       join dts_config_revisions pinned_revision
+         on pinned_revision.id = pin.config_revision_id
+        and pinned_revision.config_set_id = candidate.config_set_id
+       join parameter_catalog.current_project_parameter_bindings binding
+         on binding.id = pin.binding_id and binding.current_value_id = pin.project_value_id
+       where candidate.id = $1 and candidate.organization_id = $2 and candidate.project_id = $3
+         and candidate.status = 'draft'
+         and not exists (
+           select 1 from parameter_catalog.project_value_source_pins materialized
+           where materialized.config_revision_id = candidate.id
+         )`,
+      [input.revisionId, auth.organization.id, input.projectId]
+    )
+    : null;
+  const revisionIds = new Set([input.revisionId, ...(currentRevisions?.rows.map((row) => row.config_revision_id) ?? [])]);
   const items: CatalogBindingView[] = [];
   for (const row of protectedRows) {
     if (row.pin.source.sourceRef === "canonical-binding-identity") continue;
-    if (input.revisionId && row.pin.source.configRevisionId !== input.revisionId) continue;
+    if (input.revisionId && !revisionIds.has(row.pin.source.configRevisionId)) continue;
     const locator = await db.query<{
       node_locator: string | null;
       instance_name: string | null;

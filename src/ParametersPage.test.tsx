@@ -360,6 +360,7 @@ function createApiBoundaryRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
   return {
+    listNodeEnablementDrafts: vi.fn().mockResolvedValue([]),
     listSpecs: vi.fn<ParameterTopologyRepository["listSpecs"]>().mockResolvedValue([API_SENTINEL_SPEC]),
     getSpec: vi.fn<ParameterTopologyRepository["getSpec"]>().mockResolvedValue(API_SENTINEL_SPEC),
     activateParameterSpec: vi
