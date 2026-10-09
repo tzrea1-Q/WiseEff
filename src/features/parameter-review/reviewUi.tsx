@@ -1,8 +1,18 @@
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ProjectParameterInitializationReview } from "@/domain/parameters/types";
-import { type PrototypeState } from "@/domain/prototype/types";
+import { type ChangeRequest, type ParameterSubmissionRound, type PrototypeState } from "@/domain/prototype/types";
 import { type ReactNode } from "react";
+
+export function findRetainedSubmissionRound(
+  rounds: readonly ParameterSubmissionRound[],
+  request: Pick<ChangeRequest, "id" | "parameterId" | "projectId" | "submissionRoundId">
+): ParameterSubmissionRound | null {
+  if (!request.submissionRoundId) return null;
+  return rounds.find((round) => round.id === request.submissionRoundId
+    && (!request.projectId || round.projectId === request.projectId)
+    && round.items.some((item) => item.requestId === request.id && item.parameterId === request.parameterId)) ?? null;
+}
 
 export function getParameterInitializationReviewStatusLabel(status: ProjectParameterInitializationReview["status"]) {
   return (

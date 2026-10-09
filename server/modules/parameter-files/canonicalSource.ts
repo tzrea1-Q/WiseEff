@@ -22,6 +22,9 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract/index";
 import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "./sourceVersion";
 import { loadCanonicalBindingPins } from "../parameter-bindings/drafts/repository";
+import { asValueClient, listObservedProperties, rawTextToPayload } from "../parameter-bindings/catalogProjectValueSync";
+import { casNodeEnablementSourceTip, deriveHistoryEventId, deriveProjectValueId, insertBindingHistoryEvent, insertProjectValue, loadBindingById, loadProjectValueById } from "../parameter-bindings/values/repositories";
+import type { ProjectValueKind } from "../parameter-bindings/values";
 import { requireApprovedParameterInvocation } from "../agent/approvedParameterInvocation";
 import { discoverCurrentSourceRevisionPins, discoverDeletedSourceRevisionPins, loadDeletedSourceAnchors, loadSourceBindingCohort, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
   type CanonicalValueSourcePin, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
@@ -471,7 +474,8 @@ export async function preparePinnedNodeEnablementSourceChange(
         && !(child.kind === "node" && child.refTarget && child.children.every((entry) => ["property", "delete-property"].includes(entry.kind) && entry.name === "status")));
       return value;
     });
-    for (const binding of await loadCanonicalSourceCohort(db, scope)) {
+    const cohort = await loadCanonicalSourceCohort(db, scope);
+    for (const binding of cohort) {
       const pinned = await loadCanonicalSourceSnapshot(db, objectStore, { ...scope, bindingId: binding.bindingId, projectValueId: binding.oldValueId });
       if (pinned.manifest.members.length !== source.members.length || pinned.manifest.members.some((member, index) => {
         const actual = source.members.find((candidate) => candidate.fileId === member.fileId && candidate.sourceName === member.sourceName
@@ -489,7 +493,7 @@ export async function preparePinnedNodeEnablementSourceChange(
       occurrenceSpan: lock.occurrenceSpan ?? undefined, expectedRawText: lock.expectedRawText, nodeSpan: lock.nodeSpan });
     if (sourceShape(after, "dts") !== sourceShape(member.content, "dts")) throw new ApiError("CONFLICT", "Enablement changed non-status source semantics.");
     if (Buffer.byteLength(after) > MAX_PARAMETER_SOURCE_BYTES) throw new ApiError("VALIDATION_FAILED", "Patched source exceeds the size limit.");
-    return { source, member, after, attribution: trustedDomainAttribution(invocation) };
+    return { source, member, after, cohort, invocation, attribution: trustedDomainAttribution(invocation) };
   } catch (error) { rethrowSourceTransactionError(error); }
 }
 
@@ -501,7 +505,7 @@ export async function commitPinnedNodeEnablementSourceChange(
   security: CanonicalSourceSecurityContext,
 ) {
   const prepared = await preparePinnedNodeEnablementSourceChange(db, objectStore, auth, input, security);
-  const { source, member, after, attribution } = prepared;
+  const { source, member, after, cohort, invocation, attribution } = prepared;
   const bytes = Buffer.from(after);
   const checksum = createHash("sha256").update(bytes).digest("hex");
   const stored = await objectStore.put({ organizationId: auth.organization.id, fileName: member.sourceName, contentType: "text/plain", bytes });
@@ -516,6 +520,61 @@ export async function commitPinnedNodeEnablementSourceChange(
       sortOrder: entry.sortOrder, content: entry.fileId === member.fileId ? after : entry.content })),
   }, auth, { createdByUserId: attribution.userId, domain: attribution }, { sourceCommit: { baseConfigRevisionId: member.configRevisionId } });
   if (revision.status !== "resolved") throw new ApiError("CONFLICT", "Prepared enablement source has unresolved syntax or identity.");
+  const client = asValueClient(db);
+  const observed = await listObservedProperties(client, revision.id);
+  const auditRef = randomUUID();
+  const successors = [];
+  for (const entry of cohort) {
+    const binding = await loadBindingById(client, entry.bindingId, "none");
+    const old = await loadProjectValueById(client, entry.oldValueId);
+    const pin = await loadOwnedProjectValueSourcePin(db, {
+      organizationId: auth.organization.id, projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId
+    });
+    if (!binding || !old || !pin || binding.current_value_id !== old.id || old.value_state !== "present"
+      || old.definition_revision_id !== binding.effective_revision_id) {
+      throw new ApiError("CONFLICT", "Enablement source cohort lost its exact current value.");
+    }
+    const nextMember = source.members.find((candidate) => candidate.fileId === pin.fileId);
+    if (!nextMember) throw new ApiError("CONFLICT", "Enablement successor source is outside the pinned member set.");
+    let locator = pin.locator;
+    if (pin.format === "dts") {
+      const properties = observed.filter((property) => property.logicalNodeId === pin.logicalNodeId
+        && property.fileId === pin.fileId && property.propertyKey === pin.locator.propertyName);
+      if (properties.length !== 1) throw new ApiError("CONFLICT", "Enablement successor has no exact unchanged property.");
+      const property = properties[0]!;
+      const payload = rawTextToPayload(property.propertyKey, property.rawText);
+      if (payload.kind !== old.value_kind || serializeContract(payload.value) !== serializeContract(old.value as ContractJsonValue)) {
+        throw new ApiError("CONFLICT", "Enablement successor changed a canonical parameter value.");
+      }
+      locator = { kind: "dts-property", nodeOccurrenceId: property.nodeOccurrenceId,
+        propertyOccurrenceId: property.propertyOccurrenceId, fileVersionId: property.fileVersionId, propertyName: property.propertyKey };
+    }
+    const fileVersionId = pin.fileId === member.fileId ? version.id : nextMember.fileVersionId;
+    const valueId = deriveProjectValueId({ bindingId: binding.id, definitionRevisionId: old.definition_revision_id,
+      sourceRef: old.source_ref, configRevisionId: revision.id, valueKind: old.value_kind, valueDigest: old.value_digest, expectedTip: old.id });
+    const inserted = await insertProjectValue(client, { id: valueId, bindingId: binding.id, definitionId: old.definition_id,
+      definitionRevisionId: old.definition_revision_id, sourceRef: old.source_ref, configRevisionId: revision.id,
+      valueDigest: old.value_digest, valueKind: old.value_kind as ProjectValueKind, valueJson: JSON.stringify(old.value) });
+    if (!inserted) throw new ApiError("CONFLICT", "Enablement successor value already exists.");
+    const pinId = randomUUID();
+    await db.query(`insert into parameter_catalog.project_value_source_pins
+      (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,format,locator,locator_digest,property_occurrence_id)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14)`,
+    [pinId,valueId,binding.id,binding.definition_id,auth.organization.id,input.projectId,binding.source_occurrence_id,
+      revision.id,pin.fileId,fileVersionId,pin.format,JSON.stringify(locator),
+      `sha256:${createHash("sha256").update(serializeContract(locator)).digest("hex")}`,pin.format === "dts" ? locator.propertyOccurrenceId : null]);
+    const advanced = await casNodeEnablementSourceTip(client, { bindingId: binding.id, expectedTip: old.id,
+      nextTip: valueId, requestId: input.changeRequestId, baseConfigRevisionId: member.configRevisionId, baseFileVersionId: member.fileVersionId });
+    if (!advanced) throw new ApiError("CONFLICT", "Enablement successor lost its reviewed compare-and-swap.");
+    await insertBindingHistoryEvent(client, { id: deriveHistoryEventId({ bindingId: binding.id, oldCurrentValueId: old.id, newCurrentValueId: valueId }),
+      bindingId: binding.id, effectiveRevisionId: binding.effective_revision_id, oldCurrentValueId: old.id, newCurrentValueId: valueId,
+      successAuditRef: auditRef, catalogReleaseId: binding.catalog_release_id, reason: "source-revision-propagation" });
+    successors.push({ bindingId: binding.id, oldValueId: old.id, newValueId: valueId, sourcePinId: pinId });
+  }
+  await writeTrustedAuditEventInTx(asAuditTx(db), { id: auditRef, invocation, app: "parameters", kind: "parameter-topology-governance",
+    action: "node-enablement-source-applied", severity: "Medium", projectId: input.projectId,
+    targetType: "parameter-change-request", targetId: input.changeRequestId,
+    metadata: { configRevisionId: revision.id, successors }, traceId: security.requestId });
   const moved = await db.query(`update project_parameter_files set current_version_id=$2,updated_at=now() where id=$1 and current_version_id=$3`,
     [member.fileId, version.id, member.fileVersionId]);
   if (moved.rowCount !== 1) throw new ApiError("CONFLICT", "Enablement source file tip moved.");

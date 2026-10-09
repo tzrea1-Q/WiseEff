@@ -22,6 +22,7 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { archivedParameterLinkNotice } from "@/domain/parameters/archivedLink";
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
+import { parameterRecordFromBinding } from "@/infrastructure/http/parameterCatalogDtos";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 
 export const parameterRuntimeFailureNotification = "参数操作未完成，请稍后重试。";
@@ -187,26 +188,7 @@ export function createParameterRuntimeActions({
       const projects = await projectsPromise;
       const [parameterGroups, draftGroups] = await Promise.all([
         Promise.all(projects.map(async (project) =>
-          (await listBindings(project.id)).items.map((binding): ParameterRecord => ({
-            id: binding.id,
-            projectId: project.id,
-            name: binding.propertyKey,
-            description: binding.description ?? "",
-            explanation: binding.documentation ?? "",
-            configFormat: "DTS",
-            module: binding.driverModule ?? "",
-            moduleId: binding.moduleId || undefined,
-            sourceNodePath: binding.sourceNodePath ?? undefined,
-            currentValue: binding.rawValue,
-            recommendedValue: "",
-            range: "",
-            unit: "",
-            risk: "Low",
-            valueKind: "scalar",
-            updatedAt: "",
-            updatedAtTs: "",
-            history: []
-          }))
+          (await listBindings(project.id)).items.map((binding) => parameterRecordFromBinding(project.id, binding))
         )),
         Promise.all(projects.map((project) => api.listDrafts(project.id)))
       ]);

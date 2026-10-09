@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { formatWorkflowDisplayText, getParameterInitializationReviewStatusLabel } from "./reviewUi";
+import { findRetainedSubmissionRound, formatWorkflowDisplayText, getParameterInitializationReviewStatusLabel } from "./reviewUi";
+import { initialState } from "@/mockData";
+
+describe("retained submission identity", () => {
+  const request = { id: "request-retained", parameterId: "parameter-retained", projectId: "project-retained", submissionRoundId: "round-retained" };
+  const round = {
+    ...initialState.parameterSubmissionRounds[0], id: request.submissionRoundId, projectId: request.projectId,
+    items: [{ ...initialState.parameterSubmissionRounds[0].items[0], requestId: request.id, parameterId: request.parameterId }]
+  };
+
+  it("selects the exact retained round and supports requests without current project metadata", () => {
+    expect(findRetainedSubmissionRound([round], request)).toBe(round);
+    expect(findRetainedSubmissionRound([round], { ...request, projectId: undefined })).toBe(round);
+  });
+
+  it.each([
+    { identity: "round", candidate: { ...round, id: "other-round" } },
+    { identity: "project", candidate: { ...round, projectId: "other-project" } },
+    { identity: "request", candidate: { ...round, items: [{ ...round.items[0], requestId: "other-request" }] } },
+    { identity: "parameter", candidate: { ...round, items: [{ ...round.items[0], parameterId: "other-parameter" }] } }
+  ])("refuses a mismatched $identity identity even when the round name matches", ({ candidate }) => {
+    expect(findRetainedSubmissionRound([candidate], request)).toBeNull();
+    expect(findRetainedSubmissionRound([candidate, round], request)).toBe(round);
+  });
+
+  it("never infers a missing retained round ID from matching request and parameter IDs", () => {
+    expect(findRetainedSubmissionRound([round], { ...request, submissionRoundId: undefined })).toBeNull();
+    expect(findRetainedSubmissionRound([], request)).toBeNull();
+  });
+});
 
 describe("review workflow copy", () => {
   it("maps mixed English workflow statuses to product Chinese without leaking Committer/User", () => {

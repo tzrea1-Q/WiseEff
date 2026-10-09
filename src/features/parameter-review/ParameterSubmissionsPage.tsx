@@ -19,7 +19,7 @@ import { ArrowRight, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import "./parameter-review.css";
 
-type LegacyArchiveState = {
+type SubmissionProjectionState = {
   status: "idle" | "loading" | "ready" | "error";
   rounds: LegacySubmissionRound[];
   error: string | null;
@@ -55,9 +55,9 @@ export function ParameterSubmissionsPage({
   const memberRequestId = new URLSearchParams(search).get("memberRequest") ?? undefined;
   const canonicalProject = state.configDraft.projects.find((project) => project.id === canonicalProjectId);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  const [legacyArchive, setLegacyArchive] = useState<LegacyArchiveState>({ status: "idle", rounds: [], error: null });
+  const [submissionProjection, setSubmissionProjection] = useState<SubmissionProjectionState>({ status: "idle", rounds: [], error: null });
   const [refreshVersion, setRefreshVersion] = useState(0);
-  const historicalRounds = legacyArchive.rounds.filter((round) => round.projectId === canonicalProjectId
+  const historicalRounds = submissionProjection.rounds.filter((round) => round.projectId === canonicalProjectId
     && !round.items.some((item) => item.editSubjectKind === "node-enablement"));
   const submitterAliases = new Set(
     currentUser ? getUserDisplayAliases(currentUser) : [activeRoleLabel(state.activeRoleId), "平台用户"]
@@ -65,7 +65,7 @@ export function ParameterSubmissionsPage({
   // API mode uses the server-side exact-owner archive projection below; the
   // reducer's legacy rounds never decide personal ownership by display name.
   const myRounds = runtimeMode === "api"
-    ? legacyArchive.rounds.filter((round) => round.projectId === canonicalProjectId
+    ? submissionProjection.rounds.filter((round) => round.projectId === canonicalProjectId
       && round.items.some((item) => item.editSubjectKind === "node-enablement"))
     : state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
@@ -136,21 +136,21 @@ export function ParameterSubmissionsPage({
 
   useEffect(() => {
     if (!isApiMode) {
-      setLegacyArchive({ status: "idle", rounds: [], error: null });
+      setSubmissionProjection({ status: "idle", rounds: [], error: null });
       return;
     }
     const parameterRepository = runtime?.parameterRepository;
     if (!parameterRepository) {
-      setLegacyArchive({ status: "error", rounds: [], error: "提交记录接口未配置，暂时无法加载。" });
+      setSubmissionProjection({ status: "error", rounds: [], error: "提交记录接口未配置，暂时无法加载。" });
       return;
     }
     if (!canonicalProject) {
-      setLegacyArchive({ status: "idle", rounds: [], error: null });
+      setSubmissionProjection({ status: "idle", rounds: [], error: null });
       return;
     }
 
     let cancelled = false;
-    setLegacyArchive((current) => ({ ...current, status: "loading", error: null }));
+    setSubmissionProjection((current) => ({ ...current, status: "loading", error: null }));
     type SubmissionRoundListMethod = NonNullable<typeof parameterRepository>["listSubmissionRounds"];
     const listSubmissionRounds = parameterRepository.listSubmissionRounds as (
       query: Parameters<SubmissionRoundListMethod>[0] & { mine: true }
@@ -158,7 +158,7 @@ export function ParameterSubmissionsPage({
     void listSubmissionRounds({ projectId: canonicalProject.id, mine: true })
       .then((rounds) => {
         if (cancelled) return;
-        setLegacyArchive({
+        setSubmissionProjection({
           status: "ready",
           // `mine=true` is a server-owned projection. Legacy round DTOs do not
           // expose submitter IDs, so the API client must trust this response.
@@ -168,7 +168,7 @@ export function ParameterSubmissionsPage({
       })
       .catch((error) => {
         if (!cancelled) {
-          setLegacyArchive({ status: "error", rounds: [], error: presentError(error, "提交记录加载失败，请稍后重试。") });
+          setSubmissionProjection({ status: "error", rounds: [], error: presentError(error, "提交记录加载失败，请稍后重试。") });
         }
       });
     return () => {
@@ -177,10 +177,10 @@ export function ParameterSubmissionsPage({
   }, [canonicalProject, isApiMode, runtime?.parameterRepository, refreshVersion]);
 
   useEffect(() => {
-    if (!legacyArchive.rounds.some((round) => round.id === selectedArchiveRoundId)) {
-      setSelectedArchiveRoundId(legacyArchive.rounds[0]?.id ?? "");
+    if (!submissionProjection.rounds.some((round) => round.id === selectedArchiveRoundId)) {
+      setSelectedArchiveRoundId(submissionProjection.rounds[0]?.id ?? "");
     }
-  }, [legacyArchive.rounds, selectedArchiveRoundId]);
+  }, [submissionProjection.rounds, selectedArchiveRoundId]);
 
   useTopBarActions(
     <Button
@@ -271,8 +271,8 @@ export function ParameterSubmissionsPage({
           ) : (
             <p role="alert">新版参数提交暂不可用，请稍后重试。</p>
           )}
-          {legacyArchive.status === "loading" ? <p role="status">正在加载提交记录…</p> : null}
-          {legacyArchive.error ? <p role="alert">{legacyArchive.error}</p> : null}
+          {submissionProjection.status === "loading" ? <p role="status">正在加载提交记录…</p> : null}
+          {submissionProjection.error ? <p role="alert">{submissionProjection.error}</p> : null}
           {canonicalProject && historicalRounds.length > 0 ? (
             <section className="submission-history-archive" aria-label="旧版提交归档">
               <header>

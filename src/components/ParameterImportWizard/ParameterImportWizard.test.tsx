@@ -6,6 +6,7 @@ import { fillPasteImportContent } from "./testHelpers";
 import { initialState } from "@/mockData";
 import * as dtsStructuredRuntime from "@/application/parameters/dtsStructuredRuntime";
 import * as parameterTopologyResolve from "@/application/parameters/parameterTopologyResolve";
+import * as parameterCatalogDtos from "@/infrastructure/http/parameterCatalogDtos";
 
 function renderWizard(
   overrides: Partial<ComponentProps<typeof ParameterImportWizard>> = {},
@@ -439,6 +440,7 @@ describe("ParameterImportWizard", () => {
   });
 
   it("matches and reviews only canonical Bindings in API mode, never legacy shell rows", async () => {
+    const mapBinding = vi.spyOn(parameterCatalogDtos, "parameterRecordFromBinding");
     vi.spyOn(dtsStructuredRuntime, "resolveDtsStructuredRepository").mockReturnValue({
       listConfigSets: vi.fn().mockResolvedValue([{ id: "cs-1", name: "default" }])
     } as never);
@@ -469,6 +471,9 @@ describe("ParameterImportWizard", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
     const summary = await within(dialog).findByRole("region", { name: "解析与校验" });
+    expect(mapBinding).toHaveBeenCalledWith(initialState.activeProjectId, {
+      id: "canonical-binding", propertyKey: "iin_max", driverModule: "Canonical Driver", rawValue: "3000"
+    });
     expect(within(summary).getByText("总行数").nextElementSibling).toHaveTextContent("2");
     expect(within(summary).getByText("未匹配（不会应用）").nextElementSibling).toHaveTextContent("1");
     expect(within(summary).getByText("已有").nextElementSibling).toHaveTextContent("1");

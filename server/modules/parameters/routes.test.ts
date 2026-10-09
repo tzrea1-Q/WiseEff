@@ -271,7 +271,7 @@ describe("parameter routes", () => {
       q: "charge",
       limit: 500
     });
-    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledWith(db, makeAuth(), { projectId: "aurora" });
+    expect(canonicalBindings.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
     expect(repository.listParameters).not.toHaveBeenCalled();
   });
 
@@ -308,7 +308,9 @@ describe("parameter routes", () => {
     expect(response.body).toEqual({ items: [] });
     expect(projectRepository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
     expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledTimes(1);
-    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledWith(db, makeAuth(), { projectId: "aurora" });
+    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledWith(db, makeAuth(), {
+      projectId: "aurora", limit: 100, moduleIds: undefined, module: undefined, q: undefined
+    });
     expect(repository.listParameters).not.toHaveBeenCalled();
   });
 

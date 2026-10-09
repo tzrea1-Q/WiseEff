@@ -777,7 +777,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("data-revision-id", "rev-after-mutation");
   });
 
-  it.each(["value", "enablement"])("keeps the other owner's persisted tray when the %s draft read fails", async (failedOwner) => {
+  it.each(["value", "enablement"])("keeps the other owner's persisted tray and retries only the failed %s draft read", async (failedOwner) => {
     const enablement = {
       id: "node-draft", projectId: "aurora", editSubjectKind: "node-enablement" as const,
       logicalNodeId: "logical-sc8562", candidateConfigRevisionId: "rev-persisted",
@@ -788,21 +788,49 @@ describe("ApiProjectTopologyWorkspace", () => {
       candidateConfigRevisionId: "rev-persisted", targetValue: "<&gpio13 30 0>",
       reason: "Retained value draft", updatedAt: "2026-10-09T08:00:00.000Z"
     };
-    const repository = createRepository({
-      listNodeEnablementDrafts: failedOwner === "enablement"
-        ? vi.fn().mockRejectedValue(new Error("Structural draft read unavailable"))
-        : vi.fn().mockResolvedValue([enablement])
-    });
+    const listNodeEnablementDrafts = vi.fn().mockResolvedValue([enablement]);
+    const listDrafts = vi.fn().mockResolvedValue([value]);
+    const failedRead = failedOwner === "value" ? listDrafts : listNodeEnablementDrafts;
+    failedRead.mockRejectedValueOnce(new Error("Draft read unavailable"));
+    const repository = createRepository({ listNodeEnablementDrafts });
     render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit topologyRepository={repository}
       listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
-      listDrafts={failedOwner === "value"
-        ? vi.fn().mockRejectedValue(new Error("Canonical draft read unavailable"))
-        : vi.fn().mockResolvedValue([value])}
+      listDrafts={listDrafts}
     />);
     const tray = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByText(failedOwner === "value" ? "Retained node draft" : "Retained value draft")).toBeVisible();
     expect(within(tray).getByText(/^本轮 1 项$/)).toBeVisible();
     expect(await screen.findByRole("row", { name: /gpio_int.*sc8562|sc8562.*gpio_int/ })).toBeVisible();
+    const ownerLabel = failedOwner === "value" ? "参数值草稿" : "节点启用草稿";
+    expect(await screen.findByRole("alert", { name: `${ownerLabel}加载失败` })).toHaveTextContent(`${ownerLabel}加载失败`);
+    const delayed = createDeferred<Array<typeof enablement | typeof value>>();
+    failedRead.mockReturnValueOnce(delayed.promise);
+    fireEvent.click(screen.getByRole("button", { name: `重试加载${ownerLabel}` }));
+    await waitFor(() => expect(failedRead).toHaveBeenCalledTimes(2));
+    expect(within(tray).getByText(failedOwner === "value" ? enablement.reason : value.reason)).toBeVisible();
+    expect(screen.getByRole("status", { name: `正在加载${ownerLabel}` })).toHaveTextContent(`正在加载${ownerLabel}`);
+    await act(async () => { delayed.resolve(failedOwner === "value" ? [value] : [enablement]); });
+    await waitFor(() => expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible());
+    expect(within(tray).getByText(enablement.reason)).toBeVisible();
+    expect(within(tray).getByText(value.reason)).toBeVisible();
+    expect(screen.queryByRole("alert", { name: `${ownerLabel}加载失败` })).not.toBeInTheDocument();
+    expect(failedOwner === "value" ? listNodeEnablementDrafts : listDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows both owner errors without an empty tray when both draft reads fail", async () => {
+    render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit
+      topologyRepository={createRepository({
+        listNodeEnablementDrafts: vi.fn().mockRejectedValue(new Error("Structural read unavailable"))
+      })}
+      listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+      listDrafts={vi.fn().mockRejectedValue(new Error("Value read unavailable"))}
+    />);
+    expect(await screen.findByRole("row", { name: /gpio_int.*sc8562|sc8562.*gpio_int/ })).toBeVisible();
+    expect(await screen.findAllByRole("alert")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "重试加载参数值草稿" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "重试加载节点启用草稿" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
+    expect(screen.queryByText("该项目尚无已绑定的语义参数。")).not.toBeInTheDocument();
   });
 
   it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {

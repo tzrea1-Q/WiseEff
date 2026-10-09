@@ -10,7 +10,7 @@ import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepos
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { presentError } from "@/infrastructure/http/presentError";
-import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
+import { parameterRecordFromBinding } from "@/infrastructure/http/parameterCatalogDtos";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -31,28 +31,6 @@ function reviewRowMatchKey(row: ReviewedImportRow): string {
   return `${row.name}::${row.module}`;
 }
 
-function bindingToLibraryRecord(projectId: string, binding: ProjectParameterBinding): ParameterRecord {
-  return {
-    id: binding.id,
-    name: binding.propertyKey,
-    description: binding.description ?? "",
-    explanation: "",
-    configFormat: "DTS",
-    module: binding.driverModule ?? "",
-    moduleId: binding.moduleId || undefined,
-    projectId,
-    currentValue: binding.rawValue,
-    recommendedValue: "",
-    range: "",
-    unit: "",
-    risk: "Low",
-    valueKind: "scalar",
-    updatedAt: "",
-    updatedAtTs: "",
-    history: []
-  };
-}
-
 async function libraryForImport(
   parameters: ParameterRecord[],
   projectId: string,
@@ -69,7 +47,7 @@ async function libraryForImport(
   const topology = resolveParameterTopologyRepository("api");
   const tree = await topology.getTopology(projectId, configSet.id, "current", "effective");
   const items = await topology.listBindings(projectId, tree.revisionId);
-  return items.map((binding) => bindingToLibraryRecord(projectId, binding));
+  return items.map((binding) => parameterRecordFromBinding(projectId, binding));
 }
 
 function reconcileReviewedRows(rows: ReviewedImportRow[], parameters: ParameterRecord[], targetProjectId: string): ReviewedImportRow[] {

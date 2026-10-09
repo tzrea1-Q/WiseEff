@@ -33,6 +33,7 @@ import { buildPowerManagementModuleTree } from "@/powerManagementConfig";
 import {
   StatusBadge,
   VerticalTimeline,
+  findRetainedSubmissionRound,
   formatWorkflowDisplayText,
   getParameterInitializationReviewStatusLabel,
   getUserName,
@@ -81,35 +82,35 @@ export function ParameterReviewPage({
   runtimeMode
 }: PageProps) {
   const [refreshVersion, setRefreshVersion] = useState(0);
-  const [legacyHistory, setLegacyHistory] = useState<{
+  const [reviewProjection, setReviewProjection] = useState<{
     projectId: string;
     requests: ChangeRequest[];
     rounds: ParameterSubmissionRound[];
   } | null>(null);
-  const legacyProjectId = getContextQuery(search).projectId || state.activeProjectId;
+  const reviewProjectId = getContextQuery(search).projectId || state.activeProjectId;
   const parameterRepository = runtime?.parameterRepository;
   useEffect(() => {
-    if (runtimeMode !== "api" || !parameterRepository || !legacyProjectId) return;
+    if (runtimeMode !== "api" || !parameterRepository || !reviewProjectId) return;
     let cancelled = false;
-    setLegacyHistory(null);
+    setReviewProjection(null);
     void Promise.all([
-      parameterRepository.listChangeRequests({ projectId: legacyProjectId }),
-      parameterRepository.listSubmissionRounds({ projectId: legacyProjectId })
+      parameterRepository.listChangeRequests({ projectId: reviewProjectId }),
+      parameterRepository.listSubmissionRounds({ projectId: reviewProjectId })
     ]).then(([requests, rounds]) => {
-      if (!cancelled) setLegacyHistory({ projectId: legacyProjectId, requests, rounds });
+      if (!cancelled) setReviewProjection({ projectId: reviewProjectId, requests, rounds });
     }).catch((error) => {
       if (!cancelled) {
-        setLegacyHistory({ projectId: legacyProjectId, requests: [], rounds: [] });
-        dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "旧版审阅归档加载失败，请稍后重试。") });
+        setReviewProjection({ projectId: reviewProjectId, requests: [], rounds: [] });
+        dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "审阅记录加载失败，请稍后重试。") });
       }
     });
     return () => { cancelled = true; };
-  }, [dispatch, legacyProjectId, parameterRepository, runtimeMode, refreshVersion]);
+  }, [dispatch, reviewProjectId, parameterRepository, runtimeMode, refreshVersion]);
   if (runtimeMode === "api" && parameterRepository) {
     state = {
       ...state,
-      changeRequests: legacyHistory?.projectId === legacyProjectId ? legacyHistory.requests : [],
-      parameterSubmissionRounds: legacyHistory?.projectId === legacyProjectId ? legacyHistory.rounds : []
+      changeRequests: reviewProjection?.projectId === reviewProjectId ? reviewProjection.requests : [],
+      parameterSubmissionRounds: reviewProjection?.projectId === reviewProjectId ? reviewProjection.rounds : []
     };
   }
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
@@ -166,8 +167,8 @@ export function ParameterReviewPage({
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const legacyHistoryPending = runtimeMode === "api" && parameterRepository && legacyHistory?.projectId !== legacyProjectId;
-  const requestedRequestId = requestedLegacyStateId || legacyHistoryPending ? "" : requestedUrlRequestId;
+  const reviewProjectionPending = runtimeMode === "api" && parameterRepository && reviewProjection?.projectId !== reviewProjectId;
+  const requestedRequestId = requestedLegacyStateId || reviewProjectionPending ? "" : requestedUrlRequestId;
   const canonicalProjectId = contextQuery.projectId || state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const canReviewCanonical = Boolean(currentUser?.isActive && currentUser.roles?.some((role) =>
@@ -241,9 +242,7 @@ export function ParameterReviewPage({
 
     const { request } = row;
     const parameter = state.parameters.find((item) => item.id === request.parameterId);
-    const round = state.parameterSubmissionRounds.find((item) => item.id === request.submissionRoundId
-      && (!request.projectId || item.projectId === request.projectId)
-      && item.items.some((snapshot) => snapshot.requestId === request.id && snapshot.parameterId === request.parameterId));
+    const round = findRetainedSubmissionRound(state.parameterSubmissionRounds, request);
     const projectId = request.projectId ?? round?.projectId ?? parameter?.projectId;
     const project = state.configDraft.projects.find((item) => item.id === projectId);
     const values = {
@@ -373,9 +372,7 @@ export function ParameterReviewPage({
 
   const selectedRound = useMemo(() => {
     if (!selected?.submissionRoundId) return null;
-    return state.parameterSubmissionRounds.find((round) => round.id === selected.submissionRoundId
-      && (!selected.projectId || round.projectId === selected.projectId)
-      && round.items.some((item) => item.requestId === selected.id && item.parameterId === selected.parameterId)) ?? null;
+    return findRetainedSubmissionRound(state.parameterSubmissionRounds, selected);
   }, [selected, state.parameterSubmissionRounds]);
   const selectedDetailRound = useMemo((): ParameterSubmissionRound | null => {
     if (!selected) return null;
