@@ -1238,6 +1238,9 @@ export function createMockParameterTopologyRepository(
       };
     },
 
+    async listNodeEnablementDrafts() {
+      return [];
+    },
     async createNodeEnablementDraft(
       projectId,
       input: CreateNodeEnablementDraftInput

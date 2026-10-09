@@ -139,7 +139,6 @@ function mapServerDraftsToPending(
     const candidateRevisionId = draft.candidateConfigRevisionId?.trim() || sharedTip || "";
     if (!candidateRevisionId) return [];
 
-    // TODO: drop optional chaining once listDrafts always returns enablement draft fields.
     if (draft.editSubjectKind === "node-enablement") {
       const logicalNodeId = draft.logicalNodeId?.trim();
       if (!logicalNodeId) return [];
@@ -461,53 +460,50 @@ export function ApiProjectTopologyWorkspace({
 
   useEffect(() => {
     let cancelled = false;
-    // The draft source is injected by the composition point (ParametersPage). This
-    // component must not build an HTTP client of its own: doing so bypassed the
-    // injectable seams and, before Issue #849, silently read the legacy
-    // `parameter-drafts` surface instead of the canonical pending drafts.
     const resolveListDrafts = listDraftsRef.current;
-    if (!resolveListDrafts) {
-      setServerDrafts([]);
-      return undefined;
+    setServerDrafts([]);
+    for (const read of [
+      resolveListDrafts?.(projectId) ?? Promise.resolve([]),
+      repository.listNodeEnablementDrafts(projectId)
+    ]) {
+      void read.then((drafts) => {
+        if (!cancelled) setServerDrafts((current) => [...(current ?? []), ...drafts]);
+      }).catch(() => undefined);
     }
-    setServerDrafts(null);
-    resolveListDrafts(projectId)
-      .then((drafts) => {
-        if (!cancelled) setServerDrafts(drafts);
-      })
-      .catch(() => {
-        if (!cancelled) setServerDrafts([]);
-      });
     return () => {
       cancelled = true;
     };
-  }, [projectId, runtimeMode, draftsReloadToken]);
+  }, [projectId, repository, runtimeMode, draftsReloadToken]);
 
   useEffect(() => {
     if (!serverDrafts || loadState.kind !== "ready") return;
+    const logicalNodeIds = new Set(loadState.effectiveNodes.map((node) => node.logicalNodeId));
     const bindingDrafts = serverDrafts.filter(
       (draft) =>
         draft.projectId === projectId &&
-        (draft.projectParameterBindingId || draft.editSubjectKind === "node-enablement")
+        (draft.projectParameterBindingId ||
+          (draft.editSubjectKind === "node-enablement" && draft.logicalNodeId && logicalNodeIds.has(draft.logicalNodeId)))
     );
     if (bindingDrafts.length === 0) return;
 
+    const existing = pendingDraftsRef.current.filter((draft) => draft.projectId === projectId);
+    const missingDrafts = bindingDrafts.filter((draft) => !existing.some((pending) => pending.draftId === draft.id));
+    if (missingDrafts.length === 0) return;
     const sharedTip = resolveSharedWorkingTip(bindingDrafts);
-    if (sharedTip && loadState.revisionId !== sharedTip) {
+    if (existing.length === 0 && sharedTip && loadState.revisionId !== sharedTip) {
       setPreferredRevision({ projectId, revisionId: sharedTip });
       return;
     }
 
-    if (pendingDraftsRef.current.some((draft) => draft.projectId === projectId)) return;
     const hydrated = mapServerDraftsToPending(
       projectId,
-      bindingDrafts,
+      missingDrafts,
       loadState.bindings,
       loadState.effectiveNodes,
       moduleRegistry,
       sharedTip
     );
-    setPendingDrafts(hydrated);
+    setPendingDrafts((current) => [...current, ...hydrated.filter((draft) => !current.some((pending) => pending.draftId === draft.draftId))]);
     // WYSIWYG submission: hydrated drafts start fully checked.
     const hydratedBindingIds = hydrated
       .filter((draft) => draft.kind === "binding")

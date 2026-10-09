@@ -144,6 +144,10 @@ Every route below is a target contract, not current implementation evidence.
 
 ### Release readiness
 
+Node-enablement drafts are structural work, not Definitions, Bindings, or Project values. The workbench hydrates them independently through the retained, user-scoped `GET /api/v1/parameter-drafts/mine?projectId=...` read and combines only its `node-enablement` items belonging to the loaded config set's logical nodes with canonical value drafts in the tray. A failed or stalled read does not block the other owner's drafts. Later results add missing drafts without replacing local edits or selecting another config set's candidate.
+
+The canonical current-Binding read does not treat an unmaterialized draft config revision as a source pin. When `revisionId` names such a candidate, it returns the current canonical Bindings in that candidate's authenticated project and config set. Materialized revision filters retain their exact source-pin semantics; unknown or foreign revisions do not fall back to another project's or config set's Bindings. Reading a candidate never materializes it or advances any immutable pin.
+
 Config-set release readiness reads pending canonical value change requests alongside the retained legacy workflow count. Source-occurrence requests count only for the config set whose source cohort they touch; project-only requests block all config sets in that project. Approval, rejection, or withdrawal clears the pending-change blocker without a legacy change-request mirror. Node-enablement workflows retain their separate rules.
 
 Baseline creation and release consume the same readiness gate. Its token includes the exact pending canonical request IDs, so confirmation against an evaluation made before new pending work appeared is refused as stale. Readiness never synchronizes or creates legacy identity-mapping tasks; retained historical tasks are read only.

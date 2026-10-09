@@ -763,6 +763,27 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(resolveBody).toMatchObject(resolution);
   });
 
+  it("hydrates only this project's structural enablement drafts without canonical identity aliases", async () => {
+    const draft = {
+      id: "node-draft", projectId: "project with spaces", parameterId: "logical-charger",
+      editSubjectKind: "node-enablement", logicalNodeId: "logical-charger", nodeLabel: "charger",
+      candidateConfigRevisionId: "structural-candidate", currentValue: '"okay"', targetValue: '"disabled"',
+      action: "set", reason: "Persisted disable", updatedAt: "2026-10-09T08:00:00.000Z"
+    };
+    const repository = createHttpParameterTopologyRepository(createApiClient({
+      baseUrl: "", fetchImpl: fetchQueue({ items: [
+        draft,
+        { ...draft, id: "historical-value-draft", editSubjectKind: "binding", projectParameterBindingId: "old-binding" },
+        { ...draft, id: "other-project-node-draft", projectId: "other-project" }
+      ] })
+    }));
+    const hydrated = await repository.listNodeEnablementDrafts("project with spaces");
+    expect(hydrated).toEqual([draft]);
+    expect(hydrated[0]).not.toHaveProperty("bindingId");
+    expect(hydrated[0]).not.toHaveProperty("parameterSpecId");
+    expect(hydrated[0]).not.toHaveProperty("currentValueId");
+  });
+
   it("reads only historical spec tasks from a mixed canonical envelope and preserves decision metadata", async () => {
     const historicalTask = {
       id: "historical-spec-task",

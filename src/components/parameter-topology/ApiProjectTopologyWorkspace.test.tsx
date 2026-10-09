@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
@@ -637,6 +637,118 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
     expect(within(footer).getByText("&amba")).toBeVisible();
     expect(within(footer).getByText("&charging_core")).toBeVisible();
+  });
+
+  it("rehydrates a separate node enablement tray after reload without emptying current parameters", async () => {
+    const persisted = {
+      id: "draft-node-enablement", projectId: "aurora", parameterId: "logical-sc8562",
+      editSubjectKind: "node-enablement" as const, logicalNodeId: "logical-sc8562",
+      nodeLabel: "sc8562@6E", candidateConfigRevisionId: "rev-node-candidate",
+      targetValue: '"disabled"', currentValue: '"okay"', action: "set" as const,
+      reason: "Persisted structural disable", updatedAt: "2026-10-09T08:00:00.000Z"
+    };
+    const overrides = { listNodeEnablementDrafts: vi.fn().mockResolvedValue([persisted]) };
+    const repository = createRepository(overrides);
+    const canonicalDrafts = vi.fn().mockResolvedValue([]);
+    const workspace = (
+      <ApiProjectTopologyWorkspace
+        projectId="aurora" canEdit topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={canonicalDrafts}
+      />
+    );
+    for (const reload of [false, true]) {
+      const rendered = render(workspace);
+      const tray = await screen.findByRole("region", { name: "参数修改提交" });
+      expect(within(tray).getByText("Persisted structural disable")).toBeVisible();
+      expect(within(tray).getByText("节点启用")).toBeVisible();
+      expect(within(tray).getByText("sc8562@6E")).toBeVisible();
+      expect(within(tray).getByText(/^本轮 1 项$/)).toBeVisible();
+      expect(await screen.findByRole("row", { name: /gpio_int.*sc8562|sc8562.*gpio_int/ })).toBeVisible();
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("data-revision-id", "rev-node-candidate");
+      expect(screen.queryByText("该项目尚无已绑定的语义参数。")).not.toBeInTheDocument();
+      if (!reload) rendered.unmount();
+    }
+  });
+
+  it("does not select another config set's structural candidate when reloading the default workbench", async () => {
+    const repository = createRepository();
+    const getTopology = repository.getTopology;
+    repository.getTopology = vi.fn(async (...input) => {
+      if (input[2] === "rev-other-config-set") {
+        throw new WiseEffApiError({ code: "NOT_FOUND", message: "Revision belongs to another config set" });
+      }
+      return getTopology(...input);
+    });
+    repository.listNodeEnablementDrafts = vi.fn().mockResolvedValue([{
+      id: "other-set-node-draft", projectId: "aurora", editSubjectKind: "node-enablement",
+      logicalNodeId: "logical-other-config-set", candidateConfigRevisionId: "rev-other-config-set",
+      targetValue: '"disabled"', reason: "Other config set", updatedAt: "2026-10-09T08:00:00.000Z"
+    }]);
+    render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit topologyRepository={repository}
+      listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }, { id: "dcs-other", name: "other" }]}
+      listDrafts={vi.fn().mockResolvedValue([])}
+    />);
+    await act(async () => {});
+    expect(await screen.findByRole("row", { name: /gpio_int.*sc8562|sc8562.*gpio_int/ })).toBeVisible();
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("data-revision-id", "rev-real-1");
+    expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
+  });
+
+  it.each(["value", "enablement"])("hydrates before a stalled %s read finishes and merges its later drafts", async (stalledOwner) => {
+    const enablement = {
+      id: "node-delayed", projectId: "aurora", editSubjectKind: "node-enablement" as const,
+      logicalNodeId: "logical-sc8562", candidateConfigRevisionId: "rev-persisted",
+      targetValue: '"disabled"', reason: "Independent node hydration", updatedAt: "2026-10-09T08:00:00.000Z"
+    };
+    const value = {
+      id: "value-delayed", projectId: "aurora", projectParameterBindingId: "binding-sc8562-gpio-int",
+      candidateConfigRevisionId: "rev-persisted", targetValue: "<&gpio13 30 0>",
+      reason: "Independent value hydration", updatedAt: "2026-10-09T08:00:00.000Z"
+    };
+    const delayed = createDeferred<Array<typeof enablement | typeof value>>();
+    const repository = createRepository({ listNodeEnablementDrafts: vi.fn().mockReturnValue(
+      stalledOwner === "enablement" ? delayed.promise : Promise.resolve([enablement])
+    ) });
+    render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit topologyRepository={repository}
+      listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+      listDrafts={vi.fn().mockReturnValue(stalledOwner === "value" ? delayed.promise : Promise.resolve([value]))}
+    />);
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
+    expect(within(tray).getByText(stalledOwner === "value" ? enablement.reason : value.reason)).toBeVisible();
+    expect(within(tray).getByText(/^本轮 1 项$/)).toBeVisible();
+    await act(async () => { delayed.resolve(stalledOwner === "value" ? [value] : [enablement]); });
+    expect(within(tray).getByText(enablement.reason)).toBeVisible();
+    expect(within(tray).getByText(value.reason)).toBeVisible();
+    expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
+  });
+
+  it.each(["value", "enablement"])("keeps the other owner's persisted tray when the %s draft read fails", async (failedOwner) => {
+    const enablement = {
+      id: "node-draft", projectId: "aurora", editSubjectKind: "node-enablement" as const,
+      logicalNodeId: "logical-sc8562", candidateConfigRevisionId: "rev-persisted",
+      targetValue: '"disabled"', reason: "Retained node draft", updatedAt: "2026-10-09T08:00:00.000Z"
+    };
+    const value = {
+      id: "value-draft", projectId: "aurora", projectParameterBindingId: "binding-sc8562-gpio-int",
+      candidateConfigRevisionId: "rev-persisted", targetValue: "<&gpio13 30 0>",
+      reason: "Retained value draft", updatedAt: "2026-10-09T08:00:00.000Z"
+    };
+    const repository = createRepository({
+      listNodeEnablementDrafts: failedOwner === "enablement"
+        ? vi.fn().mockRejectedValue(new Error("Structural draft read unavailable"))
+        : vi.fn().mockResolvedValue([enablement])
+    });
+    render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit topologyRepository={repository}
+      listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+      listDrafts={failedOwner === "value"
+        ? vi.fn().mockRejectedValue(new Error("Canonical draft read unavailable"))
+        : vi.fn().mockResolvedValue([value])}
+    />);
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
+    expect(within(tray).getByText(failedOwner === "value" ? "Retained node draft" : "Retained value draft")).toBeVisible();
+    expect(within(tray).getByText(/^本轮 1 项$/)).toBeVisible();
+    expect(await screen.findByRole("row", { name: /gpio_int.*sc8562|sc8562.*gpio_int/ })).toBeVisible();
   });
 
   it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {
