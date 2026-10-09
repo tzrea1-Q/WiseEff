@@ -3475,6 +3475,39 @@
         }
       }
     },
+    "/api/v2/platform/driver-schema-promotion-history": {
+      "get": {
+        "operationId": "parameterSpecs.listPromotionHistory",
+        "summary": "Read retained driver-schema promotion provenance without overlay or candidate state",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverSchemaPromotionHistoryListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/platform/driver-schemas/promotions": {
       "post": {
         "operationId": "parameterSpecs.promoteDriverSchemaOverlay",
@@ -17276,6 +17309,61 @@
       "DeprecateOrganizationDriverSchemaRequest": {
         "type": "object",
         "x-wiseeff-schema": "DeprecateOrganizationDriverSchemaRequest"
+      },
+      "DriverSchemaPromotionHistoryListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "platformSchemaId": {
+                  "type": "string"
+                },
+                "sourceSchemaId": {
+                  "type": "string"
+                },
+                "sourceOrganizationId": {
+                  "type": "string"
+                },
+                "promotedByUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "promotedAt": {
+                  "type": "string"
+                },
+                "documentationSource": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "platformSchemaId",
+                "sourceSchemaId",
+                "sourceOrganizationId",
+                "promotedByUserId",
+                "promotedAt",
+                "documentationSource"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "DriverSchemaPromotionHistoryListResponse"
       },
       "PromoteDriverSchemaOverlayRequest": {
         "type": "object",

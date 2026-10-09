@@ -11,6 +11,7 @@ import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browse
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
+import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
 import { startDisposablePostCutoverRuntime, disposableRuntimeOutcomeFromTestInfo, type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 import { captureProcessEnvForDisposableRuntime, applyDisposableRuntimeEnv, restoreProcessEnvFromDisposableRuntime } from "./helpers/semanticBindingFixture";
@@ -47,6 +48,28 @@ test("Issue 1064: seeded canonical modules render without organization overlays"
   await page.screenshot({ path: info.outputPath("issue1064-canonical-registrations-1440x900.png"), animations: "disabled" });
   await tree.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("issue1064-canonical-tree-1440x900.png"), animations: "disabled" });
+});
+
+test("Issue 1066: old Platform bookmark explains retirement and links to Catalog", async ({ page }, info) => {
+  await seedAcceptanceRoleMatrix();
+  const retiredRequests: string[] = [];
+  page.on("request", request => {
+    if (/\/organization-driver-schemas|\/driver-schemas\/(promotion-candidates|promotions)/.test(request.url())) {
+      retiredRequests.push(new URL(request.url()).pathname);
+    }
+  });
+  await signInBrowserAsRole(page, "platform-admin", "/platform-console");
+  await expect(page.getByRole("heading", { name: "覆盖解析已退役" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "晋升历史（只读）" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /晋升至平台|撤销晋升|恢复/ })).toHaveCount(0);
+  await expect(page.getByText("正在加载晋升历史…")).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("issue1066-platform-history-1440x900.png"), animations: "disabled" });
+  const catalogLink = page.getByRole("link", { name: "前往 Catalog", exact: true });
+  await expect(catalogLink).toHaveAttribute("href", "/parameter-admin/specs");
+  await catalogLink.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/parameter-admin\/specs/);
+  expect(retiredRequests).toEqual([]);
 });
 
 test.describe("Issue 897 canonical module ownership", () => {

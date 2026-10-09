@@ -43,6 +43,7 @@ export type SessionDraftRow = SessionDraftIdentity & {
   rawText: string;
   normalizedValue: string;
   startLine: number | null;
+  present?: boolean;
   valid: boolean;
   error?: string;
 };
@@ -73,6 +74,7 @@ export function listSessionDraftRows(input: {
         beforeRawText: property.rawText,
         rawText: draft.rawText,
         normalizedValue: draft.normalizedValue,
+        ...(typeof draft.present === "boolean" ? { present: draft.present } : {}),
         startLine: property.source?.startLine ?? node.source?.startLine ?? null,
         valid: draft.valid !== false,
         ...(draft.error ? { error: draft.error } : {})

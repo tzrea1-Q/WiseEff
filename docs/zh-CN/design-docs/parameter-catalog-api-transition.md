@@ -594,6 +594,8 @@ Issue #678 是全部 R0-R10 生产 disposition 的唯一 owner。与 ReviewEvide
 | 现有 project topology、binding history/compare、validation、draft paths | 一方消费者协调完成 DTO/ID cutover；path 保留；上线后不再有 legacy `ParameterSpec` 字段。 | 规范 v2 合同。 |
 | 现有 v1 value、debug、reload、knowledge calls | 未被其他决策 version 时保留公共 workflow；实现内部使用 canonical binding/definition/revision IDs。 | 只用 canonical identities。 |
 
+已退役的组织覆盖解析与 Platform 晋升界面链接至 Catalog 页面，通过定义提案与发布流程变更覆盖。`GET /api/v2/platform/driver-schema-promotion-history` 是经 Platform 授权的历史晋升记录只读投影，不是候选列表或有效 schema 读取。原有 legacy 标识仅保留为证据，不提供晋升、撤销或恢复操作。覆盖统计与导入不会将这些历史覆盖合并至运行时 schema 注册表。
+
 Legacy read response 包含：
 
 任务读窗口将可精确适配的规范 `items` 与只读 `historicalItems` 分开返回。规格审核适配使用组织范围内的类型映射头和已授权的当前规范审核队列，不按属性名或节点名推断。只有恰好对应一个当前规范审核项的未决任务才会适配。其他任务保留原始证据与状态，标记 `historicalOnly: true`；开放或已忽略的任务另标记 `needsCanonicalDecision: true`。身份连续性选择没有等价的规范决议，保留为历史证据。任务退役与历史证据链接到 `/parameter-admin/specs?review=open`，打开规范审核队列；没有未决历史任务时，身份映射入口重定向到此处。

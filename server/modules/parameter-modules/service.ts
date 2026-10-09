@@ -70,7 +70,6 @@ import type {
   ParameterModuleRegistryDto,
 } from "./types";
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
-import { listOrganizationDriverSchemas } from "../parameter-specs/driverSchemaOverlayRepository";
 import {
   lookupParseCoverage,
   type ParseCoverage,
@@ -1275,15 +1274,6 @@ export async function listDriverRegistry(
     schemasRoot,
     organizationId: auth.organization.id,
   });
-  const supersededOverlays = await listOrganizationDriverSchemas(db, {
-    organizationId: auth.organization.id,
-    lifecycle: "superseded",
-  });
-  const promotedCompatibles = new Set(
-    supersededOverlays
-      .filter((overlay) => Boolean(overlay.supersededBySchemaId))
-      .map((overlay) => overlay.compatible.toLowerCase()),
-  );
   const registrationByModuleId = new Map<
     string,
     {
@@ -1368,17 +1358,10 @@ export async function listDriverRegistry(
       notYetObserved: module.origin === "curated" && !observed,
       driverNature: registration?.driverNature ?? null,
       instanceCardinality: registration?.instanceCardinality ?? null,
-      parseCoverages: compatibles.map((compatible) => {
-        const coverage = lookupParseCoverage(compatible, schemaRegistry);
-        if (
-          coverage.covered &&
-          coverage.scope === "platform" &&
-          promotedCompatibles.has(compatible.toLowerCase())
-        ) {
-          return { compatible, coverage: { ...coverage, promoted: true } };
-        }
-        return { compatible, coverage };
-      }),
+      parseCoverages: compatibles.map((compatible) => ({
+        compatible,
+        coverage: lookupParseCoverage(compatible, schemaRegistry),
+      })),
     });
   }
 

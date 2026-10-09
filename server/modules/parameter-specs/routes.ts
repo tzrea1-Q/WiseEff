@@ -16,21 +16,21 @@ import {
   LEGACY_GOVERNANCE_GONE_MESSAGE,
   LEGACY_WRITE_GONE_MESSAGE,
 } from "../parameter-catalog-api/legacy/gone";
+import { legacyDriverSchemaRetirementRouteManifest } from "../parameter-catalog-api/legacy/routes";
+import {
+  driverSchemaPromotionHistoryListResponseSchema,
+} from "../parameter-catalog-api/legacy/promotionHistory";
+import { listDriverSchemaPromotions } from "./driverSchemaOverlayRepository";
 import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   activateParameterSpecBodySchema,
-  createOrganizationDriverSchemaBodySchema,
-  deprecateOrganizationDriverSchemaBodySchema,
   deprecateParameterSpecBodySchema,
   finalizeParameterSpecCutoverBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
   parameterSpecDetailQuerySchema,
-  driverSchemaPromotionParamsSchema,
-  organizationDriverSchemaParamsSchema,
-  promoteDriverSchemaOverlayBodySchema,
   parameterSpecParamsSchema,
   prepareParameterSpecCutoverBodySchema,
   previewPropertyKeyCutoverBodySchema,
@@ -40,7 +40,6 @@ import {
   reattributeParameterSpecBodySchema,
   renameParameterSpecPropertyKeyBodySchema,
   restoreParameterSpecBodySchema,
-  updateOrganizationDriverSchemaBodySchema,
   updateParameterSpecBodySchema,
 } from "./schemas";
 import {
@@ -64,20 +63,6 @@ import {
   previewPropertyKeySourceCutover,
   startPropertyKeySourceCutover,
 } from "./propertyKeyCutover";
-import {
-  activateOrganizationDriverSchemaForAuth,
-  createOrganizationDriverSchemaForAuth,
-  deprecateOrganizationDriverSchemaForAuth,
-  getOrganizationDriverSchemaForAuth,
-  listOrganizationDriverSchemasForAuth,
-  previewOrganizationDriverSchemaDeprecationForAuth,
-  updateOrganizationDriverSchemaForAuth,
-} from "./driverSchemaOverlayService";
-import {
-  listPromotionCandidatesForAuth,
-  promoteDriverSchemaOverlayForAuth,
-  revertDriverSchemaOverlayPromotionForAuth,
-} from "./driverSchemaPromotion";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -485,163 +470,31 @@ export function registerParameterSpecRoutes(
     return { status: 200, body: result };
   });
 
-  router.get("/api/v2/organization-driver-schemas", async (request) => {
+  for (const route of legacyDriverSchemaRetirementRouteManifest) {
+    const add = router[route.method.toLowerCase() as Lowercase<typeof route.method>];
+    add.call(router, route.path, async (request) => catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE));
+  }
+
+  router.get("/api/v2/platform/driver-schema-promotion-history", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const result = await listOrganizationDriverSchemasForAuth(db, auth);
-    return { status: 200, body: result };
+    if (!auth.user.isActive || !auth.permissions.includes("platform:schema-promote")) {
+      throw new ApiError("FORBIDDEN", "Platform schema promotion history permission is required.");
+    }
+    const promotions = await listDriverSchemaPromotions(db);
+    return {
+      status: 200,
+      body: driverSchemaPromotionHistoryListResponseSchema.parse({
+        items: promotions.map((row) => ({
+          id: row.id,
+          platformSchemaId: row.platform_schema_id,
+          sourceSchemaId: row.source_schema_id,
+          sourceOrganizationId: row.source_organization_id,
+          promotedByUserId: row.promoted_by_user_id,
+          promotedAt: new Date(row.promoted_at).toISOString(),
+          documentationSource: row.documentation_source,
+        })),
+      }),
+    };
   });
-
-  router.get(
-    "/api/v2/organization-driver-schemas/:schemaId",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(
-        organizationDriverSchemaParamsSchema,
-        request.params,
-      );
-      const item = await getOrganizationDriverSchemaForAuth(
-        db,
-        auth,
-        params.schemaId,
-      );
-      return { status: 200, body: { item } };
-    },
-  );
-
-  router.post("/api/v2/organization-driver-schemas", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(
-      createOrganizationDriverSchemaBodySchema,
-      request.body ?? {},
-    );
-    const item = await createOrganizationDriverSchemaForAuth(db, auth, body, {
-      requestId: request.requestId,
-    });
-    return { status: 201, body: { item } };
-  });
-
-  router.patch(
-    "/api/v2/organization-driver-schemas/:schemaId",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(
-        organizationDriverSchemaParamsSchema,
-        request.params,
-      );
-      const body = parseWithSchema(
-        updateOrganizationDriverSchemaBodySchema,
-        request.body ?? {},
-      );
-      const item = await updateOrganizationDriverSchemaForAuth(
-        db,
-        auth,
-        params.schemaId,
-        body,
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: { item } };
-    },
-  );
-
-  router.post(
-    "/api/v2/organization-driver-schemas/:schemaId/activate",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(
-        organizationDriverSchemaParamsSchema,
-        request.params,
-      );
-      const result = await activateOrganizationDriverSchemaForAuth(
-        db,
-        auth,
-        params.schemaId,
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/organization-driver-schemas/:schemaId/deprecate",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(
-        organizationDriverSchemaParamsSchema,
-        request.params,
-      );
-      const body = parseWithSchema(
-        deprecateOrganizationDriverSchemaBodySchema,
-        request.body ?? {},
-      );
-      const item = await deprecateOrganizationDriverSchemaForAuth(
-        db,
-        auth,
-        params.schemaId,
-        body,
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: { item } };
-    },
-  );
-
-  router.get(
-    "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(
-        organizationDriverSchemaParamsSchema,
-        request.params,
-      );
-      const item = await previewOrganizationDriverSchemaDeprecationForAuth(
-        db,
-        auth,
-        params.schemaId,
-      );
-      return { status: 200, body: { item } };
-    },
-  );
-
-  router.get(
-    "/api/v2/platform/driver-schemas/promotion-candidates",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const result = await listPromotionCandidatesForAuth(db, auth);
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post("/api/v2/platform/driver-schemas/promotions", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(
-      promoteDriverSchemaOverlayBodySchema,
-      request.body ?? {},
-    );
-    const result = await promoteDriverSchemaOverlayForAuth(db, auth, body);
-    return { status: 201, body: result };
-  });
-
-  router.post(
-    "/api/v2/platform/driver-schemas/promotions/:promotionId/revert",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(driverSchemaPromotionParamsSchema, {
-        promotionId: request.params.promotionId,
-      });
-      const result = await revertDriverSchemaOverlayPromotionForAuth(
-        db,
-        auth,
-        params.promotionId,
-      );
-      return { status: 200, body: result };
-    },
-  );
 }

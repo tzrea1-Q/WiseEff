@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -870,6 +870,59 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(await within(tasks).findByRole("alert")).toHaveTextContent("submit failed");
     expect(within(tasks).getByRole("checkbox", { name: /board\/model/ })).toBeInTheDocument();
     expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora-X");
+  });
+
+  it("does not let a queued source scroll clear a newly selected edit occurrence", async () => {
+    renderWorkbench({ syncSearch: true,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const property = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    ensureInspectorOpen();
+    vi.useFakeTimers();
+    try {
+      fireEvent.scroll(screen.getByLabelText("DTS 源码"));
+      fireEvent.click(property);
+      await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+      expect(screen.getByLabelText("字符串 1")).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the staged pending receipt and hands off to parameter submission without claiming a formal write", async () => {
+    const onNavigate = vi.fn();
+    const createBindingDraft = vi.fn(async () => ({
+      draftId: "pvdr_workbench", pending: true, currentValueId: "ppv_before",
+      parameterId: "pbind_board", projectParameterBindingId: "pbind_board", candidateRevisionId: "rev-cs-listed",
+      rawText: '"Updated"', action: "set" as const, parameterSpecId: "pdef_model",
+      writeTarget: { role: "canonical-project-value-draft", propertyKey: "model" }, overlayFileId: "", overlayFileName: ""
+    }));
+    renderWorkbench({ onNavigate, canEdit: true, canEditCritical: true,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      topologyRepository: createTestParameterTopologyRepository({
+        listConfigRevisions: createTopologyRepository().listConfigRevisions,
+        listBindings: vi.fn(async () => [{ id: "pbind_board", definitionId: "pdef_model",
+          parameterSpecId: "pdef_model", parameterSpecVersionId: "pdrev_model", currentValueId: "ppv_before",
+          sourceFileId: "file-board", sourceNodePath: "board", sourceOccurrenceId: "occ_board", propertyKey: "model",
+          logicalNodeId: "node_board", instanceName: "board", locator: "board", driverModule: null, moduleId: "module",
+          effectiveValue: { kind: "strings" as const, values: ["Aurora"] }, rawValue: '"Aurora"',
+          schemaState: "valid" as const, policyState: "not_applicable" as const }]), createBindingDraft
+      }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    fireEvent.change(within(inspector).getByLabelText("字符串 1"), { target: { value: "Updated" } });
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    fireEvent.change(within(tasks).getByLabelText("变更原因"), { target: { value: "Stage board update" } });
+    fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
+    await waitFor(() => expect(tasks).toHaveTextContent("已暂存 1 项待审核草稿；当前值未变。"));
+    expect(tasks).toHaveTextContent("pvdr_workbench");
+    expect(tasks).toHaveTextContent("ppv_before");
+    expect(tasks).not.toHaveTextContent("已写入正式项目值");
+    fireEvent.click(within(tasks).getByRole("button", { name: "前往提交审核" }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameters?project=project-1");
   });
 
   it("persists and restores compatible session drafts after remount with the same storage scope", async () => {
