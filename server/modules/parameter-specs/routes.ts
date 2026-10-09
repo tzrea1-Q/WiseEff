@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readSpecTaskWindow } from "../parameter-catalog-api/legacy/taskReadWindow";
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -11,6 +12,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import {
   catalogLegacyGoneResult,
+  legacyRouteSuccessor,
   LEGACY_GOVERNANCE_GONE_MESSAGE,
   LEGACY_WRITE_GONE_MESSAGE,
 } from "../parameter-catalog-api/legacy/gone";
@@ -30,7 +32,6 @@ import {
   organizationDriverSchemaParamsSchema,
   promoteDriverSchemaOverlayBodySchema,
   parameterSpecParamsSchema,
-  parameterSpecReviewTaskParamsSchema,
   prepareParameterSpecCutoverBodySchema,
   previewPropertyKeyCutoverBodySchema,
   startPropertyKeyCutoverBodySchema,
@@ -38,7 +39,6 @@ import {
   finalizePropertyKeyCutoverBodySchema,
   reattributeParameterSpecBodySchema,
   renameParameterSpecPropertyKeyBodySchema,
-  resolveSpecReviewTaskBodySchema,
   restoreParameterSpecBodySchema,
   updateOrganizationDriverSchemaBodySchema,
   updateParameterSpecBodySchema,
@@ -54,7 +54,6 @@ import {
   prepareParameterSpecVersionCutover,
   reattributeParameterSpec,
   renameParameterSpecPropertyKey,
-  resolveSpecReviewTask,
   restoreParameterSpec,
   updateParameterSpec,
 } from "./service";
@@ -184,30 +183,16 @@ export function registerParameterSpecRoutes(
       flattenQuery(request.query),
     );
     const result = await listSpecReviewTasks(db, auth, query);
-    return { status: 200, body: result };
+    const window = await readSpecTaskWindow(db, auth, result.items);
+    return { status: 200, headers: window.headers, body: { ...window.body, nextCursor: result.nextCursor } };
   });
 
   router.post(
     "/api/v2/parameter-spec-review-tasks/:taskId/resolve",
     async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(
-        parameterSpecReviewTaskParamsSchema,
-        request.params,
-      );
-      const body = parseWithSchema(
-        resolveSpecReviewTaskBodySchema,
-        request.body,
-      );
-      const item = await resolveSpecReviewTask(
-        db,
-        auth,
-        { ...body, taskId: params.taskId },
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: { item } };
+      await options.getCurrentAuthContext(request);
+      return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE,
+        legacyRouteSuccessor("parameterSpecs.resolveReviewTask"));
     },
   );
 

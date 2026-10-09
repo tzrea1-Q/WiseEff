@@ -276,6 +276,51 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
   });
 
+  it("opens the canonical Review Queue from review=open through the real page and fake session ports", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
+    const resolveReviewItem = vi.spyOn(ports.governance, "resolveReviewItem");
+    renderPage({
+      path: "/parameter-admin/specs?projectId=project-teaching&review=open",
+      state: { ...initialState, activeRoleId: "admin" },
+      runtimeMode: "api",
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "待处理工作" });
+    const queue = await within(dialog).findByRole("region", { name: "待审核事项" });
+    expect(await within(queue).findByText("识别不唯一")).toBeInTheDocument();
+    expect(within(queue).getByText("gpio-int")).toBeInTheDocument();
+    expect(within(queue).getByRole("button", { name: "处理审核" })).toBeEnabled();
+    expect(listReviewItems).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID);
+    expect(resolveReviewItem).not.toHaveBeenCalled();
+  });
+
+  it("keeps the query-opened canonical Review Queue read-only for a non-admin session", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const resolveReviewItem = vi.spyOn(ports.governance, "resolveReviewItem");
+    renderPage({
+      path: "/parameter-admin/specs?review=open",
+      state: { ...initialState, activeRoleId: "hardware-user" },
+      runtimeMode: "api",
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "待处理工作" });
+    const queue = await within(dialog).findByRole("region", { name: "待审核事项" });
+    expect(await within(queue).findByText("gpio-int")).toBeInTheDocument();
+    expect(within(queue).queryByRole("button", { name: "处理审核" })).not.toBeInTheDocument();
+    expect(resolveReviewItem).not.toHaveBeenCalled();
+  });
+
   it("redirects legacy /spec-review to /specs while preserving query", () => {
     const { onNavigate } = renderPage({
       path: "/parameter-admin/spec-review?q=gpio&lifecycle=active"
@@ -1095,6 +1140,9 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       risk: "high"
     },
     status: "open" as const,
+    historicalOnly: true,
+    needsCanonicalDecision: true,
+    successor: "/api/v2/organizations/org-teaching/parameter-review-items",
     createdAt: "2026-07-14T10:00:00.000Z"
   };
 
@@ -1115,59 +1163,95 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     expect(listMappingTasks).toHaveBeenCalledTimes(2);
   });
 
-  it("resolves a mapping task via the lossless candidate identity path with audit", async () => {
+  it("keeps prior-node continuity choices as read-only evidence needing a canonical decision", async () => {
     const listMappingTasks = vi.fn().mockResolvedValue([OPEN_MAPPING_TASK]);
-    const resolveMapping = vi.fn().mockImplementation(async () => {
-      listMappingTasks.mockResolvedValue([]);
-    });
+    const resolveMapping = vi.fn();
+    const reopenMapping = vi.fn();
     const { onNavigate } = renderPage({
-      repository: createRepository({ listMappingTasks, resolveMapping }),
+      repository: createRepository({ listMappingTasks, resolveMapping, reopenMapping }),
       path: "/parameter-admin/specs/identity-mapping"
     });
 
     const review = await screen.findByRole("region", { name: "节点对应审核" });
-    fireEvent.change(within(review).getByRole("combobox", { name: "选择对应节点" }), {
-      target: { value: "logical-sc8562" }
-    });
-    fireEvent.change(within(review).getByLabelText("确认原因"), {
-      target: { value: "Same board instance" }
-    });
-    fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
-
-    await waitFor(() =>
-      expect(resolveMapping).toHaveBeenCalledWith("map-admin-1", {
-        decision: "resolved",
-        selectedLogicalNodeId: "logical-sc8562",
-        reason: "Same board instance"
-      })
+    expect(within(review).getByText("logical-sc8562")).toBeInTheDocument();
+    expect(within(review).getByText("logical-mt5788")).toBeInTheDocument();
+    expect(within(review).getByText("compatible ambiguous")).toBeInTheDocument();
+    expect(within(review).queryAllByRole("combobox")).toHaveLength(0);
+    expect(within(review).queryAllByRole("textbox")).toHaveLength(0);
+    expect(within(review).queryAllByRole("button")).toHaveLength(0);
+    expect(screen.getByRole("status")).toHaveTextContent("不会自动迁移为审核项");
+    expect(screen.getByRole("link", { name: "打开规范审核队列" })).toHaveAttribute(
+      "href", "/parameter-admin/specs?review=open"
     );
-    await waitFor(() =>
-      expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs")
-    );
+    expect(resolveMapping).not.toHaveBeenCalled();
+    expect(reopenMapping).not.toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  it("behaves identically when backed by the mock topology adapter", async () => {
+  it("keeps open evidence and dismissed history unchanged through the mock topology port", async () => {
+    const repository = createMockParameterTopologyRepository({
+      mappingTasks: [
+        OPEN_MAPPING_TASK,
+        {
+          ...OPEN_MAPPING_TASK,
+          id: "map-admin-history",
+          status: "dismissed",
+          needsCanonicalDecision: true,
+          reason: "Recorded historical rejection"
+        }
+      ]
+    });
+    const before = await repository.listMappingTasks();
+    const resolveMapping = vi.spyOn(repository, "resolveMapping");
+    const reopenMapping = vi.spyOn(repository, "reopenMapping");
     renderPage({
-      repository: createMockParameterTopologyRepository(),
+      repository,
       path: "/parameter-admin/specs/identity-mapping"
     });
 
     const review = await screen.findByRole("region", { name: "节点对应审核" });
-    fireEvent.change(within(review).getByRole("combobox", { name: "选择对应节点" }), {
-      target: { value: "logical-sc8562" }
-    });
-    fireEvent.change(within(review).getByLabelText("确认原因"), {
-      target: { value: "Mock continuity" }
-    });
-    fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
+    expect(within(review).getByText("unit address matched")).toBeInTheDocument();
+    expect(within(review).getByRole("heading", { name: "历史决议" })).toBeInTheDocument();
+    expect(within(review).getByText("原因：Recorded historical rejection")).toBeInTheDocument();
+    expect(within(review).queryAllByRole("combobox")).toHaveLength(0);
+    expect(within(review).queryAllByRole("textbox")).toHaveLength(0);
+    expect(within(review).queryAllByRole("button")).toHaveLength(0);
+    expect(resolveMapping).not.toHaveBeenCalled();
+    expect(reopenMapping).not.toHaveBeenCalled();
+    expect(await repository.listMappingTasks()).toEqual(before);
+  });
 
-    // Resolved tasks move to history (not the empty-queue hint).
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "历史决议" })).toBeInTheDocument()
-    );
-    expect(screen.queryByRole("button", { name: "确认对应" })).not.toBeInTheDocument();
-    expect(screen.getByText("已对应")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "重新对应原因" })).toHaveValue("");
+  it("redirects resolved-only history and opens the real canonical queue after router navigation", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const resolveMapping = vi.fn();
+    const reopenMapping = vi.fn();
+    const page = renderPage({
+      path: "/parameter-admin/specs/identity-mapping?projectId=project-teaching",
+      repository: createRepository({
+        listMappingTasks: vi.fn().mockResolvedValue([
+          { ...OPEN_MAPPING_TASK, status: "resolved", needsCanonicalDecision: false }
+        ]),
+        resolveMapping,
+        reopenMapping
+      }),
+      state: { ...initialState, activeRoleId: "admin" },
+      runtimeMode: "api",
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+    const destination = "/parameter-admin/specs?projectId=project-teaching&review=open";
+    await waitFor(() => expect(page.onNavigate).toHaveBeenCalledWith(destination));
+    page.rerender(destination);
+
+    const dialog = await screen.findByRole("dialog", { name: "待处理工作" });
+    const queue = await within(dialog).findByRole("region", { name: "待审核事项" });
+    expect(await within(queue).findByText("gpio-int")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
+    expect(resolveMapping).not.toHaveBeenCalled();
+    expect(reopenMapping).not.toHaveBeenCalled();
   });
 });
 

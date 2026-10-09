@@ -26,9 +26,13 @@ function refuse(message: string): never { throw new ApiError("CONFLICT", message
 const digest = (value: unknown) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 
 /** The caller already holds source-prefix and Binding/workflow locks in its owned transaction. */
-export async function proveExactDtsProperty(tx: Queryable, objectStore: ObjectStore, input: ExactDtsSourceIdentity): Promise<ExactDtsSourceProof> {
+export async function proveExactDtsProperty(tx: Queryable, objectStore: ObjectStore, input: ExactDtsSourceIdentity,
+  options?: { purpose: "review-evidence" }): Promise<ExactDtsSourceProof> {
   const source = await loadExactSourceRevisionForProof(tx, objectStore, input);
-  if (!["resolved", "validated", "compiled", "pending_approval"].includes(source.revision.status)) refuse("DTS source revision has not completed resolution.");
+  if (!["resolved", "validated", "compiled", "pending_approval"].includes(source.revision.status)
+    && !(options?.purpose === "review-evidence" && source.revision.status === "needs_mapping")) {
+    refuse("DTS source revision has not completed resolution.");
+  }
   const selected = source.members.find((member) => member.fileId === input.fileId && member.fileVersionId === input.fileVersionId)!;
   if (selected.format !== "dts") refuse("A DTS source property is required.");
   const dtsMembers = source.members.filter((member) => member.format === "dts");

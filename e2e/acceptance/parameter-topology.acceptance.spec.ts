@@ -16,6 +16,7 @@ import {
 } from "./helpers/disposablePostCutoverRuntime";
 import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
+import { loadAcceptanceEnvironment } from "./helpers/acceptanceEnvironment";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
@@ -307,7 +308,7 @@ async function waitForReviewTask(
     );
     expect(list.ok()).toBe(true);
     const body = (await list.json()) as {
-      items: Array<{
+      historicalItems: Array<{
         id: string;
         propertyKey?: string | null;
         candidateSchemas?: Array<{ id: string; label?: string }>;
@@ -316,7 +317,7 @@ async function waitForReviewTask(
       }>;
     };
     try {
-      return requireReviewTask(body.items, criteria);
+      return requireReviewTask(body.historicalItems, criteria);
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
@@ -328,12 +329,12 @@ async function waitForReviewTask(
     { headers: adminHeaders() }
   );
   const finalBody = (await finalList.json()) as {
-    items: Array<{ id: string; propertyKey?: string | null }>;
+    historicalItems: Array<{ id: string; propertyKey?: string | null }>;
   };
-  return requireReviewTask(finalBody.items, criteria);
+  return requireReviewTask(finalBody.historicalItems, criteria);
 }
 
-async function resolveReviewsForCurrentRevision(
+async function assertSpecReviewHistoryForCurrentRevision(
   request: APIRequestContext,
   revisionId: string,
   projectId: string
@@ -346,64 +347,171 @@ async function resolveReviewsForCurrentRevision(
   );
   expect(list.ok()).toBe(true);
   const body = (await list.json()) as {
-    items: Array<{
+    historicalItems: Array<{
       id: string;
+      historicalOnly: boolean;
+      needsCanonicalDecision: boolean;
+      successor: string;
       propertyKey?: string | null;
       sourceEvidence?: { propertyKey?: string; nodeLocator?: string };
       candidateSchemas?: Array<{ id: string; propertyKey?: string; label?: string }>;
       candidates?: Array<{ id: string; propertyKey?: string | null; label?: string }>;
     }>;
   };
-  for (const task of body.items) {
+  for (const task of body.historicalItems) {
+    expect(task).toMatchObject({ historicalOnly: true, needsCanonicalDecision: true,
+      successor: "/parameter-admin/specs?review=open" });
     const candidates = task.candidateSchemas ?? task.candidates ?? [];
-    if (candidates.length === 0) {
-      // No Catalog-compatible candidate exists, so the occurrence is dismissed as
-      // governance evidence rather than activating a spec (spec activation now
-      // requires an explicit coverage claim and is owned by Catalog governance).
-      const dismiss = await request.post(
-        apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
-        {
-          headers: adminHeaders(),
-          data: {
-            decision: "dismissed",
-            reason: `${descriptionPrefix} dismiss uncovered occurrence for revision ${revisionId}`
-          }
-        }
-      );
-      expect(dismiss.ok(), `dismiss review ${task.id}: ${await dismiss.text()}`).toBe(true);
-      continue;
-    }
-    const parameterSpecId = pickReviewCandidate(task, {
+    const parameterSpecId = candidates.length > 0 ? pickReviewCandidate(task, {
       propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
       nodeLocator: task.sourceEvidence?.nodeLocator
-    }).id;
+    }).id : undefined;
     const resolve = await request.post(
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
       {
         headers: adminHeaders(),
         data: {
-          decision: "resolved",
+          decision: candidates.length > 0 ? "resolved" : "dismissed",
           parameterSpecId,
           reason: `${descriptionPrefix} resolve review for revision ${revisionId}`
         }
       }
     );
-    expect(resolve.ok(), `resolve review ${task.id}`).toBe(true);
+    expect(resolve.status(), `legacy review ${task.id} must not resolve or dismiss history`).toBe(410);
+    expect(await resolve.json()).toMatchObject({ error: { code: "GONE", details: {
+      reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open", retryable: false
+    } } });
+    expect(resolve.headers().link).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
   }
+  const after = await request.get(list.url(), { headers: adminHeaders() });
+  expect(after.ok()).toBe(true);
+  expect(((await after.json()) as typeof body).historicalItems).toEqual(body.historicalItems);
+}
+
+async function legacyIdentityRows() {
+  return withPgClient(async (client) => (await client.query(
+    "select to_jsonb(task) as task from identity_mapping_tasks task where project_id = $1 order by id", [projectId]
+  )).rows);
+}
+
+async function canonicalIdentityEvidence(request: APIRequestContext, revisionId: string) {
+  const response = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/parameter-review-items?limit=100`), {
+    headers: adminHeaders()
+  });
+  expect(response.ok(), await response.text()).toBe(true);
+  const sourceItems: Array<{ configRevisionId: string; logicalNodeId: string; source: { status: string; revisionDigest?: string };
+    compatibles: Array<{ compatible: string; candidate: { kind: string; reason?: string; reviewItemIds?: string[] | null } }> }> = [];
+  const discoveryResponses = [];
+  let cursor: string | null = null;
+  do {
+    const query = new URLSearchParams({ projectId, limit: "50" });
+    if (cursor) query.set("cursor", cursor);
+    const discovery = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/driver-compatible-discovery?${query}`), {
+      headers: adminHeaders()
+    });
+    expect(discovery.ok(), await discovery.text()).toBe(true);
+    const body = (await discovery.json()) as { status: string; items: typeof sourceItems; nextCursor: string | null };
+    expect(body.status).toBe("ready");
+    sourceItems.push(...body.items.filter((item) => item.configRevisionId === revisionId));
+    discoveryResponses.push(discovery);
+    cursor = body.nextCursor;
+  } while (cursor);
+  expect(sourceItems.length, "canonical discovery must retain the exact source revision").toBeGreaterThan(0);
+  const reviewItemIds = new Set<string>();
+  const linkedLogicalNodeIds = new Set<string>();
+  for (const item of sourceItems) {
+    expect(item.source.status).toBe("current");
+    expect(item.source.revisionDigest).toBeTruthy();
+    for (const selector of item.compatibles.filter((compatible) => compatible.compatible === "wiseeff,acceptance-map")) {
+      expect(selector.candidate).toMatchObject({ kind: "review-required", reason: "unknown" });
+      if (selector.candidate.reviewItemIds === null) continue;
+      expect(selector.candidate.reviewItemIds?.length).toBeGreaterThan(0);
+      expect(item.logicalNodeId).toBeTruthy();
+      linkedLogicalNodeIds.add(item.logicalNodeId);
+      for (const id of selector.candidate.reviewItemIds ?? []) reviewItemIds.add(id);
+    }
+  }
+  expect(reviewItemIds.size, "unknown DTS selectors must enter the canonical Review Queue").toBeGreaterThan(0);
+  expect(linkedLogicalNodeIds.size, "both ambiguous sibling candidates must have source-bound selector review evidence").toBe(2);
+  const rows: Array<{ id: string; status: string; reason: string }> = [];
+  for (const id of reviewItemIds) {
+    const detail = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/parameter-review-items/${encodeURIComponent(id)}`), {
+      headers: adminHeaders()
+    });
+    expect(detail.ok(), await detail.text()).toBe(true);
+    const body = (await detail.json()) as { item: { id: string; status: string; reason: string } };
+    expect(body.item).toMatchObject({ id, status: "open", reason: "unknown" });
+    rows.push({ id: body.item.id, status: body.item.status, reason: body.item.reason });
+  }
+  return { response, rows, discoveryResponses, logicalNodeIds: [...linkedLogicalNodeIds].sort() };
+}
+
+async function refuseLegacyTaskWrite(request: APIRequestContext, taskId: string, action: "resolve" | "reopen", family: "identity" | "spec" = "identity") {
+  const path = `/api/v2/${family === "identity" ? "identity-mapping-tasks" : "parameter-spec-review-tasks"}/${encodeURIComponent(taskId)}/${action}`;
+  const response = await request.post(apiRoute(path), { headers: adminHeaders(),
+    data: { decision: "resolved", reason: `${descriptionPrefix} retired ${action} must not mutate history` } });
+  expect(response.status()).toBe(410);
+  const body = (await response.json()) as { error: { requestId: string } };
+  expect(body.error).toMatchObject({ code: "GONE", details: {
+    reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open", retryable: false
+  } });
+  expect(response.headers().link).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
+  const auditResponse = await request.get(apiRoute(`/api/v1/audit-events?traceId=${encodeURIComponent(body.error.requestId)}&limit=50`), {
+    headers: adminHeaders()
+  });
+  expect(auditResponse.ok()).toBe(true);
+  const auditBody = (await auditResponse.json()) as { items: Array<{ id: string; kind: string; action: string; targetId: string; traceId: string }> };
+  const targetId = family === "spec" ? "parameterSpecs.resolveReviewTask"
+    : `parameterTopology.${action === "resolve" ? "resolve" : "reopen"}IdentityMappingTask`;
+  const audit = auditBody.items.find((item) => item.kind === "legacy-surface-retired" && item.action === "deny" &&
+    item.targetId === targetId && item.traceId === body.error.requestId);
+  expect(audit, "retired write must have its own trusted refusal audit").toBeTruthy();
+  return { response, path, audit: audit! };
 }
 
 test.describe("Parameter topology / schema browser acceptance", () => {
-  let disposableRuntime: DisposablePostCutoverRuntime;
+  let disposableRuntime: Pick<DisposablePostCutoverRuntime,
+    "databaseUrl" | "databaseName" | "objectStoreRoot" | "migrationRunId" | "frontendUrl">;
+  let ownedDisposableRuntime: DisposablePostCutoverRuntime | undefined;
   const originalEnvironment = captureProcessEnvForDisposableRuntime();
 
   test.beforeAll(async ({ request }) => {
     test.setTimeout(120_000);
     const baseDatabaseUrl = originalEnvironment.databaseUrl?.trim();
     if (!baseDatabaseUrl) throw new Error("DATABASE_URL is required to create the disposable topology database.");
-    disposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
-      label: "parameter_topology",
-    });
-    applyDisposableRuntimeEnv(disposableRuntime);
+    if (process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true") {
+      const databaseName = new URL(baseDatabaseUrl).pathname.slice(1);
+      const frontendUrl = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL?.trim();
+      const objectStoreRoot = process.env.OBJECT_STORE_ROOT?.trim();
+      expect(loadAcceptanceEnvironment().mode).not.toBe("legacy");
+      for (const endpoint of [frontendUrl, apiRoute("/")]) {
+        if (!endpoint) throw new Error("Main's existing runtime URLs are required.");
+        const parsed = new URL(endpoint);
+        expect(parsed.protocol).toBe("http:");
+        expect(["127.0.0.1", "localhost", "[::1]"]).toContain(parsed.hostname);
+      }
+      if (!objectStoreRoot || !frontendUrl) throw new Error("Main's frontend URL and OBJECT_STORE_ROOT are required.");
+      const cutover = await withPgClient(async (client) => {
+        const result = await client.query<{ database_name: string; migration_run_id: string }>(`
+          select current_database() as database_name, marker.migration_run_id
+          from wiseeff_acceptance_test_markers marker
+          inner join parameter_identity_cutovers cutover
+            on cutover.migration_run_id = marker.migration_run_id
+          where marker.purpose = 'parameter-topology'
+        `);
+        expect(result.rows).toHaveLength(1);
+        expect(result.rows[0].database_name).toBe(databaseName);
+        return result.rows[0];
+      });
+      disposableRuntime = { databaseUrl: baseDatabaseUrl, databaseName, objectStoreRoot,
+        frontendUrl, migrationRunId: cutover.migration_run_id };
+    } else {
+      ownedDisposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
+        label: "parameter_topology",
+      });
+      disposableRuntime = ownedDisposableRuntime;
+      applyDisposableRuntimeEnv(ownedDisposableRuntime);
+    }
     // Canonical Bindings exist only for registered Catalog driver Subjects.
     await registerCatalogDriverSubjects(request, [
       { subjectId: "csub_drv_sc8562", canonicalName: "sc8562" },
@@ -414,7 +522,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
   test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
     try {
-      await disposableRuntime?.dispose(disposableRuntimeOutcomeFromTestInfo(testInfo));
+      await ownedDisposableRuntime?.dispose(disposableRuntimeOutcomeFromTestInfo(testInfo));
     } finally {
       restoreProcessEnvFromDisposableRuntime(originalEnvironment);
     }
@@ -450,11 +558,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     try {
     // 1) Upload/ingest complete Config Set via official API (no business DB mutation).
-    const createNebula = await request.post(apiRoute("/api/v1/parameters/admin/projects"), {
-      headers: adminHeaders(),
-      data: { id: "nebula", name: "Nebula 高频调试项目", code: "NEB-RD" }
+    const existingNebula = await request.get(apiRoute("/api/v1/parameters/admin/projects/nebula"), {
+      headers: adminHeaders()
     });
-    expect([201, 409]).toContain(createNebula.status());
+    expect([200, 404]).toContain(existingNebula.status());
+    if (existingNebula.status() === 404) {
+      const createNebula = await request.post(apiRoute("/api/v1/parameters/admin/projects"), {
+        headers: adminHeaders(),
+        data: { id: "nebula", name: "Nebula 高频调试项目", code: "NEB-RD" }
+      });
+      expect([201, 409]).toContain(createNebula.status());
+    }
     // Project views are scoped by project role bindings; the disposable runtime only
     // binds Aurora, so the software user needs an explicit Nebula binding to switch.
     await withPgClient(async (client) => {
@@ -535,12 +649,23 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     expect(openReviews.ok()).toBe(true);
     const openReviewBody = (await openReviews.json()) as {
-      items: Array<{ id: string; propertyKey?: string | null; sourceEvidence?: { propertyKey?: string } }>;
+      items: Array<{ id: string }>;
+      historicalItems: Array<{ id: string; propertyKey?: string | null;
+        historicalOnly: boolean; needsCanonicalDecision: boolean; successor: string;
+        sourceEvidence?: { propertyKey?: string; configRevisionId?: string; projectId?: string } }>;
     };
-    const mysteryReview = openReviewBody.items.find(
-      (item) => item.propertyKey === mysteryProp || item.sourceEvidence?.propertyKey === mysteryProp
-    );
+    const mysteryReview = requireReviewTask(openReviewBody.historicalItems, {
+      projectId, configRevisionId: reviewRevision.id, propertyKey: mysteryProp
+    });
     expect(mysteryReview, "unmatched mystery properties must remain governance work").toBeTruthy();
+    expect(mysteryReview).toMatchObject({ historicalOnly: true, needsCanonicalDecision: true,
+      successor: "/parameter-admin/specs?review=open",
+      sourceEvidence: { projectId, configRevisionId: reviewRevision.id } });
+    expect(openReviewBody.items).not.toContainEqual(expect.objectContaining({ id: mysteryReview.id }));
+    const mysteryRefusal = await refuseLegacyTaskWrite(request, mysteryReview.id, "resolve", "spec");
+    const reviewHistoryAfter = await request.get(openReviews.url(), { headers: adminHeaders() });
+    expect(reviewHistoryAfter.ok()).toBe(true);
+    expect(((await reviewHistoryAfter.json()) as typeof openReviewBody).historicalItems).toEqual(openReviewBody.historicalItems);
 
     const mysteryBindings = await request.get(
       apiRoute(
@@ -574,6 +699,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         rowCount: result.rowCount ?? result.rows.length
       };
     });
+    expect(provisionalDb.observed).toBe("binding_count=0");
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
@@ -606,7 +732,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         summarizeApiResponse(openReviews, {
           method: "GET",
           path: "/api/v2/parameter-spec-review-tasks",
-          responseSummary: `open tasks=${openReviewBody.items.length}; mystery review=${mysteryReview!.id}`
+          responseSummary: `historical tasks=${openReviewBody.historicalItems.length}; mystery evidence=${mysteryReview.id}; needsCanonicalDecision=true`
+        }),
+        summarizeApiResponse(mysteryRefusal.response, {
+          method: "POST", path: mysteryRefusal.path,
+          responseSummary: "410 legacy-surface-retired; full historical task readback unchanged"
         }),
         summarizeApiResponse(mysteryBindings, {
           method: "GET",
@@ -615,7 +745,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         })
       ],
       db: [provisionalDb],
-      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; CatalogPage is the /parameter-admin surface; gpio_int spec distinctness is GET /parameter-specs.`
+      audit: [mysteryRefusal.audit],
+      notes: `${descriptionPrefix}: unmatched mystery property remains read-only historical evidence needing a canonical decision, with no recognized binding. Legacy resolution returns 410 and preserves history; CatalogPage is the /parameter-admin surface; gpio_int spec distinctness is GET /parameter-specs.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
@@ -910,7 +1041,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       cutover_migration_run_id: disposableRuntime.migrationRunId,
     });
 
-    await resolveReviewsForCurrentRevision(request, revisionId, projectId);
+    await assertSpecReviewHistoryForCurrentRevision(request, revisionId, projectId);
     const editedRaw = "<&gpio13 30 0>";
     const typedEditReason = `${descriptionPrefix} successful typed edit writeback`;
     await signInBrowserAsRole(
@@ -1329,181 +1460,67 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         "Binding-centric API-mode UI searched gpio_int, created the typed candidate, submitted to the eligible software committer, approved it in the visible review surface, persisted the canonical ProjectValue/source pin, and emitted audit evidence without rendering recommendedValue compatibility UI."
     });
 
-    // Identity mapping via real ambiguous ingest (throwaway Config Set).
     const mapSuffix = runSuffix;
     const mapCsName = `acceptance-map-${mapSuffix}`;
     const r1Name = `acceptance-map-r1-${mapSuffix}.dts`;
     const r2Name = `acceptance-map-r2-${mapSuffix}.dts`;
     createdConfigSetNames.push(mapCsName);
     createdFileNames.push(r1Name, r2Name);
-    // Ambiguous continuity is seeded through the real ingest service (see fixture).
+    const legacyRowsBefore = await legacyIdentityRows();
     const seededMap = await seedAmbiguousIdentityMappingConfigSet(disposableRuntime, {
-      projectId,
-      configSetName: mapCsName,
-      baseFileName: r1Name,
-      baseText: mappingR1,
-      overlayFileName: r2Name,
-      overlayText: mappingR2,
+      projectId, configSetName: mapCsName,
+      baseFileName: r1Name, baseText: mappingR1,
+      overlayFileName: r2Name, overlayText: mappingR2,
       adminUserId: "u-xu-yun"
     });
-    const r2Revision = { id: seededMap.ambiguousRevisionId };
-
+    expect(await legacyIdentityRows(), "ambiguous ingest must not create legacy identity tasks").toEqual(legacyRowsBefore);
     const blockedValidate = await request.post(
-      apiRoute(
-        `/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(r2Revision.id)}/validate`
-      ),
+      apiRoute(`/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(seededMap.ambiguousRevisionId)}/validate`),
       { headers: adminHeaders(), data: { stage: "toolchain" } }
     );
     expect(blockedValidate.ok()).toBe(true);
-    const blockedBody = (await blockedValidate.json()) as {
-      item: { status: string; failureCode?: string | null };
-    };
+    const blockedBody = (await blockedValidate.json()) as { item: { status: string; failureCode?: string | null } };
     expect(blockedBody.item.status).toBe("failed");
     expect(blockedBody.item.failureCode).toBe("open-mapping");
-
-    const mappingList = await request.get(
-      apiRoute(
-        `/api/v2/identity-mapping-tasks?projectId=${encodeURIComponent(projectId)}&status=open`
-      ),
-      { headers: adminHeaders() }
-    );
-    expect(mappingList.ok()).toBe(true);
-    const mappingBody = (await mappingList.json()) as {
-      items: Array<{
-        id: string;
-        configRevisionId?: string;
-        evidence?: {
-          candidates?: Array<{ logicalNodeId: string; nodeLocator: string }>;
-        };
-      }>;
-    };
-    const openMapTask = requireMappingTask(mappingBody.items, {
-      projectId,
-      configRevisionId: r2Revision.id
-    });
-    const leftCandidate = requireMappingCandidate(
-      openMapTask,
-      (candidate) => candidate.nodeLocator.includes("left"),
-      "left sibling node"
-    );
-    const rightCandidate = requireMappingCandidate(
-      openMapTask,
-      (candidate) => candidate.nodeLocator.includes("right"),
-      "right sibling node"
-    );
-    expect(leftCandidate.logicalNodeId).not.toBe(rightCandidate.logicalNodeId);
-
-    const resolveMapping = await request.post(
-      apiRoute(`/api/v2/identity-mapping-tasks/${encodeURIComponent(openMapTask.id)}/resolve`),
-      {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          selectedLogicalNodeId: leftCandidate.logicalNodeId,
-          reason: `${descriptionPrefix} resolve mapping for left sibling via real ingest task`
-        }
-      }
-    );
-    expect(resolveMapping.ok()).toBe(true);
-
-    const stillOpenMaps = await request.get(
-      apiRoute(
-        `/api/v2/identity-mapping-tasks?projectId=${encodeURIComponent(projectId)}&status=open&configRevisionId=${encodeURIComponent(r2Revision.id)}`
-      ),
-      { headers: adminHeaders() }
-    );
-    const stillOpenBody = (await stillOpenMaps.json()) as {
-      items: Array<{
-        id: string;
-        configRevisionId?: string;
-        evidence?: { candidates?: Array<{ logicalNodeId: string; nodeLocator: string }> };
-      }>;
-    };
-    for (const task of stillOpenBody.items) {
-      const pick = requireMappingCandidate(
-        task,
-        (candidate) => candidate.nodeLocator.includes("right"),
-        "remaining right sibling mapping"
-      );
-      await request.post(apiRoute(`/api/v2/identity-mapping-tasks/${encodeURIComponent(task.id)}/resolve`), {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          selectedLogicalNodeId: pick.logicalNodeId,
-          reason: `${descriptionPrefix} resolve right sibling mapping`
-        }
-      });
-    }
-
-    const mappingDb = await withPgClient(async (client) => {
-      const result = await client.query<{ status: string }>(
-        `select status from identity_mapping_tasks where id = $1`,
-        [openMapTask.id]
-      );
-      return {
-        table: "identity_mapping_tasks",
-        predicate: `id=${openMapTask.id}`,
-        observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
-        rowCount: result.rowCount ?? result.rows.length
-      };
-    });
-    expect(mappingDb.observed).toContain("resolved");
-
-    const mappingAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
-      headers: adminHeaders()
-    });
-    const mappingAuditBody = (await mappingAudit.json()) as {
-      items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
-    };
-    const mappingAuditItem = mappingAuditBody.items.find(
-      (item) =>
-        item.kind === "parameter-topology-governance" &&
-        item.action === "identity-mapping-resolved" &&
-        item.targetId === openMapTask.id
-    );
-    expect(mappingAuditItem).toBeTruthy();
-
+    const canonical = await canonicalIdentityEvidence(request, seededMap.ambiguousRevisionId);
+    const refused = await refuseLegacyTaskWrite(request, seededMap.ambiguousRevisionId, "resolve");
+    expect(await legacyIdentityRows(), "validation and retired resolution must leave legacy rows unchanged").toEqual(legacyRowsBefore);
+    await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin/specs/identity-mapping`);
+    await dismissXiaozeHint(page);
+    await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
+    await expect(page.getByRole("region", { name: "待审核事项" })).toBeVisible();
     await recordOperationEvidence({
       operationId: "PARAM-IDENTITY-MAP-001",
-      title: "identity mapping blocker then resolve audit",
-      status: "passed",
-      role: "Admin",
-      route: "/parameters",
-      page,
-      testInfo,
+      title: "canonical selector evidence and retired identity resolution",
+      status: "passed", role: "Admin", route: "/parameter-admin/specs?review=open", page, testInfo,
       assertions: ["ui", "api", "db", "audit"],
       api: [
-        summarizeApiResponse(blockedValidate, {
-          method: "POST",
-          path: `/api/v2/projects/${projectId}/config-revisions/.../validate`,
-          responseSummary: `failureCode=${blockedBody.item.failureCode}`
-        }),
-        summarizeApiResponse(resolveMapping, {
-          method: "POST",
-          path: `/api/v2/identity-mapping-tasks/${openMapTask.id}/resolve`,
-          responseSummary: `selected=${leftCandidate.logicalNodeId}`
-        })
+        summarizeApiResponse(blockedValidate, { method: "POST",
+          path: `/api/v2/projects/${projectId}/config-revisions/${seededMap.ambiguousRevisionId}/validate`,
+          responseSummary: `failureCode=${blockedBody.item.failureCode}; no legacy tasks produced` }),
+        summarizeApiResponse(canonical.response, { method: "GET",
+          path: `/api/v2/organizations/${organizationId}/parameter-review-items`,
+          responseSummary: `canonicalSelectorItems=${canonical.rows.map((row) => row.id).join(",")}` }),
+        ...canonical.discoveryResponses.map((response) => summarizeApiResponse(response, { method: "GET",
+          path: `/api/v2/organizations/${organizationId}/driver-compatible-discovery`,
+          responseSummary: `exact configRevision=${seededMap.ambiguousRevisionId}; unknown selector review handoff` })),
+        summarizeApiResponse(refused.response, { method: "POST", path: refused.path,
+          responseSummary: "410 legacy-surface-retired; canonical Review Queue successor" })
       ],
-      db: [mappingDb],
-      audit: [
-        {
-          id: mappingAuditItem?.id,
-          kind: "parameter-topology-governance",
-          action: "identity-mapping-resolved",
-          targetId: openMapTask.id
-        }
-      ],
-      notes: "Ambiguous ingest created open-mapping; validate fail-closed; left/right siblings adjudicated independently via API with audit."
+      db: [{ table: "identity_mapping_tasks", predicate: `project=${projectId}`,
+        observed: "all legacy rows unchanged after ingest, validation and retired resolve", rowCount: legacyRowsBefore.length }],
+      audit: [refused.audit],
+      notes: "Ambiguous continuity stays needs_mapping and fail-closed. Canonical DTS selector evidence is visible separately; no equivalent continuity decision is inferred."
     });
 
     // 10) SUCCESSFUL validate on merge/writeback candidate (not schema-failed-as-success).
     // Revisions pinned by a canonical ProjectValue (the base and the applied one) are
     // immutable source history and are never validated or published in place. The gate
-    // runs on the previously blocked, now identity-resolved revision.
-    const validateTargetId = seededMap.ambiguousRevisionId;
+    // runs on the unambiguous, unpinned base; historical continuity is not mutated.
+    const validateTargetId = seededMap.baseRevisionId;
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
-    await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
+    await assertSpecReviewHistoryForCurrentRevision(request, validateTargetId, projectId);
 
     const validateResponse = await request.post(
       apiRoute(
@@ -1773,7 +1790,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
   });
 
-  test("resolves identity mapping tasks from the parameter admin surface", async ({ page, request }, testInfo) => {
+  test("routes identity evidence to the canonical queue and keeps legacy history read-only", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-IDENTITY-MAP-ADMIN-001
     // @operation PARAM-IDENTITY-MAP-ADMIN-001
     test.setTimeout(120_000);
@@ -1783,203 +1800,144 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const r2Name = `acceptance-map-admin-r2-${runSuffix}.dts`;
     const createdConfigSetNames = [mapCsName];
     const createdFileNames = [r1Name, r2Name];
-
+    const browserLegacyWrites: string[] = [];
+    page.on("request", (browserRequest) => {
+      if (browserRequest.method() === "POST" && /identity-mapping-tasks\/[^/]+\/(resolve|reopen)/.test(browserRequest.url())) {
+        browserLegacyWrites.push(browserRequest.url());
+      }
+    });
     try {
       await ensureAuroraSemanticTopology(request);
-
-      // Ambiguous continuity is seeded through the real ingest service (see fixture).
+      const legacyRowsBefore = await legacyIdentityRows();
       const seeded = await seedAmbiguousIdentityMappingConfigSet(disposableRuntime, {
-        projectId,
-        configSetName: mapCsName,
-        baseFileName: r1Name,
-        baseText: mappingR1,
-        overlayFileName: r2Name,
-        overlayText: mappingR2,
+        projectId, configSetName: mapCsName,
+        baseFileName: r1Name, baseText: mappingR1,
+        overlayFileName: r2Name, overlayText: mappingR2,
         adminUserId: "u-xu-yun"
       });
-      const r2Revision = { id: seeded.ambiguousRevisionId };
-
-      const mappingList = await request.get(
-        apiRoute(
-          `/api/v2/identity-mapping-tasks?projectId=${encodeURIComponent(projectId)}&status=open`
-        ),
-        { headers: adminHeaders() }
+      expect(await legacyIdentityRows(), "ambiguous ingest must not create legacy identity tasks").toEqual(legacyRowsBefore);
+      const validation = await request.post(
+        apiRoute(`/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(seeded.ambiguousRevisionId)}/validate`),
+        { headers: adminHeaders(), data: { stage: "toolchain" } }
       );
-      expect(mappingList.ok()).toBe(true);
-      const mappingBody = (await mappingList.json()) as {
-        items: Array<{
-          id: string;
-          configRevisionId?: string;
-          evidence?: {
-            candidates?: Array<{ logicalNodeId: string; nodeLocator: string }>;
-          };
-        }>;
-      };
-      const openMapTask = requireMappingTask(mappingBody.items, {
-        projectId,
-        configRevisionId: r2Revision.id
-      });
-      const leftCandidate = requireMappingCandidate(
-        openMapTask,
-        (candidate) => candidate.nodeLocator.includes("left"),
-        "left sibling node"
-      );
-      const rightCandidate = requireMappingCandidate(
-        openMapTask,
-        (candidate) => candidate.nodeLocator.includes("right"),
-        "right sibling node"
-      );
-
-      await signInBrowserAsRole(
-        page,
-        "admin",
-        `${disposableRuntime.frontendUrl}/parameter-admin/specs/identity-mapping`
-      );
+      expect(validation.ok()).toBe(true);
+      const validationBody = (await validation.json()) as { item: { status: string; failureCode: string } };
+      expect(validationBody.item).toMatchObject({ status: "failed", failureCode: "open-mapping" });
+      expect(await legacyIdentityRows(), "validation must not create legacy identity tasks").toEqual(legacyRowsBefore);
+      const canonical = await canonicalIdentityEvidence(request, seeded.ambiguousRevisionId);
+      await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin/specs/identity-mapping`);
       await dismissXiaozeHint(page);
+      await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
+      await expect(page.getByRole("region", { name: "待审核事项" })).toBeVisible();
 
-      const governance = page.getByRole("region", { name: "节点对应确认" });
-      await expect(governance).toBeVisible({ timeout: 30_000 });
-      const review = page.getByRole("region", { name: "节点对应审核" });
-      await expect(review).toBeVisible({ timeout: 30_000 });
-      await expect(review.getByLabel("对应依据")).toBeVisible();
-      await review.getByRole("combobox", { name: "选择对应节点" }).selectOption(leftCandidate.logicalNodeId);
-      await review.getByLabel("确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
-      await review.getByRole("button", { name: "确认对应" }).click();
-
-      let resolvedDbStatus = "missing";
-      await expect
-        .poll(
-          async () => {
-            resolvedDbStatus = await withPgClient(async (client) => {
-              const result = await client.query<{ status: string }>(
-                `select status from identity_mapping_tasks where id = $1`,
-                [openMapTask.id]
-              );
-              return result.rows[0]?.status ?? "missing";
-            });
-            return resolvedDbStatus;
-          },
-          { timeout: 30_000 }
-        )
-        .toBe("resolved");
-
-      const history = review.getByRole("list", { name: "节点对应历史" });
-      const resolvedTask = history.getByRole("listitem").filter({ hasText: leftCandidate.nodeLocator });
-      await expect(resolvedTask.getByText(/当前对应/)).toContainText(leftCandidate.nodeLocator);
-      await resolvedTask
-        .getByRole("combobox", { name: "重新选择对应节点" })
-        .selectOption(rightCandidate.logicalNodeId);
-      await resolvedTask
-        .getByLabel("重新对应原因")
-        .fill(`${descriptionPrefix} correct mapping after evidence review ${runSuffix}`);
-      const reResolveResponsePromise = page.waitForResponse(
-        (response) =>
-          response.request().method() === "POST" &&
-          response.url().includes(`/api/v2/identity-mapping-tasks/${openMapTask.id}/resolve`)
-      );
-      await resolvedTask.getByRole("button", { name: "确认重新对应" }).click();
-      const reResolveResponse = await reResolveResponsePromise;
-      expect(reResolveResponse.ok(), await reResolveResponse.text()).toBe(true);
-
-      let selectedLogicalNodeId = "missing";
-      await expect
-        .poll(
-          async () => {
-            selectedLogicalNodeId = await withPgClient(async (client) => {
-              const result = await client.query<{ selected_logical_node_id: string | null }>(
-                `select evidence ->> 'selectedLogicalNodeId' as selected_logical_node_id
-                 from identity_mapping_tasks where id = $1`,
-                [openMapTask.id]
-              );
-              return result.rows[0]?.selected_logical_node_id ?? "missing";
-            });
-            return selectedLogicalNodeId;
-          },
-          { timeout: 30_000 }
-        )
-        .toBe(rightCandidate.logicalNodeId);
-
-      await expect
-        .poll(async () => {
-          return resolvedTask.evaluate((item) => {
-            const bounds = item.getBoundingClientRect();
-            return bounds.left >= -1 && bounds.right <= document.documentElement.clientWidth + 1;
-          });
-        })
-        .toBe(true);
-      const overflowingControls = await resolvedTask
-        .locator("select, textarea, button")
-        .evaluateAll((controls) =>
-          controls
-            .filter((control) => {
-              const bounds = control.getBoundingClientRect();
-              return bounds.left < -1 || bounds.right > document.documentElement.clientWidth + 1;
-            })
-            .map((control) => control.tagName.toLowerCase())
+      const historicalTaskId = `acceptance-map-history-${runSuffix}`;
+      const candidates = await withPgClient(async (client) => {
+        const previous = await client.query<{ logical_node_id: string }>(
+          "select logical_node_id from dts_logical_node_revisions where config_revision_id = $1 and node_locator = '/bus/dev@10'",
+          [seeded.baseRevisionId]
         );
-      expect(overflowingControls).toEqual([]);
-
-      const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
+        expect(previous.rows).toHaveLength(1);
+        const nodes = await client.query<{ logicalNodeId: string; nodeLocator: string }>(
+          `select logical_node_id as "logicalNodeId", node_locator as "nodeLocator" from dts_logical_node_revisions
+           where config_revision_id = $1 and node_locator in ('/bus/left@10', '/bus/right@10') order by node_locator`,
+          [seeded.ambiguousRevisionId]
+        );
+        expect(nodes.rows).toHaveLength(2);
+        await client.query(`insert into identity_mapping_tasks
+          (id, organization_id, project_id, config_revision_id, previous_logical_node_id, candidate_logical_node_ids, evidence, status, reason)
+          values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, 'open', $8)`,
+          [historicalTaskId, organizationId, projectId, seeded.ambiguousRevisionId, previous.rows[0].logical_node_id,
+            JSON.stringify(nodes.rows.map((node) => node.logicalNodeId)),
+            JSON.stringify({ previousNodeLocator: "/bus/dev@10", candidates: nodes.rows,
+              evidence: ["Historical continuity evidence requires a canonical decision"], fixtureProvenance: "pre-retirement-history" }),
+            `${descriptionPrefix} preserved historical continuity fixture`]);
+        return nodes.rows;
+      });
+      expect(canonical.logicalNodeIds).toEqual(candidates.map((candidate) => candidate.logicalNodeId).sort());
+      const historicalRowsBefore = await legacyIdentityRows();
+      const mappingList = await request.get(apiRoute(`/api/v2/identity-mapping-tasks?projectId=${projectId}&configRevisionId=${seeded.ambiguousRevisionId}`), {
         headers: adminHeaders()
       });
-      const auditBody = (await auditResponse.json()) as {
-        items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
+      expect(mappingList.ok()).toBe(true);
+      const mappingBody = (await mappingList.json()) as {
+        items: Array<{ id: string }>;
+        historicalItems: Array<{ id: string; configRevisionId: string; historicalOnly: boolean; needsCanonicalDecision: boolean;
+          successor: string; evidence: { candidates: Array<{ logicalNodeId: string; nodeLocator: string }> } }>;
       };
-      const mappingAuditItem = auditBody.items.find(
-        (item) =>
-          item.kind === "parameter-topology-governance" &&
-          item.action === "identity-mapping-resolved" &&
-          item.targetId === openMapTask.id
-      );
-      expect(mappingAuditItem).toBeTruthy();
+      expect(mappingBody.items).toEqual([]);
+      const historicalTask = requireMappingTask(mappingBody.historicalItems, { projectId, configRevisionId: seeded.ambiguousRevisionId });
+      expect(historicalTask).toMatchObject({ id: historicalTaskId, historicalOnly: true,
+        needsCanonicalDecision: true, successor: "/parameter-admin/specs?review=open" });
+      const leftCandidate = requireMappingCandidate(historicalTask, (candidate) => candidate.nodeLocator.includes("left"), "left sibling node");
+      const rightCandidate = requireMappingCandidate(historicalTask, (candidate) => candidate.nodeLocator.includes("right"), "right sibling node");
+      expect(leftCandidate.logicalNodeId).not.toBe(rightCandidate.logicalNodeId);
+      expect(historicalTask.evidence.candidates).toEqual(candidates);
 
+      await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin/specs/identity-mapping`);
+      await dismissXiaozeHint(page);
+      const governance = page.getByRole("region", { name: "节点对应确认" });
+      await expect(governance).toBeVisible({ timeout: 30_000 });
+      await expect(governance.getByRole("status")).toContainText("只读证据");
+      const review = governance.getByRole("region", { name: "节点对应审核" });
+      await expect(review).toBeVisible({ timeout: 30_000 });
+      const historicalItem = review.getByRole("listitem").filter({ has: page.locator("header", { hasText: "/bus/dev@10" }) });
+      await expect(historicalItem.getByRole("list", { name: "对应依据" })).toBeVisible();
+      await expect(historicalItem.getByRole("list", { name: "对应候选" })).toContainText(leftCandidate.nodeLocator);
+      await expect(historicalItem.getByRole("list", { name: "对应候选" })).toContainText(rightCandidate.nodeLocator);
+      await expect(review.getByRole("combobox")).toHaveCount(0);
+      await expect(review.getByRole("textbox")).toHaveCount(0);
+      await expect(review.getByRole("button", { name: /确认对应|确认重新对应|重新打开|确认为新身份/ })).toHaveCount(0);
+      await expect.poll(() => historicalItem.evaluate((item) => {
+        const bounds = item.getBoundingClientRect();
+        return bounds.left >= -1 && bounds.right <= document.documentElement.clientWidth + 1;
+      })).toBe(true);
+      const overflowingControls = await governance.locator("select, textarea, button, a").evaluateAll((controls) =>
+        controls.filter((control) => {
+          const bounds = control.getBoundingClientRect();
+          return bounds.left < -1 || bounds.right > document.documentElement.clientWidth + 1;
+        }).map((control) => control.tagName.toLowerCase())
+      );
+      expect(overflowingControls).toEqual([]);
+      const resolve = await refuseLegacyTaskWrite(request, historicalTaskId, "resolve");
+      const reopen = await refuseLegacyTaskWrite(request, historicalTaskId, "reopen");
+      expect(await legacyIdentityRows(), "retired actions must preserve complete historical rows").toEqual(historicalRowsBefore);
+      await page.reload();
+      await expect(historicalItem.getByRole("list", { name: "对应候选" })).toContainText(rightCandidate.nodeLocator);
+      await expect(review.getByRole("combobox")).toHaveCount(0);
+      expect(browserLegacyWrites).toEqual([]);
       await recordOperationEvidence({
         operationId: "PARAM-IDENTITY-MAP-ADMIN-001",
-        title: "admin identity mapping resolve with evidence",
-        status: "passed",
-        role: "Admin",
-        route: "/parameter-admin",
-        page,
-        testInfo,
+        title: "admin canonical queue redirect and read-only historical identity evidence",
+        status: "passed", role: "Admin", route: "/parameter-admin/specs/identity-mapping", page, testInfo,
         assertions: ["ui", "api", "db", "audit"],
         api: [
-          summarizeApiResponse(mappingList, {
-            method: "GET",
-            path: "/api/v2/identity-mapping-tasks",
-            responseSummary: `openTask=${openMapTask.id}`
-          }),
-          summarizeApiResponse(reResolveResponse, {
-            method: "POST",
-            path: `/api/v2/identity-mapping-tasks/${openMapTask.id}/resolve`,
-            responseSummary: `reResolved=${rightCandidate.logicalNodeId}`
-          })
+          summarizeApiResponse(mappingList, { method: "GET", path: "/api/v2/identity-mapping-tasks",
+            responseSummary: `historicalOnly=${historicalTaskId}; needsCanonicalDecision=true` }),
+          summarizeApiResponse(canonical.response, { method: "GET", path: `/api/v2/organizations/${organizationId}/parameter-review-items`,
+            responseSummary: `canonicalSelectorItems=${canonical.rows.map((row) => row.id).join(",")}` }),
+          ...canonical.discoveryResponses.map((response) => summarizeApiResponse(response, { method: "GET",
+            path: `/api/v2/organizations/${organizationId}/driver-compatible-discovery`,
+            responseSummary: `exact configRevision=${seeded.ambiguousRevisionId}; unknown selector review handoff` })),
+          summarizeApiResponse(validation, { method: "POST",
+            path: `/api/v2/projects/${projectId}/config-revisions/${seeded.ambiguousRevisionId}/validate`,
+            responseSummary: "open-mapping; no new legacy tasks" }),
+          ...[resolve, reopen].map((refusal) => summarizeApiResponse(refusal.response, { method: "POST", path: refusal.path,
+            responseSummary: "410 legacy-surface-retired; history unchanged" }))
         ],
-        db: [
-          {
-            table: "identity_mapping_tasks",
-            predicate: `id=${openMapTask.id}`,
-            observed: `status=${resolvedDbStatus}; selectedLogicalNodeId=${selectedLogicalNodeId}`,
-            rowCount: 1
-          }
-        ],
-        audit: [
-          {
-            id: mappingAuditItem?.id,
-            kind: "parameter-topology-governance",
-            action: "identity-mapping-resolved",
-            targetId: openMapTask.id
-          }
-        ],
-        notes:
-          "At PC 1440x900, Admin resolved an open identity mapping task, then corrected the applied choice through protected re-resolve with candidate evidence and governance audit."
+        db: [{ table: "identity_mapping_tasks", predicate: `project=${projectId}; historicalTask=${historicalTaskId}`,
+          observed: "no ingest/validation tasks; historical row stays open with unchanged candidates and evidence", rowCount: historicalRowsBefore.length }],
+        audit: [resolve.audit, reopen.audit],
+        notes: "At PC 1440x900, the empty legacy entry redirects to the canonical Review Queue. Explicit pre-retirement history is readable without mutation controls and survives refused writes and reload. Selector evidence does not imply continuity equivalence."
       });
+      const queueLink = governance.getByRole("link", { name: "打开规范审核队列" });
+      await queueLink.focus();
+      await expect(queueLink).toBeFocused();
+      await queueLink.press("Enter");
+      await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
+      await expect(page.getByRole("region", { name: "待审核事项" })).toBeVisible();
     } finally {
-      await cleanupSemanticAcceptanceArtifacts({
-        organizationId,
-        projectId,
-        configSetNames: createdConfigSetNames,
-        fileNames: createdFileNames
-      });
+      await cleanupSemanticAcceptanceArtifacts({ organizationId, projectId,
+        configSetNames: createdConfigSetNames, fileNames: createdFileNames });
     }
   });
 

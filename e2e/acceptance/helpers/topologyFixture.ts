@@ -266,16 +266,9 @@ export async function registerCatalogDriverSubjects(
 }
 
 /**
- * Seed a Config Set whose second revision has ambiguous node continuity, so an open
- * identity-mapping task exists for the admin surface to resolve.
- *
- * Ambiguous continuity cannot be produced through the public HTTP surface any more:
- * every ingest through it pins canonical source occurrences, and canonical source
- * changes then require a prepared source transaction that never allocates new DTS
- * identity. The identity-mapping subsystem itself (validate gate, task list, resolve
- * route, admin UI, audit) is unchanged, so this fixture ingests the two revisions
- * with the real upload/ingest service without the canonical producer, in the
- * disposable database only. All assertions still go through HTTP and the browser.
+ * Stage continuity history and both file memberships before canonical activation.
+ * The final upload activates the frozen ambiguous revision through the production
+ * source producer; no membership or source is changed after canonical ownership.
  */
 export async function seedAmbiguousIdentityMappingConfigSet(
   runtime: { databaseUrl: string; objectStoreRoot: string },
@@ -300,12 +293,12 @@ export async function seedAmbiguousIdentityMappingConfigSet(
       name: input.configSetName,
       description: "Identity-mapping acceptance fixture"
     });
-    const upload = (fileName: string, text: string) =>
+    const upload = (fileName: string, text: string, activateCanonical = false) =>
       uploadProjectParameterFile(db, objectStore, auth, {
         projectId: input.projectId,
         fileName,
         bytes: Buffer.from(text, "utf8")
-      });
+      }, {}, undefined, activateCanonical ? db : undefined);
     const base = await upload(input.baseFileName, input.baseText);
     await addConfigSetFile(db, auth, { configSetId: configSet.id, fileId: base.file.id, role: "base", sortOrder: 0 });
     await upload(input.baseFileName, input.baseText);
@@ -317,7 +310,7 @@ export async function seedAmbiguousIdentityMappingConfigSet(
       role: "overlay",
       sortOrder: 1
     });
-    await upload(input.overlayFileName, input.overlayText);
+    await upload(input.overlayFileName, input.overlayText, true);
     const ambiguous = await latestRevision(configSet.id);
     if (ambiguous.id === baseRevision.id || ambiguous.status !== "needs_mapping") {
       throw new Error(`identity-mapping fixture expected a needs_mapping revision, got ${ambiguous.status}`);

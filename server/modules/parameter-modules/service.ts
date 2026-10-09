@@ -18,7 +18,7 @@ import {
   type Queryable,
 } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { syncSingletonCardinalityBlockingTasks } from "../parameter-topology/bindingService";
+import { countSingletonCardinalityConflicts } from "../parameter-topology/bindingService";
 import {
   bindingModuleConflictExists,
   collectEmptyUnclassifiedBuckets,
@@ -1549,7 +1549,7 @@ export async function updateDriverRegistration(
     );
 
     for (const revision of tipRevisions.rows) {
-      await syncSingletonCardinalityBlockingTasks(tx, {
+      await countSingletonCardinalityConflicts(tx, {
         organizationId: auth.organization.id,
         projectId: revision.project_id,
         configRevisionId: revision.id,

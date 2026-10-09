@@ -308,7 +308,8 @@ describe("S8-LEG HTTP seam", () => {
       expect(
         (first.body as { error: { details: { successor: string; retryable: boolean } } }).error.details
           .successor,
-      ).toBe(LEGACY_SUCCESSOR_PATH);
+      ).toBe(route.id === "parameterSpecs.resolveReviewTask" || route.id === "parameterTopology.resolveIdentityMappingTask" || route.id === "parameterTopology.reopenIdentityMappingTask"
+        ? "/parameter-admin/specs?review=open" : LEGACY_SUCCESSOR_PATH);
       const replay = await request(route.method, fillPath(route.path), {
         headers: {
           [CATALOG_IDEMPOTENCY_HEADER]: "replay-key",

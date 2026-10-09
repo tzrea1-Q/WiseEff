@@ -117,7 +117,7 @@ describe("resolveLogicalContinuity", () => {
 });
 
 describe("persistAmbiguousIdentityMapping", () => {
-  it("persists mapping task fields and sets revision to needs_mapping", async () => {
+  it("refuses retired identity task production without task or revision writes", async () => {
     const previous = previousSc8562();
     const candidates = [
       candidate({
@@ -133,82 +133,30 @@ describe("persistAmbiguousIdentityMapping", () => {
     const continuity = resolveLogicalContinuity(previous, candidates);
     expect(continuity.kind).toBe("ambiguous");
 
-    const calls: Array<{ text: string; values: unknown[] }> = [];
     const db: Queryable = {
-      query: vi.fn(async (text, values = []) => {
-        calls.push({ text, values: values as unknown[] });
-        if (text.includes("insert into identity_mapping_tasks")) {
-          return {
-            rows: [
-              {
-                id: values[0],
-                organization_id: values[1],
-                project_id: values[2],
-                config_revision_id: values[3],
-                previous_logical_node_id: values[4],
-                candidate_logical_node_ids: JSON.parse(String(values[5])),
-                evidence: JSON.parse(String(values[6])),
-                status: values[7],
-                reviewer_user_id: values[8],
-                reason: values[9],
-                created_at: "2026-07-16T00:00:00.000Z",
-                resolved_at: null,
-              },
-            ],
-            rowCount: 1,
-          };
-        }
-        if (text.includes("update dts_config_revisions")) {
-          return {
-            rows: [
-              {
-                id: values[0],
-                organization_id: "org-1",
-                project_id: "project-1",
-                config_set_id: "dcs-1",
-                revision_number: 2,
-                status: values[1],
-                created_by_user_id: null,
-                created_at: "2026-07-16T00:00:00.000Z",
-                resolved_at: null,
-              },
-            ],
-            rowCount: 1,
-          };
-        }
-        return { rows: [], rowCount: 0 };
-      }),
+      query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
     };
 
     if (continuity.kind !== "ambiguous") {
       throw new Error("expected ambiguous continuity");
     }
 
-    const task = await persistAmbiguousIdentityMapping(db, {
+    await expect(persistAmbiguousIdentityMapping(db, {
       organizationId: "org-1",
       projectId: "project-1",
       configRevisionId: "rev-2",
       previous,
       continuity,
       reason: "two equivalent SC8562 candidates",
+    })).rejects.toMatchObject({
+      code: "GONE",
+      details: {
+        reason: "legacy-surface-retired",
+        successor: "/api/v2/organizations/org-1/parameter-review-items",
+        retryable: false,
+      },
     });
-
-    expect(task).toMatchObject({
-      status: "open",
-      previousLogicalNodeId: sc8562Id,
-      configRevisionId: "rev-2",
-      candidateLogicalNodeIds: ["logical-candidate-a", "logical-candidate-b"],
-      reason: "two equivalent SC8562 candidates",
-    });
-    expect(task.evidence).toBeTruthy();
-    expect(task.createdAt).toBeTruthy();
-    expect(calls.some((call) => call.text.includes("identity_mapping_tasks"))).toBe(true);
-    expect(
-      calls.some(
-        (call) =>
-          call.text.includes("update dts_config_revisions") && call.values.includes("needs_mapping"),
-      ),
-    ).toBe(true);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
 

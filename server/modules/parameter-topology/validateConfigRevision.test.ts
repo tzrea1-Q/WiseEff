@@ -473,7 +473,7 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
     expect(await revisionStatus(db!, revision.id)).toBe("needs_mapping");
   });
 
-  it("persists singleton-per-project evidence and blocks validation without dropping instances", async () => {
+  it("blocks singleton validation without producing legacy tasks or dropping instances", async () => {
     const revision = await seedRevision(db!, auth);
     await clearOpenReviews(db!);
     await db!.query(`update dts_config_revisions set status = 'resolved' where id = $1`, [revision.id]);
@@ -574,12 +574,10 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
       `,
       [revision.id],
     );
-    expect(blocker.rows).toHaveLength(1);
-    expect(blocker.rows[0]?.evidence).toMatchObject({
-      attributionSubjectId: subjectId,
-      instanceCount: 2,
-    });
-    expect(blocker.rows[0]?.candidate_logical_node_ids).toHaveLength(2);
+    expect(blocker.rows).toEqual([]);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: "open-mapping", message: "Blocking identity/cardinality conflicts remain (1); validation fails closed.",
+    }));
 
     const instances = await db!.query<{ count: string }>(
       `select count(*)::text as count from dts_logical_node_revisions where config_revision_id = $1`,

@@ -596,6 +596,10 @@ The cutover decision in issue #678 is the sole owner of every R0-R10 production 
 
 Legacy read responses include:
 
+Task read-window responses separate exact canonical `items` from read-only `historicalItems`. Spec-review adaptation uses the organization-scoped typed mapping head and the authorized current Review Queue, never a property or node name. Only unresolved tasks with exactly one current Review Item equivalent are adapted. Other tasks retain their original evidence and status with `historicalOnly: true`; open and dismissed tasks carry `needsCanonicalDecision: true`. Identity continuity choices have no equivalent canonical resolution and remain historical. Task retirement and historical evidence link to `/parameter-admin/specs?review=open`, which opens the canonical Review Queue; the identity entry redirects there when no unresolved historical task remains.
+
+DTS review evidence may prove an immutable property on a `needs_mapping` revision without granting Binding or source-write proof. Continuity evidence preserves the prior/candidate relation and matcher reasons without selecting an identity, using one exact property anchor per candidate. Propertyless continuity cannot use the current property-locator contract: activation refuses with `source-proof-invalid` and rolls back rather than silently losing evidence or fabricating a child property.
+
 ```text
 Deprecation: true
 Sunset: <earliest announced HTTP-date>
