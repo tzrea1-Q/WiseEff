@@ -29,6 +29,9 @@ const bindingDto: ProjectBindingDto = {
   definitionRevisionId: "definition-revision-1",
   effectiveRevisionId: "definition-revision-1",
   currentValueId: "current-value-1",
+  sourceFileId: "file-1",
+  sourceNodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+  sourceOccurrenceId: "source-occurrence-1",
   projectId: "project-1",
   propertyKey: "gpio_int",
   driverModule: "sc8562",
@@ -87,6 +90,9 @@ describe("parameterTopologyClient DTO mapping", () => {
       definitionRevisionId: "definition-revision-1",
       effectiveRevisionId: "definition-revision-1",
       currentValueId: "current-value-1",
+      sourceFileId: "file-1",
+      sourceNodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+      sourceOccurrenceId: "source-occurrence-1",
       projectId: "project-1"
     });
     expect(bindingFromDto(bindingDto)).not.toHaveProperty("recommendedValue");
@@ -554,6 +560,17 @@ describe("createHttpParameterTopologyRepository", () => {
       action: "set",
       projectParameterBindingId: "binding-1"
     });
+  });
+
+  it("keeps the canonical pending receipt and unchanged current value through the HTTP port", async () => {
+    const repository = createHttpParameterTopologyRepository(createApiClient({ baseUrl: "http://api.test",
+      fetchImpl: fetchQueue({ item: { draftId: "pvdr_staged", projectParameterBindingId: "pbind_exact",
+        pending: true, currentValueId: "ppv_unchanged", writeTarget: { role: "canonical-project-value-draft" } } }) }));
+    const draft = await repository.createBindingDraft("project-1", "pbind_exact", {
+      baseRevisionId: "revision-1", reason: "Stage for review", targetValue: { kind: "strings", values: ["updated"] }
+    });
+    expect(draft).toMatchObject({ draftId: "pvdr_staged", pending: true, currentValueId: "ppv_unchanged",
+      projectParameterBindingId: "pbind_exact", writeTarget: { role: "canonical-project-value-draft" } });
   });
 
   it("posts JSON sourceTarget as raw source text without coercing it to DtsValue", async () => {

@@ -57,6 +57,9 @@ export type CatalogBindingView = {
   effectiveRevisionId: string;
   currentValueId: string;
   projectId: string;
+  sourceFileId?: string | null;
+  sourceNodePath?: string | null;
+  sourceOccurrenceId?: string | null;
   propertyKey: string;
   driverModule: string | null;
   logicalNodeId: string | null;
@@ -898,6 +901,9 @@ export async function listCatalogBindingRowsForProject(
       module_id: string | null;
       module_name: string | null;
       source_format: "dts" | "json" | null;
+      source_file_id: string | null;
+      source_node_path: string | null;
+      source_occurrence_id: string | null;
     }>(
       `
       select
@@ -908,7 +914,10 @@ export async function listCatalogBindingRowsForProject(
         end as instance_name,
         placement.module_id,
         module.name as module_name,
-        source_pin.format as source_format
+        source_pin.format as source_format,
+        source_pin.file_id as source_file_id,
+        coalesce(structured_node.node_path, source_occurrence.root_pointer) as source_node_path,
+        source_pin.source_occurrence_id
       from parameter_catalog.current_project_parameter_bindings b
       left join parameter_catalog.project_parameter_values value
         on value.id = b.current_value_id
@@ -922,6 +931,20 @@ export async function listCatalogBindingRowsForProject(
        and source_pin.project_id = b.project_id
        and source_pin.source_occurrence_id = b.source_occurrence_id
        and source_pin.config_revision_id = value.config_revision_id
+      left join parameter_catalog.project_parameter_source_occurrences source_occurrence
+        on source_occurrence.id = source_pin.source_occurrence_id
+       and source_occurrence.organization_id = b.organization_id
+       and source_occurrence.project_id = b.project_id
+       and source_occurrence.file_id = source_pin.file_id
+      left join dts_property_occurrences source_property
+        on source_property.id = source_pin.property_occurrence_id
+       and source_property.file_version_id = source_pin.file_version_id
+      left join (dts_properties structured_property
+        inner join dts_nodes structured_node on structured_node.id = structured_property.node_id)
+        on structured_node.file_version_id = source_pin.file_version_id
+       and structured_property.name = source_property.property_name
+       and structured_property.start_offset = source_property.start_offset
+       and structured_property.end_offset = source_property.end_offset
       left join dts_logical_node_revisions lnr
         on lnr.logical_node_id = b.logical_node_id
        and lnr.config_revision_id = source_pin.config_revision_id
@@ -948,6 +971,9 @@ export async function listCatalogBindingRowsForProject(
       effectiveRevisionId: row.pin.definitionRevisionId,
       currentValueId: row.pin.currentValueId,
       projectId: row.pin.projectId,
+      sourceFileId: loc.source_file_id,
+      sourceNodePath: loc.source_node_path,
+      sourceOccurrenceId: loc.source_occurrence_id,
       propertyKey: row.propertyKey,
       driverModule: loc?.module_name ?? null,
       logicalNodeId: row.pin.logicalNodeId,
