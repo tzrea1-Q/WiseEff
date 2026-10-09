@@ -225,7 +225,6 @@ describe("LogsPage api upload wiring", () => {
       { ...binding, displayName: "Incomplete parameter", id: "binding-incomplete", currentValueId: undefined }] });
     const repository = renderApiLogs(createLogRepository(), "/logs", parameters, { listProtectedProjectBindings });
     await waitForApiRuntime(repository);
-    // App hydration uses the legacy reader; the picker must not call it again.
     vi.mocked(parameters.listParameters).mockClear();
     openUploadDialog();
     await screen.findByRole("option", { name: "CAN · Canonical project" });
@@ -275,9 +274,11 @@ describe("LogsPage api upload wiring", () => {
     const parameters = createTestParameterRepository({ listProjects: vi.fn().mockResolvedValue(projects) });
     const delayed = deferred<CatalogProtectedProjectBindingListResponse>();
     const listProtectedProjectBindings = vi.fn((projectId: string) =>
-      projectId === "project-a" ? delayed.promise : Promise.resolve({ items: [second] }));
+      Promise.resolve({ items: [projectId === "project-a" ? first : second] }));
     const repository = renderApiLogs(createLogRepository(), "/logs", parameters, { listProtectedProjectBindings });
     await waitForApiRuntime(repository);
+    listProtectedProjectBindings.mockImplementation((projectId: string) =>
+      projectId === "project-a" ? delayed.promise : Promise.resolve({ items: [second] }));
     openUploadDialog();
     await screen.findByRole("option", { name: "A · First project" });
     const projectSelect = screen.getByLabelText("关联参数的项目（可选）");
@@ -301,11 +302,11 @@ describe("LogsPage api upload wiring", () => {
     const repository = renderApiLogs(createLogRepository(), "/logs", parameters, { listProtectedProjectBindings: undefined });
     await waitForApiRuntime(repository);
     vi.mocked(parameters.listParameters).mockClear();
-    openUploadDialog();
+    const dialog = openUploadDialog();
     await screen.findByRole("option", { name: "CAN · Canonical project" });
     fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
     await screen.findByRole("button", { name: "重试加载关联参数" });
-    expect(screen.getByRole("alert")).toHaveTextContent("加载项目参数失败；请重试或取消关联。");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("加载项目参数失败；请重试或取消关联。");
     expect(parameters.listParameters).not.toHaveBeenCalled();
     vi.useFakeTimers();
     const file = new File(["line"], "reader-missing.log", { type: "text/plain" });

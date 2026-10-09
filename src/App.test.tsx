@@ -2177,7 +2177,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     // announces the submitted round id, but the history list must not leak it.
     const historyContent = document.querySelector("main.main-content") as HTMLElement;
     expect(within(historyContent).queryByText(/PRS-/)).not.toBeInTheDocument();
-    expect(screen.getAllByText(/本轮提交包含\s*2\s*个参数/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/本轮提交包含\s*2\s*项变更/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.getByText("charge_voltage_limit_mv")).toBeInTheDocument();
   });
@@ -2385,7 +2385,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
     const detail = screen.getByRole("region", { name: "提交轮次详情" });
-    expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*个参数/)).toHaveLength(1);
+    expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*项变更/)).toHaveLength(1);
 
     const css = readStylesheet("src/styles.css");
     expect(declarationFor(css, ".submission-timeline", "grid-template-columns")).toBe(

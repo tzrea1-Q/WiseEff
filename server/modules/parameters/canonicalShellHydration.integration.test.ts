@@ -100,4 +100,40 @@ describe("#1075 canonical shell source on the assembled API server", () => {
     });
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
   });
+
+  it("hydrates only projects in the reader's scope without requesting inaccessible Bindings", async () => {
+    const readerId = "user-shell-scoped-1070ci";
+    const hiddenProjectId = "project-shell-hidden-1070ci";
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Scoped reader','Software user',true)", [readerId, organizationId]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shell-1070ci-reader',$1,$2,$3,'software-user')", [readerId, organizationId, projectId]);
+    await createProject(db, { organizationId, id: hiddenProjectId, name: "Hidden shell project", code: "HIDDEN1070CI" });
+    await db.query("insert into organizations(id,name) values ('org-shell-other-1070ci','Other organization')");
+    await createProject(db, { organizationId: "org-shell-other-1070ci", id: "project-shell-other-1070ci", name: "Other tenant project", code: "OTHER1070CI" });
+    const adminProjects = await fetch(`${baseUrl}/api/v1/projects`, { headers: { "X-WiseEff-User": userId } });
+    expect(adminProjects.status).toBe(200);
+    expect((await adminProjects.json()).items.map((project: { id: string }) => project.id).sort()).toEqual([projectId, hiddenProjectId].sort());
+    const unexpectedResponses: number[] = [];
+    const options = {
+      baseUrl,
+      fetchImpl: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await fetch(input, { ...init, headers: { ...init?.headers, "X-WiseEff-User": readerId } });
+        if (!response.ok) unexpectedResponses.push(response.status);
+        return response;
+      }
+    };
+    const projects = await options.fetchImpl(`${baseUrl}/api/v1/projects`);
+    expect(projects.status).toBe(200);
+    expect((await projects.json()).items).toEqual([{ id: projectId, name: "Canonical-only shell project", code: "SHELL1075" }]);
+    const dispatch = vi.fn();
+    const runtime = createParameterRuntimeActions({
+      runtimeMode: "api", dispatch,
+      repository: createHttpParameterRepository(createApiClient(options)),
+      canonicalRepository: createParameterCatalogClient(options)
+    });
+    expect(await runtime.refresh()).toMatchObject({ projects: [{ id: projectId }], parameters: [{ id: bindingId }], parameterDrafts: [] });
+    expect(unexpectedResponses).toEqual([]);
+    const hidden = await options.fetchImpl(`${baseUrl}/api/v2/projects/${hiddenProjectId}/parameter-bindings`);
+    expect(hidden.status).toBe(403);
+    expect((await hidden.json()).error.code).toBe("FORBIDDEN");
+  });
 });

@@ -35,6 +35,8 @@ npm run dts:toolchain:check
 
 Semantic parameter-identity cutover rehearsal commands (`parameter-identities:migrate` / `cutover` / `check`) are operator-only. Follow [docs/runbooks/parameter-identity-cutover.md](docs/runbooks/parameter-identity-cutover.md); never continue after a failed `--apply`.
 
+For isolated browser tests, `WISEEFF_ACCEPTANCE_NESTED_API_PORT` and `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` fix the nested API/frontend listeners, including the canonical DTS reload spec. Set `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true` and use `--no-deps` to avoid a parent runtime occupying those ports. Controlled-device loopback sockets remain test-owned and ephemeral. CI leaves the overrides unset.
+
 Fill `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` in `.env` when testing live Xiaoze LLM behavior. The canonical group is atomic: if any canonical key is present, blank values are explicit and legacy aliases are ignored. The default `.env.example` profile prepares local PostgreSQL, local object storage, multi-protocol device gateway, production-mode local account auth defaults, and optional HMAC smoke inputs.
 
 ## Development Rules

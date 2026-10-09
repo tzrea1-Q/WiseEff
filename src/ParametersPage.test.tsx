@@ -1767,6 +1767,34 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
+  it("reports a canonical archived old link without legacy shell rows or an editable fallback", async () => {
+    const onNavigate = vi.fn();
+    const parameterActions = createParameterActions();
+    const getLegacyIdentifier = vi.fn().mockRejectedValue(new WiseEffApiError(
+      "GONE", "The legacy identifier was archived and is not available for operational reads.",
+      { reason: "legacy-id-archived", retryable: false }, "archived-1070"
+    ));
+    const { container } = render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState({ parameters: [] })} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-archived-1070" runtimeMode="api" canEdit={false}
+      parameterActions={parameterActions} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier }}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    expect(await screen.findByText("该参数旧链接已归档")).toBeInTheDocument();
+    const banner = container.querySelector(".parameter-archived-link-banner")!;
+    expect(banner).toHaveTextContent("old-archived-1070");
+    expect(banner).toHaveTextContent("legacy-id-archived");
+    expect(banner).not.toHaveTextContent(/迁移证据|archive-op08-gone|candidate/);
+    expect(getLegacyIdentifier).toHaveBeenCalledWith("project-parameter-binding", "old-archived-1070");
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(within(banner as HTMLElement).getByRole("button", { name: "知道了" }));
+    expect(container.querySelector(".parameter-archived-link-banner")).not.toBeInTheDocument();
+  });
+
   it("resolves an old ?parameter= link only through an exact typed historical mapping", async () => {
     const onNavigate = vi.fn();
     const parameterActions = createParameterActions();
