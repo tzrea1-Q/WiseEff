@@ -1,15 +1,22 @@
 import { catalogLegacyGoneResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 
 import { LEGACY_SUCCESSOR_PATH } from "./types";
-import { successorLinkHeaders } from "./headers";
 import type { LegacyHttpResult } from "./types";
 
 export const LEGACY_WRITE_GONE_MESSAGE = "Legacy structural writes are retired.";
 export const LEGACY_GOVERNANCE_GONE_MESSAGE = "Legacy governance and raw catalog reads are retired.";
 
+export const legacyRouteSuccessor = (routeId: string): string =>
+  routeId === "parameterSpecs.resolveReviewTask" ||
+  routeId === "parameterTopology.resolveIdentityMappingTask" ||
+  routeId === "parameterTopology.reopenIdentityMappingTask"
+    ? "/parameter-admin/specs?review=open"
+    : LEGACY_SUCCESSOR_PATH;
+
 export function catalogLegacyGoneResult(
   requestId: string,
   message: string,
+  successor = LEGACY_SUCCESSOR_PATH,
 ): LegacyHttpResult {
   const body = catalogLegacyGoneResponseSchema.parse({
     error: {
@@ -17,7 +24,7 @@ export function catalogLegacyGoneResult(
       message,
       details: {
         reason: "legacy-surface-retired",
-        successor: LEGACY_SUCCESSOR_PATH,
+        successor,
         retryable: false,
       },
       requestId,
@@ -26,6 +33,6 @@ export function catalogLegacyGoneResult(
   return {
     status: 410,
     body,
-    headers: successorLinkHeaders(),
+    headers: { Link: `<${successor}>; rel="successor-version"` },
   };
 }

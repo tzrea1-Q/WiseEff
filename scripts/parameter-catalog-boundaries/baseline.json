@@ -18,7 +18,7 @@
     "e2e/acceptance/parameter-topology.acceptance.spec.ts": {
       "canonical-catalog-raw-access": 7,
       "legacy-catalog-raw-read": 5,
-      "legacy-catalog-route": 13,
+      "legacy-catalog-route": 8,
       "legacy-effective-governance-contract": 6,
       "legacy-parameter-spec-identifier": 4
     },
@@ -523,7 +523,7 @@
     },
     "server/modules/parameter-topology/identityContinuity.integration.test.ts": {
       "legacy-catalog-sql-write": 3,
-      "legacy-parameter-spec-identifier": 4
+      "legacy-parameter-spec-identifier": 3
     },
     "server/modules/parameter-topology/ingestService.test.ts": {
       "legacy-catalog-raw-read": 9,
@@ -592,7 +592,7 @@
       "legacy-catalog-module-import": 3,
       "legacy-catalog-route": 23,
       "legacy-effective-governance-contract": 3,
-      "legacy-parameter-spec-identifier": 8
+      "legacy-parameter-spec-identifier": 7
     },
     "server/modules/parameter-topology/routes.ts": {
       "legacy-catalog-route": 3,

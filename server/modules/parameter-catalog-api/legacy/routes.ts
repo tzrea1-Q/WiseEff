@@ -26,7 +26,7 @@ import {
   LEGACY_SPEC_CONTRACT,
   LEGACY_SPEC_WARNING,
 } from "./headers";
-import { catalogLegacyGoneResult, LEGACY_GOVERNANCE_GONE_MESSAGE, LEGACY_WRITE_GONE_MESSAGE } from "./gone";
+import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_GOVERNANCE_GONE_MESSAGE, LEGACY_WRITE_GONE_MESSAGE } from "./gone";
 import { lookupLegacyIdentifier } from "./lookup";
 import type { LegacyCatalogOptions, LegacyHttpResult } from "./types";
 
@@ -339,7 +339,7 @@ export async function handleLegacyCatalogRequest(
 
   for (const route of writeRoutes) {
     addRoute(router, route.method, route.path, async (matched) => {
-      const gone = catalogLegacyGoneResult(matched.requestId, LEGACY_WRITE_GONE_MESSAGE);
+      const gone = catalogLegacyGoneResult(matched.requestId, LEGACY_WRITE_GONE_MESSAGE, legacyRouteSuccessor(route.id));
       return { status: gone.status, body: { __legacy: gone } };
     });
   }
@@ -436,7 +436,7 @@ export function registerCatalogLegacyRetirementRoutes(
           });
         }
       }
-      return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
+      return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE, legacyRouteSuccessor(route.id));
     });
   }
 }

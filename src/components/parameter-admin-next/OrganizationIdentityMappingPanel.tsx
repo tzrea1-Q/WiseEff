@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type {
-  IdentityMappingTask,
-  ReopenMappingInput,
-  ResolveMappingInput
-} from "@/domain/parameter-topology/types";
+import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { IdentityMappingReview } from "@/components/parameter-topology/IdentityMappingReview";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ParamAdminEmptyState } from "./ParamAdminEmptyState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
-import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 
 export type OrganizationIdentityMappingPanelProps = {
   /** Sync open/history counts into the parent specs shell after each successful load. */
@@ -24,7 +19,6 @@ export function OrganizationIdentityMappingPanel({
   onTasksLoaded
 }: OrganizationIdentityMappingPanelProps = {}) {
   const { application, dispatch, state } = useParameterAdmin();
-  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
   const [tasks, setTasks] = useState<IdentityMappingTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +29,8 @@ export function OrganizationIdentityMappingPanel({
     try {
       const next = await application.listMappingTasks();
       setTasks(next);
-      const openCount = next.filter((task) => task.status === "open").length;
-      const historyCount = next.filter((task) => task.status !== "open").length;
+      const openCount = next.filter((task) => task.status === "open" || task.status === "dismissed").length;
+      const historyCount = next.length - openCount;
       dispatch({ type: "SET_QUEUE_COUNTS", counts: { identityMapping: openCount } });
       onTasksLoaded?.({ openCount, historyCount });
     } catch (loadError) {
@@ -52,34 +46,6 @@ export function OrganizationIdentityMappingPanel({
     void reload();
   }, [reload]);
 
-  const handleResolve = useCallback(
-    async (taskId: string, input: ResolveMappingInput) => {
-      setError(null);
-      try {
-        await application.resolveMapping(taskId, input);
-        await refreshRecentAudits();
-        await reload();
-      } catch (resolveError) {
-        setError(presentError(resolveError, PARAMETER_ADMIN_UI.identityMappingResolveError));
-      }
-    },
-    [application, refreshRecentAudits, reload]
-  );
-
-  const handleReopen = useCallback(
-    async (taskId: string, input: ReopenMappingInput) => {
-      setError(null);
-      try {
-        await application.reopenMapping(taskId, input);
-        await refreshRecentAudits();
-        await reload();
-      } catch (reopenError) {
-        setError(presentError(reopenError, "重新打开节点对应任务失败，请稍后重试。"));
-      }
-    },
-    [application, refreshRecentAudits, reload]
-  );
-
   const openTasks = tasks.filter((task) => task.status === "open");
   const historyTasks = tasks.filter((task) => task.status !== "open");
 
@@ -89,10 +55,17 @@ export function OrganizationIdentityMappingPanel({
         <div>
           <h2>{PARAMETER_ADMIN_UI.identityMapping}</h2>
           <p>
-            {PARAMETER_ADMIN_UI.identityMappingBlurb} 待处理 {state.queueCounts.identityMapping}。
+            历史节点对应证据。未决 {state.queueCounts.identityMapping}。
           </p>
         </div>
       </div>
+      <p className="form-hint" role="status">
+        历史节点对应任务仅作为只读证据保留。没有精确等价项的连续性选择不会自动迁移为审核项。
+        未决任务需要在规范审核队列中作出决定，不会按名称自动对应。
+      </p>
+      <a className="button subtle" href="/parameter-admin/specs?review=open">
+        打开规范审核队列
+      </a>
       {loading && openTasks.length === 0 && historyTasks.length === 0 ? (
         <p className="form-hint">{PARAMETER_ADMIN_UI.identityMappingLoading}</p>
       ) : null}
@@ -101,12 +74,12 @@ export function OrganizationIdentityMappingPanel({
           {error}
         </p>
       ) : null}
-      {!loading && openTasks.length === 0 && historyTasks.length === 0 ? (
+      {!loading && !error && openTasks.length === 0 && historyTasks.length === 0 ? (
         <ParamAdminEmptyState message={PARAMETER_ADMIN_UI.identityMappingEmpty}>
-          <p>导入或同步项目 DTS 后，未能自动对齐的节点会出现在这里。</p>
+          <p>新的未知或歧义证据请前往规范审核队列查看。</p>
         </ParamAdminEmptyState>
       ) : (
-        <IdentityMappingReview tasks={tasks} onResolve={handleResolve} onReopen={handleReopen} />
+        <IdentityMappingReview tasks={tasks} />
       )}
     </section>
   );

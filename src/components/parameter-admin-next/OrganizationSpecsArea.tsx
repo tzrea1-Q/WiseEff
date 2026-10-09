@@ -60,8 +60,8 @@ export function OrganizationSpecsArea({
       .listMappingTasks()
       .then((tasks) => {
         if (cancelled) return;
-        const openCount = tasks.filter((task) => task.status === "open").length;
-        const historyCount = tasks.filter((task) => task.status !== "open").length;
+        const openCount = tasks.filter((task) => task.status === "open" || task.status === "dismissed").length;
+        const historyCount = tasks.length - openCount;
         applyMappingCounts(openCount, historyCount);
       })
       .catch((error: unknown) => {
@@ -81,8 +81,7 @@ export function OrganizationSpecsArea({
     parseParameterAdminSpecsSubView(pathname) ?? "library";
   const hasMappingSurface =
     mappingCounts.status === "error" ||
-    (mappingCounts.status === "ready" &&
-      (mappingCounts.openCount > 0 || mappingCounts.historyCount > 0));
+    (mappingCounts.status === "ready" && mappingCounts.openCount > 0);
   const showSpecsSubNav = mappingCounts.status === "loading" || hasMappingSurface;
   const activeSubView: ParameterAdminSpecsSubView =
     requestedSubView === "identity-mapping" &&
@@ -97,7 +96,9 @@ export function OrganizationSpecsArea({
       mappingCounts.status === "ready" &&
       !hasMappingSurface
     ) {
-      onNavigate(buildParameterAdminSpecsPath("library", search));
+      const params = new URLSearchParams(search);
+      params.set("review", "open");
+      onNavigate(buildParameterAdminSpecsPath("library", params.toString()));
     }
   }, [hasMappingSurface, mappingCounts.status, onNavigate, requestedSubView, search]);
 
