@@ -1774,7 +1774,8 @@ export function ProjectConfigurationWorkbench({
                     canAdmin={canAdmin}
                     onSelect={(revisionId) => revisionGate.session.select(revisionId)}
                     onValidate={() => {
-                      void revisionGate.session.validate(project.id, topologyRepository);
+                      // The session already surfaces the failure as its actionError.
+                      revisionGate.session.validate(project.id, topologyRepository).catch(() => undefined);
                     }}
                     onRetry={() => {
                       void revisionGate.session.load(

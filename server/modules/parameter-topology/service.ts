@@ -17,7 +17,7 @@ import { verifyEffectiveDriverParameterDefinitions } from "../parameter-specs/de
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
+import { ApiError, pinnedSourceGraphConflict } from "../../shared/http/errors";
 import { readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
 import {
   applyReviewedIdentityMapping,
@@ -60,6 +60,7 @@ import {
 import {
   getConfigRevisionById,
   getLatestConfigRevision,
+  isConfigRevisionSourcePinned,
   insertValidationDiagnostics,
   insertValidationRun,
   listConfigRevisionMembers,
@@ -1102,6 +1103,10 @@ export async function validateConfigRevision(
       projectId: input.projectId,
       revisionId: input.revisionId
     });
+  }
+
+  if (await isConfigRevisionSourcePinned(db, revision.id)) {
+    throw pinnedSourceGraphConflict();
   }
 
   const stage = input.stage ?? "toolchain";

@@ -1,3 +1,5 @@
+import pg from "pg";
+
 export type ApiErrorCode =
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
@@ -55,7 +57,23 @@ export class ApiError extends Error {
   }
 }
 
+export function pinnedSourceGraphConflict() {
+  return new ApiError(
+    "CONFLICT",
+    "This config revision is pinned by canonical source values and its source graph cannot be changed. Create a successor revision to validate changes.",
+    { reason: "pinned-source-graph-immutable" }
+  );
+}
+
+export function normalizeApiError(error: unknown): unknown {
+  if (error instanceof pg.DatabaseError && error.code === "55000" && error.message === "Pinned source graph is immutable") {
+    return pinnedSourceGraphConflict();
+  }
+  return error;
+}
+
 export function serializeApiError(error: unknown, requestId: string) {
+  error = normalizeApiError(error);
   if (error instanceof ApiError) {
     return {
       error: {

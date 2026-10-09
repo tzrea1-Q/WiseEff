@@ -464,6 +464,16 @@ function cryptoRandomId(): string {
   return randomUUID();
 }
 
+export async function isConfigRevisionSourcePinned(db: Queryable, revisionId: string): Promise<boolean> {
+  const result = await db.query<{ pinned: boolean }>(
+    `select exists (
+       select 1 from parameter_catalog.project_value_source_pins where config_revision_id = $1
+     ) as pinned`,
+    [revisionId]
+  );
+  return result.rows[0]?.pinned === true;
+}
+
 export async function getConfigRevisionById(
   db: Queryable,
   input: { organizationId: string; revisionId: string; projectId?: string; configSetId?: string },

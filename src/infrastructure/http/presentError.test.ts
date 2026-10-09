@@ -5,6 +5,12 @@ import { NETWORK_ERROR_MESSAGE, presentError, presentErrorMessage } from "./pres
 const FALLBACK = "操作失败，请稍后重试。";
 
 describe("presentError", () => {
+  it("explains the pinned source graph conflict instead of showing a generic retry", () => {
+    const error = new WiseEffApiError("CONFLICT", "Pinned source graph is immutable", {
+      reason: "pinned-source-graph-immutable"
+    }, "req-pin");
+    expect(presentError(error, FALLBACK)).toBe("该配置修订已被规范来源值固定，来源图不可更改。请创建后继修订后再校验。");
+  });
   it("maps network fetch failures to the network message", () => {
     expect(presentError(new TypeError("Failed to fetch"), FALLBACK)).toBe(NETWORK_ERROR_MESSAGE);
     expect(presentError(new TypeError("NetworkError when attempting to fetch a resource."), FALLBACK)).toBe(

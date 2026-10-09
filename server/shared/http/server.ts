@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
-import { ApiError, serializeApiError } from "./errors";
+import { ApiError, normalizeApiError, serializeApiError } from "./errors";
 import type { HttpMethod, RouteRequest, RouteResponse } from "./router";
 
 const allowedCorsOrigins = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
@@ -228,6 +228,7 @@ function isAllowedCorsOrigin(origin: string) {
 }
 
 function getErrorStatus(error: unknown) {
+  error = normalizeApiError(error);
   if (error instanceof Error && "status" in error) {
     const status = Number(error.status);
     if (Number.isFinite(status)) {
@@ -351,6 +352,7 @@ export function createHttpServer(
         response.destroy(error instanceof Error ? error : undefined);
         return;
       }
+      error = normalizeApiError(error);
       response.setHeader("X-Request-Id", requestId);
       const status = getErrorStatus(error);
       // Unexpected errors are hidden from the client as INTERNAL_ERROR; keep them diagnosable server-side.
