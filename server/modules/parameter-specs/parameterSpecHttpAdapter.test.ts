@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "../contracts/routeManifest";
+import { buildOpenApiDocument } from "../contracts/openapi";
+import { dtoSchemaCatalog } from "../contracts/dtoSchemas/catalog";
 import { handleLegacyCatalogRequest } from "../parameter-catalog-api/legacy";
+import { legacyDriverSchemaRetirementRouteManifest } from "../parameter-catalog-api/legacy/routes";
 import { createHttpServer } from "../../shared/http/server";
+import { createRouter } from "../../shared/http/router";
 import { buildWiseEffRouter } from "../../app";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
@@ -18,6 +22,35 @@ function fillRoutePath(path: string): string {
 }
 
 describe("parameter spec HTTP adapter", () => {
+  it("publishes an exact promotion history DTO without overlay state or mutation contracts", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v2/platform/driver-schema-promotion-history"].get?.operationId).toBe("parameterSpecs.listPromotionHistory");
+    const item = { id: "promotion", platformSchemaId: "platform", sourceSchemaId: "source",
+      sourceOrganizationId: "organization", promotedByUserId: null, promotedAt: "2026-10-01T12:00:00.000Z", documentationSource: null };
+    const schema = dtoSchemaCatalog.DriverSchemaPromotionHistoryListResponse;
+    expect(schema.safeParse({ items: [item] }).success).toBe(true);
+    expect(schema.safeParse({ items: [{ ...item, lifecycle: "active", equivalent: true }] }).success).toBe(false);
+    expect(Object.keys(document.paths["/api/v2/platform/driver-schema-promotion-history"])).toEqual(["get"]);
+  });
+
+  it.each(legacyDriverSchemaRetirementRouteManifest)("retires $method $path even when the module is registered independently", async (route) => {
+    const router = createRouter();
+    registerParameterSpecRoutes(router, {
+      getCurrentAuthContext: () => {
+        throw new Error("Retired overlay routes must not authenticate or query.");
+      },
+    });
+    const response = await requestJson(createHttpServer(router), fillRoutePath(route.path), {
+      method: route.method,
+      body: route.method === "GET" ? undefined : JSON.stringify({ invalid: true }),
+    });
+    expect(response.status).toBe(410);
+    expect(catalogLegacyGoneResponseSchema.parse(response.body).error.details).toEqual({
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
+    expect(response.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+  });
+
   it("returns typed 410 for retired Catalog writes through S8-LEG without wrapping router.handle", async () => {
     const write = routeManifest.find((route) => route.id === "parameterSpecs.create");
     expect(write).toBeDefined();

@@ -301,6 +301,7 @@ export const routeManifest = [
   { id: "parameterSpecs.previewOrganizationDriverSchemaDeprecation", method: "GET", path: "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.deprecateOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas/:schemaId/deprecate", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.listPromotionCandidates", method: "GET", path: "/api/v2/platform/driver-schemas/promotion-candidates", module: "parameters", stability: "mvp" },
+  { id: "parameterSpecs.listPromotionHistory", method: "GET", path: "/api/v2/platform/driver-schema-promotion-history", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.promoteDriverSchemaOverlay", method: "POST", path: "/api/v2/platform/driver-schemas/promotions", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.revertDriverSchemaPromotion", method: "POST", path: "/api/v2/platform/driver-schemas/promotions/:promotionId/revert", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.listProjects", method: "GET", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },

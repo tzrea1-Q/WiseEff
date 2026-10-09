@@ -21,11 +21,10 @@ const isReleaseDrift = (cause: unknown) =>
 const discoveryErrorMessage = (cause: unknown) =>
   isReleaseDrift(cause) ? unavailableText["release-drift"] : presentError(cause, "发现结果加载失败，请刷新。");
 
-export function CanonicalDriverDiscovery({ governance, organizationId, onNavigate, onAuthorOverlay, refreshKey = 0 }: {
+export function CanonicalDriverDiscovery({ governance, organizationId, onNavigate, refreshKey = 0 }: {
   governance: ParameterCatalogGovernanceRepository;
   organizationId: string;
   onNavigate?: (path: string) => void;
-  onAuthorOverlay?: (compatible: string) => void;
   refreshKey?: number;
 }) {
   const generation = useRef(0);
@@ -114,6 +113,9 @@ export function CanonicalDriverDiscovery({ governance, organizationId, onNavigat
       <div><h4>驱动兼容发现</h4><p className="muted">按来源观察记录展示完整 compatible 和规范识别结果。</p></div>
       <button type="button" className="button subtle" onClick={() => setRefresh((value) => value + 1)}>刷新发现</button>
     </div>
+    <p className="muted">组织覆盖解析编写已退役。覆盖变更请提交定义提案，并通过 Catalog 发布流程生效。{" "}
+      <a href={buildCatalogHref(EMPTY_CATALOG_URL_ANCHOR)}>前往 Catalog 提交定义提案</a>
+    </p>
     {error ? <p role="alert" className="parameter-module-mapping-panel__error">{error}</p> : null}
     {loading && !page ? <p role="status">正在读取发现结果…</p> : null}
     {loading && page ? <p role="status">正在读取下一页…</p> : null}
@@ -128,7 +130,6 @@ export function CanonicalDriverDiscovery({ governance, organizationId, onNavigat
               : <p>来源不可用：{item.source.reason}。不可按当前发现操作。</p>}
           {item.source.status === "current" ? <ul>{item.compatibles.map((entry, index) => <li key={`${entry.compatible}-${index}`}>
             <code>{entry.compatible}</code>{" "}
-            {onAuthorOverlay ? <button type="button" className="button subtle" onClick={() => onAuthorOverlay(entry.compatible)}>编写覆盖解析</button> : null}
             {entry.candidate.kind === "recognized" ? <>
               已识别主体 {entry.candidate.subjectId} · {entry.candidate.registrationId === null ? "尚未登记" : `登记 ${entry.candidate.registrationId}`}
               {onNavigate ? <button type="button" className="button subtle" onClick={() => navigate({ subjectId: entry.candidate.kind === "recognized" ? entry.candidate.subjectId : undefined })}>查看主体</button> : null}
