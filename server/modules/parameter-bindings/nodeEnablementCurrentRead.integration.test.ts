@@ -1,0 +1,173 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { createWiseEffServer } from "../../app";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
+import { requestJson } from "../../test/testClient";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
+import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetService";
+import { uploadProjectParameterFile } from "../parameter-files/service";
+import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "./catalogProjectValueSync";
+
+const organizationId = "org-1076";
+const projectId = "project-1076";
+const adminId = "admin-1076";
+const authorId = "author-1076";
+const admin = makeTestAuthContext({ userId: adminId, organizationId });
+const base = '/dts-v1/;\n/ { charger: charger { compatible = "acme,power"; iin_max = <1000>; status = "okay"; }; };\n';
+const overlay = '/dts-v1/;\n/plugin/;\n&charger { status = "okay"; };\n';
+
+describe("#1076 assembled-server node enablement current Binding read", () => {
+  let lane: EphemeralTestDatabase;
+  let db: RootDatabase;
+  let directory: string;
+  let server: ReturnType<typeof createWiseEffServer>;
+  let configSetId: string;
+  let revisionId: string;
+  let siblingRevisionId: string;
+
+  beforeAll(async () => {
+    lane = await createEphemeralTestDatabase("node-enablement-current-read");
+    db = createPostgresDatabase(lane.url);
+    directory = await mkdtemp(join(tmpdir(), "wiseeff-1076-"));
+    const storage = createLocalObjectStore(directory);
+    await seedCoreGraph(db, {
+      organization: { id: organizationId },
+      users: [{ id: adminId }, { id: authorId }],
+      projects: [{ id: projectId }]
+    });
+    await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values
+      ('role-admin-1076',$1,$2,null,'admin'), ('role-author-1076',$3,$2,$4,'software-user')`,
+    [adminId, organizationId, authorId, projectId]);
+    const driver = await installDriverSourceFixture(db, admin, {
+      subjectId: "csub_acme_power", compatible: "acme,power", businessName: "Power",
+      driverName: "Charger", idempotencyKey: "1076-driver", reason: "Node enablement current read fixture"
+    });
+    const configSet = await createConfigSet(db, admin, { projectId, name: "default" });
+    configSetId = configSet.id;
+    const baseFile = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "board.dts", bytes: Buffer.from(base) });
+    const overlayFile = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "overlay.dts", bytes: Buffer.from(overlay) });
+    await addConfigSetFile(db, admin, { configSetId, fileId: baseFile.file.id, role: "base", sortOrder: 0 });
+    await addConfigSetFile(db, admin, { configSetId, fileId: overlayFile.file.id, role: "overlay", sortOrder: 1 });
+    const revision = await ingestConfigRevision(db, {
+      organizationId, projectId, configSetId, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: ["overlay.dts"],
+      members: [
+        { fileId: baseFile.file.id, fileVersionId: baseFile.version.id, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: base },
+        { fileId: overlayFile.file.id, fileVersionId: overlayFile.version.id, fileName: "overlay.dts", sourceName: "overlay.dts", role: "overlay", sortOrder: 1, content: overlay }
+      ]
+    }, admin, { legacyProjection: "skip" });
+    revisionId = revision.id;
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Canonical fixture requires a published Catalog");
+    await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
+      organizationId, projectId, configSetId, configRevisionId: revisionId
+    }));
+    const node = (await db.query<{ logical_node_id: string }>(
+      "select logical_node_id from dts_logical_node_revisions where config_revision_id = $1 and name = 'charger'", [revisionId]
+    )).rows[0]!;
+    await seedSpecBindingGraph(db, {
+      organizationId,
+      specs: [{ id: "historical-iin-1076", specificationKey: "acme/iin_max", versions: [{ id: "historical-iin-version-1076", displayName: "Historical current limit" }] }],
+      bindings: [{ id: "historical-binding-1076", projectId, parameterSpecId: "historical-iin-1076", moduleId: driver.driverModuleId,
+        logicalNodeId: node.logical_node_id, revisions: [{ id: "historical-binding-revision-1076", configRevisionId: revisionId,
+          parameterSpecVersionId: "historical-iin-version-1076", rawValue: "<1000>" }] }]
+    });
+    const siblingSet = await createConfigSet(db, admin, { projectId, name: "sibling" });
+    const siblingSource = '/dts-v1/;\n/ { sibling: sibling { compatible = "acme,power"; iin_max = <2000>; }; };\n';
+    const siblingFile = await uploadProjectParameterFile(db, storage, admin, {
+      projectId, fileName: "sibling.dts", bytes: Buffer.from(siblingSource)
+    });
+    await addConfigSetFile(db, admin, { configSetId: siblingSet.id, fileId: siblingFile.file.id, role: "base", sortOrder: 0 });
+    const siblingRevision = await ingestConfigRevision(db, {
+      organizationId, projectId, configSetId: siblingSet.id, entryFile: "sibling.dts", includeSearchPaths: ["."], overlayOrder: [],
+      members: [{ fileId: siblingFile.file.id, fileVersionId: siblingFile.version.id, fileName: "sibling.dts", sourceName: "sibling.dts", role: "base", sortOrder: 0, content: siblingSource }]
+    }, admin, { legacyProjection: "skip" });
+    siblingRevisionId = siblingRevision.id;
+    await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
+      organizationId, projectId, configSetId: siblingSet.id, configRevisionId: siblingRevisionId
+    }));
+    server = createWiseEffServer({ db, objectStore: storage });
+  });
+
+  afterAll(async () => {
+    await db?.close();
+    await lane?.drop();
+    if (directory) await rm(directory, { recursive: true, force: true });
+  });
+
+  const read = <Body>(path: string, userId = authorId) => requestJson<Body>(server, path, { headers: { "X-WiseEff-User": userId } });
+
+  it("keeps current Bindings and immutable pins while a separate structural draft is staged", async () => {
+    const path = `/api/v2/projects/${projectId}/parameter-bindings`;
+    const before = await read<{ items: Array<{ id: string; propertyKey: string; currentValueId: string }> }>(`${path}?revisionId=${revisionId}`);
+    expect(before.status).toBe(200);
+    expect(before.body.items).toHaveLength(1);
+    expect(before.body.items[0]?.propertyKey).toBe("iin_max");
+    const allBefore = await read<typeof before.body>(path);
+    expect(allBefore.body.items).toHaveLength(2);
+    const siblingBefore = await read<typeof before.body>(`${path}?revisionId=${siblingRevisionId}`);
+    expect(siblingBefore.body.items).toHaveLength(1);
+    expect(siblingBefore.body.items[0]?.id).not.toBe(before.body.items[0]?.id);
+    const countsBefore = (await db.query(`select
+      (select count(*) from parameter_catalog.parameter_definitions) as definitions,
+      (select count(*) from parameter_catalog.project_parameter_bindings where project_id = $1) as bindings,
+      (select count(*) from parameter_catalog.project_parameter_values value
+       join parameter_catalog.project_parameter_bindings binding on binding.id = value.binding_id
+       where binding.project_id = $1) as values`, [projectId])).rows;
+    const identityBefore = (await db.query(`select b.id, b.definition_id, b.current_value_id, p.*
+      from parameter_catalog.current_project_parameter_bindings b
+      join parameter_catalog.project_value_source_pins p on p.project_value_id = b.current_value_id
+      where b.project_id = $1 order by b.id`, [projectId])).rows;
+    const topology = await read<{ item: { nodes: Array<{ name: string; logicalNodeId: string }> } }>(
+      `/api/v2/projects/${projectId}/config-sets/${configSetId}/revisions/${revisionId}/topology?view=effective`
+    );
+    expect(topology.status).toBe(200);
+    const node = topology.body.item.nodes.find((item) => item.name === "charger");
+    expect(node).toBeDefined();
+    const staged = await requestJson<{ item: { draftId: string; candidateRevisionId: string } }>(server,
+      `/api/v2/projects/${projectId}/node-enablement-drafts`, {
+        method: "POST", headers: { "X-WiseEff-User": authorId },
+        body: JSON.stringify({ logicalNodeId: node!.logicalNodeId, baseRevisionId: revisionId, target: "force-disabled", reason: "Keep current parameters visible" })
+      });
+    expect(staged.status, JSON.stringify(staged.body)).toBe(201);
+    expect(staged.body.item.candidateRevisionId).not.toBe(revisionId);
+    const after = await read<typeof before.body>(`${path}?revisionId=${staged.body.item.candidateRevisionId}`);
+    expect(after.status).toBe(200);
+    expect(after.body.items).toEqual(before.body.items);
+    expect((await read<typeof before.body>(path)).body.items).toEqual(allBefore.body.items);
+    expect((await read<typeof before.body>(`${path}?revisionId=${siblingRevisionId}`)).body.items).toEqual(siblingBefore.body.items);
+    expect((await db.query(`select
+      (select count(*) from parameter_catalog.parameter_definitions) as definitions,
+      (select count(*) from parameter_catalog.project_parameter_bindings where project_id = $1) as bindings,
+      (select count(*) from parameter_catalog.project_parameter_values value
+       join parameter_catalog.project_parameter_bindings binding on binding.id = value.binding_id
+       where binding.project_id = $1) as values`, [projectId])).rows).toEqual(countsBefore);
+    expect((await db.query(`select b.id, b.definition_id, b.current_value_id, p.*
+      from parameter_catalog.current_project_parameter_bindings b
+      join parameter_catalog.project_value_source_pins p on p.project_value_id = b.current_value_id
+      where b.project_id = $1 order by b.id`, [projectId])).rows).toEqual(identityBefore);
+    const drafts = await read<{ items: Array<{ id: string; editSubjectKind: string; projectParameterBindingId: string | null; parameterSpecId: string | null }> }>(
+      `/api/v1/parameter-drafts/mine?projectId=${projectId}`
+    );
+    expect(drafts.status).toBe(200);
+    expect(drafts.body.items).toEqual([expect.objectContaining({
+      id: staged.body.item.draftId, editSubjectKind: "node-enablement"
+    })]);
+    expect(drafts.body.items[0]).not.toHaveProperty("projectParameterBindingId");
+    expect(drafts.body.items[0]).not.toHaveProperty("parameterSpecId");
+    expect((await db.query(`select edit_subject_kind, project_parameter_binding_id, project_parameter_value_id
+      from parameter_drafts where id = $1`, [staged.body.item.draftId])).rows).toEqual([{
+      edit_subject_kind: "node-enablement", project_parameter_binding_id: null, project_parameter_value_id: null
+    }]);
+    expect((await read<{ items: unknown[] }>(`/api/v2/projects/${projectId}/parameter-value-drafts`)).body.items).toEqual([]);
+    expect((await read<typeof before.body>(`${path}?revisionId=unknown-revision`)).body.items).toEqual([]);
+    expect((await read(path, "unknown-user-1076")).status).toBe(401);
+  });
+});
