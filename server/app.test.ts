@@ -1,4 +1,7 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES, DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES,
   createWiseEffServer, resolveRouteBodyLimit } from "./app";
@@ -13,10 +16,22 @@ import {
 } from "./modules/contracts/dtoSchemas/parameterCatalog";
 import { createMetricsRegistry } from "./observability/metrics";
 import type { AuthContext } from "./modules/auth/types";
+import { createUserInvocation } from "./modules/auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink";
+import { createLocalObjectStore } from "./modules/logs/objectStore";
+import { loadPublishedCatalog } from "./modules/parameter-bindings/catalogProjectValueSync";
+import { registerCanonicalJsonSource } from "./modules/parameter-files/canonicalJsonSource";
+import { addConfigSetFile, createConfigSet } from "./modules/parameter-files/configSetService";
+import { uploadProjectParameterFile } from "./modules/parameter-files/service";
+import { createProject } from "./modules/projects/repository";
+import { createPostgresDatabase, getRootPostgresPool } from "./shared/database/client";
 import type { Database, QueryResult } from "./shared/database/client";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { MAX_PARAMETER_SOURCE_BYTES } from "./modules/parameter-files/jsonSource";
 import { requestJson } from "./test/testClient";
+import { makeTestAuthContext } from "./testing/authContext";
+import { countLegacyProjectBindings, installConfigurationSourceFixture } from "./testing/parameterCatalog/configurationSource";
+import { createEphemeralTestDatabase } from "./testing/testDatabase";
 
 type QueryCall = {
   text: string;
@@ -261,25 +276,6 @@ function createDevelopmentLocalAuthDb() {
   const roles = new Map<string, Array<{ projectId: string | null; roleId: string }>>();
   const sessions = new Map<string, { id: string; userId: string; organizationId: string; tokenHash: string; expiresAt: string; revokedAt: string | null }>();
   const projects = [{ id: "aurora", name: "Aurora", code: "AUR", organizationId: "org-chargelab" }];
-  const parameters = [
-    {
-      id: "ppv-1",
-      project_id: "aurora",
-      organizationId: "org-chargelab",
-      name: "Charge Limit",
-      description: "Limit charging current",
-      explanation: "Protects charge hardware",
-      config_format: "json",
-      module: "BMS",
-      default_range: "0-100",
-      unit: "A",
-      risk: "High",
-      current_value: "80",
-      recommended_value: "75",
-      updated_at: "2026-06-12T00:00:00.000Z"
-    }
-  ];
-
   const db: Database = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       const normalized = text.replace(/\s+/g, " ").trim();
@@ -392,15 +388,6 @@ function createDevelopmentLocalAuthDb() {
         const rows = projects
           .filter((project) => project.organizationId === organizationId)
           .map(({ organizationId: _organizationId, ...project }) => project);
-        return { rows: rows as Row[], rowCount: rows.length };
-      }
-
-      if (normalized.includes("from project_parameter_values ppv")) {
-        const organizationId = values[0] as string;
-        const projectId = values.find((value) => value === "aurora") as string | undefined;
-        const rows = parameters
-          .filter((parameter) => parameter.organizationId === organizationId && (!projectId || parameter.project_id === projectId))
-          .map(({ organizationId: _organizationId, ...parameter }) => parameter);
         return { rows: rows as Row[], rowCount: rows.length };
       }
 
@@ -766,49 +753,88 @@ describe("WiseEff API", () => {
   });
 
   it("registers local accounts into ChargeLab regardless of NODE_ENV", async () => {
-    const db = createDevelopmentLocalAuthDb();
-    const server = () =>
-      createWiseEffServerFromEnv({
-        db,
-        env: loadServerEnv({
-          NODE_ENV: "development",
-          AUTH_MODE: "production",
-          AUTH_PROVIDER: "local"
-        })
+    const database = await createEphemeralTestDatabase("localregister");
+    const db = createPostgresDatabase(database.url);
+    const directory = await mkdtemp(join(tmpdir(), "wiseeff-local-register-"));
+    const objectStore = createLocalObjectStore(directory);
+    try {
+      const organizationId = "org-chargelab";
+      const admin = makeTestAuthContext({ userId: "local-register-admin", organizationId });
+      await db.query("insert into organizations(id,name) values ($1,'ChargeLab')", [organizationId]);
+      await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Registration admin','Admin',true)",
+        [admin.user.id, organizationId]);
+      await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('local-register-admin-role',$1,$2,null,'admin')",
+        [admin.user.id, organizationId]);
+      await createProject(db, { organizationId, id: "aurora", name: "Aurora", code: "AUR" });
+      const schemaId = "wiseeff.localregister";
+      const definitionId = "pdef_acme_power_iin_max";
+      await installConfigurationSourceFixture(db, admin, { subjectId: "csub_localregister", schemaId });
+      const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+      if (!snapshot) throw new Error("Local registration requires a published Catalog fixture");
+      const configSet = await createConfigSet(db, admin, { projectId: "aurora", name: "default" });
+      const uploaded = await uploadProjectParameterFile(db, objectStore, admin, {
+        projectId: "aurora", fileName: "settings.json", bytes: Buffer.from('{"limit":80}\n')
+      });
+      await addConfigSetFile(db, admin, { configSetId: configSet.id, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
+      const source = await db.transaction((tx) => registerCanonicalJsonSource(tx, objectStore, admin, snapshot, {
+        projectId: "aurora", configSetId: configSet.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+        configurationSchemaId: schemaId, rootPointer: "", mappings: [{ definitionId, pointer: "/limit" }],
+        invocation: createUserInvocation(admin), requestId: "local-register-source",
+        refusalSink: createTrustedRefusalAuditSink(db)
+      }));
+      expect(source.bindings).toHaveLength(1);
+      expect(await countLegacyProjectBindings(db, { organizationId, projectIds: ["aurora"] })).toBe(0);
+      const server = () =>
+        createWiseEffServerFromEnv({
+          db,
+          objectStore,
+          env: loadServerEnv({
+            NODE_ENV: "development",
+            AUTH_MODE: "production",
+            AUTH_PROVIDER: "local"
+          })
+        });
+
+      const registered = await requestJson<{ token: string; auth: { organization: { id: string; name: string } } }>(
+        server(),
+        "/api/v1/auth/register",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "Demo Hardware User",
+            username: "demo.hardware",
+            roleId: "hardware-user",
+            password: "strong-password"
+          })
+        }
+      );
+      expect(registered.status).toBe(201);
+      expect(registered.body.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
+
+      const projects = await requestJson<{ items: Array<{ id: string }> }>(server(), "/api/v1/projects", {
+        headers: { Authorization: `Bearer ${registered.body.token}` }
+      });
+      const parameters = await requestJson<{ items: Array<{ id: string }> }>(server(), "/api/v1/parameters?projectId=aurora", {
+        headers: { Authorization: `Bearer ${registered.body.token}` }
+      });
+      const catalog = await requestJson<{ error?: { code: string } }>(server(), "/api/v2/catalog", {
+        headers: { Authorization: `Bearer ${registered.body.token}` }
       });
 
-    const registered = await requestJson<{ token: string; auth: { organization: { id: string; name: string } } }>(
-      server(),
-      "/api/v1/auth/register",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name: "Demo Hardware User",
-          username: "demo.hardware",
-          roleId: "hardware-user",
-          password: "strong-password"
-        })
-      }
-    );
-    expect(registered.status).toBe(201);
-    expect(registered.body.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
-
-    const projects = await requestJson<{ items: Array<{ id: string }> }>(server(), "/api/v1/projects", {
-      headers: { Authorization: `Bearer ${registered.body.token}` }
-    });
-    const parameters = await requestJson<{ items: Array<{ id: string }> }>(server(), "/api/v1/parameters?projectId=aurora", {
-      headers: { Authorization: `Bearer ${registered.body.token}` }
-    });
-    const catalog = await requestJson<{ error?: { code: string } }>(server(), "/api/v2/catalog", {
-      headers: { Authorization: `Bearer ${registered.body.token}` }
-    });
-
-    expect(projects.status).toBe(200);
-    expect(projects.body.items.map((item) => item.id)).toEqual(["aurora"]);
-    expect(parameters.status).toBe(200);
-    expect(parameters.body.items).toHaveLength(1);
-    expect(catalog.status).not.toBe(401);
-  });
+      expect(projects.status).toBe(200);
+      expect(projects.body.items.map((item) => item.id)).toEqual(["aurora"]);
+      expect(parameters.status).toBe(200);
+      expect(parameters.body.items).toHaveLength(1);
+      expect(parameters.body.items).toEqual([expect.objectContaining({
+        id: source.bindings[0]!.id, definitionId, projectId: "aurora", currentValue: "80\n"
+      })]);
+      expect(catalog.status).not.toBe(401);
+    } finally {
+      await db.close();
+      await database.drop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("ignores a retired department organization field on local register", async () => {
     const registered = await requestJson<{ auth: { organization: { id: string; name: string } } }>(
