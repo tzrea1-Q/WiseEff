@@ -16,6 +16,7 @@ export type ProjectAdminSummaryDto = {
   parameterCount: number;
   openConflictCount: number;
   releasedBaselineCount: number;
+  canonicalOwned: boolean;
   updatedAt: string;
 };
 

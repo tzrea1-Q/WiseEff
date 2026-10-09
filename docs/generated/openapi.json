@@ -3742,7 +3742,7 @@
       },
       "delete": {
         "operationId": "parameters.deleteAdminProject",
-        "summary": "Delete a project and its parameter-management data (cascade)",
+        "summary": "Delete an empty or legacy-only project; retain canonical project history",
         "tags": [
           "parameters"
         ],
@@ -3774,6 +3774,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -17392,10 +17395,175 @@
       },
       "ProjectAdminListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "initializationStatus": {
+                  "type": "string"
+                },
+                "moduleCount": {
+                  "type": "number"
+                },
+                "parameterCount": {
+                  "type": "number"
+                },
+                "openConflictCount": {
+                  "type": "number"
+                },
+                "releasedBaselineCount": {
+                  "type": "number"
+                },
+                "canonicalOwned": {
+                  "type": "boolean"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "code",
+                "status",
+                "initializationStatus",
+                "moduleCount",
+                "parameterCount",
+                "openConflictCount",
+                "releasedBaselineCount",
+                "canonicalOwned",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ProjectAdminListResponse"
       },
       "ProjectAdminDetailResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "initializationStatus": {
+                "type": "string"
+              },
+              "moduleCount": {
+                "type": "number"
+              },
+              "parameterCount": {
+                "type": "number"
+              },
+              "openConflictCount": {
+                "type": "number"
+              },
+              "releasedBaselineCount": {
+                "type": "number"
+              },
+              "canonicalOwned": {
+                "type": "boolean"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "parentId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "parameterModuleId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "projectId",
+                    "name",
+                    "sortOrder"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "code",
+              "status",
+              "initializationStatus",
+              "moduleCount",
+              "parameterCount",
+              "openConflictCount",
+              "releasedBaselineCount",
+              "canonicalOwned",
+              "updatedAt",
+              "modules"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ProjectAdminDetailResponse"
       },
       "CreateProjectRequest": {
@@ -17404,6 +17572,64 @@
       },
       "ProjectAdminSummaryResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "initializationStatus": {
+                "type": "string"
+              },
+              "moduleCount": {
+                "type": "number"
+              },
+              "parameterCount": {
+                "type": "number"
+              },
+              "openConflictCount": {
+                "type": "number"
+              },
+              "releasedBaselineCount": {
+                "type": "number"
+              },
+              "canonicalOwned": {
+                "type": "boolean"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "code",
+              "status",
+              "initializationStatus",
+              "moduleCount",
+              "parameterCount",
+              "openConflictCount",
+              "releasedBaselineCount",
+              "canonicalOwned",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ProjectAdminSummaryResponse"
       },
       "UpdateProjectRequest": {

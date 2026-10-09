@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import type { ParameterAdminProjectRow } from "@/parameterAdminProjects";
 import { ProjectAdminTable } from "./ProjectAdminTable";
+import { mapProjectAdminSummaryDto } from "@/parameterAdminProjects";
 
 const rows: ParameterAdminProjectRow[] = [
   {
@@ -71,6 +72,22 @@ function renderTable(overrides: {
 }
 
 describe("ProjectAdminTable", () => {
+  it("gates canonical project Delete with the retention policy while empty Delete stays enabled", async () => {
+    const canonical = mapProjectAdminSummaryDto({ ...rows[0], canonicalOwned: true });
+    const empty = mapProjectAdminSummaryDto({ ...rows[1], parameterCount: 0, canonicalOwned: false });
+    const { onDeleteProject } = renderTable({ rows: [canonical, empty] });
+    const disabledDelete = screen.getByRole("button", { name: `删除 ${canonical.name}` });
+    expect(disabledDelete).toBeDisabled();
+    expect(disabledDelete).toHaveAccessibleDescription("项目需保留规范历史，不能删除；归档或处置功能尚未开放。");
+    expect(screen.getByText("项目需保留规范历史，不能删除；归档或处置功能尚未开放。")).toBeVisible();
+    await userEvent.click(disabledDelete);
+    expect(onDeleteProject).not.toHaveBeenCalled();
+    const emptyDelete = screen.getByRole("button", { name: `删除 ${empty.name}` });
+    expect(emptyDelete).toBeEnabled();
+    await userEvent.click(emptyDelete);
+    expect(onDeleteProject).toHaveBeenCalledWith(empty.id);
+  });
+
   it("exposes the controlled project-name sort through the table header", async () => {
     const { onUpdateSearch } = renderTable();
     const table = screen.getByRole("table", { name: "项目管理列表" });

@@ -27,6 +27,8 @@ The product owner locked these policy choices on 2026-08-31:
 - An Organization Admin owns registrations, placements, review resolutions, and proposal submission for their home Organization. A Platform Admin reviews publication proposals and may read cross-Organization diagnostics, but does not mutate Organization structure. A person cannot accept their own proposal.
 - Legacy structural writes retire when the canonical namespace launches. Eligible legacy reads remain for at least two production releases or 90 days, whichever is later, and retire only after every exit gate in this document passes.
 
+Knowledge Definition chips use `/parameters/definitions?definitionId=<opaque-id>` for readers without parameter-admin access. This canonical Catalog surface is read-only, preserves exact Definition identities and release pins through navigation, and uses the existing authorized Catalog read APIs. Admins retain `/parameter-admin/specs`. If a Definition is unavailable to the session or no readable destination is provided, the chip remains non-navigable with an accessible explanation. This does not grant admin or publication permissions or change backend authorization.
+
 ## Decision basis
 
 The contract was reconciled against current `origin/main` at `406c23bcaf0dcfca284de3135e27bfcd19c29c4e` and these accepted Wayfinder inputs. An accepted decision commit is design evidence even when it has not yet been integrated into `main`; this document does not claim otherwise.
@@ -147,6 +149,8 @@ Every route below is a target contract, not current implementation evidence.
 Config-set release readiness reads pending canonical value change requests alongside the retained legacy workflow count. Source-occurrence requests count only for the config set whose source cohort they touch; project-only requests block all config sets in that project. Approval, rejection, or withdrawal clears the pending-change blocker without a legacy change-request mirror. Node-enablement workflows retain their separate rules.
 
 Baseline creation and release consume the same readiness gate. Its token includes the exact pending canonical request IDs, so confirmation against an evaluation made before new pending work appeared is refused as stale. Readiness never synchronizes or creates legacy identity-mapping tasks; retained historical tasks are read only.
+
+Both baseline writes lock their config-set row `FOR UPDATE`, matching canonical submission and source-writer serialization. Inside that transaction, before writing, they re-evaluate readiness and compare the confirmed token, including the cohort's exact pending canonical request IDs. A competing submission either commits before this check and makes the token stale, or waits until the baseline write commits. The preliminary readiness and release-validation checks remain outside the write transaction so their existing audit evidence survives a refused write; they do not authorize the final mutation.
 
 ### Shared module assignment
 
@@ -653,6 +657,14 @@ The accepted one-page experience has an API-distinguishable state for every prod
 | Retired/deprecated | Explicit membership/definition/registration lifecycle on requested detail/filter | Historical read remains; new matching/binding rules are disabled as specified. |
 | Review placement choice | Unresolved Review Item ETag, current release anchor, allowed `register-subject` resolution | An Org Admin must explicitly select `use-default` or `choose-parent`; no preselected or inferred parent. |
 | Review resolution conflict | 409 with `placement-conflict`, `invalid-placement-parent`, `release-drift`, or `revision-conflict` | Preserve the user's selection, refresh the release/item/placement evidence, and require reconfirmation; show no partial Registration. |
+
+## Canonical project deletion gate (#1070 / #1074)
+
+Project operations list/detail responses expose the server-derived `canonicalOwned` boolean. It is true when the tenant-scoped project has any canonical Binding, Project value, or source pin, including retained history; displayed parameter counts are not an ownership test.
+
+`DELETE /api/v1/parameters/admin/projects/:projectId` refuses owned projects with HTTP 409 `CONFLICT`, `details.reason = "canonical-project-retained"`, and `details.projectId`. The authenticated invocation owns the `project-delete-refused` audit; it commits before the refusal is returned. No project, canonical, legacy, or source rows change. Delete is disabled with a visible, accessible explanation that canonical history must be retained and archive/disposal are not yet available.
+
+Ownership is re-read in a separate statement after acquiring the project row lock in the deletion transaction, so a canonical writer that commits while deletion waits is included. Empty and legacy-only projects retain their existing deletion path. This gate does not add archive, retirement, or privileged disposal, and does not alter FK or pinned-source protections.
 
 ## OpenAPI and frontend follow-up impact
 

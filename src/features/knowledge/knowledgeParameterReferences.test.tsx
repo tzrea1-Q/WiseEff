@@ -38,6 +38,19 @@ function renderKnowledgePage(overrides: Partial<Parameters<typeof KnowledgePage>
 }
 
 describe("knowledge entry detail reference chips", () => {
+  it.each(["current", "unavailable"] as const)("explains a non-navigable %s Definition chip", (availability) => {
+    render(<KnowledgeParameterReferenceChips references={[{
+      kind: "definition", definitionId: activeDefinition.id, availability,
+      propertyKey: activeDefinition.propertyKey, displayName: activeDefinition.currentRevision.displayName,
+      driverModule: activeDefinition.subject.canonicalName, lifecycle: "active",
+      createdByUserId: "u-xu-yun", createdAt: "2026-10-09T00:00:00.000Z"
+    }]} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByTitle(availability === "unavailable"
+      ? "当前会话无法读取该定义，引用保留但无法打开。"
+      : "当前会话未提供可访问的参数定义读取入口。"))
+      .toHaveAccessibleName(expect.stringContaining(activeDefinition.currentRevision.displayName));
+  });
   it("navigates only current canonical identities and keeps unavailable identities visible", async () => {
     const onOpenDefinition = vi.fn();
     render(<KnowledgeParameterReferenceChips onOpenDefinition={onOpenDefinition} references={[

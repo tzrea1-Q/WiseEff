@@ -27,6 +27,8 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 - Organization Admin 管理本 Organization 的 registration、placement、review resolution 和 proposal submission。Platform Admin 审核 publication proposal，可跨 Organization 读取诊断，但不能修改 Organization 结构。任何人都不能接受自己提交的 proposal。
 - 规范命名空间上线时立即退役 legacy 结构写接口。符合条件的 legacy 读接口至少保留两个生产发布或 90 天，取较晚者；且只有本页全部退出门槛通过后才可退役。
 
+Knowledge Definition 引用对没有参数后台访问权限的读者使用 `/parameters/definitions?definitionId=<opaque-id>`。该规范 Catalog 页面只读，导航保持精确 Definition 身份与 release pin，并复用现有授权 Catalog 读取 API。管理员继续使用 `/parameter-admin/specs`。如果当前会话无法读取 Definition，或未提供可读入口，引用不允许导航，并提供可访问的原因说明。此行为不授予管理员或发布权限，也不改变后端授权。
+
 ## 决策依据
 
 本合同对照 `406c23bcaf0dcfca284de3135e27bfcd19c29c4e` 的 current `origin/main`，并使用以下已接受的 Wayfinder 输入完成校核。尚未集成到 `main` 的 accepted decision commit 只能作为设计证据；本页不会把它误报成 `main` 当前实现。
@@ -147,6 +149,8 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 配置集的发布就绪检查同时读取待审核的规范值变更请求和保留的旧工作流计数。面向源 occurrence 的请求只计入其触及的源 cohort 所属配置集；仅面向项目的请求阻止该项目所有配置集发布。批准、拒绝或撤回后，待处理变更阻塞解除，不创建旧变更请求镜像。节点启用工作流保留各自的规则。
 
 基线创建和发布使用同一就绪门禁。门禁 token 包含待审核规范请求的确切 ID，因此在评估后出现新待审核工作时，使用旧评估确认会被判为过期并拒绝。就绪检查不再同步或创建旧身份映射任务；保留的历史任务仅被读取。
+
+两种基线写入都通过 `FOR UPDATE` 锁定所属配置集行，与规范提交和源写入使用同一串行化边界。在该事务内、写入之前，重新评估就绪状态并比较已确认的 token，包括该 cohort 待审核规范请求的确切 ID。并发提交要么先提交，使此次检查判定 token 过期；要么等待基线写入提交。预检查和发布验证仍在写入事务之外执行，确保写入被拒绝后原有审计证据保留；它们不能授权最终写入。
 
 ### 共享模块归属
 
@@ -653,6 +657,14 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 | Retired/deprecated | 指定 detail/filter 返回明确 membership/definition/registration lifecycle | 历史读保留；按合同禁用新 matching/binding。 |
 | Review placement choice | unresolved Review Item ETag、current release anchor、允许的 `register-subject` resolution | Org Admin 必须显式选择 `use-default` 或 `choose-parent`；不得预选或推断 parent。 |
 | Review resolution conflict | 409，reason 为 `placement-conflict`、`invalid-placement-parent`、`release-drift` 或 `revision-conflict` | 保留用户 selection，刷新 release/item/placement evidence，并要求重新确认；不得展示部分 Registration。 |
+
+## 规范项目删除门禁（#1070 / #1074）
+
+项目运营列表及详情响应提供服务端计算的 `canonicalOwned` 布尔值。租户范围内的项目只要存在任何规范 Binding、Project value 或来源固定记录（包括保留的历史），该值即为 true；显示的参数数量不能用来判断规范所有权。
+
+`DELETE /api/v1/parameters/admin/projects/:projectId` 对规范所有项目返回 HTTP 409 `CONFLICT`，并携带 `details.reason = "canonical-project-retained"` 和 `details.projectId`。`project-delete-refused` 审计的身份来自已认证调用，且在返回拒绝前提交。项目、规范、旧版及来源数据行均不改变。界面禁用删除，并提供可见、可访问的说明：规范历史必须保留，归档或处置功能尚未开放。
+
+删除事务获取项目行锁后，通过独立语句重新读取所有权，以包含等待锁期间规范写入者已提交的数据。空项目及仅含旧版数据的项目保留原有删除路径。此门禁不新增归档、退役或特权处置，也不修改外键及固定来源保护。
 
 ## OpenAPI 与前端后续影响
 
