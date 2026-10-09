@@ -172,7 +172,7 @@ describe("parameter spec HTTP adapter", () => {
     expect(catalogLegacyGoneResponseSchema.parse(overlay.body).error.details.reason).toBe("legacy-surface-retired");
   });
 
-  it("keeps spec detail reads but retires review resolve and activate", async () => {
+  it("keeps effective spec detail reads but retires governance detail, review resolve and activate", async () => {
     const { router } = buildWiseEffRouter();
     registerParameterSpecRoutes(router, {
       getCurrentAuthContext: () =>
@@ -182,6 +182,7 @@ describe("parameter spec HTTP adapter", () => {
     });
     const server = createHttpServer(router);
     const kept = [
+      { method: "GET" as const, path: "/api/v2/parameter-specs/spec-adapter?view=effective" },
       { method: "GET" as const, path: "/api/v2/parameter-specs/spec-adapter?view=governance" },
       { method: "POST" as const, path: "/api/v2/parameter-spec-review-tasks/task-adapter/resolve" },
       { method: "POST" as const, path: "/api/v2/parameter-specs/spec-adapter/activate" },
@@ -191,7 +192,7 @@ describe("parameter spec HTTP adapter", () => {
         method: route.method,
         body: route.method === "POST" ? JSON.stringify({}) : undefined,
       });
-      if (route.method === "GET") {
+      if (route.method === "GET" && route.path.endsWith("view=effective")) {
         expect(response.status, route.path).not.toBe(410);
       } else {
         expect(response.status, route.path).toBe(410);
