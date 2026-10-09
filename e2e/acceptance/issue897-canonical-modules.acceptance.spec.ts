@@ -21,6 +21,34 @@ useBrowserDiagnostics(test, { expectedApiFailures });
 const organizationId = "org-chargelab";
 const projectId = "issue897-project";
 
+test("Issue 1064: seeded canonical modules render without organization overlays", async ({ page }, info) => {
+  const overlayRequests: string[] = [];
+  page.on("request", request => {
+    if (request.method() === "GET" && request.url().includes("/organization-driver-schemas")) {
+      overlayRequests.push(new URL(request.url()).pathname);
+    }
+  });
+  const registrationsResponse = page.waitForResponse(response =>
+    response.request().method() === "GET" &&
+    /\/subject-registrations$/.test(new URL(response.url()).pathname) && response.status() === 200
+  );
+  await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
+  const registrations = await (await registrationsResponse).json();
+  expect(registrations.items.length).toBeGreaterThan(0);
+  const canonical = page.getByRole("region", { name: "规范主体归属" });
+  await expect(canonical.getByRole("list", { name: "规范主体列表" })).toBeVisible();
+  await expect(canonical).toContainText("归属：");
+  const tree = page.getByRole("tree", { name: "模块归属树" });
+  await expect.poll(() => tree.getByRole("treeitem").count()).toBeGreaterThan(0);
+  await expect(page.getByText("没有匹配的模块。", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("正在加载模块注册表…", { exact: true })).toHaveCount(0);
+  expect(overlayRequests).toEqual([]);
+  await canonical.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("issue1064-canonical-registrations-1440x900.png"), animations: "disabled" });
+  await tree.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("issue1064-canonical-tree-1440x900.png"), animations: "disabled" });
+});
+
 test.describe("Issue 897 canonical module ownership", () => {
   const environment = captureProcessEnvForDisposableRuntime();
   let runtime: DisposablePostCutoverRuntime;
