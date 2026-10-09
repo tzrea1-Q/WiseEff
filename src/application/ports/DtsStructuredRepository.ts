@@ -160,6 +160,7 @@ export type DtsReleaseReadinessIssue = {
   remediation: {
     kind: DtsReleaseReadinessRemediationKind;
     label: string;
+    href?: string;
   };
   acknowledgementRequired?: boolean;
   acknowledged?: boolean;
@@ -219,6 +220,7 @@ export type DtsRollbackBaselineResult = {
 
 export type DtsRestorePreviewMember = {
   fileId: string;
+  canonicalOwned: boolean;
   fileName?: string;
   fromVersionId: string | null;
   fromVersionNumber?: number;

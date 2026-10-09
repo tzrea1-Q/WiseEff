@@ -12,6 +12,8 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerParameterSpecRoutes } from "./routes";
+import { createWiseEffServer } from "../../app";
+import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { activateParameterSpec } from "./service";
 
 const ORG_A = "org-global-activate-a";
@@ -162,7 +164,7 @@ describe.skipIf(!databaseAvailable)("global spec activation authz", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 } satisfies Partial<ApiError>);
   });
 
-  it("HTTP activate of global draft is rejected; read of active global still works", async () => {
+  it("assembled HTTP activate is retired; read of active global still works", async () => {
     const auth = makeAuth(ORG_A, USER_A);
     const router = createRouter();
     registerParameterSpecRoutes(router, {
@@ -171,7 +173,7 @@ describe.skipIf(!databaseAvailable)("global spec activation authz", () => {
     });
     const server = createHttpServer(router);
 
-    const denied = await requestJson(server, `/api/v2/parameter-specs/${encodeURIComponent(GLOBAL_DRAFT)}/activate`, {
+    const denied = await requestJson(createWiseEffServer({ db: db! }), `/api/v2/parameter-specs/${encodeURIComponent(GLOBAL_DRAFT)}/activate`, {
       method: "POST",
       body: JSON.stringify({
         valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
@@ -180,7 +182,10 @@ describe.skipIf(!databaseAvailable)("global spec activation authz", () => {
         reason: "denied",
       }),
     });
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(410);
+    expect(catalogLegacyGoneResponseSchema.parse(denied.body).error.details).toEqual({
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
 
     const listed = await requestJson<{ items: Array<{ id: string; organizationId?: string | null }> }>(
       server,

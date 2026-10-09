@@ -264,6 +264,7 @@ export function ProjectConfigurationWorkbench({
     validateStatus,
     submitError,
     submitStatus,
+    stagedDrafts,
     submitting: submittingEdits,
     rows: sessionDraftRows,
     isDirty: sessionDraftsDirty,
@@ -818,8 +819,9 @@ export function ProjectConfigurationWorkbench({
         window.clearTimeout(scrollSyncTimerRef.current);
       }
       scrollSyncTimerRef.current = window.setTimeout(() => {
+        if (navigationSession.suppressScrollSync) return;
         const nearest = nearestNodeForLine(structureNodes, line);
-        if (!nearest || nearest.nodePath === selectedNodePath) return;
+        if (!nearest || nearest.nodePath === navigationSession.selectedNodePath) return;
         navigationSession.setStructureSelection(nearest.nodePath, null);
       }, 80);
     },
@@ -1333,6 +1335,10 @@ export function ProjectConfigurationWorkbench({
 
   const handleSelectReadinessIssue = useCallback(
     (issue: DtsReleaseReadinessIssue) => {
+      if (issue.remediation.kind === "complete-pending-change" && issue.remediation.href) {
+        onNavigate(issue.remediation.href);
+        return;
+      }
       setTasksOpen(true);
       if (issue.target?.fileId) {
         selectStructureTarget(
@@ -1345,7 +1351,7 @@ export function ProjectConfigurationWorkbench({
         }
       }
     },
-    [selectStructureTarget]
+    [onNavigate, selectStructureTarget]
   );
 
   const handleCopySessionDrafts = useCallback(async () => {
@@ -1437,46 +1443,9 @@ export function ProjectConfigurationWorkbench({
         fileId: selectedMember.fileId,
         fileName: selectedMember.fileName,
         dtsRepository,
-        catalogSave: topologyRepository
-          ? async (rows, reason) => {
-              let revisionId = revisionGate.selectedRevisionId;
-              if (!revisionId && selectedConfigSet) {
-                const revisions = await topologyRepository.listConfigRevisions(project.id, selectedConfigSet.id);
-                revisionId = revisions.find((item) => item.status === "resolved")?.id ?? null;
-              }
-              if (!revisionId) {
-                throw new Error("没有已解析的配置修订，无法写入正式项目值。");
-              }
-              const bindings = await topologyRepository.listBindings(project.id, revisionId);
-              const savedKeys: string[] = [];
-              let currentValueId = "";
-              for (const row of rows) {
-                const matches = bindings.filter((item) => item.propertyKey === row.propertyName);
-                const catalogMatches = matches.filter(
-                  (item) => item.id.startsWith("pbind_") || Boolean(item.definitionId)
-                );
-                if (catalogMatches.length !== 1) {
-                  throw new Error(`属性 ${row.propertyName} 没有唯一正式绑定，不能提交。`);
-                }
-                const unique = catalogMatches[0]!;
-                const integer = row.normalizedValue.replace(/[<>;]/g, "").trim();
-                const saved = await topologyRepository.createBindingDraft(project.id, unique.id, {
-                  baseRevisionId: revisionId,
-                  action: "set",
-                  reason,
-                  targetValue: /^-?\d+$/.test(integer)
-                    ? { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: integer, value: integer }]] }
-                    : { kind: "strings", values: [integer] }
-                });
-                if (!saved.writeTarget.role.startsWith("canonical-project-value")) {
-                  throw new Error("工作台保存未写入正式项目值。");
-                }
-                savedKeys.push(row.key);
-                currentValueId = saved.draftId;
-              }
-              return { savedKeys, currentValueId };
-            }
-          : undefined
+        catalogRepository: topologyRepository,
+        revisionId: revisionGate.selectedRevisionId,
+        configSetId: selectedConfigSet?.id
       });
       workspaceLoadSession.retryMembers();
       workspaceLoadSession.retryStructure();
@@ -1901,6 +1870,8 @@ export function ProjectConfigurationWorkbench({
         submittingEdits={submittingEdits}
         validateStatus={validateStatus}
         submitStatus={submitStatus}
+        stagedDrafts={stagedDrafts}
+        onSubmitReview={() => onNavigate(`/parameters?project=${encodeURIComponent(project.id)}`)}
         submitError={submitError}
         projectId={project.id}
         fileRepository={fileRepository}

@@ -4,7 +4,7 @@
     "e2e/acceptance/hierarchical-modules.acceptance.spec.ts": {
       "canonical-catalog-raw-access": 1,
       "legacy-catalog-raw-read": 2,
-      "legacy-catalog-sql-write": 6,
+      "legacy-catalog-sql-write": 5,
       "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/knowledge.acceptance.spec.ts": {
@@ -13,16 +13,15 @@
       "legacy-catalog-sql-write": 3
     },
     "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts": {
-      "legacy-catalog-raw-read": 2,
-      "legacy-catalog-table-name": 2
+      "legacy-catalog-raw-read": 1,
+      "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/parameter-topology.acceptance.spec.ts": {
       "canonical-catalog-raw-access": 7,
-      "legacy-catalog-raw-read": 9,
-      "legacy-catalog-route": 20,
-      "legacy-catalog-table-name": 1,
+      "legacy-catalog-raw-read": 5,
+      "legacy-catalog-route": 8,
       "legacy-effective-governance-contract": 6,
-      "legacy-parameter-spec-identifier": 11
+      "legacy-parameter-spec-identifier": 4
     },
     "server/modules/agent/tools/actionTools.integration.test.ts": {
       "legacy-catalog-raw-read": 1,
@@ -267,7 +266,7 @@
       "legacy-catalog-sql-write": 1
     },
     "server/modules/parameter-modules/routes.ts": {
-      "legacy-catalog-route": 13
+      "legacy-catalog-route": 3
     },
     "server/modules/parameter-modules/service.test.ts": {
       "legacy-catalog-raw-read": 22,
@@ -276,10 +275,9 @@
       "legacy-parameter-spec-identifier": 5
     },
     "server/modules/parameter-modules/service.ts": {
-      "legacy-catalog-module-import": 3,
+      "legacy-catalog-module-import": 2,
       "legacy-catalog-raw-read": 8,
       "legacy-catalog-sql-write": 1,
-      "legacy-overlay-catalog-contract": 2,
       "legacy-parameter-spec-identifier": 4
     },
     "server/modules/parameter-specs/coverageClaim.ts": {
@@ -429,18 +427,14 @@
       "legacy-parameter-spec-identifier": 44
     },
     "server/modules/parameter-specs/routes.ts": {
-      "legacy-catalog-route": 29,
-      "legacy-effective-governance-contract": 2,
-      "legacy-overlay-catalog-contract": 33
+      "legacy-catalog-route": 19,
+      "legacy-effective-governance-contract": 2
     },
     "server/modules/parameter-specs/schemaLoader.releasability.test.ts": {
       "legacy-parameter-spec-identifier": 2
     },
     "server/modules/parameter-specs/schemaLoader.ts": {
       "legacy-parameter-spec-identifier": 2
-    },
-    "server/modules/parameter-specs/schemaRegistryCache.ts": {
-      "legacy-overlay-catalog-contract": 7
     },
     "server/modules/parameter-specs/schemas.ts": {
       "legacy-overlay-catalog-contract": 8,
@@ -530,7 +524,7 @@
     },
     "server/modules/parameter-topology/identityContinuity.integration.test.ts": {
       "legacy-catalog-sql-write": 3,
-      "legacy-parameter-spec-identifier": 4
+      "legacy-parameter-spec-identifier": 3
     },
     "server/modules/parameter-topology/ingestService.test.ts": {
       "legacy-catalog-raw-read": 9,
@@ -563,6 +557,15 @@
       "legacy-parameter-spec-identifier": 78,
       "unresolved-boundary-expression": 18
     },
+    "server/modules/parameter-topology/overlayConsumerRetirement.integration.test.ts": {
+      "canonical-catalog-raw-access": 2,
+      "legacy-catalog-raw-read": 2,
+      "legacy-catalog-route": 1,
+      "legacy-catalog-sql-write": 7,
+      "legacy-catalog-table-name": 3,
+      "legacy-overlay-catalog-contract": 6,
+      "unresolved-boundary-expression": 1
+    },
     "server/modules/parameter-topology/overlayWriteback.ts": {
       "legacy-catalog-module-import": 1,
       "legacy-parameter-spec-identifier": 4
@@ -590,7 +593,7 @@
       "legacy-catalog-module-import": 3,
       "legacy-catalog-route": 23,
       "legacy-effective-governance-contract": 3,
-      "legacy-parameter-spec-identifier": 8
+      "legacy-parameter-spec-identifier": 7
     },
     "server/modules/parameter-topology/routes.ts": {
       "legacy-catalog-route": 3,
@@ -712,8 +715,7 @@
     "server/modules/parameters/moduleRename.integration.test.ts": {
       "canonical-catalog-raw-access": 17,
       "legacy-catalog-raw-read": 21,
-      "legacy-catalog-sql-write": 7,
-      "unresolved-boundary-expression": 1
+      "legacy-catalog-sql-write": 7
     },
     "server/modules/parameters/parameterModuleRepository.test.ts": {
       "legacy-catalog-sql-write": 8

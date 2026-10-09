@@ -61,11 +61,12 @@ export function CatalogOrganizationSurface({
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
   const anchor = parseCatalogUrlAnchor(search);
+  const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
-  const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId));
+  const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId) || reviewQueueRequested);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
   const [lifecycle, setLifecycle] = useState<{
@@ -75,8 +76,8 @@ export function CatalogOrganizationSurface({
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
 
   useEffect(() => {
-    if (anchor.reviewItemId) setPendingWorkOpen(true);
-  }, [anchor.reviewItemId]);
+    if (anchor.reviewItemId || reviewQueueRequested) setPendingWorkOpen(true);
+  }, [anchor.reviewItemId, reviewQueueRequested]);
   const subjectId = anchor.subjectId ?? "";
   const [catalogSubjects, setCatalogSubjects] = useState<
     Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]

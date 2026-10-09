@@ -237,6 +237,9 @@ export type ProjectParameterBinding = {
   /** Canonical wire alias used by project-value reads. */
   effectiveRevisionId?: string;
   currentValueId?: string;
+  sourceFileId?: string | null;
+  sourceNodePath?: string | null;
+  sourceOccurrenceId?: string | null;
   projectId?: string;
   propertyKey: string;
   driverModule: string | null;
@@ -445,6 +448,9 @@ export type IdentityMappingTask = {
   reason?: string | null;
   createdAt: string;
   resolvedAt?: string | null;
+  historicalOnly?: boolean;
+  needsCanonicalDecision?: boolean;
+  successor?: string;
 };
 
 export type SpecReviewTaskStatus = "open" | "resolved" | "dismissed";
@@ -475,6 +481,9 @@ export type SpecReviewTask = {
   createdAt: string;
   resolvedAt?: string | null;
   reason?: string | null;
+  historicalOnly?: boolean;
+  needsCanonicalDecision?: boolean;
+  successor?: string;
 };
 
 export type SpecReviewTaskListResult = {

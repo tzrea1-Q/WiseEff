@@ -32,6 +32,10 @@ import {
 } from "./headers";
 import { listenLegacyCatalogHttpServer } from "./httpServer";
 import { legacyWriteRouteManifest, registerCatalogLegacyRoutes } from "./routes";
+import { registerCatalogLegacyRetirementRoutes } from "./routes";
+import { registerParameterSpecRoutes } from "../../parameter-specs/routes";
+import { createHttpServer } from "../../../shared/http/server";
+import { requestJson } from "../../../test/testClient";
 import { LEGACY_SUCCESSOR_PATH } from "./types";
 import type { LegacyCatalogOptions, LegacyLookupFn } from "./types";
 
@@ -92,6 +96,24 @@ const frozenLegacyKeys = routeManifest
   .map((route) => `${route.method} ${route.path}`);
 
 describe("S8-LEG WiseEff router registration", () => {
+  it.each(["legacy-first", "retirement-first"])("retirement owns HTTP dispatch with %s registration", async (order) => {
+    const router = createRouter();
+    const registerLegacy = () => registerParameterSpecRoutes(router, {
+      getCurrentAuthContext: () => authFor("org_acme"),
+    });
+    if (order === "legacy-first") registerLegacy();
+    registerCatalogLegacyRetirementRoutes(router);
+    if (order === "retirement-first") registerLegacy();
+    const response = await requestJson(createHttpServer(router), "/api/v2/parameter-specs/spec-adapter/activate", {
+      method: "POST", body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(410);
+    expect(catalogLegacyGoneResponseSchema.parse(response.body).error.details).toEqual({
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
+    expect(response.headers.get("link")).toBe(LEGACY_SUCCESSOR_LINK);
+  });
+
   it("registers frozen S8-CON legacy catalog paths on createRouter().listRoutes()", () => {
     const router = createRouter();
     registerCatalogLegacyRoutes(router, {} as LegacyCatalogOptions);
@@ -286,7 +308,8 @@ describe("S8-LEG HTTP seam", () => {
       expect(
         (first.body as { error: { details: { successor: string; retryable: boolean } } }).error.details
           .successor,
-      ).toBe(LEGACY_SUCCESSOR_PATH);
+      ).toBe(route.id === "parameterSpecs.resolveReviewTask" || route.id === "parameterTopology.resolveIdentityMappingTask" || route.id === "parameterTopology.reopenIdentityMappingTask"
+        ? "/parameter-admin/specs?review=open" : LEGACY_SUCCESSOR_PATH);
       const replay = await request(route.method, fillPath(route.path), {
         headers: {
           [CATALOG_IDEMPOTENCY_HEADER]: "replay-key",

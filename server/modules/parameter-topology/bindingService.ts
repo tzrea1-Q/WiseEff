@@ -27,8 +27,6 @@ import type {
   TrustedInvocationDomainAttributionRow
 } from "../auth/trustedInvocation";
 import { ApiError } from "../../shared/http/errors";
-import { updateConfigRevisionStatus } from "./repository";
-import type { ConfigRevisionStatus } from "./types";
 
 export type ProjectPropertyBindingKey = {
   projectId: string;
@@ -423,11 +421,11 @@ export async function upsertBindingRevisionValues(
 }
 
 /**
- * Persist an open identity mapping task and flip the revision to needs_mapping.
+ * Retained caller fence: continuity evidence cannot create a legacy decision task.
  */
 export async function persistAmbiguousIdentityMapping(
-  db: Queryable,
-  input: {
+  _db: Queryable,
+  _input: {
     organizationId: string;
     projectId: string;
     configRevisionId: string;
@@ -438,49 +436,10 @@ export async function persistAmbiguousIdentityMapping(
     id?: string;
   },
 ): Promise<IdentityMappingTask> {
-  const id = input.id ?? randomUUID();
-  const evidence = {
-    previousLogicalNodeId: input.previous.logicalNodeId,
-    previousNodeLocator: input.previous.nodeLocator,
-    evidence: input.continuity.evidence,
-    candidates: input.continuity.candidates.map((candidate) => ({
-      logicalNodeId: candidate.logicalNodeId,
-      nodeLocator: candidate.nodeLocator,
-      name: candidate.name,
-      unitAddress: candidate.unitAddress,
-    })),
-  };
-
-  const result = await db.query<IdentityMappingTaskRow>(
-    `
-    insert into identity_mapping_tasks (
-      id, organization_id, project_id, config_revision_id,
-      previous_logical_node_id, candidate_logical_node_ids, evidence,
-      status, reviewer_user_id, reason
-    ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10)
-    returning *
-    `,
-    [
-      id,
-      input.organizationId,
-      input.projectId,
-      input.configRevisionId,
-      input.previous.logicalNodeId,
-      JSON.stringify(input.continuity.candidates.map((candidate) => candidate.logicalNodeId)),
-      JSON.stringify(evidence),
-      "open",
-      input.reviewerUserId ?? null,
-      input.reason ?? null,
-    ],
-  );
-
-  const status: ConfigRevisionStatus = "needs_mapping";
-  await updateConfigRevisionStatus(db, {
-    id: input.configRevisionId,
-    status,
+  throw new ApiError("GONE", "Legacy identity task production is retired. Use the canonical Review Queue.", {
+    reason: "legacy-surface-retired", successor: `/api/v2/organizations/${_input.organizationId}/parameter-review-items`,
+    retryable: false,
   });
-
-  return toMappingTask(result.rows[0]);
 }
 
 export async function getIdentityMappingTaskById(
@@ -597,11 +556,10 @@ type SingletonInstanceRow = {
 };
 
 /**
- * Reconcile persisted singleton-per-project conflicts for one revision. The
- * source instances are never collapsed: the task records all candidates and
- * release gates fail closed until the registration/topology is corrected.
+ * Count singleton conflicts without producing or changing historical tasks.
+ * Source instances stay distinct and callers retain their refusal gates.
  */
-export async function syncSingletonCardinalityBlockingTasks(
+export async function countSingletonCardinalityConflicts(
   db: Queryable,
   input: { organizationId: string; projectId: string; configRevisionId: string },
 ): Promise<number> {
@@ -650,95 +608,6 @@ export async function syncSingletonCardinalityBlockingTasks(
     bySubject.set(row.attribution_subject_id, instances);
   }
   const conflicts = [...bySubject.entries()].filter(([, instances]) => instances.length > 1);
-  const conflictSubjectIds = conflicts.map(([subjectId]) => subjectId);
-
-  await db.query(
-    `
-    update identity_mapping_tasks
-    set status = 'resolved',
-        reason = 'singleton cardinality conflict cleared',
-        resolved_at = now()
-    where organization_id = $1
-      and project_id = $2
-      and config_revision_id = $3
-      and task_kind = 'singleton-cardinality'
-      and status in ('open', 'dismissed')
-      and (
-        cardinality($4::text[]) = 0
-        or coalesce(evidence->>'attributionSubjectId', '') <> all($4::text[])
-      )
-    `,
-    [input.organizationId, input.projectId, input.configRevisionId, conflictSubjectIds],
-  );
-
-  for (const [subjectId, instances] of conflicts) {
-    const evidence = {
-      blockerKind: "singleton-cardinality",
-      attributionSubjectId: subjectId,
-      displayName: instances[0]?.display_name ?? subjectId,
-      instanceCardinality: "singleton-per-project",
-      instanceCount: instances.length,
-      candidates: instances.map((instance) => ({
-        logicalNodeId: instance.logical_node_id,
-        nodeLocator: instance.node_locator,
-        name: instance.name,
-        unitAddress: instance.unit_address,
-        compatible: instance.compatible,
-      })),
-    };
-    const existing = await db.query<{ id: string }>(
-      `
-      select id
-      from identity_mapping_tasks
-      where organization_id = $1
-        and config_revision_id = $2
-        and task_kind = 'singleton-cardinality'
-        and evidence->>'attributionSubjectId' = $3
-      limit 1
-      `,
-      [input.organizationId, input.configRevisionId, subjectId],
-    );
-    if (existing.rows[0]) {
-      await db.query(
-        `
-        update identity_mapping_tasks
-        set candidate_logical_node_ids = $2::jsonb,
-            evidence = $3::jsonb,
-            status = 'open',
-            reviewer_user_id = null,
-            reason = 'singleton-per-project registration has multiple instances',
-            resolved_at = null
-        where id = $1
-        `,
-        [
-          existing.rows[0].id,
-          JSON.stringify(instances.map((instance) => instance.logical_node_id)),
-          JSON.stringify(evidence),
-        ],
-      );
-    } else {
-      await db.query(
-        `
-        insert into identity_mapping_tasks (
-          id, organization_id, project_id, config_revision_id,
-          previous_logical_node_id, candidate_logical_node_ids, evidence,
-          task_kind, status, reason
-        ) values ($1, $2, $3, $4, null, $5::jsonb, $6::jsonb,
-          'singleton-cardinality', 'open',
-          'singleton-per-project registration has multiple instances')
-        `,
-        [
-          randomUUID(),
-          input.organizationId,
-          input.projectId,
-          input.configRevisionId,
-          JSON.stringify(instances.map((instance) => instance.logical_node_id)),
-          JSON.stringify(evidence),
-        ],
-      );
-    }
-  }
-
   return conflicts.length;
 }
 

@@ -9,12 +9,13 @@ import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleFor
 import {
   applyReviewedContinuityToSnapshots,
   createOrReuseBinding,
+  listBindingRevisionRows,
+  listIdentityMappingTaskRows,
   upsertBindingRevisionValues,
   type ReviewedContinuityDecision,
 } from "./bindingService";
 import { ingestConfigRevision } from "./ingestService";
-import { CONTINUITY_BASELINE_STATUSES, listPreviousLogicalNodeSnapshots } from "./repository";
-import { resolveIdentityMappingTask } from "./service";
+import { CONTINUITY_BASELINE_STATUSES, getConfigRevisionById, listPreviousLogicalNodeSnapshots } from "./repository";
 import type { ConfigRevisionManifest } from "./types";
 import type { LogicalNodeCandidate, LogicalNodeSnapshot } from "../dts/identity";
 
@@ -329,7 +330,7 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
   });
 
   it(
-    "R1 stable → R2 human resolve → R3 reuses reviewed continuity without duplicate mapping task",
+    "non-equivalent continuity remains blocked across reingest without legacy tasks or prior-binding transfer",
     async () => {
       const fileR1 = "file-cont-r1";
       const verR1 = "fv-cont-r1";
@@ -380,102 +381,21 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
       );
       expect(r2.status).toBe("needs_mapping");
 
-      const openTasks = await db!.query<{
-        id: string;
-        previous_logical_node_id: string | null;
-        candidate_logical_node_ids: unknown;
-        evidence: unknown;
-      }>(
-        `
-        select id, previous_logical_node_id, candidate_logical_node_ids, evidence
-        from identity_mapping_tasks
-        where config_revision_id = $1 and status = 'open'
-        `,
-        [r2.id],
-      );
-      expect(openTasks.rows.length).toBeGreaterThanOrEqual(1);
-
-      const taskForStable = openTasks.rows.find(
-        (row) => row.previous_logical_node_id === stableLogicalNodeId,
-      );
-      expect(taskForStable).toBeTruthy();
-
-      const evidence =
-        taskForStable!.evidence &&
-        typeof taskForStable!.evidence === "object" &&
-        !Array.isArray(taskForStable!.evidence)
-          ? (taskForStable!.evidence as {
-              candidates?: Array<{ logicalNodeId: string; nodeLocator: string }>;
-            })
-          : {};
-      const leftCandidate = evidence.candidates?.find((c) => c.nodeLocator === "/bus/left@10");
-      expect(leftCandidate?.logicalNodeId).toBeTruthy();
-
-      const resolved = await resolveIdentityMappingTask(db!, auth, {
-        taskId: taskForStable!.id,
-        decision: "resolved",
-        selectedLogicalNodeId: leftCandidate!.logicalNodeId,
-        reason: "Same board instance as R1 left path",
+      expect(await listIdentityMappingTaskRows(db!, { organizationId: ORG_ID, projectId: PROJECT_ID })).toEqual([]);
+      const leftId = await logicalNodeAt(db!, r2.id, "/bus/left@10");
+      const rightId = await logicalNodeAt(db!, r2.id, "/bus/right@10");
+      expect(leftId).toBeTruthy();
+      expect(rightId).toBeTruthy();
+      expect(leftId).not.toBe(stableLogicalNodeId);
+      expect(rightId).not.toBe(stableLogicalNodeId);
+      expect(leftId).not.toBe(rightId);
+      expect((await getConfigRevisionById(db!, { organizationId: ORG_ID, revisionId: r2.id }))?.status)
+        .toBe("needs_mapping");
+      const baseline = await listPreviousLogicalNodeSnapshots(db!, {
+        configSetId: CONFIG_SET_ID, beforeRevisionNumber: 3,
       });
-      expect(resolved.status).toBe("resolved");
-
-      const r2Status = await db!.query<{ status: string }>(
-        `select status from dts_config_revisions where id = $1`,
-        [r2.id],
-      );
-      // May still be needs_mapping if other open tasks remain (e.g. bus-only).
-      // Resolve any remaining open tasks by dismissing non-stable or resolving uniquely.
-      const stillOpen = await db!.query<{ id: string; previous_logical_node_id: string | null; evidence: unknown }>(
-        `
-        select id, previous_logical_node_id, evidence
-        from identity_mapping_tasks
-        where config_revision_id = $1 and status = 'open'
-        `,
-        [r2.id],
-      );
-      for (const task of stillOpen.rows) {
-        const ev =
-          task.evidence && typeof task.evidence === "object" && !Array.isArray(task.evidence)
-            ? (task.evidence as {
-                candidates?: Array<{ logicalNodeId: string; nodeLocator: string }>;
-              })
-            : {};
-        const pick = ev.candidates?.[0];
-        if (!pick) continue;
-        await resolveIdentityMappingTask(db!, auth, {
-          taskId: task.id,
-          decision: "resolved",
-          selectedLogicalNodeId: pick.logicalNodeId,
-          reason: "Clear remaining ambiguity for continuity baseline",
-        });
-      }
-
-      const r2Final = await db!.query<{ status: string }>(
-        `select status from dts_config_revisions where id = $1`,
-        [r2.id],
-      );
-      expect(r2Final.rows[0]?.status).toBe("resolved");
-      expect(r2Status.rows[0]?.status).toBeTruthy();
-
-      expect(await logicalNodeAt(db!, r2.id, "/bus/left@10")).toBe(stableLogicalNodeId);
-      const r2Binding = await createOrReuseBinding(db!, {
-        organizationId: ORG_ID,
-        key: {
-          projectId: PROJECT_ID,
-          logicalNodeId: stableLogicalNodeId!,
-          parameterSpecId: SPEC_ID,
-          moduleId: await unclassifiedModuleId(db!),
-        },
-      });
-      expect(r2Binding.id).toBe(stableBindingId);
-
-      const reuseEvidence = await db!.query<{ evidence: unknown }>(
-        `select evidence from identity_mapping_tasks where id = $1`,
-        [taskForStable!.id],
-      );
-      const reused = reuseEvidence.rows[0]?.evidence as Record<string, unknown>;
-      expect(reused.continuityReusable).toBe(true);
-      expect(reused.selectedNodeLocator).toBe("/bus/left@10");
+      expect(baseline.find((node) => node.logicalNodeId === stableLogicalNodeId)?.nodeLocator)
+        .toBe("/bus/dev@10");
 
       const fileR3 = "file-cont-r3";
       const verR3 = "fv-cont-r3";
@@ -491,18 +411,12 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
         auth,
       );
 
-      expect(r3.status).toBe("resolved");
-      const r3Open = await db!.query<{ c: string }>(
-        `
-        select count(*)::text as c
-        from identity_mapping_tasks
-        where config_revision_id = $1 and status = 'open'
-        `,
-        [r3.id],
-      );
-      expect(Number(r3Open.rows[0]?.c ?? 0)).toBe(0);
+      expect(r3.status).toBe("needs_mapping");
+      expect(await listIdentityMappingTaskRows(db!, { organizationId: ORG_ID, projectId: PROJECT_ID })).toEqual([]);
 
-      expect(await logicalNodeAt(db!, r3.id, "/bus/left@10")).toBe(stableLogicalNodeId);
+      expect(await logicalNodeAt(db!, r3.id, "/bus/left@10")).not.toBe(stableLogicalNodeId);
+      expect(await logicalNodeAt(db!, r3.id, "/bus/right@10")).not.toBe(stableLogicalNodeId);
+      expect(await logicalNodeAt(db!, r1.id, "/bus/dev@10")).toBe(stableLogicalNodeId);
       const r3Binding = await createOrReuseBinding(db!, {
         organizationId: ORG_ID,
         key: {
@@ -513,6 +427,9 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
         },
       });
       expect(r3Binding.id).toBe(stableBindingId);
+      expect(await listBindingRevisionRows(db!, {
+        organizationId: ORG_ID, projectId: PROJECT_ID, bindingId: stableBindingId,
+      })).toEqual([expect.objectContaining({ configRevisionId: r1.id, rawValue: "<1>" })]);
     },
     60_000,
   );

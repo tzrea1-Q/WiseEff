@@ -1,4 +1,23 @@
 import type { Queryable } from "../../shared/database/client";
+import { parseStoredEvidence } from "../../modules/parameter-governance/review/query";
+
+export async function captureDtsReviewEvidenceStateFixture(db: Queryable, input: {
+  organizationId: string; projectId: string;
+}) {
+  const evidence = (await db.query<{ id: string; observationId: string | null; evidence: unknown }>(
+    `select id,observation_id as "observationId",evidence from parameter_catalog.parameter_review_evidence
+     where organization_id=$1 order by id`, [input.organizationId],
+  )).rows.map((row) => ({ ...row, evidence: parseStoredEvidence(row.evidence) }));
+  const items = (await db.query<{ id: string; status: string }>(
+    `select id,status from parameter_catalog.parameter_review_items where organization_id=$1 order by id`,
+    [input.organizationId],
+  )).rows;
+  const observations = (await db.query<{ id: string }>(
+    `select id from parameter_catalog.parameter_observations where organization_id=$1 and project_id=$2 order by id`,
+    [input.organizationId,input.projectId],
+  )).rows;
+  return { evidence, items, observations };
+}
 
 /** Test-only Catalog provenance setup; production reads use the Catalog owner's typed seam. */
 export async function insertDtsObservationSourceFixture(db: Queryable, input: {
@@ -44,4 +63,27 @@ export async function loadDtsObservationSourceFixture(db: Queryable, input: {
   )).rows;
   if (rows.length !== 1) throw new Error("Exact DTS observation fixture is unavailable");
   return { organizationId: input.organizationId,projectId: input.projectId,...rows[0]! };
+}
+
+export async function loadDtsReviewEvidenceSourceFixture(db: Queryable, input: {
+  organizationId: string; projectId: string; reviewEvidenceId: string;
+}) {
+  const rows = (await db.query<{ evidence: unknown; observationId: string; configRevisionId: string;
+    logicalNodeId: string; sourceOccurrenceId: string; fileId: string; configSetId: string }>(
+    `select evidence.evidence,observation.id as "observationId",
+      observation.config_revision_id as "configRevisionId",observation.logical_node_id as "logicalNodeId",
+      occurrence.id as "sourceOccurrenceId",occurrence.file_id as "fileId",occurrence.config_set_id as "configSetId"
+     from parameter_catalog.parameter_review_evidence evidence
+     join parameter_catalog.parameter_observations observation
+       on observation.id=evidence.observation_id and observation.organization_id=evidence.organization_id
+     join parameter_catalog.project_parameter_source_occurrences occurrence
+       on occurrence.id=observation.source_occurrence_id and occurrence.organization_id=observation.organization_id
+       and occurrence.project_id=observation.project_id and occurrence.logical_node_id=observation.logical_node_id
+     where evidence.id=$1 and evidence.organization_id=$2 and observation.project_id=$3`,
+    [input.reviewEvidenceId,input.organizationId,input.projectId],
+  )).rows;
+  if (rows.length !== 1) throw new Error("Exact DTS review evidence fixture is unavailable");
+  const evidence = parseStoredEvidence(rows[0]!.evidence);
+  if (!evidence) throw new Error("Exact DTS review evidence fixture is invalid");
+  return { ...rows[0]!, evidence };
 }

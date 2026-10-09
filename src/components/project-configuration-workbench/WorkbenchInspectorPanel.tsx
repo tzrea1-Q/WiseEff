@@ -323,7 +323,7 @@ export function WorkbenchInspectorPanel({
           pinnedMembers={baselinePinnedMembers}
           canAdmin={canAdmin}
           canRelease={workbenchReadinessAllowsRelease(releaseReadiness, sessionDraftsDirty)}
-          canRestore={canAdmin && Boolean(selectedBaselineId)}
+          canPreviewRestore={canAdmin && Boolean(selectedBaselineId)}
           releaseBlockedReason={
             sessionDraftsDirty
               ? "还有未保存的本机会话变更，不能发布"

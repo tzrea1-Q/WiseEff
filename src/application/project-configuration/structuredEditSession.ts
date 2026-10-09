@@ -3,6 +3,8 @@ import type {
   DtsStructuredRepository,
   DtsStructuredSubmissionRound
 } from "@/application/ports/DtsStructuredRepository";
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
 import {
   aggregateSessionDraftSubset,
   clearSubmittedDrafts,
@@ -12,6 +14,7 @@ import {
   type SessionPropertyDraft
 } from "./sessionDrafts";
 import {
+  classifySessionDraftRecovery,
   findRecoverableSessionDraft,
   formatSessionDraftCopyText,
   removeSessionDraftBucket,
@@ -35,9 +38,12 @@ export type StructuredEditIdentity = {
   propertyName: string;
 };
 
-export type CatalogSessionSaveResult = {
-  savedKeys: string[];
-  currentValueId: string;
+export type StagedStructuredDraft = {
+  key: string;
+  draftId: string;
+  bindingId: string;
+  currentValueId: string | null;
+  pending: true;
 };
 
 export type StructuredEditSubmitInput = {
@@ -45,7 +51,9 @@ export type StructuredEditSubmitInput = {
   fileId: string;
   fileName: string;
   dtsRepository: Pick<DtsStructuredRepository, "submitStructuredEdits">;
-  catalogSave?: (rows: SessionDraftRow[], reason: string) => Promise<CatalogSessionSaveResult | null>;
+  catalogRepository?: Pick<ParameterTopologyRepository, "listBindings" | "createBindingDraft" | "listConfigRevisions">;
+  revisionId?: string | null;
+  configSetId?: string;
 };
 
 export type StructuredEditSessionSnapshot = {
@@ -57,6 +65,7 @@ export type StructuredEditSessionSnapshot = {
   submitError: string;
   submitStatus: string;
   submitting: boolean;
+  stagedDrafts: StagedStructuredDraft[];
   rows: SessionDraftRow[];
   isDirty: boolean;
   isStaleBase: boolean;
@@ -87,6 +96,7 @@ export type StructuredEditSession = StructuredEditSessionSnapshot & {
 
 function emptySnapshot(): StructuredEditSessionSnapshot {
   return {
+    stagedDrafts: [],
     drafts: {},
     selectedKeys: new Set(),
     reason: "",
@@ -149,6 +159,7 @@ export function createStructuredEditSession(
   let submitError = "";
   let submitStatus = "";
   let submitting = false;
+  let stagedDrafts: StagedStructuredDraft[] = [];
   let cachedSnapshot = emptySnapshot();
 
   function rebuildSnapshot(): StructuredEditSessionSnapshot {
@@ -165,6 +176,7 @@ export function createStructuredEditSession(
       submitError,
       submitStatus,
       submitting,
+      stagedDrafts,
       rows,
       isDirty,
       isStaleBase
@@ -229,6 +241,9 @@ export function createStructuredEditSession(
     get submitting() {
       return cachedSnapshot.submitting;
     },
+    get stagedDrafts() {
+      return cachedSnapshot.stagedDrafts;
+    },
     get rows() {
       return cachedSnapshot.rows;
     },
@@ -267,20 +282,21 @@ export function createStructuredEditSession(
     },
 
     async hydrate(scope) {
+      if (scope && currentScope && classifySessionDraftRecovery(currentScope, scope) === "compatible") return;
       const generation = ++hydrateGeneration;
       persistEnabled = false;
       currentScope = scope;
       clearStatuses();
+      stagedDrafts = [];
+      submitting = false;
+      drafts = {};
+      selectedKeys = new Set();
+      reason = "";
+      recoveryStatus = "none";
+      persistScope = null;
+      emit();
 
-      if (!scope) {
-        drafts = {};
-        selectedKeys = new Set();
-        reason = "";
-        recoveryStatus = "none";
-        persistScope = null;
-        emit();
-        return;
-      }
+      if (!scope) return;
 
       await Promise.resolve();
       if (generation !== hydrateGeneration) return;
@@ -412,46 +428,83 @@ export function createStructuredEditSession(
         emit();
         throw new Error(message);
       }
-      const aggregate = aggregateSessionDraftSubset({
-        fileId: input.fileId,
-        fileName: input.fileName,
-        rows,
-        selectedKeys,
-        reason: trimmedReason
-      });
-      if (aggregate.edits.length === 0) {
-        const message = "没有可提交的变更。";
-        submitError = message;
-        emit();
-        throw new Error(message);
-      }
-
+      const generation = hydrateGeneration;
+      const assertCurrentScope = () => {
+        if (generation !== hydrateGeneration) throw new Error("编辑会话范围已变更。");
+      };
       submitting = true;
       submitError = "";
       submitStatus = "";
       emit();
       try {
-        if (input.catalogSave) {
-          const catalogResult = await input.catalogSave(selected, trimmedReason);
-          if (!catalogResult || catalogResult.savedKeys.length !== selected.length) {
-            throw new Error("正式项目值未完整写入所选变更。");
+        if (input.catalogRepository) {
+          const repository = input.catalogRepository;
+          let revisionId = input.revisionId;
+          if (!revisionId && input.configSetId) {
+            const revisions = await repository.listConfigRevisions(input.projectId, input.configSetId);
+            assertCurrentScope();
+            revisionId = revisions.find((item) => item.status === "resolved")?.id;
           }
-          drafts = clearSubmittedDrafts(drafts, catalogResult.savedKeys);
-          submitStatus = `已写入正式项目值 ${catalogResult.currentValueId}`;
-          validateStatus = "";
-          emit();
-          persist();
-          return {
-            id: catalogResult.currentValueId,
-            projectId: input.projectId,
-            status: "canonical-project-value",
-            items: []
-          };
+          if (!revisionId) throw new Error("没有已解析的配置修订，无法暂存待审核草稿。");
+          const bindings = await repository.listBindings(input.projectId, revisionId);
+          assertCurrentScope();
+          stagedDrafts = [];
+          const failures: string[] = [];
+          let draftId = "";
+          for (const row of selected) {
+            assertCurrentScope();
+            try {
+              const matches = bindings.filter((binding) => binding.definitionId && binding.sourceOccurrenceId
+                && binding.sourceFileId === row.fileId && binding.sourceNodePath === row.nodePath
+                && binding.propertyKey === row.propertyName);
+              if (matches.length !== 1) throw new Error("没有唯一精确 Binding。");
+              const binding = matches[0]!;
+              const saved = await repository.createBindingDraft(input.projectId, binding.id, {
+                baseRevisionId: revisionId, reason: trimmedReason,
+                ...(row.present === false ? { action: "delete" } : {
+                  action: "set", targetValue: parseDtsValue(row.propertyName, row.rawText).value
+                })
+              });
+              assertCurrentScope();
+              if (!saved.draftId || saved.pending !== true
+                || saved.writeTarget.role !== "canonical-project-value-draft"
+                || saved.projectParameterBindingId !== binding.id
+                || saved.currentValueId === undefined
+                || saved.currentValueId !== binding.currentValueId) {
+                throw new Error("未确认待审核草稿。");
+              }
+              stagedDrafts.push({ key: row.key, draftId: saved.draftId, bindingId: binding.id,
+                currentValueId: saved.currentValueId, pending: true });
+              draftId = saved.draftId;
+              const localDraft = drafts[row.key] ?? drafts[row.identity];
+              if (localDraft?.rawText === row.rawText && localDraft.present === row.present) {
+                drafts = clearSubmittedDrafts(drafts, [row.key, row.identity]);
+                selectedKeys.delete(row.key);
+              }
+              submitStatus = `已暂存 ${stagedDrafts.length} 项待审核草稿；当前值未变。`;
+              if (stagedDrafts.some((draft) => draft.currentValueId === null)) {
+                submitStatus += "无当前值的 Binding 仍为空。";
+              }
+              validateStatus = "";
+              emit();
+              persist();
+            } catch (error) {
+              assertCurrentScope();
+              failures.push(`${row.fileId}: ${row.nodePath}/${row.propertyName}：${error instanceof Error ? error.message : "暂存失败。"}`);
+            }
+          }
+          if (failures.length > 0) throw new Error(failures.join("\n"));
+          return { id: draftId, projectId: input.projectId, status: "canonical-project-value-draft", items: [] };
         }
+        const aggregate = aggregateSessionDraftSubset({
+          fileId: input.fileId, fileName: input.fileName, rows, selectedKeys, reason: trimmedReason
+        });
+        if (aggregate.edits.length === 0) throw new Error("没有可提交的变更。");
         const round = await input.dtsRepository.submitStructuredEdits(input.projectId, {
           edits: aggregate.edits,
           reason: trimmedReason
         });
+        assertCurrentScope();
         const submittedKeys = selected.map((row) => row.key);
         drafts = clearSubmittedDrafts(drafts, submittedKeys);
         submitStatus = `已提交变更请求 ${round.id}`;
@@ -460,12 +513,15 @@ export function createStructuredEditSession(
         persist();
         return round;
       } catch (error: unknown) {
+        if (generation !== hydrateGeneration) throw error;
         submitError = error instanceof Error ? error.message : "提交变更请求失败。";
         emit();
         throw error instanceof Error ? error : new Error(submitError);
       } finally {
-        submitting = false;
-        emit();
+        if (generation === hydrateGeneration) {
+          submitting = false;
+          emit();
+        }
       }
     },
 

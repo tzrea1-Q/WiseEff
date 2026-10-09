@@ -1,5 +1,6 @@
 import { canViewParameters } from "../../parameter-kernel/policy";
 import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
+import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import {
   CATALOG_RELEASE_HEADER,
   catalogLegacyIdentifierResponseSchema,
@@ -25,7 +26,7 @@ import {
   LEGACY_SPEC_CONTRACT,
   LEGACY_SPEC_WARNING,
 } from "./headers";
-import { catalogLegacyGoneResult, LEGACY_GOVERNANCE_GONE_MESSAGE, LEGACY_WRITE_GONE_MESSAGE } from "./gone";
+import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_GOVERNANCE_GONE_MESSAGE, LEGACY_WRITE_GONE_MESSAGE } from "./gone";
 import { lookupLegacyIdentifier } from "./lookup";
 import type { LegacyCatalogOptions, LegacyHttpResult } from "./types";
 
@@ -338,7 +339,7 @@ export async function handleLegacyCatalogRequest(
 
   for (const route of writeRoutes) {
     addRoute(router, route.method, route.path, async (matched) => {
-      const gone = catalogLegacyGoneResult(matched.requestId, LEGACY_WRITE_GONE_MESSAGE);
+      const gone = catalogLegacyGoneResult(matched.requestId, LEGACY_WRITE_GONE_MESSAGE, legacyRouteSuccessor(route.id));
       return { status: gone.status, body: { __legacy: gone } };
     });
   }
@@ -405,6 +406,41 @@ export async function handleLegacyCatalogRequest(
   }
 }
 
+export function registerCatalogLegacyRetirementRoutes(
+  router: WiseEffRouter,
+  options?: { resolveInvocation: LegacyCatalogOptions["resolveInvocation"]; refusalAuditSink: TrustedRefusalAuditSink },
+): void {
+  if (options) assertTrustedRefusalAuditSink(options.refusalAuditSink);
+  for (const route of writeRoutes) {
+    router.prepend(route.method, route.path, async (request) => {
+      if (options) {
+        let invocation: TrustedInvocationContext | null;
+        try {
+          invocation = await options.resolveInvocation(request);
+        } catch (error) {
+          if (!(error instanceof ApiError) || !["UNAUTHENTICATED", "FORBIDDEN"].includes(error.code)) throw error;
+          invocation = null;
+        }
+        if (invocation) {
+          await options.refusalAuditSink.write({
+            invocation,
+            projectId: null,
+            app: "parameter-catalog",
+            kind: "legacy-surface-retired",
+            action: "deny",
+            severity: "Low",
+            targetType: "legacy-route",
+            targetId: route.id,
+            metadata: { reason: "legacy-surface-retired", routeId: route.id, method: route.method },
+            traceId: request.requestId,
+          });
+        }
+      }
+      return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE, legacyRouteSuccessor(route.id));
+    });
+  }
+}
+
 export function registerCatalogLegacyRoutes(
   router: WiseEffRouter,
   options: LegacyCatalogOptions,
@@ -430,6 +466,19 @@ export const legacyWriteRouteManifest = writeRoutes.map((route) => ({
   method: route.method as HttpMethod,
   path: route.path,
 }));
+
+export const legacyDriverSchemaRetirementRouteManifest = legacyWriteRouteManifest.filter((route) => [
+  "parameterSpecs.listOrganizationDriverSchemas",
+  "parameterSpecs.getOrganizationDriverSchema",
+  "parameterSpecs.createOrganizationDriverSchema",
+  "parameterSpecs.updateOrganizationDriverSchema",
+  "parameterSpecs.activateOrganizationDriverSchema",
+  "parameterSpecs.previewOrganizationDriverSchemaDeprecation",
+  "parameterSpecs.deprecateOrganizationDriverSchema",
+  "parameterSpecs.listPromotionCandidates",
+  "parameterSpecs.promoteDriverSchemaOverlay",
+  "parameterSpecs.revertDriverSchemaPromotion",
+].includes(route.id));
 
 export const legacyEligibleRouteManifest = eligibleRoutes.map((route) => ({
   id: route.id,

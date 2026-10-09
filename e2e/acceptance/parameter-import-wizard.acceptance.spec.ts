@@ -4,6 +4,8 @@ import { expect, test, type Page } from "playwright/test";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
+import { createPostgresDatabase } from "../../server/shared/database/client";
+import { captureConfigurationSourceState } from "../../server/testing/parameterCatalog/configurationSource";
 import {
   disposableRuntimeOutcomeFromTestInfo,
   type DisposablePostCutoverRuntime,
@@ -15,7 +17,9 @@ import { apiRoute } from "./helpers/runtime";
 import {
   assertPostCutoverIdentity,
   disposablePageUrl,
-  seedIsolatedNumericCellBinding,
+  integerCellTarget,
+  numericCellDts,
+  seedIsolatedBinding,
   startSwappedDisposablePostCutoverRuntime,
   type RestoreDisposablePostCutoverRuntime,
 } from "./helpers/semanticBindingFixture";
@@ -43,6 +47,7 @@ async function dismissXiaozeHint(page: Page) {
 test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
   let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
+  let sourceDatabase: ReturnType<typeof createPostgresDatabase> | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -56,10 +61,12 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     });
     disposableRuntime = started.runtime;
     restoreDisposable = started.restore;
+    sourceDatabase = createPostgresDatabase(disposableRuntime.databaseUrl);
   });
 
   test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
+    await sourceDatabase?.close();
     await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
@@ -72,29 +79,39 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await assertPostCutoverIdentity();
     expect(disposableRuntime.markerPurpose).toBe("import-wizard");
 
-    const binding = await seedIsolatedNumericCellBinding(request, {
+    const binding = await seedIsolatedBinding(request, {
       propertyKey: importPropertyKey,
-      cellValue: 2300,
+      dts: numericCellDts(importPropertyKey, 2300),
+      configSetName: "default",
       reason: "PARAM-ADMIN-002 disposable import wizard binding"
     });
-    const listed = await request.get(apiRoute(`/api/v1/parameters?projectId=${projectId}&limit=500`), {
+    const bindingsRoute = `/api/v2/projects/${projectId}/parameter-bindings`;
+    const beforeBindingsResponse = await request.get(apiRoute(bindingsRoute), { headers: authHeadersForRole("admin") });
+    expect(beforeBindingsResponse.status(), await beforeBindingsResponse.text()).toBe(200);
+    const beforeBindings = (await beforeBindingsResponse.json()).items;
+    const beforeBinding = beforeBindings.find((item: { id: string }) => item.id === binding.bindingId);
+    expect(beforeBinding).toBeTruthy();
+    const beforeImport = await captureConfigurationSourceState(sourceDatabase!, { organizationId, projectId });
+    const listed = await request.get(apiRoute(bindingsRoute), {
       headers: authHeadersForRole("admin")
     });
     expect(listed.ok(), await listed.text()).toBe(true);
     const listedBody = (await listed.json()) as {
-      items: Array<{ id: string; name: string; module: string; currentValue: string }>;
+      items: Array<{ id: string; propertyKey: string; rawValue: string; driverModule: string | null }>;
     };
     const seeded = listedBody.items.find((item) => item.id === binding.bindingId);
     expect(seeded, `missing hydrated binding ${binding.bindingId}`).toBeTruthy();
+    expect(seeded!.driverModule).toBeTruthy();
 
     const importedCurrentValue = "<4350>";
     const importedRecommendedValue = "<4310>";
-    expect(seeded!.currentValue).not.toBe(importedCurrentValue);
+    expect(seeded!.rawValue).not.toBe(importedCurrentValue);
 
     const importPayload = JSON.stringify([
       {
-        name: seeded!.name,
-        module: seeded!.module,
+        id: binding.bindingId,
+        name: seeded!.propertyKey,
+        module: seeded!.driverModule,
         risk: "High",
         unit: "mA",
         range: "4200 - 4500",
@@ -131,16 +148,16 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
 
     const rowReview = wizard.getByRole("region", { name: "逐行核对" });
     await expect(rowReview).toBeVisible();
-    await expect(rowReview).toContainText(seeded!.name);
+    await expect(rowReview).toContainText(seeded!.propertyKey);
     await wizard.getByRole("button", { name: "通过" }).click();
     await expect(wizard.getByRole("button", { name: "下一步" })).toBeEnabled();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
     const batchPreview = wizard.getByRole("region", { name: "批次预览" });
     await expect(batchPreview).toBeVisible({ timeout: 30_000 });
-    const previewRow = batchPreview.getByRole("row").filter({ hasText: seeded!.name });
+    const previewRow = batchPreview.getByRole("row").filter({ hasText: seeded!.propertyKey });
     await expect(previewRow).toContainText("更新");
-    await expect(previewRow.getByRole("checkbox", { name: `选择 ${seeded!.name}` })).toBeChecked();
+    await expect(previewRow.getByRole("checkbox", { name: `选择 ${seeded!.propertyKey}` })).toBeChecked();
     await expect(wizard.getByRole("button", { name: "下一步" })).toBeEnabled();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
@@ -190,37 +207,6 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
         [organizationId, projectId, workflowStartedAt]
       );
       const batch = batchResult.rows[0] ?? null;
-      const head = await client.query<{ raw_value: string | null }>(
-        `
-        select br.raw_value
-        from project_parameter_binding_revisions br
-        where br.binding_id = $1
-        order by br.created_at desc
-        limit 1
-        `,
-        [binding.bindingId]
-      );
-      const history = await client.query<{ version: number; value: string }>(
-        `
-        select version, value
-        from parameter_history_entries
-        where organization_id = $1
-          and project_parameter_binding_id = $2
-        order by version desc
-        limit 1
-        `,
-        [organizationId, binding.bindingId]
-      );
-      const drafts = await client.query<{ count: string }>(
-        `
-        select count(*)::text as count
-        from parameter_drafts
-        where organization_id = $1
-          and project_id = $2
-          and project_parameter_binding_id = $3
-        `,
-        [organizationId, projectId, binding.bindingId]
-      );
       const audit = batch
         ? {
             id: batch.audit_id,
@@ -234,19 +220,29 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
       return {
         batch,
         audit,
-        rawValue: head.rows[0]?.raw_value ?? null,
-        history: history.rows[0] ?? null,
-        draftCount: Number(drafts.rows[0]?.count ?? 0)
       };
     });
     expect(applied.batch).toBeTruthy();
-    expect(["staged", "applied"]).toContain(applied.batch?.status);
-    if (applied.batch?.status === "applied") {
-      expect(applied.rawValue).toBe(importedCurrentValue);
-      expect(applied.history).toMatchObject({ value: importedCurrentValue });
-    } else {
-      expect(applied.draftCount, "topology-matched import must stage a tray draft").toBeGreaterThan(0);
-    }
+    expect(applied.batch).toMatchObject({ status: "staged", summary: { updated: 1 } });
+    const afterBindingsResponse = await request.get(apiRoute(bindingsRoute), { headers: authHeadersForRole("admin") });
+    expect(afterBindingsResponse.status(), await afterBindingsResponse.text()).toBe(200);
+    expect((await afterBindingsResponse.json()).items, "staging must not change canonical Binding pins or effective values").toEqual(beforeBindings);
+    const afterImport = await captureConfigurationSourceState(sourceDatabase!, { organizationId, projectId });
+    expect(afterImport.bindings).toEqual(beforeImport.bindings);
+    expect(afterImport.values).toEqual(beforeImport.values);
+    expect(afterImport.history, "staging must not append committed value history").toEqual(beforeImport.history);
+    const draftsResponse = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`), {
+      headers: authHeadersForRole("admin")
+    });
+    expect(draftsResponse.status(), await draftsResponse.text()).toBe(200);
+    const drafts = (await draftsResponse.json()).items.filter((item: { bindingId: string }) => item.bindingId === binding.bindingId);
+    expect(drafts, "canonical import must stage exactly one pinned tray draft").toHaveLength(1);
+    expect(drafts[0]).toMatchObject({
+      definitionId: beforeBinding.definitionId, targetValue: importedCurrentValue,
+      sourcePinId: expect.any(String), candidateId: expect.any(String)
+    });
+    expect(afterImport.drafts.find((item) => item.id === drafts[0].id)?.target).toEqual(integerCellTarget("4350"));
+    expect(applied.audit).toMatchObject({ kind: "batch-import", action: "stage", target_id: applied.batch!.id });
 
     await recordOperationEvidence({
       operationId: "PARAM-ADMIN-002",
@@ -263,10 +259,10 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           rowCount: applied.batch ? 1 : 0
         },
         {
-          table: "project_parameter_binding_revisions",
+          table: "captureConfigurationSourceState value/history witness",
           predicate: `bindingId=${binding.bindingId}`,
-          observed: `rawValue=${applied.rawValue}`,
-          rowCount: applied.rawValue ? 1 : 0
+          observed: `currentValueId=${beforeBinding.currentValueId}; unchanged=true; stagedDrafts=${drafts.length}`,
+          rowCount: afterImport.values.filter((item) => item.bindingId === binding.bindingId).length
         }
       ],
       audit: [
@@ -279,7 +275,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}; bindingId=${binding.bindingId}`
         }
       ],
-      notes: `Wizard applied an update for ${seeded!.name} onto disposable post-cutover binding ${binding.bindingId}; shared CI pre-cutover PPV fixtures are not used here.`
+      notes: `Wizard staged the exact typed update for ${seeded!.propertyKey} on canonical Binding ${binding.bindingId}; current Project value and immutable history stayed unchanged pending review.`
     });
   });
 

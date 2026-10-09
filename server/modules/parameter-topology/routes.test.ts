@@ -145,12 +145,13 @@ describe("parameter semantic v2 routes", () => {
     expect(response.status).toBe(404);
   });
 
-  it("POST /api/v2/parameter-spec-review-tasks/:taskId/resolve requires parameter admin", async () => {
+  it("POST /api/v2/parameter-spec-review-tasks/:taskId/resolve is retired for viewers", async () => {
     const response = await requestJson(makeServer({ db: makeDb(), auth: makeAuth() }), "/api/v2/parameter-spec-review-tasks/task-1/resolve", {
       method: "POST",
       body: JSON.stringify({ decision: "resolved", parameterSpecId: "spec-1", reason: "Matched linux schema" })
     });
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(410);
+    expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
     expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
   });
 
@@ -181,13 +182,14 @@ describe("parameter semantic v2 routes", () => {
       nextCursor: null
     });
 
-    const response = await requestJson<{ items: Array<{ id: string }>; nextCursor: string | null }>(
+    const response = await requestJson<{ items: unknown[]; historicalItems: Array<{ id: string; historicalOnly: boolean; needsCanonicalDecision: boolean }>; nextCursor: string | null }>(
       makeServer({ db: makeDb(), auth: makeAdminAuth() }),
       "/api/v2/parameter-spec-review-tasks?status=open&limit=25"
     );
 
     expect(response.status).toBe(200);
-    expect(response.body?.items[0]?.id).toBe("task-1");
+    expect(response.body.items).toEqual([]);
+    expect(response.body.historicalItems[0]).toMatchObject({ id: "task-1", historicalOnly: true, needsCanonicalDecision: true });
     expect(specService.listSpecReviewTasks).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
@@ -195,7 +197,7 @@ describe("parameter semantic v2 routes", () => {
     );
   });
 
-  it("POST /api/v2/parameter-spec-review-tasks/:taskId/resolve lets admins approve", async () => {
+  it("POST /api/v2/parameter-spec-review-tasks/:taskId/resolve is retired for admins", async () => {
     vi.mocked(specService.resolveSpecReviewTask).mockResolvedValue({
       id: "task-1",
       status: "resolved",
@@ -212,16 +214,13 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(200);
-    expect(specService.resolveSpecReviewTask).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
-      expect.objectContaining({ taskId: "task-1", decision: "resolved", parameterSpecId: "spec-1" }),
-      expect.objectContaining({ requestId: "test-request" })
-    );
+    expect(response.status).toBe(410);
+    expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
+    expect(response.headers.get("link")).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
+    expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
   });
 
-  it("POST resolve forwards confirmPropertyMismatch and createSpec to service", async () => {
+  it("POST retired resolve never creates a spec or confirms a mismatch", async () => {
     vi.mocked(specService.resolveSpecReviewTask).mockResolvedValue({
       id: "task-1",
       status: "resolved",
@@ -243,22 +242,11 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(200);
-    expect(specService.resolveSpecReviewTask).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({
-        taskId: "task-1",
-        decision: "resolved",
-        createSpec: true,
-        confirmPropertyMismatch: true,
-        reason: "Created manual spec"
-      }),
-      expect.anything()
-    );
+    expect(response.status).toBe(410);
+    expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
   });
 
-  it("POST resolve rejects resolved body without parameterSpecId or createSpec", async () => {
+  it("POST retired resolve takes precedence over legacy body validation", async () => {
     const response = await requestJson(
       makeServer({ db: makeDb(), auth: makeAdminAuth() }),
       "/api/v2/parameter-spec-review-tasks/task-1/resolve",
@@ -268,7 +256,7 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(410);
     expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
   });
 
@@ -397,16 +385,17 @@ describe("parameter semantic v2 routes", () => {
     expect(response.status).toBe(200);
   });
 
-  it("POST /api/v2/identity-mapping-tasks/:taskId/resolve forbids non-admins", async () => {
+  it("POST /api/v2/identity-mapping-tasks/:taskId/resolve is retired for viewers", async () => {
     const response = await requestJson(makeServer({ db: makeDb(), auth: makeAuth() }), "/api/v2/identity-mapping-tasks/map-1/resolve", {
       method: "POST",
       body: JSON.stringify({ decision: "resolved", selectedLogicalNodeId: "ln-a", reason: "Same board instance" })
     });
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(410);
+    expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
     expect(topologyService.resolveIdentityMappingTask).not.toHaveBeenCalled();
   });
 
-  it("POST /api/v2/identity-mapping-tasks/:taskId/resolve lets admins resolve", async () => {
+  it("POST /api/v2/identity-mapping-tasks/:taskId/resolve is retired for admins", async () => {
     vi.mocked(topologyService.resolveIdentityMappingTask).mockResolvedValue({
       id: "map-1",
       status: "resolved",
@@ -422,11 +411,12 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(200);
-    expect(topologyService.resolveIdentityMappingTask).toHaveBeenCalled();
+    expect(response.status).toBe(410);
+    expect(response.headers.get("link")).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
+    expect(topologyService.resolveIdentityMappingTask).not.toHaveBeenCalled();
   });
 
-  it("POST /api/v2/identity-mapping-tasks/:taskId/reopen lets admins reopen a completed outcome", async () => {
+  it("POST /api/v2/identity-mapping-tasks/:taskId/reopen preserves completed history", async () => {
     vi.mocked(topologyService.reopenIdentityMappingTask).mockResolvedValue({
       id: "map-1",
       status: "open"
@@ -441,13 +431,9 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(200);
-    expect(topologyService.reopenIdentityMappingTask).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
-      expect.objectContaining({ taskId: "map-1", reason: "Review new continuity evidence" }),
-      expect.objectContaining({ requestId: "test-request" })
-    );
+    expect(response.status).toBe(410);
+    expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
+    expect(topologyService.reopenIdentityMappingTask).not.toHaveBeenCalled();
   });
 
   it("POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate requires admin", async () => {

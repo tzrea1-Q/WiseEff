@@ -8,6 +8,7 @@ import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/rol
 import { apiRoute } from "./helpers/runtime";
 import {
   createBindingDraftViaApi,
+  defaultWorkflowAssignees,
   integerCellTarget,
   seedIsolatedNumericCellBinding,
   startSwappedDisposablePostCutoverRuntime,
@@ -245,35 +246,44 @@ test.describe("permissions matrix post-cutover API eligibility", () => {
     expect(created.status, created.bodyText).toBe(201);
     expect(created.draft).toBeTruthy();
 
-    const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+    const draftsUrl = apiRoute("/api/v2/projects/aurora/parameter-value-drafts");
+    const requestsUrl = apiRoute("/api/v2/projects/aurora/parameter-value-change-requests");
+    const draftsBefore = await request.get(draftsUrl, { headers: authHeadersForRole("admin") });
+    expect(draftsBefore.status(), await draftsBefore.text()).toBe(200);
+    const drafts = (await draftsBefore.json()).items;
+    const requestsBefore = await request.get(requestsUrl, { headers: authHeadersForRole("admin") });
+    expect(requestsBefore.status(), await requestsBefore.text()).toBe(200);
+    const requests = (await requestsBefore.json()).items;
+    const submitPath = `/api/v2/projects/aurora/parameter-value-drafts/${created.draft!.draftId}/submit`;
+    const response = await page.request.post(apiRoute(submitPath), {
       headers: authHeadersForRole("admin"),
-      data: {
-        projectId: "aurora",
-        items: [
-          {
-            draftId: created.draft!.draftId,
-            projectParameterBindingId: created.draft!.projectParameterBindingId,
-            parameterSpecId: created.draft!.parameterSpecId,
-            action: created.draft!.action,
-            targetValue: created.draft!.rawText,
-            reason: created.draft!.reason
-          }
-        ],
-        reason: permissionsEligibilityReason,
-        assignees: {
-          hardwareCommitterId: "u-xu-yun",
-          softwareCommitterId: "u-xu-yun",
-          softwareUserId: "u-xu-yun"
-        }
-      }
+      data: { assignedToUserId: "u-xu-yun" }
     });
 
     expect(response.status()).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: "VALIDATION_FAILED",
-        message: "Workflow assignee is not eligible for the requested role."
+        message: "The assigned reviewer is not an active project software committer.",
+        details: { assignedToUserId: "u-xu-yun", projectId: "aurora" }
       }
+    });
+    const draftsAfter = await request.get(draftsUrl, { headers: authHeadersForRole("admin") });
+    expect(draftsAfter.status(), await draftsAfter.text()).toBe(200);
+    expect((await draftsAfter.json()).items).toEqual(drafts);
+    const requestsAfter = await request.get(requestsUrl, { headers: authHeadersForRole("admin") });
+    expect(requestsAfter.status(), await requestsAfter.text()).toBe(200);
+    expect((await requestsAfter.json()).items).toEqual(requests);
+    const accepted = await request.post(apiRoute(submitPath), {
+      headers: authHeadersForRole("admin"),
+      data: { assignedToUserId: defaultWorkflowAssignees.softwareCommitterId }
+    });
+    expect(accepted.status(), await accepted.text()).toBe(201);
+    expect((await accepted.json()).item).toMatchObject({
+      draftId: created.draft!.draftId,
+      bindingId: binding.bindingId,
+      assignedToUserId: defaultWorkflowAssignees.softwareCommitterId,
+      status: "pending"
     });
 
     await recordOperationEvidence({
@@ -285,12 +295,17 @@ test.describe("permissions matrix post-cutover API eligibility", () => {
       api: [
         summarizeApiResponse(response, {
           method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
-          responseSummary: "VALIDATION_FAILED for role-ineligible workflow assignees"
+          path: submitPath,
+          responseSummary: "VALIDATION_FAILED for ineligible reviewer; drafts and requests unchanged"
+        }),
+        summarizeApiResponse(accepted, {
+          method: "POST",
+          path: submitPath,
+          responseSummary: "eligible software committer accepted; canonical request pending"
         })
       ],
       notes:
-        "Typed binding-draft submit on disposable post-cutover identity rejected project-scoped workflow assignees that visible role inclusion alone would not permit (TD-079)."
+        "Canonical draft submit rejected the visible Admin as a software-committer reviewer without changing drafts or requests, then accepted an eligible project software committer."
     });
   });
 });

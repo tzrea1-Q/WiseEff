@@ -266,16 +266,9 @@ export async function registerCatalogDriverSubjects(
 }
 
 /**
- * Seed a Config Set whose second revision has ambiguous node continuity, so an open
- * identity-mapping task exists for the admin surface to resolve.
- *
- * Ambiguous continuity cannot be produced through the public HTTP surface any more:
- * every ingest through it pins canonical source occurrences, and canonical source
- * changes then require a prepared source transaction that never allocates new DTS
- * identity. The identity-mapping subsystem itself (validate gate, task list, resolve
- * route, admin UI, audit) is unchanged, so this fixture ingests the two revisions
- * with the real upload/ingest service without the canonical producer, in the
- * disposable database only. All assertions still go through HTTP and the browser.
+ * Stage continuity history and both file memberships before canonical activation.
+ * The final HTTP upload activates the frozen ambiguous revision through the production
+ * source producer; no membership or source is changed after canonical ownership.
  */
 export async function seedAmbiguousIdentityMappingConfigSet(
   runtime: { databaseUrl: string; objectStoreRoot: string },
@@ -287,7 +280,8 @@ export async function seedAmbiguousIdentityMappingConfigSet(
     overlayFileName: string;
     overlayText: string;
     adminUserId: string;
-  }
+  },
+  request: APIRequestContext
 ): Promise<{ configSetId: string; baseRevisionId: string; ambiguousRevisionId: string }> {
   const db = createPostgresDatabase(runtime.databaseUrl);
   // The disposable API runs post-cutover in semantic identity mode; match it in-process.
@@ -317,7 +311,7 @@ export async function seedAmbiguousIdentityMappingConfigSet(
       role: "overlay",
       sortOrder: 1
     });
-    await upload(input.overlayFileName, input.overlayText);
+    await uploadDts(request, input.projectId, input.overlayFileName, input.overlayText);
     const ambiguous = await latestRevision(configSet.id);
     if (ambiguous.id === baseRevision.id || ambiguous.status !== "needs_mapping") {
       throw new Error(`identity-mapping fixture expected a needs_mapping revision, got ${ambiguous.status}`);

@@ -317,7 +317,7 @@ describe("createParameterModuleBodySchema", () => {
 });
 
 describe("createParameterModuleForAuth", () => {
-  it("creates curated business, driver-group, and node-type modules with parent rules", async () => {
+  it("creates shared business taxonomy but retires driver-group and node-type identity creation", async () => {
     const { db, modules, mappings } = createStatefulDb({ modules: seedTree() });
 
     const business = await createParameterModuleForAuth(db, makeAuth(), {
@@ -329,33 +329,26 @@ describe("createParameterModuleForAuth", () => {
     expect(business.origin).toBe("curated");
     expect(business.parentId).toBeNull();
 
-    const driverGroup = await createParameterModuleForAuth(db, makeAuth(), {
+    const before = structuredClone([...modules.values()]);
+    await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "hl7603",
       kind: "driver-group",
       parentId: "biz-power",
       compatibles: ["huawei,bypass_bst_hl7603"],
       description: "pre-upload"
-    });
-    expect(driverGroup.kind).toBe("driver-group");
-    expect(driverGroup.origin).toBe("curated");
-    expect(driverGroup.parentId).toBe("biz-power");
-    expect(mappings.some((row) => row.matchValue === "huawei,bypass_bst_hl7603")).toBe(true);
+    })).rejects.toMatchObject({ status: 410, code: "GONE", details: { reason: "legacy-surface-retired", successor: "/api/v2/catalog" } });
+    expect(mappings.some((row) => row.matchValue === "huawei,bypass_bst_hl7603")).toBe(false);
 
-    const nodeType = await createParameterModuleForAuth(db, makeAuth(), {
+    await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "regulator-dummy",
       kind: "node-type",
       parentId: "biz-power",
       sourceKey: "nodetype:regulator-dummy"
-    });
-    expect(nodeType.kind).toBe("node-type");
-    expect(nodeType.origin).toBe("curated");
-    expect(nodeType.parentId).toBe("biz-power");
-    expect(nodeType.sourceKey).toBe("nodetype:regulator-dummy");
-
-    expect([...modules.values()].some((module) => module.id === nodeType.id)).toBe(true);
+    })).rejects.toMatchObject({ status: 410, code: "GONE", details: { reason: "legacy-surface-retired", successor: "/api/v2/catalog" } });
+    expect([...modules.values()]).toEqual(before);
   });
 
-  it("rejects invalid parents", async () => {
+  it("retires legacy subject creation regardless of the historical parent rule", async () => {
     const { db } = createStatefulDb({ modules: seedTree() });
 
     await expect(
@@ -365,17 +358,14 @@ describe("createParameterModuleForAuth", () => {
         parentId: "dg-sc8562",
         compatibles: ["huawei,x"]
       })
-    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" } satisfies Partial<ApiError>);
+    ).rejects.toMatchObject({ code: "GONE", status: 410 } satisfies Partial<ApiError>);
 
-    // node-type may nest under driver-group (ADR-0010 / ADR-0013).
-    const nested = await createParameterModuleForAuth(db, makeAuth(), {
+    await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "nested-under-driver",
       kind: "node-type",
       parentId: "dg-sc8562",
       sourceKey: "nodetype:usb0"
-    });
-    expect(nested.parentId).toBe("dg-sc8562");
-    expect(nested.kind).toBe("node-type");
+    })).rejects.toMatchObject({ code: "GONE", status: 410 } satisfies Partial<ApiError>);
 
     await expect(
       createParameterModuleForAuth(db, makeAuth(), {
@@ -384,10 +374,10 @@ describe("createParameterModuleForAuth", () => {
         parentId: null,
         sourceKey: "nodetype:regulator-dummy"
       })
-    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" } satisfies Partial<ApiError>);
+    ).rejects.toMatchObject({ code: "GONE", status: 410 } satisfies Partial<ApiError>);
   });
 
-  it("claims an existing compatible mapping when creating a driver-group", async () => {
+  it("retires claiming an existing compatible mapping without renaming its historical module", async () => {
     const { db, modules } = createStatefulDb({
       modules: seedTree(),
       mappings: [
@@ -402,15 +392,13 @@ describe("createParameterModuleForAuth", () => {
       ]
     });
 
-    const result = await createParameterModuleForAuth(db, makeAuth(), {
+    const before = structuredClone([...modules.values()]);
+    await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "sc8562-claimed",
       kind: "driver-group",
       parentId: "biz-power",
       compatibles: ["huawei,sc8562"]
-    });
-
-    expect(result.id).toBe("dg-sc8562");
-    expect(result.name).toBe("sc8562-claimed");
-    expect(modules.get("dg-sc8562")?.origin).toBe("curated");
+    })).rejects.toMatchObject({ code: "GONE", status: 410, details: { reason: "legacy-surface-retired" } });
+    expect([...modules.values()]).toEqual(before);
   });
 });

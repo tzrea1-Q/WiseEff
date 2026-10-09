@@ -71,6 +71,14 @@ npm run build
 npm run docs:check
 ```
 
+### Test database isolation
+
+Disposable post-cutover browser fixtures use `<prefix>_disposable_…` when `WISEEFF_TEST_DATABASE_PREFIX` is set; otherwise they retain `wiseeff_acceptance_disposable_…`. Manual runs may pin nested listeners with `WISEEFF_ACCEPTANCE_NESTED_API_PORT` and `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` (distinct integer ports from 1–65535). Run nested-only specs with `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true` and `--no-deps` when reusing the manual runtime's ports; do not start a parent runtime on those listeners. CI leaves these overrides unset and retains allocated, isolated ports.
+
+The PostgreSQL test harness (`server/testing/testDatabase.ts`) connects using nonblank `TEST_DATABASE_URL`, then `DATABASE_URL`, then the local Compose default. For parallel worktrees on the same cluster, set a distinct `WISEEFF_TEST_DATABASE_PREFIX` before starting each test process. The trimmed prefix defaults to `wiseeff` when unset or blank; it must match `^[a-z][a-z0-9_]{0,15}$` (1–16 characters, starting with a lowercase ASCII letter, followed by lowercase ASCII letters, digits, or underscores). Invalid prefixes fail before database setup.
+
+The prefix names migration templates (`<prefix>_test_tpl_…`), temporary template builds (`<prefix>_test_tplbuild_…`), and worker/ephemeral databases (`<prefix>_test_wk_…`). When the variable is supplied, managed-instance fixtures use `<prefix>_m…`; with it unset, they retain `wiseeffm…`. Stale-template and orphan-worker cleanup is limited to the selected template/worker prefixes (underscores are matched literally), and worker teardown also matches the current run token. Choose a unique prefix, such as `review_fixes`, so one worktree's cleanup does not select another's test databases. This setting does not change the database URL, grant permissions, or remove the shared cluster role-catalog lock.
+
 WiseEff is PC-first: visible work defaults to the affected route/state at `1440x900`, not a three-device walkthrough. Add one compact desktop check for a concrete layout risk; tablet/mobile checks are opt-in. Follow the [UI quality checklist](docs/developer/ui-quality-checklist.md) for real-browser evidence and specialized acceptance boundaries.
 
 Use the phase gates in [docs/developer/verification-matrix.md](docs/developer/verification-matrix.md) for M1-M5 work. Documentation-only changes should still run `npm run docs:check` and `git diff --check`.

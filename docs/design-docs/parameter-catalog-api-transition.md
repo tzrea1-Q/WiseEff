@@ -142,6 +142,12 @@ Every route below is a target contract, not current implementation evidence.
 | Project drafts | Existing binding and node-enablement draft paths | Retained product behavior; inputs resolve through canonical binding/definition identity. |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | Deployment-operator-only reconciliation and migration diagnostics; never linked from public DTOs. |
 
+### Release readiness
+
+Config-set release readiness reads pending canonical value change requests alongside the retained legacy workflow count. Source-occurrence requests count only for the config set whose source cohort they touch; project-only requests block all config sets in that project. Approval, rejection, or withdrawal clears the pending-change blocker without a legacy change-request mirror. Node-enablement workflows retain their separate rules.
+
+Baseline creation and release consume the same readiness gate. Its token includes the exact pending canonical request IDs, so confirmation against an evaluation made before new pending work appeared is refused as stale. Readiness never synchronizes or creates legacy identity-mapping tasks; retained historical tasks are read only.
+
 ### Shared module assignment
 
 Registration and Placement writes accept optional `destinationModuleId`, the exact ID of an existing module in the authenticated Organization. Driver targets require `driver-group`, NodeType targets require `node-type`, and ConfigurationSchema targets require `business`. Explicit invalid targets fail; they never fall back to a name match. Existing callers that omit the field retain the PlacementIntent contract.
@@ -588,7 +594,15 @@ The cutover decision in issue #678 is the sole owner of every R0-R10 production 
 | Existing project topology, binding history/compare, validation, and draft paths | Coordinated first-party DTO/ID cutover; path remains. No legacy `ParameterSpec` field after launch. | Canonical v2 contract. |
 | Existing v1 value, debug, reload, and knowledge calls | Public workflow remains unless separately versioned; implementation resolves canonical binding/definition/revision IDs internally. | Canonical identities only. |
 
+The parameter-modules navigation adapter marks its registry envelope `navigationOnly: true`. Its taxonomy nodes retain navigation IDs and canonical subtree counts, but `sourceKey` and `attributionSubjectId` are null and `mappings` is empty; none is a Catalog subject identity. Historical driver registration provenance remains read-only on the bounded driver-registry read. Shared business-category CRUD remains available, but v1 creation, editing, moving, deletion, and reclassification of historical Driver/NodeType structure return the same 410 retirement contract with trusted refusal audit. Canonical contexts expose historical Driver/NodeType details read-only and direct registration or placement changes to their canonical owners. Project candidate/reload recomputation remains owned by the internal project workflows, not the public module recompute route.
+
+The retired organization overlay and Platform promotion surfaces link to the Catalog page for Definition Proposals and publication. `GET /api/v2/platform/driver-schema-promotion-history` is a Platform-authorized, read-only historical projection of retained promotion records, not a candidate list or an effective schema read. It preserves original legacy identifiers as evidence and offers no promote, revert, or restore action. Coverage and ingest never merge these historical overlays into the runtime schema registry.
+
 Legacy read responses include:
+
+Task read-window responses separate exact canonical `items` from read-only `historicalItems`. Spec-review adaptation uses the organization-scoped typed mapping head and the authorized current Review Queue, never a property or node name. Only unresolved tasks with exactly one current Review Item equivalent are adapted. Other tasks retain their original evidence and status with `historicalOnly: true`; open and dismissed tasks carry `needsCanonicalDecision: true`. Identity continuity choices have no equivalent canonical resolution and remain historical. Task retirement and historical evidence link to `/parameter-admin/specs?review=open`, which opens the canonical Review Queue; the identity entry redirects there when no unresolved historical task remains.
+
+DTS review evidence may prove an immutable property on a `needs_mapping` revision without granting Binding or source-write proof. Continuity evidence preserves the prior/candidate relation and matcher reasons without selecting an identity, using one exact property anchor per candidate when present. Propertyless continuity enters the canonical Review Queue as revision-bound Review Evidence: persisted candidate membership and continuity diagnostics, complete source-member ownership and bytes, and the current Catalog pin are verified before materialization. It creates no property locator, Parameter Observation, Binding, or source-write proof and does not resolve prior identity. Invalid source proof still refuses with `source-proof-invalid` and rolls back; absence of a property alone does not discard the ambiguity.
 
 ```text
 Deprecation: true

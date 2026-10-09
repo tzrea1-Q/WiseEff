@@ -12,6 +12,8 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerParameterSpecRoutes } from "./routes";
+import { createWiseEffServer } from "../../app";
+import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import {
   activateParameterSpec,
   deprecateParameterSpec,
@@ -263,14 +265,8 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     expect(audits.rows).toHaveLength(1);
   });
 
-  it("HTTP deprecate then restore round-trips lifecycle on the public routes", async () => {
-    const auth = makeAuth();
-    const router = createRouter();
-    registerParameterSpecRoutes(router, {
-      db: db!,
-      getCurrentAuthContext: () => auth,
-    });
-    const server = createHttpServer(router);
+  it("assembled HTTP deprecate and restore are retired and keep lifecycle unchanged", async () => {
+    const server = createWiseEffServer({ db: db! });
 
     const deprecated = await requestJson<{ item: { lifecycle: string } }>(
       server,
@@ -280,8 +276,8 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
         body: JSON.stringify({ reason: "http soft retire" }),
       },
     );
-    expect(deprecated.status).toBe(200);
-    expect(deprecated.body.item.lifecycle).toBe("deprecated");
+    expect(deprecated.status).toBe(410);
+    expect(catalogLegacyGoneResponseSchema.parse(deprecated.body).error.details.reason).toBe("legacy-surface-retired");
 
     const restored = await requestJson<{ item: { lifecycle: string } }>(
       server,
@@ -291,19 +287,14 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
         body: JSON.stringify({ reason: "http restore" }),
       },
     );
-    expect(restored.status).toBe(200);
-    expect(restored.body.item.lifecycle).toBe("active");
+    expect(restored.status).toBe(410);
+    expect(catalogLegacyGoneResponseSchema.parse(restored.body).error.details.reason).toBe("legacy-surface-retired");
+    const detail = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
+    expect(detail.item.lifecycle).toBe("active");
   });
 
-  it("HTTP deprecate without admin permission is forbidden", async () => {
-    const auth = makeAuth();
-    auth.permissions = ["parameter:view", "parameter:edit"];
-    const router = createRouter();
-    registerParameterSpecRoutes(router, {
-      db: db!,
-      getCurrentAuthContext: () => auth,
-    });
-    const server = createHttpServer(router);
+  it("assembled HTTP deprecate is gone even without an authenticated admin", async () => {
+    const server = createWiseEffServer({ db: db! });
 
     const denied = await requestJson(
       server,
@@ -313,7 +304,8 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
         body: JSON.stringify({ reason: "no admin" }),
       },
     );
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(410);
+    expect(catalogLegacyGoneResponseSchema.parse(denied.body).error.details.reason).toBe("legacy-surface-retired");
   });
 
   it("reports referenceCount from organization bindings on getParameterSpec", async () => {

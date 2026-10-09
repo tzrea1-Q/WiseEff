@@ -71,6 +71,24 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
   const [readinessRetry, setReadinessRetry] = useState(0);
 
   useEffect(() => {
+    const refresh = () => setReadinessRetry((value) => value + 1);
+    const onRequestChanged = (event: Event) => {
+      if ((event as CustomEvent<{ projectId: string }>).detail?.projectId === projectId) refresh();
+    };
+    const onVisibilityChanged = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("wiseeff:canonical-requests-changed", onRequestChanged);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChanged);
+    return () => {
+      window.removeEventListener("wiseeff:canonical-requests-changed", onRequestChanged);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChanged);
+    };
+  }, [projectId]);
+
+  useEffect(() => {
     void releaseBaselineSession.loadBaselines(
       projectId,
       selectedConfigSet?.id ?? null,

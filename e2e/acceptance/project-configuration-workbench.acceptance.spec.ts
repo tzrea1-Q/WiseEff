@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -13,6 +14,7 @@ import {
 } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
+import { registerCatalogDriverSubjects } from "./helpers/topologyFixture";
 import {
   assertPostCutoverIdentity,
   bindHardwareUserToProject,
@@ -91,6 +93,46 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         `,
         [`acceptance-u-zhao-heng-hardware-user-${projectId}`, organizationId, projectId]
       );
+    });
+  });
+
+  test("keeps canonical baseline restore read-only while showing source drift", async ({ page, request }, testInfo) => {
+    const baselineId = "seed-dts-baseline-aurora";
+    const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/baselines/${baselineId}/restore-preview`), {
+      headers: adminHeaders()
+    });
+    expect(preview.status()).toBe(200);
+    const { item } = await preview.json();
+    expect(item.driftedCount).toBeGreaterThan(0);
+    expect(item.members.some((member: { canonicalOwned: boolean }) => member.canonicalOwned)).toBe(true);
+    const route = `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(item.configSetId)}&file=${encodeURIComponent(item.members[0].fileId)}&baseline=${baselineId}`;
+    await signInBrowserAsRole(page, "admin", route);
+    await dismissXiaozeHint(page);
+    await ensureInspectorOpen(page);
+    const rollbackRequests: string[] = [];
+    page.on("request", (sent) => {
+      if (sent.method() === "POST" && sent.url().endsWith(`/baselines/${baselineId}/rollback`)) rollbackRequests.push(sent.url());
+    });
+    const openPreview = page.getByRole("button", { name: "恢复预览", exact: true });
+    await expect(openPreview).toBeEnabled();
+    await openPreview.click();
+    const dialog = page.getByRole("dialog", { name: "恢复基线预览" });
+    await expect(dialog).toContainText("只读漂移预览");
+    await expect(dialog).toContainText("已准备并批准的规范源事务");
+    await expect(dialog.getByLabel("恢复 blast radius")).toContainText(item.members[0].fileName);
+    await expect(dialog.getByRole("button", { name: "确认恢复" })).toHaveCount(0);
+    const screenshot = testInfo.outputPath("canonical-baseline-restore-1440x900.png");
+    await page.screenshot({ path: screenshot });
+    await testInfo.attach("canonical baseline read-only restore", { path: screenshot, contentType: "image/png" });
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(openPreview).toBeFocused();
+    expect(rollbackRequests).toEqual([]);
+    await recordOperationEvidence({
+      operationId: "PROJ-CONFIG-BASELINE-001", title: "canonical baseline read-only restore preview",
+      status: "passed", role: "Admin", route, page, testInfo,
+      assertions: ["ui", "api", "screenshot"], artifacts: [screenshot],
+      api: [summarizeApiResponse(preview, { method: "GET", path: `/api/v1/projects/${projectId}/baselines/${baselineId}/restore-preview` })]
     });
   });
 
@@ -384,6 +426,96 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         fileNames: [primaryFileName, looseFileName]
       });
     }
+  });
+
+  test("canonical structured save stages for review and hands off to submission", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-EDIT-001
+    // @operation PROJ-CONFIG-EDIT-001
+    const headers = adminHeaders();
+    const previousRequests = await withPgClient(async (client) => (await client.query<{ id: string }>(
+      `select id from project_parameter_value_change_requests
+       where organization_id=$1 and project_id=$2 and submitter_user_id=$3
+         and reason=$4 and status='pending'`,
+      [organizationId, projectId, acceptanceCast.xuYun.userId, "Issue 1062 structured staging browser proof"]
+    )).rows);
+    for (const previous of previousRequests) {
+      const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${previous.id}/withdraw`),
+        { headers, data: { reason: "Clean up interrupted issue 1062 browser submission" } });
+      expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+    }
+    const previousDrafts = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`), { headers });
+    expect(previousDrafts.status(), await previousDrafts.text()).toBe(200);
+    for (const previous of (await previousDrafts.json()).items.filter((item: { reason: string }) =>
+      item.reason === "Issue 1062 structured staging browser proof")) {
+      const removed = await request.delete(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts/${previous.id}`), { headers });
+      expect(removed.status(), await removed.text()).toBe(200);
+    }
+    const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
+    expect(listed.status(), await listed.text()).toBe(200);
+    const bindings = (await listed.json()).items as Array<{ id: string; propertyKey: string; currentValueId: string;
+      sourceFileId: string; sourceNodePath: string; effectiveValue: { kind: string; groups?: Array<Array<{ value: string }>> } }>;
+    const binding = bindings.find((item) => item.propertyKey === "r_charger_uohm");
+    expect(binding).toBeDefined();
+    const configSets = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), { headers });
+    const configSet = (await configSets.json()).items.find((item: { name: string }) => item.name === "default");
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({
+      configSet: configSet.id, file: binding!.sourceFileId, node: binding!.sourceNodePath,
+      property: binding!.propertyKey, sourceMode: "structured"
+    })}`;
+    await signInBrowserAsRole(page, "admin", route);
+    await dismissXiaozeHint(page);
+    await page.getByRole("treeitem", {
+      name: `属性 ${binding!.sourceNodePath}/${binding!.propertyKey}`, exact: true
+    }).click();
+    await ensureInspectorOpen(page);
+    const inspector = page.getByRole("complementary", { name: "配置检查器" });
+    const editor = inspector.getByRole("textbox", { name: "数值 1" });
+    await expect(editor).toBeVisible();
+    const target = String(Number(binding!.effectiveValue.groups![0]![0]!.value) + 1);
+    await editor.fill(target);
+    const tasks = page.getByRole("region", { name: "配置任务" });
+    await tasks.getByLabel("变更原因").fill("Issue 1062 structured staging browser proof");
+    const stagedResponse = page.waitForResponse((response) => response.request().method() === "POST"
+      && response.url().endsWith(`/parameter-bindings/${binding!.id}/drafts`));
+    await tasks.getByRole("button", { name: /提交所选/ }).click();
+    const staged = await stagedResponse;
+    expect(staged.status(), await staged.text()).toBe(201);
+    const draft = (await staged.json()).item;
+    expect(draft).toMatchObject({ pending: true, currentValueId: binding!.currentValueId,
+      projectParameterBindingId: binding!.id, writeTarget: { role: "canonical-project-value-draft" } });
+    await expect(tasks).toContainText("已暂存 1 项待审核草稿；当前值未变。");
+    const receipt = tasks.getByRole("region", { name: "待审核草稿回执" });
+    await expect(receipt).toContainText(draft.draftId);
+    await expect(receipt).toContainText(binding!.currentValueId);
+    await expect(tasks).not.toContainText("已写入正式项目值");
+    await page.screenshot({ path: testInfo.outputPath("structured-staged-receipt.png"), fullPage: true });
+    await tasks.getByRole("button", { name: "前往提交审核" }).click();
+    await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${projectId}`));
+    const submission = page.getByRole("region", { name: "参数修改提交" });
+    for (const select of await submission.getByRole("combobox").all()) {
+      await select.locator('option[value]:not([value=""]):not([disabled])').first().waitFor({ state: "attached" });
+      const option = await select.locator("option").evaluateAll((options) =>
+        options.find((item) => (item as HTMLOptionElement).value && !(item as HTMLOptionElement).disabled)?.getAttribute("value"));
+      if (option) await select.selectOption(option);
+    }
+    const submittedResponse = page.waitForResponse((response) => response.request().method() === "POST"
+      && response.url().endsWith(`/parameter-value-drafts/${draft.draftId}/submit`));
+    await submission.getByRole("button", { name: /提交/ }).click();
+    const submitted = await submittedResponse;
+    expect(submitted.status(), await submitted.text()).toBe(201);
+    expect((await submitted.json()).item).toMatchObject({ status: "pending", bindingId: binding!.id });
+    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
+    expect((await after.json()).items.find((item: { id: string }) => item.id === binding!.id).currentValueId).toBe(binding!.currentValueId);
+    await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Canonical structured staging and submission",
+      status: "passed", role: "Admin", route, page, testInfo, assertions: ["ui", "api", "screenshot"],
+      api: [summarizeApiResponse(staged, { method: "POST", path: `/api/v2/projects/${projectId}/parameter-bindings/${binding!.id}/drafts`,
+        responseSummary: "pending canonical draft; current value unchanged" }),
+      summarizeApiResponse(submitted, { method: "POST", path: `/api/v2/projects/${projectId}/parameter-value-drafts/${draft.draftId}/submit`,
+        responseSummary: "pending canonical change request; current value unchanged" })],
+      notes: "API mode at 1440x900; exact occurrence staged, receipt reference shown, user handed off to submission. No review approval or formal value apply." });
+    const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${(await submitted.json()).item.id}/withdraw`),
+      { headers, data: { reason: "Clean up issue 1062 browser submission" } });
+    expect(withdrawn.status(), await withdrawn.text()).toBe(200);
   });
 
   test("navigates source-located structure spans, search, and deep links in API mode", async ({ page, request }, testInfo) => {
@@ -1721,6 +1853,323 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
+  test("#1061 canonical submission blocks workbench release readiness until review completes", async ({
+    page,
+    request,
+    browser
+  }, testInfo) => {
+    // @acceptance PROJ-CONFIG-READINESS-001
+    // @operation PROJ-CONFIG-READINESS-001
+    // @operation PARAM-CANONICAL-VALUE-WORKFLOW-001
+    test.setTimeout(180_000);
+    const scopedProjectId = `t1061-readiness-${randomUUID()}`;
+    const fileName = "readiness-battery.dts";
+    const source = `/dts-v1/;
+/ {
+  battery0 {
+    cccv_0 = <4500 0>;
+  };
+};
+`;
+    let configSetId = "";
+    let fileId = "";
+    let bindingId = "";
+    let draftId = "";
+    let requestId = "";
+    let completed = false;
+    const apiEvidence: Array<ReturnType<typeof summarizeApiResponse>> = [];
+    const readinessStates: Array<{
+      phase: string;
+      available: boolean;
+      canRelease: boolean;
+      canCreateBaseline: boolean;
+      blockerCodes: string[];
+    }> = [];
+    const screenshots: string[] = [];
+    const reviewerContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const reviewerPage = await reviewerContext.newPage();
+    const readinessPath = () => `/api/v1/projects/${scopedProjectId}/config-sets/${configSetId}/release-readiness`;
+    const workbenchRoute = () =>
+      `/parameter-admin/projects/${scopedProjectId}/configuration?configSet=${configSetId}&file=${fileId}`;
+    const openWorkbench = async (phase: string) => {
+      const evaluated = page.waitForResponse((response) =>
+        response.request().method() === "GET" && response.url().endsWith(readinessPath())
+      );
+      await signInBrowserAsRole(page, "admin", workbenchRoute());
+      await dismissXiaozeHint(page);
+      const response = await evaluated;
+      expect(response.status(), await response.text()).toBe(200);
+      const { item } = await response.json() as {
+        item: {
+          available: boolean;
+          canRelease: boolean;
+          canCreateBaseline: boolean;
+          blockers: Array<{ code: string }>;
+        };
+      };
+      readinessStates.push({ phase, available: item.available, canRelease: item.canRelease,
+        canCreateBaseline: item.canCreateBaseline, blockerCodes: item.blockers.map((blocker) => blocker.code) });
+      apiEvidence.push(summarizeApiResponse(response, {
+        method: "GET", path: readinessPath(),
+        responseSummary: `${phase}: canRelease=${item.canRelease}; blockers=${item.blockers.map((blocker) => blocker.code).join(",")}`
+      }));
+      expect(item.available).toBe(true);
+      const summary = page.getByRole("status", { name: "发布就绪" });
+      await expect(summary).toHaveAttribute("data-can-release", String(item.canRelease));
+      await summary.getByRole("button").first().click();
+      await expect(page.getByRole("region", { name: "发布就绪问题" })).toBeVisible();
+      return item;
+    };
+
+    try {
+      await withPgClient(async (client) => {
+        await client.query(
+          `insert into projects (id, organization_id, name, code, status)
+           values ($1, $2, 'Canonical release readiness', $1, 'initialized')`,
+          [scopedProjectId, organizationId]
+        );
+        for (const [userId, roleId] of [
+          [acceptanceCast.liuMin.userId, "software-user"],
+          [acceptanceCast.sunMei.userId, "software-committer"]
+        ]) {
+          await client.query(
+            `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+             values ($1, $2, $3, $4, $5)`,
+            [`${scopedProjectId}-${roleId}`, userId, organizationId, scopedProjectId, roleId]
+          );
+        }
+      });
+      const configSet = await request.post(apiRoute(`/api/v1/projects/${scopedProjectId}/config-sets`), {
+        headers: adminHeaders(), data: { name: "default", description: "#1061 canonical readiness regression" }
+      });
+      expect(configSet.status(), await configSet.text()).toBe(201);
+      configSetId = (await configSet.json()).item.id;
+      const upload = () => request.post(apiRoute(`/api/v1/projects/${scopedProjectId}/parameter-files`), {
+        headers: adminHeaders(), data: { fileName, contentBase64: Buffer.from(source).toString("base64") }
+      });
+      const firstUpload = await upload();
+      expect(firstUpload.status(), await firstUpload.text()).toBe(201);
+      fileId = (await firstUpload.json()).item.id;
+      const member = await request.post(apiRoute(`/api/v1/projects/${scopedProjectId}/config-sets/${configSetId}/files`), {
+        headers: adminHeaders(), data: { fileId, role: "base", sortOrder: 0 }
+      });
+      expect(member.ok(), await member.text()).toBe(true);
+      const synchronized = await upload();
+      expect(synchronized.status(), await synchronized.text()).toBe(201);
+      const bindings = await request.get(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-bindings`), {
+        headers: authHeadersForRole("software-user")
+      });
+      expect(bindings.status(), await bindings.text()).toBe(200);
+      const { items } = await bindings.json() as { items: Array<{ id: string; propertyKey: string; rawValue: string }> };
+      const binding = items.find((item) => item.propertyKey === "cccv_0");
+      expect(binding, "Parent-seeded published Catalog and battery0 registration must materialize cccv_0").toBeTruthy();
+      expect(binding!.rawValue).toBe("<4500 0>");
+      bindingId = binding!.id;
+
+      const initial = await openWorkbench("before-submit");
+      expect(initial.blockers.map((blocker) => blocker.code)).not.toContain("pending-change");
+      expect(initial.canCreateBaseline).toBe(true);
+      expect(initial.canRelease).toBe(true);
+
+      await signInBrowserAsRole(page, "software-user", `/parameters?project=${scopedProjectId}`);
+      await dismissXiaozeHint(page);
+      const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
+      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("cccv_0");
+      await workspace.locator(`[data-binding-id="${bindingId}"]`)
+        .getByRole("button", { name: /^(编辑|继续编辑) cccv_0/ }).click();
+      const dialog = page.getByRole("dialog", { name: "修改草稿" });
+      await dialog.getByLabel("目标值", { exact: true }).fill("<4510 0>");
+      await dialog.getByLabel("修改原因", { exact: true }).fill("#1061 canonical submission gates release readiness");
+      const created = page.waitForResponse((response) => response.request().method() === "POST"
+        && response.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
+      await dialog.getByRole("button", { name: "校验并加入本轮" }).click();
+      const draft = await created;
+      expect(draft.status(), await draft.text()).toBe(201);
+      draftId = (await draft.json()).item.draftId;
+      const submission = page.getByRole("region", { name: "参数修改提交" });
+      await submission.getByLabel("软件 MDE", { exact: true }).selectOption(acceptanceCast.sunMei.userId);
+      const submitted = page.waitForResponse((response) => response.request().method() === "POST"
+        && response.url().endsWith(`/parameter-value-drafts/${draftId}/submit`));
+      await submission.getByRole("button", { name: /提交/ }).click();
+      const submit = await submitted;
+      expect(submit.ok(), await submit.text()).toBe(true);
+      const pendingRequest = (await submit.json()).item;
+      requestId = pendingRequest.id;
+      expect(pendingRequest.status).toBe("pending");
+      expect(pendingRequest.assignedToUserId).toBe(acceptanceCast.sunMei.userId);
+      apiEvidence.push(summarizeApiResponse(submit, {
+        method: "POST", path: `/api/v2/projects/${scopedProjectId}/parameter-value-drafts/${draftId}/submit`,
+        responseSummary: `Canonical request ${requestId} submitted to independent software reviewer`
+      }));
+
+      const pending = await openWorkbench("pending-review");
+      const pendingIssue = page.getByRole("region", { name: "发布就绪问题" }).locator('[data-code="pending-change"]');
+      await expect(pendingIssue).toBeVisible();
+      await expect(pendingIssue).toContainText(/1\D/);
+      const reviewRoute = `/parameter-review?project=${scopedProjectId}&request=${requestId}`;
+      await pendingIssue.getByRole("button").click();
+      await expect(page).toHaveURL(new RegExp(`request=${requestId}`));
+      await openWorkbench("pending-review-return");
+      expect(pending.blockers.map((blocker) => blocker.code)).toContain("pending-change");
+      expect(pending.canRelease).toBe(false);
+      expect(pending.canCreateBaseline).toBe(false);
+      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "false");
+      await page.getByRole("button", { name: "更多", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
+      await page.keyboard.press("Escape");
+      const blockedScreenshot = testInfo.outputPath("canonical-readiness-blocked.png");
+      await page.screenshot({ path: blockedScreenshot, animations: "disabled" });
+      screenshots.push(blockedScreenshot);
+
+      await signInBrowserAsRole(reviewerPage, "software-committer", reviewRoute);
+      await dismissXiaozeHint(reviewerPage);
+      await reviewerPage.bringToFront();
+      const review = reviewerPage.getByRole("region", { name: "软件配置审核" });
+      await expect(review.getByLabel("固定源变更后")).toContainText("4510");
+      const reviewed = reviewerPage.waitForResponse((response) => response.request().method() === "POST"
+        && response.url().endsWith(`/parameter-value-change-requests/${requestId}/review`));
+      await review.getByRole("button", { name: "批准软件配置" }).click();
+      const approval = await reviewed;
+      expect(approval.ok(), await approval.text()).toBe(true);
+      const approvedRequest = (await approval.json()).item as { id: string; status: string; appliedValueId: string };
+      expect(approvedRequest).toMatchObject({ id: requestId, status: "approved", appliedValueId: expect.any(String) });
+      apiEvidence.push(summarizeApiResponse(approval, {
+        method: "POST", path: `/api/v2/projects/${scopedProjectId}/parameter-value-change-requests/${requestId}/review`,
+        responseSummary: "Independent software reviewer approved the canonical source change"
+      }));
+
+      const refreshed = page.waitForResponse((response) => response.request().method() === "GET"
+        && response.url().endsWith(readinessPath()));
+      await page.bringToFront();
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      const refreshedResponse = await refreshed;
+      expect(refreshedResponse.status(), await refreshedResponse.text()).toBe(200);
+      const cleared = (await refreshedResponse.json()).item;
+      readinessStates.push({ phase: "after-approval-mounted", available: cleared.available,
+        canRelease: cleared.canRelease, canCreateBaseline: cleared.canCreateBaseline,
+        blockerCodes: cleared.blockers.map((blocker: { code: string }) => blocker.code) });
+      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "true");
+      expect(cleared.blockers.map((blocker) => blocker.code)).not.toContain("pending-change");
+      await expect(page.getByRole("region", { name: "发布就绪问题" }).locator('[data-code="pending-change"]')).toHaveCount(0);
+      expect(cleared.canCreateBaseline).toBe(true);
+      expect(cleared.canRelease).toBe(true);
+      await page.getByRole("button", { name: "更多", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
+      await page.keyboard.press("Escape");
+      const clearedScreenshot = testInfo.outputPath("canonical-readiness-cleared.png");
+      await page.screenshot({ path: clearedScreenshot, animations: "disabled" });
+      screenshots.push(clearedScreenshot);
+      const appliedBindings = await request.get(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-bindings`), {
+        headers: authHeadersForRole("software-user")
+      });
+      expect(appliedBindings.status(), await appliedBindings.text()).toBe(200);
+      const appliedBody = await appliedBindings.json() as {
+        items: Array<{ id: string; currentValueId: string; rawValue: string }>;
+      };
+      expect(appliedBody.items.find((item) => item.id === bindingId)).toMatchObject({
+        currentValueId: approvedRequest.appliedValueId, rawValue: "<4510 0>"
+      });
+      apiEvidence.push(summarizeApiResponse(appliedBindings, {
+        method: "GET", path: `/api/v2/projects/${scopedProjectId}/parameter-bindings`,
+        responseSummary: `Binding ${bindingId} current value matches approved value ${approvedRequest.appliedValueId}`
+      }));
+      await withPgClient(async (client) => {
+        const persisted = await client.query(
+          `select request.status, request.applied_value_id, request.applied_audit_ref, request.applied_history_event_id
+           from project_parameter_value_change_requests request
+           where request.organization_id = $1 and request.project_id = $2 and request.id = $3`,
+          [organizationId, scopedProjectId, requestId]
+        );
+        expect(persisted.rows).toEqual([expect.objectContaining({ status: "approved", applied_value_id: approvedRequest.appliedValueId,
+          applied_audit_ref: expect.any(String), applied_history_event_id: expect.any(String) })]);
+      });
+      const revisions = await request.get(apiRoute(`/api/v2/projects/${scopedProjectId}/config-sets/${configSetId}/revisions`), {
+        headers: authHeadersForRole("software-user")
+      });
+      expect(revisions.status(), await revisions.text()).toBe(200);
+      const revision = (await revisions.json()).items.find((item: { status: string }) => item.status === "resolved");
+      expect(revision).toBeTruthy();
+      const nextDraft = await request.post(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-bindings/${bindingId}/drafts`), {
+        headers: authHeadersForRole("software-user"), data: { ...draft.request().postDataJSON(),
+          baseRevisionId: revision.id, reason: "Withdraw canonical pending work without reopening readiness" }
+      });
+      expect(nextDraft.status(), await nextDraft.text()).toBe(201);
+      const nextDraftId = (await nextDraft.json()).item.draftId;
+      const nextSubmission = await request.post(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-value-drafts/${nextDraftId}/submit`), {
+        headers: authHeadersForRole("software-user"), data: { assignedToUserId: acceptanceCast.sunMei.userId }
+      });
+      expect(nextSubmission.status(), await nextSubmission.text()).toBe(201);
+      requestId = (await nextSubmission.json()).item.id;
+      await reviewerPage.bringToFront();
+      const pendingRefresh = page.waitForResponse((response) => response.request().method() === "GET"
+        && response.url().endsWith(readinessPath()));
+      await page.bringToFront();
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      const pendingResponse = await pendingRefresh;
+      expect(pendingResponse.status(), await pendingResponse.text()).toBe(200);
+      expect((await pendingResponse.json()).item.blockers.map((blocker: { code: string }) => blocker.code))
+        .toContain("pending-change");
+      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "false");
+      const withdrawal = await request.post(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-value-change-requests/${requestId}/withdraw`), {
+        headers: authHeadersForRole("software-user"), data: {}
+      });
+      expect(withdrawal.status(), await withdrawal.text()).toBe(200);
+      expect((await withdrawal.json()).item.status).toBe("withdrawn");
+      await reviewerPage.bringToFront();
+      const withdrawalRefresh = page.waitForResponse((response) => response.request().method() === "GET"
+        && response.url().endsWith(readinessPath()));
+      await page.bringToFront();
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      const afterWithdrawal = await withdrawalRefresh;
+      expect(afterWithdrawal.status(), await afterWithdrawal.text()).toBe(200);
+      const withdrawnReadiness = (await afterWithdrawal.json()).item;
+      expect(withdrawnReadiness.canRelease).toBe(true);
+      expect(withdrawnReadiness.blockers.map((blocker: { code: string }) => blocker.code)).not.toContain("pending-change");
+      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "true");
+      readinessStates.push({ phase: "after-withdrawal-mounted", available: withdrawnReadiness.available,
+        canRelease: withdrawnReadiness.canRelease, canCreateBaseline: withdrawnReadiness.canCreateBaseline,
+        blockerCodes: withdrawnReadiness.blockers.map((blocker: { code: string }) => blocker.code) });
+      apiEvidence.push(summarizeApiResponse(withdrawal, {
+        method: "POST", path: `/api/v2/projects/${scopedProjectId}/parameter-value-change-requests/${requestId}/withdraw`,
+        responseSummary: "Withdrawal clears readiness in the still-mounted workbench"
+      }));
+      completed = true;
+    } finally {
+      await reviewerContext.close();
+      const evidencePath = await writeOperationJsonArtifact(testInfo, "canonical-release-readiness.json", {
+        projectId: scopedProjectId, configSetId, fileId, bindingId, draftId, requestId,
+        viewport: "1440x900", refreshTrigger: "window focus event emulated for Chromium automation", readinessStates, completed
+      });
+      for (const operationId of ["PROJ-CONFIG-READINESS-001", "PARAM-CANONICAL-VALUE-WORKFLOW-001"]) {
+        await recordOperationEvidence({
+          operationId, title: "canonical submission gates workbench readiness until independent approval",
+          status: completed ? "passed" : "failed", role: "Software User → Admin → Software Committer → Admin",
+          route: workbenchRoute(), page, testInfo, assertions: ["ui", "api", "screenshot"],
+          artifacts: [evidencePath, ...screenshots], api: apiEvidence,
+          notes: "Focused #1061 journey only; not full canonical workflow operation coverage. Uses parent-seeded API/Catalog; no nested runtime. Approval and withdrawal refresh the mounted workbench through an emulated browser focus event; no workbench reload or mocked API. Immutable fixture source history stays in the owned test database."
+        });
+      }
+      if (requestId && !completed) {
+        const pending = await withPgClient((client) => client.query(
+          `select status from project_parameter_value_change_requests
+           where organization_id = $1 and project_id = $2 and id = $3`,
+          [organizationId, scopedProjectId, requestId]
+        ));
+        if (pending.rows[0]?.status === "pending") {
+          const withdrawn = await request.post(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-value-change-requests/${requestId}/withdraw`), {
+            headers: authHeadersForRole("software-user"), data: { reason: "#1061 failed regression cleanup" }
+          });
+          expect(withdrawn.ok(), await withdrawn.text()).toBe(true);
+        }
+      } else if (draftId && !requestId) {
+        const removed = await request.delete(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-value-drafts/${draftId}`), {
+          headers: authHeadersForRole("software-user")
+        });
+        expect(removed.ok(), await removed.text()).toBe(true);
+      }
+    }
+  });
+
   test("creates, compares, releases, and restores baselines in source context", async ({
     page,
     request
@@ -2170,16 +2619,17 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const sample = `/dts-v1/;
 / {
 	board {
-		model = "EditV1";
-		compatible = "wiseeff,edit";
+		rx_mod_cm_cfg = "EditV1";
+		compatible = "mt,mt5788";
 	};
 };
 `;
     let binding: IsolatedBinding | undefined;
 
     try {
+      await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
       binding = await seedIsolatedBinding(request, {
-        propertyKey: "model",
+        propertyKey: "rx_mod_cm_cfg",
         dts: sample,
         rawValuePattern: '"EditV1"',
         nodeLocatorPattern: "board",
@@ -2199,7 +2649,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         nodes: Array<{ nodePath: string; properties: Array<{ name: string; rawText: string }> }>;
       };
       const board = structureBody.nodes.find((node) => node.nodePath === "board");
-      expect(board?.properties.some((property) => property.name === "model")).toBe(true);
+      expect(board?.properties.some((property) => property.name === "rx_mod_cm_cfg")).toBe(true);
 
       const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(binding.configSetId)}&file=${encodeURIComponent(file.fileId)}`;
       await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
@@ -2208,7 +2658,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       await expect(page.getByLabel("只读 DTS 源码").locator('[contenteditable="true"]')).toHaveCount(0);
 
       await page.getByRole("treeitem", { name: "节点 board" }).click();
-      await page.getByRole("treeitem", { name: "属性 board/model" }).click();
+      await page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg" }).click();
       await ensureInspectorOpen(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector).toContainText("可编辑");
@@ -2220,12 +2670,12 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const tasks = page.getByRole("region", { name: "配置任务" });
       await expect(tasks).toBeVisible();
       await expect(tasks).toContainText("会话变更");
-      await expect(tasks.getByRole("checkbox", { name: /board\/model/ })).toBeChecked();
-      await expect(page.getByRole("treeitem", { name: "属性 board/model" })).toHaveAttribute(
+      await expect(tasks.getByRole("checkbox", { name: /board\/rx_mod_cm_cfg/ })).toBeChecked();
+      await expect(page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg" })).toHaveAttribute(
         "data-property-identity",
-        "board::model"
+        "board::rx_mod_cm_cfg"
       );
-      await expect(page.locator('[data-session-gutter="board::model"]')).toHaveCount(1);
+      await expect(page.locator('[data-session-gutter="board::rx_mod_cm_cfg"]')).toHaveCount(1);
 
       await tasks.getByLabel("变更原因").fill("acceptance structured edit");
       await tasks.getByRole("button", { name: "校验所选" }).click();
@@ -2237,6 +2687,20 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         reason: "PROJ-CONFIG-EDIT-001 typed binding draft"
       });
       expect(submitted.draft.rawText).toMatch(/EditV2/);
+      const requests = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests`), {
+        headers: adminHeaders()
+      });
+      expect(requests.status(), await requests.text()).toBe(200);
+      expect((await requests.json()).items.find((item: { id: string }) => item.id === submitted.requestId)).toMatchObject({
+        status: "pending", bindingId: binding.bindingId, draftId: submitted.draft.draftId
+      });
+      const bindings = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
+        headers: adminHeaders()
+      });
+      expect(bindings.status(), await bindings.text()).toBe(200);
+      expect((await bindings.json()).items.find((item: { id: string }) => item.id === binding!.bindingId)).toMatchObject({
+        effectiveValue: { kind: "strings", values: ["EditV1"] }, rawValue: '"EditV1"'
+      });
 
       const evidencePath = await writeOperationJsonArtifact(
         testInfo,

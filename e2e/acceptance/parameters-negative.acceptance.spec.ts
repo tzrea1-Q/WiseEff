@@ -74,31 +74,33 @@ async function cleanupM55ParameterState() {
 
 async function submittedDraftEditDbSummary(requestId: string, excludedTargetValue: string) {
   return withPgClient(async (client) => {
-    const result = await client.query<{ request_id: string; target_value: string; submitted_count: string; excluded_count: string }>(
+    const result = await client.query<{ request_id: string; target_value: unknown; submitted_count: string; excluded_count: string }>(
       `
       select
         cr.id as request_id,
-        psi.target_value,
+        cr.target_value,
         count(*) over ()::text as submitted_count,
         (
           select count(*)::text
-          from parameter_submission_items excluded
+          from project_parameter_value_change_requests excluded
           where excluded.reason like $2
-            and excluded.target_value = $3
+            and excluded.target_value = $3::jsonb
         ) as excluded_count
-      from parameter_change_requests cr
-      join parameter_submission_items psi on psi.change_request_id = cr.id
+      from project_parameter_value_change_requests cr
       where cr.id = $1
       `,
-      [requestId, `${draftEditReasonPrefix}%`, excludedTargetValue]
+      [requestId, `${draftEditReasonPrefix}%`, JSON.stringify(integerCellTarget(excludedTargetValue))]
     );
     const row = result.rows[0];
+    expect(row).toMatchObject({
+      target_value: integerCellTarget("3122"), submitted_count: "1", excluded_count: "0"
+    });
 
     return {
-      table: "parameter_submission_items",
+      table: "project_parameter_value_change_requests",
       predicate: `requestId=${requestId}; excludedTargetValue=${excludedTargetValue}`,
       observed: row
-        ? `targetValue=${row.target_value}; submittedCount=${row.submitted_count}; excludedCount=${row.excluded_count}`
+        ? `targetValue=${JSON.stringify(row.target_value)}; submittedCount=${row.submitted_count}; excludedCount=${row.excluded_count}`
         : "missing",
       rowCount: result.rowCount ?? result.rows.length
     };
@@ -211,7 +213,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     });
     expect(keptCreated.status, keptCreated.bodyText).toBe(201);
     expect(keptCreated.draft).toBeTruthy();
-    expect(keptCreated.draft!.rawText).toContain("3111");
+    expect(JSON.parse(keptCreated.bodyText).item.rawText).toBe("<3111>");
 
     // Recreate the kept draft at the edited target so the write lock is captured
     // in one createBindingDraft; a second upsert can coalesce a stale occurrence.
@@ -223,8 +225,8 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     });
     expect(updated.status, updated.bodyText).toBe(201);
     expect(updated.draft).toBeTruthy();
-    expect(updated.draft!.rawText).toContain("3122");
-    expect(updated.draft!.rawText).not.toContain("3111");
+    expect(JSON.parse(updated.bodyText).item.rawText).toBe("<3122>");
+    expect(JSON.parse(updated.bodyText).item.rawText).not.toBe("<3111>");
 
     const removableCreated = await createBindingDraftViaApi(request, {
       binding: pair.removable,
@@ -256,7 +258,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       api: [
         {
           method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
+          path: `/api/v2/projects/${projectId}/parameter-value-drafts/${updated.draft!.draftId}/submit`,
           status: submitResponse.status,
           responseSummary: `submitted request ${submitResponse.requestId}; removed target 4331 absent`
         }
@@ -266,7 +268,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     });
   });
 
-  test("rejects forced invalid workflow assignees at the API boundary", async ({ page, request }, testInfo) => {
+  test("rejects a forced ineligible canonical software reviewer at the API boundary", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-ASSIGNEE-003
     // @operation PARAM-ASSIGNEE-003
     test.setTimeout(180_000);
@@ -283,26 +285,11 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     expect(created.status, created.bodyText).toBe(201);
     expect(created.draft).toBeTruthy();
 
-    const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+    const submitRoute = `/api/v2/projects/${projectId}/parameter-value-drafts/${created.draft!.draftId}/submit`;
+    const response = await page.request.post(apiRoute(submitRoute), {
       headers: adminHeaders(),
       data: {
-        projectId,
-        items: [
-          {
-            draftId: created.draft!.draftId,
-            projectParameterBindingId: created.draft!.projectParameterBindingId,
-            parameterSpecId: created.draft!.parameterSpecId,
-            action: created.draft!.action,
-            targetValue: created.draft!.rawText,
-            reason: created.draft!.reason
-          }
-        ],
-        reason: `${reasonPrefix} invalid assignee guard`,
-        assignees: {
-          hardwareCommitterId: "u-xu-yun",
-          softwareCommitterId: "u-xu-yun",
-          softwareUserId: "u-xu-yun"
-        }
+        assignedToUserId: "u-xu-yun"
       }
     });
 
@@ -320,11 +307,11 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       api: [
         summarizeApiResponse(response, {
           method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
-          responseSummary: "VALIDATION_FAILED for role-ineligible workflow assignees"
+          path: submitRoute,
+          responseSummary: "VALIDATION_FAILED for a role-ineligible software reviewer"
         })
       ],
-      notes: "The parameter submission API rejected role-ineligible workflow assignees with VALIDATION_FAILED after a typed binding draft was staged (TD-079)."
+      notes: "Canonical submission rejects a reviewer without the project software-committer role with VALIDATION_FAILED after an exact Binding draft is staged. Legacy three-role assignees are not a canonical submit contract."
     });
   });
 });

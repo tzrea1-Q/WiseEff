@@ -4,6 +4,18 @@ import { buildWiseEffRouter } from "../../app";
 import type { Database } from "../../shared/database/client";
 import { routeManifest } from "./routeManifest";
 import { schemaRegistry } from "./schemaRegistry";
+import { parameterCatalogLegacyWriteRouteIds, catalogLegacyGoneResponseSchema } from "./dtoSchemas/parameterCatalog";
+import { createHttpServer } from "../../shared/http/server";
+import { requestJson } from "../../test/testClient";
+
+// Task resolution retires to the canonical Review Queue; every other legacy write retires to the Catalog API.
+const REVIEW_QUEUE_SUCCESSOR_ROUTES = new Set([
+  "parameterSpecs.resolveReviewTask",
+  "parameterTopology.resolveIdentityMappingTask",
+  "parameterTopology.reopenIdentityMappingTask",
+]);
+const expectedSuccessor = (routeId: string) =>
+  REVIEW_QUEUE_SUCCESSOR_ROUTES.has(routeId) ? "/parameter-admin/specs?review=open" : "/api/v2/catalog";
 
 /**
  * Contract parity: the hand-maintained route manifest must equal the real runtime
@@ -47,6 +59,23 @@ function manifestKeys(): Set<string> {
 }
 
 describe("route manifest parity", () => {
+  it.each(routeManifest.filter((route) =>
+    (parameterCatalogLegacyWriteRouteIds as readonly string[]).includes(route.id),
+  ))("$id is retired in the assembled router, not served by a live writer", async (route) => {
+    const { router } = buildWiseEffRouter({ db: stubDb });
+    const path = route.path.replace(/:[^/]+/g, "retired-parity");
+    const response = await requestJson(createHttpServer(router), path, {
+      method: route.method,
+      body: route.method === "GET" ? undefined : JSON.stringify({}),
+    });
+    expect(response.status, `${route.method} ${route.path}`).toBe(410);
+    const successor = expectedSuccessor(route.id);
+    expect(catalogLegacyGoneResponseSchema.parse(response.body).error.details).toEqual({
+      reason: "legacy-surface-retired", successor, retryable: false,
+    });
+    expect(response.headers.get("link")).toBe(`<${successor}>; rel="successor-version"`);
+  });
+
   it("every registered route is published in the manifest", () => {
     const manifest = manifestKeys();
     const unpublished = [...registeredKeys()]

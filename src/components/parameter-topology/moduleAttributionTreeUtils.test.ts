@@ -112,6 +112,17 @@ describe("moduleAttributionTreeUtils", () => {
     expect(siblingModules(siblings, siblings[1]!).map((module) => module.id)).toEqual(["b", "b2"]);
   });
 
+  it.each(["driver-group", "node-type"] as const)("rejects either historical %s swap participant only in canonical mode", (kind) => {
+    const business = modules[0]!;
+    const historical = { ...modules[1]!, kind, parentId: null, sortOrder: 10 };
+    const siblings = [business, historical];
+    expect(sortOrderSwapUpdates(business, "down", siblings, true)).toBeNull();
+    expect(sortOrderSwapUpdates(historical, "up", siblings, true)).toBeNull();
+    expect(sortOrderSwapUpdates(business, "down", siblings)).toEqual([
+      { id: "b", sortOrder: 10 }, { id: "g", sortOrder: 0 }
+    ]);
+  });
+
   it("allows reclassify on business and node-type modules", () => {
     const nodeType = modules[2]!;
     expect(canReclassifyModule(nodeType)).toBe(true);

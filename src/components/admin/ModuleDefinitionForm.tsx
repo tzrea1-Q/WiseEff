@@ -19,6 +19,7 @@ export function ModuleDefinitionForm({
   existingNames,
   currentName,
   onChange,
+  readOnly = false,
   showErrors = false,
   showImportance = false,
   importance = "medium",
@@ -33,6 +34,7 @@ export function ModuleDefinitionForm({
   existingNames: readonly string[];
   currentName?: string;
   onChange: (patch: Partial<ParameterModuleDraft>) => void;
+  readOnly?: boolean;
   showErrors?: boolean;
   /** When true, show business-module importance (parameter attribution only). */
   showImportance?: boolean;
@@ -60,8 +62,9 @@ export function ModuleDefinitionForm({
           aria-invalid={visibleNameError ? "true" : "false"}
           aria-label="模块名称"
           value={module.name}
+          readOnly={readOnly}
           onBlur={() => setNameTouched(true)}
-          onChange={(event) => onChange({ name: event.target.value })}
+          onChange={readOnly ? undefined : (event) => onChange({ name: event.target.value })}
         />
         {visibleNameError ? <span className="field-error">{nameError}</span> : null}
       </label>
@@ -71,6 +74,7 @@ export function ModuleDefinitionForm({
           <select
             aria-label="模块类型"
             value={kind === "driver-group" || kind === "unclassified" ? "business" : kind}
+            disabled={readOnly}
             onChange={(event) =>
               onKindChange?.(event.target.value as "business" | "node-type")
             }
@@ -89,6 +93,7 @@ export function ModuleDefinitionForm({
           <select
             aria-label="模块重要性"
             value={importance}
+            disabled={readOnly}
             onChange={(event) => onImportanceChange?.(event.target.value as ModuleImportance)}
           >
             {IMPORTANCE_OPTIONS.map((option) => (
@@ -105,7 +110,8 @@ export function ModuleDefinitionForm({
           aria-label="模块展示描述"
           rows={2}
           value={module.description}
-          onChange={(event) => onChange({ description: event.target.value })}
+          readOnly={readOnly}
+          onChange={readOnly ? undefined : (event) => onChange({ description: event.target.value })}
         />
       </label>
       <label>
@@ -115,7 +121,8 @@ export function ModuleDefinitionForm({
           rows={2}
           placeholder="说明该模块覆盖的业务范围与治理边界"
           value={module.scope}
-          onChange={(event) => onChange({ scope: event.target.value })}
+          readOnly={readOnly}
+          onChange={readOnly ? undefined : (event) => onChange({ scope: event.target.value })}
         />
       </label>
       {trailing}

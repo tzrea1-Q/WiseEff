@@ -142,6 +142,12 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 | Project drafts | 现有 binding 与 node-enablement draft paths | 保留产品行为；input 通过规范 binding/definition identity 解析。 |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | 仅 deployment operator 可用的 reconciliation 与迁移诊断；公共 DTO 不得链接。 |
 
+### 发布就绪
+
+配置集的发布就绪检查同时读取待审核的规范值变更请求和保留的旧工作流计数。面向源 occurrence 的请求只计入其触及的源 cohort 所属配置集；仅面向项目的请求阻止该项目所有配置集发布。批准、拒绝或撤回后，待处理变更阻塞解除，不创建旧变更请求镜像。节点启用工作流保留各自的规则。
+
+基线创建和发布使用同一就绪门禁。门禁 token 包含待审核规范请求的确切 ID，因此在评估后出现新待审核工作时，使用旧评估确认会被判为过期并拒绝。就绪检查不再同步或创建旧身份映射任务；保留的历史任务仅被读取。
+
 ### 共享模块归属
 
 Registration 与 Placement 写入接受可选 `destinationModuleId`，它是可信 Organization 内现存模块的精确 ID。Driver 目标必须是 `driver-group`，NodeType 必须是 `node-type`，ConfigurationSchema 必须是 `business`。显式目标无效时拒绝，不回退到名称匹配。未传此字段的既有调用方保留 PlacementIntent 契约。
@@ -588,7 +594,15 @@ Issue #678 是全部 R0-R10 生产 disposition 的唯一 owner。与 ReviewEvide
 | 现有 project topology、binding history/compare、validation、draft paths | 一方消费者协调完成 DTO/ID cutover；path 保留；上线后不再有 legacy `ParameterSpec` 字段。 | 规范 v2 合同。 |
 | 现有 v1 value、debug、reload、knowledge calls | 未被其他决策 version 时保留公共 workflow；实现内部使用 canonical binding/definition/revision IDs。 | 只用 canonical identities。 |
 
+parameter-modules 导航适配器在 registry envelope 中标记 `navigationOnly: true`。分类节点保留导航 ID 与 canonical 子树计数，但 `sourceKey`、`attributionSubjectId` 为 null，`mappings` 为空；这些字段不声明 Catalog subject 身份。历史驱动登记的 provenance 仍通过有界 driver-registry 读取只读展示。共享业务分类 CRUD 保持可用，但 v1 创建、编辑、移动、删除历史 Driver/NodeType 结构，以及相关重分类，均返回同一 410 退役合同，并写入可信拒绝审计。规范上下文中的历史 Driver/NodeType 详情只读，登记与归属变更转到对应规范 owner。项目 candidate/reload 重算仍由内部项目 workflow 负责，不经过公开模块重算路由。
+
+已退役的组织覆盖解析与 Platform 晋升界面链接至 Catalog 页面，通过定义提案与发布流程变更覆盖。`GET /api/v2/platform/driver-schema-promotion-history` 是经 Platform 授权的历史晋升记录只读投影，不是候选列表或有效 schema 读取。原有 legacy 标识仅保留为证据，不提供晋升、撤销或恢复操作。覆盖统计与导入不会将这些历史覆盖合并至运行时 schema 注册表。
+
 Legacy read response 包含：
+
+任务读窗口将可精确适配的规范 `items` 与只读 `historicalItems` 分开返回。规格审核适配使用组织范围内的类型映射头和已授权的当前规范审核队列，不按属性名或节点名推断。只有恰好对应一个当前规范审核项的未决任务才会适配。其他任务保留原始证据与状态，标记 `historicalOnly: true`；开放或已忽略的任务另标记 `needsCanonicalDecision: true`。身份连续性选择没有等价的规范决议，保留为历史证据。任务退役与历史证据链接到 `/parameter-admin/specs?review=open`，打开规范审核队列；没有未决历史任务时，身份映射入口重定向到此处。
+
+DTS 审核证据可以证明 `needs_mapping` 修订中的不可变属性，但不会因此获得 Binding 或源写入证明。连续性证据保留前驱与候选的关系及匹配理由，不选择身份；候选有属性时使用精确属性锚点。无属性节点的连续性以修订绑定的 Review Evidence 进入规范 Review Queue：物化前验证持久化候选归属和连续性诊断、完整源成员的归属与字节，以及当前 Catalog pin。不创建属性定位、Parameter Observation、Binding 或源写入证明，也不解决前驱身份选择。源证明无效时仍以 `source-proof-invalid` 拒绝并回滚；仅缺少属性不会丢弃歧义证据。
 
 ```text
 Deprecation: true
