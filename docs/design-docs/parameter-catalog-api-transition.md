@@ -148,6 +148,8 @@ Config-set release readiness reads pending canonical value change requests along
 
 Baseline creation and release consume the same readiness gate. Its token includes the exact pending canonical request IDs, so confirmation against an evaluation made before new pending work appeared is refused as stale. Readiness never synchronizes or creates legacy identity-mapping tasks; retained historical tasks are read only.
 
+Both baseline writes lock their config-set row `FOR UPDATE`, matching canonical submission and source-writer serialization. Inside that transaction, before writing, they re-evaluate readiness and compare the confirmed token, including the cohort's exact pending canonical request IDs. A competing submission either commits before this check and makes the token stale, or waits until the baseline write commits. The preliminary readiness and release-validation checks remain outside the write transaction so their existing audit evidence survives a refused write; they do not authorize the final mutation.
+
 ### Shared module assignment
 
 Registration and Placement writes accept optional `destinationModuleId`, the exact ID of an existing module in the authenticated Organization. Driver targets require `driver-group`, NodeType targets require `node-type`, and ConfigurationSchema targets require `business`. Explicit invalid targets fail; they never fall back to a name match. Existing callers that omit the field retain the PlacementIntent contract.
