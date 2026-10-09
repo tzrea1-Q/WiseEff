@@ -1,14 +1,24 @@
+import type { z } from "zod";
+
 import { canViewParameters } from "../../parameter-kernel/policy";
 import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import {
   CATALOG_RELEASE_HEADER,
+  catalogDefinitionResponseSchema,
+  catalogDefinitionRevisionListResponseSchema,
+  catalogLegacySpecListResponseSchema,
+  catalogLegacySpecResponseSchema,
+  type catalogLegacySpecDtoSchema,
+  type catalogLegacySpecDispositionDtoSchema,
+  type catalogDefinitionRevisionDtoSchema,
   catalogLegacyIdentifierResponseSchema,
   parameterCatalogBoundedLegacyReadRouteIds,
   parameterCatalogCanonicalRoutes,
   parameterCatalogLegacyWriteRouteIds,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "../../contracts/routeManifest";
+import { errorEnvelopeSchema } from "../../contracts/dtoSchemas/envelopes";
 import { ApiError, serializeApiError } from "../../../shared/http/errors";
 import {
   createRouter,
@@ -28,7 +38,7 @@ import {
 } from "./headers";
 import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_GOVERNANCE_GONE_MESSAGE, LEGACY_WRITE_GONE_MESSAGE } from "./gone";
 import { lookupLegacyIdentifier } from "./lookup";
-import type { LegacyCatalogOptions, LegacyHttpResult } from "./types";
+import type { LegacyCatalogOptions, LegacyHttpHeaders, LegacyHttpResult, LegacyLookupOutcome } from "./types";
 
 const OPERATOR_PREFIX = "/api/v2/operator/parameter-catalog";
 
@@ -220,7 +230,13 @@ const requireLookupCaller = async (
   options: LegacyCatalogOptions,
   headers: ReturnType<typeof boundedLegacyHeaders>,
 ): Promise<{ invocation: TrustedInvocationContext } | LegacyHttpResult> => {
-  const invocation = await options.resolveInvocation(request);
+  let invocation: TrustedInvocationContext | null;
+  try {
+    invocation = await options.resolveInvocation(request);
+  } catch (error) {
+    if (!(error instanceof ApiError) || !["UNAUTHENTICATED", "FORBIDDEN"].includes(error.code)) throw error;
+    return { status: error.status, headers, body: serializeApiError(error, request.requestId) };
+  }
   if (!invocation) {
     return {
       status: 401,
@@ -280,7 +296,7 @@ const runLookup = async (
 const isRetiredReadShape = (request: RouteRequest): boolean => {
   const view = queryValue(request.query, "view")?.toLowerCase();
   const mode = queryValue(request.query, "mode")?.toLowerCase();
-  return view === "governance" || view === "raw" || mode === "raw";
+  return view === "governance" || view === "raw" || view === "migration" || mode === "raw" || mode === "migration";
 };
 
 const eligibleExactId = (routeId: string, request: RouteRequest): string | null => {
@@ -353,6 +369,18 @@ export async function handleLegacyCatalogRequest(
       }
       const type = eligibleLegacyType(route.id);
       const exactId = eligibleExactId(route.id, matched);
+      if (options.readCatalog && (route.id === "parameterSpecs.list" || route.id === "parameterSpecs.get")) {
+        const release = await requireRelease(matched, options);
+        if (release) return { status: release.status, body: { __legacy: release } };
+        const caller = await requireLookupCaller(matched, options, headers);
+        if ("status" in caller) return { status: caller.status, body: { __legacy: caller } };
+        const inference = queryValue(matched.query, "q") ?? queryValue(matched.query, "propertyKey");
+        const result = inference !== undefined
+          ? outcomeToResult(matched, options, headers, { kind: "not-found" })
+          : await readLegacySpecs({ request: matched, options, headers, exactId, detail: route.id === "parameterSpecs.get",
+            organizationId: callerOrganizationId(caller.invocation) });
+        return { status: result.status, body: { __legacy: result } };
+      }
       if (type && exactId) {
         const result = await runLookup(matched, options, type, exactId, headers);
         return { status: result.status, body: { __legacy: result } };
@@ -457,8 +485,114 @@ export function registerCatalogLegacyRoutes(
     addRoute(router, route.method, route.path, handler);
   }
   for (const route of eligibleRoutes) {
-    addRoute(router, route.method, route.path, handler);
+    if (route.id === "parameterSpecs.list" || route.id === "parameterSpecs.get") {
+      router.prepend(route.method, route.path, handler);
+    } else {
+      addRoute(router, route.method, route.path, handler);
+    }
   }
+}
+
+type SpecItem = z.infer<typeof catalogLegacySpecDtoSchema>;
+type Disposition = z.infer<typeof catalogLegacySpecDispositionDtoSchema>;
+
+async function readLegacySpecs(input: {
+  request: RouteRequest;
+  options: LegacyCatalogOptions;
+  organizationId: string | null;
+  headers: LegacyHttpHeaders;
+  exactId: string | null;
+  detail: boolean;
+}): Promise<LegacyHttpResult> {
+  const { request, options, organizationId, headers, exactId, detail } = input;
+  const client = await options.getQueryable();
+  const identities = await client.query<{ source_kind: "parameter-spec" | "parameter-spec-version"; source_id: string }>(`
+    select distinct source_kind, source_id from parameter_catalog.legacy_identities
+    where source_system = 'wiseeff-v1' and source_kind in ('parameter-spec', 'parameter-spec-version')
+      and ((owner_scope_kind = 'platform' and owner_scope_id = 'platform')
+        or (owner_scope_kind = 'organization' and owner_scope_id = $1))
+    order by source_kind, source_id`, [organizationId]);
+  const lookup = (legacyType: string, legacyId: string) => lookupLegacyIdentifier({
+    client, lookup: options.lookup, legacyType, legacyId, organizationId,
+  });
+  const disposition = (legacyType: "parameter-spec" | "parameter-spec-version", legacyId: string,
+    outcome: LegacyLookupOutcome): Disposition => outcome.kind === "mapped" ? outcome.item : {
+      legacyType, legacyId, disposition: outcome.kind, historicalOnly: true,
+    };
+  const read = async (path: string) => {
+    const response = await options.readCatalog!({ ...request,
+      headers: { ...request.headers, [CATALOG_RELEASE_HEADER]: options.catalogReleaseId },
+    }, path);
+    const boundedHeaders = { ...headers, ...response.headers };
+    if (response.status === 409) {
+      const parsed = errorEnvelopeSchema.safeParse(response.body);
+      const details = parsed.success ? parsed.data.error.details : {};
+      if (details.reason === "release-drift" && typeof details.currentCatalogReleaseId === "string") {
+        boundedHeaders[CATALOG_RELEASE_HEADER] = details.currentCatalogReleaseId;
+      }
+    }
+    return { ...response, headers: boundedHeaders };
+  };
+  const items: SpecItem[] = [];
+  const historicalItems: Disposition[] = [];
+  const revisionsById = new Map<string, z.infer<typeof catalogDefinitionRevisionDtoSchema>>();
+  const specIds = exactId ? [exactId] : identities.rows
+    .filter((identity) => identity.source_kind === "parameter-spec").map((identity) => identity.source_id);
+  for (const legacyId of specIds) {
+    const outcome = await lookup("parameter-spec", legacyId);
+    if (outcome.kind !== "mapped" || outcome.item.target.kind !== "parameter-definition") {
+      historicalItems.push(disposition("parameter-spec", legacyId, outcome));
+      continue;
+    }
+    const canonical = await read(`/api/v2/catalog/definitions/${encodeURIComponent(outcome.item.target.id)}`);
+    if (canonical.status === 404) {
+      historicalItems.push(disposition("parameter-spec", legacyId, { kind: "not-found" }));
+      continue;
+    }
+    if (canonical.status !== 200) return canonical;
+    const definition = catalogDefinitionResponseSchema.parse(canonical.body).item;
+    items.push({ ...outcome.item, legacyType: "parameter-spec", definition, revisions: [] });
+  }
+  if (identities.rows.some((identity) => identity.source_kind === "parameter-spec-version")) {
+    for (const definitionId of new Set(items.map((item) => item.definition.id))) {
+      let cursor: string | null = null;
+      do {
+        const query = new URLSearchParams({ limit: "100", ...(cursor ? { cursor } : {}) });
+        const canonical = await read(`/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/revisions?${query}`);
+        if (canonical.status !== 200) return canonical;
+        const page = catalogDefinitionRevisionListResponseSchema.parse(canonical.body);
+        for (const revision of page.items) revisionsById.set(revision.id, revision);
+        cursor = page.nextCursor;
+      } while (cursor);
+    }
+  }
+  for (const identity of identities.rows.filter((row) => row.source_kind === "parameter-spec-version")) {
+    const outcome = await lookup(identity.source_kind, identity.source_id);
+    if (outcome.kind !== "mapped" || outcome.item.target.kind !== "definition-revision") {
+      if (!exactId) historicalItems.push(disposition(identity.source_kind, identity.source_id, outcome));
+      continue;
+    }
+    const revision = revisionsById.get(outcome.item.target.id);
+    if (!revision) {
+      if (!exactId) historicalItems.push({ ...outcome.item, historicalOnly: true });
+      continue;
+    }
+    const specs = items.filter((item) => item.definition.id === revision.definitionId);
+    for (const spec of specs) spec.revisions.push({ ...outcome.item, legacyType: "parameter-spec-version", revision });
+  }
+  if (!detail) return { status: 200, headers,
+    body: catalogLegacySpecListResponseSchema.parse({ items, historicalItems }) };
+  if (items[0]) return { status: 200, headers,
+    body: catalogLegacySpecResponseSchema.parse({ item: items[0] }) };
+  const historical = historicalItems[0]!;
+  if (historical.disposition === "mapped") return { status: 200, headers,
+    body: catalogLegacySpecResponseSchema.parse({ item: historical }) };
+  const status = historical.disposition === "archived" ? 410 : historical.disposition === "ambiguous" ? 409 : 404;
+  const code = status === 410 ? "GONE" : status === 409 ? "CONFLICT" : "NOT_FOUND";
+  return { status, headers, body: serializeApiError(new ApiError(code, "No exact operational spec mapping is available.", {
+    disposition: historical.disposition, historicalOnly: true,
+    ...(status === 404 ? {} : { reason: status === 410 ? "legacy-id-archived" : "legacy-id-ambiguous", retryable: false }),
+  }), request.requestId) };
 }
 
 export const legacyWriteRouteManifest = writeRoutes.map((route) => ({

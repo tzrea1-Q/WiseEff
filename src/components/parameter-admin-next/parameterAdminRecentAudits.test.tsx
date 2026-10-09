@@ -63,11 +63,7 @@ const stubModules = {
   registerOrClaimDriver: vi.fn(),
   updateDriverRegistration: vi.fn(),
   updateDriverRegistrationDefault: vi.fn(),
-  replayDriverPlacement: vi.fn(),
-  createOrganizationDriverSchema: vi.fn(),
-  listOrganizationDriverSchemas: vi.fn(),
-  updateOrganizationDriverSchema: vi.fn(),
-  activateOrganizationDriverSchema: vi.fn()
+  replayDriverPlacement: vi.fn()
 };
 
 describe("parameter-admin recent audit projection", () => {

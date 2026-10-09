@@ -18,7 +18,7 @@ import { ParameterModuleMappingPanel } from "./ParameterModuleMappingPanel";
 afterEach(() => cleanup());
 
 describe("historical registry isolation", () => {
-  it.each(["retired overlay", "pending overlay", "failed history"])(
+  it.each(["ready history", "failed history"])(
     "renders the canonical tree and registrations independently of %s",
     async (scenario) => {
       const registry = {
@@ -31,17 +31,11 @@ describe("historical registry isolation", () => {
         }],
         mappings: [], navigationOnly: true
       };
-      const listOrganizationDriverSchemas = vi.fn().mockImplementation(() =>
-        scenario === "pending overlay"
-          ? new Promise(() => {})
-          : Promise.reject(Object.assign(new Error("legacy-surface-retired"), { status: 410 }))
-      );
       let rejectHistory!: (error: Error) => void;
       const pendingHistory = new Promise<never>((_resolve, reject) => { rejectHistory = reject; });
       const repository = createTestModuleRegistryRepository({
         getRegistry: vi.fn().mockResolvedValue(registry),
         getDiscoveryHints: vi.fn(),
-        listOrganizationDriverSchemas,
         listDriverRegistry: vi.fn().mockReturnValue(
           scenario === "failed history" ? pendingHistory : Promise.resolve({ items: [] })
         )
@@ -83,7 +77,6 @@ describe("historical registry isolation", () => {
       expect(screen.getByRole("treeitem", { name: /规范驱动组/ })).toBeInTheDocument();
       expect(screen.queryByText("没有匹配的模块。")).not.toBeInTheDocument();
       expect(screen.queryByText("正在加载模块注册表…")).not.toBeInTheDocument();
-      expect(listOrganizationDriverSchemas).not.toHaveBeenCalled();
       expect(repository.getDiscoveryHints).not.toHaveBeenCalled();
       expect(await screen.findByText("vendor,device")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "编写覆盖解析" })).not.toBeInTheDocument();
@@ -112,8 +105,7 @@ describe("historical registry isolation", () => {
     const getRegistry = vi.fn().mockResolvedValue(EMPTY_PARAMETER_MODULE_REGISTRY);
     const getDiscoveryHints = vi.fn();
     const repository = createTestModuleRegistryRepository({
-      getRegistry, getDiscoveryHints, listDriverRegistry,
-      listOrganizationDriverSchemas: vi.fn().mockResolvedValue([])
+      getRegistry, getDiscoveryHints, listDriverRegistry
     });
     const listSubjects = vi.fn().mockResolvedValue({
       items: [unregisteredSubject], totalCount: 1, hasMore: false, nextCursor: null,

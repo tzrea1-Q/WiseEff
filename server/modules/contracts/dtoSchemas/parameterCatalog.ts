@@ -819,6 +819,38 @@ export const catalogLegacyIdentifierDtoSchema = catalogObject({
   historicalOnly: z.boolean()
 });
 
+export const catalogLegacySpecRevisionDtoSchema = catalogObject({
+  ...catalogLegacyIdentifierDtoSchema.innerType().shape,
+  legacyType: z.literal("parameter-spec-version"),
+  revision: catalogDefinitionRevisionDtoSchema
+});
+
+export const catalogLegacySpecDtoSchema = catalogObject({
+  ...catalogLegacyIdentifierDtoSchema.innerType().shape,
+  legacyType: z.literal("parameter-spec"),
+  definition: catalogDefinitionDtoSchema,
+  revisions: z.array(catalogLegacySpecRevisionDtoSchema)
+});
+
+export const catalogLegacySpecDispositionDtoSchema = z.union([
+  catalogLegacyIdentifierDtoSchema,
+  catalogObject({
+    legacyType: catalogLegacyIdentifierTypeSchema,
+    legacyId: z.string(),
+    disposition: z.enum(["archived", "ambiguous", "not-found"]),
+    historicalOnly: z.literal(true)
+  })
+]);
+
+export const catalogLegacySpecListResponseSchema = catalogObject({
+  items: z.array(catalogLegacySpecDtoSchema),
+  historicalItems: z.array(catalogLegacySpecDispositionDtoSchema)
+});
+
+export const catalogLegacySpecResponseSchema = itemEnvelopeSchema(
+  z.union([catalogLegacySpecDtoSchema, catalogLegacySpecDispositionDtoSchema])
+);
+
 export const catalogLegacyGoneResponseSchema = catalogObject({
   error: catalogObject({
     code: z.literal("GONE"),
@@ -1488,6 +1520,8 @@ export const projectValueDraftRemovedResponseSchema = itemEnvelopeSchema(
 );
 
 export const parameterCatalogDtoSchemaCatalog = {
+  CatalogLegacySpecListResponse: catalogLegacySpecListResponseSchema,
+  CatalogLegacySpecResponse: catalogLegacySpecResponseSchema,
   CatalogProposalUnavailableResponse: catalogProposalUnavailableResponseSchema,
   CatalogDocumentResponse: catalogDocumentResponseSchema,
   CatalogSubjectListResponse: catalogSubjectListResponseSchema,
