@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { expect, type APIRequestContext } from "playwright/test";
-import { getSpecReviewTaskById } from "../../../server/modules/parameter-specs/repository";
+import { syncPublishedCatalogProjectValues } from "../../../server/modules/parameter-bindings/catalogProjectValueSync";
+import { seedSemanticBindingCatalog, SEMANTIC_BINDING_FIXTURE_RELEASE_ID } from "../../../server/testing/parameterCatalog/semanticBinding";
 
-import { pickReviewCandidate } from "./acceptanceTaskLookup";
 import { authHeadersForRole, type AcceptanceRoleId } from "./bearerAuth";
 import { acceptanceCast } from "./cast";
 import { withPgClient } from "./database";
@@ -39,6 +40,17 @@ export type IsolatedBinding = {
   propertyKey: string;
   nodeLocator: string;
 };
+
+export async function readCanonicalFixtureBindings(projectId: string) {
+  return withPgClient(async (client) => (await client.query<{
+    id: string; definitionId: string; propertyKey: string; configRevisionId: string;
+  }>(`select binding.id, binding.definition_id as "definitionId", definition.property_key as "propertyKey",
+           value.config_revision_id as "configRevisionId"
+      from parameter_catalog.project_parameter_bindings binding
+      join parameter_catalog.parameter_definitions definition on definition.id = binding.definition_id
+      join parameter_catalog.project_parameter_values value on value.id = binding.current_value_id
+     where binding.organization_id = $1 and binding.project_id = $2`, [organizationId, projectId])).rows);
+}
 
 export type BindingDraftHandle = {
   draftId: string;
@@ -211,116 +223,6 @@ export function hexRegDts(rawHex: string, unitAddress = "6E"): string {
 `;
 }
 
-export async function resolveOpenSpecReviews(
-  request: APIRequestContext,
-  input: { projectId?: string; revisionId: string; reason: string }
-): Promise<void> {
-  const projectId = input.projectId ?? defaultProjectId;
-  const list = await request.get(
-    apiRoute(
-      `/api/v2/parameter-spec-review-tasks?status=open&configRevisionId=${encodeURIComponent(input.revisionId)}&projectId=${encodeURIComponent(projectId)}&limit=100`
-    ),
-    { headers: adminHeaders() }
-  );
-  expect(list.ok(), `list spec reviews: ${await list.text()}`).toBe(true);
-  const body = (await list.json()) as {
-    items: Array<{
-      id: string;
-      propertyKey?: string | null;
-      sourceEvidence?: { propertyKey?: string; nodeLocator?: string };
-      candidateSchemas?: Array<{ id: string; propertyKey?: string; label?: string }>;
-      candidates?: Array<{ id: string; propertyKey?: string | null; label?: string }>;
-    }>;
-  };
-  for (const task of body.items) {
-    const candidates = task.candidateSchemas ?? task.candidates ?? [];
-    let parameterSpecId: string;
-    if (candidates.length > 0) {
-      parameterSpecId = pickReviewCandidate(task, {
-        propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
-        nodeLocator: task.sourceEvidence?.nodeLocator
-      }).id;
-    } else {
-      const createDraft = await request.post(
-        apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
-        {
-          headers: adminHeaders(),
-          data: {
-            decision: "resolved",
-            createSpec: true,
-            reason: `${input.reason} create occurrence-derived draft for ${task.id}`
-          }
-        }
-      );
-      expect(createDraft.ok(), `create draft spec for review ${task.id}: ${await createDraft.text()}`).toBe(true);
-      const created = (await createDraft.json()) as { item: { parameterSpecId?: string | null } };
-      parameterSpecId = created.item.parameterSpecId ?? "";
-      expect(parameterSpecId).toBeTruthy();
-
-      const detailResponse = await request.get(
-        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}?view=governance`),
-        { headers: adminHeaders() }
-      );
-      expect(detailResponse.ok()).toBe(true);
-      const detailBody = (await detailResponse.json()) as {
-        item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };
-      };
-      const shape = detailBody.item.valueShape;
-      expect(shape && typeof shape.kind === "string").toBeTruthy();
-      const kind = String(shape!.kind);
-      let constraints: Record<string, unknown> = {};
-      if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
-        const cells = shape!.cellsPerGroup ?? shape!.cells;
-        expect(Number.isInteger(cells) && Number(cells) > 0).toBe(true);
-        constraints = { cells };
-      } else if (kind === "bytes") {
-        const length = shape!.length;
-        expect(Number.isInteger(length) && Number(length) >= 0).toBe(true);
-        constraints = { minLength: length, maxLength: length };
-      }
-      if (detailBody.item.lifecycle !== "active") {
-        const persistedTask = await withPgClient((client) =>
-          getSpecReviewTaskById(client, { organizationId, taskId: task.id })
-        );
-        expect(persistedTask, `review ${task.id} requires persisted fixture evidence`).toBeTruthy();
-        const sourceCompatible = persistedTask!.sourceEvidence.compatible;
-        const firstCompatible = Array.isArray(sourceCompatible) ? sourceCompatible[0] : sourceCompatible;
-        const compatible = typeof firstCompatible === "string" ? firstCompatible.trim() : undefined;
-        expect(compatible, `review ${task.id} requires compatible evidence for coverage`).toBeTruthy();
-        const activate = await request.post(
-          apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
-          {
-            headers: adminHeaders(),
-            data: {
-              valueShape: shape,
-              constraints,
-              documentation: `${input.reason} occurrence-derived spec`,
-              reason: `${input.reason} activate occurrence-derived spec`,
-              coverageClaim: {
-                kind: "overlay-property",
-                upsertOverlay: { compatible, createPropertyLink: true }
-              }
-            }
-          }
-        );
-        expect(activate.ok(), `activate draft spec ${parameterSpecId}: ${await activate.text()}`).toBe(true);
-      }
-    }
-    const resolve = await request.post(
-      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
-      {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          parameterSpecId,
-          reason: `${input.reason} resolve review for revision ${input.revisionId}`
-        }
-      }
-    );
-    expect(resolve.ok(), `resolve review ${task.id}: ${await resolve.text()}`).toBe(true);
-  }
-}
-
 async function uploadDts(
   request: APIRequestContext,
   projectId: string,
@@ -347,6 +249,7 @@ export async function seedIsolatedBinding(
     dts: string;
     fileName?: string;
     configSetName?: string;
+    peerFile?: { fileName: string; content: string };
     rawValuePattern?: string;
     nodeLocatorPattern?: string;
     reason?: string;
@@ -374,6 +277,7 @@ export async function seedIsolatedBindings(
     dts: string;
     fileName?: string;
     configSetName?: string;
+    peerFile?: { fileName: string; content: string };
     properties: Array<{
       propertyKey: string;
       rawValuePattern?: string;
@@ -388,6 +292,30 @@ export async function seedIsolatedBindings(
   const fileName = options.fileName ?? `td079-${options.properties[0]?.propertyKey ?? "cell"}-${randomUUID()}.dts`;
   const configSetName = options.configSetName ?? `td079-cs-${randomUUID().slice(0, 8)}`;
   const timeoutMs = options.timeoutMs ?? 30_000;
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    await seedSemanticBindingCatalog(pool);
+  } finally {
+    await pool.end();
+  }
+  for (const subjectId of ["csub_acceptance_td079", "csub_acceptance_chip123"]) {
+    const moduleId = `pmod_${subjectId}`;
+    await withPgClient(async (client) => {
+      await client.query(`insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
+        values ($1,$2,'driver-registration',$1,$1) on conflict (id) do nothing`, [subjectId, organizationId]);
+      await client.query(`insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
+        values ($1,'physical-device','multiple') on conflict (attribution_subject_id) do nothing`, [subjectId]);
+      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
+        values ($1,$2,$1,$1,1,'driver-group','curated',$3) on conflict (id) do nothing`, [moduleId, organizationId, subjectId]);
+    });
+    const registration = await request.post(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations`), {
+      headers: { ...adminHeaders(), "X-WiseEff-Catalog-Release": SEMANTIC_BINDING_FIXTURE_RELEASE_ID,
+        "Idempotency-Key": `acceptance-binding-${subjectId}` },
+      data: { subjectId, placement: { mode: "use-default" }, destinationModuleId: moduleId,
+        reason: "Published acceptance Binding fixture" }
+    });
+    expect(registration.ok(), await registration.text()).toBe(true);
+  }
 
   const setsResponse = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
     headers: adminHeaders()
@@ -404,6 +332,14 @@ export async function seedIsolatedBindings(
     configSetId = ((await createSet.json()) as { item: { id: string } }).item.id;
   }
 
+  if (options.peerFile) {
+    const peer = await uploadDts(request, projectId, options.peerFile.fileName, options.peerFile.content);
+    const addPeer = await request.post(
+      apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
+      { headers: adminHeaders(), data: { fileId: peer.fileId, role: "thermal", sortOrder: 1 } }
+    );
+    expect([200, 201], await addPeer.text()).toContain(addPeer.status());
+  }
   const uploaded = await uploadDts(request, projectId, fileName, options.dts);
   const addPrimary = await request.post(
     apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
@@ -412,12 +348,10 @@ export async function seedIsolatedBindings(
       data: { fileId: uploaded.fileId, role: "base", sortOrder: 0 }
     }
   );
-  expect([200, 201, 409]).toContain(addPrimary.status());
+  expect([200, 201], await addPrimary.text()).toContain(addPrimary.status());
   await uploadDts(request, projectId, fileName, options.dts);
 
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const revisionId = await withPgClient(async (client) => {
+  const revisionId = await withPgClient(async (client) => {
       const revision = await client.query<{ id: string }>(
         `
         select id
@@ -432,9 +366,17 @@ export async function seedIsolatedBindings(
       );
       return revision.rows[0]?.id ?? null;
     });
-    if (revisionId) {
-      await resolveOpenSpecReviews(request, { projectId, revisionId, reason });
-    }
+  expect(revisionId, "fixture must ingest an exact configuration revision").toBeTruthy();
+  const valuePool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    expect(await syncPublishedCatalogProjectValues(valuePool, {
+      organizationId, projectId, configSetId, configRevisionId: revisionId!
+    })).toBeGreaterThanOrEqual(options.properties.length);
+  } finally {
+    await valuePool.end();
+  }
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
     const ready = await withPgClient(async (client) => {
       if (!revisionId) return null;
       const found: IsolatedBinding[] = [];
@@ -446,20 +388,23 @@ export async function seedIsolatedBindings(
           node_locator: string | null;
         }>(
           `
-          select b.id, b.parameter_spec_id, br.raw_value, lnr.node_locator
-          from project_parameter_bindings b
-          inner join project_parameter_binding_revisions br
-            on br.binding_id = b.id and br.config_revision_id = $1
-          inner join parameter_specs ps on ps.id = b.parameter_spec_id
-          left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-          left join dts_logical_node_revisions lnr
-            on lnr.logical_node_id = b.logical_node_id and lnr.config_revision_id = $1
+          select b.id, b.definition_id as parameter_spec_id, property.raw_text as raw_value, lnr.node_locator
+          from parameter_catalog.project_parameter_bindings b
+          join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
+          join parameter_catalog.project_parameter_values value on value.id = b.current_value_id
+          join parameter_catalog.project_value_source_pins pin
+            on pin.project_value_id = value.id and pin.binding_id = b.id and pin.config_revision_id = $1
+          join dts_property_occurrences property on property.id = pin.property_occurrence_id
+          join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id = pin.source_occurrence_id
+          join dts_logical_node_revisions lnr
+            on lnr.logical_node_id = occurrence.logical_node_id and lnr.config_revision_id = $1
           where b.organization_id = $2
             and b.project_id = $3
-            and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $4
-            and coalesce(br.raw_value, '') ~ $5
+            and definition.property_key = $4
+            and coalesce(property.raw_text, '') ~ $5
             and coalesce(lnr.node_locator, '') <> ''
             and ($6::text is null or lnr.node_locator ~ $6)
+            and pin.file_id = $7
           order by b.id
           limit 1
           `,
@@ -469,7 +414,8 @@ export async function seedIsolatedBindings(
             projectId,
             property.propertyKey,
             property.rawValuePattern ?? ".",
-            property.nodeLocatorPattern ?? null
+            property.nodeLocatorPattern ?? null,
+            uploaded.fileId
           ]
         );
         const row = binding.rows[0];
@@ -529,67 +475,6 @@ export async function seedIsolatedNumericCellPair(
   }
 ): Promise<{ kept: IsolatedBinding; removable: IsolatedBinding }> {
   const projectId = options.projectId ?? defaultProjectId;
-  const picked = await withPgClient(async (client) => {
-    const found = await client.query<{
-      id: string;
-      parameter_spec_id: string;
-      revision_id: string;
-      raw_value: string;
-      property_key: string;
-      node_locator: string;
-      config_set_id: string;
-    }>(
-      `
-      select
-        b.id,
-        b.parameter_spec_id,
-        cr.id as revision_id,
-        br.raw_value,
-        coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) as property_key,
-        lnr.node_locator,
-        cr.config_set_id
-      from project_parameter_bindings b
-      join dts_config_set cs
-        on cs.organization_id = b.organization_id
-       and cs.project_id = b.project_id
-       and cs.name = 'default'
-      join dts_config_revisions cr
-        on cr.config_set_id = cs.id
-      join project_parameter_binding_revisions br
-        on br.binding_id = b.id and br.config_revision_id = cr.id
-      left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-      join parameter_specs ps on ps.id = b.parameter_spec_id
-      join dts_logical_node_revisions lnr
-        on lnr.logical_node_id = b.logical_node_id and lnr.config_revision_id = cr.id
-      where b.organization_id = $1
-        and b.project_id = $2
-        and br.raw_value ~ '^<[0-9]+>$'
-        and coalesce(lnr.node_locator, '') <> ''
-        and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = any($3::text[])
-      order by cr.revision_number desc, b.id
-      `,
-      [organizationId, projectId, [options.kept.propertyKey, options.removable.propertyKey]]
-    );
-    const keptRow = found.rows.find((row) => row.property_key === options.kept.propertyKey);
-    const removableRow = found.rows.find((row) => row.property_key === options.removable.propertyKey);
-    if (!keptRow || !removableRow || keptRow.id === removableRow.id) return null;
-    const toBinding = (row: (typeof found.rows)[number], fileName: string): IsolatedBinding => ({
-      projectId,
-      bindingId: row.id,
-      parameterSpecId: row.parameter_spec_id,
-      revisionId: row.revision_id,
-      rawValue: row.raw_value,
-      configSetId: row.config_set_id,
-      fileName,
-      propertyKey: row.property_key,
-      nodeLocator: row.node_locator
-    });
-    return {
-      kept: toBinding(keptRow, "aurora-default.dts"),
-      removable: toBinding(removableRow, "aurora-default.dts")
-    };
-  });
-  if (picked) return picked;
   const [kept, removable] = await seedIsolatedBindings(request, {
     projectId,
     dts: numericCellsDts([options.kept, options.removable]),
@@ -724,23 +609,12 @@ export async function submitBindingDraftViaApi(
   }
 ): Promise<{ status: number; bodyText: string; requestId: string | null }> {
   const projectId = input.projectId ?? defaultProjectId;
-  const reason = input.reason ?? input.draft.reason;
-  const response = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+  const response = await request.post(apiRoute(
+    `/api/v2/projects/${projectId}/parameter-value-drafts/${encodeURIComponent(input.draft.draftId)}/submit`
+  ), {
     headers: headersFor(input.role ?? "admin"),
     data: {
-      projectId,
-      items: [
-        {
-          draftId: input.draft.draftId,
-          projectParameterBindingId: input.draft.projectParameterBindingId,
-          parameterSpecId: input.draft.parameterSpecId,
-          action: input.draft.action,
-          targetValue: input.draft.rawText,
-          reason: input.draft.reason
-        }
-      ],
-      reason,
-      assignees: input.assignees ?? defaultWorkflowAssignees
+      assignedToUserId: (input.assignees ?? defaultWorkflowAssignees).softwareCommitterId
     }
   });
   const bodyText = await response.text();
@@ -748,12 +622,9 @@ export async function submitBindingDraftViaApi(
     return { status: response.status(), bodyText, requestId: null };
   }
   const body = JSON.parse(bodyText) as {
-    item: { items: Array<{ requestId: string; targetValue: string }> };
+    item: { id: string };
   };
-  const requestId =
-    body.item.items.find((item) => item.targetValue === input.draft.rawText)?.requestId ??
-    body.item.items[0]?.requestId ??
-    null;
+  const requestId = body.item.id;
   return { status: response.status(), bodyText, requestId };
 }
 

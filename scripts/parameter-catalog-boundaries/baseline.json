@@ -4,8 +4,7 @@
     "e2e/acceptance/hierarchical-modules.acceptance.spec.ts": {
       "canonical-catalog-raw-access": 1,
       "legacy-catalog-raw-read": 2,
-      "legacy-catalog-sql-write": 6,
-      "legacy-catalog-table-name": 1
+      "legacy-catalog-sql-write": 5
     },
     "e2e/acceptance/knowledge.acceptance.spec.ts": {
       "legacy-catalog-raw-read": 1,
@@ -13,16 +12,15 @@
       "legacy-catalog-sql-write": 3
     },
     "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts": {
-      "legacy-catalog-raw-read": 2,
-      "legacy-catalog-table-name": 2
+      "legacy-catalog-raw-read": 1,
+      "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/parameter-topology.acceptance.spec.ts": {
       "canonical-catalog-raw-access": 7,
-      "legacy-catalog-raw-read": 9,
-      "legacy-catalog-route": 12,
-      "legacy-catalog-table-name": 1,
+      "legacy-catalog-raw-read": 5,
+      "legacy-catalog-route": 8,
       "legacy-effective-governance-contract": 6,
-      "legacy-parameter-spec-identifier": 11
+      "legacy-parameter-spec-identifier": 4
     },
     "server/modules/agent/tools/actionTools.integration.test.ts": {
       "legacy-catalog-raw-read": 1,

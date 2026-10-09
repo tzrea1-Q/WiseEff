@@ -28,7 +28,6 @@ import {
   insertSensitiveNodeRule,
   integerCellTarget,
   seedIsolatedBinding,
-  seedIsolatedHexChipBindings,
   startSwappedDisposablePostCutoverRuntime,
   type RestoreDisposablePostCutoverRuntime,
   submitBindingDraftViaApi
@@ -551,7 +550,7 @@ test.describe("DTS structured post-cutover typed edits", () => {
     await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
-  test("structural impact kinds when DTS bindings exist", async ({ request }, testInfo) => {
+  test("canonical DTS requests freeze exact Binding and structural source-cohort proof", async ({ request }, testInfo) => {
     // @acceptance PARAM-DTS-IMPACT-001
     // @operation PARAM-DTS-IMPACT-001
     test.setTimeout(180_000);
@@ -562,20 +561,20 @@ test.describe("DTS structured post-cutover typed edits", () => {
       propertyKey: "vendor-id",
       dts: impactDts,
       configSetName,
+      peerFile: { fileName: peerFileName, content: peerDts },
       nodeLocatorPattern: "chip@6E",
       rawValuePattern: ".",
       reason: `${descriptionPrefix} impact binding`,
       timeoutMs: 60_000
     });
-    const peer = await uploadDtsFile(request, peerFileName, peerDts);
-    const addPeer = await request.post(
-      apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(binding.configSetId)}/files`),
-      {
-        headers: adminHeaders(),
-        data: { fileId: peer.fileId, role: "thermal", sortOrder: 1 }
-      }
-    );
-    expect([200, 201, 409]).toContain(addPeer.status());
+    const peerFileId = await withPgClient(async (client) => {
+      const peer = await client.query<{ id: string }>(
+        "select id from project_parameter_files where organization_id = $1 and project_id = $2 and file_name = $3",
+        [organizationId, projectId, peerFileName]
+      );
+      expect(peer.rows).toHaveLength(1);
+      return peer.rows[0]!.id;
+    });
 
     const submitted = await createAndSubmitBindingDraft(request, {
       binding,
@@ -586,33 +585,56 @@ test.describe("DTS structured post-cutover typed edits", () => {
     expect(requestId).toBeTruthy();
 
     const changesResponse = await request.get(
-      apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`),
+      apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests`),
       { headers: adminHeaders() }
     );
     expect(changesResponse.ok()).toBe(true);
     const changesBody = (await changesResponse.json()) as {
       items: Array<{
         id: string;
-        impact: Array<{ kind: string; name: string; note: string; risk: string }>;
+        bindingId: string; definitionId: string; status: string; targetValue: unknown;
+        sourcePinId: string; candidateId: string;
       }>;
     };
     const change = changesBody.items.find((item) => item.id === requestId);
     expect(change).toBeTruthy();
-    expect(Array.isArray(change?.impact)).toBe(true);
-    expect(change!.impact.length).toBeGreaterThan(0);
-    const kinds = new Set(change!.impact.map((item) => item.kind));
-    expect(kinds.has("parameter")).toBe(true);
-    const structuralKinds = ["compatible", "config-set", "phandle"].filter((kind) => kinds.has(kind));
-    expect(structuralKinds.length).toBeGreaterThan(0);
+    expect(change).toMatchObject({
+      bindingId: binding.bindingId, definitionId: binding.parameterSpecId, status: "pending",
+      targetValue: "<0x6f>", sourcePinId: expect.any(String), candidateId: expect.any(String)
+    });
+    const sourceDiffRoute = `/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/source-diff`;
+    const sourceDiffResponse = await request.get(apiRoute(sourceDiffRoute), { headers: adminHeaders() });
+    expect(sourceDiffResponse.status(), await sourceDiffResponse.text()).toBe(200);
+    const sourceDiff = (await sourceDiffResponse.json()).item;
+    expect(sourceDiff).toMatchObject({
+      requestId, bindingId: binding.bindingId, format: "dts", sourceName: binding.fileName,
+      sourcePinId: change!.sourcePinId, candidateId: change!.candidateId,
+      bindings: expect.arrayContaining([expect.objectContaining({ bindingId: binding.bindingId })])
+    });
+    expect(sourceDiff.before).toMatch(/vendor-id\s*=\s*<0x6e>/);
+    expect(sourceDiff.after).toMatch(/vendor-id\s*=\s*<0x6f>/);
+    expect(sourceDiff.after).toMatch(/vendor-id\s*=\s*<0x70>/);
+    expect(sourceDiff.after.match(/compatible\s*=\s*"vendor,chip123"/g)).toHaveLength(2);
+    const structuralProof = await withPgClient(async (client) => {
+      const proof = await client.query<{ candidate_member_manifest: unknown }>(
+        "select candidate_member_manifest from project_parameter_value_change_requests where id = $1 and project_id = $2",
+        [requestId, projectId]
+      );
+      expect(proof.rows).toHaveLength(1);
+      return proof.rows[0]!.candidate_member_manifest;
+    });
+    expect(structuralProof).toEqual(expect.arrayContaining([
+      expect.objectContaining({ configSetId: binding.configSetId, fileId: peerFileId })
+    ]));
     const impactArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-impact.json", {
       requestId,
-      impact: change!.impact,
-      structuralKinds
+      sourceDiff,
+      structuralProof
     });
 
     await recordOperationEvidence({
       operationId: "PARAM-DTS-IMPACT-001",
-      title: "change-request impact with structural kinds when available",
+      title: "canonical change-request exact target and structural source-cohort proof",
       status: "passed",
       testInfo,
       assertions: ["api"],
@@ -620,11 +642,15 @@ test.describe("DTS structured post-cutover typed edits", () => {
       api: [
         summarizeApiResponse(changesResponse, {
           method: "GET",
-          path: "/api/v1/parameter-change-requests",
-          responseSummary: `kinds=${[...kinds].join(",")} structural=${structuralKinds.join(",") || "none"}`
+          path: `/api/v2/projects/${projectId}/parameter-value-change-requests`,
+          responseSummary: `pending request=${requestId}; binding=${binding.bindingId}; definition=${binding.parameterSpecId}`
+        }),
+        summarizeApiResponse(sourceDiffResponse, {
+          method: "GET", path: sourceDiffRoute,
+          responseSummary: "frozen DTS source diff preserves sibling property and compatibles; cohort includes peer member"
         })
       ],
-      notes: "Semantic CR list hydrates source_file_name and node/prop source_node_path so structural DTS impact attaches after cutover (TD-079)."
+      notes: "Canonical requests do not expose legacy impact-kind badges. Their exact Binding/Definition, source diff, and frozen Config Set member manifest prove the target and structural cohort without a legacy workflow mirror."
     });
   });
 
@@ -637,23 +663,25 @@ test.describe("DTS structured post-cutover typed edits", () => {
 
     try {
       await bindHardwareUserToProject(projectId);
-      const chip = await seedIsolatedHexChipBindings(request, {
+      const binding = await seedIsolatedBinding(request, {
+        propertyKey: "vendor-id", dts: impactDts, nodeLocatorPattern: "chip@6E",
         reason: `${descriptionPrefix} rbac binding`
       });
-      const locatorPattern = `${chip.reg.nodeLocator || "amba/i2c@1/chip@6E"}*`;
+      const locatorPattern = `${binding.nodeLocator}*`;
       await insertSensitiveNodeRule({
         id: sensitiveRuleId,
         pattern: locatorPattern
       });
 
       const deniedDraft = await createBindingDraftViaApi(request, {
-        binding: chip.reg,
+        binding,
         targetValue: integerCellTarget("0x70"),
         reason: `${descriptionPrefix} rbac denied`,
         role: "hardware-user"
       });
       let deniedStatus = deniedDraft.status;
       let deniedBodyText = deniedDraft.bodyText;
+      let deniedPath = `/api/v2/projects/${projectId}/parameter-bindings/${binding.bindingId}/drafts`;
       if (deniedDraft.status === 201 && deniedDraft.draft) {
         const denied = await submitBindingDraftViaApi(request, {
           projectId,
@@ -663,6 +691,7 @@ test.describe("DTS structured post-cutover typed edits", () => {
         });
         deniedStatus = denied.status;
         deniedBodyText = denied.bodyText;
+        deniedPath = `/api/v2/projects/${projectId}/parameter-value-drafts/${deniedDraft.draft.draftId}/submit`;
       }
       expect(deniedStatus).toBe(403);
       const deniedBody = JSON.parse(deniedBodyText) as {
@@ -671,7 +700,7 @@ test.describe("DTS structured post-cutover typed edits", () => {
       expect(deniedBody.error?.message ?? "").toMatch(/parameter:edit-critical|FORBIDDEN|Missing permission/i);
 
       const allowed = await createAndSubmitBindingDraft(request, {
-        binding: chip.reg,
+        binding,
         targetValue: integerCellTarget("0x70"),
         reason: `${descriptionPrefix} rbac allowed admin`,
         role: "admin"
@@ -711,13 +740,13 @@ test.describe("DTS structured post-cutover typed edits", () => {
         api: [
           {
             method: "POST",
-            path: "/api/v1/parameter-submission-rounds",
+            path: deniedPath,
             status: 403,
             responseSummary: "hardware-user missing parameter:edit-critical"
           },
           {
             method: "POST",
-            path: "/api/v1/parameter-submission-rounds",
+            path: `/api/v2/projects/${projectId}/parameter-value-drafts/${allowed.draft.draftId}/submit`,
             status: 201,
             responseSummary: "admin with edit-critical allowed"
           }
