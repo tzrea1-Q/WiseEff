@@ -654,6 +654,14 @@ The accepted one-page experience has an API-distinguishable state for every prod
 | Review placement choice | Unresolved Review Item ETag, current release anchor, allowed `register-subject` resolution | An Org Admin must explicitly select `use-default` or `choose-parent`; no preselected or inferred parent. |
 | Review resolution conflict | 409 with `placement-conflict`, `invalid-placement-parent`, `release-drift`, or `revision-conflict` | Preserve the user's selection, refresh the release/item/placement evidence, and require reconfirmation; show no partial Registration. |
 
+## Canonical project deletion gate (#1070 / #1074)
+
+Project operations list/detail responses expose the server-derived `canonicalOwned` boolean. It is true when the tenant-scoped project has any canonical Binding, Project value, or source pin, including retained history; displayed parameter counts are not an ownership test.
+
+`DELETE /api/v1/parameters/admin/projects/:projectId` refuses owned projects with HTTP 409 `CONFLICT`, `details.reason = "canonical-project-retained"`, and `details.projectId`. The authenticated invocation owns the `project-delete-refused` audit; it commits before the refusal is returned. No project, canonical, legacy, or source rows change. Delete is disabled with a visible, accessible explanation that canonical history must be retained and archive/disposal are not yet available.
+
+Ownership is re-read in a separate statement after acquiring the project row lock in the deletion transaction, so a canonical writer that commits while deletion waits is included. Empty and legacy-only projects retain their existing deletion path. This gate does not add archive, retirement, or privileged disposal, and does not alter FK or pinned-source protections.
+
 ## OpenAPI and frontend follow-up impact
 
 The later implementation specification must update, in one coordinated cutover:

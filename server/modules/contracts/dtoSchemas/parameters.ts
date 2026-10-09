@@ -27,6 +27,27 @@ export const projectDtoSchema = z.object({
   code: z.string()
 });
 
+export const projectAdminSummaryDtoSchema = projectDtoSchema.extend({
+  status: z.string(),
+  initializationStatus: z.string(),
+  moduleCount: z.number(),
+  parameterCount: z.number(),
+  openConflictCount: z.number(),
+  releasedBaselineCount: z.number(),
+  canonicalOwned: z.boolean(),
+  updatedAt: z.string()
+});
+
+export const projectAdminSummaryResponseSchema = itemEnvelopeSchema(projectAdminSummaryDtoSchema);
+export const projectAdminListResponseSchema = itemsEnvelopeSchema(projectAdminSummaryDtoSchema);
+export const projectAdminDetailResponseSchema = itemEnvelopeSchema(projectAdminSummaryDtoSchema.extend({
+  modules: z.array(z.object({
+    id: z.string(), projectId: z.string(), name: z.string(), sortOrder: z.number(),
+    parentId: z.string().nullable().optional(), path: z.string().optional(),
+    depth: z.number().optional(), parameterModuleId: z.string().nullable().optional()
+  }))
+}));
+
 export const parameterHistoryEntryDtoSchema = z.object({
   version: z.string(),
   value: z.string(),
