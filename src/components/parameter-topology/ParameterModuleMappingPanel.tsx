@@ -248,6 +248,7 @@ export function ParameterModuleMappingPanel({
         driverNature: DriverRegistryEntry["driverNature"];
         instanceCardinality: DriverRegistryEntry["instanceCardinality"];
         defaultBusinessCategoryId: string | null;
+        compatibles: string[];
       }
     >();
     for (const entry of driverRegistry) {
@@ -255,6 +256,7 @@ export function ParameterModuleMappingPanel({
         driverNature: entry.driverNature ?? null,
         instanceCardinality: entry.instanceCardinality ?? null,
         defaultBusinessCategoryId: entry.defaultBusinessCategoryId ?? null,
+        compatibles: entry.compatibles,
       });
     }
     return map;
@@ -696,7 +698,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onUpdateDriverRegistration={async (moduleId, input) => {
+            onUpdateDriverRegistration={canonicalEnabled ? undefined : async (moduleId, input) => {
               setBusy(true);
               setError(null);
               try {
@@ -710,7 +712,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onUpdateDriverRegistrationDefault={async (moduleId, defaultBusinessCategoryId) => {
+            onUpdateDriverRegistrationDefault={canonicalEnabled ? undefined : async (moduleId, defaultBusinessCategoryId) => {
               setBusy(true);
               setError(null);
               try {
@@ -729,7 +731,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onReplayDriverPlacement={async (moduleId) => {
+            onReplayDriverPlacement={canonicalEnabled ? undefined : async (moduleId) => {
               setBusy(true);
               setError(null);
               try {

@@ -89,6 +89,7 @@ export function ModuleEditDialog({
   onReplayPlacement,
   onManageCanonicalPlacement,
   legacyControlsAreHistorical = false,
+  historicalCompatibles = [],
 }: {
   module: EditableModule;
   existingNames: readonly string[];
@@ -124,6 +125,7 @@ export function ModuleEditDialog({
   onReplayPlacement?: () => void | Promise<DriverPlacementReplayCounts>;
   onManageCanonicalPlacement?: () => void;
   legacyControlsAreHistorical?: boolean;
+  historicalCompatibles?: readonly string[];
 }) {
   const addFieldId = useId();
   const defaultCategoryLabelId = useId();
@@ -160,9 +162,14 @@ export function ModuleEditDialog({
   const showPlacementControls =
     module.kind === "driver-group" &&
     canAdmin &&
+    !legacyControlsAreHistorical &&
     (onUpdateDefaultBusinessCategory !== undefined || onReplayPlacement !== undefined);
+  const canEditDriverProperties = canAdmin && !legacyControlsAreHistorical;
+  const moduleDetailsReadOnly = legacyControlsAreHistorical &&
+    (module.kind === "driver-group" || module.kind === "node-type");
   const showCanonicalPlacementEntry =
-    module.kind === "driver-group" && canAdmin && onManageCanonicalPlacement !== undefined;
+    (module.kind === "driver-group" || module.kind === "node-type") &&
+    canAdmin && onManageCanonicalPlacement !== undefined;
 
   useEffect(() => {
     setDraft({
@@ -190,11 +197,12 @@ export function ModuleEditDialog({
     draft.scope.trim() !== (module.scope ?? "").trim() ||
     (importanceVisible && importance !== (module.importance ?? "medium")) ||
     (showKind && kind !== (module.kind === "node-type" ? "node-type" : "business")) ||
-    (canAdmin && natureDraft != null && natureDraft !== driverNature) ||
-    (canAdmin && cardinalityDraft != null && cardinalityDraft !== instanceCardinality);
-  const canSave = canSubmit && isDirty;
+    (canEditDriverProperties && natureDraft != null && natureDraft !== driverNature) ||
+    (canEditDriverProperties && cardinalityDraft != null && cardinalityDraft !== instanceCardinality);
+  const canSave = !moduleDetailsReadOnly && canSubmit && isDirty;
   const showCompatibleRules =
     module.kind === "driver-group" &&
+    !legacyControlsAreHistorical &&
     (compatibleMappings !== undefined || onAddCompatibleMapping !== undefined);
   const trimmedCompatible = newCompatible.trim();
   const canAddCompatible =
@@ -242,9 +250,11 @@ export function ModuleEditDialog({
             <span className="eyebrow">模块修改</span>
             <h2 id={titleId}>{module.name}</h2>
             <p>
-              {showCompatibleRules
-                ? "更新驱动组名称、描述与适用范围，并维护它认领的 compatible 匹配规则。"
-                : showKind
+              {moduleDetailsReadOnly
+                ? "历史模块名称与详情仅供溯源；规范主体登记与归属由规范面板管理。"
+                : showCompatibleRules
+                  ? "更新驱动组名称、描述与适用范围，并维护它认领的 compatible 匹配规则。"
+                  : showKind
                   ? "更新模块类型、名称、描述与适用范围。改类型会把自动发现的模块收养为人工维护。"
                   : showImportance
                     ? "更新模块名称、重要性、描述与适用范围。修改名称会同步更新共享参数库中的模块归属。"
@@ -257,6 +267,15 @@ export function ModuleEditDialog({
         </div>
 
         <div className="param-admin-module-edit-body">
+          {legacyControlsAreHistorical && historicalCompatibles.length > 0 ? (
+            <section className="module-edit-section" aria-label="历史 compatible 溯源">
+              <h3>历史 compatible 溯源</h3>
+              <p className="muted">历史驱动注册表记录，仅供读取，不代表当前规范主体身份或匹配规则。</p>
+              <ul>{historicalCompatibles.map((compatible) => (
+                <li key={compatible}><code>{compatible}</code></li>
+              ))}</ul>
+            </section>
+          ) : null}
           {module.kind === "driver-group" &&
           (driverNature != null || instanceCardinality != null) ? (
             <section
@@ -266,13 +285,15 @@ export function ModuleEditDialog({
               <div className="module-edit-section__head">
                 <h3>驱动属性</h3>
                 <p className="muted">
-                  描述设备或服务本体，与分类树中的节点类型（node-type）不是同一概念。
+                  {legacyControlsAreHistorical
+                    ? "历史驱动登记属性仅供溯源，不代表当前规范主体登记或归属。"
+                    : "描述设备或服务本体，与分类树中的节点类型（node-type）不是同一概念。"}
                 </p>
               </div>
               <div className="organization-driver-schema-dialog__field-grid">
                 <label>
                   驱动性质
-                  {canAdmin ? (
+                  {canEditDriverProperties ? (
                     <select
                       aria-label="驱动性质"
                       value={natureDraft ?? ""}
@@ -299,7 +320,7 @@ export function ModuleEditDialog({
                 </label>
                 <label>
                   实例基数
-                  {canAdmin ? (
+                  {canEditDriverProperties ? (
                     <select
                       aria-label="实例基数"
                       value={cardinalityDraft ?? ""}
@@ -331,17 +352,11 @@ export function ModuleEditDialog({
           {showPlacementControls ? (
             <section
               className="module-edit-section module-edit-placement-controls"
-              aria-label={legacyControlsAreHistorical ? "历史驱动登记" : "业务归属"}
+              aria-label="业务归属"
             >
               <div className="module-edit-section__head">
-                <h3>{legacyControlsAreHistorical ? "历史驱动登记" : "业务归属"}</h3>
-                {legacyControlsAreHistorical ? (
-                  <p className="muted">
-                    以下控件只作用于旧版驱动登记，不会修改规范主体归属。
-                  </p>
-                ) : (
-                  <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategoryHint}</p>
-                )}
+                <h3>业务归属</h3>
+                <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategoryHint}</p>
               </div>
               {onUpdateDefaultBusinessCategory ? (
                 <div className="module-edit-placement-controls__field">
@@ -412,12 +427,15 @@ export function ModuleEditDialog({
           <section className="module-edit-section module-edit-basic-info" aria-label="基础信息">
             <div className="module-edit-section__head">
               <h3>基础信息</h3>
-              <p className="muted">维护模块在管理端展示的名称、描述和适用范围。</p>
+              <p className="muted">{moduleDetailsReadOnly
+                ? "历史展示信息仅供读取，不会修改历史模块或当前规范主体归属。"
+                : "维护模块在管理端展示的名称、描述和适用范围。"}</p>
             </div>
             <ModuleDefinitionForm
               currentName={module.name}
               existingNames={existingNames}
               module={draft}
+              readOnly={moduleDetailsReadOnly}
               showImportance={importanceVisible}
               importance={importance}
               onImportanceChange={setImportance}
@@ -615,7 +633,7 @@ export function ModuleEditDialog({
             <button className="button subtle" type="button" onClick={onCancel} disabled={busy}>
               取消
             </button>
-            {isDirty ? (
+            {!moduleDetailsReadOnly && isDirty ? (
               <button
                 className="button primary"
                 type="button"
@@ -630,8 +648,8 @@ export function ModuleEditDialog({
                     scope: draft.scope.trim(),
                     ...(showKind ? { kind } : {}),
                     ...(importanceVisible ? { importance } : {}),
-                    ...(canAdmin && natureDraft != null ? { driverNature: natureDraft } : {}),
-                    ...(canAdmin && cardinalityDraft != null
+                    ...(canEditDriverProperties && natureDraft != null ? { driverNature: natureDraft } : {}),
+                    ...(canEditDriverProperties && cardinalityDraft != null
                       ? { instanceCardinality: cardinalityDraft }
                       : {})
                   });

@@ -245,13 +245,16 @@ describe("ModuleEditDialog", () => {
     expect(await within(dialog).findByText(/回放完成：移动 1/)).toBeInTheDocument();
   });
 
-  it("labels legacy placement controls and offers canonical placement separately", () => {
+  it("keeps historical metadata read-only and offers only canonical placement controls", () => {
     const onManageCanonicalPlacement = vi.fn();
     render(
       <ModuleEditDialog
         module={{ name: "SC8562", description: "", scope: "", kind: "driver-group" }}
         existingNames={[]}
         canAdmin
+        driverNature="physical-device"
+        instanceCardinality="multiple"
+        historicalCompatibles={["vendor,sc8562"]}
         onUpdateDefaultBusinessCategory={vi.fn()}
         onReplayPlacement={vi.fn()}
         onManageCanonicalPlacement={onManageCanonicalPlacement}
@@ -262,8 +265,12 @@ describe("ModuleEditDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
-    const historical = within(dialog).getByRole("region", { name: "历史驱动登记" });
-    expect(within(historical).getByText("以下控件只作用于旧版驱动登记，不会修改规范主体归属。")).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "历史 compatible 溯源" })).toHaveTextContent("vendor,sc8562");
+    expect(within(dialog).getByLabelText("驱动性质")).toHaveAttribute("readonly");
+    expect(within(dialog).getByLabelText("实例基数")).toHaveAttribute("readonly");
+    expect(within(dialog).queryByRole("region", { name: "历史驱动登记" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
     const canonical = within(dialog).getByRole("region", { name: "规范主体放置" });
     fireEvent.click(within(canonical).getByRole("button", { name: "管理规范主体与归属" }));
     expect(onManageCanonicalPlacement).toHaveBeenCalledOnce();

@@ -31,8 +31,14 @@ const TEMPLATE_LOCK_POLL_MS = 50;
 const DATABASE_DISCONNECT_WAIT_MS = 5_000;
 const DATABASE_DISCONNECT_POLL_MS = 25;
 
-const TEMPLATE_PREFIX = "wiseeff_test_tpl_";
-const WORKER_PREFIX = "wiseeff_test_wk_";
+const DATABASE_PREFIX = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
+if (!/^[a-z][a-z0-9_]{0,15}$/.test(DATABASE_PREFIX)) throw new Error("Invalid test database prefix");
+const TEMPLATE_PREFIX = `${DATABASE_PREFIX}_test_tpl_`;
+const WORKER_PREFIX = `${DATABASE_PREFIX}_test_wk_`;
+
+export function testDatabasePrefixPattern(prefix: string): string {
+  return `${prefix.replace(/[\\%_]/g, "\\$&")}%`;
+}
 
 let cachedFingerprint: string | null = null;
 let workerDatabaseUrl: string | null = null;
@@ -161,8 +167,9 @@ async function dropStaleTestDatabases(admin: pg.Client, keepFingerprint: string)
   const rows = await admin.query<{ datname: string }>(
     `select datname
      from pg_database
-     where (datname like '${TEMPLATE_PREFIX}%' or datname like '${WORKER_PREFIX}%')
-       and datname not like '%${keepFingerprint}%'`
+     where (datname like $1 or datname like $2)
+       and strpos(datname, $3) = 0`,
+    [testDatabasePrefixPattern(TEMPLATE_PREFIX), testDatabasePrefixPattern(WORKER_PREFIX), keepFingerprint]
   );
   for (const row of rows.rows) {
     const active = await admin.query("select 1 from pg_stat_activity where datname = $1 limit 1", [row.datname]);
@@ -180,7 +187,7 @@ async function ensureTemplateDatabase(admin: pg.Client, fingerprint: string): Pr
 
   // Build under a temporary name, then rename, so an interrupted build can never be
   // mistaken for a complete template. Caller holds the template build lock.
-  const buildName = `wiseeff_test_tplbuild_${process.pid}`;
+  const buildName = `${DATABASE_PREFIX}_test_tplbuild_${process.pid}`;
   await dropTestDatabase(admin, buildName);
   await admin.query(`create database ${buildName}`);
 
@@ -253,9 +260,10 @@ export async function setupTestDatabaseRun(): Promise<void> {
       const orphans = await admin.query<{ datname: string }>(
         `select datname
          from pg_database d
-         where datname like '${WORKER_PREFIX}%'
-           and datname not like '%_${currentRunToken()}_%'
-           and not exists (select 1 from pg_stat_activity a where a.datname = d.datname)`
+         where datname like $1
+           and strpos(datname, $2) = 0
+           and not exists (select 1 from pg_stat_activity a where a.datname = d.datname)`,
+        [testDatabasePrefixPattern(WORKER_PREFIX), `_${currentRunToken()}_`]
       );
       for (const row of orphans.rows) {
         // No force: if another live run connects between the check and the drop, the
@@ -280,7 +288,8 @@ export async function teardownTestDatabaseRun(): Promise<void> {
   try {
     const failures: unknown[] = [];
     const rows = await admin.query<{ datname: string }>(
-      `select datname from pg_database where datname like '${WORKER_PREFIX}%' and datname like '%_${token}_%' order by datname`
+      `select datname from pg_database where datname like $1 and strpos(datname, $2) > 0 order by datname`,
+      [testDatabasePrefixPattern(WORKER_PREFIX), `_${token}_`]
     );
     for (const row of rows.rows) {
       try {
@@ -462,7 +471,8 @@ export async function createManagedInstanceTestDatabase(label: string): Promise<
   }
   const safeLabel = label.replace(/[^a-z0-9]/gi, "").slice(0, 6) || "mgr";
   const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
-  const name = `wiseeffm${safeLabel}${process.pid}${rand}`.slice(0, 63).toLowerCase();
+  const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX ? `${DATABASE_PREFIX}_m` : "wiseeffm";
+  const name = `${prefix}${safeLabel}${process.pid}${rand}`.slice(0, 63).toLowerCase();
   await cloneTemplateDatabase(name);
   let dropped = false;
   return {

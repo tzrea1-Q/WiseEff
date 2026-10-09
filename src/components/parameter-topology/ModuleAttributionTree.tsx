@@ -58,9 +58,10 @@ export type ModuleAttributionTreeProps = {
       driverNature: DriverNature | null;
       instanceCardinality: InstanceCardinality | null;
       defaultBusinessCategoryId: string | null;
+      compatibles?: readonly string[];
     }
   >;
-  /** Canonical UI mode suppresses legacy placement actions for canonical-only groups. */
+  /** Canonical UI mode keeps historical driver registration read-only. */
   canonicalModeEnabled?: boolean;
   /** Whether the canonical subject placement panel is available on this page. */
   canonicalPlacementAvailable?: boolean;
@@ -153,6 +154,7 @@ type RowProps = {
   driverCoverage?: ReadonlyMap<string, DriverCoverageSummary>;
   expandedIds: ReadonlySet<string>;
   canAdmin: boolean;
+  canonicalModeEnabled: boolean;
   busy: boolean;
   onToggle: (id: string) => void;
   onView: (id: string) => void;
@@ -205,6 +207,7 @@ function ModuleAttributionTreeRow({
   driverCoverage,
   expandedIds,
   canAdmin,
+  canonicalModeEnabled,
   busy,
   onToggle,
   onView,
@@ -305,6 +308,7 @@ function ModuleAttributionTreeRow({
             modules={modules}
             busy={busy}
             canAdmin={canAdmin}
+            canonicalModeEnabled={canonicalModeEnabled}
             onView={canViewUnclassifiedRoot(module) ? () => onView(module.id) : undefined}
             onEdit={() => onEdit(module.id)}
             onAddChild={() => onAddChild(module.id)}
@@ -332,6 +336,7 @@ function ModuleAttributionTreeRow({
               driverCoverage={driverCoverage}
               expandedIds={expandedIds}
               canAdmin={canAdmin}
+              canonicalModeEnabled={canonicalModeEnabled}
               busy={busy}
               onToggle={onToggle}
               onView={onView}
@@ -413,7 +418,7 @@ export function ModuleAttributionTree({
     typeof createParentId === "string" ? (modulesById.get(createParentId) ?? null) : null;
   const editingModule = editingModuleId ? (modulesById.get(editingModuleId) ?? null) : null;
   const editShowsImportance = editingModule ? canEditImportance(editingModule) : false;
-  const editShowsKind = editingModule ? canReclassifyModule(editingModule) : false;
+  const editShowsKind = !canonicalModeEnabled && editingModule ? canReclassifyModule(editingModule) : false;
   const viewingUnclassified = viewingUnclassifiedId
     ? (modulesById.get(viewingUnclassifiedId) ?? null)
     : null;
@@ -440,9 +445,6 @@ export function ModuleAttributionTree({
     editingModule?.kind === "driver-group"
       ? driverRegistrationByModuleId?.get(editingModule.id)
       : undefined;
-  const hasHistoricalDriverRegistration =
-    editingDriverRegistration?.driverNature != null ||
-    editingDriverRegistration?.instanceCardinality != null;
 
   const toggleExpanded = (moduleId: string) => {
     setExpandedIds((current) => {
@@ -509,6 +511,7 @@ export function ModuleAttributionTree({
           ...(patch.kind !== undefined ? { kind: patch.kind } : {})
         });
         if (
+          !canonicalModeEnabled &&
           onUpdateDriverRegistration &&
           (patch.driverNature !== undefined || patch.instanceCardinality !== undefined)
         ) {
@@ -549,7 +552,7 @@ export function ModuleAttributionTree({
   const handleReorder = async (moduleId: string, direction: "up" | "down") => {
     const module = modulesById.get(moduleId);
     if (!module) return;
-    const updates = sortOrderSwapUpdates(module, direction, modules);
+    const updates = sortOrderSwapUpdates(module, direction, modules, canonicalModeEnabled);
     if (!updates) return;
     for (const patch of updates) {
       await onUpdateModule(patch.id, { sortOrder: patch.sortOrder });
@@ -671,6 +674,7 @@ export function ModuleAttributionTree({
               driverCoverage={driverCoverage}
               expandedIds={expandedIds}
               canAdmin={canAdmin}
+              canonicalModeEnabled={canonicalModeEnabled}
               busy={busy}
               onToggle={toggleExpanded}
               onView={handleViewUnclassified}
@@ -710,7 +714,7 @@ export function ModuleAttributionTree({
           existingNames={siblingModuleNames(modules, createParentId ?? null)}
           parentName={createParent?.name ?? null}
           showImportance
-          allowKindSelect
+          allowKindSelect={!canonicalModeEnabled}
           modules={modules}
           initialParentId={createParentId ?? null}
           busy={dialogMutationBusy}
@@ -746,6 +750,7 @@ export function ModuleAttributionTree({
           onSave={handleSaveEdit}
           driverNature={editingDriverRegistration?.driverNature ?? null}
           instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
+          historicalCompatibles={canonicalModeEnabled ? editingDriverRegistration?.compatibles : undefined}
           modules={modules}
           defaultBusinessCategoryId={
             editingDriverRegistration?.defaultBusinessCategoryId ?? null
@@ -753,7 +758,7 @@ export function ModuleAttributionTree({
           onUpdateDefaultBusinessCategory={
             editingModule.kind === "driver-group" &&
             onUpdateDriverRegistrationDefault &&
-            (!canonicalModeEnabled || hasHistoricalDriverRegistration)
+            !canonicalModeEnabled
               ? (defaultBusinessCategoryId) =>
                   void onUpdateDriverRegistrationDefault(
                     editingModule.id,
@@ -764,12 +769,12 @@ export function ModuleAttributionTree({
           onReplayPlacement={
             editingModule.kind === "driver-group" &&
             onReplayDriverPlacement &&
-            (!canonicalModeEnabled || hasHistoricalDriverRegistration)
+            !canonicalModeEnabled
               ? () => onReplayDriverPlacement(editingModule.id)
               : undefined
           }
           onManageCanonicalPlacement={
-            editingModule.kind === "driver-group" &&
+            (editingModule.kind === "driver-group" || editingModule.kind === "node-type") &&
             canonicalPlacementAvailable &&
             onOpenCanonicalPlacement
               ? () => {
