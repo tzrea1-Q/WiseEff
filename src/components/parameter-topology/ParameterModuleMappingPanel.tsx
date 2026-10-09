@@ -174,7 +174,7 @@ export function ParameterModuleMappingPanel({
     Promise.all([
       client.getRegistry(),
       canonicalEnabled ? Promise.resolve(null) : client.getDiscoveryHints(),
-      client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])
+      canonicalEnabled ? Promise.resolve([]) : client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])
     ])
       .then(([nextRegistry, hints, schemas]) => {
         if (cancelled) return;
