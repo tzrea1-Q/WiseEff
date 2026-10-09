@@ -289,6 +289,11 @@ export function specReviewTaskFromDto(dto: SpecReviewTaskDto): SpecReviewTask {
     createdAt: dto.createdAt,
     resolvedAt: dto.resolvedAt,
     reason: dto.reason,
+    ...(dto.historicalOnly !== undefined ? { historicalOnly: dto.historicalOnly } : {}),
+    ...(dto.needsCanonicalDecision !== undefined
+      ? { needsCanonicalDecision: dto.needsCanonicalDecision }
+      : {}),
+    ...(dto.successor !== undefined ? { successor: dto.successor } : {}),
   };
 }
 
@@ -301,6 +306,11 @@ function mappingTaskFromDto(dto: IdentityMappingTask): IdentityMappingTask {
     candidateLogicalNodeIds: dto.candidateLogicalNodeIds,
     ...(dto.evidence != null ? { evidence: dto.evidence } : {}),
     ...(dto.taskKind != null ? { taskKind: dto.taskKind } : {}),
+    ...(dto.historicalOnly !== undefined ? { historicalOnly: dto.historicalOnly } : {}),
+    ...(dto.needsCanonicalDecision !== undefined
+      ? { needsCanonicalDecision: dto.needsCanonicalDecision }
+      : {}),
+    ...(dto.successor !== undefined ? { successor: dto.successor } : {}),
     status: dto.status,
     reason: dto.reason,
     createdAt: dto.createdAt,
@@ -535,12 +545,12 @@ export function createHttpParameterTopologyRepository(
     },
     async listSpecReviewTasks(query = {}) {
       const response = await apiClient.get<{
-        items: SpecReviewTaskDto[];
-        nextCursor: string | null;
+        historicalItems?: SpecReviewTaskDto[];
+        nextCursor?: string | null;
       }>(buildSpecReviewTasksPath(query));
       return {
-        items: response.items.map(specReviewTaskFromDto),
-        nextCursor: response.nextCursor,
+        items: (response.historicalItems ?? []).map(specReviewTaskFromDto),
+        nextCursor: response.nextCursor ?? null,
       } satisfies SpecReviewTaskListResult;
     },
     async resolveSpecReviewTask(taskId, input: ResolveSpecReviewInput) {
@@ -713,10 +723,10 @@ export function createHttpParameterTopologyRepository(
       return response.item;
     },
     async listMappingTasks(projectId) {
-      const response = await apiClient.get<ItemsEnvelope<IdentityMappingTask>>(
+      const response = await apiClient.get<{ historicalItems?: IdentityMappingTask[] }>(
         buildMappingTasksPath(projectId),
       );
-      return response.items.map(mappingTaskFromDto);
+      return (response.historicalItems ?? []).map(mappingTaskFromDto);
     },
     async resolveMapping(taskId, input) {
       await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(

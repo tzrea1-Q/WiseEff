@@ -26,7 +26,7 @@ import { ApiError } from "../../shared/http/errors";
 import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/repository";
 import {
   countBlockingIdentityMappingTasksForRevision,
-  syncSingletonCardinalityBlockingTasks,
+  countSingletonCardinalityConflicts,
   upsertBindingRevisionValues,
 } from "./bindingService";
 import {
@@ -474,9 +474,9 @@ export async function loadCandidateSemanticGateCounts(
   ambiguousBindings: number;
   resolverErrorDiagnostics: number;
 }> {
-  await syncSingletonCardinalityBlockingTasks(db, input);
+  const singletonConflicts = await countSingletonCardinalityConflicts(db, input);
   const openIdentityMappings =
-    await countBlockingIdentityMappingTasksForRevision(db, input);
+    singletonConflicts + await countBlockingIdentityMappingTasksForRevision(db, input);
 
   // Structural DTS keys are not parameter-spec review material; exclude from candidate gates.
   const structuralKeys = listStructuralPropertyKeys();

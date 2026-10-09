@@ -71,7 +71,7 @@ export async function readCurrentDtsCompatibleSource(
       const observationProof = await proveExactDtsProperty(tx, objectStore, {
         ...identity, logicalNodeId: input.logicalNodeId, nodeOccurrenceId: locator.nodeOccurrenceId,
         propertyOccurrenceId: locator.propertyOccurrenceId, propertyName: locator.propertyName,
-      });
+      }, { purpose: "review-evidence" });
       const effects = (await tx.query<CompatibleEffect>(
         `select effect.id,effect.source_order as "sourceOrder",effect.effect_kind as kind,
           effect.property_occurrence_id as "propertyOccurrenceId",effect.node_occurrence_id as "nodeOccurrenceId",
@@ -97,7 +97,7 @@ export async function readCurrentDtsCompatibleSource(
         ...identity, fileId: compatibleMember.fileId, fileVersionId: final.fileVersionId,
         logicalNodeId: input.logicalNodeId, propertyName: "compatible",
         propertyOccurrenceId: final.propertyOccurrenceId, nodeOccurrenceId: final.nodeOccurrenceId,
-      });
+      }, { purpose: "review-evidence" });
       const parsed = parseDtsValue("compatible", final.rawText).value;
       if (!isDeepStrictEqual(parsed, compatibleProof.value) || parsed.kind !== "strings" || !parsed.values.length
         || parsed.values.some((value) => !parseCanonicalCompatibleSelector(value).ok)) {
@@ -117,7 +117,7 @@ export async function readCurrentDtsCompatibleSource(
         `select revision.id from dts_config_revisions revision
          where revision.organization_id=$1 and revision.project_id=$2 and revision.config_set_id=$3
            and revision.manifest_state='complete'
-           and revision.status in ('resolved','validated','compiled','pending_approval')
+           and revision.status in ('resolved','validated','compiled','pending_approval','needs_mapping')
            and (select count(*) from dts_config_revision_members member where member.config_revision_id=revision.id)=$4
            and not exists (
              select 1 from dts_config_revision_members member

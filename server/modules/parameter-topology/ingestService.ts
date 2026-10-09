@@ -49,11 +49,10 @@ import { isStructuralPropertyKey } from "./parameterSurface";
 import { ApiError } from "../../shared/http/errors";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
-  persistAmbiguousIdentityMapping,
   applyReviewedContinuityToSnapshots,
   listReviewedContinuityDecisions,
   resolveLogicalContinuity,
-  syncSingletonCardinalityBlockingTasks,
+  countSingletonCardinalityConflicts,
   upsertBindingRevisionValues,
   type ContinuityAmbiguous,
 } from "./bindingService";
@@ -1013,6 +1012,26 @@ async function ingestConfigRevisionTx(
     legacyProjection: options?.legacyProjection,
   });
 
+  if (continuity.ambiguous.length) {
+    const identityRunId = randomUUID();
+    await insertValidationRun(tx, {
+      id: identityRunId,
+      organizationId: manifest.organizationId,
+      configRevisionId: revision.id,
+      stage: "identity",
+      status: "failed",
+    });
+    await insertValidationDiagnostics(tx, identityRunId, continuity.ambiguous.map((relation) => ({
+      id: randomUUID(),
+      code: "logical-continuity-decision-needed",
+      severity: "error",
+      stage: "identity",
+      message: "Logical continuity is ambiguous; no prior-node identity has been selected.",
+      fileName: manifest.entryFile,
+      guidance: JSON.stringify(relation),
+    })));
+  }
+
   for (const logical of continuity.logicalNodesToInsert) {
     if (options?.sourceCommit) throw new ApiError("CONFLICT", "Prepared source change cannot allocate a new DTS logical identity.");
     await insertLogicalNode(tx, logical);
@@ -1074,17 +1093,7 @@ async function ingestConfigRevisionTx(
   });
   await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
 
-  for (const item of continuity.ambiguous) {
-    await persistAmbiguousIdentityMapping(tx, {
-      organizationId: manifest.organizationId,
-      projectId: manifest.projectId,
-      configRevisionId: revision.id,
-      previous: item.previous,
-      continuity: item.continuity,
-    });
-  }
-
-  const singletonConflicts = await syncSingletonCardinalityBlockingTasks(tx, {
+  const singletonConflicts = await countSingletonCardinalityConflicts(tx, {
     organizationId: manifest.organizationId,
     projectId: manifest.projectId,
     configRevisionId: revision.id,

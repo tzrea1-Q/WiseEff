@@ -448,6 +448,9 @@ export type IdentityMappingTask = {
   reason?: string | null;
   createdAt: string;
   resolvedAt?: string | null;
+  historicalOnly?: boolean;
+  needsCanonicalDecision?: boolean;
+  successor?: string;
 };
 
 export type SpecReviewTaskStatus = "open" | "resolved" | "dismissed";
@@ -478,6 +481,9 @@ export type SpecReviewTask = {
   createdAt: string;
   resolvedAt?: string | null;
   reason?: string | null;
+  historicalOnly?: boolean;
+  needsCanonicalDecision?: boolean;
+  successor?: string;
 };
 
 export type SpecReviewTaskListResult = {

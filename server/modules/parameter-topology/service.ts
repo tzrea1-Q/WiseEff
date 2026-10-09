@@ -35,7 +35,7 @@ import {
   reResolveReviewedIdentityMapping,
   resolveIdentityMappingTaskRow,
   selectedCandidateBelongsToRevision,
-  syncSingletonCardinalityBlockingTasks,
+  countSingletonCardinalityConflicts,
   updateResolvedIdentityMappingTaskRow
 } from "./bindingService";
 import { normalizeBindingSchemaState } from "./schemaState";
@@ -779,12 +779,12 @@ export async function resolveIdentityMappingTask(
       organizationId: auth.organization.id,
       configRevisionId: existing.configRevisionId
     });
-    await syncSingletonCardinalityBlockingTasks(tx, {
+    const singletonConflicts = await countSingletonCardinalityConflicts(tx, {
       organizationId: auth.organization.id,
       projectId: existing.projectId,
       configRevisionId: existing.configRevisionId
     });
-    const blockingRemaining = await countBlockingIdentityMappingTasksForRevision(tx, {
+    const blockingRemaining = singletonConflicts + await countBlockingIdentityMappingTasksForRevision(tx, {
       organizationId: auth.organization.id,
       configRevisionId: existing.configRevisionId
     });
@@ -1170,7 +1170,7 @@ export async function validateConfigRevision(
     );
   }
 
-  await syncSingletonCardinalityBlockingTasks(db, {
+  const singletonConflicts = await countSingletonCardinalityConflicts(db, {
     organizationId: auth.organization.id,
     projectId: revision.projectId,
     configRevisionId: revision.id
@@ -1179,7 +1179,7 @@ export async function validateConfigRevision(
     organizationId: auth.organization.id,
     configRevisionId: revision.id
   });
-  if (openMappings > 0 || revision.status === "needs_mapping") {
+  if (openMappings > 0 || singletonConflicts > 0 || revision.status === "needs_mapping") {
     return persistFailedValidation(
       db,
       auth,
@@ -1195,7 +1195,7 @@ export async function validateConfigRevision(
               code: "open-mapping",
               severity: "error",
               stage: "identity",
-              message: `Blocking identity/cardinality tasks remain (${openMappings}); validation fails closed.`,
+              message: `Blocking identity/cardinality conflicts remain (${openMappings + singletonConflicts}); validation fails closed.`,
               fileName: "<identity>"
             }
           ],

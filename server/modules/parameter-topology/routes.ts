@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { historicalTaskReadWindow } from "../parameter-catalog-api/legacy/taskReadWindow";
+import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -19,12 +21,9 @@ import {
   createBindingDraftParamsSchema,
   createNodeEnablementDraftBodySchema,
   createNodeEnablementDraftParamsSchema,
-  identityMappingTaskParamsSchema,
   listIdentityMappingTasksQuerySchema,
   projectBindingsParamsSchema,
   projectBindingsQuerySchema,
-  reopenIdentityMappingTaskBodySchema,
-  resolveIdentityMappingTaskBodySchema,
   topologyParamsSchema,
   topologyQuerySchema,
   listConfigRevisionsParamsSchema,
@@ -40,8 +39,6 @@ import {
   listConfigRevisions,
   listIdentityMappingTasks,
   listProjectBindings,
-  reopenIdentityMappingTask,
-  resolveIdentityMappingTask,
   validateConfigRevision
 } from "./service";
 
@@ -167,37 +164,19 @@ export function registerParameterTopologyRoutes(
     requireCanView(auth);
     const query = parseWithSchema(listIdentityMappingTasksQuerySchema, flattenQuery(request.query));
     const result = await listIdentityMappingTasks(db, auth, query);
-    return { status: 200, body: result };
+    return { status: 200, ...historicalTaskReadWindow(result.items, "identity") };
   });
 
   router.post("/api/v2/identity-mapping-tasks/:taskId/resolve", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const params = parseWithSchema(identityMappingTaskParamsSchema, request.params);
-    const body = parseWithSchema(resolveIdentityMappingTaskBodySchema, request.body);
-    const item = await resolveIdentityMappingTask(
-      db,
-      auth,
-      { ...body, taskId: params.taskId },
-      { requestId: request.requestId }
-    );
-    return { status: 200, body: { item } };
+    await options.getCurrentAuthContext(request);
+    return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE,
+      legacyRouteSuccessor("parameterTopology.resolveIdentityMappingTask"));
   });
 
   router.post("/api/v2/identity-mapping-tasks/:taskId/reopen", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const params = parseWithSchema(identityMappingTaskParamsSchema, request.params);
-    const body = parseWithSchema(reopenIdentityMappingTaskBodySchema, request.body ?? {});
-    const item = await reopenIdentityMappingTask(
-      db,
-      auth,
-      { ...body, taskId: params.taskId },
-      { requestId: request.requestId }
-    );
-    return { status: 200, body: { item } };
+    await options.getCurrentAuthContext(request);
+    return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE,
+      legacyRouteSuccessor("parameterTopology.reopenIdentityMappingTask"));
   });
 
   router.post("/api/v2/projects/:projectId/config-revisions/:revisionId/validate", async (request) => {

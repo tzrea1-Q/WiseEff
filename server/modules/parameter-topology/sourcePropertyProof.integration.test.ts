@@ -90,6 +90,19 @@ describe("exact DTS source value proof before pin creation", () => {
     expect(proof.value).toMatchObject({ kind: "cells",groups: [[{ value: "7" }]] });
   });
 
+  it("allows needs-mapping evidence proof without enabling Binding or write proof", async () => {
+    await db.transaction(async (tx) => {
+      await lockExactSourceRevisionsForProof(tx,[identity]);
+      await tx.query("update dts_config_revisions set status='needs_mapping' where id=$1", [identity.configRevisionId]);
+      await expect(proveExactDtsProperty(tx,storage,identity)).rejects.toMatchObject({
+        code: "CONFLICT", details: { reason: "source-proof-invalid" },
+      });
+      const proof = await proveExactDtsProperty(tx,storage,identity,{ purpose: "review-evidence" });
+      expect(proof.value).toMatchObject({ kind: "cells",groups: [[{ value: "7" }]] });
+      await tx.query("update dts_config_revisions set status='resolved' where id=$1", [identity.configRevisionId]);
+    });
+  });
+
   it("reuses one original occurrence for repeated includes and preserves non-scalar cells", async () => {
     const rows = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string; propertyOccurrenceId: string }>(
       `select logical.logical_node_id as "logicalNodeId",effect.node_occurrence_id as "nodeOccurrenceId",effect.property_occurrence_id as "propertyOccurrenceId"
