@@ -142,6 +142,12 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 | Project drafts | 现有 binding 与 node-enablement draft paths | 保留产品行为；input 通过规范 binding/definition identity 解析。 |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | 仅 deployment operator 可用的 reconciliation 与迁移诊断；公共 DTO 不得链接。 |
 
+### 发布就绪
+
+配置集的发布就绪检查同时读取待审核的规范值变更请求和保留的旧工作流计数。面向源 occurrence 的请求只计入其触及的源 cohort 所属配置集；仅面向项目的请求阻止该项目所有配置集发布。批准、拒绝或撤回后，待处理变更阻塞解除，不创建旧变更请求镜像。节点启用工作流保留各自的规则。
+
+基线创建和发布使用同一就绪门禁。门禁 token 包含待审核规范请求的确切 ID，因此在评估后出现新待审核工作时，使用旧评估确认会被判为过期并拒绝。就绪检查不再同步或创建旧身份映射任务；保留的历史任务仅被读取。
+
 ### 共享模块归属
 
 Registration 与 Placement 写入接受可选 `destinationModuleId`，它是可信 Organization 内现存模块的精确 ID。Driver 目标必须是 `driver-group`，NodeType 必须是 `node-type`，ConfigurationSchema 必须是 `business`。显式目标无效时拒绝，不回退到名称匹配。未传此字段的既有调用方保留 PlacementIntent 契约。
