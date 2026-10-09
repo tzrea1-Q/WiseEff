@@ -342,7 +342,7 @@ export const validateValueSchema = (
   return capabilityFail("unsupported-value-schema-type", path);
 };
 
-const exampleMatchesSchema = (
+export const exampleMatchesSchema = (
   schema: SupportedValueSchema,
   example: unknown,
 ): boolean => {

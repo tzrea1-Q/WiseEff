@@ -17,7 +17,9 @@ import {
   FIRST_ACME_RELEASE_ID,
   VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
   VENDOR_SUCCESSOR_RELEASE_ID,
-  compileVendorCatalogSuccessor
+  VENDOR_CONSTRAINED_AGGREGATE_DIGEST,
+  VENDOR_CONSTRAINED_RELEASE_ID,
+  compileConstrainedVendorCatalogSuccessor
 } from "./compile-vendor-catalog-release";
 import { firstReleaseBundle } from "../server/testing/parameterCatalog/cutoverPopulatedFixture";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
@@ -62,7 +64,7 @@ const qualityFixtureAuth: AuthContext = {
  * reuse the production canonical sync so the visual route exercises the same
  * v2 read plane as the application.
  */
-async function seedQualityCanonicalBindings(db: Database) {
+export async function seedQualityCanonicalBindings(db: Database) {
   await assertVisualReviewFixtureDatabase(db);
   const pool = getRootPostgresPool(db);
   if (!pool) throw new Error("Quality canonical fixture requires the root database.");
@@ -89,10 +91,10 @@ async function seedQualityCanonicalBindings(db: Database) {
     && pointer.current.id === CatalogReleaseId(FIRST_ACME_RELEASE_ID)
     && pointer.current.digest === CatalogReleaseDigest(FIRST_ACME_RELEASE_DIGEST);
   if (isAcme) {
-    const vendor = compileVendorCatalogSuccessor(qualityFixtureRepoRoot);
+    const vendor = compileConstrainedVendorCatalogSuccessor(qualityFixtureRepoRoot);
     const advanced = await installPublishedRelease(pool, {
       mode: "advance",
-      source: jsonCatalogReleaseSource(vendor.bundle),
+      source: jsonCatalogReleaseSource(vendor.previous.bundle),
       expectedTargetDigest: CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST),
       expectedCurrent: {
         id: CatalogReleaseId(FIRST_ACME_RELEASE_ID),
@@ -105,9 +107,26 @@ async function seedQualityCanonicalBindings(db: Database) {
     pointer = await readCurrentCatalogPointer(pool);
   }
 
-  if (!(pointer.kind === "installed"
+  const isVendor = pointer.kind === "installed"
     && pointer.current.id === CatalogReleaseId(VENDOR_SUCCESSOR_RELEASE_ID)
-    && pointer.current.digest === CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST))) {
+    && pointer.current.digest === CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST);
+  if (isVendor) {
+    const vendor = compileConstrainedVendorCatalogSuccessor(qualityFixtureRepoRoot);
+    const advanced = await installPublishedRelease(pool, {
+      mode: "advance",
+      source: jsonCatalogReleaseSource(vendor.bundle),
+      expectedTargetDigest: CatalogReleaseDigest(VENDOR_CONSTRAINED_AGGREGATE_DIGEST),
+      expectedCurrent: vendor.predecessor
+    });
+    if (!advanced.ok) {
+      throw new Error(`Quality constrained vendor Catalog fixture failed: ${JSON.stringify(advanced)}`);
+    }
+    pointer = await readCurrentCatalogPointer(pool);
+  }
+
+  if (!(pointer.kind === "installed"
+    && pointer.current.id === CatalogReleaseId(VENDOR_CONSTRAINED_RELEASE_ID)
+    && pointer.current.digest === CatalogReleaseDigest(VENDOR_CONSTRAINED_AGGREGATE_DIGEST))) {
     const current = pointer.kind === "installed"
       ? `${pointer.current.id}/${pointer.current.digest}`
       : pointer.kind;
@@ -133,7 +152,7 @@ async function seedQualityCanonicalBindings(db: Database) {
     existingProjects.rows.map((row) => [row.project_id, Number(row.count)]),
   );
   if (["atlas", "aurora", "nebula"].every((projectId) => (existingCounts[projectId] ?? 0) > 0)) {
-    return { catalogReleaseId: VENDOR_SUCCESSOR_RELEASE_ID, written: existingCounts, skipped: [] };
+    return { catalogReleaseId: VENDOR_CONSTRAINED_RELEASE_ID, written: existingCounts, skipped: [] };
   }
 
   const result = await ensureCanonicalCatalogAfterLegacySeed(db, qualityFixtureAuth, {

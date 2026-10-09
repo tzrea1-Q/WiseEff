@@ -40,6 +40,7 @@ import {
   vendorValueSchemaFor,
   type VendorYamlDocument,
 } from "../server/modules/catalog-publication/import/vendorYaml";
+import { foldVendorConstraints } from "../server/modules/catalog-publication/import/vendorAdapter";
 
 export const VENDOR_SUCCESSOR_RELEASE_ID = "crel_vendor_catalog_1";
 export const VENDOR_SUCCESSOR_VERSION = "1.1.0";
@@ -50,6 +51,9 @@ export const FIRST_ACME_RELEASE_DIGEST =
   "sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044";
 export const VENDOR_SUCCESSOR_AGGREGATE_DIGEST =
   "sha256:3d5c70fb5e0aad4bb7c3c063ca3283a81fb39ec25c471669a0500dd410a48f97";
+export const VENDOR_CONSTRAINED_RELEASE_ID = "crel_vendor_catalog_2";
+export const VENDOR_CONSTRAINED_AGGREGATE_DIGEST =
+  "sha256:1afcc2219a870525a979c4a14f3d2972204cd293f3b228750842d6a7ce97a8f0";
 
 export { EXCLUDED_SCHEMA_BASENAMES };
 
@@ -88,7 +92,7 @@ const revisionModel = (document: Extract<CatalogReleaseDocument, { kind: "defini
   return model;
 };
 
-const refreshSuccessorSource = (release: DeepMutable<CatalogReleaseNode>): void => {
+const refreshSuccessorSource = (release: DeepMutable<CatalogReleaseNode>, sourcePath = VENDOR_SUCCESSOR_SOURCE_PATH): void => {
   for (const document of release.documents) {
     if (document.kind === "definition") {
       document.content.revision.contentDigest = canonicalDigest(
@@ -113,18 +117,18 @@ const refreshSuccessorSource = (release: DeepMutable<CatalogReleaseNode>): void 
   const digest = sha256(bytes);
   release.sources = [
     {
-      path: VENDOR_SUCCESSOR_SOURCE_PATH,
+      path: sourcePath,
       mediaType: "application/yaml",
       encoding: "base64",
       bytes: bytes.toString("base64"),
     },
   ];
   release.manifest.files = [
-    { path: VENDOR_SUCCESSOR_SOURCE_PATH, mediaType: "application/yaml", digest },
+    { path: sourcePath, mediaType: "application/yaml", digest },
   ];
   for (const document of release.documents) {
     document.source = {
-      path: VENDOR_SUCCESSOR_SOURCE_PATH,
+      path: sourcePath,
       mediaType: "application/yaml",
       digest,
     };
@@ -149,7 +153,7 @@ const claimId = (used: Set<string>, id: string, label: string): string => {
   return id;
 };
 
-const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
+const vendorDocuments = (schemasRoot: string, carryConstraints = false): CatalogReleaseDocument[] => {
   const catalogPath = path.join(schemasRoot, "catalog.json");
   const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as {
     vendorContentHash: string;
@@ -263,7 +267,11 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
       const shapeValue = property.valueShape;
       const shape =
         typeof shapeValue === "string" ? shapeValue : shapeValue?.kind ?? "unknown";
-      const valueSchema = vendorValueSchemaFor(shape);
+      const mapped = foldVendorConstraints(vendorValueSchemaFor(shape), property.constraints, `${relativePath}.properties.${propertyKey}`);
+      if (carryConstraints && !mapped.ok) {
+        throw new Error(`catalog-vendor-unsupported-constraint:${mapped.path}:${mapped.detail}`);
+      }
+      const valueSchema = carryConstraints && mapped.ok ? mapped.value : vendorValueSchemaFor(shape);
       const definitionId = claimId(
         usedIds,
         `pdef_${subjectSlug}_${slug(propertyKey)}`,
@@ -399,12 +407,48 @@ export const compileVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
   };
 };
 
+export const compileConstrainedVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
+  const mappedDefinitions = new Map(vendorDocuments(path.join(repoRoot, "schemas/dts"), true)
+    .filter((document) => document.kind === "definition")
+    .map((document) => [document.content.id, document]));
+  const previous = compileVendorCatalogSuccessor(repoRoot);
+  const successor = mutable(structuredClone(previous.bundle.releases.at(-1)!));
+  successor.manifest.release = {
+    ...successor.manifest.release,
+    id: VENDOR_CONSTRAINED_RELEASE_ID,
+    version: "1.2.0",
+    sequence: 3,
+    publishedAt: "2026-10-08T00:00:00Z",
+    predecessor: { id: previous.compiled.release.id, digest: previous.compiled.release.digest },
+  };
+  for (const document of successor.documents) {
+    if (document.kind !== "definition") continue;
+    const mapped = mappedDefinitions.get(document.content.id);
+    if (!mapped || serializeContract(document.content.revision.valueSchema) === serializeContract(mapped.content.revision.valueSchema)) continue;
+    document.content.revision.valueSchema = mutable(mapped.content.revision.valueSchema);
+    document.content.revision.id = `${document.content.revision.id.replace(/_1$/, "")}_2`;
+    document.content.revision.number = 2;
+  }
+  refreshSuccessorSource(successor, "schemas/dts/catalog-release/vendor-catalog-2.yaml");
+  const bundle: CatalogReleaseBundle = {
+    ...previous.bundle,
+    targetReleaseId: VENDOR_CONSTRAINED_RELEASE_ID,
+    releases: [...previous.bundle.releases, successor],
+  };
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) throw new Error(`catalog-vendor-successor-invalid:${compiled.error.kind}:${JSON.stringify(compiled.error.violations)}`);
+  if (compiled.value.aggregateDigest !== VENDOR_CONSTRAINED_AGGREGATE_DIGEST) {
+    throw new Error(`catalog-vendor-digest-drift:expected=${VENDOR_CONSTRAINED_AGGREGATE_DIGEST}:actual=${compiled.value.aggregateDigest}`);
+  }
+  return { bundle, compiled: compiled.value, predecessor: previous.compiled.release, previous, excluded: previous.excluded };
+};
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const outFlag = process.argv.indexOf("--out");
   const outPath = outFlag >= 0 ? process.argv[outFlag + 1] : undefined;
   try {
-    const result = compileVendorCatalogSuccessor();
+    const result = compileConstrainedVendorCatalogSuccessor();
     if (outPath) {
       writeFileSync(outPath, `${JSON.stringify(result.bundle)}\n`);
     }

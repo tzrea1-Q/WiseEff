@@ -4,6 +4,7 @@
  * lineage A). Does not archive the topology plane.
  */
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
+import { ApiError } from "../../../shared/http/errors";
 import type { AuthContext } from "../../auth/types";
 import {
   getRootPostgresPool,
@@ -108,6 +109,11 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
         configRevisionId: entry.revisionId,
       });
     } catch (error) {
+      if (error instanceof ApiError && error.code === "CONFLICT" && error.details.reason === "definition-revision-migration-required") {
+        console.warn(`Canonical seed retained ${entry.projectId}'s immutable Binding pins; Definition migration required: ${JSON.stringify(error.details)}`);
+        skipped.push(entry.projectId);
+        continue;
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("reviewed source change")) {
         skipped.push(entry.projectId);
