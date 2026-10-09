@@ -68,6 +68,7 @@ export type RollbackBaselineResult = {
 
 export type RestorePreviewMember = {
   fileId: string;
+  canonicalOwned: boolean;
   fileName?: string;
   fromVersionId: string | null;
   fromVersionNumber?: number;
@@ -422,6 +423,14 @@ export async function previewRestoreBaseline(
   const baselines = await listReleaseBaselinesByConfigSet(db, { configSetId: baseline.configSetId });
   const tip = baselines.find((item) => item.status === "released");
 
+  const canonicalFiles = await db.query<{ id: string }>(`
+    select file.id from project_parameter_files file
+    where file.organization_id=$1 and file.id=any($2::text[]) and exists (
+      select 1 from parameter_catalog.project_parameter_source_occurrences occurrence
+      where occurrence.file_id=file.id or occurrence.config_set_id=file.config_set_id
+        or occurrence.config_set_id=$3
+    )`, [auth.organization.id, members.map((member) => member.fileId), baseline.configSetId]);
+  const canonicalFileIds = new Set(canonicalFiles.rows.map((file) => file.id));
   const previewMembers: RestorePreviewMember[] = [];
   for (const member of members) {
     const file = await getProjectParameterFileById(db, {
@@ -447,6 +456,7 @@ export async function previewRestoreBaseline(
     const alreadyPinned = file.currentVersionId === member.fileVersionId;
     previewMembers.push({
       fileId: member.fileId,
+      canonicalOwned: canonicalFileIds.has(member.fileId),
       fileName: file.fileName,
       fromVersionId: file.currentVersionId ?? null,
       fromVersionNumber: file.currentVersionNumber,

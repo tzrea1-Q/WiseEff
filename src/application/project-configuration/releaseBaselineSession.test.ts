@@ -185,6 +185,42 @@ describe("createReleaseBaselineSession", () => {
     expect(session.releasedTip?.id).toBe("draft-1");
   });
 
+  it("keeps canonical restore previews read-only without calling the rollback port", async () => {
+    const session = createReleaseBaselineSession();
+    session.selectBaseline("bl-1");
+    await session.previewRestore("proj-1", { previewRestoreBaseline: vi.fn(async () => ({
+      baselineId: "bl-1", configSetId: "cs-1", releasedBaselineUnchanged: true as const, driftedCount: 1,
+      members: [{ fileId: "f1", canonicalOwned: true, fromVersionId: "v2", toVersionId: "v1",
+        toVersionNumber: 1, action: "rollback-pointer" as const }]
+    })) });
+    const rollbackBaseline = vi.fn(async () => ({ baselineId: "bl-1", restored: 1 }));
+    await expect(session.restore("proj-1", "cs-1", { rollbackBaseline, listBaselines: vi.fn(async () => []) }))
+      .rejects.toThrow("已准备并批准的规范源事务");
+    expect(rollbackBaseline).not.toHaveBeenCalled();
+    expect(session.restorePreview?.driftedCount).toBe(1);
+    expect(session.actionError).toContain("已准备并批准的规范源事务");
+  });
+
+  it("does not replace a newer canonical ownership preview with an older legacy response", async () => {
+    const session = createReleaseBaselineSession();
+    session.selectBaseline("bl-1");
+    const preview: DtsRestorePreviewResult = {
+      baselineId: "bl-1", configSetId: "cs-1", releasedBaselineUnchanged: true, driftedCount: 1,
+      members: [{ fileId: "f1", canonicalOwned: false, fromVersionId: "v2", toVersionId: "v1",
+        toVersionNumber: 1, action: "rollback-pointer" }]
+    };
+    let resolveOlder!: (value: DtsRestorePreviewResult) => void;
+    const older = session.previewRestore("proj-1", {
+      previewRestoreBaseline: () => new Promise((resolve) => { resolveOlder = resolve; })
+    });
+    await session.previewRestore("proj-1", { previewRestoreBaseline: async () => ({
+      ...preview, members: [{ ...preview.members[0], canonicalOwned: true }]
+    }) });
+    resolveOlder(preview);
+    await older.catch(() => undefined);
+    expect(session.restorePreview?.members[0].canonicalOwned).toBe(true);
+  });
+
   it("compare and restore preview/restore go through narrow repository picks", async () => {
     const session = createReleaseBaselineSession();
     session.selectBaseline("bl-1");
@@ -307,6 +343,10 @@ describe("createReleaseBaselineSession", () => {
     ).rejects.toThrow("preview 500");
     expect(session.actionError).toBe("加载恢复预览失败，请重试。");
 
+    await session.previewRestore("proj-1", { previewRestoreBaseline: vi.fn(async () => ({
+      baselineId: "bl-1", configSetId: "cs-1", releasedBaselineUnchanged: true as const,
+      members: [], driftedCount: 0
+    })) });
     await expect(
       session.restore("proj-1", "cs-1", {
         rollbackBaseline: vi.fn().mockRejectedValue(new Error("rollback 409")),

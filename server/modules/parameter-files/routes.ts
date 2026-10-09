@@ -39,6 +39,7 @@ import {
   rollbackToBaseline
 } from "./baselineService";
 import { evaluateReleaseReadiness } from "./releaseReadinessService";
+import { getConfigSetById } from "./configSetRepository";
 import {
   addConfigSetFile,
   createConfigSet,
@@ -816,9 +817,23 @@ export function registerParameterFileRoutes(
     const auth = await options.getCurrentAuthContext(request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
-    const item = await rollbackToBaseline(db, objectStore, auth, params.baselineId, { requestId: request.requestId });
-
-    return { status: 200, body: { item } };
+    try {
+      const item = await rollbackToBaseline(db, objectStore, auth, params.baselineId, { requestId: request.requestId });
+      return { status: 200, body: { item } };
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "CONFLICT"
+        && error.message === "Canonical source changes require a prepared and approved source transaction.") {
+        const { baseline } = await getBaseline(db, auth, params.baselineId);
+        const configSet = await getConfigSetById(db, { organizationId: auth.organization.id, configSetId: baseline.configSetId });
+        await requireSubmissionRefusalSink().write({
+          invocation: createUserInvocation(auth), projectId: configSet?.projectId ?? null,
+          app: "parameters", kind: "baseline", action: "deny", severity: "Medium",
+          targetType: "dts-release-baseline", targetId: params.baselineId,
+          metadata: { operation: "baseline-rollback", reason: error.message }, traceId: request.requestId
+        });
+      }
+      throw error;
+    }
   });
 
   router.post("/api/v1/projects/:projectId/baselines/:baselineId/release", async (request) => {

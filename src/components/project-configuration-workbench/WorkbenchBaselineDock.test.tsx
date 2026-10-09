@@ -61,7 +61,7 @@ describe("WorkbenchBaselineDock", () => {
         pinnedMembers={[{ fileId: "file-1", fileVersionId: "fv-1", versionNumber: 2 }]}
         canAdmin
         canRelease
-        canRestore={false}
+        canPreviewRestore={false}
         onSelectBaseline={onSelectBaseline}
         onCompare={onCompare}
         onOpenRelease={onOpenRelease}
@@ -93,7 +93,7 @@ describe("WorkbenchBaselineDock", () => {
         selectedBaselineId="bl-draft"
         canAdmin
         canRelease={false}
-        canRestore={false}
+        canPreviewRestore={false}
         actionError="对比基线失败，请重试。"
         onSelectBaseline={vi.fn()}
         onCompare={vi.fn()}

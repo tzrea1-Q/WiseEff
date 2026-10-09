@@ -94,6 +94,46 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     });
   });
 
+  test("keeps canonical baseline restore read-only while showing source drift", async ({ page, request }, testInfo) => {
+    const baselineId = "seed-dts-baseline-aurora";
+    const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/baselines/${baselineId}/restore-preview`), {
+      headers: adminHeaders()
+    });
+    expect(preview.status()).toBe(200);
+    const { item } = await preview.json();
+    expect(item.driftedCount).toBeGreaterThan(0);
+    expect(item.members.some((member: { canonicalOwned: boolean }) => member.canonicalOwned)).toBe(true);
+    const route = `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(item.configSetId)}&file=${encodeURIComponent(item.members[0].fileId)}&baseline=${baselineId}`;
+    await signInBrowserAsRole(page, "admin", route);
+    await dismissXiaozeHint(page);
+    await ensureInspectorOpen(page);
+    const rollbackRequests: string[] = [];
+    page.on("request", (sent) => {
+      if (sent.method() === "POST" && sent.url().endsWith(`/baselines/${baselineId}/rollback`)) rollbackRequests.push(sent.url());
+    });
+    const openPreview = page.getByRole("button", { name: "恢复预览", exact: true });
+    await expect(openPreview).toBeEnabled();
+    await openPreview.click();
+    const dialog = page.getByRole("dialog", { name: "恢复基线预览" });
+    await expect(dialog).toContainText("只读漂移预览");
+    await expect(dialog).toContainText("已准备并批准的规范源事务");
+    await expect(dialog.getByLabel("恢复 blast radius")).toContainText(item.members[0].fileName);
+    await expect(dialog.getByRole("button", { name: "确认恢复" })).toHaveCount(0);
+    const screenshot = testInfo.outputPath("canonical-baseline-restore-1440x900.png");
+    await page.screenshot({ path: screenshot });
+    await testInfo.attach("canonical baseline read-only restore", { path: screenshot, contentType: "image/png" });
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(openPreview).toBeFocused();
+    expect(rollbackRequests).toEqual([]);
+    await recordOperationEvidence({
+      operationId: "PROJ-CONFIG-BASELINE-001", title: "canonical baseline read-only restore preview",
+      status: "passed", role: "Admin", route, page, testInfo,
+      assertions: ["ui", "api", "screenshot"], artifacts: [screenshot],
+      api: [summarizeApiResponse(preview, { method: "GET", path: `/api/v1/projects/${projectId}/baselines/${baselineId}/restore-preview` })]
+    });
+  });
+
   test("enters from the project list and reads a scoped active DTS member in API mode", async ({ page, request }, testInfo) => {
     // @acceptance PROJ-CONFIG-READ-001
     // @operation PROJ-CONFIG-READ-001
