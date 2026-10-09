@@ -8,6 +8,15 @@ import { parameterCatalogLegacyWriteRouteIds, catalogLegacyGoneResponseSchema } 
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 
+// Task resolution retires to the canonical Review Queue; every other legacy write retires to the Catalog API.
+const REVIEW_QUEUE_SUCCESSOR_ROUTES = new Set([
+  "parameterSpecs.resolveReviewTask",
+  "parameterTopology.resolveIdentityMappingTask",
+  "parameterTopology.reopenIdentityMappingTask",
+]);
+const expectedSuccessor = (routeId: string) =>
+  REVIEW_QUEUE_SUCCESSOR_ROUTES.has(routeId) ? "/parameter-admin/specs?review=open" : "/api/v2/catalog";
+
 /**
  * Contract parity: the hand-maintained route manifest must equal the real runtime
  * registration. `contract:check` already guards "generator output == committed
@@ -60,10 +69,11 @@ describe("route manifest parity", () => {
       body: route.method === "GET" ? undefined : JSON.stringify({}),
     });
     expect(response.status, `${route.method} ${route.path}`).toBe(410);
+    const successor = expectedSuccessor(route.id);
     expect(catalogLegacyGoneResponseSchema.parse(response.body).error.details).toEqual({
-      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+      reason: "legacy-surface-retired", successor, retryable: false,
     });
-    expect(response.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+    expect(response.headers.get("link")).toBe(`<${successor}>; rel="successor-version"`);
   });
 
   it("every registered route is published in the manifest", () => {
