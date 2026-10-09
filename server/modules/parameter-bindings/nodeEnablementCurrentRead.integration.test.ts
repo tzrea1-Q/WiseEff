@@ -27,9 +27,10 @@ const softwareId = "software-1077";
 const otherReviewerId = "other-hardware-1077";
 const admin = makeTestAuthContext({ userId: adminId, organizationId });
 const base = '/dts-v1/;\n/ { charger: charger { compatible = "acme,power"; iin_max = <1000>; status = "okay"; }; };\n';
-const overlay = '/dts-v1/;\n/plugin/;\n';
-
-describe("#1076 assembled-server node enablement current Binding read", () => {
+describe.each([
+  { name: "empty overlay", overlay: '/dts-v1/;\n/plugin/;\n' },
+  { name: "existing status", overlay: '/dts-v1/;\n/plugin/;\n&charger { status = "okay"; };\n' },
+])("#1076 assembled-server node enablement current Binding read ($name)", ({ overlay }) => {
   let lane: EphemeralTestDatabase;
   let db: RootDatabase;
   let directory: string;

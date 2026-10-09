@@ -424,7 +424,8 @@ export async function preparePinnedNodeEnablementSourceChange(
     if (!persisted) throw new ApiError("CONFLICT", "Enablement request has no immutable source lock.");
     const lock = await resolveEnablementWriteLock(db, auth, { projectId: input.projectId, logicalNodeId: input.logicalNodeId, baseRevisionId: persisted.baseConfigRevisionId });
     if (lock.sourceFileVersionId !== persisted.sourceFileVersionId || lock.expectedChecksum !== persisted.expectedChecksum
-      || lock.propertyOccurrenceId !== persisted.propertyOccurrenceId || JSON.stringify(lock.occurrenceSpan) !== JSON.stringify(persisted.occurrenceSpan)) {
+      || lock.propertyOccurrenceId !== persisted.propertyOccurrenceId || lock.occurrenceSpan?.start !== persisted.occurrenceSpan?.start
+      || lock.occurrenceSpan?.end !== persisted.occurrenceSpan?.end) {
       throw new ApiError("CONFLICT", "Enablement request source lock is stale.", { reason: "stale-write-lock" });
     }
     const revision = (await db.query<{ config_set_id: string }>(
