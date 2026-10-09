@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 import type { ConfigRevisionSummary, ValidationRun } from "@/domain/parameter-topology/types";
 import {
@@ -33,6 +34,18 @@ function passedRun(overrides: Partial<ValidationRun> = {}): ValidationRun {
 }
 
 describe("createConfigRevisionGateSession", () => {
+  it("surfaces the pinned revision refusal from the validation API", async () => {
+    const session = createConfigRevisionGateSession();
+    await session.load("project-1", "cs-1", { listConfigRevisions: vi.fn(async () => REVISIONS) });
+    const error = new WiseEffApiError("CONFLICT", "Pinned source graph is immutable", {
+      reason: "pinned-source-graph-immutable"
+    }, "req-pin");
+    await expect(session.validate("project-1", { validateRevision: vi.fn(async () => { throw error; }) }))
+      .rejects.toBe(error);
+    expect(session.actionError).toBe("该配置修订已被规范来源值固定，来源图不可更改。请创建后继修订后再校验。");
+    expect(session.validating).toBe(false);
+    expect(session.lastRun).toBeNull();
+  });
   it("loads listed revisions and auto-selects the latest real id, never a teaching fallback", async () => {
     const listConfigRevisions = vi.fn(async () => REVISIONS);
     const session = createConfigRevisionGateSession();

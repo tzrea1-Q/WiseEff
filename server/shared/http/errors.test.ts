@@ -1,6 +1,7 @@
+import pg from "pg";
 import { describe, expect, it } from "vitest";
 
-import { API_ERROR_STATUS, ApiError, serializeApiError, type ApiErrorCode } from "./errors";
+import { API_ERROR_STATUS, ApiError, normalizeApiError, serializeApiError, type ApiErrorCode } from "./errors";
 
 describe("ApiError status derivation", () => {
   it("derives the HTTP status from the code table for every code", () => {
@@ -25,6 +26,32 @@ describe("ApiError status derivation", () => {
 });
 
 describe("serializeApiError", () => {
+  it("maps only the pinned source graph PostgreSQL trigger to a typed conflict", () => {
+    const error = new pg.DatabaseError("Pinned source graph is immutable", 0, "error");
+    error.code = "55000";
+    expect(normalizeApiError(error)).toMatchObject({
+      status: 409,
+      code: "CONFLICT",
+      details: { reason: "pinned-source-graph-immutable" }
+    });
+    expect(serializeApiError(error, "req-pin")).toMatchObject({
+      error: { code: "CONFLICT", details: { reason: "pinned-source-graph-immutable" }, requestId: "req-pin" }
+    });
+  });
+
+  it.each([
+    ["55000", "Pinned source file identity and version are immutable"],
+    ["55000", "Pinned source graph is immutable (other trigger)"],
+    ["23505", "Pinned source graph is immutable"]
+  ])("preserves unrelated PostgreSQL errors (%s, %s)", (code, message) => {
+    const error = new pg.DatabaseError(message, 0, "error");
+    error.code = code;
+    expect(normalizeApiError(error)).toBe(error);
+    expect(serializeApiError(error, "req-other")).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error.", details: {}, requestId: "req-other" }
+    });
+  });
+
   it("serializes ApiError without leaking status internals", () => {
     const body = serializeApiError(new ApiError("FORBIDDEN", "no", { permission: "x" }), "req-1");
     expect(body).toEqual({

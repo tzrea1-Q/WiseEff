@@ -130,6 +130,9 @@ export function presentError(err: unknown, fallback: string): string {
   }
 
   if (err instanceof WiseEffApiError) {
+    if (err.code === "CONFLICT" && err.details.reason === "pinned-source-graph-immutable") {
+      return "该配置修订已被规范来源值固定，来源图不可更改。请创建后继修订后再校验。";
+    }
     const semanticEdit = semanticEditSuccessorCopy(err);
     if (semanticEdit) {
       return semanticEdit;

@@ -1,15 +1,36 @@
-import { afterEach, describe, expect, it } from "vitest";
+import pg from "pg";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./server";
 import type { RouteRequest } from "./router";
 
 const openServers: Array<ReturnType<typeof createHttpServer>> = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     openServers.splice(0).map(
       (server) => new Promise<void>((resolve) => server.close(() => resolve()))
     )
   );
+});
+
+describe("PostgreSQL HTTP error boundary", () => {
+  it.each([
+    ["55000", "Pinned source graph is immutable", 409, "CONFLICT"],
+    ["55000", "Pinned source file identity and version are immutable", 500, "INTERNAL_ERROR"],
+    ["55000", "Pinned source graph is immutable (other trigger)", 500, "INTERNAL_ERROR"],
+    ["23505", "Pinned source graph is immutable", 500, "INTERNAL_ERROR"]
+  ])("maps %s / %s to HTTP %s without swallowing other errors", async (code, message, status, apiCode) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const error = new pg.DatabaseError(message, 0, "error");
+    error.code = code;
+    const baseUrl = await listen(createHttpServer({ handle: async () => { throw error; } }));
+    const response = await fetch(`${baseUrl}/api/test`, { headers: { "X-Request-Id": "req-boundary" } });
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ error: { code: apiCode, requestId: "req-boundary" } });
+    if (status === 409) expect(log).not.toHaveBeenCalled();
+    else expect(log).toHaveBeenCalledWith("[http] 500 error requestId=req-boundary", error);
+  });
 });
 
 async function listen(server: ReturnType<typeof createHttpServer>) {
