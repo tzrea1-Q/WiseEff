@@ -61,8 +61,8 @@ describe("ParameterReviewPage deep link", () => {
         runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
     await waitFor(() => expect(screen.getByRole("tab", { name: "历史审阅" })).toHaveAttribute("aria-selected", "true"));
-    expect(listChangeRequests).toHaveBeenCalledWith({ projectId: "aurora", status: ["已合入", "已打回"] });
-    expect(listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora", status: ["已合入", "已打回"] });
+    expect(listChangeRequests).toHaveBeenCalledWith({ projectId: "aurora" });
+    expect(listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora" });
     expect(document.querySelector("tr.selected-row")?.textContent).toContain(legacy.title);
     expect(screen.queryByRole("toolbar", { name: "批量审阅操作" })).not.toBeInTheDocument();
     expect(reviewChange).not.toHaveBeenCalled();

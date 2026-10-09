@@ -21,9 +21,11 @@ export function legacyRequestAccessSql(auth: AuthContext, values: unknown[], ali
       || (status === "software_merge" && canMergeParameters(auth, projectId))
     );
     if (!statuses.length) return [];
+    const nodeAssignment = auth.roles.some((role) => role.roleId === "admin") ? "true"
+      : `(${alias}.edit_subject_kind <> 'node-enablement' or ${alias}.assigned_to_user_id = ${bind(auth.user.id)})`;
     const stages = bind(statuses);
     const project = projectId === undefined ? "true" : `${alias}.project_id = ${bind(projectId)}`;
-    return [`(${project} and (${alias}.status = any(${stages}::text[])
+    return [`(${project} and ((${alias}.status = any(${stages}::text[]) and ${nodeAssignment})
       or (${alias}.status in ('merged', 'rejected') and exists (
         select 1 from parameter_review_decisions history
         where history.organization_id = ${alias}.organization_id

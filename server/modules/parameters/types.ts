@@ -148,6 +148,8 @@ export type ChangeRequestDto = {
 
 export type ParameterSubmissionItemDto = {
   requestId: string;
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
   parameterId: string;
   name: string;
   module: string;

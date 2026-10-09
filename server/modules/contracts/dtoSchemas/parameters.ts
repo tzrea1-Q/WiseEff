@@ -161,6 +161,8 @@ export const changeRequestDtoSchema = z.object({
 
 export const parameterSubmissionItemDtoSchema = z.object({
   requestId: z.string(),
+  editSubjectKind: z.enum(["binding", "node-enablement"]).optional(),
+  logicalNodeId: z.string().optional(),
   parameterId: z.string(),
   name: z.string(),
   module: z.string(),

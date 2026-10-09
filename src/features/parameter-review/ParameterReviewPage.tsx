@@ -80,6 +80,7 @@ export function ParameterReviewPage({
   runtime,
   runtimeMode
 }: PageProps) {
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [legacyHistory, setLegacyHistory] = useState<{
     projectId: string;
     requests: ChangeRequest[];
@@ -92,8 +93,8 @@ export function ParameterReviewPage({
     let cancelled = false;
     setLegacyHistory(null);
     void Promise.all([
-      parameterRepository.listChangeRequests({ projectId: legacyProjectId, status: ["已合入", "已打回"] }),
-      parameterRepository.listSubmissionRounds({ projectId: legacyProjectId, status: ["已合入", "已打回"] })
+      parameterRepository.listChangeRequests({ projectId: legacyProjectId }),
+      parameterRepository.listSubmissionRounds({ projectId: legacyProjectId })
     ]).then(([requests, rounds]) => {
       if (!cancelled) setLegacyHistory({ projectId: legacyProjectId, requests, rounds });
     }).catch((error) => {
@@ -103,7 +104,7 @@ export function ParameterReviewPage({
       }
     });
     return () => { cancelled = true; };
-  }, [dispatch, legacyProjectId, parameterRepository, runtimeMode]);
+  }, [dispatch, legacyProjectId, parameterRepository, runtimeMode, refreshVersion]);
   if (runtimeMode === "api" && parameterRepository) {
     state = {
       ...state,
@@ -180,13 +181,15 @@ export function ParameterReviewPage({
     // old actions beside the canonical workflow. Initialization reviews have
     // a separate contract and remain visible below.
     if (runtimeMode === "api") {
+      const nodes = state.changeRequests.filter((request) => request.editSubjectKind === "node-enablement"
+        && (request.assignedTo === state.currentUserId || reviewerRoleId === "admin"));
       return {
-        pending: [],
+        pending: splitChangeRequestsForReviewQueue(reviewerRoleId, nodes).pending,
         history: splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests).history
       };
     }
     return splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests);
-  }, [reviewerRoleId, runtimeMode, state.changeRequests]);
+  }, [reviewerRoleId, runtimeMode, state.changeRequests, state.currentUserId]);
   const pendingInitializationRows = useMemo(
     () =>
       canReviewInitialization
@@ -409,7 +412,7 @@ export function ParameterReviewPage({
     () => (selected ? state.parameters.find((item) => item.id === selected.parameterId) : undefined),
     [selected, state.parameters]
   );
-  const historicalMetadataNotice = reviewMode === "history" && selected && !selectedReviewParameter && !selectedRound
+  const historicalMetadataNotice = reviewMode === "history" && selected && selected.editSubjectKind !== "node-enablement" && !selectedReviewParameter && !selectedRound
     ? <p role="note">历史参数引用缺少精确的显示元数据，仅展示归档记录，不推测当前参数。</p>
     : null;
   const selectedModuleDescription = selected?.moduleDescription?.trim() || "";
@@ -484,7 +487,7 @@ export function ParameterReviewPage({
 
     const matchingRequest = state.changeRequests.find((request) => {
       const parameter = state.parameters.find((item) => item.id === request.parameterId);
-      const projectMatches = !contextQuery.projectId || parameter?.projectId === contextQuery.projectId;
+      const projectMatches = !contextQuery.projectId || (request.projectId ?? parameter?.projectId) === contextQuery.projectId;
       const moduleMatches = !contextQuery.module || request.module === contextQuery.module;
 
       return projectMatches && moduleMatches;
@@ -572,6 +575,7 @@ export function ParameterReviewPage({
     if (dispatchParameterActionFailure(result)) {
       return;
     }
+    setRefreshVersion((version) => version + 1);
     setRejectOpen(false);
   };
   const advanceSelected = async () => {
@@ -598,7 +602,7 @@ export function ParameterReviewPage({
             ...(requiresMergeLink ? { note: trimmedMergeLink } : {})
           })
         );
-    dispatchParameterActionFailure(result);
+    if (!dispatchParameterActionFailure(result)) setRefreshVersion((version) => version + 1);
   };
   const openSubmissionDetail = (request: ChangeRequest) => {
     setSelectedId(request.id);
@@ -675,6 +679,7 @@ export function ParameterReviewPage({
         setBatchProgress({ done: index + 1, total: targets.length });
       }
     } finally {
+      setRefreshVersion((version) => version + 1);
       setBatchProgress(null);
       setBatchConfirmOpen(false);
     }

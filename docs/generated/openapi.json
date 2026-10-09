@@ -18303,6 +18303,16 @@
                     "requestId": {
                       "type": "string"
                     },
+                    "editSubjectKind": {
+                      "type": "string",
+                      "enum": [
+                        "binding",
+                        "node-enablement"
+                      ]
+                    },
+                    "logicalNodeId": {
+                      "type": "string"
+                    },
                     "parameterId": {
                       "type": "string"
                     },
@@ -18502,6 +18512,16 @@
                     "type": "object",
                     "properties": {
                       "requestId": {
+                        "type": "string"
+                      },
+                      "editSubjectKind": {
+                        "type": "string",
+                        "enum": [
+                          "binding",
+                          "node-enablement"
+                        ]
+                      },
+                      "logicalNodeId": {
                         "type": "string"
                       },
                       "parameterId": {
