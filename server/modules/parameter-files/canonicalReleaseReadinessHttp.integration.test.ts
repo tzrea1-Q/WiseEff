@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
@@ -191,6 +191,86 @@ describe("#1061 assembled-server canonical release readiness", () => {
       `select status,(select count(*)::int from dts_release_baseline where config_set_id=$2) as count
        from dts_release_baseline where id=$1`, [baseline.body.item.id, selected.configSetId]);
     expect(saved.rows[0]).toEqual({ status: "draft", count: 1 });
+  });
+
+  async function interleaveBaselineWrite(action: "create" | "release") {
+    const selected = await source(`atomic-${action}`);
+    const initial = await readiness(selected);
+    expect(initial.canRelease, JSON.stringify(initial)).toBe(true);
+    const baseline = action === "release"
+      ? await request(`/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`, adminId, {
+        name: "atomic-release", gateToken: initial.gateToken
+      })
+      : undefined;
+    if (baseline) expect(baseline.status, JSON.stringify(baseline.body)).toBe(201);
+    const draft = await request(`/api/v2/projects/${projectId}/parameter-bindings/${selected.bindingId}/drafts`, authorId, {
+      baseRevisionId: selected.revisionId, sourceTarget: { format: "json", sourceText: "50" }, reason: "#1071 interleaving"
+    });
+    expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+    const confirmed = await readiness(selected);
+    const barrier = await getRootPostgresPool(db)!.connect();
+    let mutation: ReturnType<typeof request> | undefined;
+    let submission: ReturnType<typeof request> | undefined;
+    let submissionWaited = false;
+    try {
+      await barrier.query("begin");
+      await barrier.query("lock table dts_release_baseline in share mode");
+      const barrierPid = (await barrier.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+      const path = action === "create"
+        ? `/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`
+        : `/api/v1/projects/${projectId}/baselines/${baseline!.body.item.id}/release`;
+      mutation = request(path, adminId, {
+        gateToken: confirmed.gateToken, ...(action === "create" ? { name: "atomic-create" } : {})
+      });
+      let mutationPid: number | undefined;
+      await vi.waitFor(async () => {
+        const blocked = await db.query<{ pid: number }>(
+          `select pid from pg_stat_activity where datname=current_database()
+           and $1=any(pg_blocking_pids(pid)) and query like '%dts_release_baseline%'`, [barrierPid]);
+        expect(blocked.rows).toHaveLength(1);
+        mutationPid = blocked.rows[0]!.pid;
+      }, { timeout: 10_000, interval: 20 });
+      let submitted = false;
+      submission = request(`/api/v2/projects/${projectId}/parameter-value-drafts/${draft.body.item.draftId}/submit`, authorId, {
+        assignedToUserId: reviewerId
+      }).then((result) => { submitted = true; return result; });
+      await vi.waitFor(async () => {
+        if (submitted) return;
+        const blocked = await db.query<{ pid: number }>(
+          `select pid from pg_stat_activity where datname=current_database()
+           and $1=any(pg_blocking_pids(pid)) and query like '%dts_config_set%'`, [mutationPid]);
+        expect(blocked.rows).toHaveLength(1);
+        submissionWaited = true;
+      }, { timeout: 10_000, interval: 20 });
+    } finally {
+      await barrier.query("rollback");
+      barrier.release();
+      await Promise.allSettled([mutation, submission].filter(Boolean));
+    }
+    const result = await mutation!;
+    const submitted = await submission!;
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    expect(submissionWaited || result.status === 409,
+      `Baseline ${action} and canonical submission both succeeded without serialization`).toBe(true);
+    if (!submissionWaited) expect(result.body.error.details.code).toBe("readiness-gate-stale");
+    else expect(result.status, JSON.stringify(result.body)).toBe(action === "create" ? 201 : 200);
+    const saved = await db.query<{ status: string }>("select status from dts_release_baseline where config_set_id=$1", [selected.configSetId]);
+    expect(saved.rows).toEqual(result.status === 409
+      ? (action === "create" ? [] : [{ status: "draft" }])
+      : [{ status: action === "create" ? "draft" : "released" }]);
+    const pending = await readiness(selected);
+    expect(pending.canRelease).toBe(false);
+    expect(pending.blockers).toContainEqual(expect.objectContaining({
+      code: "pending-change", target: expect.objectContaining({ changeRequestId: submitted.body.item.id })
+    }));
+  }
+
+  it("#1071 serializes baseline create with canonical submission after gate confirmation", async () => {
+    await interleaveBaselineWrite("create");
+  });
+
+  it("#1071 serializes baseline release with canonical submission after gate confirmation", async () => {
+    await interleaveBaselineWrite("release");
   });
 
   it("scopes pending source requests to their exact config set and project", async () => {
