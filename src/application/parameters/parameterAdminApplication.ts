@@ -227,20 +227,6 @@ export function createParameterAdminApplication({
       moduleRegistry.updateDriverRegistrationDefault(moduleId, input),
     replayDriverPlacement: (moduleId) =>
       moduleRegistry.replayDriverPlacement(moduleId),
-    createOrganizationDriverSchema: (input) =>
-      moduleRegistry.createOrganizationDriverSchema(input),
-    listOrganizationDriverSchemas: () =>
-      moduleRegistry.listOrganizationDriverSchemas(),
-    updateOrganizationDriverSchema: (schemaId, input) =>
-      moduleRegistry.updateOrganizationDriverSchema(schemaId, input),
-    activateOrganizationDriverSchema: (schemaId) =>
-      moduleRegistry.activateOrganizationDriverSchema(schemaId),
-    previewOrganizationDriverSchemaDeprecation: (schemaId) =>
-      moduleRegistry.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
-      Promise.reject(new Error("Overlay deprecation preview is unavailable.")),
-    deprecateOrganizationDriverSchema: (schemaId, input) =>
-      moduleRegistry.deprecateOrganizationDriverSchema?.(schemaId, input) ??
-      Promise.reject(new Error("Overlay deprecation is unavailable.")),
   });
 
   return {

@@ -1,19 +1,15 @@
 import type {
-  ActivateOrganizationDriverSchemaResult,
   CreateModuleMappingInput,
-  CreateOrganizationDriverSchemaInput,
   CreateParameterModuleInput,
   DriverRegistryEntry,
   MappingApplyPreview,
   ModuleDiscoveryHints,
-  OrganizationDriverSchema,
   ParameterModuleRegistryRepository,
   RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult,
   UpdateDriverRegistrationDefaultInput,
   UpdateDriverRegistrationInput,
-  UpdateParameterModuleInput,
-  UpdateOrganizationDriverSchemaInput
+  UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
   ParameterModule,
@@ -30,7 +26,6 @@ type Store = {
   dismissed: string[];
   recomputeResult: RecomputeBindingModulesResult;
   driverRegistry: DriverRegistryEntry[];
-  organizationDriverSchemas: OrganizationDriverSchema[];
 };
 
 function cloneRegistry(store: Store): ParameterModuleRegistry {
@@ -240,26 +235,6 @@ function createSeedStore(): Store {
           }
         ]
       }
-    ],
-    organizationDriverSchemas: [
-      {
-        id: "ods-mock-seed",
-        compatible: "vendor,sc8562",
-        displayName: "SC8562 组织解析",
-        notes: "演示用组织级解析",
-        lifecycle: "active",
-        version: 1,
-        properties: [
-          {
-            id: "ods-prop-mock-seed",
-            parameterSpecId: "pspec-mock-seed",
-            propertyKey: "gpio-int",
-            valueShape: { kind: "u32-array" as const },
-            units: null,
-            documentation: ""
-          }
-        ]
-      }
     ]
   };
 }
@@ -290,13 +265,7 @@ export function createMockParameterModuleRegistryRepository(
           compatibles: [...entry.compatibles],
           parseCoverages: entry.parseCoverages.map((row) => ({ ...row, coverage: { ...row.coverage } }))
         }))
-      : base.driverRegistry,
-    organizationDriverSchemas: seed.organizationDriverSchemas
-      ? seed.organizationDriverSchemas.map((schema) => ({
-          ...schema,
-          properties: schema.properties.map((property) => ({ ...property }))
-        }))
-      : base.organizationDriverSchemas
+      : base.driverRegistry
   };
   let moduleSeq = 0;
   let mappingSeq = 0;
@@ -631,124 +600,6 @@ export function createMockParameterModuleRegistryRepository(
         skippedCurated: 0,
         skippedMissingDefault: 0
       };
-    },
-
-    async createOrganizationDriverSchema(input: CreateOrganizationDriverSchemaInput) {
-      const schema: OrganizationDriverSchema = {
-        id: `ods-mock-${store.organizationDriverSchemas.length + 1}`,
-        compatible: input.compatible,
-        displayName: input.displayName,
-        notes: input.notes ?? "",
-        lifecycle: "draft",
-        version: 1,
-        properties: input.properties.map((property, index) => {
-          if ("parameterSpecId" in property) {
-            return {
-              id: `ods-prop-mock-${index + 1}`,
-              parameterSpecId: property.parameterSpecId,
-              propertyKey: property.propertyKey ?? `linked-${index + 1}`,
-              valueShape: { kind: "unknown" as const },
-              units: null,
-              documentation: ""
-            };
-          }
-          return {
-            id: `ods-prop-mock-${index + 1}`,
-            parameterSpecId: `pspec-mock-${index + 1}`,
-            propertyKey: property.propertyKey,
-            valueShape: property.valueShape,
-            units: property.units ?? null,
-            documentation: property.documentation ?? ""
-          };
-        })
-      };
-      store.organizationDriverSchemas.push(schema);
-      return schema;
-    },
-
-    async listOrganizationDriverSchemas() {
-      return store.organizationDriverSchemas.map((schema) => ({
-        ...schema,
-        properties: schema.properties.map((property) => ({ ...property }))
-      }));
-    },
-
-    async updateOrganizationDriverSchema(
-      schemaId: string,
-      input: UpdateOrganizationDriverSchemaInput
-    ) {
-      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
-      if (!schema) {
-        throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
-      }
-      if (input.displayName !== undefined) schema.displayName = input.displayName;
-      if (input.notes !== undefined) schema.notes = input.notes;
-      return { ...schema, properties: schema.properties.map((property) => ({ ...property })) };
-    },
-
-    async activateOrganizationDriverSchema(schemaId: string): Promise<ActivateOrganizationDriverSchemaResult> {
-      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
-      if (!schema) {
-        throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
-      }
-      schema.lifecycle = "active";
-      for (const entry of store.driverRegistry) {
-        entry.parseCoverages = entry.parseCoverages.map((row) => {
-          if (row.compatible !== schema.compatible) return row;
-          return {
-            compatible: row.compatible,
-            coverage: {
-              covered: true,
-              pattern: schema.compatible,
-              driverId: `driver:org/mock/${schema.compatible}:v${schema.version}`,
-              source: "manual",
-              scope: "organization"
-            }
-          };
-        });
-      }
-      return {
-        schema: { ...schema, properties: schema.properties.map((property) => ({ ...property })) },
-        upgradedSpecIds: [],
-        resolvedReviewTaskIds: []
-      };
-    },
-
-    async previewOrganizationDriverSchemaDeprecation(schemaId: string) {
-      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
-      if (!schema) throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
-      const successorSource = schema.supersededBySchemaId
-        ? {
-            scope: "platform" as const,
-            schemaId: schema.supersededBySchemaId,
-            displayName: schema.supersededBySchemaId
-          }
-        : null;
-      return {
-        schemaId,
-        compatible: schema.compatible,
-        coverageLoss: schema.lifecycle === "active" && successorSource === null,
-        definitionCount: schema.properties.length,
-        projectCount: 0,
-        successorSource
-      };
-    },
-
-    async deprecateOrganizationDriverSchema(
-      schemaId: string,
-      input: { confirmCoverageLoss?: boolean } = {}
-    ) {
-      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
-      if (!schema) throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
-      if (
-        schema.lifecycle === "active" &&
-        !schema.supersededBySchemaId &&
-        !input.confirmCoverageLoss
-      ) {
-        throw mockApiError("VALIDATION_FAILED", "High-risk coverage loss confirmation is required.");
-      }
-      schema.lifecycle = "deprecated";
-      return { ...schema, properties: schema.properties.map((property) => ({ ...property })) };
     }
   };
 }

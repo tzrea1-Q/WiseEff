@@ -1,14 +1,10 @@
 import type {
-  ActivateOrganizationDriverSchemaResult,
   CreateModuleMappingInput,
-  CreateOrganizationDriverSchemaInput,
   CreateParameterModuleInput,
   DriverRegistryEntry,
   MappingApplyPreview,
   MappingMutationResult,
   ModuleDiscoveryHints,
-  OrganizationDriverSchema,
-  OrganizationDriverSchemaDeprecationImpact,
   ParameterModuleRegistryRepository,
   RegisterOrClaimDriverInput,
   RegisterOrClaimDriverResult,
@@ -18,8 +14,7 @@ import type {
   UpdateDriverRegistrationDefaultResult,
   UpdateDriverRegistrationInput,
   UpdateDriverRegistrationResult,
-  UpdateParameterModuleInput,
-  UpdateOrganizationDriverSchemaInput
+  UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
   ModuleImportance,
@@ -70,15 +65,9 @@ type DiscoveryEnvelope = { item: ModuleDiscoveryHints };
 type DriverRegistryListResponse = { items: DriverRegistryEntry[]; total: number };
 type RegisterOrClaimDriverResponse = RegisterOrClaimDriverResult;
 type UpdateDriverRegistrationResponse = UpdateDriverRegistrationResult;
-type OrganizationDriverSchemaEnvelope = { item: OrganizationDriverSchema };
-type OrganizationDriverSchemaListResponse = { items: OrganizationDriverSchema[]; total: number };
-type OrganizationDriverSchemaDeprecationImpactEnvelope = {
-  item: OrganizationDriverSchemaDeprecationImpact;
-};
 
 const REGISTRY_BASE = "/api/v2/parameter-modules";
 const V1_MODULES = "/api/v1/parameter-modules";
-const ORG_DRIVER_SCHEMAS_BASE = "/api/v2/organization-driver-schemas";
 
 function mapModule(module: ModuleDto): ParameterModule {
   const importance = module.importance ?? "medium";
@@ -287,57 +276,6 @@ export function createHttpParameterModuleRegistryRepository(
         `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}/replay-placement`,
         {}
       );
-    },
-
-    async createOrganizationDriverSchema(input: CreateOrganizationDriverSchemaInput) {
-      const response = await apiClient.post<OrganizationDriverSchemaEnvelope>(
-        ORG_DRIVER_SCHEMAS_BASE,
-        input
-      );
-      return response.item;
-    },
-
-    async listOrganizationDriverSchemas() {
-      const response = await apiClient.get<OrganizationDriverSchemaListResponse>(
-        ORG_DRIVER_SCHEMAS_BASE
-      );
-      return response.items;
-    },
-
-    async updateOrganizationDriverSchema(
-      schemaId: string,
-      input: UpdateOrganizationDriverSchemaInput
-    ) {
-      const response = await apiClient.patch<OrganizationDriverSchemaEnvelope>(
-        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}`,
-        input
-      );
-      return response.item;
-    },
-
-    async activateOrganizationDriverSchema(schemaId: string) {
-      return apiClient.post<ActivateOrganizationDriverSchemaResult>(
-        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}/activate`,
-        {}
-      );
-    },
-
-    async previewOrganizationDriverSchemaDeprecation(schemaId: string) {
-      const response = await apiClient.get<OrganizationDriverSchemaDeprecationImpactEnvelope>(
-        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}/deprecation-impact`
-      );
-      return response.item;
-    },
-
-    async deprecateOrganizationDriverSchema(
-      schemaId: string,
-      input: { confirmCoverageLoss?: boolean } = {}
-    ) {
-      const response = await apiClient.post<OrganizationDriverSchemaEnvelope>(
-        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}/deprecate`,
-        input
-      );
-      return response.item;
     }
   };
 }

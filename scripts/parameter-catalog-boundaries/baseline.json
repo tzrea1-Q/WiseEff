@@ -805,7 +805,7 @@
       "legacy-parameter-spec-identifier": 1
     },
     "src/application/ports/ParameterModuleRegistryRepository.ts": {
-      "legacy-overlay-catalog-contract": 25,
+      "legacy-overlay-catalog-contract": 8,
       "legacy-parameter-spec-identifier": 2
     },
     "src/application/ports/ParameterRepository.ts": {
@@ -824,8 +824,7 @@
       "unresolved-boundary-expression": 2
     },
     "src/infrastructure/http/parameterModuleRegistryClient.ts": {
-      "legacy-catalog-route": 2,
-      "legacy-overlay-catalog-contract": 26
+      "legacy-catalog-route": 1
     },
     "src/infrastructure/http/parameterTopologyClient.test.ts": {
       "legacy-catalog-route": 12,

@@ -858,6 +858,7 @@ const createLegacyOptions = (
   db: Database | undefined,
   pool: pg.Pool | undefined,
   resolveAuth: CatalogApiAuthResolver,
+  readPorts: CatalogReadPorts,
 ): LegacyCatalogOptions => ({
   catalogReleaseId: UNAVAILABLE_RELEASE_ID,
   resolveCatalogReleaseId: async () => {
@@ -878,6 +879,13 @@ const createLegacyOptions = (
     throw new Error("Catalog legacy lookup requires a database");
   },
   resolveInvocation: async (request) => createUserInvocation(await resolveAuth(request)),
+  readCatalog: async (request, path) => {
+    const url = new URL(path, "http://localhost");
+    return handleCatalogRead(readPorts, {
+      method: "GET", path: url.pathname, params: {}, query: Object.fromEntries(url.searchParams),
+      headers: request.headers, requestId: request.requestId,
+    });
+  },
 });
 
 export const registerParameterCatalogApi = (
@@ -890,10 +898,8 @@ export const registerParameterCatalogApi = (
   },
 ): void => {
   const pool = getRootPostgresPool(options.db);
-  registerCatalogReadRoutes(
-    router,
-    createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {}),
-  );
+  const readPorts = createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {});
+  registerCatalogReadRoutes(router, readPorts);
   registerCatalogGovernanceRoutes(
     router,
     createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
@@ -909,5 +915,5 @@ export const registerParameterCatalogApi = (
     router,
     createPublicationPorts(options.db, options.resolveAuth),
   );
-  registerCatalogLegacyRoutes(router, createLegacyOptions(options.db, pool, options.resolveAuth));
+  registerCatalogLegacyRoutes(router, createLegacyOptions(options.db, pool, options.resolveAuth, readPorts));
 };

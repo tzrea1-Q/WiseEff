@@ -27,6 +27,7 @@ export type LegacyCatalogOptions = {
   readonly getQueryable: () => MappingQueryable | Promise<MappingQueryable>;
   readonly resolveInvocation: LegacyCatalogInvocationResolver;
   readonly lookup?: LegacyLookupFn;
+  readonly readCatalog?: (request: RouteRequest, path: string) => Promise<LegacyHttpResult>;
 };
 
 export type LegacyHttpHeaders = Record<string, string>;

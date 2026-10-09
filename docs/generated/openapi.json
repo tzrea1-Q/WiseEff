@@ -4583,7 +4583,7 @@
     "/api/v2/parameter-specs": {
       "get": {
         "operationId": "parameterSpecs.list",
-        "summary": "List versioned parameter specifications",
+        "summary": "Read exact canonical spec mappings during the legacy read window",
         "tags": [
           "parameters"
         ],
@@ -4593,7 +4593,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ParameterSpecListResponse"
+                  "$ref": "#/components/schemas/CatalogLegacySpecListResponse"
                 }
               }
             },
@@ -4636,10 +4636,19 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "410": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
@@ -4689,7 +4698,7 @@
     "/api/v2/parameter-specs/{specId}": {
       "get": {
         "operationId": "parameterSpecs.get",
-        "summary": "Get a parameter specification detail",
+        "summary": "Read an exact canonical spec mapping during the legacy read window",
         "tags": [
           "parameters"
         ],
@@ -4709,7 +4718,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                  "$ref": "#/components/schemas/CatalogLegacySpecResponse"
                 }
               }
             },
@@ -4755,10 +4764,16 @@
           "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "410": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
@@ -19459,17 +19474,1316 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "ParameterDashboardHotspotsResponse"
       },
-      "ParameterSpecListResponse": {
+      "CatalogLegacySpecListResponse": {
         "type": "object",
-        "x-wiseeff-schema": "ParameterSpecListResponse"
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "legacyType": {
+                  "type": "string",
+                  "enum": [
+                    "parameter-spec"
+                  ]
+                },
+                "legacyId": {
+                  "type": "string"
+                },
+                "disposition": {
+                  "type": "string",
+                  "enum": [
+                    "mapped"
+                  ]
+                },
+                "target": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "catalog-subject",
+                        "parameter-definition",
+                        "definition-revision",
+                        "subject-registration",
+                        "subject-placement",
+                        "parameter-binding",
+                        "project-value",
+                        "binding-history-event",
+                        "parameter-observation",
+                        "observation-match",
+                        "review-evidence",
+                        "review-item",
+                        "review-resolution",
+                        "definition-proposal",
+                        "definition-proposal-revision",
+                        "publication-intent",
+                        "policy",
+                        "audit-event",
+                        "migration-history"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "href": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "href"
+                  ],
+                  "additionalProperties": false
+                },
+                "historicalOnly": {
+                  "type": "boolean"
+                },
+                "definition": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "subject": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "driver",
+                            "node-type",
+                            "configuration-schema"
+                          ]
+                        },
+                        "canonicalName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "type",
+                        "canonicalName"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "propertyKey": {
+                      "type": "string"
+                    },
+                    "lifecycle": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "deprecated",
+                        "retired"
+                      ]
+                    },
+                    "currentRevision": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "revisionNumber": {
+                          "type": "number"
+                        },
+                        "contentDigest": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "valueShape": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "json-schema"
+                              ]
+                            },
+                            "schema": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "schema"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "constraints": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "none"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "documentation": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "unit": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "symbol"
+                              ]
+                            },
+                            "symbol": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "symbol"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "publishedInCatalogReleaseId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "definitionId",
+                        "revisionNumber",
+                        "contentDigest",
+                        "displayName",
+                        "valueShape",
+                        "constraints",
+                        "documentation",
+                        "unit",
+                        "publishedInCatalogReleaseId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "registration": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "unregistered"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "status"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "active",
+                                "retired"
+                              ]
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "method": {
+                              "type": "string",
+                              "enum": [
+                                "explicit",
+                                "automatic",
+                                "review"
+                              ]
+                            },
+                            "placement": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "displayName": {
+                                  "type": "string"
+                                },
+                                "parentPlacementId": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "moduleId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "displayName",
+                                "parentPlacementId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "id"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "usageSummary": {
+                      "type": "object",
+                      "properties": {
+                        "policyCount": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "projectCount": {
+                          "type": "number"
+                        },
+                        "currentValueCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "policyCount",
+                        "projectCount",
+                        "currentValueCount"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "links": {
+                      "type": "object",
+                      "properties": {
+                        "revisions": {
+                          "type": "string"
+                        },
+                        "timeline": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revisions",
+                        "timeline"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "subject",
+                    "propertyKey",
+                    "lifecycle",
+                    "currentRevision",
+                    "registration",
+                    "usageSummary",
+                    "links"
+                  ],
+                  "additionalProperties": false
+                },
+                "revisions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "legacyType": {
+                        "type": "string",
+                        "enum": [
+                          "parameter-spec-version"
+                        ]
+                      },
+                      "legacyId": {
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "type": "string",
+                        "enum": [
+                          "mapped"
+                        ]
+                      },
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "catalog-subject",
+                              "parameter-definition",
+                              "definition-revision",
+                              "subject-registration",
+                              "subject-placement",
+                              "parameter-binding",
+                              "project-value",
+                              "binding-history-event",
+                              "parameter-observation",
+                              "observation-match",
+                              "review-evidence",
+                              "review-item",
+                              "review-resolution",
+                              "definition-proposal",
+                              "definition-proposal-revision",
+                              "publication-intent",
+                              "policy",
+                              "audit-event",
+                              "migration-history"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "href": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "href"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "historicalOnly": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "definitionId": {
+                            "type": "string"
+                          },
+                          "revisionNumber": {
+                            "type": "number"
+                          },
+                          "contentDigest": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "valueShape": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "json-schema"
+                                ]
+                              },
+                              "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "schema"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "constraints": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "none"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "documentation": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "unit": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "symbol"
+                                ]
+                              },
+                              "symbol": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "symbol"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "publishedInCatalogReleaseId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "definitionId",
+                          "revisionNumber",
+                          "contentDigest",
+                          "displayName",
+                          "valueShape",
+                          "constraints",
+                          "documentation",
+                          "unit",
+                          "publishedInCatalogReleaseId"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "legacyType",
+                      "legacyId",
+                      "disposition",
+                      "target",
+                      "historicalOnly",
+                      "revision"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "legacyType",
+                "legacyId",
+                "disposition",
+                "target",
+                "historicalOnly",
+                "definition",
+                "revisions"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "historicalItems": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "legacyType": {
+                      "type": "string",
+                      "enum": [
+                        "parameter-spec",
+                        "parameter-spec-version",
+                        "project-parameter-binding",
+                        "project-parameter-binding-revision",
+                        "parameter-subject",
+                        "parameter-placement",
+                        "parameter-module"
+                      ]
+                    },
+                    "legacyId": {
+                      "type": "string"
+                    },
+                    "disposition": {
+                      "type": "string",
+                      "enum": [
+                        "mapped"
+                      ]
+                    },
+                    "target": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "catalog-subject",
+                            "parameter-definition",
+                            "definition-revision",
+                            "subject-registration",
+                            "subject-placement",
+                            "parameter-binding",
+                            "project-value",
+                            "binding-history-event",
+                            "parameter-observation",
+                            "observation-match",
+                            "review-evidence",
+                            "review-item",
+                            "review-resolution",
+                            "definition-proposal",
+                            "definition-proposal-revision",
+                            "publication-intent",
+                            "policy",
+                            "audit-event",
+                            "migration-history"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "href": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id",
+                        "href"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "historicalOnly": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "legacyType",
+                    "legacyId",
+                    "disposition",
+                    "target",
+                    "historicalOnly"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "legacyType": {
+                      "type": "string",
+                      "enum": [
+                        "parameter-spec",
+                        "parameter-spec-version",
+                        "project-parameter-binding",
+                        "project-parameter-binding-revision",
+                        "parameter-subject",
+                        "parameter-placement",
+                        "parameter-module"
+                      ]
+                    },
+                    "legacyId": {
+                      "type": "string"
+                    },
+                    "disposition": {
+                      "type": "string",
+                      "enum": [
+                        "archived",
+                        "ambiguous",
+                        "not-found"
+                      ]
+                    },
+                    "historicalOnly": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "legacyType",
+                    "legacyId",
+                    "disposition",
+                    "historicalOnly"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "items",
+          "historicalItems"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogLegacySpecListResponse"
       },
       "CreateParameterSpecRequest": {
         "type": "object",
         "x-wiseeff-schema": "CreateParameterSpecRequest"
       },
-      "ParameterSpecDetailResponse": {
+      "CatalogLegacySpecResponse": {
         "type": "object",
-        "x-wiseeff-schema": "ParameterSpecDetailResponse"
+        "properties": {
+          "item": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "legacyType": {
+                    "type": "string",
+                    "enum": [
+                      "parameter-spec"
+                    ]
+                  },
+                  "legacyId": {
+                    "type": "string"
+                  },
+                  "disposition": {
+                    "type": "string",
+                    "enum": [
+                      "mapped"
+                    ]
+                  },
+                  "target": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "catalog-subject",
+                          "parameter-definition",
+                          "definition-revision",
+                          "subject-registration",
+                          "subject-placement",
+                          "parameter-binding",
+                          "project-value",
+                          "binding-history-event",
+                          "parameter-observation",
+                          "observation-match",
+                          "review-evidence",
+                          "review-item",
+                          "review-resolution",
+                          "definition-proposal",
+                          "definition-proposal-revision",
+                          "publication-intent",
+                          "policy",
+                          "audit-event",
+                          "migration-history"
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "href": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "href"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "historicalOnly": {
+                    "type": "boolean"
+                  },
+                  "definition": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "subject": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "driver",
+                              "node-type",
+                              "configuration-schema"
+                            ]
+                          },
+                          "canonicalName": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "canonicalName"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "propertyKey": {
+                        "type": "string"
+                      },
+                      "lifecycle": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "deprecated",
+                          "retired"
+                        ]
+                      },
+                      "currentRevision": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "definitionId": {
+                            "type": "string"
+                          },
+                          "revisionNumber": {
+                            "type": "number"
+                          },
+                          "contentDigest": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "valueShape": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "json-schema"
+                                ]
+                              },
+                              "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "schema"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "constraints": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "none"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "documentation": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "unit": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "symbol"
+                                ]
+                              },
+                              "symbol": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "symbol"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "publishedInCatalogReleaseId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "definitionId",
+                          "revisionNumber",
+                          "contentDigest",
+                          "displayName",
+                          "valueShape",
+                          "constraints",
+                          "documentation",
+                          "unit",
+                          "publishedInCatalogReleaseId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "registration": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "unregistered"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "status"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "active",
+                                  "retired"
+                                ]
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "method": {
+                                "type": "string",
+                                "enum": [
+                                  "explicit",
+                                  "automatic",
+                                  "review"
+                                ]
+                              },
+                              "placement": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "displayName": {
+                                    "type": "string"
+                                  },
+                                  "parentPlacementId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "moduleId": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "displayName",
+                                  "parentPlacementId"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "status",
+                              "id"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "usageSummary": {
+                        "type": "object",
+                        "properties": {
+                          "policyCount": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "projectCount": {
+                            "type": "number"
+                          },
+                          "currentValueCount": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "policyCount",
+                          "projectCount",
+                          "currentValueCount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "links": {
+                        "type": "object",
+                        "properties": {
+                          "revisions": {
+                            "type": "string"
+                          },
+                          "timeline": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "revisions",
+                          "timeline"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "subject",
+                      "propertyKey",
+                      "lifecycle",
+                      "currentRevision",
+                      "registration",
+                      "usageSummary",
+                      "links"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "revisions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "legacyType": {
+                          "type": "string",
+                          "enum": [
+                            "parameter-spec-version"
+                          ]
+                        },
+                        "legacyId": {
+                          "type": "string"
+                        },
+                        "disposition": {
+                          "type": "string",
+                          "enum": [
+                            "mapped"
+                          ]
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "catalog-subject",
+                                "parameter-definition",
+                                "definition-revision",
+                                "subject-registration",
+                                "subject-placement",
+                                "parameter-binding",
+                                "project-value",
+                                "binding-history-event",
+                                "parameter-observation",
+                                "observation-match",
+                                "review-evidence",
+                                "review-item",
+                                "review-resolution",
+                                "definition-proposal",
+                                "definition-proposal-revision",
+                                "publication-intent",
+                                "policy",
+                                "audit-event",
+                                "migration-history"
+                              ]
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "href": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "href"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "historicalOnly": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "definitionId": {
+                              "type": "string"
+                            },
+                            "revisionNumber": {
+                              "type": "number"
+                            },
+                            "contentDigest": {
+                              "type": "string"
+                            },
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "valueShape": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "json-schema"
+                                  ]
+                                },
+                                "schema": {
+                                  "type": "object",
+                                  "additionalProperties": {}
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "schema"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "constraints": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "none"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "documentation": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "unit": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "symbol"
+                                  ]
+                                },
+                                "symbol": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "symbol"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "publishedInCatalogReleaseId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "definitionId",
+                            "revisionNumber",
+                            "contentDigest",
+                            "displayName",
+                            "valueShape",
+                            "constraints",
+                            "documentation",
+                            "unit",
+                            "publishedInCatalogReleaseId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "legacyType",
+                        "legacyId",
+                        "disposition",
+                        "target",
+                        "historicalOnly",
+                        "revision"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "legacyType",
+                  "legacyId",
+                  "disposition",
+                  "target",
+                  "historicalOnly",
+                  "definition",
+                  "revisions"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "legacyType": {
+                        "type": "string",
+                        "enum": [
+                          "parameter-spec",
+                          "parameter-spec-version",
+                          "project-parameter-binding",
+                          "project-parameter-binding-revision",
+                          "parameter-subject",
+                          "parameter-placement",
+                          "parameter-module"
+                        ]
+                      },
+                      "legacyId": {
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "type": "string",
+                        "enum": [
+                          "mapped"
+                        ]
+                      },
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "catalog-subject",
+                              "parameter-definition",
+                              "definition-revision",
+                              "subject-registration",
+                              "subject-placement",
+                              "parameter-binding",
+                              "project-value",
+                              "binding-history-event",
+                              "parameter-observation",
+                              "observation-match",
+                              "review-evidence",
+                              "review-item",
+                              "review-resolution",
+                              "definition-proposal",
+                              "definition-proposal-revision",
+                              "publication-intent",
+                              "policy",
+                              "audit-event",
+                              "migration-history"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "href": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "href"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "historicalOnly": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "legacyType",
+                      "legacyId",
+                      "disposition",
+                      "target",
+                      "historicalOnly"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "legacyType": {
+                        "type": "string",
+                        "enum": [
+                          "parameter-spec",
+                          "parameter-spec-version",
+                          "project-parameter-binding",
+                          "project-parameter-binding-revision",
+                          "parameter-subject",
+                          "parameter-placement",
+                          "parameter-module"
+                        ]
+                      },
+                      "legacyId": {
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "type": "string",
+                        "enum": [
+                          "archived",
+                          "ambiguous",
+                          "not-found"
+                        ]
+                      },
+                      "historicalOnly": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      }
+                    },
+                    "required": [
+                      "legacyType",
+                      "legacyId",
+                      "disposition",
+                      "historicalOnly"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogLegacySpecResponse"
       },
       "PrepareParameterSpecCutoverRequest": {
         "type": "object",
