@@ -505,7 +505,11 @@ export async function getParameterModuleRegistry(
   requireCanView(auth);
   const catalog = await captureRegistryCatalog(db);
   const item = await readRegistry(db, auth.organization.id, catalog);
-  return { item };
+  return { item: {
+    navigationOnly: true,
+    modules: item.modules.map(module => ({ ...module, sourceKey: null, attributionSubjectId: null })),
+    mappings: [],
+  } };
 }
 
 export type ModuleDiscoveryHintsDto = {

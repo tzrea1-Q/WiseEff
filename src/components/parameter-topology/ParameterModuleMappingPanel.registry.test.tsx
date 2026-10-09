@@ -26,9 +26,10 @@ describe("historical registry isolation", () => {
           id: CATALOG_MODULE_ID, name: "规范驱动组", parentId: null,
           sortOrder: 0, description: "", scope: "organization", importance: "medium" as const,
           kind: "driver-group" as const, origin: "curated" as const, sourceKey: null,
+          attributionSubjectId: null,
           effectiveImportance: "medium" as const, parameterCount: 2, definitionCount: 14
         }],
-        mappings: []
+        mappings: [], navigationOnly: true
       };
       const listOrganizationDriverSchemas = vi.fn().mockImplementation(() =>
         scenario === "pending overlay"

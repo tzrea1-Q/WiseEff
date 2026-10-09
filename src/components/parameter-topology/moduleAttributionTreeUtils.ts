@@ -396,7 +396,8 @@ export function siblingModules(
 export function sortOrderSwapUpdates(
   module: ParameterModule,
   direction: "up" | "down",
-  modules: readonly ParameterModule[]
+  modules: readonly ParameterModule[],
+  canonicalModeEnabled = false
 ): Array<{ id: string; sortOrder: number }> | null {
   const siblings = siblingModules(modules, module);
   const index = siblings.findIndex((candidate) => candidate.id === module.id);
@@ -404,6 +405,7 @@ export function sortOrderSwapUpdates(
   const swapIndex = direction === "up" ? index - 1 : index + 1;
   if (swapIndex < 0 || swapIndex >= siblings.length) return null;
   const peer = siblings[swapIndex]!;
+  if (canonicalModeEnabled && (module.kind !== "business" || peer.kind !== "business")) return null;
   return [
     { id: module.id, sortOrder: peer.sortOrder },
     { id: peer.id, sortOrder: module.sortOrder }

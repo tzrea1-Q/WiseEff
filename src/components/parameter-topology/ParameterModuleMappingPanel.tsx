@@ -274,6 +274,7 @@ export function ParameterModuleMappingPanel({
         driverNature: DriverRegistryEntry["driverNature"];
         instanceCardinality: DriverRegistryEntry["instanceCardinality"];
         defaultBusinessCategoryId: string | null;
+        compatibles: string[];
       }
     >();
     for (const entry of driverRegistry) {
@@ -281,6 +282,7 @@ export function ParameterModuleMappingPanel({
         driverNature: entry.driverNature ?? null,
         instanceCardinality: entry.instanceCardinality ?? null,
         defaultBusinessCategoryId: entry.defaultBusinessCategoryId ?? null,
+        compatibles: entry.compatibles,
       });
     }
     return map;
@@ -699,7 +701,6 @@ export function ParameterModuleMappingPanel({
             governance={canonicalGovernance}
             organizationId={canonicalOrganizationId}
             onNavigate={onNavigate}
-            onAuthorOverlay={canAdmin ? (compatible) => openOverlaySchemaDraft({ compatible }) : undefined}
             refreshKey={canonicalDiscoveryRefresh}
           />
         ) : null}
@@ -775,13 +776,13 @@ export function ParameterModuleMappingPanel({
             busy={busy}
             hasUnclassifiedQueue={legacyQueueVisible}
             onOpenUnclassifiedQueue={() => goToSubView("queue")}
-            onAuthorOverlaySchema={(compatible) => openOverlaySchemaDraft({ compatible })}
-            organizationDriverSchemas={organizationDriverSchemas}
-            onPreviewOverlayDeprecation={(schemaId) =>
+            onAuthorOverlaySchema={canonicalEnabled ? undefined : (compatible) => openOverlaySchemaDraft({ compatible })}
+            organizationDriverSchemas={canonicalEnabled ? [] : organizationDriverSchemas}
+            onPreviewOverlayDeprecation={canonicalEnabled ? undefined : (schemaId) =>
               client.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
               Promise.reject(new Error("当前环境未接线覆盖停用预览。"))
             }
-            onDeprecateOverlaySchema={async (schemaId, input) => {
+            onDeprecateOverlaySchema={canonicalEnabled ? undefined : async (schemaId, input) => {
               setBusy(true);
               setError(null);
               try {
@@ -812,7 +813,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onUpdateDriverRegistration={async (moduleId, input) => {
+            onUpdateDriverRegistration={canonicalEnabled ? undefined : async (moduleId, input) => {
               setBusy(true);
               setError(null);
               try {
@@ -826,7 +827,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onUpdateDriverRegistrationDefault={async (moduleId, defaultBusinessCategoryId) => {
+            onUpdateDriverRegistrationDefault={canonicalEnabled ? undefined : async (moduleId, defaultBusinessCategoryId) => {
               setBusy(true);
               setError(null);
               try {
@@ -845,7 +846,7 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onReplayDriverPlacement={async (moduleId) => {
+            onReplayDriverPlacement={canonicalEnabled ? undefined : async (moduleId) => {
               setBusy(true);
               setError(null);
               try {

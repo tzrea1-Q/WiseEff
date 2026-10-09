@@ -35,6 +35,7 @@ export type ParameterModuleMappingDto = {
 };
 
 export type ParameterModuleRegistryDto = {
+  navigationOnly?: true;
   modules: ParameterModuleDto[];
   mappings: ParameterModuleMappingDto[];
 };

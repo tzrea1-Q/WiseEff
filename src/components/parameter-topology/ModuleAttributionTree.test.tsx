@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ParameterModule, ParameterModuleMapping } from "@/domain/parameter-topology/moduleRegistry";
@@ -65,6 +65,56 @@ const mappings: ParameterModuleMapping[] = [
 ];
 
 describe("ModuleAttributionTree", () => {
+  it.each([
+    ["driver-group", "up"], ["driver-group", "down"],
+    ["node-type", "up"], ["node-type", "down"]
+  ] as const)("blocks canonical reorder across historical %s siblings in direction %s before any write", async (kind, direction) => {
+    const business = { ...modules[0]!, sortOrder: 10 };
+    const historical = { ...modules[1]!, kind, parentId: null,
+      sortOrder: direction === "up" ? 0 : 20 };
+    const onUpdateModule = vi.fn(async (moduleId: string) => {
+      if (moduleId === historical.id) throw new Error("legacy-surface-retired");
+    });
+    render(<ModuleAttributionTree canAdmin canonicalModeEnabled modules={[business, historical]} mappings={[]}
+      onUpdateModule={onUpdateModule} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Power 更多操作" }));
+    const reorder = screen.getByRole("menuitem", { name: `${direction === "up" ? "上移" : "下移"} Power` });
+    await act(async () => { fireEvent.click(reorder); });
+    expect(onUpdateModule).not.toHaveBeenCalled();
+    expect(reorder).toBeDisabled();
+    expect(reorder).toHaveAttribute("title", "相邻历史主体为只读，不能交换排序。");
+  });
+
+  it.each([[true, "up"], [true, "down"], [false, "up"], [false, "down"]] as const)(
+    "preserves business-business reorder with canonical mode %s in direction %s",
+    async (canonicalModeEnabled, direction) => {
+      const business = { ...modules[0]!, sortOrder: 0 };
+      const peer = { ...business, id: "mod-business-peer", name: "Thermal", sortOrder: 10 };
+      const onUpdateModule = vi.fn().mockResolvedValue(undefined);
+      render(<ModuleAttributionTree canAdmin canonicalModeEnabled={canonicalModeEnabled}
+        modules={[business, peer]} mappings={[]} onUpdateModule={onUpdateModule}
+        onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+      const source = direction === "up" ? peer : business;
+      const target = direction === "up" ? business : peer;
+      fireEvent.click(screen.getByRole("button", { name: `${source.name} 更多操作` }));
+      const reorder = screen.getByRole("menuitem", { name: `${direction === "up" ? "上移" : "下移"} ${source.name}` });
+      expect(reorder).toBeEnabled();
+      fireEvent.click(reorder);
+      await waitFor(() => expect(onUpdateModule).toHaveBeenCalledTimes(2));
+      expect(onUpdateModule).toHaveBeenNthCalledWith(1, source.id, { sortOrder: target.sortOrder });
+      expect(onUpdateModule).toHaveBeenNthCalledWith(2, target.id, { sortOrder: source.sortOrder });
+    }
+  );
+
+  it("keeps taxonomy menus on business categories without offering legacy subject mutations", () => {
+    render(<ModuleAttributionTree canAdmin canonicalModeEnabled modules={modules} mappings={[]}
+      onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Power 更多操作" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "SC8562 更多操作" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    expect(within(screen.getByRole("dialog")).queryByLabelText("模块类型")).not.toBeInTheDocument();
+  });
+
   it("routes canonical-only driver groups to canonical placement without legacy actions", () => {
     const onUpdateDriverRegistrationDefault = vi.fn();
     const onReplayDriverPlacement = vi.fn();
@@ -105,7 +155,7 @@ describe("ModuleAttributionTree", () => {
     expect(onReplayDriverPlacement).not.toHaveBeenCalled();
   });
 
-  it("labels historical driver controls while keeping canonical placement available", () => {
+  it("shows historical driver provenance read-only while keeping canonical placement available", () => {
     render(
       <ModuleAttributionTree
         canAdmin
@@ -115,7 +165,8 @@ describe("ModuleAttributionTree", () => {
           ["mod-group", {
             driverNature: "physical-device",
             instanceCardinality: "multiple",
-            defaultBusinessCategoryId: null
+            defaultBusinessCategoryId: null,
+            compatibles: ["vendor,sc8562"]
           }]
         ])}
         canonicalModeEnabled
@@ -132,9 +183,11 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
-    expect(within(dialog).getByRole("region", { name: "历史驱动登记" })).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("默认业务分类")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "从注册回放放置" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "历史 compatible 溯源" })).toHaveTextContent("vendor,sc8562");
+    expect(within(dialog).getByLabelText("驱动性质")).toHaveAttribute("readonly");
+    expect(within(dialog).getByLabelText("实例基数")).toHaveAttribute("readonly");
+    expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "规范主体放置" })).toBeInTheDocument();
   });
 

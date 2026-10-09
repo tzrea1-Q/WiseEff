@@ -9,6 +9,7 @@ import {
 import type { ObjectStore } from "../logs/objectStore";
 import { getRootPostgresPool, isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
 import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { catalogLegacyGoneResult, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -235,6 +236,24 @@ export function registerParameterRoutes(
     : options.db && isRootDatabase(options.db)
       ? createTrustedRefusalAuditSink(options.db)
       : undefined;
+  const retireModuleWrite = async (request: RouteRequest, auth: AuthContext, routeId: string) => {
+    if (!refusalAuditSink) {
+      throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for module retirement.");
+    }
+    await refusalAuditSink.write({
+      invocation: createUserInvocation(auth),
+      projectId: null,
+      app: "parameter-catalog",
+      kind: "legacy-surface-retired",
+      action: "deny",
+      severity: "Low",
+      targetType: "legacy-route",
+      targetId: routeId,
+      metadata: { reason: "legacy-surface-retired", routeId, method: request.method },
+      traceId: request.requestId,
+    });
+    return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
+  };
   router.get("/api/v1/projects", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -367,7 +386,15 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createParameterModuleBodySchema, request.body, "Invalid parameter module create payload.");
-    const item = await createParameterModuleForAuth(db, auth, body, { requestId: request.requestId });
+    let item;
+    try {
+      item = await createParameterModuleForAuth(db, auth, body, { requestId: request.requestId });
+    } catch (error) {
+      if (error instanceof ApiError && error.details.reason === "legacy-surface-retired") {
+        return retireModuleWrite(request, auth, "parameterModules.v1.create");
+      }
+      throw error;
+    }
 
     return { status: 201, body: { item } };
   });
@@ -377,7 +404,15 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(parameterModuleParamsSchema, request.params);
     const body = parseWithSchema(updateParameterModuleBodySchema, request.body, "Invalid parameter module update payload.");
-    const item = await updateParameterModuleForAuth(db, auth, params.moduleId, body, { requestId: request.requestId });
+    let item;
+    try {
+      item = await updateParameterModuleForAuth(db, auth, params.moduleId, body, { requestId: request.requestId });
+    } catch (error) {
+      if (error instanceof ApiError && error.details.reason === "legacy-surface-retired") {
+        return retireModuleWrite(request, auth, "parameterModules.v1.update");
+      }
+      throw error;
+    }
 
     return { status: 200, body: { item } };
   });
@@ -387,7 +422,15 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(parameterModuleParamsSchema, request.params);
     const body = parseWithSchema(moveParameterModuleBodySchema, request.body, "Invalid parameter module move payload.");
-    const item = await moveParameterModuleForAuth(db, auth, params.moduleId, body, { requestId: request.requestId });
+    let item;
+    try {
+      item = await moveParameterModuleForAuth(db, auth, params.moduleId, body, { requestId: request.requestId });
+    } catch (error) {
+      if (error instanceof ApiError && error.details.reason === "legacy-surface-retired") {
+        return retireModuleWrite(request, auth, "parameterModules.v1.move");
+      }
+      throw error;
+    }
 
     return { status: 200, body: { item } };
   });
@@ -396,7 +439,14 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(parameterModuleParamsSchema, request.params);
-    await deleteParameterModuleForAuth(db, auth, params.moduleId, { requestId: request.requestId });
+    try {
+      await deleteParameterModuleForAuth(db, auth, params.moduleId, { requestId: request.requestId });
+    } catch (error) {
+      if (error instanceof ApiError && error.details.reason === "legacy-surface-retired") {
+        return retireModuleWrite(request, auth, "parameterModules.v1.delete");
+      }
+      throw error;
+    }
 
     return { status: 204, body: null };
   });
