@@ -219,6 +219,7 @@ export type DtsRollbackBaselineResult = {
 
 export type DtsRestorePreviewMember = {
   fileId: string;
+  canonicalOwned: boolean;
   fileName?: string;
   fromVersionId: string | null;
   fromVersionNumber?: number;

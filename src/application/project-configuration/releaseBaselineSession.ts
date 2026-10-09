@@ -41,6 +41,14 @@ export type ReleaseBaselineRepository = Pick<
   | "releaseBaseline"
 >;
 
+export function baselineRestoreBlockedReason(preview: DtsRestorePreviewResult | null, baselineId: string | null): string {
+  if (!preview || preview.baselineId !== baselineId) return "请先加载当前基线的恢复预览。";
+  if (preview.members.some((member) => member.canonicalOwned !== false)) {
+    return "此基线涉及规范源，不能整源恢复。需要已准备并批准的规范源事务；此预览仅用于查看漂移，不会改变工作配置。";
+  }
+  return "";
+}
+
 export type ReleaseBaselineSessionSnapshot = {
   baselines: DtsReleaseBaseline[];
   baselinesLoading: boolean;
@@ -148,6 +156,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
   let compareResult: DtsCompareBaselineResult | null = null;
   let compareAgainst: "working" | "released" = "working";
   let restorePreview: DtsRestorePreviewResult | null = null;
+  let restorePreviewGeneration = 0;
   let actionError = "";
   let readinessGeneration = 0;
   let baselinesGeneration = 0;
@@ -309,6 +318,8 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       if (selectedBaselineId === baselineId) return;
       selectedBaselineId = baselineId;
       compareResult = null;
+      restorePreview = null;
+      restorePreviewGeneration += 1;
       emit();
     },
 
@@ -459,26 +470,35 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
     },
 
     async previewRestore(projectId, repo) {
+      const generation = ++restorePreviewGeneration;
       if (!selectedBaselineId) {
         actionError = "请先选择基线。";
         emit();
         throw new Error(actionError);
       }
       actionError = "";
+      restorePreview = null;
       emit();
+      const baselineId = selectedBaselineId;
       try {
-        const preview = await repo.previewRestoreBaseline(projectId, selectedBaselineId);
+        const preview = await repo.previewRestoreBaseline(projectId, baselineId);
+        if (generation !== restorePreviewGeneration || selectedBaselineId !== baselineId || preview.baselineId !== baselineId) {
+          throw new Error("基线选择已变化，请重新加载恢复预览。");
+        }
         restorePreview = preview;
         emit();
         return preview;
       } catch (error) {
-        actionError = describeBaselineActionError(error, "加载恢复预览失败，请重试。");
-        emit();
+        if (generation === restorePreviewGeneration) {
+          actionError = describeBaselineActionError(error, "加载恢复预览失败，请重试。");
+          emit();
+        }
         throw error;
       }
     },
 
     clearRestorePreview() {
+      restorePreviewGeneration += 1;
       restorePreview = null;
       emit();
     },
@@ -486,6 +506,12 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
     async restore(projectId, configSetId, repo) {
       if (!selectedBaselineId) {
         actionError = "请先选择基线。";
+        emit();
+        throw new Error(actionError);
+      }
+      const blockedReason = baselineRestoreBlockedReason(restorePreview, selectedBaselineId);
+      if (blockedReason || restorePreview?.configSetId !== configSetId) {
+        actionError = blockedReason || "配置集选择已变化，请重新加载恢复预览。";
         emit();
         throw new Error(actionError);
       }
