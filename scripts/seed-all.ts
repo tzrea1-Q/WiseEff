@@ -18,7 +18,7 @@ export async function runAllSeedScripts(env: NodeJS.ProcessEnv = process.env) {
     if (result.status !== 0) {
       throw new Error(`Seed step failed: ${script}`);
     }
-    if (script === "db:seed:m1") {
+    if (script === "db:seed:m0") {
       if (!env.DATABASE_URL?.trim()) throw new Error("DATABASE_URL is required to seed the Catalog.");
       const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
       try {

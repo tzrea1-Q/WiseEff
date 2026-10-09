@@ -509,9 +509,14 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
     });
     if (!stabilized.ok) {
       throw new ApiError("CONFLICT", "Published definition could not be bound for this project.", {
-        reason: stabilized.error.kind,
+        reason: stabilized.error.kind === "cas-mismatch" ? "definition-revision-migration-required" : stabilized.error.kind,
         propertyKey: row.propertyKey,
         logicalNodeId: row.logicalNodeId,
+        ...(stabilized.error.kind === "cas-mismatch" ? {
+          definitionId: definition.definition.id,
+          currentRevisionId: stabilized.error.actualEffectiveRevisionId,
+          requestedRevisionId: definition.definition.selectedRevision.id,
+        } : {}),
       });
     }
     const payload = rawTextToPayload(row.propertyKey, row.rawText);

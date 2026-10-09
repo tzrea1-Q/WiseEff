@@ -396,7 +396,7 @@ const isMixedSchema = (schema: Record<string, ContractJsonValue>): boolean =>
 const canFoldCells = (schema: Record<string, ContractJsonValue>): boolean =>
   schema.type === "array" || isMixedSchema(schema);
 
-const foldConstraints = (
+export const foldVendorConstraints = (
   schema: Record<string, ContractJsonValue>,
   constraints: unknown,
   propertyPath: string,
@@ -424,6 +424,9 @@ const foldConstraints = (
   }
 
   let next: Record<string, ContractJsonValue> = { ...schema };
+  if (constraints.description !== undefined && (typeof constraints.description !== "string" || constraints.description.trim().length === 0)) {
+    return { ok: false, detail: "invalid-documentation", path: `${propertyPath}.constraints.description` };
+  }
   if (constraints.cells !== undefined) {
     if (!canFoldCells(schema)) {
       return {
@@ -947,7 +950,7 @@ export async function importVendorCatalog(
         );
         continue;
       }
-      const withConstraints = foldConstraints(mappedSchema.value, property.constraints, propertyPath);
+      const withConstraints = foldVendorConstraints(mappedSchema.value, property.constraints, propertyPath);
       if (!withConstraints.ok) {
         dispositions.push(
           disposition(withConstraints.path, "unsupported", withConstraints.detail, ["constraints"]),

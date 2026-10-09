@@ -17,6 +17,7 @@ import { createWiseEffServer } from "../../app";
 import { seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../scripts/seed-m1-parameters";
 import { loadCommittedDtsSeedFiles } from "../../../scripts/compile-dts-seed";
 import { seedPublishedCatalog } from "../../testing/parameterCatalog/seedPublishedCatalog";
+import { VENDOR_CONSTRAINED_RELEASE_ID } from "../../../scripts/compile-vendor-catalog-release";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { createRouter } from "../../shared/http/router";
@@ -80,7 +81,7 @@ describe("disposable acceptance post-cutover DTS upload", () => {
   it("publishes the Catalog and resolves the isolated helper's Binding identity", async () => {
     const pool = getRootPostgresPool(db)!;
     const pin = await captureCurrentCatalogPin(pool);
-    expect(pin?.id).toBe("crel_vendor_catalog_1");
+    expect(pin?.id).toBe(VENDOR_CONSTRAINED_RELEASE_ID);
     expect(await seedPublishedCatalog(pool)).toMatchObject(pin!);
     const binding = await seedIsolatedBinding(request, {
       propertyKey: "iin_max", dts: numericCellDts("iin_max", 80), timeoutMs: 5_000
@@ -232,7 +233,7 @@ describe("seeded post-cutover DTS upload with a published Catalog", () => {
   it("keeps the compiled seed release idempotent and exposes Catalog subjects", async () => {
     const pool = getRootPostgresPool(db)!;
     const before = await captureCurrentCatalogPin(pool);
-    expect(before?.id).toBe("crel_vendor_catalog_1");
+    expect(before?.id).toBe(VENDOR_CONSTRAINED_RELEASE_ID);
     expect(await seedPublishedCatalog(pool)).toMatchObject(before!);
     expect(await captureCurrentCatalogPin(pool)).toEqual(before);
     const { server, errors } = makeServer();
@@ -258,7 +259,7 @@ describe("seeded post-cutover DTS upload with a published Catalog", () => {
     const observed = discovery.items.find((item) => item.source.status === "current"
       && item.source.fileVersionId === second.version.id);
     expect(observed).toMatchObject({
-      observedCatalogReleaseId: "crel_vendor_catalog_1",
+      observedCatalogReleaseId: VENDOR_CONSTRAINED_RELEASE_ID,
       compatibles: [{ compatible: "wiseeff,td079-cell", candidate: {
         kind: "review-required", reason: "unknown", reviewItemIds: [expect.any(String)]
       } }]
@@ -273,7 +274,7 @@ describe("seeded post-cutover DTS upload with a published Catalog", () => {
     const observations = discovery.items.filter((item) => item.source.status === "current"
       && item.source.fileVersionId === uploaded.version.id);
     expect(observations.length).toBeGreaterThan(0);
-    expect(observations.every((item) => item.observedCatalogReleaseId === "crel_vendor_catalog_1")).toBe(true);
+    expect(observations.every((item) => item.observedCatalogReleaseId === VENDOR_CONSTRAINED_RELEASE_ID)).toBe(true);
     expect(observations.some((item) => item.compatibles.some((entry) => entry.candidate.kind === "recognized"))).toBe(true);
   });
 });

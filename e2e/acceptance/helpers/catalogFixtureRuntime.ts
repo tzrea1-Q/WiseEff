@@ -13,7 +13,7 @@ import {
 
 /**
  * The shared lane already carries the seeded Catalog (`crel_acme_1` plus
- * `crel_vendor_catalog_1`), and the installer refuses a second bootstrap there.
+ * `crel_vendor_catalog_2`), and the installer refuses a second bootstrap there.
  * Catalog specs that assert the A-to-F fixture chain therefore run in one
  * fixture-owned disposable runtime per Playwright worker: a fresh database with
  * no seeded Catalog, and a dedicated API and frontend. Playwright's static

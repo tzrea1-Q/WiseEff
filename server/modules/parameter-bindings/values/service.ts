@@ -12,6 +12,12 @@ import {
   SubjectRegistrationId,
 } from "../../parameter-catalog-contract/index";
 import type { Binding } from "../binding";
+import type { DefinitionRevisionSnapshot } from "../../catalog-kernel/interface";
+import { exampleMatchesSchema } from "../../catalog-publication/builder/capabilities";
+import type { SupportedValueSchema } from "../../catalog-publication/builder/types";
+import { renderDtsValue } from "../../dts/valueAst";
+import { dtsValueSchema } from "../../parameter-topology/schemas";
+import type { DtsValue } from "../../dts/types";
 
 import {
   IDENTITY_PLACEHOLDER_SOURCE,
@@ -313,6 +319,48 @@ const agreeStoredBinding = (
   return { ok: true, value: row };
 };
 
+const hasArrayConstraints = (schema: SupportedValueSchema): boolean =>
+  "type" in schema && schema.type === "array" && (schema.minItems !== undefined || schema.maxItems !== undefined
+    || (schema.items !== undefined && (hasArrayConstraints(schema.items)
+      || ("type" in schema.items && (schema.items.type === "integer" || schema.items.type === "number")
+        && (schema.items.minimum !== undefined || schema.items.maximum !== undefined)))));
+
+export const assertCanonicalValueConstraints = (
+  revision: DefinitionRevisionSnapshot,
+  payload: ProjectValuePayload,
+): void => {
+  const schema = revision.content.valueShape.schema as SupportedValueSchema;
+  if (!hasArrayConstraints(schema)) return;
+  let value: unknown = payload.value;
+  const cellGroups = "type" in schema && schema.type === "array" && schema.items && "type" in schema.items
+    && schema.items.type === "array" && (schema.items.minItems !== undefined || schema.items.maxItems !== undefined);
+  if (revision.content.matching.selectorKind !== "configuration-schema-id") {
+    if (payload.kind === "json") {
+      const parsed = dtsValueSchema.safeParse(value);
+      if (parsed.success) {
+        const dts = parsed.data as DtsValue;
+        if (dts.kind === "cells") {
+          const groups = dts.groups.map((group) => group.map((cell) => cell.kind === "integer" ? Number(cell.value) : `&${cell.label}`));
+          value = "type" in schema && schema.type === "array" && schema.items && "type" in schema.items && schema.items.type === "array"
+            ? groups : groups.flat();
+        } else if (dts.kind === "bytes") {
+          value = renderDtsValue(dts);
+        }
+      }
+    } else if ("type" in schema && schema.type === "array" && (!cellGroups || payload.kind === "number" || payload.kind === "number-array")) {
+      value = Array.isArray(value) ? value : [value];
+      if (schema.items && "type" in schema.items && schema.items.type === "array") value = [value];
+    }
+  }
+  if (!exampleMatchesSchema(schema, value)) {
+    throw new ApiError("VALIDATION_FAILED", "Value does not satisfy its Catalog Definition revision.", {
+      reason: "definition-value-constraint",
+      definitionId: revision.definitionId,
+      definitionRevisionId: revision.id,
+    });
+  }
+};
+
 const agreeRevision = (
   command: AppendProjectValueCommand,
   stored: BindingTipRow,
@@ -516,6 +564,12 @@ const writeAppend = async (
       expectedTip: command.expectedTip,
       actualTip: ProjectValueId(stored.current_value_id),
     });
+  }
+
+  if (command.sourceCommit && !command.sourceCommit.derived && command.valueState !== "deleted") {
+    const revision = command.snapshot.getDefinitionRevision({ definitionId: command.binding.definitionId, revisionId: command.definitionRevisionId });
+    if (revision.status !== "found") return fail({ kind: "agreement-conflict", reason: "revision-unavailable" });
+    assertCanonicalValueConstraints(revision.revision, command.payload);
   }
 
   const inserted = await insertProjectValue(client, {
