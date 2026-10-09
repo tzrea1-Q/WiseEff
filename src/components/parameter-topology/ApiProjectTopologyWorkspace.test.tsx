@@ -723,6 +723,60 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
   });
 
+  it.each(["enablement", "binding"])("discards a delayed structural snapshot after a local %s mutation rebases its drafts", async (mutation) => {
+    const persisted = {
+      id: "node-before-mutation", projectId: "aurora", editSubjectKind: "node-enablement" as const,
+      logicalNodeId: "logical-mt5788", candidateConfigRevisionId: "rev-before-mutation",
+      targetValue: '"disabled"', reason: "Old structural snapshot", updatedAt: "2026-10-09T08:00:00.000Z"
+    };
+    const delayed = createDeferred<Array<typeof persisted>>();
+    const repository = createRepository({
+      listNodeEnablementDrafts: vi.fn().mockReturnValueOnce(delayed.promise).mockResolvedValue([
+        { ...persisted, candidateConfigRevisionId: "rev-after-mutation", reason: "Rebased structural draft" }
+      ]),
+      createNodeEnablementDraft: vi.fn().mockResolvedValue({
+        draftId: "node-local", logicalNodeId: "logical-sc8562", candidateRevisionId: "rev-after-mutation",
+        workingCandidateRevisionId: "rev-after-mutation", rebasedDraftIds: [persisted.id],
+        rawText: '"disabled"', previousRaw: '"okay"', action: "set", target: "force-disabled",
+        writeTarget: { role: "overlay", propertyKey: "status", targetRef: "sc8562" },
+        overlayFileId: "overlay", overlayFileName: "overlay.dts"
+      }),
+      createBindingDraft: vi.fn().mockResolvedValue({
+        draftId: "binding-local", projectParameterBindingId: "binding-sc8562-gpio-int",
+        parameterSpecId: "spec-sc8562-gpio-int", candidateRevisionId: "rev-after-mutation",
+        workingCandidateRevisionId: "rev-after-mutation", rebasedDraftIds: [persisted.id],
+        rawText: "<&gpio13 30 0>", action: "set",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "overlay", overlayFileName: "overlay.dts"
+      })
+    });
+    render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit topologyRepository={repository}
+      listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+      listDrafts={vi.fn().mockResolvedValue([])}
+    />);
+    fireEvent.click(await screen.findByRole("treeitem", { name: /未分类 · sc8562/ }));
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    if (mutation === "binding") {
+      await createGpioDraftFromWorkbench(workspace, fireEvent, { reason: "Local structural edit", rawValue: "<&gpio13 30 0>" });
+    } else {
+      fireEvent.click(await within(workspace).findByRole("button", { name: /节点启用：.*sc8562/ }));
+      const dialog = await screen.findByRole("dialog", { name: "节点启用状态" });
+      fireEvent.click(within(dialog).getByRole("radio", { name: "禁用" }));
+      fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "Local structural edit" } });
+      fireEvent.click(within(dialog).getByRole("checkbox", { name: "我确认要禁用此节点" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "校验并加入本轮" }));
+    }
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
+    expect(within(tray).getByText("Local structural edit")).toBeVisible();
+    await act(async () => { delayed.resolve([persisted]); });
+    expect(await within(tray).findByText("Rebased structural draft")).toBeVisible();
+    expect(within(tray).getByText("Local structural edit")).toBeVisible();
+    expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
+    expect(within(tray).queryByText("Old structural snapshot")).not.toBeInTheDocument();
+    expect(within(tray).queryByText(/本轮草稿不在同一工作版本/)).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("data-revision-id", "rev-after-mutation");
+  });
+
   it.each(["value", "enablement"])("keeps the other owner's persisted tray when the %s draft read fails", async (failedOwner) => {
     const enablement = {
       id: "node-draft", projectId: "aurora", editSubjectKind: "node-enablement" as const,

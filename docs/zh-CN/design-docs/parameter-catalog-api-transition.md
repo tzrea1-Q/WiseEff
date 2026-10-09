@@ -146,7 +146,7 @@ Knowledge Definition 引用对没有参数后台访问权限的读者使用 `/pa
 
 ### 发布就绪
 
-节点启用草稿属于结构性工作，不是 Definition、Binding 或 Project value。工作台通过保留的、按当前用户隔离的 `GET /api/v1/parameter-drafts/mine?projectId=...` 独立读取这类草稿，仅将属于已加载配置集逻辑节点的 `node-enablement` 项与规范值草稿合并显示在提交托盘。任一读取失败或迟迟未完成，都不会阻塞另一所有者的草稿。稍后返回的结果只补充缺失草稿，不覆盖本地编辑，也不切换到其他配置集的候选修订。
+节点启用草稿属于结构性工作，不是 Definition、Binding 或 Project value。工作台通过保留的、按当前用户隔离的 `GET /api/v1/parameter-drafts/mine?projectId=...` 独立读取这类草稿，仅将属于已加载配置集逻辑节点的 `node-enablement` 项与规范值草稿合并显示在提交托盘。任一读取失败或迟迟未完成，都不会阻塞另一所有者的草稿。稍后返回的结果只补充缺失草稿，不覆盖本地编辑，也不切换到其他配置集的候选修订。成功推进结构性工作版本的 mutation 会使尚未返回的读取失效，并重新加载持久化草稿，避免 rebase 前的快照恢复旧候选修订。
 
 规范当前 Binding 读取不会把尚未物化的 draft 配置修订当作 source pin。当 `revisionId` 指向这类候选修订时，返回该候选所属已授权项目和配置集的当前规范 Binding。已经物化的修订仍按确切 source pin 筛选；未知或其他租户、项目的修订不会回退到别的项目或配置集的 Binding。读取候选修订不会物化候选，也不会推进任何不可变 pin。
 

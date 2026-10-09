@@ -778,6 +778,7 @@ export function ApiProjectTopologyWorkspace({
       );
       setSubmitSuccessNotice(null);
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
+      if (!canonicalDraft) setDraftsReloadToken((token) => token + 1);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
           valid: false,
@@ -938,6 +939,7 @@ export function ApiProjectTopologyWorkspace({
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setReloadToken((token) => token + 1);
+      setDraftsReloadToken((token) => token + 1);
       setEnablementDialogTarget(null);
     } catch (error) {
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
