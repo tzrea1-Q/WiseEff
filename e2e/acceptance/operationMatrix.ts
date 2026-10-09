@@ -277,9 +277,9 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     priority: "P1",
     area: "knowledge",
     route: "/knowledge",
-    roles: ["Hardware User", "Admin"],
+    roles: ["Hardware User", "Software User", "Admin"],
     action:
-      "Search paged Catalog Definitions and manage exact Definition references with audited idempotent add/remove; exclude draft and archived entries from related knowledge, navigate both directions by exact identity, and retain the chip after a legal same-Definition deprecated revision. Preserve distinct Spec history and its authorized removal; refuse new Spec references. Use a non-superuser API LOGIN for Hardware User edits and Admin parameter-page reads; the lifecycle producer is a dedicated pre-regime test installation, not online activation or a deployed deprecated-authoring API.",
+      "Search paged Catalog Definitions and manage exact Definition references with audited idempotent add/remove; exclude draft and archived entries from related knowledge, navigate both directions by exact identity, and retain the chip after a legal same-Definition deprecated revision. Preserve distinct Spec history and its authorized removal; refuse new Spec references. Use a non-superuser API LOGIN for Hardware User edits, Software User read-only Definition navigation at 1440x900, and Admin parameter-page reads; the lifecycle producer is a dedicated pre-regime test installation, not online activation or a deployed deprecated-authoring API.",
     coverage: "automated",
     acceptanceIds: ["KB-XREF-001"],
     specFiles: ["e2e/acceptance/knowledge-canonical-definition.acceptance.spec.ts"],

@@ -58,7 +58,8 @@ import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/KnowledgeEntryEditorDialog";
-import { buildCatalogHref, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
+import { buildCatalogHref, CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
+import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
 
 
 export type ParameterPageActions = {
@@ -273,6 +274,14 @@ export function PageRouter({
 
   switch (page.key) {
     case "parameters":
+      if (page.path === CATALOG_READ_PAGE_PATH && runtime?.parameterCatalogRepository) {
+        return <CatalogPage
+          repository={runtime.parameterCatalogRepository}
+          actor="user"
+          search={search}
+          onAnchorChange={(href) => onNavigate(href.replace(CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH))}
+        />;
+      }
       return (
         <UserParametersPage
           state={state}
@@ -401,7 +410,10 @@ export function PageRouter({
           askXiaozeEnabled={runtimeMode === "api"}
           initialEntryId={new URLSearchParams(search).get("entryId")}
           searchParameterDefinitions={searchParameterDefinitions}
-          onOpenDefinition={(definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId }))}
+          onOpenDefinition={canViewParameterDefinitions && runtime?.parameterCatalogRepository
+            ? (definitionId) => onNavigate(buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, definitionId })
+              .replace(CATALOG_PAGE_PATH, canAccessPage(currentRoleId, "parameter-admin") ? CATALOG_PAGE_PATH : CATALOG_READ_PAGE_PATH))
+            : undefined}
           onNavigate={onNavigate}
         />
       ) : null;
