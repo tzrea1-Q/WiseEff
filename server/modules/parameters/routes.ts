@@ -259,7 +259,8 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
-    const items = await listProjects(db, { organizationId: auth.organization.id });
+    const items = (await listProjects(db, { organizationId: auth.organization.id }))
+      .filter((project) => auth.roles.some((role) => role.projectId === null || role.projectId === project.id));
 
     return { status: 200, body: { items } };
   });

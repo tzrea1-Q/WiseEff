@@ -61,7 +61,7 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
           writeNode: async () => { throw new Error("Controlled device writes must use the bridge RPC."); }
         } }),
         deviceBridge: { connectionPool: bridge.connectionPool, rpcClient: bridge.rpcClient, artifactRoot: storageRoot } });
-      await new Promise<void>((resolve) => api!.listen(0, "127.0.0.1", resolve));
+      await new Promise<void>((resolve) => api!.listen(Number(process.env.WISEEFF_ACCEPTANCE_NESTED_API_PORT ?? 0), "127.0.0.1", resolve));
       const apiUrl = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
       // Local health is also a controlled-device endpoint. It deliberately
       // reports disconnected, leaving deployment to the explicit HTTP step.
@@ -83,14 +83,14 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       const { token } = await json("POST", "/api/v1/auth/login", { username: fixture.editorUsername, password: fixture.password });
       const { token: reviewerToken } = await json("POST", "/api/v1/auth/login", { username: fixture.reviewerUsername, password: fixture.password });
       vite = await createViteServer({ cacheDir: join(storageRoot, "vite-cache"),
-        server: { host: "127.0.0.1", port: 5195, strictPort: false, hmr: false, watch: null,
+        server: { host: "127.0.0.1", port: Number(process.env.WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT ?? 5195), strictPort: Boolean(process.env.WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT), hmr: false, watch: null,
           proxy: { "/api": { target: apiUrl, changeOrigin: true }, "/downloads": { target: apiUrl, changeOrigin: true },
             "/local-bridge": { target: localBridgeUrl, changeOrigin: true, rewrite: (path) => path.replace(/^\/local-bridge/, "") } } },
         define: { "import.meta.env.VITE_WISEEFF_RUNTIME_MODE": JSON.stringify("api"),
           "import.meta.env.VITE_WISEEFF_API_BASE_URL": JSON.stringify(apiUrl) } });
       await vite.listen();
       const port = (vite.httpServer!.address() as AddressInfo).port;
-      if (port > 5199) throw new Error("No independent frontend port in the allowed range.");
+      if (!process.env.WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT && port > 5199) throw new Error("No independent frontend port in the allowed range.");
       const frontendUrl = `http://127.0.0.1:${port}`;
       await page.goto(`${frontendUrl}/favicon.svg`);
       await page.evaluate((value) => localStorage.setItem("wiseeff.localAuthToken", value), token);

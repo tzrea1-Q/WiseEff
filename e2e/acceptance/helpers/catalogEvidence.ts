@@ -49,15 +49,18 @@ const LEGACY_SOURCE_SYSTEM = "wiseeff-v1";
 const CUTOVER_RUN_ID = "cutover-op08-810";
 const MAPPED_LEGACY_ID = "spec-op08-mapped-iin-max";
 const GONE_LEGACY_ID = "spec-op08-gone-archived";
+const GONE_BINDING_LEGACY_ID = "binding-op08-gone-archived";
 const CONFLICT_LEGACY_ID = "spec-op08-conflict-twin";
 const UNKNOWN_LEGACY_ID = "spec-op08-unknown-missing";
 const SCOPE_HIDDEN_LEGACY_ID = "spec-op08-scope-hidden";
 const MAPPED_IDENTITY_ID = "lid-op08-mapped";
 const GONE_IDENTITY_ID = "lid-op08-gone";
+const GONE_BINDING_IDENTITY_ID = "lid-op08-gone-binding";
 const CONFLICT_PLATFORM_IDENTITY_ID = "lid-op08-conflict-platform";
 const CONFLICT_ORG_IDENTITY_ID = "lid-op08-conflict-org";
 const SCOPE_HIDDEN_IDENTITY_ID = "lid-op08-scope-hidden";
 const GONE_ARCHIVE_ID = "archive-op08-gone";
+const GONE_BINDING_ARCHIVE_ID = "archive-op08-gone-binding";
 const GONE_MIGRATION_EVIDENCE_ID = "migration-evidence-op08-gone";
 const ARCHIVED_LINK_PROJECT_ID = "project-op08-archived-link";
 const ARCHIVED_LINK_ORG_B_PROJECT_ID = "project-op08-archived-link-org-b";
@@ -83,6 +86,7 @@ export type CatalogAcceptanceFixture = {
   legacy: {
     mapped: string;
     gone: string;
+    goneBinding: string;
     goneEvidenceId: string;
     conflict: string;
     unknown: string;
@@ -174,6 +178,7 @@ async function installCatalogAcceptanceFixture(connectionString: string): Promis
     legacy: {
       mapped: MAPPED_LEGACY_ID,
       gone: GONE_LEGACY_ID,
+      goneBinding: GONE_BINDING_LEGACY_ID,
       goneEvidenceId: GONE_MIGRATION_EVIDENCE_ID,
       conflict: CONFLICT_LEGACY_ID,
       unknown: UNKNOWN_LEGACY_ID,
@@ -373,13 +378,13 @@ function classificationFor(assignments: ClassificationResult["assignments"]): Cl
       duplicatePrimaryCount: 0,
       classCounts: {
         R0: 0,
-        R1: 1,
+        R1: assignments.filter((row) => row.rClass === "R1").length,
         R2: 0,
         R3: 0,
-        R4: Math.max(0, assignments.length - 1),
+        R4: assignments.filter((row) => row.rClass === "R4").length,
         R5: 0,
         R6: 0,
-        R7: 0,
+        R7: assignments.filter((row) => row.rClass === "R7").length,
         R8: 0,
         R9: 0,
         R10: 0
@@ -418,6 +423,7 @@ async function seedLegacyBookmarks(pool: pg.Pool, catalogReleaseId: string): Pro
     const identities = [
       [MAPPED_IDENTITY_ID, "parameter-spec", "platform", "platform", MAPPED_LEGACY_ID],
       [GONE_IDENTITY_ID, "parameter-spec", "platform", "platform", GONE_LEGACY_ID],
+      [GONE_BINDING_IDENTITY_ID, "project-parameter-binding", "organization", ACCEPTANCE_ORGANIZATION.id, GONE_BINDING_LEGACY_ID],
       [CONFLICT_PLATFORM_IDENTITY_ID, "parameter-spec", "platform", "platform", CONFLICT_LEGACY_ID],
       [CONFLICT_ORG_IDENTITY_ID, "parameter-spec", "organization", ACCEPTANCE_ORGANIZATION.id, CONFLICT_LEGACY_ID],
       [SCOPE_HIDDEN_IDENTITY_ID, "parameter-spec", "organization", CATALOG_ORG_B.id, SCOPE_HIDDEN_LEGACY_ID]
@@ -440,9 +446,14 @@ async function seedLegacyBookmarks(pool: pg.Pool, catalogReleaseId: string): Pro
          $1, $2, 'platform', 'platform', 'R1', 'op08 gone bookmark',
          $3, $4, 'object://op08/gone', '[]',
          $5, $6, 'audit-op08-gone', '2027-09-05T00:00:00Z'
+       ), (
+         $7, $8, 'organization', $9, 'R7', 'op08 gone binding bookmark',
+         $3, $4, 'object://op08/gone-binding', '[]',
+         $5, $6, 'audit-op08-gone-binding', '2027-09-05T00:00:00Z'
        )
        on conflict (id) do nothing`,
-      [GONE_ARCHIVE_ID, GONE_IDENTITY_ID, SOURCE_CHECKSUM, GRAPH_FINGERPRINT, CUTOVER_RUN_ID, catalogReleaseId]
+      [GONE_ARCHIVE_ID, GONE_IDENTITY_ID, SOURCE_CHECKSUM, GRAPH_FINGERPRINT, CUTOVER_RUN_ID, catalogReleaseId,
+        GONE_BINDING_ARCHIVE_ID, GONE_BINDING_IDENTITY_ID, ACCEPTANCE_ORGANIZATION.id]
     );
     await client.query(
       `insert into projects (id, organization_id, name, code, status)
@@ -502,6 +513,18 @@ async function seedLegacyBookmarks(pool: pg.Pool, catalogReleaseId: string): Pro
       ruleId: "PCAT-CLASS-R1-DISPOSABLE-SCAFFOLD",
       disposition: "archived",
       mappingClass: "legacy-semantic-store",
+      propertyKey: null
+    },
+    {
+      identityId: GONE_BINDING_IDENTITY_ID,
+      sourceKind: "project-parameter-binding",
+      sourceId: GONE_BINDING_LEGACY_ID,
+      ownerScopeKind: "organization",
+      ownerScopeId: ACCEPTANCE_ORGANIZATION.id,
+      rClass: "R7",
+      ruleId: "PCAT-CLASS-R7-LEGACY-ACTIVE-NON-DTS",
+      disposition: "archived",
+      mappingClass: "binding-value",
       propertyKey: null
     },
     {
@@ -567,6 +590,18 @@ async function seedLegacyBookmarks(pool: pg.Pool, catalogReleaseId: string): Pro
     });
     if (!gone.ok && gone.error.code !== "PCAT-MAP-CONFLICT") {
       throw new Error(`gone bookmark failed: ${gone.error.code} ${gone.error.detail}`);
+    }
+    const goneBinding = await appendMappingVersion({
+      client: mappingClient,
+      cutoverRunId: CUTOVER_RUN_ID,
+      classification,
+      identityId: GONE_BINDING_IDENTITY_ID,
+      sourceChecksum: SOURCE_CHECKSUM,
+      expectedHead: null,
+      outcome: { kind: "archived", archiveId: GONE_BINDING_ARCHIVE_ID }
+    });
+    if (!goneBinding.ok) {
+      throw new Error(`gone binding bookmark failed: ${goneBinding.error.code} ${goneBinding.error.detail}`);
     }
     const conflictPlatform = await appendMappingVersion({
       client: mappingClient,

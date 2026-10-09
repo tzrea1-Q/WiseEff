@@ -147,7 +147,7 @@ Legacy 运行时调试参数 DTO 包含可选值元数据：
 
 `GET /api/v1/parameters` 支持 `moduleId` 与可选 `includeDescendants`（默认包含子树）。参数 DTO 提供 `moduleId` 与 `modulePath`。
 
-保留的 v1 列表仅投影当前账号有权读取的当前 canonical Binding（`pbind_` 身份），不再镜像旧参数规格或值。应用外壳直接读取 `GET /api/v2/projects/:projectId/parameter-bindings`；可选的历史标识读取失败不得阻塞外壳加载。旧 `?parameter=` 链接只能经精确类型映射进入可读 Binding 的所属项目；不可读或仅指向历史证据的目标明确展示为历史引用。
+保留的 v1 列表仅投影当前账号有权读取的当前 canonical Binding（`pbind_` 身份），不再镜像旧参数规格或值。外壳项目发现（`GET /api/v1/projects`）采用受保护 Binding 读取器的项目范围：组织级角色可见该组织全部项目，项目级角色仅可见其授权项目。应用外壳直接读取 `GET /api/v2/projects/:projectId/parameter-bindings`；可选的历史标识读取失败不得阻塞外壳加载。旧 `?parameter=` 链接只能经精确类型映射进入可读 Binding 的所属项目；不可读或仅指向历史证据的目标明确展示为历史引用。
 
 调试管理 catalog 表补充：
 

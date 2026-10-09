@@ -43,6 +43,8 @@ useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES
  */
 let fixture: CatalogAcceptanceFixture;
 
+test.use({ catalogRuntimeDatabaseUrl: process.env.DATABASE_URL ?? process.env.TEST_DATABASE_URL });
+
 test.describe("canonical parameter catalog negative and responsive contract", () => {
   test.beforeAll(async ({ catalogAcceptanceRuntime }) => {
     fixture = catalogAcceptanceRuntime.fixture;
@@ -141,15 +143,15 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await signInCatalogActor(
       page,
       "org-admin",
-      `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
+      `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.goneBinding)}`
     );
     await dismissXiaozeHint(page);
     const archivedNotice = page.locator(".parameter-archived-link-banner");
     await expect(archivedNotice).toBeVisible({ timeout: 30_000 });
     await expect(archivedNotice).toContainText("该参数旧链接已归档");
-    await expect(archivedNotice).toContainText(fixture.legacy.gone);
-    await expect(archivedNotice).toContainText("legacy-parameter-id-retired");
-    await expect(archivedNotice).toContainText(fixture.legacy.goneEvidenceId);
+    await expect(archivedNotice).toContainText(fixture.legacy.goneBinding);
+    await expect(archivedNotice).toContainText("legacy-id-archived");
+    await expect(archivedNotice).not.toContainText(/迁移证据|migration-evidence/);
     await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
     await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
     await assertNoPageOverflow(page);
@@ -160,7 +162,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     const scopeHidden = await catalogJson(
       page.request,
       "GET",
-      `/api/v1/parameters/${fixture.legacy.gone}`,
+      `/api/v2/catalog/legacy-identifiers/project-parameter-binding/${fixture.legacy.goneBinding}`,
       { actor: "org-b-admin" }
     );
     expect(scopeHidden.status).toBe(404);
@@ -176,13 +178,13 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     const scopeHiddenResponse = page.waitForResponse(
       (response) =>
         response.request().method() === "GET" &&
-        new URL(response.url()).pathname === `/api/v1/parameters/${fixture.legacy.gone}` &&
+        new URL(response.url()).pathname === `/api/v2/catalog/legacy-identifiers/project-parameter-binding/${fixture.legacy.goneBinding}` &&
         response.request().headers().authorization === orgBAuthorization
     );
     await signInCatalogActor(
       page,
       "org-b-admin",
-      `/parameters?project=${encodeURIComponent(fixture.archivedLinkOrgBProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
+      `/parameters?project=${encodeURIComponent(fixture.archivedLinkOrgBProjectId)}&parameter=${encodeURIComponent(fixture.legacy.goneBinding)}`
     );
     expect((await scopeHiddenResponse).status()).toBe(404);
     await expect(page.locator(".parameter-archived-link-banner")).toHaveCount(0);

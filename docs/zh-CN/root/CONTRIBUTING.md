@@ -33,7 +33,7 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 ### 测试数据库隔离
 
-设置 `WISEEFF_TEST_DATABASE_PREFIX` 后，一次性切换后浏览器测试使用 `<prefix>_disposable_…`；未设置时保留 `wiseeff_acceptance_disposable_…`。手动运行可用 `WISEEFF_ACCEPTANCE_NESTED_API_PORT` 和 `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` 固定嵌套监听端口（1–65535 范围内的不同整数）。复用手动运行的端口时，设置 `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true`，使用 `--no-deps` 仅运行嵌套测试，不要同时在这些端口启动父运行时。CI 不设置端口覆盖，继续使用自动分配的隔离端口。
+设置 `WISEEFF_TEST_DATABASE_PREFIX` 后，一次性切换后浏览器测试使用 `<prefix>_disposable_…`；未设置时保留 `wiseeff_acceptance_disposable_…`。手动运行可用 `WISEEFF_ACCEPTANCE_NESTED_API_PORT` 和 `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` 固定嵌套 API/前端监听端口（1–65535 范围内的不同整数），canonical DTS reload 测试也遵循这两个覆盖变量。复用手动运行的端口时，设置 `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true`，使用 `--no-deps` 仅运行嵌套测试，不要同时在这些端口启动父运行时。受控设备的回环 socket 仍由测试独占并使用临时端口。CI 不设置端口覆盖，继续使用自动分配的隔离端口。
 
 PostgreSQL 测试工具（`server/testing/testDatabase.ts`）依次使用非空的 `TEST_DATABASE_URL`、`DATABASE_URL`，最后回退到本地 Compose 默认连接。同一集群上的并行工作树应在启动各自测试进程前设置不同的 `WISEEFF_TEST_DATABASE_PREFIX`。前缀会去除首尾空白；未设置或为空时默认 `wiseeff`。有效格式为 `^[a-z][a-z0-9_]{0,15}$`：1–16 个字符，以小写 ASCII 字母开头，后续仅允许小写 ASCII 字母、数字或下划线。无效前缀会在数据库准备前报错。
 
