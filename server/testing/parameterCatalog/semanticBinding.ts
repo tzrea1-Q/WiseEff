@@ -27,7 +27,7 @@ export async function seedSemanticBindingCatalog(pool: pg.Pool): Promise<void> {
     predecessor: { id: vendor.compiled.release.id, digest: vendor.compiled.release.digest }
   };
   for (const fixture of [
-    { key: "td079", compatible: "wiseeff,td079-cell", properties: ["iin_max", "iin_min", "vin_min"] },
+    { key: "td079", compatible: "wiseeff,td079-cell", properties: ["iin_max", "iin_min", "vin_min", "charge_voltage_limit_mv"] },
     { key: "chip123", compatible: "vendor,chip123", properties: ["vendor-id"] }
   ]) {
     const subject = structuredClone(subjectTemplate);

@@ -39,6 +39,7 @@ export const parameterModuleMappingDtoSchema = z.object({
 });
 
 export const parameterModuleRegistryDtoSchema = z.object({
+  navigationOnly: z.literal(true).optional(),
   modules: z.array(parameterModuleDtoSchema),
   mappings: z.array(parameterModuleMappingDtoSchema)
 });

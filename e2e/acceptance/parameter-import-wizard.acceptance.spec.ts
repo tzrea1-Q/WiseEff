@@ -18,7 +18,8 @@ import {
   assertPostCutoverIdentity,
   disposablePageUrl,
   integerCellTarget,
-  seedIsolatedNumericCellBinding,
+  numericCellDts,
+  seedIsolatedBinding,
   startSwappedDisposablePostCutoverRuntime,
   type RestoreDisposablePostCutoverRuntime,
 } from "./helpers/semanticBindingFixture";
@@ -78,9 +79,10 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await assertPostCutoverIdentity();
     expect(disposableRuntime.markerPurpose).toBe("import-wizard");
 
-    const binding = await seedIsolatedNumericCellBinding(request, {
+    const binding = await seedIsolatedBinding(request, {
       propertyKey: importPropertyKey,
-      cellValue: 2300,
+      dts: numericCellDts(importPropertyKey, 2300),
+      configSetName: "default",
       reason: "PARAM-ADMIN-002 disposable import wizard binding"
     });
     const bindingsRoute = `/api/v2/projects/${projectId}/parameter-bindings`;
@@ -90,24 +92,26 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     const beforeBinding = beforeBindings.find((item: { id: string }) => item.id === binding.bindingId);
     expect(beforeBinding).toBeTruthy();
     const beforeImport = await captureConfigurationSourceState(sourceDatabase!, { organizationId, projectId });
-    const listed = await request.get(apiRoute(`/api/v1/parameters?projectId=${projectId}&limit=500`), {
+    const listed = await request.get(apiRoute(bindingsRoute), {
       headers: authHeadersForRole("admin")
     });
     expect(listed.ok(), await listed.text()).toBe(true);
     const listedBody = (await listed.json()) as {
-      items: Array<{ id: string; name: string; module: string; currentValue: string }>;
+      items: Array<{ id: string; propertyKey: string; rawValue: string; driverModule: string | null }>;
     };
     const seeded = listedBody.items.find((item) => item.id === binding.bindingId);
     expect(seeded, `missing hydrated binding ${binding.bindingId}`).toBeTruthy();
+    expect(seeded!.driverModule).toBeTruthy();
 
     const importedCurrentValue = "<4350>";
     const importedRecommendedValue = "<4310>";
-    expect(seeded!.currentValue).not.toBe(importedCurrentValue);
+    expect(seeded!.rawValue).not.toBe(importedCurrentValue);
 
     const importPayload = JSON.stringify([
       {
-        name: seeded!.name,
-        module: seeded!.module,
+        id: binding.bindingId,
+        name: seeded!.propertyKey,
+        module: seeded!.driverModule,
         risk: "High",
         unit: "mA",
         range: "4200 - 4500",
@@ -144,16 +148,16 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
 
     const rowReview = wizard.getByRole("region", { name: "逐行核对" });
     await expect(rowReview).toBeVisible();
-    await expect(rowReview).toContainText(seeded!.name);
+    await expect(rowReview).toContainText(seeded!.propertyKey);
     await wizard.getByRole("button", { name: "通过" }).click();
     await expect(wizard.getByRole("button", { name: "下一步" })).toBeEnabled();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
     const batchPreview = wizard.getByRole("region", { name: "批次预览" });
     await expect(batchPreview).toBeVisible({ timeout: 30_000 });
-    const previewRow = batchPreview.getByRole("row").filter({ hasText: seeded!.name });
+    const previewRow = batchPreview.getByRole("row").filter({ hasText: seeded!.propertyKey });
     await expect(previewRow).toContainText("更新");
-    await expect(previewRow.getByRole("checkbox", { name: `选择 ${seeded!.name}` })).toBeChecked();
+    await expect(previewRow.getByRole("checkbox", { name: `选择 ${seeded!.propertyKey}` })).toBeChecked();
     await expect(wizard.getByRole("button", { name: "下一步" })).toBeEnabled();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
@@ -271,7 +275,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}; bindingId=${binding.bindingId}`
         }
       ],
-      notes: `Wizard staged the exact typed update for ${seeded!.name} on canonical Binding ${binding.bindingId}; current Project value and immutable history stayed unchanged pending review.`
+      notes: `Wizard staged the exact typed update for ${seeded!.propertyKey} on canonical Binding ${binding.bindingId}; current Project value and immutable history stayed unchanged pending review.`
     });
   });
 

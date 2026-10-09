@@ -1,41 +1,16 @@
-import { z } from "zod";
-
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
+import { catalogLegacyGoneResult, LEGACY_GOVERNANCE_GONE_MESSAGE, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
+import { legacyWriteRouteManifest } from "../parameter-catalog-api/legacy/routes";
 import {
   boundedLegacyHeaders,
   CATALOG_SUNSET_HTTP_DATE,
   LEGACY_MODULE_CONTRACT,
   LEGACY_MODULE_WARNING,
 } from "../parameter-catalog-api/legacy/headers";
-import {
-  createModuleMappingBodySchema,
-  dismissCompatibleBodySchema,
-  dismissedCompatibleParamsSchema,
-  driverRegistryModuleParamsSchema,
-  moduleMappingParamsSchema,
-  registerOrClaimDriverBodySchema,
-  recomputeBindingsBodySchema,
-  updateDriverRegistrationBodySchema,
-  updateDriverRegistrationDefaultBodySchema
-} from "./schemas";
-import {
-  createModuleMapping,
-  deleteModuleMapping,
-  dismissCompatible,
-  getModuleDiscoveryHints,
-  getParameterModuleRegistry,
-  listDriverRegistry,
-  previewModuleMapping,
-  recomputeBindingModules,
-  registerOrClaimDriver,
-  replayDriverPlacementFromRegistration,
-  restoreDismissedCompatible,
-  updateDriverRegistration,
-  updateDriverRegistrationDefaultBusinessCategory
-} from "./service";
+import { getModuleDiscoveryHints, getParameterModuleRegistry, listDriverRegistry } from "./service";
 
 const legacyReadHeaders = boundedLegacyHeaders({
   sunsetHttpDate: CATALOG_SUNSET_HTTP_DATE,
@@ -50,20 +25,6 @@ function requireDb(db: Database | undefined) {
   return db;
 }
 
-function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid parameter module route input.") {
-  const parsed = schema.safeParse(value);
-  if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
-  }
-  return parsed.data;
-}
-
-/**
- * Additive surface for the workbench registry:
- * - GET registry (v1 modules + DTS mappings)
- * - mappings CRUD
- * Module create/update/delete stays on `/api/v1/parameter-modules`.
- */
 export function registerParameterModuleRoutes(
   router: WiseEffRouter,
   options: {
@@ -71,7 +32,15 @@ export function registerParameterModuleRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  for (const route of legacyWriteRouteManifest.filter(route => route.id.startsWith("parameterModules."))) {
+    router[route.method.toLowerCase() as "post" | "patch" | "delete"](route.path, async request =>
+      catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE));
+  }
+
   router.get("/api/v2/parameter-modules", async (request) => {
+    if ([request.query.view, request.query.mode].flat().some(value => ["raw", "governance"].includes(value?.toLowerCase() ?? ""))) {
+      return catalogLegacyGoneResult(request.requestId, LEGACY_GOVERNANCE_GONE_MESSAGE);
+    }
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const result = await getParameterModuleRegistry(db, auth);
@@ -85,114 +54,10 @@ export function registerParameterModuleRoutes(
     return { status: 200, headers: legacyReadHeaders, body: result };
   });
 
-  router.post("/api/v2/parameter-modules/discovery-hints/dismissals", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(dismissCompatibleBodySchema, request.body ?? {});
-    const result = await dismissCompatible(db, auth, body, { requestId: request.requestId });
-    return { status: 200, body: result };
-  });
-
-  router.delete("/api/v2/parameter-modules/discovery-hints/dismissals/:compatible", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(dismissedCompatibleParamsSchema, {
-      compatible: decodeURIComponent(request.params.compatible ?? "")
-    });
-    const result = await restoreDismissedCompatible(db, auth, params, { requestId: request.requestId });
-    return { status: 200, body: result };
-  });
-
-  router.post("/api/v2/parameter-modules/mappings/preview", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(createModuleMappingBodySchema, request.body ?? {});
-    const result = await previewModuleMapping(db, auth, body);
-    return { status: 200, body: result };
-  });
-
-  router.post("/api/v2/parameter-modules/mappings", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(createModuleMappingBodySchema, request.body ?? {});
-    const result = await createModuleMapping(db, auth, body);
-    return { status: 201, body: result };
-  });
-
-  router.delete("/api/v2/parameter-modules/mappings/:mappingId", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(moduleMappingParamsSchema, request.params);
-    const result = await deleteModuleMapping(db, auth, { mappingId: params.mappingId });
-    return { status: 200, body: result };
-  });
-
-  router.post("/api/v2/parameter-modules/recompute-bindings", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(recomputeBindingsBodySchema, request.body ?? {});
-    const result = await recomputeBindingModules(db, auth, {
-      projectId: body.projectId,
-      dryRun: body.dryRun
-    });
-    return { status: 200, body: result };
-  });
-
   router.get("/api/v2/parameter-modules/driver-registry", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const result = await listDriverRegistry(db, auth);
     return { status: 200, headers: legacyReadHeaders, body: result };
   });
-
-  router.post("/api/v2/parameter-modules/driver-registry", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(registerOrClaimDriverBodySchema, request.body ?? {});
-    const result = await registerOrClaimDriver(db, auth, body);
-    return { status: 201, body: result };
-  });
-
-  router.patch("/api/v2/parameter-modules/driver-registry/:moduleId", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(driverRegistryModuleParamsSchema, request.params);
-    const body = parseWithSchema(updateDriverRegistrationBodySchema, request.body ?? {});
-    const result = await updateDriverRegistration(db, auth, {
-      moduleId: params.moduleId,
-      driverNature: body.driverNature,
-      instanceCardinality: body.instanceCardinality,
-    });
-    return { status: 200, body: result };
-  });
-
-  // Dedicated path so it does not collide with nature/cardinality PATCH on
-  // `/driver-registry/:moduleId` (D-AG-01 / PR1).
-  router.patch(
-    "/api/v2/parameter-modules/driver-registry/:moduleId/default-business-category",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(driverRegistryModuleParamsSchema, request.params);
-      const body = parseWithSchema(updateDriverRegistrationDefaultBodySchema, request.body ?? {});
-      const result = await updateDriverRegistrationDefaultBusinessCategory(db, auth, {
-        moduleId: params.moduleId,
-        defaultBusinessCategoryId: body.defaultBusinessCategoryId,
-      });
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/parameter-modules/driver-registry/:moduleId/replay-placement",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      const params = parseWithSchema(driverRegistryModuleParamsSchema, request.params);
-      const result = await replayDriverPlacementFromRegistration(db, auth, {
-        moduleId: params.moduleId,
-      });
-      return { status: 200, body: result };
-    },
-  );
 }

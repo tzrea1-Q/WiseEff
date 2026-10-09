@@ -13,7 +13,7 @@ import {
   insertDriverSchemaOverlayPromotion,
   insertPlatformDriverSchemaOverlay,
   listActiveOrganizationDriverSchemaOverlays,
-  listPromotionsForPlatformSchema,
+  listDriverSchemaPromotions,
   materializePlatformParameterSpecs,
   retirePlatformParameterSpecsForOverlay,
   restoreSupersededContributors,
@@ -190,7 +190,7 @@ export async function listPromotionCandidatesForAuth(
     const verdict = equivalenceVerdict(contributors);
     const platformOverlay = await findActivePlatformDriverSchemaOverlayByCompatible(db, compatible);
     const promotionIds = platformOverlay
-      ? (await listPromotionsForPlatformSchema(db, platformOverlay.id)).map((row) => row.id)
+      ? (await listDriverSchemaPromotions(db, platformOverlay.id)).map((row) => row.id)
       : [];
     items.push({
       compatible,

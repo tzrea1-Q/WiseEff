@@ -210,12 +210,6 @@ export function OrganizationModuleGovernancePanel({
     <ParameterModuleMappingPanel
       canAdmin={!canonicalEnabled || actor === "org-admin"}
       repository={repository}
-      listLibrarySpecs={() =>
-        listModuleOverlayLibrarySpecs({
-          catalog,
-          listSpecs: application.listSpecs
-        })
-      }
       pathname={pathname}
       search={search}
       onNavigate={onNavigate}

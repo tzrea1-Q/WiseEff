@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { preparePostCutoverDatabase } from "../../../e2e/acceptance/helpers/disposablePostCutoverRuntime";
 import { authHeadersForRole } from "../../../e2e/acceptance/helpers/bearerAuth";
 import { apiRoute } from "../../../e2e/acceptance/helpers/runtime";
-import { lookupParameterFileVersion, numericCellDts, seedIsolatedBinding } from "../../../e2e/acceptance/helpers/semanticBindingFixture";
+import { lookupParameterFileVersion, numericCellDts, seedIsolatedBinding, seedIsolatedHexChipBindings } from "../../../e2e/acceptance/helpers/semanticBindingFixture";
 import { createWiseEffServer } from "../../app";
 
 import { seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../scripts/seed-m1-parameters";
@@ -134,6 +134,25 @@ describe("disposable acceptance post-cutover DTS upload", () => {
     } finally {
       await fixtureDb?.close();
       await fixtureLane.drop();
+    }
+  });
+
+  it("materializes consecutive hex fixtures with independent exact source pins", async () => {
+    const first = (await seedIsolatedHexChipBindings(request, { rawHex: "0x6e" })).reg;
+    const second = (await seedIsolatedHexChipBindings(request, { rawHex: "0x6f" })).reg;
+    expect(first.bindingId).not.toBe(second.bindingId);
+    expect(first.configSetId).not.toBe(second.configSetId);
+    expect(first.rawValue).toBe("<0x6e>");
+    expect(second.rawValue).toBe("<0x6f>");
+    for (const [binding, rawValue] of [[first, "<110>"], [second, "<111>"]] as const) {
+      const pinned = await request.get(apiRoute(`/api/v2/projects/aurora/parameter-bindings?revisionId=${binding.revisionId}`), {
+        headers: authHeadersForRole("admin")
+      });
+      expect(pinned.status(), await pinned.text()).toBe(200);
+      expect((await pinned.json()).items).toEqual([expect.objectContaining({
+        id: binding.bindingId, definitionId: "pdef_acceptance_chip123_vendor-id",
+        sourceFileId: binding.fileId, rawValue
+      })]);
     }
   });
 });

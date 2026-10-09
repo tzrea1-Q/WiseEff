@@ -213,7 +213,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     });
     expect(keptCreated.status, keptCreated.bodyText).toBe(201);
     expect(keptCreated.draft).toBeTruthy();
-    expect(JSON.parse(keptCreated.bodyText).item.rawText).toEqual(integerCellTarget("3111"));
+    expect(JSON.parse(keptCreated.bodyText).item.rawText).toBe("<3111>");
 
     // Recreate the kept draft at the edited target so the write lock is captured
     // in one createBindingDraft; a second upsert can coalesce a stale occurrence.
@@ -225,8 +225,8 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     });
     expect(updated.status, updated.bodyText).toBe(201);
     expect(updated.draft).toBeTruthy();
-    expect(JSON.parse(updated.bodyText).item.rawText).toEqual(integerCellTarget("3122"));
-    expect(JSON.parse(updated.bodyText).item.rawText).not.toEqual(integerCellTarget("3111"));
+    expect(JSON.parse(updated.bodyText).item.rawText).toBe("<3122>");
+    expect(JSON.parse(updated.bodyText).item.rawText).not.toBe("<3111>");
 
     const removableCreated = await createBindingDraftViaApi(request, {
       binding: pair.removable,

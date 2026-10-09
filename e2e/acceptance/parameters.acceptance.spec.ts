@@ -300,7 +300,8 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     });
 
     await signInBrowserAsRole(page, "software-committer", disposablePageUrl(disposableRuntime, `/parameter-review?project=${projectId}&request=${requestId}`));
-    await page.getByRole("tab", { name: "历史", exact: true }).click();
+    const reviewPerspective = page.getByLabel("软件配置审核视角");
+    await reviewPerspective.getByRole("tab", { name: "历史", exact: true }).click();
     const requestRow = page.getByRole("row").filter({ hasText: `${rejectReasonPrefix} submitted request` });
     await expect(requestRow).toBeVisible();
     await expect(requestRow).toContainText("DTS");
@@ -312,7 +313,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(reviewDetail).toContainText(rejectionReason);
 
     await page.reload();
-    await page.getByRole("tab", { name: "历史", exact: true }).click();
+    await reviewPerspective.getByRole("tab", { name: "历史", exact: true }).click();
     const reloadedRow = page.getByRole("row").filter({ hasText: `${rejectReasonPrefix} submitted request` });
     await expect(reloadedRow).toBeVisible();
     await expect(reloadedRow.locator("td").last()).toContainText(/./);

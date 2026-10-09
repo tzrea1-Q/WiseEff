@@ -2,6 +2,7 @@ import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type APIRequestContext } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
+import { moveParameterModule } from "../../server/modules/parameters/parameterModuleRepository";
 import { authHeadersForRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
@@ -162,8 +163,12 @@ async function assignBindingToModule(request: APIRequestContext, bindingId: stri
   const response = await request.post(apiRoute(`/api/v1/parameter-modules/${placementModuleId}/move`), {
     headers: adminHeaders(), data: { parentId: moduleId }
   });
-  expect(response.status(), await response.text()).toBe(200);
-  expect((await response.json()).item.parentId).toBe(moduleId);
+  expect(response.status(), await response.text()).toBe(410);
+  expect(await response.json()).toMatchObject({ error: { code: "GONE", details: { reason: "legacy-surface-retired" } } });
+  await withPgClient(async (client) => {
+    const placed = await moveParameterModule(client, { organizationId, moduleId: placementModuleId, parentId: moduleId });
+    expect(placed?.parentId).toBe(moduleId);
+  });
   return placementModuleId;
 }
 
@@ -223,7 +228,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
 
     const listResponse = await page.request.get(
       apiRoute(
-        `/api/v1/parameters?projectId=${encodeURIComponent(projectId)}&moduleId=${encodeURIComponent(parent.item.id)}&includeDescendants=true`
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings`
       ),
       { headers: adminHeaders() }
     );
@@ -233,15 +238,17 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     expect(matched).toBeTruthy();
     expect(matched?.moduleId).toBe(placementModuleId);
 
-    const directOnlyResponse = await page.request.get(
-      apiRoute(
-        `/api/v1/parameters?projectId=${encodeURIComponent(projectId)}&moduleId=${encodeURIComponent(parent.item.id)}&includeDescendants=false`
-      ),
+    const treeResponse = await page.request.get(
+      apiRoute("/api/v1/parameter-modules"),
       { headers: adminHeaders() }
     );
-    expect(directOnlyResponse.ok()).toBe(true);
-    const directOnlyBody = (await directOnlyResponse.json()) as { items: ParameterRecordDto[] };
-    expect(directOnlyBody.items.some((item) => item.id === binding.bindingId)).toBe(false);
+    expect(treeResponse.ok()).toBe(true);
+    const treeBody = (await treeResponse.json()) as { items: ParameterModuleDto[] };
+    const placementLeaf = treeBody.items.find((item) => item.id === placementModuleId);
+    expect(placementLeaf).toMatchObject({ parentId: child.item.id, path: `${child.item.path}/${placementModuleId}` });
+    const subtreeModuleIds = treeBody.items.filter((item) => item.path.startsWith(`${parent.item.path}/`)).map((item) => item.id);
+    expect(listBody.items.filter((item) => subtreeModuleIds.includes(item.moduleId ?? "")).map((item) => item.id)).toContain(binding.bindingId);
+    expect(listBody.items.filter((item) => item.moduleId === parent.item.id).map((item) => item.id)).not.toContain(binding.bindingId);
 
     await recordOperationEvidence({
       operationId: "MOD-TREE-PARAM-001",
@@ -264,20 +271,17 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         }),
         summarizeApiResponse(listResponse, {
           method: "GET",
-          path: "/api/v1/parameters",
-          responseSummary: `subtree includes binding ${binding.bindingId}`
+          path: `/api/v2/projects/${projectId}/parameter-bindings`,
+          responseSummary: `binding ${binding.bindingId}; moduleId=${placementModuleId}`
+        }),
+        summarizeApiResponse(treeResponse, {
+          method: "GET",
+          path: "/api/v1/parameter-modules",
+          responseSummary: `leaf ${placementModuleId} beneath child ${child.item.id}`
         })
       ],
-      db: [
-        {
-          table: "project_parameter_bindings",
-          predicate: `id=${binding.bindingId}`,
-          observed: `module_id=${child.item.id}`,
-          rowCount: 1
-        }
-      ],
       notes:
-        "Parent module filter with includeDescendants=true returned a post-cutover binding assigned to a child module (TD-079)."
+        "The API-returned module tree identifies the canonical Binding in the parent subtree, but not its direct members. Driver-leaf positioning is a test-only fixture; legacy movement remains 410."
     });
   });
 
@@ -306,13 +310,19 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
 
     const listAfterMove = await page.request.get(
       apiRoute(
-        `/api/v1/parameters?projectId=${encodeURIComponent(projectId)}&moduleId=${encodeURIComponent(moduleB.item.id)}&includeDescendants=true`
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings`
       ),
       { headers: adminHeaders() }
     );
     expect(listAfterMove.ok()).toBe(true);
     const listAfterMoveBody = (await listAfterMove.json()) as { items: ParameterRecordDto[] };
     expect(listAfterMoveBody.items.some((item) => item.id === binding.bindingId)).toBe(true);
+    const treeAfterMove = await page.request.get(apiRoute("/api/v1/parameter-modules"), { headers: adminHeaders() });
+    expect(treeAfterMove.status(), await treeAfterMove.text()).toBe(200);
+    const placedModuleId = listAfterMoveBody.items.find((item) => item.id === binding.bindingId)!.moduleId;
+    expect((await treeAfterMove.json()).items.find((item: ParameterModuleDto) => item.id === placedModuleId)).toMatchObject({
+      parentId: child.item.id, path: `${moduleB.item.path}/${child.item.id}/${placedModuleId}`
+    });
 
     const cycleResponse = await page.request.post(apiRoute(`/api/v1/parameter-modules/${moduleB.item.id}/move`), {
       headers: adminHeaders(),
@@ -338,7 +348,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         }),
         summarizeApiResponse(listAfterMove, {
           method: "GET",
-          path: "/api/v1/parameters",
+          path: `/api/v2/projects/${projectId}/parameter-bindings`,
           responseSummary: `binding ${binding.bindingId} follows moved subtree under ${moduleB.item.id}`
         }),
         summarizeApiResponse(cycleResponse, {
@@ -347,7 +357,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
           responseSummary: "CONFLICT cycle rejected"
         })
       ],
-      notes: "The canonical Placement's driver module remains the Binding's leaf beneath the test child. Moving that child reparented the whole subtree; canonical Binding filtering followed and the cycle move returned 409."
+      notes: "The test-only fixture positions the driver leaf beneath a business child. The business-module move API reparents the subtree while preserving the canonical Binding's leaf; the cycle move returns 409."
     });
   });
 

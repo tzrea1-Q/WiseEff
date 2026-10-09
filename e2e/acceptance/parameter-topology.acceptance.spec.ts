@@ -1,6 +1,8 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page } from "playwright/test";
+import { seedSemanticBindingCatalog } from "../../server/testing/parameterCatalog/semanticBinding";
 
 import {
   requireMappingCandidate,
@@ -22,6 +24,7 @@ import {
   applyDisposableRuntimeEnv,
   captureProcessEnvForDisposableRuntime,
   readCanonicalFixtureBindings,
+  seedIsolatedBinding,
   restoreProcessEnvFromDisposableRuntime,
 } from "./helpers/semanticBindingFixture";
 import {
@@ -374,6 +377,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       label: "parameter_topology",
     });
     applyDisposableRuntimeEnv(disposableRuntime);
+    const fixturePool = new pg.Pool({ connectionString: disposableRuntime.databaseUrl });
+    try {
+      await seedSemanticBindingCatalog(fixturePool);
+    } finally {
+      await fixturePool.end();
+    }
     // Canonical Bindings exist only for registered Catalog driver Subjects.
     await registerCatalogDriverSubjects(request, [
       { subjectId: "csub_drv_sc8562", canonicalName: "sc8562" },
@@ -458,15 +467,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const reviewSuffix = runSuffix;
     const reviewCsName = `acceptance-review-${reviewSuffix}`;
     createdConfigSetNames.push(reviewCsName);
-    const reviewCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-      headers: adminHeaders(),
-      data: {
-        name: reviewCsName,
-        description: `${descriptionPrefix} unmatched provisional surface`
-      }
-    });
-    expect(reviewCs.status()).toBe(201);
-    const reviewCsBody = (await reviewCs.json()) as { item: { id: string } };
     const reviewDts = `/dts-v1/;
 / {
 	compatible = "wiseeff,board";
@@ -477,20 +477,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 		acceptance_mystery_${reviewSuffix} = <42>;
 		status = "okay";
 	};
+	mystery {
+		compatible = "vendor,acceptance-mystery-${reviewSuffix}";
+		acceptance_mystery_${reviewSuffix} = <42>;
+	};
 };
 `;
     const mysteryName = `acceptance-mystery-${reviewSuffix}.dts`;
     createdFileNames.push(mysteryName);
-    const mysteryUpload = await uploadDts(request, mysteryName, reviewDts);
-    await request.post(
-      apiRoute(`/api/v1/projects/${projectId}/config-sets/${reviewCsBody.item.id}/files`),
-      {
-        headers: adminHeaders(),
-        data: { fileId: mysteryUpload.fileId, role: "base", sortOrder: 0 }
-      }
-    );
-    await uploadDts(request, mysteryName, reviewDts);
-    const reviewRevision = await waitForRevision(reviewCsBody.item.id, () => true);
+    const reviewBinding = await seedIsolatedBinding(request, {
+      projectId, propertyKey: "vendor-id", dts: reviewDts, fileName: mysteryName,
+      configSetName: reviewCsName, nodeLocatorPattern: "/probe$",
+      reason: `${descriptionPrefix} canonical known and unknown source fixture`
+    });
+    const reviewRevision = { id: reviewBinding.revisionId };
 
     const mysteryProp = `acceptance_mystery_${reviewSuffix}`;
     const openReviews = await request.get(
@@ -503,9 +503,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const openReviewBody = (await openReviews.json()) as {
       items: Array<{ id: string; status: string; observation?: { propertyKey: string } }>;
     };
-    const mysteryReview = openReviewBody.items.find(
-      (item) => item.observation?.propertyKey === `property:${mysteryProp}`
+    const mysteryReviews = openReviewBody.items.filter(
+      (item) => item.observation?.propertyKey.endsWith(`:vendor,acceptance-mystery-${reviewSuffix}`)
     );
+    expect(mysteryReviews).toHaveLength(1);
+    const mysteryReview = mysteryReviews[0];
     expect(mysteryReview, "unmatched mystery properties must remain governance work").toBeTruthy();
     expect(mysteryReview!.status).toBe("open");
 
@@ -582,7 +584,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         })
       ],
       db: [provisionalDb],
-      notes: `${descriptionPrefix}: unmatched mystery property stays queued without resolution or a recognized binding; published vendor-id binds; gpio_int definitions have distinct canonical owners.`
+      notes: `${descriptionPrefix}: unknown compatible evidence stays open; its unmatched property has no recognized Binding or published Definition; the known vendor-id and distinct gpio_int definitions use canonical owners without legacy draft authoring.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).

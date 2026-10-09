@@ -2692,6 +2692,11 @@ export async function createParameterModuleForAuth(
   const name = body.name.trim();
   const parentId = body.parentId ?? null;
   const kind = body.kind ?? "business";
+  if (kind !== "business") {
+    throw new ApiError("GONE", "Legacy structural writes are retired.", {
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
+  }
 
   let parent: ParameterModuleDto | null = null;
   if (parentId) {
@@ -2709,36 +2714,6 @@ export async function createParameterModuleForAuth(
         { parentId, parentKind: parent.kind }
       );
     }
-  } else if (kind === "driver-group") {
-    if (!parent || parent.kind !== "business") {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "driver-group modules must be created under a business category.",
-        { parentId, parentKind: parent?.kind ?? null }
-      );
-    }
-  } else if (kind === "node-type") {
-    if (
-      !parent ||
-      (parent.kind !== "business" && parent.kind !== "driver-group" && parent.kind !== "node-type")
-    ) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "node-type modules must be created under a business, driver-group, or node-type module.",
-        { parentId, parentKind: parent?.kind ?? null }
-      );
-    }
-  }
-
-  if (kind === "driver-group") {
-    const { registerOrClaimDriver } = await import("../parameter-modules/service");
-    const result = await registerOrClaimDriver(db, auth, {
-      displayName: name,
-      businessCategoryId: parentId as string,
-      compatibles: body.compatibles ?? [],
-      notes: body.description?.trim()
-    });
-    return result.item;
   }
 
   const existing = await getParameterModuleByName(db, { organizationId, name, parentId });
@@ -2746,8 +2721,7 @@ export async function createParameterModuleForAuth(
     throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", { name, parentId });
   }
 
-  const sourceKey =
-    kind === "node-type" ? (body.sourceKey?.trim() || null) : null;
+  const sourceKey = null;
 
   return db.transaction(async (tx) => {
     const module = await createParameterModule(tx, {
@@ -2806,60 +2780,22 @@ export async function updateParameterModuleForAuth(
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
+  if (current.kind === "driver-group" || current.kind === "node-type") {
+    throw new ApiError("GONE", "Legacy structural writes are retired.", {
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
+  }
 
   const nextName = body.name?.trim() ?? current.name;
   if (!nextName) {
     throw new ApiError("VALIDATION_FAILED", "Module name is required.");
   }
 
-  const reclassifyKinds = new Set(["business", "node-type"] as const);
   const nextKind = body.kind ?? current.kind;
-
   if (body.kind !== undefined && body.kind !== current.kind) {
-    if (!reclassifyKinds.has(current.kind as "business" | "node-type")) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Only business and node-type modules can be reclassified.",
-        { moduleId, kind: current.kind }
-      );
-    }
-    if (!reclassifyKinds.has(body.kind)) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Modules can only be reclassified to business or node-type.",
-        { moduleId, kind: body.kind }
-      );
-    }
-
-    if (body.kind === "business") {
-      if (current.parentId) {
-        const parent = await getParameterModuleById(db, {
-          organizationId,
-          moduleId: current.parentId
-        });
-        if (!parent || parent.kind !== "business") {
-          throw new ApiError(
-            "VALIDATION_FAILED",
-            "A business category must sit under another business category or at the root.",
-            { moduleId, parentId: current.parentId, parentKind: parent?.kind ?? null }
-          );
-        }
-      }
-    }
-
-    if (current.kind === "business" && body.kind !== "business") {
-      const siblings = await listParameterModules(db, { organizationId });
-      const hasBusinessChild = siblings.some(
-        (module) => module.parentId === moduleId && module.kind === "business"
-      );
-      if (hasBusinessChild) {
-        throw new ApiError(
-          "VALIDATION_FAILED",
-          "Cannot leave the business category while business children remain.",
-          { moduleId }
-        );
-      }
-    }
+    throw new ApiError("GONE", "Legacy structural writes are retired.", {
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
   }
 
   if (body.importance !== undefined && nextKind !== "business") {
@@ -2941,6 +2877,11 @@ export async function moveParameterModuleForAuth(
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
+  if (current.kind === "driver-group" || current.kind === "node-type") {
+    throw new ApiError("GONE", "Legacy structural writes are retired.", {
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
+  }
 
   const parentId = body.parentId;
   if (parentId) {
@@ -3016,27 +2957,10 @@ export async function deleteParameterModuleForAuth(
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
-
-  if (current.kind === "driver-group") {
-    const { disbandDriverGroupModule } = await import("../parameter-modules/service");
-    // Disband and its audit commit together (ADR-0027); the disband's own transaction
-    // degrades to a savepoint. requestId fallback survives until contexts are mandatory.
-    await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
-      await disbandDriverGroupModule(tx, auth, { moduleId });
-      await createParameterModuleAudit(
-        asAuditTx(tx),
-        auth,
-        {
-          kind: "parameter-module-admin-delete",
-          action: "delete",
-          module: current,
-          metadata: { disbanded: true }
-        },
-        context
-      );
-      return { result: undefined, audit: null };
+  if (current.kind === "driver-group" || current.kind === "node-type") {
+    throw new ApiError("GONE", "Legacy structural writes are retired.", {
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
     });
-    return;
   }
 
   const childCount = await countParameterModuleChildren(db, { organizationId, moduleId });
