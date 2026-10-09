@@ -392,8 +392,8 @@
       "legacy-parameter-spec-identifier": 7
     },
     "server/modules/parameter-specs/parameterSpecHttpAdapter.test.ts": {
-      "legacy-catalog-route": 7,
-      "legacy-effective-governance-contract": 2,
+      "legacy-catalog-route": 8,
+      "legacy-effective-governance-contract": 4,
       "legacy-overlay-catalog-contract": 1
     },
     "server/modules/parameter-specs/populatedUpgrade.integration.test.ts": {
