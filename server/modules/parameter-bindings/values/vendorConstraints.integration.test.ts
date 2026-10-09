@@ -10,9 +10,11 @@ import {
   VENDOR_CONSTRAINED_RELEASE_ID,
   VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
 } from "../../../../scripts/compile-vendor-catalog-release";
-import { runAllSeedScripts } from "../../../../scripts/seed-all";
+import { loadCommittedDtsSeedFiles } from "../../../../scripts/compile-dts-seed";
+import { seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../../scripts/seed-m1-parameters";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
 import { makeTestAuthContext } from "../../../testing/authContext";
+import { seedCoreGraph } from "../../../testing/fixtures";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import { seedPublishedCatalog } from "../../../testing/parameterCatalog/seedPublishedCatalog";
 import { createCatalogKernel, jsonCatalogReleaseSource, type CatalogSnapshot } from "../../catalog-kernel/interface";
@@ -27,6 +29,8 @@ import type { Binding } from "../binding";
 import { dtsValueToPayload } from "../catalogProjectValueSync";
 import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { assertCanonicalValueConstraints } from "./service";
+import { ensureLocalPostCutoverIdentity } from "../../parameter-topology/localPostCutover";
+import { ensureCanonicalCatalogAfterLegacySeed } from "../seedInitialization/seedCanonicalAfterLegacy";
 
 const definitionId = ParameterDefinitionId("pdef_drv_sc8562_gpio_int");
 const revisionId = DefinitionRevisionId("drev_drv_sc8562_gpio_int_2");
@@ -190,6 +194,13 @@ describe("published vendor constraint enforcement", () => {
   it("seeds a fresh database twice with constrained Binding pins and no duplicate Catalog or value history", async () => {
     const fresh = await createEphemeralTestDatabase("vendorconstraintseed");
     const freshDb = createPostgresDatabase(fresh.url);
+    const seedStorageDirectory = mkdtempSync(path.join(tmpdir(), "wiseeff-vendor-constraint-seed-"));
+    const objectStore = createLocalObjectStore(seedStorageDirectory);
+    const seedAuth = makeTestAuthContext({
+      organizationId: "org-chargelab", userId: "u-xu-yun",
+      roles: [{ projectId: null, roleId: "admin" }],
+      permissions: ["parameter:view", "parameter:edit", "admin:access"],
+    });
     const counts = async () => (await freshDb.query(`select
       (select count(*)::int from parameter_catalog.catalog_releases) as releases,
       (select count(*)::int from parameter_catalog.definition_revisions) as revisions,
@@ -197,19 +208,45 @@ describe("published vendor constraint enforcement", () => {
       (select count(*)::int from parameter_catalog.project_parameter_values) as values,
       (select count(*)::int from parameter_catalog.binding_history_events) as history`)).rows;
     try {
-      await runAllSeedScripts({ ...process.env, DATABASE_URL: fresh.url });
+      const projectFiles = (await loadCommittedDtsSeedFiles(process.cwd()))
+        .filter((file) => file.projectId === "aurora");
+      const seed = async () => {
+        await seedCoreGraph(freshDb, {
+          organization: { id: seedAuth.organization.id },
+          users: [{ id: seedAuth.user.id }],
+          projects: [{ id: "aurora" }],
+        });
+        const release = await seedPublishedCatalog(getRootPostgresPool(freshDb)!);
+        expect(release.id).toBe(VENDOR_CONSTRAINED_RELEASE_ID);
+        await seedM1DtsFiles(freshDb, objectStore, projectFiles);
+        await seedM1SemanticTopology(freshDb, projectFiles);
+        await seedM1BindingRevisionHistory(freshDb, objectStore, projectFiles);
+        await ensureLocalPostCutoverIdentity(freshDb);
+        await ensureCanonicalCatalogAfterLegacySeed(freshDb, seedAuth, {
+          organizationId: seedAuth.organization.id, seedDigest: "vendor-constraint-seed",
+        });
+      };
+      await seed();
       const before = await counts();
+      expect(before[0]!.releases).toBe(3);
+      expect(before[0]!.revisions).toBeGreaterThan(0);
+      expect(before[0]!.bindings).toBeGreaterThan(0);
+      expect(before[0]!.values).toBeGreaterThan(0);
+      expect(before[0]!.history).toBeGreaterThan(0);
       const pins = await freshDb.query<{ effective_revision_id: string }>(`select effective_revision_id
         from parameter_catalog.project_parameter_bindings
-        where definition_id in ('pdef_drv_sc8562_gpio_int','pdef_drv_mt_mt5788_gpio_int')`);
-      expect(pins.rows.length).toBeGreaterThan(0);
-      expect(pins.rows.every((pin) => pin.effective_revision_id.endsWith("_2"))).toBe(true);
-      await runAllSeedScripts({ ...process.env, DATABASE_URL: fresh.url });
+        where definition_id in ('pdef_drv_sc8562_gpio_int','pdef_drv_mt_mt5788_gpio_int')
+        order by effective_revision_id`);
+      expect(pins.rows.map((pin) => pin.effective_revision_id)).toEqual([
+        "drev_drv_mt_mt5788_gpio_int_2", "drev_drv_sc8562_gpio_int_2",
+      ]);
+      await seed();
       expect(await counts()).toEqual(before);
     } finally {
       await freshDb.close();
       await fresh.drop();
+      rmSync(seedStorageDirectory, { recursive: true, force: true });
     }
-  }, 120_000);
+  });
 
 });
