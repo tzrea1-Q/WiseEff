@@ -8,10 +8,10 @@ import { installPublishedRelease } from "../../server/modules/catalog-kernel/ins
 import { jsonCatalogReleaseSource } from "../../server/modules/catalog-kernel/interface";
 import { firstReleaseBundle } from "../../server/testing/parameterCatalog/cutoverPopulatedFixture";
 import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
+import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
-import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
 import { startDisposablePostCutoverRuntime, disposableRuntimeOutcomeFromTestInfo, type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 import { captureProcessEnvForDisposableRuntime, applyDisposableRuntimeEnv, restoreProcessEnvFromDisposableRuntime } from "./helpers/semanticBindingFixture";
@@ -48,6 +48,58 @@ test("Issue 1064: seeded canonical modules render without organization overlays"
   await page.screenshot({ path: info.outputPath("issue1064-canonical-registrations-1440x900.png"), animations: "disabled" });
   await tree.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("issue1064-canonical-tree-1440x900.png"), animations: "disabled" });
+});
+
+test("Issue 1067: historical modules expose provenance without structural controls", async ({ page, request }, info) => {
+  await seedAcceptanceRoleMatrix();
+  const actor = acceptanceAdminOnlyUser;
+  const headers = authHeadersForUser(actor.userId, actor.email, actor.name);
+  const navigation = await request.get(apiRoute("/api/v2/parameter-modules"), { headers });
+  expect(navigation.status(), await navigation.text()).toBe(200);
+  const registry = (await navigation.json()).item;
+  expect(registry.navigationOnly).toBe(true);
+  expect(registry.mappings).toEqual([]);
+  for (const module of registry.modules) {
+    expect(module.sourceKey).toBeNull();
+    expect(module.attributionSubjectId).toBeNull();
+  }
+  const provenance = await request.get(apiRoute("/api/v2/parameter-modules/driver-registry"), { headers });
+  expect(provenance.status(), await provenance.text()).toBe(200);
+  const historical = (await provenance.json()).items.find((item: { moduleId: string }) =>
+    registry.modules.some((module: { id: string; kind: string }) =>
+      module.id === item.moduleId && module.kind === "driver-group"));
+  expect(historical).toBeDefined();
+  const structuralWrites: string[] = [];
+  page.on("request", call => {
+    const path = new URL(call.url()).pathname;
+    if (call.method() !== "GET" && path.includes("parameter-modules")) structuralWrites.push(path);
+  });
+  await signInBrowserAsUser(page, actor.userId, actor.email, actor.name, "/parameter-admin/modules");
+  const history = page.getByRole("region", { name: "历史驱动注册表" });
+  await expect(history).toHaveAttribute("aria-busy", "false");
+  const ancestors = [];
+  let parentId = registry.modules.find((module: { id: string }) => module.id === historical.moduleId).parentId;
+  while (parentId) {
+    const parent = registry.modules.find((module: { id: string }) => module.id === parentId);
+    ancestors.unshift(parent);
+    parentId = parent.parentId;
+  }
+  for (const parent of ancestors) {
+    const expand = history.getByRole("button", { name: `展开 ${parent.name} 子模块`, exact: true });
+    if (await expand.count()) await expand.click();
+  }
+  await page.getByRole("button", { name: `修改模块 ${historical.name}`, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: historical.name, exact: true });
+  await expect(dialog.getByLabel("驱动性质", { exact: true })).toHaveAttribute("readonly", "");
+  await expect(dialog.getByLabel("实例基数", { exact: true })).toHaveAttribute("readonly", "");
+  await expect(dialog.getByLabel("模块名称", { exact: true })).toHaveAttribute("readonly", "");
+  await expect(dialog.getByLabel("默认业务分类", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "从注册回放放置" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "管理规范主体与归属" })).toBeVisible();
+  for (const compatible of historical.compatibles) await expect(dialog.getByText(compatible, { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "保存", exact: true })).toHaveCount(0);
+  expect(structuralWrites).toEqual([]);
+  await page.screenshot({ path: info.outputPath("issue1067-readonly-provenance-1440x900.png"), animations: "disabled" });
 });
 
 test("Issue 1066: old Platform bookmark explains retirement and links to Catalog", async ({ page }, info) => {
@@ -592,7 +644,12 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(reparented.status(), await reparented.text()).toBe(200);
     for (const moduleId of ["issue897-config", "issue897-driver-b"]) {
       const blockedDelete = await request.delete(apiRoute(`/api/v1/parameter-modules/${moduleId}`), { headers: authHeadersForRole("admin") });
-      expect(blockedDelete.status(), await blockedDelete.text()).toBe(409);
+      expect(blockedDelete.status(), await blockedDelete.text()).toBe(moduleId === "issue897-driver-b" ? 410 : 409);
+      if (moduleId === "issue897-driver-b") {
+        expect((await blockedDelete.json()).error.details).toMatchObject({
+          reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+        });
+      }
     }
     await page.reload();
     await expect(page.locator('[data-canonical-subject-id="csub_issue897_config"]').getByText("归属：Renamed JSON settings", { exact: true })).toBeVisible();

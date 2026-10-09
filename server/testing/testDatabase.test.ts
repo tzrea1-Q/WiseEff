@@ -17,6 +17,7 @@ import {
   dropTestDatabase,
   hasTestClusterRoleCatalogLock,
   isTestDatabaseAvailable,
+  testDatabasePrefixPattern,
   withTestClusterRoleCatalogLock,
   type InMemoryTestDatabase
 } from "./testDatabase";
@@ -51,6 +52,47 @@ describe("test database query scheduling", () => {
 });
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+describe("literal test database namespace isolation", () => {
+  it.each(["tpl", "wk"])("matches only the literal %s namespace on PostgreSQL", async (kind) => {
+    expect(databaseAvailable).toBe(true);
+    const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
+    const owned = `${prefix}_a_b_test_${kind}_probe`;
+    const foreign = `${prefix}_axb_test_${kind}_probe`;
+    await withAdminClient(async (admin) => {
+      const result = await admin.query<{ datname: string }>(
+        "select datname from unnest($1::text[]) as fixture(datname) where datname like $2 order by datname",
+        [[owned, foreign], testDatabasePrefixPattern(`${prefix}_a_b_test_${kind}_`)],
+      );
+      expect(result.rows).toEqual([{ datname: owned }]);
+    });
+  });
+
+  it("keeps temporary template builds in the configured namespace before any DDL", async () => {
+    expect(databaseAvailable).toBe(true);
+    const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
+    const original = pg.Client.prototype.query;
+    let buildName: string | undefined;
+    const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, sql: unknown, values?: unknown) {
+      if (typeof sql === "string" && Array.isArray(values)) {
+        if (sql.includes("select true as ok from pg_database") && String(values[0]).startsWith(`${prefix}_test_tpl_`)) {
+          return Promise.resolve({ rows: [], rowCount: 0 });
+        }
+        if (sql.includes("from pg_stat_activity where datname = $1") && String(values[0]).includes("_test_tplbuild_")) {
+          buildName = String(values[0]);
+          return Promise.reject(new Error("stop before template DDL"));
+        }
+      }
+      return Reflect.apply(original, this, [sql, values]);
+    } as typeof original);
+    try {
+      await expect(createEphemeralTestDatabase("prefix")).rejects.toThrow("stop before template DDL");
+      expect(buildName).toBe(`${prefix}_test_tplbuild_${process.pid}`);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
 
 describe.skipIf(!databaseAvailable)("test database fixture transactions", () => {
   let db: InMemoryTestDatabase | undefined;

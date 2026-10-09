@@ -267,7 +267,7 @@
       "legacy-catalog-sql-write": 1
     },
     "server/modules/parameter-modules/routes.ts": {
-      "legacy-catalog-route": 13
+      "legacy-catalog-route": 3
     },
     "server/modules/parameter-modules/service.test.ts": {
       "legacy-catalog-raw-read": 22,

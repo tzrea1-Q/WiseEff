@@ -14,6 +14,7 @@ import { CatalogSubjectId } from "../../modules/parameter-catalog-contract";
 import { writeGuardedRegistration } from "../../modules/parameter-governance/registration/internalGuardedRegistrationWriter";
 import type { RegisterSubjectCommand } from "../../modules/parameter-governance/registration/command";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
+import { createParameterModule } from "../../modules/parameters/parameterModuleRepository";
 
 export async function seedHistoricalSingletonMapping(
   db: Database,
@@ -68,11 +69,12 @@ export async function installDriverSourceFixture(
     name: input.businessName,
     kind: "business",
   });
-  const driver = await createParameterModuleForAuth(db, auth, {
+  const driver = await createParameterModule(db, {
+    organizationId: auth.organization.id,
     name: input.driverName,
     kind: "driver-group",
     parentId: business.id,
-    compatibles: [input.compatible],
+    sourceKey: `compatible:${input.compatible}`,
   });
 
   const command: RegisterSubjectCommand = {

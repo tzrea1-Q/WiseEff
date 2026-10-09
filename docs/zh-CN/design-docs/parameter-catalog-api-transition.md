@@ -594,6 +594,8 @@ Issue #678 是全部 R0-R10 生产 disposition 的唯一 owner。与 ReviewEvide
 | 现有 project topology、binding history/compare、validation、draft paths | 一方消费者协调完成 DTO/ID cutover；path 保留；上线后不再有 legacy `ParameterSpec` 字段。 | 规范 v2 合同。 |
 | 现有 v1 value、debug、reload、knowledge calls | 未被其他决策 version 时保留公共 workflow；实现内部使用 canonical binding/definition/revision IDs。 | 只用 canonical identities。 |
 
+parameter-modules 导航适配器在 registry envelope 中标记 `navigationOnly: true`。分类节点保留导航 ID 与 canonical 子树计数，但 `sourceKey`、`attributionSubjectId` 为 null，`mappings` 为空；这些字段不声明 Catalog subject 身份。历史驱动登记的 provenance 仍通过有界 driver-registry 读取只读展示。共享业务分类 CRUD 保持可用，但 v1 创建、编辑、移动、删除历史 Driver/NodeType 结构，以及相关重分类，均返回同一 410 退役合同，并写入可信拒绝审计。规范上下文中的历史 Driver/NodeType 详情只读，登记与归属变更转到对应规范 owner。项目 candidate/reload 重算仍由内部项目 workflow 负责，不经过公开模块重算路由。
+
 已退役的组织覆盖解析与 Platform 晋升界面链接至 Catalog 页面，通过定义提案与发布流程变更覆盖。`GET /api/v2/platform/driver-schema-promotion-history` 是经 Platform 授权的历史晋升记录只读投影，不是候选列表或有效 schema 读取。原有 legacy 标识仅保留为证据，不提供晋升、撤销或恢复操作。覆盖统计与导入不会将这些历史覆盖合并至运行时 schema 注册表。
 
 Legacy read response 包含：

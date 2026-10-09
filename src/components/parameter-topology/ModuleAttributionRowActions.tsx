@@ -19,6 +19,7 @@ export type ModuleAttributionRowActionsProps = {
   modules: readonly ParameterModule[];
   busy?: boolean;
   canAdmin?: boolean;
+  canonicalModeEnabled?: boolean;
   onView?: () => void;
   onEdit: () => void;
   onAddChild: () => void;
@@ -63,6 +64,7 @@ export function ModuleAttributionRowActions({
   modules,
   busy = false,
   canAdmin = false,
+  canonicalModeEnabled = false,
   onView,
   onEdit,
   onAddChild,
@@ -81,12 +83,13 @@ export function ModuleAttributionRowActions({
   const addChildDecision = addChildModuleDecision(module);
   const moveDecision = moveModuleDecision(module);
   const deleteDecision = deleteModuleDecision(module);
-  const canMoveUp = Boolean(onReorder && sortOrderSwapUpdates(module, "up", modules));
-  const canMoveDown = Boolean(onReorder && sortOrderSwapUpdates(module, "down", modules));
-  const showReorder = canAdmin && Boolean(onReorder);
-  const showAddChild = canAdmin;
-  const showMove = canAdmin;
-  const showDelete = canAdmin;
+  const canMoveUp = Boolean(onReorder && sortOrderSwapUpdates(module, "up", modules, canonicalModeEnabled));
+  const canMoveDown = Boolean(onReorder && sortOrderSwapUpdates(module, "down", modules, canonicalModeEnabled));
+  const canManageTaxonomy = canAdmin && (!canonicalModeEnabled || module.kind === "business");
+  const showReorder = canManageTaxonomy && Boolean(onReorder);
+  const showAddChild = canManageTaxonomy;
+  const showMove = canManageTaxonomy;
+  const showDelete = canManageTaxonomy;
   const hasMore =
     showReorder || showAddChild || showMove || showDelete;
 
@@ -185,7 +188,9 @@ export function ModuleAttributionRowActions({
                 ) : (
                   disabledMenuItem(
                     PARAMETER_ADMIN_UI.moduleAttributionMoveUp,
-                    "已在同级最前。",
+                    canonicalModeEnabled && sortOrderSwapUpdates(module, "up", modules)
+                      ? "相邻历史主体为只读，不能交换排序。"
+                      : "已在同级最前。",
                     `${PARAMETER_ADMIN_UI.moduleAttributionMoveUp} ${module.name}`
                   )
                 )}
@@ -202,7 +207,9 @@ export function ModuleAttributionRowActions({
                 ) : (
                   disabledMenuItem(
                     PARAMETER_ADMIN_UI.moduleAttributionMoveDown,
-                    "已在同级最后。",
+                    canonicalModeEnabled && sortOrderSwapUpdates(module, "down", modules)
+                      ? "相邻历史主体为只读，不能交换排序。"
+                      : "已在同级最后。",
                     `${PARAMETER_ADMIN_UI.moduleAttributionMoveDown} ${module.name}`
                   )
                 )}
