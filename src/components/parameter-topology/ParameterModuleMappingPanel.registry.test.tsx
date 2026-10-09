@@ -60,11 +60,19 @@ describe("historical registry isolation", () => {
         }),
         listDriverCompatibleDiscovery: vi.fn().mockResolvedValue({
           status: "ready", catalogRelease: { id: CATALOG_RELEASE_ID, digest: "sha256:one" },
-          matcherRevision: "matcher_one", items: [], nextCursor: null,
-          ignoredReviewItemCount: 0, emptyReason: "no-observations"
+          matcherRevision: "matcher_one", items: [{
+            observationId: "obs_retired_overlay", projectId: "project_one", logicalNodeId: "node_one",
+            configRevisionId: "revision_one", observedCatalogReleaseId: CATALOG_RELEASE_ID,
+            observedMatcherRevision: "matcher_one",
+            source: { status: "current", configSetId: "config_one", sourceName: "device.dts",
+              fileVersionId: "version_one", sourceDigest: "sha256:source", revisionDigest: "sha256:revision" },
+            compatibles: [{ compatible: "vendor,device", candidate: {
+              kind: "review-required", reason: "unknown", reviewItemIds: []
+            } }]
+          }], nextCursor: null, ignoredReviewItemCount: 0
         })
       } as unknown as ParameterCatalogGovernanceRepository;
-      render(<ParameterModuleMappingPanel repository={repository} canonicalEnabled
+      render(<ParameterModuleMappingPanel repository={repository} canonicalEnabled canAdmin
         canonicalCatalog={catalog} canonicalGovernance={governance}
         canonicalOrganizationId={CATALOG_ORGANIZATION_ID} />);
 
@@ -77,6 +85,10 @@ describe("historical registry isolation", () => {
       expect(screen.queryByText("正在加载模块注册表…")).not.toBeInTheDocument();
       expect(listOrganizationDriverSchemas).not.toHaveBeenCalled();
       expect(repository.getDiscoveryHints).not.toHaveBeenCalled();
+      expect(await screen.findByText("vendor,device")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "编写覆盖解析" })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "前往 Catalog 提交定义提案" }))
+        .toHaveAttribute("href", "/parameter-admin/specs");
 
       if (scenario === "failed history") {
         const historical = screen.getByRole("region", { name: "历史驱动注册表" });

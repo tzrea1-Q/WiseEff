@@ -596,6 +596,8 @@ The cutover decision in issue #678 is the sole owner of every R0-R10 production 
 
 The parameter-modules navigation adapter marks its registry envelope `navigationOnly: true`. Its taxonomy nodes retain navigation IDs and canonical subtree counts, but `sourceKey` and `attributionSubjectId` are null and `mappings` is empty; none is a Catalog subject identity. Historical driver registration provenance remains read-only on the bounded driver-registry read. Shared business-category CRUD remains available, but v1 creation, editing, moving, deletion, and reclassification of historical Driver/NodeType structure return the same 410 retirement contract with trusted refusal audit. Canonical contexts expose historical Driver/NodeType details read-only and direct registration or placement changes to their canonical owners. Project candidate/reload recomputation remains owned by the internal project workflows, not the public module recompute route.
 
+The retired organization overlay and Platform promotion surfaces link to the Catalog page for Definition Proposals and publication. `GET /api/v2/platform/driver-schema-promotion-history` is a Platform-authorized, read-only historical projection of retained promotion records, not a candidate list or an effective schema read. It preserves original legacy identifiers as evidence and offers no promote, revert, or restore action. Coverage and ingest never merge these historical overlays into the runtime schema registry.
+
 Legacy read responses include:
 
 ```text

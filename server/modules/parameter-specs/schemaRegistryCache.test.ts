@@ -1,10 +1,11 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearSchemaRegistryCache,
+  getCachedOrganizationSchemaRegistry,
   getCachedSchemaRegistry,
 } from "./schemaRegistryCache";
 
@@ -34,6 +35,20 @@ afterEach(() => {
 });
 
 describe("getCachedSchemaRegistry", () => {
+  it("shares the pinned instance across organizations and draft reads without consulting overlay history", async () => {
+    const root = mkdtempSync(join(tmpdir(), "t1066-schema-cache-"));
+    scratchDirs.push(root);
+    writeMiniCatalog(root, [
+      "$id: wiseeff/demo.yaml", "source: vendor", "schemaNamespace: vendor/demo",
+      'compatible: ["demo,device"]', "properties: {}",
+    ].join("\n"), "hash-a");
+    const db = { query: vi.fn(async () => { throw new Error("Overlay history must not be read"); }) };
+    const pinned = getCachedSchemaRegistry(root);
+    expect(await getCachedOrganizationSchemaRegistry(db, { schemasRoot: root, organizationId: "t1066_org_a" })).toBe(pinned);
+    expect(await getCachedOrganizationSchemaRegistry(db, { schemasRoot: root, organizationId: "t1066_org_b", includeDrafts: true })).toBe(pinned);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
   it("returns the same registry instance for the same catalog content hash", () => {
     const root = mkdtempSync(join(tmpdir(), "wiseeff-schema-cache-"));
     scratchDirs.push(root);

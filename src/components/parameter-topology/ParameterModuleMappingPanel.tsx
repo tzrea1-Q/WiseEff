@@ -12,22 +12,17 @@ import {
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type {
-  CreateOrganizationDriverSchemaInput,
   DriverRegistryEntry,
   MappingApplyPreview,
-  OrganizationDriverSchema,
   ParameterModuleRegistryRepository,
   RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult
 } from "@/application/ports/ParameterModuleRegistryRepository";
-import { OrganizationDriverSchemaDialog, type LinkedOverlaySpec } from "@/components/admin/OrganizationDriverSchemaDialog";
-import { OverlaySpecPickerDialog } from "@/components/admin/OverlaySpecPickerDialog";
 import { ClassifyCompatibleDialog } from "@/components/parameter-topology/ClassifyCompatibleDialog";
 import { ModuleAttributionTree } from "@/components/parameter-topology/ModuleAttributionTree";
 import { RegisterDriverDialog } from "@/components/parameter-topology/RegisterDriverDialog";
 import { RecomputeBindingsResultDialog } from "@/components/parameter-topology/RecomputeBindingsResultDialog";
 import { UnclassifiedCompatibleQueue } from "@/components/parameter-topology/UnclassifiedCompatibleQueue";
-import { type ParameterSpecLibraryRow } from "@/components/parameter-topology/ParameterSpecLibrary";
 import {
   summarizeDriverCoverage
 } from "@/components/parameter-topology/moduleAttributionTreeUtils";
@@ -50,8 +45,6 @@ export type { UnmappedCompatibleHint };
 export type ParameterModuleMappingPanelProps = {
   canAdmin?: boolean;
   repository?: ParameterModuleRegistryRepository;
-  /** Load definition-library rows for overlay property linking. */
-  listLibrarySpecs?: () => Promise<ParameterSpecLibraryRow[]>;
   pathname?: string;
   search?: string;
   onNavigate?: (path: string) => void;
@@ -70,7 +63,6 @@ export type ParameterModuleMappingPanelProps = {
 export function ParameterModuleMappingPanel({
   canAdmin = false,
   repository,
-  listLibrarySpecs,
   pathname = "/parameter-admin/modules",
   search = "",
   onNavigate,
@@ -104,17 +96,6 @@ export function ParameterModuleMappingPanel({
     displayName: string;
     compatibles: string[];
   } | null>(null);
-  const [overlaySchemaDraft, setOverlaySchemaDraft] = useState<{
-    compatible: string;
-  } | null>(null);
-  const [overlayLinkedSpecs, setOverlayLinkedSpecs] = useState<LinkedOverlaySpec[]>([]);
-  const [overlayPickerOpen, setOverlayPickerOpen] = useState(false);
-  const [overlayLibrarySpecs, setOverlayLibrarySpecs] = useState<ParameterSpecLibraryRow[]>([]);
-  const [overlayLibraryLoading, setOverlayLibraryLoading] = useState(false);
-  const [overlayLibraryError, setOverlayLibraryError] = useState<string | null>(null);
-  const [organizationDriverSchemas, setOrganizationDriverSchemas] = useState<
-    OrganizationDriverSchema[]
-  >([]);
   const [canonicalDiscoveryRefresh, setCanonicalDiscoveryRefresh] = useState(0);
 
   const refreshDiscoveryHints = async () => {
@@ -139,10 +120,6 @@ export function ParameterModuleMappingPanel({
         })
       )
     );
-  };
-
-  const refreshOrganizationDriverSchemas = async () => {
-    setOrganizationDriverSchemas(await (client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])));
   };
 
   const refreshDriverRegistry = useCallback(async (isCancelled: () => boolean = () => false) => {
@@ -173,13 +150,11 @@ export function ParameterModuleMappingPanel({
     setError(null);
     Promise.all([
       client.getRegistry(),
-      canonicalEnabled ? Promise.resolve(null) : client.getDiscoveryHints(),
-      canonicalEnabled ? Promise.resolve([]) : client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])
+      canonicalEnabled ? Promise.resolve(null) : client.getDiscoveryHints()
     ])
-      .then(([nextRegistry, hints, schemas]) => {
+      .then(([nextRegistry, hints]) => {
         if (cancelled) return;
         setRegistry(nextRegistry);
-        setOrganizationDriverSchemas(schemas);
         setObservedCompatibles(
           (hints?.compatibles ?? []).map((hint) =>
             toUnmappedCompatibleHint({
@@ -205,7 +180,6 @@ export function ParameterModuleMappingPanel({
         if (cancelled) return;
         setError(presentError(loadError, "无法加载模块注册表，请稍后重试。"));
         setRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
-        setOrganizationDriverSchemas([]);
         setObservedCompatibles([]);
         setDismissedCompatibles([]);
       })
@@ -511,70 +485,6 @@ export function ParameterModuleMappingPanel({
     }
   };
 
-  const submitOverlaySchema = async (input: CreateOrganizationDriverSchemaInput) => {
-    if (!canAdmin) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const created = await client.createOrganizationDriverSchema(input);
-      const result = await client.activateOrganizationDriverSchema(created.id);
-      await refreshDriverRegistry();
-      await refreshOrganizationDriverSchemas();
-      setOverlaySchemaDraft(null);
-      setOverlayLinkedSpecs([]);
-      setOverlayPickerOpen(false);
-      setOverlayLibrarySpecs([]);
-      setOverlayLibraryError(null);
-      setRecomputeNotice(
-        `已激活组织级解析「${result.schema.displayName}」，覆盖 compatible ${input.compatible}。`
-      );
-    } catch (overlayError) {
-      setError(
-        overlayError instanceof Error && overlayError.message.includes("platform overlay")
-          ? PARAMETER_ADMIN_UI.organizationDriverSchemaPlatformBlocked
-          : presentError(overlayError, "保存组织解析 schema 失败，请稍后重试。")
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const openOverlaySchemaDraft = (draft: { compatible: string }) => {
-    setOverlaySchemaDraft(draft);
-    setOverlayLinkedSpecs([]);
-    setOverlayPickerOpen(false);
-    setOverlayLibraryError(null);
-  };
-
-  const openOverlaySpecPicker = async () => {
-    setOverlayPickerOpen(true);
-    setOverlayLibraryError(null);
-    if (!listLibrarySpecs) {
-      setOverlayLibrarySpecs([]);
-      setOverlayLibraryError("当前环境未接线参数定义库；可直接新建覆盖属性。");
-      return;
-    }
-    setOverlayLibraryLoading(true);
-    try {
-      setOverlayLibrarySpecs(await listLibrarySpecs());
-    } catch (overlayLoadError) {
-      setOverlayLibrarySpecs([]);
-      setOverlayLibraryError(
-        presentError(overlayLoadError, "参数定义库加载失败，请重试。")
-      );
-    } finally {
-      setOverlayLibraryLoading(false);
-    }
-  };
-
-  const excludedOverlaySpecIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const item of overlayLinkedSpecs) {
-      if (item.kind === "link") ids.add(item.parameterSpecId);
-    }
-    return ids;
-  }, [overlayLinkedSpecs]);
-
   const refreshAfterCanonicalChange = async () => {
     setCanonicalDiscoveryRefresh((value) => value + 1);
     setRegistry(await client.getRegistry());
@@ -776,31 +686,6 @@ export function ParameterModuleMappingPanel({
             busy={busy}
             hasUnclassifiedQueue={legacyQueueVisible}
             onOpenUnclassifiedQueue={() => goToSubView("queue")}
-            onAuthorOverlaySchema={canonicalEnabled ? undefined : (compatible) => openOverlaySchemaDraft({ compatible })}
-            organizationDriverSchemas={canonicalEnabled ? [] : organizationDriverSchemas}
-            onPreviewOverlayDeprecation={canonicalEnabled ? undefined : (schemaId) =>
-              client.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
-              Promise.reject(new Error("当前环境未接线覆盖停用预览。"))
-            }
-            onDeprecateOverlaySchema={canonicalEnabled ? undefined : async (schemaId, input) => {
-              setBusy(true);
-              setError(null);
-              try {
-                if (!client.deprecateOrganizationDriverSchema) {
-                  throw new Error("当前环境未接线覆盖停用能力。");
-                }
-                await client.deprecateOrganizationDriverSchema(schemaId, input);
-                await Promise.all([
-                  refreshOrganizationDriverSchemas(),
-                  refreshDriverRegistry()
-                ]);
-                setRecomputeNotice("已停用解析");
-              } catch (deprecateError) {
-                setError(presentError(deprecateError, "停用解析失败，请稍后重试。"));
-              } finally {
-                setBusy(false);
-              }
-            }}
             onUpdateModule={async (moduleId, patch) => {
               setBusy(true);
               setError(null);
@@ -977,64 +862,6 @@ export function ParameterModuleMappingPanel({
             setRegisterDraft(null);
           }}
           onConfirm={(input) => void registerDriver(input)}
-        />
-      ) : null}
-
-      {overlaySchemaDraft ? (
-        <OrganizationDriverSchemaDialog
-          compatible={overlaySchemaDraft.compatible}
-          linkedSpecs={overlayLinkedSpecs}
-          busy={busy}
-          suspended={overlayPickerOpen}
-          onCancel={() => {
-            setOverlaySchemaDraft(null);
-            setOverlayLinkedSpecs([]);
-            setOverlayPickerOpen(false);
-            setOverlayLibrarySpecs([]);
-            setOverlayLibraryError(null);
-          }}
-          onAddProperty={() => void openOverlaySpecPicker()}
-          onRemoveProperty={(index) =>
-            setOverlayLinkedSpecs((current) => current.filter((_, rowIndex) => rowIndex !== index))
-          }
-          onSubmit={(input) => void submitOverlaySchema(input)}
-        />
-      ) : null}
-
-      {overlaySchemaDraft && overlayPickerOpen ? (
-        <OverlaySpecPickerDialog
-          specs={overlayLibrarySpecs}
-          loading={overlayLibraryLoading}
-          loadError={overlayLibraryError}
-          onRetryLoad={() => void openOverlaySpecPicker()}
-          busy={busy}
-          excludedSpecIds={excludedOverlaySpecIds}
-          onBack={() => setOverlayPickerOpen(false)}
-          onConfirm={(result) => {
-            if (result.kind === "link") {
-              setOverlayLinkedSpecs((current) => [
-                ...current,
-                {
-                  kind: "link",
-                  parameterSpecId: result.parameterSpecId,
-                  propertyKey: result.propertyKey,
-                  driverModule: result.driverModule
-                }
-              ]);
-            } else {
-              setOverlayLinkedSpecs((current) => [
-                ...current,
-                {
-                  kind: "create",
-                  propertyKey: result.propertyKey,
-                  valueShape: result.valueShape,
-                  ...(result.units ? { units: result.units } : {}),
-                  ...(result.documentation ? { documentation: result.documentation } : {})
-                }
-              ]);
-            }
-            setOverlayPickerOpen(false);
-          }}
         />
       ) : null}
 
