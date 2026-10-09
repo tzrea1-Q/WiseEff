@@ -4,6 +4,9 @@ import { buildWiseEffRouter } from "../../app";
 import type { Database } from "../../shared/database/client";
 import { routeManifest } from "./routeManifest";
 import { schemaRegistry } from "./schemaRegistry";
+import { parameterCatalogLegacyWriteRouteIds, catalogLegacyGoneResponseSchema } from "./dtoSchemas/parameterCatalog";
+import { createHttpServer } from "../../shared/http/server";
+import { requestJson } from "../../test/testClient";
 
 /**
  * Contract parity: the hand-maintained route manifest must equal the real runtime
@@ -47,6 +50,22 @@ function manifestKeys(): Set<string> {
 }
 
 describe("route manifest parity", () => {
+  it.each(routeManifest.filter((route) =>
+    (parameterCatalogLegacyWriteRouteIds as readonly string[]).includes(route.id),
+  ))("$id is retired in the assembled router, not served by a live writer", async (route) => {
+    const { router } = buildWiseEffRouter({ db: stubDb });
+    const path = route.path.replace(/:[^/]+/g, "retired-parity");
+    const response = await requestJson(createHttpServer(router), path, {
+      method: route.method,
+      body: route.method === "GET" ? undefined : JSON.stringify({}),
+    });
+    expect(response.status, `${route.method} ${route.path}`).toBe(410);
+    expect(catalogLegacyGoneResponseSchema.parse(response.body).error.details).toEqual({
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
+    });
+    expect(response.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+  });
+
   it("every registered route is published in the manifest", () => {
     const manifest = manifestKeys();
     const unpublished = [...registeredKeys()]

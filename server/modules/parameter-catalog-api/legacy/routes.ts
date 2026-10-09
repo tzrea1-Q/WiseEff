@@ -1,5 +1,6 @@
 import { canViewParameters } from "../../parameter-kernel/policy";
 import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
+import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import {
   CATALOG_RELEASE_HEADER,
   catalogLegacyIdentifierResponseSchema,
@@ -402,6 +403,41 @@ export async function handleLegacyCatalogRequest(
       };
     }
     throw error;
+  }
+}
+
+export function registerCatalogLegacyRetirementRoutes(
+  router: WiseEffRouter,
+  options?: { resolveInvocation: LegacyCatalogOptions["resolveInvocation"]; refusalAuditSink: TrustedRefusalAuditSink },
+): void {
+  if (options) assertTrustedRefusalAuditSink(options.refusalAuditSink);
+  for (const route of writeRoutes) {
+    router.prepend(route.method, route.path, async (request) => {
+      if (options) {
+        let invocation: TrustedInvocationContext | null;
+        try {
+          invocation = await options.resolveInvocation(request);
+        } catch (error) {
+          if (!(error instanceof ApiError) || !["UNAUTHENTICATED", "FORBIDDEN"].includes(error.code)) throw error;
+          invocation = null;
+        }
+        if (invocation) {
+          await options.refusalAuditSink.write({
+            invocation,
+            projectId: null,
+            app: "parameter-catalog",
+            kind: "legacy-surface-retired",
+            action: "deny",
+            severity: "Low",
+            targetType: "legacy-route",
+            targetId: route.id,
+            metadata: { reason: "legacy-surface-retired", routeId: route.id, method: route.method },
+            traceId: request.requestId,
+          });
+        }
+      }
+      return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
+    });
   }
 }
 
