@@ -56,6 +56,21 @@ function renderArchive(state: PrototypeState, runtime?: AppRuntime) {
 }
 
 describe("ParameterReviewPage archive project identity", () => {
+  it("reports an active review projection read failure as review records rather than an archive", async () => {
+    const dispatch = vi.fn();
+    const runtime = { parameterRepository: {
+      listChangeRequests: vi.fn().mockRejectedValue(new Error("Read unavailable")),
+      listSubmissionRounds: vi.fn().mockResolvedValue([])
+    } } as unknown as AppRuntime;
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <ParameterReviewPage state={archiveState()} dispatch={dispatch} search="?project=historical-project"
+        onNavigate={() => {}} runtime={runtime} runtimeMode="api" />
+    </TopBarActionsContext.Provider>);
+    await waitFor(() => expect(dispatch).toHaveBeenCalledWith({
+      type: "ADD_NOTIFICATION", message: "审阅记录加载失败，请稍后重试。"
+    }));
+  });
+
   it.each(["advance", "reject"] as const)("lists assigned node work and refreshes after %s without reviving binding review", async (decision) => {
     const node = { ...initialState.changeRequests[0], id: "node-review", projectId: "aurora", parameterId: "logical-charger",
       submissionRoundId: undefined, editSubjectKind: "node-enablement" as const, logicalNodeId: "logical-charger",

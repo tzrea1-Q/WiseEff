@@ -511,6 +511,38 @@ export const casCurrentTip = async (
   return (result.rowCount ?? 0) === 1;
 };
 
+export async function casNodeEnablementSourceTip(client: ValueClient, input: {
+  bindingId: string; expectedTip: string; nextTip: string; requestId: string;
+  baseConfigRevisionId: string; baseFileVersionId: string;
+}): Promise<boolean> {
+  const advanced = await client.query(`update parameter_catalog.project_parameter_bindings binding set current_value_id=$3,updated_at=now()
+    where binding.id=$1 and binding.current_value_id=$2 and not parameter_catalog.is_replaced_current_binding(binding.id)
+    and exists (select 1 from public.parameter_change_requests request
+      join parameter_catalog.${projectParameterValues} old_value on old_value.id=$2 and old_value.binding_id=binding.id
+      join parameter_catalog.${projectParameterValues} next_value on next_value.id=$3 and next_value.binding_id=binding.id
+        and next_value.definition_id=old_value.definition_id and next_value.definition_revision_id=old_value.definition_revision_id
+        and next_value.source_ref=old_value.source_ref and next_value.value_kind=old_value.value_kind
+        and next_value.value_digest=old_value.value_digest and next_value.value_state='present'
+      join parameter_catalog.project_value_source_pins next_pin on next_pin.project_value_id=next_value.id
+        and next_pin.binding_id=binding.id and next_pin.source_occurrence_id=binding.source_occurrence_id
+        and next_pin.config_revision_id=next_value.config_revision_id
+      join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+      join public.dts_config_revisions next_revision on next_revision.id=next_value.config_revision_id
+        and next_revision.organization_id=binding.organization_id and next_revision.project_id=binding.project_id
+        and next_revision.config_set_id=occurrence.config_set_id
+      where request.id=$4 and request.organization_id=binding.organization_id and request.project_id=binding.project_id
+        and request.status='software_merge' and request.edit_subject_kind='node-enablement'
+        and request.project_parameter_binding_id is null and old_value.value_state='present'
+        and request.base_config_revision_id=$5 and old_value.config_revision_id=$5
+        and request.source_file_version_id=$6 and next_value.config_revision_id<>$5
+        and exists (select 1 from public.parameter_review_decisions decision where decision.request_id=request.id
+          and decision.decision='advance' and decision.from_status='hardware_review' and decision.to_status='software_review' and decision.initiator_type='user')
+        and exists (select 1 from public.parameter_review_decisions decision where decision.request_id=request.id
+          and decision.decision='advance' and decision.from_status='software_review' and decision.to_status='software_merge' and decision.initiator_type='user'))`,
+  [input.bindingId,input.expectedTip,input.nextTip,input.requestId,input.baseConfigRevisionId,input.baseFileVersionId]);
+  return advanced.rowCount === 1;
+}
+
 export const insertSuccessAudit = async (
   client: ValueClient,
   input: {

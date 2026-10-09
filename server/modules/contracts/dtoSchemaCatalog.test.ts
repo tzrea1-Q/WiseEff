@@ -8,6 +8,25 @@ import { dashboardHotspotDtoSchema } from "./dtoSchemas/parameters";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("publishes list-only unavailable metadata without weakening historical parameter detail", () => {
+    const document = buildOpenApiDocument();
+    const list = document.components.schemas.ParameterListResponse as {
+      properties: { items: { items: { required: string[]; properties: Record<string, unknown> } } }
+    };
+    const detail = document.components.schemas.ParameterResponse as {
+      properties: { item: { properties: Record<string, unknown> } }
+    };
+    expect(list.properties.items.items.required).toEqual(expect.arrayContaining([
+      "bindingId", "definitionId", "effectiveRevisionId", "currentValueId", "metadataAvailability"
+    ]));
+    for (const field of ["risk", "range", "unit", "recommendedValue", "updatedAt", "updatedAtTs", "history"]) {
+      expect(list.properties.items.items.properties[field], field).toMatchObject({ type: "null" });
+    }
+    expect(detail.properties.item.properties.risk).toMatchObject({ type: "string", enum: ["High", "Medium", "Low"] });
+    expect(detail.properties.item.properties.history).toMatchObject({ type: "array" });
+    expect(detail.properties.item.properties.metadataAvailability).toBeUndefined();
+  });
+
   it("realizes request/response schemas for every covered route", () => {
     for (const routeId of dtoSchemaCoveredRouteIds) {
       const entry = schemaRegistry[routeId];

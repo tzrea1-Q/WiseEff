@@ -1,7 +1,7 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page } from "playwright/test";
+import { expect, test, type APIRequestContext, type APIResponse, type Dialog, type Locator, type Page } from "playwright/test";
 import { seedSemanticBindingCatalog } from "../../server/testing/parameterCatalog/semanticBinding";
 
 import {
@@ -516,10 +516,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     if (!baseDatabaseUrl) throw new Error("DATABASE_URL is required to create the disposable topology database.");
     ownedDisposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
       label: "parameter_topology",
-      ...(process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true" ? {
-        apiPort: Number(new URL(process.env.VITE_WISEEFF_API_BASE_URL!).port),
-        frontendPort: Number(new URL(process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL!).port)
-      } : {}),
     });
     disposableRuntime = ownedDisposableRuntime;
     applyDisposableRuntimeEnv(ownedDisposableRuntime);
@@ -2267,8 +2263,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       expect(scBinding, "sc8562 gpio_int binding must exist for mixed-round submit").toBeTruthy();
       expect(scBinding!.parameterSpecId).toBeTruthy();
 
-      const canonicalState = () => withPgClient(async (client) => (await client.query(`select to_jsonb(binding) as binding,
-        (select jsonb_agg(to_jsonb(value) order by value.id) from parameter_catalog.project_parameter_values value where value.binding_id=binding.id) as values,
+      const canonicalState = () => withPgClient(async (client) => (await client.query<{
+        binding: { id: string; current_value_id: string; updated_at: string };
+        values: Array<{ id: string; value: unknown; value_digest: string; value_kind: string;
+          definition_revision_id: string; config_revision_id: string }>;
+        pins: Array<{ id: string; project_value_id: string; file_id: string; file_version_id: string;
+          config_revision_id: string }>;
+      }>(`select to_jsonb(binding) as binding,
+        (select jsonb_agg(to_jsonb(value.*) order by value.id) from parameter_catalog.project_parameter_values value where value.binding_id=binding.id) as values,
         (select jsonb_agg(to_jsonb(pin) order by pin.id) from parameter_catalog.project_value_source_pins pin
          join parameter_catalog.project_parameter_values value on value.id=pin.project_value_id where value.binding_id=binding.id) as pins
         from parameter_catalog.project_parameter_bindings binding where binding.project_id=$1 order by binding.id`, [projectId])).rows);
@@ -2341,13 +2343,55 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       expect(candidateBindings.status(), await candidateBindings.text()).toBe(200);
       expect((await candidateBindings.json()).items).toEqual(bindingsBody.items);
       await expect(semanticBindingRow(workspace, "sc8562@6E")).toBeVisible({ timeout: 20_000 });
-      await page.reload();
+      const nodeDraftReadPath = "/api/v1/parameter-drafts/mine";
+      const nodeDraftReadUrl = apiRoute(`${nodeDraftReadPath}?projectId=${encodeURIComponent(projectId)}`);
+      const valueDraftReadPath = `/api/v2/projects/${projectId}/parameter-value-drafts`;
+      const injectedFailure: ExpectedApiFailure = { method: "GET", path: nodeDraftReadPath, status: 500 };
+      let structuralHydrationReads = 0;
+      await page.route((url) => url.href === nodeDraftReadUrl && ++structuralHydrationReads === 2, async (route) => {
+        expect(route.request().method()).toBe("GET");
+        await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({
+          error: { code: "INTERNAL_ERROR", message: "节点启用草稿读取暂时不可用（验收注入）" }
+        }) });
+      }, { times: 1 });
+      let failedDraftRead: APIResponse;
+      let healthyValueDraftRead: APIResponse;
+      expectedApiFailures.push(injectedFailure);
+      try {
+        [, failedDraftRead, healthyValueDraftRead] = await Promise.all([
+          page.reload(),
+          page.waitForResponse((response) => response.request().method() === "GET"
+            && response.url() === nodeDraftReadUrl && response.status() === 500),
+          page.waitForResponse((response) => response.request().method() === "GET"
+            && new URL(response.url()).pathname === valueDraftReadPath && response.status() === 200)
+        ]);
+      } finally {
+        expectedApiFailures.splice(expectedApiFailures.indexOf(injectedFailure), 1);
+      }
       await dismissXiaozeHint(page);
+      const draftReadError = page.getByRole("alert", { name: "节点启用草稿加载失败" });
+      await expect(draftReadError).toContainText("节点启用草稿读取暂时不可用（验收注入）");
+      await expect(page.getByRole("alert", { name: "参数值草稿加载失败" })).toHaveCount(0);
+      await expect(semanticBindingRow(workspace, "sc8562@6E")).toBeVisible();
+      await expect(semanticBindingRow(workspace, "mt5788@2B")).toBeVisible();
+      expect(healthyValueDraftRead.status()).toBe(200);
+      const draftFailureScreenshot = testInfo.outputPath("node-enablement-draft-read-failure.png");
+      await page.screenshot({ path: draftFailureScreenshot, fullPage: true, animations: "disabled" });
+      const retriedDraftReadPromise = page.waitForResponse((response) => response.request().method() === "GET"
+        && response.url() === nodeDraftReadUrl && response.status() === 200);
+      await draftReadError.getByRole("button", { name: "重试加载节点启用草稿" }).click();
+      const retriedDraftRead = await retriedDraftReadPromise;
+      expect((await retriedDraftRead.json()).items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: enablementBody.item.draftId, reason: disableReason, editSubjectKind: "node-enablement" })
+      ]));
+      await expect(draftReadError).toHaveCount(0);
       await expect(tray).toBeVisible({ timeout: 20_000 });
       await expect(tray).toContainText(disableReason);
       await expect(tray).toContainText("节点启用");
       await expect(workspace).toHaveAttribute("data-revision-id", enablementBody.item.candidateRevisionId);
       await expect(semanticBindingRow(workspace, "sc8562@6E")).toBeVisible();
+      const draftRecoveredScreenshot = testInfo.outputPath("node-enablement-draft-read-recovered.png");
+      await page.screenshot({ path: draftRecoveredScreenshot, fullPage: true, animations: "disabled" });
 
       const persistedDraft = await withPgClient(async (client) => {
         const result = await client.query<{
@@ -2545,7 +2589,34 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const changedFile = sourceAfter.find((file) => sourceBefore.some((prior) => prior.id === file.id && prior.current_version_id !== file.current_version_id));
       expect(changedFile, "approval must append and activate a source version").toBeTruthy();
       expect(sourceAfter.filter((file) => sourceBefore.some((prior) => prior.id === file.id && prior.current_version_id !== file.current_version_id))).toHaveLength(1);
-      expect(await canonicalState()).toEqual(canonicalBefore);
+      const canonicalAfter = await canonicalState();
+      expect(canonicalAfter).toHaveLength(canonicalBefore.length);
+      for (const original of canonicalBefore) {
+        const successor = canonicalAfter.find((row) => row.binding.id === original.binding.id)!;
+        expect({ ...successor.binding, current_value_id: original.binding.current_value_id,
+          updated_at: original.binding.updated_at }).toEqual(original.binding);
+        expect(successor.values).toEqual(expect.arrayContaining(original.values));
+        expect(successor.pins).toEqual(expect.arrayContaining(original.pins));
+        const added = successor.binding.current_value_id === original.binding.current_value_id ? 0 : 1;
+        expect(successor.values).toHaveLength(original.values.length + added);
+        expect(successor.pins).toHaveLength(original.pins.length + added);
+        if (added === 0) {
+          expect(successor).toEqual(original);
+          continue;
+        }
+        const oldValue = original.values.find((value) => value.id === original.binding.current_value_id)!;
+        const currentValue = successor.values.find((value) => value.id === successor.binding.current_value_id)!;
+        expect(currentValue).toMatchObject({ value: oldValue.value, value_digest: oldValue.value_digest,
+          value_kind: oldValue.value_kind, definition_revision_id: oldValue.definition_revision_id });
+        expect(currentValue.config_revision_id).not.toBe(oldValue.config_revision_id);
+        const oldPin = original.pins.find((pin) => pin.project_value_id === oldValue.id)!;
+        expect(successor.pins.find((pin) => pin.project_value_id === currentValue.id)).toMatchObject({
+          file_id: oldPin.file_id, config_revision_id: currentValue.config_revision_id,
+          file_version_id: sourceAfter.find((file) => file.id === oldPin.file_id)!.current_version_id
+        });
+      }
+      expect(canonicalAfter.find((row) => row.binding.id === scBinding!.id)!.binding.current_value_id)
+        .not.toBe(canonicalBefore.find((row) => row.binding.id === scBinding!.id)!.binding.current_value_id);
       const sourceContent = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${changedFile!.id}/versions/${changedFile!.current_version_id}/content`),
         { headers: authHeadersForRole("software-user") });
       expect(sourceContent.status()).toBe(200);
@@ -2580,7 +2651,19 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         page,
         testInfo,
         assertions: ["ui", "api", "db", "audit", "screenshot"],
+        artifacts: [draftFailureScreenshot, draftRecoveredScreenshot],
         api: [
+          summarizeApiResponse(failedDraftRead, {
+            method: "GET", path: `${nodeDraftReadPath}?projectId=${projectId}`,
+            responseSummary: "one injected structural draft read failure; explicit owner error; canonical rows remain visible"
+          }),
+          summarizeApiResponse(healthyValueDraftRead, {
+            method: "GET", path: valueDraftReadPath, responseSummary: "independent canonical value draft owner remains healthy"
+          }),
+          summarizeApiResponse(retriedDraftRead, {
+            method: "GET", path: `${nodeDraftReadPath}?projectId=${projectId}`,
+            responseSummary: "owner-specific retry reaches real backend and restores persisted node draft"
+          }),
           summarizeApiResponse(enablementResponse, {
             method: "POST",
             path: `/api/v2/projects/${projectId}/node-enablement-drafts`,
@@ -2637,7 +2720,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           {
             table: "project_parameter_files, parameter_catalog.project_parameter_values, parameter_catalog.project_value_source_pins",
             predicate: `config_set_id=${topology.configSetId}; project_id=${projectId}`,
-            observed: "one source file version advanced; all canonical Bindings, values and immutable source pins unchanged", rowCount: sourceAfter.length
+            observed: "one source file version advanced; unchanged business values have successor current values and source pins; all original values and pins remain exact", rowCount: sourceAfter.length
           }
         ],
         audit: [
@@ -2650,7 +2733,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           ...nodeEvidence.audits.map((audit) => ({ id: audit.id, kind: audit.kind, action: audit.action, targetId: audit.target_id }))
         ],
         notes:
-          "UI proves disable requires reason + confirmation and survives reload. The canonical value round stays independent. The software user submits the node, actual assigned reviewers advance it, and the assigned software user applies the structural source change with audited human decisions."
+          "UI proves disable requires reason + confirmation and survives reload. A single structural draft read failure is explicit without hiding canonical rows; owner retry restores the persisted draft from the real backend. The canonical value round stays independent. The software user submits the node, actual assigned reviewers advance it, and the assigned software user applies the structural source change with audited human decisions and immutable successor values/pins."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({

@@ -25,7 +25,7 @@ import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import type { ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
 import { runValidationGate, type ValidationGateDeps, type ValidationGateResult } from "./validationGate";
-import { assertReleaseGateAllows, type EvaluateReleaseReadinessDeps } from "./releaseReadinessService";
+import { assertReleaseGateAllows, assertReleaseGatePendingWorkUnchanged, type EvaluateReleaseReadinessDeps } from "./releaseReadinessService";
 
 export type BaselineServiceContext = AuditCorrelationContext;
 
@@ -131,7 +131,7 @@ export async function createBaseline(
     acknowledgedWarningIds: input.acknowledgedWarningIds,
     action: "create" as const
   };
-  await assertReleaseGateAllows(db, auth, gateInput, readinessDeps);
+  const confirmed = await assertReleaseGateAllows(db, auth, gateInput, readinessDeps);
 
   return db.transaction(async (tx) => {
     await tx.query(`select id from dts_config_set where organization_id=$1 and id=$2 for update`,
@@ -140,7 +140,7 @@ export async function createBaseline(
       organizationId: auth.organization.id,
       configSetId: input.configSetId
     });
-    await assertReleaseGateAllows(tx, auth, gateInput, readinessDeps);
+    await assertReleaseGatePendingWorkUnchanged(tx, auth, confirmed);
     if (!configSet) {
       throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
     }
@@ -674,7 +674,7 @@ export async function releaseBaseline(
     action: "release" as const
   };
   const readinessDeps = { objectStore: deps.objectStore, validator: deps.validator, toolchain: deps.toolchain };
-  await assertReleaseGateAllows(db, auth, readinessInput, readinessDeps);
+  const confirmed = await assertReleaseGateAllows(db, auth, readinessInput, readinessDeps);
 
   const gate = await runValidationGate(
     db,
@@ -691,7 +691,7 @@ export async function releaseBaseline(
       organizationId: auth.organization.id,
       configSetId: baseline.configSetId
     });
-    await assertReleaseGateAllows(tx, auth, readinessInput, readinessDeps);
+    await assertReleaseGatePendingWorkUnchanged(tx, auth, confirmed);
 
     await demoteReleasedBaselinesExcept(tx, {
       configSetId: baseline.configSetId,

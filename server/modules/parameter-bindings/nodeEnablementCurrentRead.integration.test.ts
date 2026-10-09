@@ -275,7 +275,7 @@ describe.each([
 
   it("#1078 applies approved structural enablement while retaining canonical values, pins and the legacy fence", async () => {
     setParameterIdentityMode("semantic");
-    const before = await read<{ items: unknown[] }>(`/api/v2/projects/${projectId}/parameter-bindings`);
+    const before = await read<{ items: Array<Record<string, unknown>> }>(`/api/v2/projects/${projectId}/parameter-bindings`);
     const canonicalState = async () => (await db.query(`select to_jsonb(binding) as binding,
       (select jsonb_agg(to_jsonb(value) order by value.id) from parameter_catalog.project_parameter_values value where value.binding_id = binding.id) as values,
       (select jsonb_agg(to_jsonb(pin) order by pin.id) from parameter_catalog.project_value_source_pins pin
@@ -323,9 +323,19 @@ describe.each([
     }
     const current = await sourceState();
     expect(current).not.toEqual(originalSource);
-    expect(await canonicalState()).toEqual(retained);
+    const structuralState = await canonicalState();
+    for (const original of retained) {
+      const successor = structuralState.find((row) => row.binding.id === original.binding.id)!;
+      expect({ ...successor.binding, current_value_id: original.binding.current_value_id, updated_at: original.binding.updated_at }).toEqual(original.binding);
+      expect(successor.values).toEqual(expect.arrayContaining(original.values));
+      expect(successor.pins).toEqual(expect.arrayContaining(original.pins));
+      const added = successor.binding.current_value_id === original.binding.current_value_id ? 0 : 1;
+      expect(successor.values).toHaveLength(original.values.length + added);
+      expect(successor.pins).toHaveLength(original.pins.length + added);
+    }
     const bindings = await read<typeof before.body>(`/api/v2/projects/${projectId}/parameter-bindings`);
-    expect(bindings.body.items).toEqual(before.body.items);
+    expect(bindings.body.items.map((binding) => ({ ...binding, currentValueId: "" })))
+      .toEqual(before.body.items.map((binding) => ({ ...binding, currentValueId: "" })));
     const applied = (await db.query(`select member.file_version_id, revision.id from dts_config_revisions revision
       join dts_config_revision_members member on member.config_revision_id = revision.id
       join project_parameter_files file on file.id = member.file_id and file.current_version_id = member.file_version_id
@@ -357,6 +367,39 @@ describe.each([
     });
     expect(replay.status).toBe(409);
     expect(await sourceState()).toEqual(current);
-    expect(await canonicalState()).toEqual(retained);
+    expect(await canonicalState()).toEqual(structuralState);
+
+    const binding = (await db.query<{ id: string }>(`select binding.id from parameter_catalog.current_project_parameter_bindings binding
+      join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+      where binding.project_id=$1 and occurrence.config_set_id=$2`, [projectId, configSetId])).rows[0]!;
+    const draft = await requestJson<{ item: { draftId: string } }>(server,
+      `/api/v2/projects/${projectId}/parameter-bindings/${binding.id}/drafts`, {
+        method: "POST", headers: { "X-WiseEff-User": authorId },
+        body: JSON.stringify({ baseRevisionId: applied.id, targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "1100", value: "1100" }]] }, reason: "Value edit after structural approval" })
+      });
+    expect(draft.status, draft.bodyText).toBe(201);
+    const valueRequest = await requestJson<{ item: { id: string } }>(server,
+      `/api/v2/projects/${projectId}/parameter-value-drafts/${draft.body.item.draftId}/submit`, {
+        method: "POST", headers: { "X-WiseEff-User": authorId }, body: JSON.stringify({ assignedToUserId: softwareId })
+      });
+    expect(valueRequest.status, valueRequest.bodyText).toBe(201);
+    const valueReview = await requestJson<{ item: { status: string } }>(server,
+      `/api/v2/projects/${projectId}/parameter-value-change-requests/${valueRequest.body.item.id}/review`, {
+        method: "POST", headers: { "X-WiseEff-User": softwareId }, body: JSON.stringify({ decision: "approve" })
+      });
+    expect(valueReview.status, valueReview.bodyText).toBe(200);
+    expect(valueReview.body.item.status).toBe("approved");
+    expect((await db.query(`select value.value from parameter_catalog.current_project_parameter_bindings binding
+      join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id where binding.id=$1`, [binding.id])).rows)
+      .toEqual([{ value: 1100 }]);
+    expect((await db.query(`select id from parameter_catalog.binding_history_events
+      where binding_id=$1 and applied_request_id=$2`, [binding.id, valueRequest.body.item.id])).rows).toHaveLength(1);
+    expect((await db.query(`select id from parameter_history_entries where request_id=$1`, [requestId])).rows).toHaveLength(1);
+    const afterValueEdit = await canonicalState();
+    for (const original of structuralState) {
+      const currentBinding = afterValueEdit.find((row) => row.binding.id === original.binding.id)!;
+      expect(currentBinding.values).toEqual(expect.arrayContaining(original.values));
+      expect(currentBinding.pins).toEqual(expect.arrayContaining(original.pins));
+    }
   });
 });

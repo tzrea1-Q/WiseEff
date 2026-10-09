@@ -9,7 +9,8 @@ import {
 import {
   catalogDocumentFromDto,
   catalogProjectBindingFromDto,
-  catalogSubjectFromDto
+  catalogSubjectFromDto,
+  parameterRecordFromBinding
 } from "./parameterCatalogDtos";
 
 const catalogDocument = {
@@ -52,6 +53,30 @@ const binding = {
 };
 
 describe("parameter catalog frontend DTOs", () => {
+  it("maps Binding presentation and retained identity into a shell record at the HTTP boundary", () => {
+    expect(parameterRecordFromBinding("project_1", {
+      id: "pbind_01KPROJECT", propertyKey: "gpio_int", rawValue: "<&gpio13 30 0>",
+      driverModule: "sc8562", moduleId: "module_power", sourceNodePath: "/i2c/sc8562@6e",
+      description: "Interrupt GPIO", documentation: "Pinned GPIO documentation"
+    })).toEqual({
+      id: "pbind_01KPROJECT", projectId: "project_1", name: "gpio_int",
+      description: "Interrupt GPIO", explanation: "Pinned GPIO documentation", configFormat: "DTS",
+      module: "sc8562", moduleId: "module_power", sourceNodePath: "/i2c/sc8562@6e",
+      currentValue: "<&gpio13 30 0>", recommendedValue: "", range: "", unit: "", risk: "Low",
+      valueKind: "scalar", updatedAt: "", updatedAtTs: "", history: []
+    });
+  });
+
+  it("keeps absent Binding presentation fields empty without borrowing another record", () => {
+    expect(parameterRecordFromBinding("project_2", {
+      id: "pbind_other", propertyKey: "limit", rawValue: "36.5", driverModule: null, moduleId: "",
+      description: null, documentation: null, sourceNodePath: null
+    })).toMatchObject({
+      id: "pbind_other", projectId: "project_2", name: "limit", currentValue: "36.5",
+      description: "", explanation: "", module: "", moduleId: undefined, sourceNodePath: undefined
+    });
+  });
+
   it("keeps catalog document and unregistered subject identity mapping", () => {
     const document = catalogDocumentResponseSchema.parse(catalogDocument);
     expect(catalogDocumentFromDto(document).item.status).toBe("ready");

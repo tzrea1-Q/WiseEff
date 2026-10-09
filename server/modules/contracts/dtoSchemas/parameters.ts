@@ -83,6 +83,31 @@ export const parameterRecordDtoSchema = z.object({
   history: z.array(parameterHistoryEntryDtoSchema)
 });
 
+export const canonicalParameterCompatibilityRecordDtoSchema = parameterRecordDtoSchema
+  .omit({ parameterSpecId: true })
+  .extend({
+    bindingId: z.string(),
+    projectParameterBindingId: z.string(),
+    definitionId: z.string(),
+    effectiveRevisionId: z.string(),
+    currentValueId: z.string(),
+    sourceFileId: z.string().nullable().optional(),
+    sourceOccurrenceId: z.string().nullable().optional(),
+    recommendedValue: z.null(),
+    range: z.null(),
+    unit: z.null(),
+    risk: z.null(),
+    updatedAt: z.null(),
+    updatedAtTs: z.null(),
+    history: z.null(),
+    metadataAvailability: z.object({
+      status: z.literal("unavailable"),
+      reason: z.literal("canonical-compatibility-metadata-unavailable")
+    })
+  });
+
+export type CanonicalParameterCompatibilityRecordDto = z.infer<typeof canonicalParameterCompatibilityRecordDtoSchema>;
+
 export const parameterDraftDtoSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -268,7 +293,7 @@ export const dashboardHotspotDtoSchema = z.object({
 });
 
 export const projectListResponseSchema = itemsEnvelopeSchema(projectDtoSchema);
-export const parameterListResponseSchema = itemsEnvelopeSchema(parameterRecordDtoSchema);
+export const parameterListResponseSchema = itemsEnvelopeSchema(canonicalParameterCompatibilityRecordDtoSchema);
 export const parameterResponseSchema = itemEnvelopeSchema(parameterRecordDtoSchema);
 export const parameterHistoryResponseSchema = itemsEnvelopeSchema(parameterHistoryEntryDtoSchema);
 export const parameterDraftResponseSchema = itemEnvelopeSchema(parameterDraftDtoSchema);

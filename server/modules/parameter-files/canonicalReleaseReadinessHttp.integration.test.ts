@@ -265,6 +265,47 @@ describe("#1061 assembled-server canonical release readiness", () => {
     }));
   }
 
+  it.each(["create", "release"] as const)("#1071 keeps external validation outside the %s serialization lock", async (action) => {
+    const selected = await source(`validation-lock-${action}`);
+    const initial = await readiness(selected);
+    const baseline = action === "release" ? await request(
+      `/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`, adminId,
+      { name: "validation-lock-release", gateToken: initial.gateToken }
+    ) : undefined;
+    if (baseline) expect(baseline.status, JSON.stringify(baseline.body)).toBe(201);
+    const confirmed = await readiness(selected);
+    const readObject = storage.get.bind(storage);
+    const blockedReads: string[] = [];
+    let probes = Promise.resolve();
+    const probe = vi.spyOn(storage, "get").mockImplementation(async (key) => {
+      await (probes = probes.then(async () => {
+        const connection = await getRootPostgresPool(db)!.connect();
+        try {
+          await connection.query("begin");
+          await connection.query("select id from dts_config_set where id=$1 for update nowait", [selected.configSetId]);
+        } catch (error) {
+          if ((error as { code?: string }).code !== "55P03") throw error;
+          blockedReads.push(key);
+        } finally {
+          await connection.query("rollback");
+          connection.release();
+        }
+      }));
+      return readObject(key);
+    });
+    try {
+      const path = action === "create"
+        ? `/api/v1/projects/${projectId}/config-sets/${selected.configSetId}/baselines`
+        : `/api/v1/projects/${projectId}/baselines/${baseline!.body.item.id}/release`;
+      const result = await request(path, adminId, { gateToken: confirmed.gateToken, ...(action === "create" ? { name: "validation-lock-create" } : {}) });
+      expect(result.status, JSON.stringify(result.body)).toBe(action === "create" ? 201 : 200);
+      expect(probe.mock.calls.length).toBeGreaterThan(0);
+      expect(blockedReads, "Object storage and DTS validation must not hold the config-set serialization lock").toEqual([]);
+    } finally {
+      probe.mockRestore();
+    }
+  });
+
   it("#1071 serializes baseline create with canonical submission after gate confirmation", async () => {
     await interleaveBaselineWrite("create");
   });
