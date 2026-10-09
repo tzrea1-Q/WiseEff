@@ -50,7 +50,10 @@ import {
   parameterResponseSchema,
   parameterSubmissionRoundListResponseSchema,
   parameterSubmissionRoundResponseSchema,
-  projectListResponseSchema
+  projectListResponseSchema,
+  projectAdminListResponseSchema,
+  projectAdminDetailResponseSchema,
+  projectAdminSummaryResponseSchema
 } from "./parameters";
 import { parameterModuleRegistryResponseSchema } from "./parameterModules";
 import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
@@ -62,6 +65,9 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   DriverSchemaPromotionHistoryListResponse: driverSchemaPromotionHistoryListResponseSchema,
   ProjectListResponse: projectListResponseSchema,
+  ProjectAdminListResponse: projectAdminListResponseSchema,
+  ProjectAdminDetailResponse: projectAdminDetailResponseSchema,
+  ProjectAdminSummaryResponse: projectAdminSummaryResponseSchema,
   ParameterListResponse: parameterListResponseSchema,
   ParameterResponse: parameterResponseSchema,
   ParameterHistoryResponse: parameterHistoryResponseSchema,
@@ -114,6 +120,8 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 export const dtoSchemaCoveredRouteIds = [
   "parameterSpecs.listPromotionHistory",
   "parameters.listProjects",
+  "parameters.admin.listProjects",
+  "parameters.admin.getProject",
   "parameters.list",
   "parameters.get",
   "parameters.history",

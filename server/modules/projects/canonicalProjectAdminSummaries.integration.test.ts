@@ -1,14 +1,18 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { createWiseEffServer } from "../../app";
+import { requestJson } from "../../test/testClient";
+import { createPostgresDatabase, getRootPostgresPool, type Queryable } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
+import { projectAdminListResponseSchema, projectAdminDetailResponseSchema } from "../contracts/dtoSchemas";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
 import { sourceBackedCommand } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
@@ -36,6 +40,22 @@ describe("canonical project admin summaries", () => {
   let storageDirectory: string;
   const auth = makeTestAuthContext({ userId: USER, organizationId: ORG,
     permissions: ["parameter:view", "parameter:edit", "admin:access"] });
+
+  const snapshotDomainRows = async (queryable: Queryable = db) => {
+    const tables = (await queryable.query<{ schema: string; name: string }>(`
+      select table_schema as schema, table_name as name from information_schema.tables
+      where table_schema in ('public', 'parameter_catalog') and table_type = 'BASE TABLE'
+        and table_name not in ('audit_events', 'platform_audit_events')
+      order by table_schema, table_name
+    `)).rows;
+    const rows: Record<string, unknown> = {};
+    for (const table of tables) {
+      rows[`${table.schema}.${table.name}`] = (await queryable.query(
+        `select count(*)::text as count, coalesce(jsonb_agg(to_jsonb(row) order by to_jsonb(row)::text), '[]'::jsonb) as rows from "${table.schema}"."${table.name}" row`
+      )).rows;
+    }
+    return rows;
+  };
 
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("canonicalprojectcounts");
@@ -77,6 +97,71 @@ describe("canonical project admin summaries", () => {
     await db?.close();
     await database?.drop();
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
+  });
+
+  it("refuses canonical project deletion with trusted audit and no domain row changes", async () => {
+    setParameterIdentityMode("semantic");
+    const server = createWiseEffServer({ db });
+    const before = await snapshotDomainRows();
+    const response = await requestJson(server, `/api/v1/parameters/admin/projects/${PROJECTS[0]}`, {
+      method: "DELETE",
+      headers: { "X-WiseEff-User": USER, "X-Request-Id": "canonical-project-delete-refusal" },
+      body: JSON.stringify({ actorUserId: "spoofed-user", organizationId: FOREIGN_ORG })
+    });
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ error: { code: "CONFLICT", requestId: "canonical-project-delete-refusal",
+      details: { reason: "canonical-project-retained", projectId: PROJECTS[0] } } });
+    expect(await snapshotDomainRows()).toEqual(before);
+    const audit = await db.query(`select organization_id, actor_user_id, actor_type, project_id, kind, target_type,
+      target_id, trace_id, metadata from audit_events where trace_id = 'canonical-project-delete-refusal'`);
+    expect(audit.rows).toEqual([expect.objectContaining({ organization_id: ORG, actor_user_id: USER,
+      actor_type: "user", project_id: PROJECTS[0], kind: "project-delete-refused", target_type: "project",
+      target_id: PROJECTS[0], trace_id: "canonical-project-delete-refusal",
+      metadata: expect.objectContaining({ initiator: "user", reason: "canonical-project-retained" }) })]);
+  });
+
+  it("still deletes an empty project through the assembled server", async () => {
+    const server = createWiseEffServer({ db });
+    const projectId = "canonical-count-empty-delete";
+    await createProject(db, { organizationId: ORG, id: projectId, name: "Empty delete", code: "EMPTYDELETE" });
+    const response = await requestJson(server, `/api/v1/parameters/admin/projects/${projectId}`, {
+      method: "DELETE", headers: { "X-WiseEff-User": USER }
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect((await db.query("select id from projects where id=$1", [projectId])).rows).toEqual([]);
+  });
+
+  it("exposes tenant-scoped canonical ownership in the project operations list and detail", async () => {
+    const server = createWiseEffServer({ db });
+    const emptyId = "canonical-count-empty-list";
+    await createProject(db, { organizationId: ORG, id: emptyId, name: "Empty list", code: "EMPTYLIST" });
+    const headers = { "X-WiseEff-User": USER };
+    const list = await requestJson<{ items: { id: string; canonicalOwned: boolean }[] }>(server,
+      "/api/v1/parameters/admin/projects", { headers });
+    expect(list.status).toBe(200);
+    projectAdminListResponseSchema.parse(list.body);
+    expect(list.body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: PROJECTS[0], canonicalOwned: true }),
+      expect.objectContaining({ id: PROJECTS[1], canonicalOwned: true }),
+      expect.objectContaining({ id: emptyId, canonicalOwned: false })
+    ]));
+    expect(list.body.items.some((row) => row.id === FOREIGN_PROJECT)).toBe(false);
+    const detail = await requestJson(server, `/api/v1/parameters/admin/projects/${PROJECTS[0]}`, { headers });
+    expect(detail.status).toBe(200);
+    projectAdminDetailResponseSchema.parse(detail.body);
+    expect(detail.body).toMatchObject({ item: { id: PROJECTS[0], canonicalOwned: true } });
+    expect((await requestJson(server, `/api/v1/parameters/admin/projects/${emptyId}`, { method: "DELETE", headers })).status).toBe(200);
+  });
+
+  it("does not expose or delete another tenant's project", async () => {
+    const server = createWiseEffServer({ db });
+    const response = await requestJson(server, `/api/v1/parameters/admin/projects/${FOREIGN_PROJECT}`, {
+      method: "DELETE", headers: { "X-WiseEff-User": USER, "X-Request-Id": "foreign-project-delete" }
+    });
+    expect(response.status).toBe(404);
+    expect((await db.query("select id from projects where id=$1", [FOREIGN_PROJECT])).rows).toEqual([{ id: FOREIGN_PROJECT }]);
+    expect((await db.query("select id from audit_events where trace_id='foreign-project-delete'")).rows).toEqual([]);
   });
 
   it("counts each project's distinct JSON Binding in list and detail without initializing modules", async () => {
@@ -153,5 +238,54 @@ describe("canonical project admin summaries", () => {
     setParameterIdentityMode("semantic");
     expect((await listProjectAdminSummaries(db, { organizationId: ORG })).map((row) => row.parameterCount)).toEqual([1, 1]);
     expect(await getProjectAdminDetail(db, { organizationId: ORG, projectId: PROJECTS[0] })).toMatchObject({ parameterCount: 1, moduleCount: 0, initializationStatus: "not_initialized" });
+  });
+
+  it("rechecks canonical ownership after waiting for a concurrent source registration", async () => {
+    const projectId = "canonical-count-concurrent-delete";
+    const storage = createLocalObjectStore(storageDirectory);
+    await createProject(db, { organizationId: ORG, id: projectId, name: "Concurrent delete", code: "CONCURRENT" });
+    const configSet = await createConfigSet(db, auth, { projectId, name: "Concurrent JSON" });
+    const uploaded = await uploadProjectParameterFile(db, storage, auth, {
+      projectId, fileName: "settings.json", bytes: Buffer.from('{"limit":36.5}')
+    });
+    await addConfigSetFile(db, auth, { configSetId: configSet.id, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
+    const pool = getRootPostgresPool(db)!;
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Published project count fixture is unavailable");
+    const writer = await pool.connect();
+    let deleting: ReturnType<typeof requestJson> | undefined;
+    try {
+      await writer.query("begin");
+      const pid = (await writer.query("select pg_backend_pid() as pid")).rows[0].pid;
+      await registerCanonicalJsonSource(writer, storage, auth, snapshot, {
+        projectId, configSetId: configSet.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+        configurationSchemaId: SCHEMA, rootPointer: "", mappings: [{ definitionId: DEFINITION, pointer: "/limit" }],
+        invocation: createUserInvocation(auth), requestId: "concurrent-project-source-register",
+        refusalSink: createTrustedRefusalAuditSink(db)
+      });
+      const before = await snapshotDomainRows(writer);
+      deleting = requestJson(createWiseEffServer({ db }), `/api/v1/parameters/admin/projects/${projectId}`, {
+        method: "DELETE", headers: { "X-WiseEff-User": USER, "X-Request-Id": "concurrent-project-delete" }
+      });
+      let waiting = false;
+      for (let attempt = 0; attempt < 100 && !waiting; attempt += 1) {
+        waiting = (await pool.query(`select exists(select 1 from pg_stat_activity
+          where datname=current_database() and $1=any(pg_blocking_pids(pid))) as waiting`, [pid])).rows[0].waiting;
+        if (!waiting) await delay(10);
+      }
+      expect(waiting).toBe(true);
+      await writer.query("commit");
+      const response = await deleting;
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ error: { details: { reason: "canonical-project-retained", projectId } } });
+      expect(await snapshotDomainRows()).toEqual(before);
+      expect((await db.query("select kind, actor_user_id, metadata from audit_events where trace_id='concurrent-project-delete'")).rows)
+        .toEqual([expect.objectContaining({ kind: "project-delete-refused", actor_user_id: USER,
+          metadata: expect.objectContaining({ initiator: "user", reason: "canonical-project-retained" }) })]);
+    } finally {
+      await writer.query("rollback");
+      writer.release();
+      await deleting;
+    }
   });
 });

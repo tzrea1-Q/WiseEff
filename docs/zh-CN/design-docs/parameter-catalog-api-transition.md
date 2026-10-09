@@ -650,6 +650,14 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 | Review placement choice | unresolved Review Item ETag、current release anchor、允许的 `register-subject` resolution | Org Admin 必须显式选择 `use-default` 或 `choose-parent`；不得预选或推断 parent。 |
 | Review resolution conflict | 409，reason 为 `placement-conflict`、`invalid-placement-parent`、`release-drift` 或 `revision-conflict` | 保留用户 selection，刷新 release/item/placement evidence，并要求重新确认；不得展示部分 Registration。 |
 
+## 规范项目删除门禁（#1070 / #1074）
+
+项目运营列表及详情响应提供服务端计算的 `canonicalOwned` 布尔值。租户范围内的项目只要存在任何规范 Binding、Project value 或来源固定记录（包括保留的历史），该值即为 true；显示的参数数量不能用来判断规范所有权。
+
+`DELETE /api/v1/parameters/admin/projects/:projectId` 对规范所有项目返回 HTTP 409 `CONFLICT`，并携带 `details.reason = "canonical-project-retained"` 和 `details.projectId`。`project-delete-refused` 审计的身份来自已认证调用，且在返回拒绝前提交。项目、规范、旧版及来源数据行均不改变。界面禁用删除，并提供可见、可访问的说明：规范历史必须保留，归档或处置功能尚未开放。
+
+删除事务获取项目行锁后，通过独立语句重新读取所有权，以包含等待锁期间规范写入者已提交的数据。空项目及仅含旧版数据的项目保留原有删除路径。此门禁不新增归档、退役或特权处置，也不修改外键及固定来源保护。
+
 ## OpenAPI 与前端后续影响
 
 后续实现规格必须在一次协调切换中更新：

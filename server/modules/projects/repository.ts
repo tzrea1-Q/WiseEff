@@ -22,6 +22,7 @@ type ProjectRow = {
   parameter_count?: number | string;
   open_conflict_count?: number | string;
   released_baseline_count?: number | string;
+  canonical_owned?: boolean;
 };
 
 type ProjectModuleRow = {
@@ -34,6 +35,16 @@ type ProjectModuleRow = {
   depth?: number | string | null;
   parameter_module_id?: string | null;
 };
+
+const canonicalOwnershipSql = `
+  exists (select 1 from parameter_catalog.project_parameter_bindings binding
+    where binding.organization_id = p.organization_id and binding.project_id = p.id)
+  or exists (select 1 from parameter_catalog.project_parameter_values project_value
+    join parameter_catalog.project_parameter_bindings binding on binding.id = project_value.binding_id
+    where binding.organization_id = p.organization_id and binding.project_id = p.id)
+  or exists (select 1 from parameter_catalog.project_value_source_pins source_pin
+    where source_pin.organization_id = p.organization_id and source_pin.project_id = p.id)
+`;
 
 function toProjectDto(row: ProjectRow): ProjectDto {
   return {
@@ -54,6 +65,7 @@ function toProjectAdminSummaryDto(row: ProjectRow): ProjectAdminSummaryDto {
     parameterCount: Number(row.parameter_count ?? 0),
     openConflictCount: Number(row.open_conflict_count ?? 0),
     releasedBaselineCount: Number(row.released_baseline_count ?? 0),
+    canonicalOwned: row.canonical_owned ?? false,
     updatedAt: row.updated_at ? dateTimeToIso(row.updated_at) : new Date(0).toISOString()
   };
 }
@@ -128,7 +140,8 @@ export async function listProjectAdminSummaries(db: Queryable, query: { organiza
       coalesce(module_counts.module_count, 0) as module_count,
       coalesce(param_counts.parameter_count, 0) as parameter_count,
       coalesce(conflict_counts.open_conflict_count, 0) as open_conflict_count,
-      coalesce(baseline_counts.released_baseline_count, 0) as released_baseline_count
+      coalesce(baseline_counts.released_baseline_count, 0) as released_baseline_count,
+      (${canonicalOwnershipSql}) as canonical_owned
     from projects p
     left join (
       select project_id, count(*)::int as module_count
@@ -257,19 +270,28 @@ export async function updateProject(
 export async function deleteProject(
   db: Queryable,
   input: { organizationId: string; projectId: string }
-): Promise<{ deleted: boolean; reason?: "not_found" }> {
+): Promise<{ deleted: boolean; reason?: "not_found" | "canonical-project-retained" }> {
   const exists = await db.query<{ id: string }>(
     `
-    select id
-    from projects
-    where organization_id = $1
-      and id = $2
+    select p.id
+    from projects p
+    where p.organization_id = $1
+      and p.id = $2
+    for update of p
     `,
     [input.organizationId, input.projectId]
   );
 
   if (!exists.rows[0]) {
     return { deleted: false, reason: "not_found" };
+  }
+  const ownership = await db.query<{ canonical_owned: boolean }>(
+    `select (${canonicalOwnershipSql}) as canonical_owned from projects p
+      where p.organization_id = $1 and p.id = $2`,
+    [input.organizationId, input.projectId]
+  );
+  if (ownership.rows[0]?.canonical_owned) {
+    return { deleted: false, reason: "canonical-project-retained" };
   }
 
   const { organizationId, projectId } = input;
