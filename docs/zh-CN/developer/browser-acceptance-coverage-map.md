@@ -146,7 +146,7 @@
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 在黄金/候选 Config Set 上成功（status=okay + vendor linux-bindings；不以 schema-failed 冒充成功）；刷新后 bindingId 与 provenance 从 DB 持久（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GATE-001`：已自动化。结构属性（含 `status`）不产生规格审核任务、不阻塞候选晋级与迁移 finalize；存量结构任务以系统性原因驳回。证据为 disposable 拓扑运行时的 API+DB（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-VISIBLE-001`：已自动化。`/parameters` 工作台（`DtsParameterWorkbench`）在禁用父节点下的参数行显示「所属节点不可达」、在自身禁用节点行显示「所属节点已禁用」。本页不挂载 `TopologyTree`（`aria-label="生效拓扑树"`）；树模型证据为 `GET .../topology?view=effective` 的 `enablement.selfEnabled === false` / `reachable === false`。模块导航无启停徽标；选中带 enablement 的节点时可断言「节点启用」对话框（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-ENABLE-TOGGLE-001`：已自动化。禁用需理由与二次确认；启停草稿持久化并写独立 `enablement-changed` 审计；与 binding 同轮提交不触发 `mixed-working-tips`（API 层证明；工作台同轮会与 `preferredRevision` 重载竞态）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-ENABLE-TOGGLE-001`：已自动化。禁用需理由与二次确认；结构草稿持久化后不改变当前 Binding，且独立于 canonical 参数值轮次。节点提交出现在活跃提交和实际指派审阅者的队列；指派的硬件／软件审阅者推进、拒绝并保留可信审计。拒绝后仍可跟踪节点提交；截图使用 1440x900 PC 视口。最终源码应用不在本操作范围内（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GUARD-001`：已自动化。非标准 `status = "reserved"` 只读；二级覆盖入口「仍要修改」须显式确认后方可写入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PCAT-UI-01`～`PCAT-UI-15`：CatalogPage 已挂载到 `/parameter-admin/specs`；本地 Catalog lane #810 上 15 个 ID 均有可观察断言（`e2e/acceptance/parameter-catalog.acceptance.spec.ts`、`parameter-catalog-governance.acceptance.spec.ts`、`parameter-catalog-negative.acceptance.spec.ts`）。这是本地证据，不是 Hosted/target 证据。
 

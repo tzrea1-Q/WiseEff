@@ -516,6 +516,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     if (!baseDatabaseUrl) throw new Error("DATABASE_URL is required to create the disposable topology database.");
     ownedDisposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
       label: "parameter_topology",
+      ...(process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true" ? {
+        apiPort: Number(new URL(process.env.VITE_WISEEFF_API_BASE_URL!).port),
+        frontendPort: Number(new URL(process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL!).port)
+      } : {}),
     });
     disposableRuntime = ownedDisposableRuntime;
     applyDisposableRuntimeEnv(ownedDisposableRuntime);
@@ -2469,6 +2473,68 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       );
       expect(withdrawn.ok(), await withdrawn.text()).toBe(true);
 
+      const nodeSubmit = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+        headers: authHeadersForRole("software-user"),
+        data: { projectId, items: [{ draftId: enablementBody.item.draftId, editSubjectKind: "node-enablement",
+          logicalNodeId: toggleNode!.logicalNodeId, action: "set", targetValue: '"disabled"', reason: disableReason }],
+        assignees: { hardwareCommitterId: "u-wang-jie", softwareCommitterId: "u-sun-mei", softwareUserId: "u-liu-min" } }
+      });
+      expect(nodeSubmit.status(), await nodeSubmit.text()).toBe(201);
+      const nodeRound = ((await nodeSubmit.json()) as { item: { id: string; items: Array<{ requestId: string }> } }).item;
+      const nodeRequestId = nodeRound.items[0]!.requestId;
+      await page.goto(`${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
+      const nodeTracking = page.getByRole("region", { name: "节点启用提交" });
+      await expect(nodeTracking).toContainText("1 项");
+      await expect(nodeTracking).toContainText(disableReason);
+      await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toBeEnabled();
+      await nodeTracking.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("node-enablement-submissions.png"), fullPage: true, animations: "disabled" });
+
+      await signInBrowserAsRole(page, "hardware-committer", `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}`);
+      await dismissXiaozeHint(page);
+      const nodeReview = page.getByRole("table", { name: "审阅队列" });
+      const nodeDetail = nodeReview.getByRole("button", { name: `查看 ${toggleNode!.name} 提交详情` });
+      await expect(nodeDetail).toBeVisible();
+      await nodeDetail.click();
+      await expect(page.getByRole("dialog", { name: "提交详情" })).toContainText(disableReason);
+      await page.screenshot({ path: testInfo.outputPath("node-enablement-assigned-reviewer.png"), fullPage: true, animations: "disabled" });
+      await page.getByRole("dialog", { name: "提交详情" }).getByRole("button", { name: "关闭" }).click();
+      const nodeAdvancePromise = page.waitForResponse((response) => response.request().method() === "POST"
+        && response.url().endsWith(`/parameter-change-requests/${nodeRequestId}/review`));
+      await page.getByRole("button", { name: "推进流程" }).click();
+      const nodeAdvance = await nodeAdvancePromise;
+      expect(nodeAdvance.status(), await nodeAdvance.text()).toBe(200);
+      expect((await nodeAdvance.json()).item.status).toBe("software_review");
+
+      await signInBrowserAsRole(page, "software-committer", `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}`);
+      await dismissXiaozeHint(page);
+      await page.getByRole("table", { name: "审阅队列" }).getByRole("button", { name: `查看 ${toggleNode!.name} 提交详情` }).click();
+      await page.getByRole("dialog", { name: "提交详情" }).getByRole("button", { name: "关闭" }).click();
+      await page.getByRole("button", { name: "打回修改" }).click();
+      await page.getByLabel("打回原因").fill("Keep node enabled until source apply is ready");
+      const nodeRejectPromise = page.waitForResponse((response) => response.request().method() === "POST"
+        && response.url().endsWith(`/parameter-change-requests/${nodeRequestId}/review`));
+      await page.getByRole("button", { name: "提交打回" }).click();
+      const nodeReject = await nodeRejectPromise;
+      expect(nodeReject.status(), await nodeReject.text()).toBe(200);
+      expect((await nodeReject.json()).item.status).toBe("rejected");
+      const nodeEvidence = await withPgClient(async (client) => {
+        const row = await client.query<{ status: string; edit_subject_kind: string; project_parameter_binding_id: string | null }>(
+          "select status, edit_subject_kind, project_parameter_binding_id from parameter_change_requests where id = $1", [nodeRequestId]);
+        const audits = await client.query<{ id: string; kind: string; action: string; target_id: string }>(
+          "select id, kind, action, target_id from audit_events where target_id = $1 and kind in ('parameter-review-advance','parameter-review-reject') order by created_at", [nodeRequestId]);
+        return { row: row.rows[0], audits: audits.rows };
+      });
+      expect(nodeEvidence.row).toEqual({ status: "rejected", edit_subject_kind: "node-enablement", project_parameter_binding_id: null });
+      expect(nodeEvidence.audits.map((audit) => audit.action)).toEqual(["advance", "reject"]);
+
+      await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
+      await expect(nodeTracking).toContainText(disableReason);
+      await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled();
+      await nodeTracking.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("node-enablement-rejected-submission.png"), fullPage: true, animations: "disabled" });
+      await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
+
       await recordOperationEvidence({
         operationId: "PARAM-ENABLE-TOGGLE-001",
         title: "disable with reason stays independent of the canonical value round",
@@ -2477,7 +2543,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         route: `/parameters?project=${projectId}`,
         page,
         testInfo,
-        assertions: ["ui", "api", "db", "audit"],
+        assertions: ["ui", "api", "db", "audit", "screenshot"],
         api: [
           summarizeApiResponse(enablementResponse, {
             method: "POST",
@@ -2503,6 +2569,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             method: "POST",
             path: `/api/v2/projects/${projectId}/parameter-value-drafts/.../submit`,
             responseSummary: `canonical request=${valueRequest.id}; enablement draft stays pending`
+          }),
+          summarizeApiResponse(nodeSubmit, {
+            method: "POST", path: "/api/v1/parameter-submission-rounds", responseSummary: `node round=${nodeRound.id}; active submission and assigned queue`
+          }),
+          summarizeApiResponse(nodeAdvance, {
+            method: "POST", path: `/api/v1/parameter-change-requests/${nodeRequestId}/review`, responseSummary: "assigned hardware reviewer advances node to software review"
+          }),
+          summarizeApiResponse(nodeReject, {
+            method: "POST", path: `/api/v1/parameter-change-requests/${nodeRequestId}/review`, responseSummary: "assigned software reviewer rejects node with reason"
           })
         ],
         db: [
@@ -2511,6 +2586,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             predicate: `id=${enablementBody.item.draftId}`,
             observed: `kind=${persistedDraft?.edit_subject_kind}; logicalNode=${persistedDraft?.logical_node_id}; tip=${persistedDraft?.candidate_config_revision_id}`,
             rowCount: 1
+          },
+          {
+            table: "parameter_change_requests", predicate: `id=${nodeRequestId}`,
+            observed: "rejected; node-enablement; no Binding identity", rowCount: 1
           }
         ],
         audit: [
@@ -2519,10 +2598,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             kind: "parameter-topology-governance",
             action: "enablement-changed",
             targetId: toggleNode!.logicalNodeId
-          }
+          },
+          ...nodeEvidence.audits.map((audit) => ({ id: audit.id, kind: audit.kind, action: audit.action, targetId: audit.target_id }))
         ],
         notes:
-          "UI proves disable requires reason + confirmation on labeled seed sc8562 and writes a distinct audit event. Canonical value drafts pin the Binding's own source revision, so a value edit never shares the enablement working tip (stale 409 on the enablement candidate); the value round submits as a single-stage canonical request and the node-enablement draft stays pending on its own review flow."
+          "UI proves disable requires reason + confirmation and survives reload. The canonical value round stays independent. Node submission is active with one item and withdrawal, the assigned hardware reviewer advances it, and the software reviewer rejects it with audited human decisions. Final structural source apply is outside this slice."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({

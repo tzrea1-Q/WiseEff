@@ -72,7 +72,7 @@ type ChangeRequestRow = {
   parameter_definition_id?: string;
   edit_subject_kind?: string | null;
   logical_node_id?: string | null;
-  base_version?: number | string;
+  base_version?: number | string | null;
   module: string;
   module_description?: string | null;
   parameter_description?: string | null;
@@ -296,6 +296,8 @@ type ChangeRequestMergeRow = {
 };
 
 type SubmissionItemRow = {
+  edit_subject_kind?: string | null;
+  logical_node_id?: string | null;
   change_request_id: string;
   project_parameter_value_id: string;
   name: string;
@@ -314,6 +316,9 @@ type SubmissionItemRow = {
 function toSubmissionItemDto(row: SubmissionItemRow): ParameterSubmissionItemDto {
   return {
     requestId: row.change_request_id,
+    ...(row.edit_subject_kind === "node-enablement"
+      ? { editSubjectKind: "node-enablement" as const, logicalNodeId: row.logical_node_id ?? undefined }
+      : {}),
     parameterId: row.project_parameter_value_id,
     name: row.name,
     module: row.module,
@@ -423,7 +428,7 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
         : {}),
     ...(row.logical_node_id ? { logicalNodeId: row.logical_node_id } : {}),
     parameterId: row.project_parameter_value_id,
-    baseVersion: row.base_version === undefined ? undefined : Number(row.base_version),
+    baseVersion: row.edit_subject_kind === "node-enablement" || row.base_version == null ? undefined : Number(row.base_version),
     module: row.module,
     ...(row.module_description?.trim()
       ? { moduleDescription: row.module_description.trim() }
@@ -1111,6 +1116,8 @@ export async function createEnablementSubmissionItem(
     )
     select
       inserted.change_request_id,
+      inserted.edit_subject_kind,
+      inserted.logical_node_id,
       coalesce(inserted.logical_node_id, '') as project_parameter_value_id,
       'status' as name,
       '节点启用' as module,
@@ -1337,12 +1344,18 @@ export async function listChangeRequests(
       pcr.id,
       pcr.submission_round_id,
       pcr.project_id,
-      coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
+      coalesce(pcr.project_parameter_binding_id, pcr.logical_node_id, '') as project_parameter_value_id,
+      pcr.edit_subject_kind,
+      pcr.logical_node_id,
       pcr.base_version,
-      ${CR_MODULE_NAME_SEMANTIC_SQL},
+      case when pcr.edit_subject_kind = 'node-enablement'
+        then coalesce(nullif(trim(lnr.name), ''), '节点启用')
+        else ${CR_MODULE_NAME_SEMANTIC_EXPR} end as module,
       ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL},
       ${CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL},
-      coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
+      case when pcr.edit_subject_kind = 'node-enablement'
+        then coalesce(nullif(trim(lnr.name), ''), 'status')
+        else coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) end as title,
       pcr.current_value,
       pcr.target_value,
       pcr.action,
@@ -1862,7 +1875,7 @@ export async function updateChangeRequestStatus(
 ) {
   const rejectReason = input.status === "rejected" ? input.note ?? null : null;
   if (parameterIdentityMode() === "semantic") {
-    const result = await db.query<ChangeRequestRow>(
+    const result = await db.query<{ id: string }>(
       `
       update parameter_change_requests
       set status = $3,
@@ -1878,52 +1891,11 @@ export async function updateChangeRequestStatus(
         updated_at = now()
       where organization_id = $1
         and id = $2
-      returning
-        id,
-        submission_round_id,
-        project_id,
-        coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
-        null::text as parameter_definition_id,
-        base_version,
-        coalesce(
-          (select split_part(specification_key, '/', 1) from parameter_specs where id = parameter_change_requests.parameter_spec_id),
-          ''
-        ) as module,
-        coalesce(
-          (select split_part(specification_key, '/', 2) from parameter_specs where id = parameter_change_requests.parameter_spec_id),
-          ''
-        ) as title,
-        current_value,
-        target_value,
-        action,
-        candidate_config_revision_id,
-        case
-          when parameter_change_requests.initiator_type = 'system' then
-            concat('WiseEff System ', coalesce(parameter_change_requests.initiator_system_kind, 'service'))
-          when parameter_change_requests.initiator_type = 'agent' then
-            'WiseEff Agent'
-          else (select name from users where id = parameter_change_requests.submitter_user_id)
-        end as submitter,
-        status,
-        'Low' as risk,
-        'legacy-text' as value_kind,
-        'DTS' as config_format,
-        created_at,
-        updated_at,
-        assigned_to_user_id,
-        workflow_hardware_committer_user_id,
-        workflow_software_committer_user_id,
-        workflow_software_user_id,
-        (select name from users where id = parameter_change_requests.assigned_to_user_id) as assigned_to,
-        reviewer_note,
-        reject_reason,
-        fast_track,
-        null::text as source_file_name,
-        null::text as source_node_path
+      returning id
       `,
       [input.organizationId, input.requestId, input.status, input.note ?? null, rejectReason]
     );
-    return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
+    return result.rows[0] ? getChangeRequestById(db, input) : null;
   }
 
   const result = await db.query<ChangeRequestRow>(
@@ -2515,9 +2487,14 @@ async function listSubmissionItemsByRoundIds(
     select
       psi.submission_round_id,
       psi.change_request_id,
-      coalesce(psi.project_parameter_binding_id, pcr.project_parameter_binding_id) as project_parameter_value_id,
-      coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as name,
-      split_part(ps.specification_key, '/', 1) as module,
+      pcr.edit_subject_kind,
+      pcr.logical_node_id,
+      coalesce(psi.project_parameter_binding_id, pcr.project_parameter_binding_id, pcr.logical_node_id) as project_parameter_value_id,
+      case when pcr.edit_subject_kind = 'node-enablement'
+        then coalesce(nullif(trim(lnr.name), ''), 'status')
+        else coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) end as name,
+      case when pcr.edit_subject_kind = 'node-enablement' then '节点启用'
+        else split_part(ps.specification_key, '/', 1) end as module,
       psi.current_value,
       psi.target_value,
       psi.action,
@@ -2529,11 +2506,12 @@ async function listSubmissionItemsByRoundIds(
       psi.reason
     from parameter_submission_items psi
     inner join parameter_change_requests pcr on pcr.id = psi.change_request_id
-    inner join project_parameter_bindings b
+    left join project_parameter_bindings b
       on b.id = coalesce(psi.project_parameter_binding_id, pcr.project_parameter_binding_id)
-    inner join parameter_specs ps on ps.id = coalesce(pcr.parameter_spec_id, b.parameter_spec_id)
+    left join parameter_specs ps on ps.id = coalesce(pcr.parameter_spec_id, b.parameter_spec_id)
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
+    ${SEMANTIC_LNR_FROM_BINDING_SQL}
     where psi.organization_id = $1
       and psi.submission_round_id = any($2::text[])
     order by psi.id asc

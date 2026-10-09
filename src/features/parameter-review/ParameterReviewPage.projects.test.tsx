@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppRuntime } from "@/app/appRuntime";
 import { TopBarActionsContext } from "@/components/layout";
@@ -56,6 +56,38 @@ function renderArchive(state: PrototypeState, runtime?: AppRuntime) {
 }
 
 describe("ParameterReviewPage archive project identity", () => {
+  it.each(["advance", "reject"] as const)("lists assigned node work and refreshes after %s without reviving binding review", async (decision) => {
+    const node = { ...initialState.changeRequests[0], id: "node-review", projectId: "aurora", parameterId: "logical-charger",
+      submissionRoundId: undefined, editSubjectKind: "node-enablement" as const, logicalNodeId: "logical-charger",
+      title: "charger", module: "节点启用", status: "硬件Committer检视" as const, assignedTo: "assigned-reviewer" };
+    const listChangeRequests = vi.fn().mockResolvedValue([node, { ...node, id: "other-node", title: "other node", assignedTo: "other-reviewer" },
+      { ...node, id: "old-binding", title: "retired binding", editSubjectKind: "binding" }]);
+    const reviewChange = vi.fn().mockImplementation(async () => {
+      listChangeRequests.mockResolvedValue([{ ...node, status: decision === "advance" ? "软件Committer检视" : "已打回", assignedTo: "next-reviewer" }]);
+    });
+    const runtime = { parameterRepository: { listChangeRequests, listSubmissionRounds: vi.fn().mockResolvedValue([]) } } as unknown as AppRuntime;
+    const user = { ...initialState.users[0], id: "assigned-reviewer", isActive: true,
+      roles: [{ projectId: "aurora", roleId: "hardware-committer" as const }] };
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <ParameterReviewPage state={{ ...initialState, currentUserId: user.id, users: [user], activeRoleId: "hardware-committer",
+        changeRequests: [], parameterSubmissionRounds: [], parameterInitializationReviews: [] }} dispatch={vi.fn()}
+        onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" parameterActions={{ reviewChange } as never} />
+    </TopBarActionsContext.Provider>);
+    const queue = screen.getByRole("table", { name: "审阅队列" });
+    fireEvent.click(await within(queue).findByRole("button", { name: "查看 charger 提交详情" }));
+    expect(queue).not.toHaveTextContent("other node");
+    expect(queue).not.toHaveTextContent("retired binding");
+    if (decision === "advance") fireEvent.click(screen.getByRole("button", { name: "推进流程" }));
+    else {
+      fireEvent.click(screen.getByRole("button", { name: "打回修改" }));
+      fireEvent.change(screen.getByLabelText("打回原因"), { target: { value: "Keep this node enabled" } });
+      fireEvent.click(screen.getByRole("button", { name: "提交打回" }));
+    }
+    await waitFor(() => expect(reviewChange).toHaveBeenCalledWith(expect.objectContaining({ requestId: node.id, decision })));
+    await waitFor(() => expect(listChangeRequests).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("tab", { name: "待审阅" })).toHaveTextContent("0");
+  });
+
   it("keeps the archive DTO project filter when the shell has only canonical Bindings", async () => {
     const runtime = {
       parameterRepository: {

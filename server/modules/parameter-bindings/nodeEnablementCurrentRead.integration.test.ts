@@ -15,11 +15,16 @@ import { addConfigSetFile, createConfigSet } from "../parameter-files/configSetS
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "./catalogProjectValueSync";
+import type { ChangeRequestDto, ParameterSubmissionRoundDto } from "../parameters/types";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 
 const organizationId = "org-1076";
 const projectId = "project-1076";
 const adminId = "admin-1076";
 const authorId = "author-1076";
+const reviewerId = "hardware-1077";
+const softwareId = "software-1077";
+const otherReviewerId = "other-hardware-1077";
 const admin = makeTestAuthContext({ userId: adminId, organizationId });
 const base = '/dts-v1/;\n/ { charger: charger { compatible = "acme,power"; iin_max = <1000>; status = "okay"; }; };\n';
 const overlay = '/dts-v1/;\n/plugin/;\n&charger { status = "okay"; };\n';
@@ -40,12 +45,16 @@ describe("#1076 assembled-server node enablement current Binding read", () => {
     const storage = createLocalObjectStore(directory);
     await seedCoreGraph(db, {
       organization: { id: organizationId },
-      users: [{ id: adminId }, { id: authorId }],
+      users: [adminId, authorId, reviewerId, softwareId, otherReviewerId].map((id) => ({ id })),
       projects: [{ id: projectId }]
     });
     await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values
       ('role-admin-1076',$1,$2,null,'admin'), ('role-author-1076',$3,$2,$4,'software-user')`,
     [adminId, organizationId, authorId, projectId]);
+    for (const [userId, roleId] of [[reviewerId, "hardware-committer"], [softwareId, "software-committer"], [otherReviewerId, "hardware-committer"]]) {
+      await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ($1,$2,$3,$4,$5)`, [`role-${userId}`, userId, organizationId, projectId, roleId]);
+    }
     const driver = await installDriverSourceFixture(db, admin, {
       subjectId: "csub_acme_power", compatible: "acme,power", businessName: "Power",
       driverName: "Charger", idempotencyKey: "1076-driver", reason: "Node enablement current read fixture"
@@ -94,9 +103,11 @@ describe("#1076 assembled-server node enablement current Binding read", () => {
       organizationId, projectId, configSetId: siblingSet.id, configRevisionId: siblingRevisionId
     }));
     server = createWiseEffServer({ db, objectStore: storage });
+    await db.query("alter table parameter_change_requests drop column parameter_definition_id, drop column project_parameter_value_id");
   });
 
   afterAll(async () => {
+    setParameterIdentityMode(null);
     await db?.close();
     await lane?.drop();
     if (directory) await rm(directory, { recursive: true, force: true });
@@ -169,5 +180,86 @@ describe("#1076 assembled-server node enablement current Binding read", () => {
     expect((await read<{ items: unknown[] }>(`/api/v2/projects/${projectId}/parameter-value-drafts`)).body.items).toEqual([]);
     expect((await read<typeof before.body>(`${path}?revisionId=unknown-revision`)).body.items).toEqual([]);
     expect((await read(path, "unknown-user-1076")).status).toBe(401);
+  });
+
+  async function submit() {
+    const topology = await read<{ item: { nodes: Array<{ logicalNodeId: string; name: string }> } }>(
+      `/api/v2/projects/${projectId}/config-sets/${configSetId}/revisions/${revisionId}/topology?view=effective`
+    );
+    expect(topology.status, topology.bodyText).toBe(200);
+    const logicalNodeId = topology.body.item.nodes.find((node) => node.name === "charger")!.logicalNodeId;
+    const drafts = await read<{ items: Array<{ id: string; logicalNodeId: string; reason: string }> }>(`/api/v1/parameter-drafts/mine?projectId=${projectId}`);
+    const existingDraft = drafts.body.items.find((draft) => draft.logicalNodeId === logicalNodeId);
+    const staged = existingDraft ? { status: 201, bodyText: "persisted node draft", body: { item: { draftId: existingDraft.id } } }
+      : await requestJson<{ item: { draftId: string } }>(server,
+      `/api/v2/projects/${projectId}/node-enablement-drafts`, {
+        method: "POST", headers: { "X-WiseEff-User": authorId },
+        body: JSON.stringify({ logicalNodeId, baseRevisionId: revisionId, target: "force-disabled", reason: "Disable charger" })
+      });
+    expect(staged.status, staged.bodyText).toBe(201);
+    const submitted = await requestJson<{ item: ParameterSubmissionRoundDto }>(server, "/api/v1/parameter-submission-rounds", {
+      method: "POST", headers: { "X-WiseEff-User": authorId },
+      body: JSON.stringify({ projectId, items: [{ draftId: staged.body.item.draftId, editSubjectKind: "node-enablement",
+        logicalNodeId, action: "set", targetValue: '"disabled"', reason: existingDraft?.reason ?? "Disable charger" }],
+      assignees: { hardwareCommitterId: reviewerId, softwareCommitterId: softwareId, softwareUserId: authorId } })
+    });
+    expect(submitted.status, submitted.bodyText).toBe(201);
+    return { round: submitted.body.item, logicalNodeId };
+  }
+
+  it("lists an active node-only submission and its assigned review queue without parameter identity", async () => {
+    setParameterIdentityMode("semantic");
+    const { round, logicalNodeId } = await submit();
+    expect(round.status).toBe("hardware_review");
+    const submissions = await read<{ items: ParameterSubmissionRoundDto[] }>(`/api/v1/parameter-submission-rounds?projectId=${projectId}&mine=true`);
+    expect(submissions.status, submissions.bodyText).toBe(200);
+    expect(submissions.body.items).toEqual([expect.objectContaining({ id: round.id, status: "hardware_review",
+      items: [expect.objectContaining({ editSubjectKind: "node-enablement", logicalNodeId, name: "charger",
+        currentValue: '"okay"', targetValue: '"disabled"' })] })]);
+    const reviews = await read<{ items: ChangeRequestDto[] }>(`/api/v1/parameter-change-requests?projectId=${projectId}&assignedTo=${reviewerId}`, reviewerId);
+    expect(reviews.status, reviews.bodyText).toBe(200);
+    expect(reviews.body.items).toEqual([expect.objectContaining({ id: round.items[0]!.requestId,
+      editSubjectKind: "node-enablement", logicalNodeId, title: "charger", assignedTo: reviewerId, status: "hardware_review" })]);
+    expect(reviews.body.items[0]).not.toHaveProperty("baseVersion");
+    const unrelated = await read<{ items: ChangeRequestDto[] }>(`/api/v1/parameter-change-requests?projectId=${projectId}`, otherReviewerId);
+    expect(unrelated.status).toBe(200);
+    expect(unrelated.body.items).toEqual([]);
+    expect((await db.query(`select project_parameter_binding_id, parameter_spec_id from parameter_change_requests where id = $1`,
+      [round.items[0]!.requestId])).rows).toEqual([{ project_parameter_binding_id: null, parameter_spec_id: null }]);
+    const pinsBefore = (await db.query(`select pin.* from parameter_catalog.project_value_source_pins pin
+      join parameter_catalog.project_parameter_values value on value.id = pin.project_value_id
+      join parameter_catalog.project_parameter_bindings binding on binding.id = value.binding_id
+      where binding.project_id = $1 order by pin.project_value_id`, [projectId])).rows;
+    const requestId = round.items[0]!.requestId;
+    const review = (userId: string, decision: "advance" | "reject", correlation: string) => requestJson<{ item: ChangeRequestDto }>(server,
+      `/api/v1/parameter-change-requests/${requestId}/review`, { method: "POST",
+        headers: { "X-WiseEff-User": userId, "X-Request-Id": correlation },
+        body: JSON.stringify({ decision, note: "Human node review", initiatorType: "system", reviewerUserId: adminId }) });
+    const refused = await review(authorId, "advance", "1077-refused");
+    expect(refused.status, refused.bodyText).toBe(403);
+    const approved = await review(reviewerId, "advance", "1077-approved");
+    expect(approved.status, approved.bodyText).toBe(200);
+    expect(approved.body.item).toMatchObject({ status: "software_review", assignedTo: softwareId, editSubjectKind: "node-enablement" });
+    const nextQueue = await read<{ items: ChangeRequestDto[] }>(`/api/v1/parameter-change-requests?projectId=${projectId}`, softwareId);
+    expect(nextQueue.body.items).toEqual([expect.objectContaining({ id: requestId, title: "charger", assignedTo: softwareId })]);
+    const rejected = await review(softwareId, "reject", "1077-rejected");
+    expect(rejected.status, rejected.bodyText).toBe(200);
+    expect(rejected.body.item.status).toBe("rejected");
+    expect((await db.query(`select reviewer_user_id, decision, from_status, to_status, initiator_type
+      from parameter_review_decisions where request_id = $1 and from_status <> 'submitted' order by created_at`, [requestId])).rows).toEqual([
+      { reviewer_user_id: reviewerId, decision: "advance", from_status: "hardware_review", to_status: "software_review", initiator_type: "user" },
+      { reviewer_user_id: softwareId, decision: "reject", from_status: "software_review", to_status: "rejected", initiator_type: "user" }
+    ]);
+    expect((await db.query(`select kind, action, actor_type, actor_user_id, trace_id from audit_events
+      where target_id = $1 and kind in ('parameter-review-advance', 'parameter-review-reject') order by created_at`, [requestId])).rows).toEqual([
+      { kind: "parameter-review-advance", action: "advance", actor_type: "user", actor_user_id: reviewerId, trace_id: "1077-approved" },
+      { kind: "parameter-review-reject", action: "reject", actor_type: "user", actor_user_id: softwareId, trace_id: "1077-rejected" }
+    ]);
+    expect((await db.query(`select pin.* from parameter_catalog.project_value_source_pins pin
+      join parameter_catalog.project_parameter_values value on value.id = pin.project_value_id
+      join parameter_catalog.project_parameter_bindings binding on binding.id = value.binding_id
+      where binding.project_id = $1 order by pin.project_value_id`, [projectId])).rows).toEqual(pinsBefore);
+    const completed = await read<{ items: ParameterSubmissionRoundDto[] }>(`/api/v1/parameter-submission-rounds?projectId=${projectId}&mine=true`);
+    expect(completed.body.items).toEqual([expect.objectContaining({ id: round.id, status: "rejected", items: [expect.objectContaining({ logicalNodeId })] })]);
   });
 });
