@@ -218,7 +218,7 @@ export function ParameterReviewPage({
     () => [...visibleInitializationRows, ...visibleRequests.map((request) => ({ kind: "change" as const, request }))],
     [visibleInitializationRows, visibleRequests]
   );
-  const getReviewRowField = useCallback((row: ParameterReviewRow, field: "id" | "project" | "module" | "submitter" | "change" | "status") => {
+  const getReviewRowField = useCallback((row: ParameterReviewRow, field: "id" | "projectId" | "project" | "module" | "submitter" | "change" | "status") => {
     if (row.kind === "initialization") {
       const submitter = resolveRetainedUserName(state.users, row.review.submittedBy);
       const modules = row.draft.parameterSnapshots.map((snapshot) => snapshot.module);
@@ -226,6 +226,7 @@ export function ParameterReviewPage({
       const moduleText = modules.length > 1 ? `${primaryModule} 等 ${modules.length} 个模块` : primaryModule;
       const values = {
         id: row.review.id,
+        projectId: row.draft.projectId,
         project: row.draft.projectName,
         module: moduleText,
         submitter,
@@ -237,17 +238,22 @@ export function ParameterReviewPage({
 
     const { request } = row;
     const parameter = state.parameters.find((item) => item.id === request.parameterId);
-    const project = state.configDraft.projects.find((item) => item.id === (request.projectId ?? parameter?.projectId));
+    const round = state.parameterSubmissionRounds.find((item) => item.id === request.submissionRoundId
+      && (!request.projectId || item.projectId === request.projectId)
+      && item.items.some((snapshot) => snapshot.requestId === request.id && snapshot.parameterId === request.parameterId));
+    const projectId = request.projectId ?? round?.projectId ?? parameter?.projectId;
+    const project = state.configDraft.projects.find((item) => item.id === projectId);
     const values = {
       id: request.id,
-      project: project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目",
+      projectId: projectId ?? "",
+      project: project?.name ?? round?.projectName ?? projectId ?? "未关联项目",
       module: request.module,
       submitter: request.submitter,
         change: `${request.currentValue} → ${request.targetValue}`,
         status: formatWorkflowDisplayText(request.status)
     };
     return values[field];
-  }, [state.configDraft.projects, state.parameters, state.users]);
+  }, [state.configDraft.projects, state.parameters, state.parameterSubmissionRounds, state.users]);
   const modules = useMemo(
     () =>
       Array.from(
@@ -306,7 +312,7 @@ export function ParameterReviewPage({
   const reviewRows = useMemo<ParameterReviewRow[]>(
     () =>
       unfilteredReviewRows.filter((row) => {
-        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "project"))) return false;
+        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "projectId"))) return false;
         if (filterModules.length) {
           if (row.kind === "initialization") {
             if (
@@ -353,30 +359,32 @@ export function ParameterReviewPage({
     [visibleInitializationRows, visibleRequests, state.users]
   );
   const projectOptions = useMemo(() => {
-    const ids = new Set(visibleRequests.map((r) => state.parameters.find((p) => p.id === r.parameterId)?.projectId).filter(Boolean));
-    const changeProjects = state.configDraft.projects.filter((p) => ids.has(p.id));
-    const initializationProjects = visibleInitializationRows.map((row) => ({ id: row.draft.projectId, name: row.draft.projectName, code: row.draft.projectCode }));
-    return [...initializationProjects, ...changeProjects].filter(
-      (project, index, allProjects) => allProjects.findIndex((item) => item.name === project.name) === index
+    return unfilteredReviewRows.map((row) => ({
+      id: getReviewRowField(row, "projectId"),
+      name: getReviewRowField(row, "project")
+    })).filter(
+      (project, index, allProjects) => project.id && allProjects.findIndex((item) => item.id === project.id) === index
     );
-  }, [visibleInitializationRows, visibleRequests, state.parameters, state.configDraft.projects]);
+  }, [getReviewRowField, unfilteredReviewRows]);
   const statusOptions = useMemo(() => uniqueFilterValues(unfilteredReviewRows, (row) => getReviewRowField(row, "status")), [getReviewRowField, unfilteredReviewRows]);
 
   const selectedRound = useMemo(() => {
     if (!selected?.submissionRoundId) return null;
-    return state.parameterSubmissionRounds.find((r) => r.id === selected.submissionRoundId) ?? null;
+    return state.parameterSubmissionRounds.find((round) => round.id === selected.submissionRoundId
+      && (!selected.projectId || round.projectId === selected.projectId)
+      && round.items.some((item) => item.requestId === selected.id && item.parameterId === selected.parameterId)) ?? null;
   }, [selected, state.parameterSubmissionRounds]);
   const selectedDetailRound = useMemo((): ParameterSubmissionRound | null => {
     if (!selected) return null;
     if (selectedRound) return selectedRound;
 
     const parameter = state.parameters.find((item) => item.id === selected.parameterId);
-    const project = state.configDraft.projects.find((item) => item.id === (selected.projectId ?? parameter?.projectId));
+    const row = { kind: "change" as const, request: selected };
 
     return {
       id: selected.submissionRoundId ?? selected.id,
-      projectId: selected.projectId ?? parameter?.projectId ?? "unknown",
-      projectName: project?.name ?? selected.projectId ?? "未关联项目",
+      projectId: getReviewRowField(row, "projectId") || "unknown",
+      projectName: getReviewRowField(row, "project"),
       submitter: selected.submitter,
       createdAt: selected.createdAt,
       status: selected.status,
@@ -396,11 +404,14 @@ export function ParameterReviewPage({
         }
       ]
     };
-  }, [selected, selectedRound, state.parameters, state.configDraft.projects]);
+  }, [getReviewRowField, selected, selectedRound, state.parameters]);
   const selectedReviewParameter = useMemo(
     () => (selected ? state.parameters.find((item) => item.id === selected.parameterId) : undefined),
     [selected, state.parameters]
   );
+  const historicalMetadataNotice = reviewMode === "history" && selected && !selectedReviewParameter && !selectedRound
+    ? <p role="note">历史参数引用缺少精确的显示元数据，仅展示归档记录，不推测当前参数。</p>
+    : null;
   const selectedModuleDescription = selected?.moduleDescription?.trim() || "";
   const selectedParameterDescription =
     selected?.parameterDescription?.trim() ||
@@ -880,7 +891,14 @@ export function ParameterReviewPage({
                     <ColumnFilter
                       label="项目"
                       groupLabel="项目筛选"
-                      values={projectOptions.map((project) => project.name)}
+                      values={projectOptions.map((project) => project.id)}
+                      renderLabel={(projectId) => {
+                        const project = projectOptions.find((item) => item.id === projectId);
+                        if (project && projectOptions.some((item) => item.id !== projectId && item.name === project.name)) {
+                          return `${project.name}（${projectId}）`;
+                        }
+                        return project?.name ?? projectId;
+                      }}
                       selectedValues={filterProjects}
                       onToggle={(project) => setFilterProjects((current) => toggleFilterValue(current, project))}
                       onClear={() => setFilterProjects([])}
@@ -982,7 +1000,6 @@ export function ParameterReviewPage({
 
                 const { request } = row;
                 const parameter = state.parameters.find((item) => item.id === request.parameterId);
-                const project = state.configDraft.projects.find((item) => item.id === (request.projectId ?? parameter?.projectId));
                 const isComplexReviewChange = shouldSummarizeReviewChange(request, parameter);
 
                 return (
@@ -1013,7 +1030,7 @@ export function ParameterReviewPage({
                         ) : null}
                       </TableCell>
                     ) : null}
-                    <TableCell>{project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目"}</TableCell>
+                    <TableCell>{getReviewRowField(row, "project")}</TableCell>
                     <TableCell>{request.module}</TableCell>
                     <TableCell>{request.submitter}</TableCell>
                     <TableCell className="change-cell">
@@ -1177,6 +1194,7 @@ export function ParameterReviewPage({
                   {selected.submitter} 提交
                 </p>
               </div>
+              {historicalMetadataNotice}
               <SectionLabel icon={<Sparkles size={16} />} label="审阅摘要" />
               <ReviewDetailSummary
                 onOpenSubmissionDetail={() => openSubmissionDetail(selected)}
@@ -1290,6 +1308,7 @@ export function ParameterReviewPage({
                   <span className="eyebrow">{selectedDetailRound.projectName}</span>
                   <h2 id={titleId}>提交详情</h2>
                   <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
+                  {historicalMetadataNotice}
                   {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
                 </div>
               </div>

@@ -3,10 +3,27 @@ import { describe, expect, it, vi } from "vitest";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import { initialState } from "@/mockData";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import { createParameterRuntimeActions, parameterRuntimeFailureNotification, formatParameterRuntimeError } from "./parameterRuntime";
+import { createParameterRuntimeActions as createRuntimeActions, parameterRuntimeFailureNotification, formatParameterRuntimeError } from "./parameterRuntime";
+import { appReducer } from "@/application/state/appState";
 
 const apiProjects = [{ id: "api-project", name: "API Project", code: "API" }];
-const apiParameter = { ...initialState.parameters[0], id: "api-project-param-1", projectId: "api-project" };
+const apiParameter = {
+  id: "pbind_api_project", projectId: "api-project", name: "limit", description: "Current limit",
+  explanation: "", configFormat: "DTS", module: "Power", moduleId: "module-power", sourceNodePath: undefined,
+  currentValue: "36.5", recommendedValue: "", range: "", unit: "", risk: "Low" as const,
+  valueKind: "scalar" as const, updatedAt: "", updatedAtTs: "", history: []
+};
+const apiBinding = {
+  id: apiParameter.id, propertyKey: apiParameter.name, rawValue: apiParameter.currentValue,
+  description: apiParameter.description, driverModule: apiParameter.module, moduleId: apiParameter.moduleId
+};
+
+function createParameterRuntimeActions(options: Parameters<typeof createRuntimeActions>[0]) {
+  return createRuntimeActions({
+    canonicalRepository: { listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [apiBinding] }) },
+    ...options
+  });
+}
 const apiChangeRequest = { ...initialState.changeRequests[0], id: "api-change-1", parameterId: apiParameter.id, projectId: "api-project" };
 const apiRound = { ...initialState.parameterSubmissionRounds[0], id: "api-round-1", projectId: "api-project" };
 const apiDraft = {
@@ -58,6 +75,35 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
 }
 
 describe("createParameterRuntimeActions", () => {
+  it("hydrates a canonical-only project's Bindings without the failing historical semantic list", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      listParameters: vi.fn().mockRejectedValue(new Error("historical reader unavailable"))
+    });
+    const canonicalRepository = {
+      listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [{
+        id: "pbind_canonical_only", propertyKey: "limit", rawValue: "36.5",
+        driverModule: "Power", moduleId: "module-power", description: "Current limit"
+      }] })
+    };
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch, canonicalRepository });
+
+    const snapshot = await actions.refresh();
+
+    expect(snapshot).toMatchObject({
+      projects: apiProjects,
+      parameters: [{ id: "pbind_canonical_only", projectId: "api-project", name: "limit", currentValue: "36.5" }],
+      parameterDrafts: [apiDraft]
+    });
+    expect(repository.listParameters).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME", projects: apiProjects }));
+    const hydrated = appReducer(initialState, dispatch.mock.calls[0][0]);
+    expect(hydrated.configDraft.projects).toEqual(apiProjects);
+    expect(hydrated.parameterDrafts).toEqual([apiDraft]);
+    expect(hydrated.configDraft.parameterLibrary).toHaveLength(1);
+    expect(hydrated.configDraft.parameterModules).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Power" })]));
+  });
+
   it("returns the staged API batch after refreshing without claiming values were applied", async () => {
     const dispatch = vi.fn();
     const staged = { ...apiPreviewBatch, status: "staged" as const, summary: { ...apiPreviewBatch.summary, staged: 1 } };
@@ -65,7 +111,7 @@ describe("createParameterRuntimeActions", () => {
     const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
 
     expect(await actions.applyImportBatch({ batchId: staged.id })).toEqual(staged);
-    expect(repository.listParameters).toHaveBeenCalled();
+    expect(repository.listParameters).not.toHaveBeenCalled();
     expect(dispatch.mock.calls.some(([action]) => action.type === "ADD_NOTIFICATION")).toBe(false);
   });
 
@@ -283,8 +329,7 @@ describe("createParameterRuntimeActions", () => {
     await actions.refresh();
 
     expect(repository.listProjects).toHaveBeenCalledTimes(1);
-    expect(repository.listParameters).toHaveBeenCalledTimes(1);
-    expect(repository.listParameters).toHaveBeenCalledWith({ projectId: "api-project", limit: 500 });
+    expect(repository.listParameters).not.toHaveBeenCalled();
     expect(repository.listChangeRequests).not.toHaveBeenCalled();
     expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);
@@ -303,20 +348,19 @@ describe("createParameterRuntimeActions", () => {
     const dispatch = vi.fn();
     const secondProject = { id: "api-project-2", name: "API Project 2", code: "API2" };
     const secondParameter = { ...apiParameter, id: "api-project-param-2", projectId: secondProject.id };
-    const listParameters = vi.fn().mockImplementation(async ({ projectId }: { projectId?: string }) =>
-      projectId === secondProject.id ? [secondParameter] : [apiParameter]
+    const listProtectedProjectBindings = vi.fn().mockImplementation(async (projectId: string) =>
+      ({ items: [{ ...apiBinding, id: projectId === secondProject.id ? secondParameter.id : apiParameter.id }] })
     );
     const repository = createRepository({
-      listProjects: vi.fn().mockResolvedValue([...apiProjects, secondProject]),
-      listParameters
+      listProjects: vi.fn().mockResolvedValue([...apiProjects, secondProject])
     });
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch, canonicalRepository: { listProtectedProjectBindings } });
 
     await actions.refresh();
 
-    expect(listParameters).toHaveBeenCalledTimes(2);
-    expect(listParameters).toHaveBeenNthCalledWith(1, { projectId: "api-project", limit: 500 });
-    expect(listParameters).toHaveBeenNthCalledWith(2, { projectId: "api-project-2", limit: 500 });
+    expect(listProtectedProjectBindings).toHaveBeenCalledTimes(2);
+    expect(listProtectedProjectBindings).toHaveBeenCalledWith("api-project");
+    expect(listProtectedProjectBindings).toHaveBeenCalledWith("api-project-2");
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "HYDRATE_PARAMETER_RUNTIME",
@@ -404,7 +448,7 @@ describe("createParameterRuntimeActions", () => {
     expect(result).toEqual(apiPreviewBatch);
     expect(repository.createImportPreview).toHaveBeenCalledWith(input);
     expect(repository.listProjects).toHaveBeenCalledTimes(1);
-    expect(repository.listParameters).toHaveBeenCalledTimes(1);
+    expect(repository.listParameters).not.toHaveBeenCalled();
     expect(repository.listChangeRequests).not.toHaveBeenCalled();
     expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);

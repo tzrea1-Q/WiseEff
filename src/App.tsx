@@ -459,10 +459,11 @@ function AppShell({
       createParameterRuntimeActions({
         runtimeMode,
         repository: parameterRepositoryClient,
+        canonicalRepository: appRuntime.parameterCatalogRepository,
         dispatch,
         getParameterProjectId: (parameterId) => stateRef.current.parameters.find((parameter) => parameter.id === parameterId)?.projectId
       }),
-    [parameterRepositoryClient, runtimeMode]
+    [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode]
   );
   const logActions = useMemo<LogRuntimeActions>(
     () =>

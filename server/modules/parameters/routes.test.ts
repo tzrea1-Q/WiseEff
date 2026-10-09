@@ -11,6 +11,7 @@ import { requestJson } from "../../test/testClient";
 import * as repository from "./repository";
 import * as projectRepository from "../projects/repository";
 import * as projectService from "./projectService";
+import * as canonicalBindings from "../parameter-bindings/catalogProjectValueSync";
 import { registerParameterRoutes } from "./routes";
 import * as service from "./service";
 
@@ -30,10 +31,16 @@ vi.mock("../projects/repository", () => ({
   createProject: vi.fn(),
   deleteProject: vi.fn(),
   getProjectAdminDetail: vi.fn(),
+  getProjectById: vi.fn(),
   listProjectAdminSummaries: vi.fn(),
   listProjectModules: vi.fn(),
   listProjects: vi.fn(),
   updateProject: vi.fn()
+}));
+
+vi.mock("../parameter-bindings/catalogProjectValueSync", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../parameter-bindings/catalogProjectValueSync")>(),
+  listCatalogBindingRowsForProject: vi.fn()
 }));
 
 vi.mock("./service", () => ({
@@ -93,6 +100,11 @@ function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
 describe("parameter routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(projectRepository.getProjectById).mockResolvedValue({ id: "aurora", name: "Aurora", code: "AUR" });
+    vi.mocked(projectRepository.listProjects).mockResolvedValue([{ id: "aurora", name: "Aurora", code: "AUR" }]);
+    vi.mocked(service.listParameterModulesForAuth).mockResolvedValue([]);
+    vi.mocked(service.resolveParameterListQuery).mockResolvedValue({ organizationId: "org-1" });
+    vi.mocked(canonicalBindings.listCatalogBindingRowsForProject).mockResolvedValue([]);
   });
 
   it("GET /api/v1/projects returns items", async () => {
@@ -238,7 +250,6 @@ describe("parameter routes", () => {
 
   it("GET /api/v1/parameters passes filters", async () => {
     const db = makeDb();
-    vi.mocked(repository.listParameters).mockResolvedValue([]);
     vi.mocked(service.resolveParameterListQuery).mockResolvedValue({
       organizationId: "org-1",
       projectId: "aurora",
@@ -260,18 +271,12 @@ describe("parameter routes", () => {
       q: "charge",
       limit: 500
     });
-    expect(repository.listParameters).toHaveBeenCalledWith(db, {
-      organizationId: "org-1",
-      projectId: "aurora",
-      risk: "High",
-      q: "charge",
-      limit: 500
-    });
+    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledWith(db, makeAuth(), { projectId: "aurora" });
+    expect(repository.listParameters).not.toHaveBeenCalled();
   });
 
   it("GET /api/v1/parameters accepts moduleId and includeDescendants", async () => {
     const db = makeDb();
-    vi.mocked(repository.listParameters).mockResolvedValue([]);
     vi.mocked(service.resolveParameterListQuery).mockResolvedValue({
       organizationId: "org-1",
       moduleId: "pm-a",
@@ -288,6 +293,59 @@ describe("parameter routes", () => {
       moduleId: "pm-a",
       includeDescendants: false
     });
+    expect(service.listParameterModulesForAuth).toHaveBeenCalledWith(db, makeAuth());
+    expect(repository.listParameters).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/parameters reads only actual projects inside the reader's project grants", async () => {
+    const db = makeDb();
+    vi.mocked(projectRepository.listProjects).mockResolvedValue([
+      { id: "aurora", name: "Aurora", code: "AUR" },
+      { id: "nebula", name: "Nebula", code: "NEB" }
+    ]);
+    const response = await requestJson(makeServer({ db }), "/api/v1/parameters");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [] });
+    expect(projectRepository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
+    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledTimes(1);
+    expect(canonicalBindings.listCatalogBindingRowsForProject).toHaveBeenCalledWith(db, makeAuth(), { projectId: "aurora" });
+    expect(repository.listParameters).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/parameters propagates canonical readiness refusal without legacy fallback", async () => {
+    const db = makeDb();
+    vi.mocked(canonicalBindings.listCatalogBindingRowsForProject).mockRejectedValue(
+      new ApiError("CONFLICT", "Configured parameter cannot be read at its exact pin.", { reason: "revision-disagreement" })
+    );
+    const response = await requestJson<{ error: { code: string; details: { reason: string } } }>(
+      makeServer({ db }), "/api/v1/parameters"
+    );
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatchObject({ code: "CONFLICT", details: { reason: "revision-disagreement" } });
+    expect(repository.listParameters).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/parameters hides projects outside the caller's organization before canonical discovery", async () => {
+    const db = makeDb();
+    vi.mocked(service.resolveParameterListQuery).mockResolvedValue({ organizationId: "org-1", projectId: "foreign" });
+    vi.mocked(projectRepository.getProjectById).mockResolvedValue(null);
+    const response = await requestJson<{ error: { code: string } }>(makeServer({ db }), "/api/v1/parameters?projectId=foreign");
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(projectRepository.getProjectById).toHaveBeenCalledWith(db, { organizationId: "org-1", projectId: "foreign" });
+    expect(canonicalBindings.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
+    expect(repository.listParameters).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/parameters refuses inactive readers before canonical discovery", async () => {
+    const db = makeDb();
+    const auth = makeAuth();
+    auth.user.isActive = false;
+    const response = await requestJson<{ error: { code: string } }>(makeServer({ db, auth }), "/api/v1/parameters");
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(canonicalBindings.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
+    expect(repository.listParameters).not.toHaveBeenCalled();
   });
 
   it("auth without parameter view permission cannot read parameters", async () => {
@@ -303,6 +361,7 @@ describe("parameter routes", () => {
       message: "Parameter view permission is required."
     });
     expect(repository.listParameters).not.toHaveBeenCalled();
+    expect(canonicalBindings.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
   });
 
   it("GET /api/v1/parameters/:parameterId/history uses route params", async () => {
@@ -342,6 +401,7 @@ describe("parameter routes", () => {
     expect(response.body.error.code).toBe("VALIDATION_FAILED");
     expect(response.body.error.details.issues).toEqual(expect.any(Array));
     expect(repository.listParameters).not.toHaveBeenCalled();
+    expect(canonicalBindings.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
   });
 
   it("forbidden submission returns FORBIDDEN", async () => {

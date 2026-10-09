@@ -26,6 +26,7 @@ import {
 import { expandModuleTreeNode, selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 import {
   createTestAuthClient,
+  createTestAppPorts,
   createTestConfigSetList,
   createTestDebuggingGateway,
   createTestLogAnalysisRepository,
@@ -49,6 +50,7 @@ it("waits for live projects before reading their initialization state", async ()
   const getInitialization = vi.fn().mockResolvedValue({ status: "not_initialized" });
   render(<App runtimeMode="api" initialAppState={userState}
     authClient={createTestAuthClient("user")} parameterRepository={repository}
+    parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
     logAnalysisRepository={createTestLogAnalysisRepository()}
     parameterInitializationRepository={{ getInitialization, listPendingReviews: vi.fn().mockResolvedValue([]),
       upsertDraft: vi.fn(), previewSnapshot: vi.fn(), submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
@@ -983,6 +985,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", "/parameters");
     const parameterRepository = createTestParameterRepository();
     const parameterTopologyRepository = createTestParameterTopologyRepository();
+    const parameterCatalogRepository = createTestAppPorts().parameterCatalogRepository;
     const listParameterConfigSets = createTestConfigSetList();
 
     render(
@@ -1005,6 +1008,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         initialAppState={{ ...initialState, activeRoleId: "user" }}
         parameterRepository={parameterRepository}
         parameterTopologyRepository={parameterTopologyRepository}
+        parameterCatalogRepository={parameterCatalogRepository}
         listParameterConfigSets={listParameterConfigSets}
         runtimeMode="api"
       />
@@ -1014,7 +1018,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByLabelText("DTS 参数工作台")).toBeInTheDocument();
     expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalled();
-    expect(parameterRepository.listParameters).toHaveBeenCalled();
+    expect(parameterRepository.listParameters).not.toHaveBeenCalled();
+    expect(parameterCatalogRepository.listProtectedProjectBindings).toHaveBeenCalledWith(initialState.activeProjectId);
     // Legacy history is no longer prefetched organization-wide; consumers load it through scoped calls.
     expect(parameterRepository.listChangeRequests).not.toHaveBeenCalled();
     expect(parameterRepository.listSubmissionRounds).not.toHaveBeenCalled();
@@ -1520,6 +1525,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         authClient={createTestAuthClient()}
         initialAppState={initialState}
         parameterRepository={parameterRepository}
+        parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
         logAnalysisRepository={createTestLogAnalysisRepository([])}
         debuggingGateway={createAppDebuggingGateway()}
         runtimeMode="api"

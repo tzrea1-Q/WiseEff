@@ -150,6 +150,8 @@ Org-scoped parameter modules are a hierarchical taxonomy independent from the de
 
 `GET /api/v1/parameters` accepts `moduleId` and optional `includeDescendants` (defaults to including descendants). Parameter DTOs expose `moduleId` and `modulePath` (materialized name segments).
 
+The retained v1 list is a compatibility projection of authorized current canonical Bindings (`pbind_` identity), not a mirror of legacy parameter specs or values. The application shell reads `GET /api/v2/projects/:projectId/parameter-bindings` directly; optional historical identifier reads cannot block shell hydration. Old `?parameter=` links resolve only through exact typed historical mappings and the readable Binding's owning project; unavailable or evidence-only targets remain visibly historical.
+
 ## Parameter Import
 
 Admin-only (`canAdminParameters` / `admin:access`) batch import and full-DTS parse:

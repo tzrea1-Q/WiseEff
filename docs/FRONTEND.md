@@ -92,7 +92,9 @@ Organization administration is one sidebar destination with two scope peers, sam
 
 In `mock` mode, `src/infrastructure/mock/mockParameterRepository.ts` preserves prototype behavior for demos and component tests. It can list projects and parameters, stash drafts, submit rounds, advance reviews, and apply import previews against the in-memory mock state. Failures use `mockApiError` (`WiseEffApiError`) rather than a bare `Error`.
 
-In `api` mode, `src/infrastructure/http/parameterClient.ts` maps `ParameterRepository` calls to `/api/v1` endpoints and DTO adapters. Parameter pages hydrate projects, parameters, drafts, change requests, and submission rounds from the backend, then refresh after write actions.
+In `api` mode, the shell loads project parameter rows through `ParameterCatalogRepository.listProtectedProjectBindings` (`GET /api/v2/projects/:projectId/parameter-bindings`, with no candidate revision filter). Canonical-only projects therefore populate the shell's parameter library and module projection. `ParameterRepository` continues to load projects and project-scoped drafts; the semantic v1 parameter list is not a shell data source. Optional historical archive reads are page-scoped and cannot clear shell projects, drafts, library or modules.
+
+Old `?parameter=` links use the historical Catalog adapter with the exact `project-parameter-binding` identifier type. Only an operational `parameter-binding` mapping with a readable canonical row redirects to `?binding=` in that Binding's owning project; archived, ambiguous, unknown, unauthorized or evidence-only targets display a historical notice, never a name-based match. Review-archive project filters use retained request/round project IDs and display snapshots, not legacy shell rows; missing exact metadata remains visibly historical.
 
 Page action flow:
 
@@ -234,6 +236,7 @@ New projects are created with `initialization_status = not_initialized`. Creator
 
 `ParameterImportWizard` on `/parameter-admin` supports spreadsheet / JSON / DTS fragment / full DTS sources.
 
+- API matching, module choices and row-review edits use only the project's canonical Binding rows. Shell/legacy rows are never merged, including when the project has no config set. Mock mode keeps its in-memory input.
 - Full `.dts` / `.dtsi` (`dts-full`) must go through `ParameterRepository.parseDtsImport` → `POST /api/v1/parameter-import/parse-dts` (mock uses a CST-derived walker). **Do not** silently fall back to `parseDtsFragmentImport` for `dts-full`.
 - Sources containing `/include/` fail with a readable `dts-include-unsupported` message.
 - Skipped rows become optional `reviewMetadata` on `createImportPreview` / `applyImportBatch` for server audit.

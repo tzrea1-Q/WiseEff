@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterImportWizard } from "./ParameterImportWizard";
@@ -436,6 +436,143 @@ describe("ParameterImportWizard", () => {
 
     await within(dialog).findByRole("region", { name: "批次预览" });
     expect(createImportPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches and reviews only canonical Bindings in API mode, never legacy shell rows", async () => {
+    vi.spyOn(dtsStructuredRuntime, "resolveDtsStructuredRepository").mockReturnValue({
+      listConfigSets: vi.fn().mockResolvedValue([{ id: "cs-1", name: "default" }])
+    } as never);
+    vi.spyOn(parameterTopologyResolve, "resolveParameterTopologyRepository").mockReturnValue({
+      getTopology: vi.fn().mockResolvedValue({ revisionId: "canonical-revision" }),
+      listBindings: vi.fn().mockResolvedValue([
+        { id: "canonical-binding", propertyKey: "iin_max", driverModule: "Canonical Driver", rawValue: "3000" }
+      ])
+    } as never);
+
+    renderWizard({
+      runtimeMode: "api",
+      parameters: [{
+        ...initialState.parameters[0],
+        id: "legacy-shell-row",
+        name: "legacy_only",
+        module: "Legacy Shell Module",
+        moduleId: undefined,
+        modulePath: undefined,
+        projectId: initialState.activeProjectId
+      }]
+    });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fillPasteImportContent(dialog, JSON.stringify([
+      { name: "iin_max", module: "Canonical Driver", currentValue: "3100", risk: "Low" },
+      { name: "legacy_only", module: "Legacy Shell Module", currentValue: "1", risk: "Low" }
+    ]));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    const summary = await within(dialog).findByRole("region", { name: "解析与校验" });
+    expect(within(summary).getByText("总行数").nextElementSibling).toHaveTextContent("2");
+    expect(within(summary).getByText("未匹配（不会应用）").nextElementSibling).toHaveTextContent("1");
+    expect(within(summary).getByText("已有").nextElementSibling).toHaveTextContent("1");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    const canonicalRow = within(dialog).getByRole("region", { name: "导入行 iin_max" });
+    const legacyRow = within(dialog).getByRole("region", { name: "导入行 legacy_only" });
+    expect(within(canonicalRow).getByText("待核对")).toBeInTheDocument();
+    expect(within(canonicalRow).getByRole("cell", { name: "3000" })).toBeInTheDocument();
+    expect(within(legacyRow).getByText("未匹配")).toBeInTheDocument();
+    expect(within(legacyRow).queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(canonicalRow).getByRole("button", { name: "编辑" }));
+    const moduleSelect = within(canonicalRow).getByLabelText("编辑模块");
+    expect(within(moduleSelect).getByRole("option", { name: "Canonical Driver" })).toBeInTheDocument();
+    expect(within(moduleSelect).queryByRole("option", { name: "Legacy Shell Module" })).not.toBeInTheDocument();
+    fireEvent.change(within(canonicalRow).getByLabelText("编辑当前值"), { target: { value: "3200" } });
+    fireEvent.click(within(canonicalRow).getByRole("button", { name: "保存" }));
+    expect(within(canonicalRow).getByText("待核对")).toBeInTheDocument();
+    expect(within(canonicalRow).getByRole("cell", { name: "3000" })).toBeInTheDocument();
+    expect(within(canonicalRow).getByRole("cell", { name: "3200" })).toBeInTheDocument();
+  });
+
+  it("rejects a pending project A read after switching to B and never matches A on review edits", async () => {
+    const bindingA = { id: "binding-a", propertyKey: "a_only", driverModule: "Canonical Driver", rawValue: "111" };
+    const bindingB = { id: "binding-b", propertyKey: "b_only", driverModule: "Canonical Driver", rawValue: "222" };
+    let resolveProjectA!: (bindings: typeof bindingA[]) => void;
+    const pendingProjectA = new Promise<typeof bindingA[]>((resolve) => { resolveProjectA = resolve; });
+    const listBindings = vi.fn().mockImplementation((projectId: string) =>
+      projectId === "project-a" ? pendingProjectA : Promise.resolve([bindingB])
+    );
+    vi.spyOn(dtsStructuredRuntime, "resolveDtsStructuredRepository").mockReturnValue({
+      listConfigSets: vi.fn().mockResolvedValue([{ id: "cs-1", name: "default" }])
+    } as never);
+    vi.spyOn(parameterTopologyResolve, "resolveParameterTopologyRepository").mockReturnValue({
+      getTopology: vi.fn().mockResolvedValue({ revisionId: "canonical-revision" }),
+      listBindings
+    } as never);
+    renderWizard({
+      runtimeMode: "api",
+      activeProjectId: "project-a",
+      projects: [
+        { id: "project-a", name: "Project A", code: "A" },
+        { id: "project-b", name: "Project B", code: "B" }
+      ]
+    });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fillPasteImportContent(dialog, JSON.stringify([
+      { name: "b_only", module: "Canonical Driver", currentValue: "223", risk: "Low" }
+    ]));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await waitFor(() => expect(listBindings).toHaveBeenCalledWith("project-a", "canonical-revision"));
+    fireEvent.change(within(dialog).getByLabelText("目标项目"), { target: { value: "project-b" } });
+    await act(async () => { resolveProjectA([bindingA]); });
+
+    expect(within(dialog).queryByRole("region", { name: "解析与校验" })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("目标项目")).toHaveValue("project-b");
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    const summary = await within(dialog).findByRole("region", { name: "解析与校验" });
+    expect(within(summary).getByText("已有").nextElementSibling).toHaveTextContent("1");
+    expect(within(summary).getByText("未匹配（不会应用）").nextElementSibling).toHaveTextContent("0");
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByLabelText("目标项目")).toHaveTextContent("Project B（B）");
+    const rowB = within(dialog).getByRole("region", { name: "导入行 b_only" });
+    expect(within(dialog).queryByRole("region", { name: "导入行 a_only" })).not.toBeInTheDocument();
+    expect(within(rowB).getByRole("cell", { name: "222" })).toBeInTheDocument();
+    fireEvent.click(within(rowB).getByRole("button", { name: "编辑" }));
+    fireEvent.change(within(rowB).getByLabelText("编辑参数名"), { target: { value: "a_only" } });
+    fireEvent.click(within(rowB).getByRole("button", { name: "保存" }));
+    expect(within(rowB).getByText("未匹配")).toBeInTheDocument();
+    expect(within(rowB).queryByRole("table", { name: "字段差异" })).not.toBeInTheDocument();
+    expect(within(rowB).queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("cell", { name: "111" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { label: "the project has no config set", configSets: [] },
+    { label: "the canonical Binding list is empty", configSets: [{ id: "cs-1", name: "default" }] }
+  ])("does not fall back to legacy shell rows when $label", async ({ configSets }) => {
+    vi.spyOn(dtsStructuredRuntime, "resolveDtsStructuredRepository").mockReturnValue({
+      listConfigSets: vi.fn().mockResolvedValue(configSets)
+    } as never);
+    vi.spyOn(parameterTopologyResolve, "resolveParameterTopologyRepository").mockReturnValue({
+      getTopology: vi.fn().mockResolvedValue({ revisionId: "canonical-revision" }),
+      listBindings: vi.fn().mockResolvedValue([])
+    } as never);
+
+    renderWizard({ runtimeMode: "api" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fillPasteImportContent(dialog, JSON.stringify([{
+      name: "fast_charge_current_limit_ma",
+      module: "Charging Policy",
+      currentValue: "3200",
+      risk: "High"
+    }]));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    const summary = await within(dialog).findByRole("region", { name: "解析与校验" });
+    expect(within(summary).getByText("未匹配（不会应用）").nextElementSibling).toHaveTextContent("1");
+    expect(within(summary).getByText("已有").nextElementSibling).toHaveTextContent("0");
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    expect(within(dialog).getByText("未匹配")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
   });
 
   it("stops matching when the published topology library cannot be loaded", async () => {

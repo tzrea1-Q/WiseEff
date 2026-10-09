@@ -22,6 +22,7 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { archivedParameterLinkNotice } from "@/domain/parameters/archivedLink";
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 
 export const parameterRuntimeFailureNotification = "参数操作未完成，请稍后重试。";
 
@@ -143,6 +144,7 @@ type ParameterRuntimeOptions = {
   runtimeMode: WiseEffRuntimeMode;
   dispatch: (action: ParameterRuntimeDispatchAction) => void;
   repository?: ParameterRepository;
+  canonicalRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   getParameterProjectId?: (parameterId: string) => string | undefined;
 };
 
@@ -169,6 +171,7 @@ export function createParameterRuntimeActions({
   runtimeMode,
   dispatch,
   repository,
+  canonicalRepository,
   getParameterProjectId
 }: ParameterRuntimeOptions): ParameterRuntimeActions {
   const refresh = async (options: ParameterRuntimeRefreshOptions = {}): Promise<ParameterRuntimeRefreshResult> => {
@@ -178,10 +181,33 @@ export function createParameterRuntimeActions({
 
     try {
       const api = requireRepository(repository);
+      if (!canonicalRepository?.listProtectedProjectBindings) throw new Error("Canonical Binding repository is required in api runtime mode.");
+      const listBindings = canonicalRepository.listProtectedProjectBindings.bind(canonicalRepository);
       const projectsPromise = api.listProjects();
       const projects = await projectsPromise;
       const [parameterGroups, draftGroups] = await Promise.all([
-        Promise.all(projects.map((project) => api.listParameters({ projectId: project.id, limit: 500 }))),
+        Promise.all(projects.map(async (project) =>
+          (await listBindings(project.id)).items.map((binding): ParameterRecord => ({
+            id: binding.id,
+            projectId: project.id,
+            name: binding.propertyKey,
+            description: binding.description ?? "",
+            explanation: binding.documentation ?? "",
+            configFormat: "DTS",
+            module: binding.driverModule ?? "",
+            moduleId: binding.moduleId || undefined,
+            sourceNodePath: binding.sourceNodePath ?? undefined,
+            currentValue: binding.rawValue,
+            recommendedValue: "",
+            range: "",
+            unit: "",
+            risk: "Low",
+            valueKind: "scalar",
+            updatedAt: "",
+            updatedAtTs: "",
+            history: []
+          }))
+        )),
         Promise.all(projects.map((project) => api.listDrafts(project.id)))
       ]);
       const parameterDrafts = draftGroups.flat();
