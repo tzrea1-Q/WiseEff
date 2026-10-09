@@ -37,6 +37,7 @@ import {
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type { NavGroup } from "@/domain/workflowDiscovery";
+import { CATALOG_READ_PAGE_PATH } from "@/application/parameter-catalog/urlAnchor";
 
 export type PageKey =
   | "home"
@@ -198,6 +199,17 @@ export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: strin
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === CATALOG_READ_PAGE_PATH) {
+    return {
+      key: "parameters",
+      path,
+      label: "参数定义",
+      group: "参数管理",
+      icon: LibraryBig,
+      title: "参数定义",
+      subtitle: "只读浏览已发布的规范参数定义与修订历史"
+    };
+  }
   if (path === "/parameter-submissions") {
     return {
       key: "parameter-submissions",

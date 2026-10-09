@@ -27,6 +27,8 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 - Organization Admin 管理本 Organization 的 registration、placement、review resolution 和 proposal submission。Platform Admin 审核 publication proposal，可跨 Organization 读取诊断，但不能修改 Organization 结构。任何人都不能接受自己提交的 proposal。
 - 规范命名空间上线时立即退役 legacy 结构写接口。符合条件的 legacy 读接口至少保留两个生产发布或 90 天，取较晚者；且只有本页全部退出门槛通过后才可退役。
 
+Knowledge Definition 引用对没有参数后台访问权限的读者使用 `/parameters/definitions?definitionId=<opaque-id>`。该规范 Catalog 页面只读，导航保持精确 Definition 身份与 release pin，并复用现有授权 Catalog 读取 API。管理员继续使用 `/parameter-admin/specs`。如果当前会话无法读取 Definition，或未提供可读入口，引用不允许导航，并提供可访问的原因说明。此行为不授予管理员或发布权限，也不改变后端授权。
+
 ## 决策依据
 
 本合同对照 `406c23bcaf0dcfca284de3135e27bfcd19c29c4e` 的 current `origin/main`，并使用以下已接受的 Wayfinder 输入完成校核。尚未集成到 `main` 的 accepted decision commit 只能作为设计证据；本页不会把它误报成 `main` 当前实现。

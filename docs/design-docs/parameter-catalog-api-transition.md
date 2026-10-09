@@ -27,6 +27,8 @@ The product owner locked these policy choices on 2026-08-31:
 - An Organization Admin owns registrations, placements, review resolutions, and proposal submission for their home Organization. A Platform Admin reviews publication proposals and may read cross-Organization diagnostics, but does not mutate Organization structure. A person cannot accept their own proposal.
 - Legacy structural writes retire when the canonical namespace launches. Eligible legacy reads remain for at least two production releases or 90 days, whichever is later, and retire only after every exit gate in this document passes.
 
+Knowledge Definition chips use `/parameters/definitions?definitionId=<opaque-id>` for readers without parameter-admin access. This canonical Catalog surface is read-only, preserves exact Definition identities and release pins through navigation, and uses the existing authorized Catalog read APIs. Admins retain `/parameter-admin/specs`. If a Definition is unavailable to the session or no readable destination is provided, the chip remains non-navigable with an accessible explanation. This does not grant admin or publication permissions or change backend authorization.
+
 ## Decision basis
 
 The contract was reconciled against current `origin/main` at `406c23bcaf0dcfca284de3135e27bfcd19c29c4e` and these accepted Wayfinder inputs. An accepted decision commit is design evidence even when it has not yet been integrated into `main`; this document does not claim otherwise.
