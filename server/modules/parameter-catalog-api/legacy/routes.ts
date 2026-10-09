@@ -467,6 +467,19 @@ export const legacyWriteRouteManifest = writeRoutes.map((route) => ({
   path: route.path,
 }));
 
+export const legacyDriverSchemaRetirementRouteManifest = legacyWriteRouteManifest.filter((route) => [
+  "parameterSpecs.listOrganizationDriverSchemas",
+  "parameterSpecs.getOrganizationDriverSchema",
+  "parameterSpecs.createOrganizationDriverSchema",
+  "parameterSpecs.updateOrganizationDriverSchema",
+  "parameterSpecs.activateOrganizationDriverSchema",
+  "parameterSpecs.previewOrganizationDriverSchemaDeprecation",
+  "parameterSpecs.deprecateOrganizationDriverSchema",
+  "parameterSpecs.listPromotionCandidates",
+  "parameterSpecs.promoteDriverSchemaOverlay",
+  "parameterSpecs.revertDriverSchemaPromotion",
+].includes(route.id));
+
 export const legacyEligibleRouteManifest = eligibleRoutes.map((route) => ({
   id: route.id,
   method: route.method as HttpMethod,

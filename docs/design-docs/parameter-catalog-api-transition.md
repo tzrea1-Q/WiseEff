@@ -594,6 +594,8 @@ The cutover decision in issue #678 is the sole owner of every R0-R10 production 
 | Existing project topology, binding history/compare, validation, and draft paths | Coordinated first-party DTO/ID cutover; path remains. No legacy `ParameterSpec` field after launch. | Canonical v2 contract. |
 | Existing v1 value, debug, reload, and knowledge calls | Public workflow remains unless separately versioned; implementation resolves canonical binding/definition/revision IDs internally. | Canonical identities only. |
 
+The retired organization overlay and Platform promotion surfaces link to the Catalog page for Definition Proposals and publication. `GET /api/v2/platform/driver-schema-promotion-history` is a Platform-authorized, read-only historical projection of retained promotion records, not a candidate list or an effective schema read. It preserves original legacy identifiers as evidence and offers no promote, revert, or restore action. Coverage and ingest never merge these historical overlays into the runtime schema registry.
+
 Legacy read responses include:
 
 ```text
