@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import type { Queryable } from "../../../shared/database/client";
+import { ApiError } from "../../../shared/http/errors";
+import type { ObjectStore } from "../../logs/objectStore";
+import { loadExactSourceRevisionForProof } from "../../parameter-files/sourceVersion";
+import { resolveDtsConfigSet } from "../../dts";
+import { listRevisionDiagnostics } from "../../parameter-topology/repository";
+import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 
 import {
   CatalogReleaseId,
@@ -627,7 +634,10 @@ export const ingestEvidence = async (
 export async function ingestSourceBoundEvidenceInTransaction(
   tx: Queryable,
   command: IngestEvidenceCommand,
-  input: { readonly kind: "observation" } | { readonly kind: "review"; readonly observationId: string; readonly projectId: string; readonly configRevisionId: string },
+  input: { readonly kind: "observation" }
+    | { readonly kind: "review"; readonly observationId: string; readonly projectId: string; readonly configRevisionId: string }
+    | { readonly kind: "revision-review"; readonly projectId: string; readonly configRevisionId: string;
+        readonly logicalNodeId: string; readonly objectStore: ObjectStore },
 ): Promise<IngestEvidenceResult> {
   const planned = planEvidenceIngest(command, { sourceObservation: input.kind === "observation" });
   if (!planned.ok || planned.value.kind !== (input.kind === "observation" ? "observation" : "review-evidence")) {
@@ -645,6 +655,59 @@ export async function ingestSourceBoundEvidenceInTransaction(
       || row.catalog_release_id !== command.catalogReleaseId || row.matcher_revision !== command.matcherRevision) {
       throw new Error("Trusted DTS review evidence observation does not match persisted source and pin");
     }
+  }
+  if (input.kind === "revision-review") {
+    const refuse = (): never => { throw new ApiError("CONFLICT", "DTS revision review evidence is not exact persisted continuity evidence.", { reason: "source-proof-invalid" }); };
+    const pointer = (await tx.query<{ id: string }>(
+      `select state.current_catalog_release_id as id from parameter_catalog.catalog_state state
+       join parameter_catalog.catalog_releases release on release.id=state.current_catalog_release_id`,
+    )).rows;
+    if (pointer.length !== 1 || pointer[0]!.id !== command.catalogReleaseId
+      || command.matcherRevision !== subjectMatcherRevision || command.matcherOutput.status !== "ambiguous"
+      || command.provenance || command.classification
+      || command.sourceIdentity !== `dts-continuity:${input.configRevisionId}:${input.logicalNodeId}`) refuse();
+    const rows = (await tx.query<{ configSetId: string; logicalNodeId: string; logicalNodeRevisionId: string; nodeLocator: string }>(
+      `select revision.config_set_id as "configSetId",logical.logical_node_id as "logicalNodeId",
+         logical.id as "logicalNodeRevisionId",logical.node_locator as "nodeLocator"
+       from dts_config_revisions revision
+       join dts_logical_node_revisions logical on logical.config_revision_id=revision.id
+       join dts_logical_nodes node on node.id=logical.logical_node_id
+         and node.organization_id=revision.organization_id and node.project_id=revision.project_id
+         and node.config_set_id=revision.config_set_id
+       where revision.id=$1 and revision.organization_id=$2 and revision.project_id=$3
+         and logical.logical_node_id=$4 and revision.status='needs_mapping'`,
+      [input.configRevisionId, command.organizationId, input.projectId, input.logicalNodeId],
+    )).rows;
+    if (rows.length !== 1) refuse();
+    const { configSetId, ...node } = rows[0]!;
+    const member = (await tx.query<{ fileId: string; fileVersionId: string }>(
+      `select file_id as "fileId",file_version_id as "fileVersionId" from dts_config_revision_members
+       where config_revision_id=$1 order by sort_order,id limit 1`, [input.configRevisionId],
+    )).rows[0];
+    if (!member) refuse();
+    const sourceRevision = { organizationId: command.organizationId, projectId: input.projectId,
+      configSetId, configRevisionId: input.configRevisionId, ...node };
+    const source = await loadExactSourceRevisionForProof(tx, input.objectStore, { ...sourceRevision, ...member! });
+    const dtsMembers = source.members.filter((entry) => entry.format === "dts");
+    if (!source.revision.entryFile || !dtsMembers.length) refuse();
+    const resolved = resolveDtsConfigSet({ entryFile: source.revision.entryFile!,
+      includeSearchPaths: source.revision.includeSearchPaths, overlayOrder: source.revision.overlayOrder,
+      files: new Map(dtsMembers.map((entry) => [entry.sourceName, { fileVersionId: entry.fileVersionId, content: entry.content }])),
+      requireExactOrigins: true });
+    const current = resolved.effective.nodesByLocator.get(node.nodeLocator);
+    if (!current || current.deleted || [...current.properties.values()].some((property) => !property.deleted)
+      || resolved.diagnostics.some((diagnostic) => !(diagnostic.severity === "warning" && diagnostic.code === "dangling-reference"))) refuse();
+    const relations = (await listRevisionDiagnostics(tx, input.configRevisionId))
+      .filter((diagnostic) => diagnostic.code === "logical-continuity-decision-needed")
+      .map((diagnostic) => JSON.parse(diagnostic.guidance ?? "null"))
+      .filter((relation) => relation?.continuity?.candidates?.some((candidate: { logicalNodeId: string; nodeLocator: string }) =>
+        candidate.logicalNodeId === input.logicalNodeId && candidate.nodeLocator === node.nodeLocator));
+    if (!relations.length || relations.some((relation) => !relation.previous?.logicalNodeId
+      || relation.previous.logicalNodeId === input.logicalNodeId || relation.continuity.kind !== "ambiguous")) refuse();
+    const expected = { kind: "logical-continuity-decision-needed", priorNodeEquivalent: false,
+      relations, sourceRevision, sourceMembers: source.members.map((entry) => ({ fileId: entry.fileId,
+        fileVersionId: entry.fileVersionId, sourceName: entry.sourceName, sourceDigest: `sha256:${entry.checksum.replace(/^sha256:/, "")}` })) };
+    if (!isDeepStrictEqual(command.evidence, expected)) refuse();
   }
   const result = await executePlannedIngest(tx, command, planned.value,
     input.kind === "review" ? input.observationId : null);

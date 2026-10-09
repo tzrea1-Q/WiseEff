@@ -52,7 +52,7 @@ export type CreateBindingDraftInput = {
 export type BindingDraftResult = {
   draftId: string;
   pending?: boolean;
-  currentValueId?: string;
+  currentValueId?: string | null;
   parameterId: string;
   candidateRevisionId: string;
   workingCandidateRevisionId?: string;

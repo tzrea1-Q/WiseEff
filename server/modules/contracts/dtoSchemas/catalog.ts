@@ -1,5 +1,5 @@
 import type { ZodTypeAny } from "zod";
-import { driverSchemaPromotionHistoryListResponseSchema } from "../../parameter-catalog-api/legacy/promotionHistory";
+import { driverSchemaPromotionHistoryListResponseSchema } from "../../parameter-specs/promotionHistory";
 
 import {
   xiaozeAgUiRunRequestSchema,

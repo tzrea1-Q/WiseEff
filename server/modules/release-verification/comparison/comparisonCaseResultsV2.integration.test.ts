@@ -45,6 +45,7 @@ import {
   deleteParameterModule,
 } from "../../parameters/parameterModuleRepository";
 import { provideModParameterCatalogComparisonCaseBatchV2 } from "../../parameter-modules/parameterCatalogComparisonContribution";
+import { getParameterModuleRegistry } from "../../parameter-modules/service";
 import { writeModParameterCatalogComparisonCasesV2 } from "./caseResultV2Writer";
 
 const sqlQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
@@ -495,6 +496,16 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
       runId: runB.value.runId,
       invocation,
     });
+    const navigation = await getParameterModuleRegistry(scopedDatabase, invocationAuth);
+    expect(navigation.item.navigationOnly).toBe(true);
+    expect(navigation.item.mappings).toEqual([]);
+    expect(navigation.item.modules).toHaveLength(2);
+    for (const module of navigation.item.modules) {
+      expect(module.sourceKey).toBeNull();
+      expect(module.attributionSubjectId).toBeNull();
+    }
+    expect(batch.cases.find((item) => item.protectedReference.id === moduleA.id)?.legacyObservation)
+      .toMatchObject({ status: "value", value: { sourceKey: "compatible:acme,power" } });
     expect(batch.sourceInventoryCount).toBe(2);
     expect(batch.inventory.map((item) => item.id).sort()).toEqual([moduleA.id, moduleB.id].sort());
     expect(batch.inventory.every((item) =>

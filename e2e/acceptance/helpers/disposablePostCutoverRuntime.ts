@@ -58,7 +58,11 @@ import {
   readProcessStartIdentity,
 } from "../../../scripts/process-start-identity";
 
-const databasePrefix = "wiseeff_acceptance_disposable_";
+const worktreeDatabasePrefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim();
+if (worktreeDatabasePrefix && !/^[a-z][a-z0-9_]{0,15}$/.test(worktreeDatabasePrefix)) {
+  throw new Error("Invalid test database prefix");
+}
+const databasePrefix = worktreeDatabasePrefix ? `${worktreeDatabasePrefix}_disposable_` : "wiseeff_acceptance_disposable_";
 /** Topology suites omit `markerPurpose`; keep this default so their marker check stays unchanged. */
 export const DEFAULT_DISPOSABLE_MARKER_PURPOSE = "parameter-topology";
 const organizationId = ACCEPTANCE_ORGANIZATION.id;
@@ -859,12 +863,16 @@ export async function startDisposablePostCutoverRuntime(
   const databaseName = buildDisposableDatabaseName(options.label ?? "topology");
   const databaseUrl = databaseUrlFor(baseDatabaseUrl, databaseName);
   const adminUrl = adminDatabaseUrl(baseDatabaseUrl);
-  const apiPort = options.apiPort ?? (await allocateLoopbackPort());
-  const frontendPort = options.frontendPort ?? (await allocateLoopbackPort({
+  const apiPort = options.apiPort ?? (process.env.WISEEFF_ACCEPTANCE_NESTED_API_PORT
+    ? Number(process.env.WISEEFF_ACCEPTANCE_NESTED_API_PORT) : await allocateLoopbackPort());
+  const frontendPort = options.frontendPort ?? (process.env.WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT
+    ? Number(process.env.WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT) : await allocateLoopbackPort({
     min: 5_173,
     max: 5_199,
     excluded: new Set([apiPort]),
   }));
+  if (![apiPort, frontendPort].every((port) => Number.isInteger(port) && port > 0 && port <= 65_535)
+    || apiPort === frontendPort) throw new Error("Invalid disposable runtime ports");
   const apiUrl = `http://127.0.0.1:${apiPort}`;
   const frontendUrl = `http://127.0.0.1:${frontendPort}`;
   const authIssuer = "wiseeff-disposable-acceptance";

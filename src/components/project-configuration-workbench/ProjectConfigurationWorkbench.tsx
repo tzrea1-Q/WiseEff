@@ -1335,6 +1335,10 @@ export function ProjectConfigurationWorkbench({
 
   const handleSelectReadinessIssue = useCallback(
     (issue: DtsReleaseReadinessIssue) => {
+      if (issue.remediation.kind === "complete-pending-change" && issue.remediation.href) {
+        onNavigate(issue.remediation.href);
+        return;
+      }
       setTasksOpen(true);
       if (issue.target?.fileId) {
         selectStructureTarget(
@@ -1347,7 +1351,7 @@ export function ProjectConfigurationWorkbench({
         }
       }
     },
-    [selectStructureTarget]
+    [onNavigate, selectStructureTarget]
   );
 
   const handleCopySessionDrafts = useCallback(async () => {

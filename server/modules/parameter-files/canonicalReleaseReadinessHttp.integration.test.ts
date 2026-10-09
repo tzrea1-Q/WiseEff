@@ -44,7 +44,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
     const connection = new URL(databaseUrl);
     connection.pathname = "/postgres";
     adminPool = new pg.Pool({ connectionString: connection.toString() });
-    databaseName = `t1061_readiness_${randomUUID().replaceAll("-", "")}`;
+    databaseName = `${process.env.WISEEFF_TEST_DATABASE_PREFIX ?? "t1061"}_readiness_${randomUUID().replaceAll("-", "")}`;
     await adminPool.query(`create database ${databaseName}`);
     connection.pathname = `/${databaseName}`;
     db = createPostgresDatabase(connection.toString());
@@ -152,6 +152,14 @@ describe("#1061 assembled-server canonical release readiness", () => {
     expect(pending.canRelease).toBe(false);
     expect(pending.canCreateBaseline).toBe(false);
     expect(pending.blockers).toContainEqual(expect.objectContaining({ code: "pending-change", message: expect.stringContaining("1") }));
+    expect(pending.blockers).toContainEqual(expect.objectContaining({
+      code: "pending-change",
+      target: expect.objectContaining({ changeRequestId: requestId }),
+      remediation: expect.objectContaining({
+        label: expect.stringContaining("Review"),
+        href: `/parameter-review?project=${encodeURIComponent(projectId)}&request=${encodeURIComponent(requestId)}`
+      })
+    }));
     const reviewed = await request(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/${decision === "withdraw" ? "withdraw" : "review"}`,
       decision === "withdraw" ? authorId : reviewerId, decision === "withdraw" ? {} : { decision });
     expect(reviewed.status, JSON.stringify(reviewed.body)).toBe(200);

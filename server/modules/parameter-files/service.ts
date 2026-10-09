@@ -11,7 +11,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { ingestConfigRevisionInTransaction, type ConfigRevisionIngestOptions } from "../parameter-topology/ingestService";
-import { produceDtsCompatibleEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
+import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 import type {
   ConfigRevisionManifest,
   ConfigRevisionManifestMember,
@@ -334,7 +334,7 @@ export async function maybeIngestSemanticConfigRevision(
 
   const revision = await ingestConfigRevisionInTransaction(db, manifest, auth, undefined, options);
   if (producerRoot) {
-    await produceDtsCompatibleEvidenceInTransaction(db,producerRoot,objectStore,auth,revision.id);
+    await produceDtsReviewEvidenceInTransaction(db,producerRoot,objectStore,auth,revision.id);
   }
 }
 

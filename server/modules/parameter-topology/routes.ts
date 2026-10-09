@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { historicalTaskReadWindow } from "../parameter-catalog-api/legacy/taskReadWindow";
+import { historicalTaskReadWindow } from "../parameter-catalog-api/taskReadWindow";
 import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 
 import type { AuthContext } from "../auth/types";

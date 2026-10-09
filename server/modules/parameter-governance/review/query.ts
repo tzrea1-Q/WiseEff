@@ -101,12 +101,13 @@ const loadEvidence = async (
   client: Queryable,
   organizationId: string,
   observationIds: readonly string[] | null = null,
+  reviewEvidenceIds: readonly string[] = [],
 ): Promise<ReviewEvidenceRecord[]> => {
   const result = await client.query<EvidenceRow>(
     `select id, organization_id, reason, candidate_safe_digest, r_class, source_graph_ref, evidence
        from parameter_catalog.parameter_review_evidence
-      where organization_id = $1 and ($2::text[] is null or observation_id=any($2::text[]))`,
-    [organizationId,observationIds],
+      where organization_id = $1 and ($2::text[] is null or observation_id=any($2::text[]) or id=any($3::text[]))`,
+    [organizationId,observationIds,reviewEvidenceIds],
   );
   const records: ReviewEvidenceRecord[] = [];
   for (const row of result.rows) {
@@ -231,8 +232,9 @@ const projectGroups = (
 export async function materializeReviewItemsInTransaction(
   tx: Queryable, organizationId: string, capturedRelease: CatalogReleasePin,
   observationIds: readonly string[] | null = null,
+  reviewEvidenceIds: readonly string[] = [],
 ): Promise<Result<{ actionable: readonly GroupedReview[]; refreshed: ReviewItemRow[] }, ReviewQueueFailure>> {
-  const records = await loadEvidence(tx, organizationId, observationIds);
+  const records = await loadEvidence(tx, organizationId, observationIds, reviewEvidenceIds);
   const existing = await loadItems(tx, organizationId, capturedRelease.id);
   const grouped = groupReviewEvidence(records, capturedRelease, { existingOpenItems: existing.existing });
   if (!grouped.ok) return grouped;

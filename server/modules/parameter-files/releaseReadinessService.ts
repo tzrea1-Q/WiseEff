@@ -48,6 +48,7 @@ export type ReleaseReadinessIssue = {
   remediation: {
     kind: ReleaseReadinessRemediationKind;
     label: string;
+    href?: string;
   };
   acknowledgementRequired?: boolean;
   acknowledged?: boolean;
@@ -336,7 +337,12 @@ export async function evaluateReleaseReadiness(
       severity: "blocker",
       code: "pending-change",
       message: `${totalPendingChangeCount} server-visible pending change request(s) must complete before release (${canonicalPendingRequestIds.length} canonical, ${pendingChangeCount} legacy).`,
-      remediation: { kind: "complete-pending-change", label: "Complete or withdraw pending change requests" }
+      ...(canonicalPendingRequestIds[0] ? { target: { changeRequestId: canonicalPendingRequestIds[0] } } : {}),
+      remediation: {
+        kind: "complete-pending-change", label: "Review pending change requests or withdraw your submissions",
+        href: `/parameter-review?project=${encodeURIComponent(configSet.projectId)}${canonicalPendingRequestIds[0]
+          ? `&request=${encodeURIComponent(canonicalPendingRequestIds[0])}` : ""}`
+      }
     });
   }
 

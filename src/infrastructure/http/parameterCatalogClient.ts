@@ -260,6 +260,14 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       );
     }
     const parsed = parseContractDto(schema, body, schemaName);
+    const changedRequest = method === "POST"
+      ? path.match(/^\/api\/v2\/projects\/([^/]+)\/parameter-value-change-requests\/[^/]+\/(?:review|withdraw)$/)
+      : null;
+    if (changedRequest && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wiseeff:canonical-requests-changed", {
+        detail: { projectId: decodeURIComponent(changedRequest[1]!) }
+      }));
+    }
     if (!init.preserveEtag) {
       return parsed;
     }

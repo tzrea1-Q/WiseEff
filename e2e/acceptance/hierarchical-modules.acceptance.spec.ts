@@ -428,7 +428,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     });
   });
 
-  test("module tree mutations require admin and non-empty modules cannot be deleted", async ({
+  test("module tree mutations require admin and canonical driver deletion is retired without writes", async ({
     page,
     request
   }, testInfo) => {
@@ -487,6 +487,14 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       }
     );
     expect(registration.status(), await registration.text()).toBe(201);
+    const registrationId = (await registration.json()).item.id;
+    const placementUrl = apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations/${registrationId}/placement`);
+    const placementBefore = await request.get(placementUrl, { headers: adminHeaders() });
+    expect(placementBefore.status(), await placementBefore.text()).toBe(200);
+    const placement = (await placementBefore.json()).item;
+    const modulesBefore = await request.get(apiRoute("/api/v1/parameter-modules"), { headers: adminHeaders() });
+    expect(modulesBefore.status(), await modulesBefore.text()).toBe(200);
+    const modules = (await modulesBefore.json()).items;
 
     const deleteParentResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${parent.item.id}`), {
       headers: adminHeaders()
@@ -496,7 +504,16 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     const deleteLeafResponse = await page.request.delete(apiRoute("/api/v1/parameter-modules/modtree-authz-driver"), {
       headers: adminHeaders()
     });
-    expect(deleteLeafResponse.status(), await deleteLeafResponse.text()).toBe(409);
+    expect(deleteLeafResponse.status(), await deleteLeafResponse.text()).toBe(410);
+    expect(await deleteLeafResponse.json()).toMatchObject({ error: { code: "GONE", details: {
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false
+    } } });
+    const modulesAfter = await request.get(apiRoute("/api/v1/parameter-modules"), { headers: adminHeaders() });
+    expect(modulesAfter.status(), await modulesAfter.text()).toBe(200);
+    expect((await modulesAfter.json()).items).toEqual(modules);
+    const placementAfter = await request.get(placementUrl, { headers: adminHeaders() });
+    expect(placementAfter.status(), await placementAfter.text()).toBe(200);
+    expect((await placementAfter.json()).item).toEqual(placement);
     const deleteEmptyLeafResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${leaf.item.id}`), {
       headers: adminHeaders()
     });
@@ -524,10 +541,10 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         summarizeApiResponse(deleteLeafResponse, {
           method: "DELETE",
           path: "/api/v1/parameter-modules/modtree-authz-driver",
-          responseSummary: "CONFLICT Catalog placements remain"
+          responseSummary: "GONE; module tree and canonical Placement unchanged"
         })
       ],
-      notes: "Non-admin module create returned 403; deleting modules with child modules or canonical Catalog placements returned 409, and an empty leaf could be deleted."
+      notes: "Non-admin module create returned 403; deleting a parent with children returned 409; canonical driver deletion returned 410 with no tree or Placement change; an empty taxonomy leaf could be deleted."
     });
   });
 });

@@ -37,6 +37,8 @@ import {
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import { catalogLegacyGoneResult, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 import { nodePathToParameterIdentity } from "./pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import {
@@ -2586,6 +2588,11 @@ function requireParameterAdmin(auth: AuthContext) {
   }
 }
 
+function legacyStructuralWriteRetirementError(): ApiError {
+  const { error } = catalogLegacyGoneResponseSchema.parse(catalogLegacyGoneResult("", LEGACY_WRITE_GONE_MESSAGE).body);
+  return new ApiError(error.code, error.message, error.details);
+}
+
 async function createParameterModuleAudit(
   tx: AuditTx,
   auth: AuthContext,
@@ -2693,9 +2700,7 @@ export async function createParameterModuleForAuth(
   const parentId = body.parentId ?? null;
   const kind = body.kind ?? "business";
   if (kind !== "business") {
-    throw new ApiError("GONE", "Legacy structural writes are retired.", {
-      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
-    });
+    throw legacyStructuralWriteRetirementError();
   }
 
   let parent: ParameterModuleDto | null = null;
@@ -2781,9 +2786,7 @@ export async function updateParameterModuleForAuth(
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
   if (current.kind === "driver-group" || current.kind === "node-type") {
-    throw new ApiError("GONE", "Legacy structural writes are retired.", {
-      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
-    });
+    throw legacyStructuralWriteRetirementError();
   }
 
   const nextName = body.name?.trim() ?? current.name;
@@ -2793,9 +2796,7 @@ export async function updateParameterModuleForAuth(
 
   const nextKind = body.kind ?? current.kind;
   if (body.kind !== undefined && body.kind !== current.kind) {
-    throw new ApiError("GONE", "Legacy structural writes are retired.", {
-      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
-    });
+    throw legacyStructuralWriteRetirementError();
   }
 
   if (body.importance !== undefined && nextKind !== "business") {
@@ -2878,9 +2879,7 @@ export async function moveParameterModuleForAuth(
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
   if (current.kind === "driver-group" || current.kind === "node-type") {
-    throw new ApiError("GONE", "Legacy structural writes are retired.", {
-      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
-    });
+    throw legacyStructuralWriteRetirementError();
   }
 
   const parentId = body.parentId;
@@ -2958,9 +2957,7 @@ export async function deleteParameterModuleForAuth(
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
   if (current.kind === "driver-group" || current.kind === "node-type") {
-    throw new ApiError("GONE", "Legacy structural writes are retired.", {
-      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
-    });
+    throw legacyStructuralWriteRetirementError();
   }
 
   const childCount = await countParameterModuleChildren(db, { organizationId, moduleId });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { readSpecTaskWindow } from "../parameter-catalog-api/legacy/taskReadWindow";
+import { readSpecTaskWindow } from "../parameter-catalog-api/taskReadWindow";
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -19,7 +19,7 @@ import {
 import { legacyDriverSchemaRetirementRouteManifest } from "../parameter-catalog-api/legacy/routes";
 import {
   driverSchemaPromotionHistoryListResponseSchema,
-} from "../parameter-catalog-api/legacy/promotionHistory";
+} from "./promotionHistory";
 import { listDriverSchemaPromotions } from "./driverSchemaOverlayRepository";
 import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";

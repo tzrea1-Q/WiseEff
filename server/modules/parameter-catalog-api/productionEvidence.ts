@@ -1,2 +1,2 @@
 /** Public Catalog composition seam for authenticated DTS source activation. */
-export { produceDtsCompatibleEvidenceInTransaction } from "../parameter-governance/evidence/dtsProducer";
+export { produceDtsReviewEvidenceInTransaction } from "../parameter-governance/evidence/dtsProducer";

@@ -34,10 +34,8 @@ import type { LegacyCatalogOptions } from "../parameter-catalog-api/legacy";
 import { routeManifest } from "../contracts/routeManifest";
 import { getRootPostgresPool, type Database } from "../../shared/database/client";
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
-import {
-  getParameterModuleRegistry,
-  listDriverRegistry,
-} from "./service";
+import { readRegistry } from "./repository";
+import { listDriverRegistry } from "./service";
 import { listDismissedCompatibleIdentitiesForComparison } from "./comparisonInventoryRepository";
 
 export const MOD_COMPARISON_CONTRACT_VERSION = "pcat-comparison-contribution/v1";
@@ -211,8 +209,8 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
   const scopes = organizations.length > 0 ? organizations : ["platform"];
   for (const organizationId of scopes) {
     const auth = inventoryAuth(organizationId);
-    const registry = await getParameterModuleRegistry(database, auth);
-    for (const module of registry.item.modules) {
+    const registry = await readRegistry(database, organizationId, null);
+    for (const module of registry.modules) {
       byKey.set(`parameter-module:${module.id}`, {
         kind: "parameter-module",
         id: module.id,
@@ -220,7 +218,7 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
         applicable: ["PCAT-CMP-D02-SUBJECT-IDENTITY"],
       });
     }
-    for (const mapping of registry.item.mappings) {
+    for (const mapping of registry.mappings) {
       byKey.set(`parameter-module-mapping:${mapping.id}`, {
         kind: "parameter-module-mapping",
         id: mapping.id,
@@ -332,8 +330,8 @@ async function observeLegacyModule(
   organizationId: string,
   moduleId: string,
 ): Promise<ModQueryObservation> {
-  const listed = await getParameterModuleRegistry(database, inventoryAuth(organizationId));
-  const item = listed.item.modules.find((row) => row.id === moduleId);
+  const registry = await readRegistry(database, organizationId, null);
+  const item = registry.modules.find((row) => row.id === moduleId);
   if (!item) {
     return {
       status: "query-failure",
@@ -802,8 +800,8 @@ export async function provideModParameterCatalogComparisonCaseBatchV2(
     digest: CatalogReleaseDigest(manifest.catalogRelease.digest),
   };
 
-  const registry = await getParameterModuleRegistry(input.database, auth);
-  const modules = [...registry.item.modules].sort((left, right) =>
+  const registry = await readRegistry(input.database, organizationId, null);
+  const modules = [...registry.modules].sort((left, right) =>
     compareText(left.id, right.id) || compareText(left.kind, right.kind));
   const inventory: ComparisonCaseInventoryV2[] = modules.map((module) => ({
     kind: "parameter-module",

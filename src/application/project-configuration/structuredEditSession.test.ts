@@ -104,6 +104,225 @@ async function editedCanonicalSession(paths = ["board", "sibling"], storage = cr
 }
 
 describe("canonical structured staging", () => {
+  it("preserves confirmed receipts and local edits when hydrating the same scope", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]),
+        createBindingDraft: vi.fn(async () => stagingReceipt("pbind_file-board_board"))
+      }) });
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: '"Newer"', normalizedValue: "Newer", valid: true });
+    session.setReason("Keep editing this scope");
+    const before = session.getSnapshot();
+    await session.hydrate({ ...SCOPE });
+    expect(session.getSnapshot()).toEqual(before);
+  });
+
+  it("keeps an in-flight staging receipt valid after same-scope hydration", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    let finish!: (receipt: BindingDraftResult) => void;
+    const createBindingDraft = vi.fn(() => new Promise<BindingDraftResult>((resolve) => { finish = resolve; }));
+    const submission = session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]), createBindingDraft
+      }) });
+    const outcome = submission.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(createBindingDraft).toHaveBeenCalledOnce());
+    await session.hydrate({ ...SCOPE });
+    expect(session.submitting).toBe(true);
+    finish(stagingReceipt("pbind_file-board_board"));
+    await expect(outcome).resolves.toMatchObject({ status: "canonical-project-value-draft" });
+    expect(session.stagedDrafts).toHaveLength(1);
+    expect(session.rows).toEqual([]);
+    expect(session.submitting).toBe(false);
+  });
+
+  it.each(["success", "failure"])("does not let an old staging %s finish the new scope's submission", async (outcome) => {
+    const session = await editedCanonicalSession(["board"]);
+    let finishOld!: () => void;
+    const oldPending = new Promise<void>((resolve) => { finishOld = resolve; });
+    const oldDraft = vi.fn(async () => {
+      await oldPending;
+      if (outcome === "failure") throw new Error("Old scope failed");
+      return stagingReceipt("pbind_file-board_board");
+    });
+    const submit = (projectId: string, createBindingDraft: typeof oldDraft) => session.submit({
+      projectId, fileId: SCOPE.fileId, fileName: "board.dts", revisionId: "revision-1",
+      dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]), createBindingDraft
+      })
+    });
+    const oldSubmission = submit(SCOPE.projectId, oldDraft).catch(() => undefined);
+    await vi.waitFor(() => expect(oldDraft).toHaveBeenCalledOnce());
+    await session.hydrate({ ...SCOPE, projectId: "new-project" });
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: '"New project"', normalizedValue: "New project", valid: true });
+    session.setReason("New project staging");
+    let finishNew!: (receipt: BindingDraftResult) => void;
+    const newDraft = vi.fn(() => new Promise<BindingDraftResult>((resolve) => { finishNew = resolve; }));
+    const newSubmission = submit("new-project", newDraft).catch((error: unknown) => error);
+    await vi.waitFor(() => expect(newDraft).toHaveBeenCalledOnce());
+    finishOld();
+    await oldSubmission;
+    expect(session.submitting).toBe(true);
+    expect(session.submitError).toBe("");
+    expect(session.submitStatus).toBe("");
+    expect(session.stagedDrafts).toEqual([]);
+    expect(session.rows).toEqual([expect.objectContaining({ rawText: '"New project"' })]);
+    finishNew(stagingReceipt("pbind_file-board_board"));
+    await expect(newSubmission).resolves.toMatchObject({ status: "canonical-project-value-draft" });
+    expect(session.submitting).toBe(false);
+    expect(session.stagedDrafts).toHaveLength(1);
+    expect(session.rows).toEqual([]);
+  });
+
+  it("accepts a staged pending receipt when the Binding current value remains null", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [{ ...canonicalBinding("board"), currentValueId: null }]),
+        createBindingDraft: vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), currentValueId: null }))
+      }) });
+    expect(session.stagedDrafts).toEqual([expect.objectContaining({
+      draftId: "pvdr_pbind_file-board_board", bindingId: "pbind_file-board_board", currentValueId: null, pending: true
+    })]);
+    expect(session.rows).toEqual([]);
+    expect(session.isDirty).toBe(false);
+    expect(session.submitStatus).toMatch(/已暂存 1 项待审核.*当前值未变/);
+    expect(session.submitStatus).toContain("无当前值");
+  });
+
+  it.each(["userId", "organizationId", "projectId", "configSetId", "fileId", "baseVersionId"] as const)(
+    "clears confirmed receipts when %s changes", async (field) => {
+      const session = await editedCanonicalSession(["board"]);
+      await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+        revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+        catalogRepository: createTestParameterTopologyRepository({
+          listBindings: vi.fn(async () => [canonicalBinding("board")]),
+          createBindingDraft: vi.fn(async () => stagingReceipt("pbind_file-board_board"))
+        }) });
+      expect(session.stagedDrafts).toHaveLength(1);
+      const hydration = session.hydrate({ ...SCOPE, [field]: "other-scope" });
+      expect(session.stagedDrafts).toEqual([]);
+      await hydration;
+      expect(session.stagedDrafts).toEqual([]);
+      expect(session.submitStatus).toBe("");
+    }
+  );
+
+  it("clears confirmed receipts when scope is removed", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]),
+        createBindingDraft: vi.fn(async () => stagingReceipt("pbind_file-board_board"))
+      }) });
+    await session.hydrate(null);
+    expect(session.stagedDrafts).toEqual([]);
+    expect(session.submitStatus).toBe("");
+    expect(session.submitting).toBe(false);
+  });
+
+  it.each(["success", "failure"])("ignores late staging %s after switching scope", async (outcome) => {
+    const session = await editedCanonicalSession(["board"]);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const createBindingDraft = vi.fn(async () => {
+      await pending;
+      if (outcome === "failure") throw new Error("old-project staging failed");
+      return stagingReceipt("pbind_file-board_board");
+    });
+    const submission = session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [canonicalBinding("board")]), createBindingDraft
+      }) }).catch(() => undefined);
+    await vi.waitFor(() => expect(createBindingDraft).toHaveBeenCalledOnce());
+    await session.hydrate({ ...SCOPE, projectId: "other-project" });
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: '"Other project"', normalizedValue: "Other project", valid: true });
+    session.setReason("Other project edit");
+    finish();
+    await submission;
+    expect(session.stagedDrafts).toEqual([]);
+    expect(session.rows).toEqual([expect.objectContaining({ rawText: '"Other project"' })]);
+    expect(session.submitStatus).toBe("");
+    expect(session.submitError).toBe("");
+    expect(session.submitting).toBe(false);
+  });
+
+  it.each(["revisions", "bindings"])("ignores late %s discovery without staging in a different scope", async (lookup) => {
+    const session = await editedCanonicalSession(["board"]);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const listConfigRevisions = vi.fn(async () => {
+      if (lookup === "revisions") await pending;
+      return [{ id: "revision-1", status: "resolved" as const, projectId: SCOPE.projectId, configSetId: SCOPE.configSetId }];
+    });
+    const listBindings = vi.fn(async () => {
+      if (lookup === "bindings") await pending;
+      return [canonicalBinding("board")];
+    });
+    const createBindingDraft = vi.fn(async () => stagingReceipt("pbind_file-board_board"));
+    const submission = session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      configSetId: SCOPE.configSetId, dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({ listConfigRevisions, listBindings, createBindingDraft })
+    }).catch((error: unknown) => error);
+    await vi.waitFor(() => expect(lookup === "revisions" ? listConfigRevisions : listBindings).toHaveBeenCalledOnce());
+    await session.hydrate({ ...SCOPE, projectId: "other-project" });
+    finish();
+    await expect(submission).resolves.toBeInstanceOf(Error);
+    expect(createBindingDraft).not.toHaveBeenCalled();
+    expect(session.stagedDrafts).toEqual([]);
+    expect(session.submitError).toBe("");
+    expect(session.submitStatus).toBe("");
+    expect(session.submitting).toBe(false);
+  });
+
+  it.each(["success", "failure"])("ignores a late legacy submission %s after switching scope", async (outcome) => {
+    const session = await editedCanonicalSession(["board"]);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const submitStructuredEdits = vi.fn(async () => {
+      await pending;
+      if (outcome === "failure") throw new Error("Old submission failed");
+      return { id: "old-round", projectId: SCOPE.projectId, status: "submitted", items: [] };
+    });
+    const submission = session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      dtsRepository: { submitStructuredEdits }
+    }).catch((error: unknown) => error);
+    await vi.waitFor(() => expect(submitStructuredEdits).toHaveBeenCalledOnce());
+    await session.hydrate({ ...SCOPE, projectId: "other-project" });
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: '"Other project"', normalizedValue: "Other project", valid: true });
+    finish();
+    await expect(submission).resolves.toBeInstanceOf(Error);
+    expect(session.rows).toEqual([expect.objectContaining({ rawText: '"Other project"' })]);
+    expect(session.submitError).toBe("");
+    expect(session.submitStatus).toBe("");
+    expect(session.submitting).toBe(false);
+  });
+
+  it.each([
+    [null, undefined], [null, "unexpected-current"], ["ppv_board", null]
+  ] as const)("keeps the edit when current-value confirmation differs: %s to %s", async (currentValueId, receiptValueId) => {
+    const session = await editedCanonicalSession(["board"]);
+    await expect(session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
+      revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
+      catalogRepository: createTestParameterTopologyRepository({
+        listBindings: vi.fn(async () => [{ ...canonicalBinding("board"), currentValueId }]),
+        createBindingDraft: vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), currentValueId: receiptValueId }))
+      }) })).rejects.toThrow(/board\/model.*未确认/);
+    expect(session.rows).toHaveLength(1);
+    expect(session.stagedDrafts).toEqual([]);
+  });
+
   it("retains edits made while an earlier version is being staged", async () => {
     const session = await editedCanonicalSession(["board"]);
     const createBindingDraft = vi.fn(async () => {

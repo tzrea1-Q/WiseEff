@@ -7,7 +7,7 @@ import { createRetirementTestHarness } from "../../../testing/parameterCatalog/r
 import { requestJson } from "../../../test/testClient";
 import { routeManifest } from "../../contracts/routeManifest";
 import { createTokenVerifier } from "../../auth/tokenVerifier";
-import type { DriverSchemaPromotionHistoryItem } from "./promotionHistory";
+import type { DriverSchemaPromotionHistoryItem } from "../../parameter-specs/promotionHistory";
 import { listDriverSchemaPromotions } from "../../parameter-specs/driverSchemaOverlayRepository";
 
 const legacyTables = [
