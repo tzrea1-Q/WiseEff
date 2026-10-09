@@ -761,10 +761,11 @@ async function loadParameterForSubmission(
   return parameter;
 }
 
-async function loadChangeRequestForReview(db: Queryable, auth: AuthContext, requestId: string) {
+async function loadChangeRequestForReview(db: Queryable, auth: AuthContext, requestId: string, lock = true) {
   const request = await getChangeRequestById(db, {
     organizationId: auth.organization.id,
-    requestId
+    requestId,
+    lock
   });
 
   if (!request) {
@@ -2150,7 +2151,10 @@ export async function reviewChange(
   context: ParameterReviewContext = {}
 ) {
   return db.transaction(async (tx) => {
-    const request = await loadChangeRequestForReview(tx, auth, input.requestId);
+    const initial = await loadChangeRequestForReview(tx, auth, input.requestId, false);
+    const request = initial.editSubjectKind === "node-enablement" && initial.status === "software_merge" && input.decision === "advance"
+      ? initial
+      : await loadChangeRequestForReview(tx, auth, input.requestId);
     const fromStatus = request.status;
 
     if (fromStatus === "merged" || fromStatus === "rejected") {

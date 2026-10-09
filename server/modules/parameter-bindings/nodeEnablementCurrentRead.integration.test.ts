@@ -27,9 +27,10 @@ const softwareId = "software-1077";
 const otherReviewerId = "other-hardware-1077";
 const admin = makeTestAuthContext({ userId: adminId, organizationId });
 const base = '/dts-v1/;\n/ { charger: charger { compatible = "acme,power"; iin_max = <1000>; status = "okay"; }; };\n';
-const overlay = '/dts-v1/;\n/plugin/;\n&charger { status = "okay"; };\n';
-
-describe("#1076 assembled-server node enablement current Binding read", () => {
+describe.each([
+  { name: "empty overlay", overlay: '/dts-v1/;\n/plugin/;\n' },
+  { name: "existing status", overlay: '/dts-v1/;\n/plugin/;\n&charger { status = "okay"; };\n' },
+])("#1076 assembled-server node enablement current Binding read ($name)", ({ overlay }) => {
   let lane: EphemeralTestDatabase;
   let db: RootDatabase;
   let directory: string;
@@ -104,6 +105,7 @@ describe("#1076 assembled-server node enablement current Binding read", () => {
     }));
     server = createWiseEffServer({ db, objectStore: storage });
     await db.query("alter table parameter_change_requests drop column parameter_definition_id, drop column project_parameter_value_id");
+    await db.query("alter table parameter_history_entries drop column parameter_definition_id, drop column project_parameter_value_id");
   });
 
   afterAll(async () => {
@@ -207,9 +209,16 @@ describe("#1076 assembled-server node enablement current Binding read", () => {
     return { round: submitted.body.item, logicalNodeId };
   }
 
+  async function sourceState() {
+    return (await db.query(`select file.id, file.current_version_id, version.checksum
+      from project_parameter_files file join project_parameter_file_versions version on version.id = file.current_version_id
+      where file.config_set_id = $1 order by file.id`, [configSetId])).rows;
+  }
+
   it("lists an active node-only submission and its assigned review queue without parameter identity", async () => {
     setParameterIdentityMode("semantic");
     const { round, logicalNodeId } = await submit();
+    const sourceBefore = await sourceState();
     expect(round.status).toBe("hardware_review");
     const submissions = await read<{ items: ParameterSubmissionRoundDto[] }>(`/api/v1/parameter-submission-rounds?projectId=${projectId}&mine=true`);
     expect(submissions.status, submissions.bodyText).toBe(200);
@@ -245,6 +254,7 @@ describe("#1076 assembled-server node enablement current Binding read", () => {
     const rejected = await review(softwareId, "reject", "1077-rejected");
     expect(rejected.status, rejected.bodyText).toBe(200);
     expect(rejected.body.item.status).toBe("rejected");
+    expect(await sourceState()).toEqual(sourceBefore);
     expect((await db.query(`select reviewer_user_id, decision, from_status, to_status, initiator_type
       from parameter_review_decisions where request_id = $1 and from_status <> 'submitted' order by created_at`, [requestId])).rows).toEqual([
       { reviewer_user_id: reviewerId, decision: "advance", from_status: "hardware_review", to_status: "software_review", initiator_type: "user" },
@@ -261,5 +271,92 @@ describe("#1076 assembled-server node enablement current Binding read", () => {
       where binding.project_id = $1 order by pin.project_value_id`, [projectId])).rows).toEqual(pinsBefore);
     const completed = await read<{ items: ParameterSubmissionRoundDto[] }>(`/api/v1/parameter-submission-rounds?projectId=${projectId}&mine=true`);
     expect(completed.body.items).toEqual([expect.objectContaining({ id: round.id, status: "rejected", items: [expect.objectContaining({ logicalNodeId })] })]);
+  });
+
+  it("#1078 applies approved structural enablement while retaining canonical values, pins and the legacy fence", async () => {
+    setParameterIdentityMode("semantic");
+    const before = await read<{ items: unknown[] }>(`/api/v2/projects/${projectId}/parameter-bindings`);
+    const canonicalState = async () => (await db.query(`select to_jsonb(binding) as binding,
+      (select jsonb_agg(to_jsonb(value) order by value.id) from parameter_catalog.project_parameter_values value where value.binding_id = binding.id) as values,
+      (select jsonb_agg(to_jsonb(pin) order by pin.id) from parameter_catalog.project_value_source_pins pin
+       join parameter_catalog.project_parameter_values value on value.id = pin.project_value_id where value.binding_id = binding.id) as pins
+      from parameter_catalog.project_parameter_bindings binding where binding.project_id = $1 order by binding.id`, [projectId])).rows;
+    const retained = await canonicalState();
+    const originalSource = await sourceState();
+    const { round, logicalNodeId } = await submit();
+    const requestId = round.items[0]!.requestId;
+    for (const [userId, status] of [[reviewerId, "software_review"], [softwareId, "software_merge"], [authorId, "merged"]]) {
+      if (status === "merged") {
+        const blocker = await getRootPostgresPool(db)!.connect();
+        let pendingReview: ReturnType<typeof requestJson> | undefined;
+        let earlyResponse: Awaited<ReturnType<typeof requestJson>> | null = null;
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await blocker.query("begin");
+          await blocker.query("select id from dts_config_set where id=$1 for update", [configSetId]);
+          await blocker.query("select id from parameter_change_requests where id=$1 for update", [requestId]);
+          pendingReview = requestJson(server, `/api/v1/parameter-change-requests/${requestId}/review`, {
+            method: "POST", headers: { "X-WiseEff-User": authorId },
+            body: JSON.stringify({ decision: "advance", note: "https://example.test/review/1078" })
+          });
+          earlyResponse = await Promise.race([pendingReview, new Promise<null>((resolve) => { timeout = setTimeout(() => resolve(null), 1000); })]);
+        } finally {
+          if (timeout) clearTimeout(timeout);
+          await blocker.query("rollback");
+          blocker.release();
+          if (pendingReview) await pendingReview;
+        }
+        expect(earlyResponse, "busy source must refuse without waiting on the workflow lock").not.toBeNull();
+        expect(earlyResponse!.status).toBe(409);
+        expect(earlyResponse!.body).toMatchObject({ error: { details: { reason: "source-proof-busy" } } });
+        expect(await sourceState()).toEqual(originalSource);
+        expect(await canonicalState()).toEqual(retained);
+        expect((await db.query("select status from parameter_change_requests where id=$1", [requestId])).rows).toEqual([{ status: "software_merge" }]);
+        expect((await db.query("select id from parameter_history_entries where request_id=$1", [requestId])).rows).toEqual([]);
+      }
+      const reviewed = await requestJson<{ item: ChangeRequestDto }>(server, `/api/v1/parameter-change-requests/${requestId}/review`, {
+        method: "POST", headers: { "X-WiseEff-User": userId!, "X-Request-Id": `1078-${status}` },
+        body: JSON.stringify({ decision: "advance", note: "https://example.test/review/1078", initiatorType: "system" })
+      });
+      expect(reviewed.status, reviewed.bodyText).toBe(200);
+      expect(reviewed.body.item.status).toBe(status);
+    }
+    const current = await sourceState();
+    expect(current).not.toEqual(originalSource);
+    expect(await canonicalState()).toEqual(retained);
+    const bindings = await read<typeof before.body>(`/api/v2/projects/${projectId}/parameter-bindings`);
+    expect(bindings.body.items).toEqual(before.body.items);
+    const applied = (await db.query(`select member.file_version_id, revision.id from dts_config_revisions revision
+      join dts_config_revision_members member on member.config_revision_id = revision.id
+      join project_parameter_files file on file.id = member.file_id and file.current_version_id = member.file_version_id
+      where revision.config_set_id = $1 and member.role = 'overlay' order by revision.revision_number desc limit 1`, [configSetId])).rows[0]!;
+    const topology = await read<{ item: { nodes: Array<{ logicalNodeId: string; enablement: { selfEnabled: boolean } }> } }>(
+      `/api/v2/projects/${projectId}/config-sets/${configSetId}/revisions/${applied.id}/topology?view=effective`);
+    expect(topology.body.item.nodes.find((node) => node.logicalNodeId === logicalNodeId)?.enablement.selfEnabled).toBe(false);
+    expect((await db.query(`select kind, actor_type, actor_user_id, trace_id from audit_events
+      where kind = 'parameter-writeback-to-file' and trace_id = '1078-merged'`)).rows).toEqual([
+      { kind: "parameter-writeback-to-file", actor_type: "user", actor_user_id: authorId, trace_id: "1078-merged" }
+    ]);
+    expect((await db.query(`select logical_node_id, project_parameter_binding_id, value, changed_by_user_id, initiator_type
+      from parameter_history_entries where request_id=$1`, [requestId])).rows).toEqual([
+      { logical_node_id: logicalNodeId, project_parameter_binding_id: null, value: '"disabled"', changed_by_user_id: authorId, initiator_type: "user" }
+    ]);
+    const fileId = (await db.query(`select id from project_parameter_files where config_set_id = $1 and config_set_role = 'overlay'`, [configSetId])).rows[0]!.id;
+    const originalVersion = originalSource.find((file) => file.id === fileId)!.current_version_id;
+    const currentVersion = current.find((file) => file.id === fileId)!.current_version_id;
+    expect((await read(`/api/v1/projects/${projectId}/parameter-files/${fileId}/versions/${originalVersion}/content`)).bodyText).toBe(overlay);
+    expect((await read(`/api/v1/projects/${projectId}/parameter-files/${fileId}/versions/${currentVersion}/content`)).bodyText).toContain('status = "disabled"');
+    const legacy = await requestJson(server, `/api/v1/projects/${projectId}/parameter-files/${fileId}/versions`, {
+      method: "POST", headers: { "X-WiseEff-User": adminId }, body: JSON.stringify({ contentBase64: Buffer.from(overlay).toString("base64") })
+    });
+    expect(legacy.status, legacy.bodyText).toBe(409);
+    expect(legacy.body).toMatchObject({ error: { details: { reason: "canonical-source-transaction-required" } } });
+    expect(await sourceState()).toEqual(current);
+    const replay = await requestJson(server, `/api/v1/parameter-change-requests/${requestId}/review`, {
+      method: "POST", headers: { "X-WiseEff-User": authorId }, body: JSON.stringify({ decision: "advance", note: "https://example.test/review/1078" })
+    });
+    expect(replay.status).toBe(409);
+    expect(await sourceState()).toEqual(current);
+    expect(await canonicalState()).toEqual(retained);
   });
 });

@@ -36,6 +36,7 @@ import {
 import { createDtsToolchainRunner } from "./dtsToolchain";
 import type { ParameterFileFormat } from "./types";
 import { loadPinnedSpecVersionId } from "../parameters/specVersionSelection";
+import { commitPinnedNodeEnablementSourceChange, preparePinnedNodeEnablementSourceChange } from "./canonicalSource";
 
 type WritebackSource = {
   sourceFileName: string | null;
@@ -80,7 +81,7 @@ export type WritebackServiceContext = TrustedSensitiveNodeWriteContext & {
   skipSemanticGates?: boolean;
 };
 
-/** Sensitive-policy-only preflight used before a user-owned merge record is written. */
+/** Validate structural source proof and hold its cohort locks before merge history. */
 export async function preflightMergedEnablementWriteback(
   db: Queryable,
   auth: AuthContext,
@@ -88,18 +89,11 @@ export async function preflightMergedEnablementWriteback(
   context: WritebackServiceContext,
 ): Promise<void> {
   const trusted = assertTrustedSensitiveNodeWriteContext(auth, context, "enablement writeback preflight");
-  const { lock } = await resolveLockedEnablementWritebackContext(db, auth, input);
-  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    nodePath: `${lock.sourceNodePath}/status`,
-    sourceFileName: lock.overlayFileName,
-    sourceFileVersionId: lock.sourceFileVersionId,
-    sourcePath: { kind: "property-path", value: `${lock.sourceNodePath}/status` },
-    invocation: trusted.invocation,
-    requestId: trusted.requestId,
-    refusalSink: trusted.refusalSink,
-  });
+  if (!context.objectStore || !input.changeRequestId) throw new ApiError("CONFLICT", "Enablement source approval requires object storage and an exact request.");
+  await preparePinnedNodeEnablementSourceChange(db, context.objectStore, auth, {
+    projectId: input.projectId, logicalNodeId: input.logicalNodeId, changeRequestId: input.changeRequestId,
+    mergedValue: input.mergedValue, action: input.action ?? "set",
+  }, trusted);
 }
 
 /** Sensitive-policy-only parameter preflight; performs no object or domain write. */
@@ -499,7 +493,7 @@ export async function writebackMergedEnablementValue(
   const { lock } = await resolveLockedEnablementWritebackContext(db, auth, input);
   const nodePath = `${lock.sourceNodePath}/status`;
 
-  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+  if (!input.changeRequestId) await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath,
@@ -511,7 +505,12 @@ export async function writebackMergedEnablementValue(
     refusalSink: trustedContext.refusalSink,
   });
 
-  const applied = await applyLockedEnablementWriteback(
+  const applied = input.changeRequestId
+    ? await commitPinnedNodeEnablementSourceChange(db, objectStore, auth, {
+        projectId: input.projectId, logicalNodeId: input.logicalNodeId, changeRequestId: input.changeRequestId,
+        mergedValue: input.mergedValue, action: input.action ?? "set",
+      }, trustedContext)
+    : await applyLockedEnablementWriteback(
     db,
     auth,
     {
