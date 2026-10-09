@@ -939,12 +939,12 @@ export async function listCatalogBindingRowsForProject(
       left join dts_property_occurrences source_property
         on source_property.id = source_pin.property_occurrence_id
        and source_property.file_version_id = source_pin.file_version_id
-      left join dts_node_occurrences source_node
-        on source_node.id = source_property.node_occurrence_id
-       and source_node.file_version_id = source_pin.file_version_id
-      left join dts_nodes structured_node
+      left join (dts_properties structured_property
+        inner join dts_nodes structured_node on structured_node.id = structured_property.node_id)
         on structured_node.file_version_id = source_pin.file_version_id
-       and '/' || structured_node.node_path = source_node.node_path
+       and structured_property.name = source_property.property_name
+       and structured_property.start_offset = source_property.start_offset
+       and structured_property.end_offset = source_property.end_offset
       left join dts_logical_node_revisions lnr
         on lnr.logical_node_id = b.logical_node_id
        and lnr.config_revision_id = source_pin.config_revision_id

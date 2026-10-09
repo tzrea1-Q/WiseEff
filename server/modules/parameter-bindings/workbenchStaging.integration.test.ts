@@ -14,7 +14,7 @@ import { createLocalObjectStore } from "../logs/objectStore";
 import { createConfigSet, addConfigSetFile } from "../parameter-files/configSetService";
 import type { ProjectParameterBinding } from "../../../src/domain/parameter-topology/types";
 
-it("assembled workbench API lists exact file and node occurrences and stages a pending draft without changing current values", async () => {
+it.each([false, true])("assembled workbench API preserves exact source identity and pending staging (label override: %s)", async (labelOverride) => {
   const databaseName = `t1062_http_${randomUUID().replaceAll("-", "")}`;
   const admin = new pg.Client({ connectionString: adminConnectionString() });
   await admin.connect();
@@ -34,7 +34,8 @@ it("assembled workbench API lists exact file and node occurrences and stages a p
     const config = await createConfigSet(db, auth, { projectId: "t1062-project", name: "default" });
     const server = createWiseEffServer({ db, objectStore: createLocalObjectStore(root), auth: { mode: "development" } });
     const headers = { "x-wiseeff-user": "t1062-user" };
-    const source = '/dts-v1/;\n/ { first: device@0 { compatible = "acme,power"; iin_max = <10>; }; second: device@1 { compatible = "acme,power"; iin_max = <20>; }; };\n';
+    const source = '/dts-v1/;\n/ { first: device@0 { compatible = "acme,power"; iin_max = <10>; }; second: device@1 { compatible = "acme,power"; iin_max = <20>; }; };\n'
+      + (labelOverride ? '&first { iin_max = <30>; };\n' : "");
     const upload = async () => requestJson<{ item: { id: string } }>(server,
       "/api/v1/projects/t1062-project/parameter-files", { method: "POST", headers,
         body: JSON.stringify({ fileName: "workbench.dts", contentBase64: Buffer.from(source).toString("base64") }) });
@@ -47,6 +48,7 @@ it("assembled workbench API lists exact file and node occurrences and stages a p
     const before = await list();
     expect(before.status).toBe(200);
     expect(before.body.items).toHaveLength(2);
+    expect(before.body.items).toContainEqual(expect.objectContaining({ rawValue: labelOverride ? "<30>" : "<10>" }));
     expect(before.body.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ sourceFileId: file.body.item.id, sourceNodePath: "device@0", sourceOccurrenceId: expect.any(String) }),
       expect.objectContaining({ sourceFileId: file.body.item.id, sourceNodePath: "device@1", sourceOccurrenceId: expect.any(String) })
