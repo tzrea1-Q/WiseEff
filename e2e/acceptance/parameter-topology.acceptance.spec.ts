@@ -2267,6 +2267,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       expect(scBinding, "sc8562 gpio_int binding must exist for mixed-round submit").toBeTruthy();
       expect(scBinding!.parameterSpecId).toBeTruthy();
 
+      const canonicalState = () => withPgClient(async (client) => (await client.query(`select to_jsonb(binding) as binding,
+        (select jsonb_agg(to_jsonb(value) order by value.id) from parameter_catalog.project_parameter_values value where value.binding_id=binding.id) as values,
+        (select jsonb_agg(to_jsonb(pin) order by pin.id) from parameter_catalog.project_value_source_pins pin
+         join parameter_catalog.project_parameter_values value on value.id=pin.project_value_id where value.binding_id=binding.id) as pins
+        from parameter_catalog.project_parameter_bindings binding where binding.project_id=$1 order by binding.id`, [projectId])).rows);
+      const canonicalBefore = await canonicalState();
+      const sourceState = () => withPgClient(async (client) => (await client.query<{ id: string; current_version_id: string }>(
+        "select id,current_version_id from project_parameter_files where config_set_id=$1 order by id", [topology.configSetId])).rows);
+      const sourceBefore = await sourceState();
+
       await signInBrowserAsRole(
         page,
         "software-user",
@@ -2473,12 +2483,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       );
       expect(withdrawn.ok(), await withdrawn.text()).toBe(true);
 
-      const nodeSubmit = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-        headers: authHeadersForRole("software-user"),
-        data: { projectId, items: [{ draftId: enablementBody.item.draftId, editSubjectKind: "node-enablement",
-          logicalNodeId: toggleNode!.logicalNodeId, action: "set", targetValue: '"disabled"', reason: disableReason }],
-        assignees: { hardwareCommitterId: "u-wang-jie", softwareCommitterId: "u-sun-mei", softwareUserId: "u-liu-min" } }
-      });
+      await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
+      const nodeTray = page.getByRole("region", { name: "参数修改提交" });
+      await nodeTray.getByRole("article").filter({ hasText: "gpio_int" }).getByRole("button", { name: "移出本轮修改" }).click();
+      await nodeTray.getByLabel("硬件 MDE", { exact: true }).selectOption("u-wang-jie");
+      await nodeTray.getByLabel("软件 MDE", { exact: true }).selectOption("u-sun-mei");
+      await nodeTray.getByLabel("软件开发", { exact: true }).selectOption("u-liu-min");
+      const nodeSubmitPromise = page.waitForResponse((response) => response.request().method() === "POST"
+        && response.url().endsWith("/parameter-submission-rounds"));
+      await nodeTray.getByRole("button", { name: "提交审核（1 项）" }).click();
+      const nodeSubmit = await nodeSubmitPromise;
       expect(nodeSubmit.status(), await nodeSubmit.text()).toBe(201);
       const nodeRound = ((await nodeSubmit.json()) as { item: { id: string; items: Array<{ requestId: string }> } }).item;
       const nodeRequestId = nodeRound.items[0]!.requestId;
@@ -2510,29 +2524,51 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await dismissXiaozeHint(page);
       await page.getByRole("table", { name: "审阅队列" }).getByRole("button", { name: `查看 ${toggleNode!.name} 提交详情` }).click();
       await page.getByRole("dialog", { name: "提交详情" }).getByRole("button", { name: "关闭" }).click();
-      await page.getByRole("button", { name: "打回修改" }).click();
-      await page.getByLabel("打回原因").fill("Keep node enabled until source apply is ready");
-      const nodeRejectPromise = page.waitForResponse((response) => response.request().method() === "POST"
+      const nodeSoftwarePromise = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-change-requests/${nodeRequestId}/review`));
-      await page.getByRole("button", { name: "提交打回" }).click();
-      const nodeReject = await nodeRejectPromise;
-      expect(nodeReject.status(), await nodeReject.text()).toBe(200);
-      expect((await nodeReject.json()).item.status).toBe("rejected");
+      await page.getByRole("button", { name: "推进流程" }).click();
+      const nodeSoftware = await nodeSoftwarePromise;
+      expect(nodeSoftware.status(), await nodeSoftware.text()).toBe(200);
+      expect((await nodeSoftware.json()).item.status).toBe("software_merge");
+      await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}`);
+      await dismissXiaozeHint(page);
+      await page.getByRole("table", { name: "审阅队列" }).getByRole("button", { name: `查看 ${toggleNode!.name} 提交详情` }).click();
+      await page.getByRole("dialog", { name: "提交详情" }).getByRole("button", { name: "关闭" }).click();
+      await page.getByLabel("合入链接", { exact: true }).fill("https://example.test/review/1078");
+      const nodeMergePromise = page.waitForResponse((response) => response.request().method() === "POST"
+        && response.url().endsWith(`/parameter-change-requests/${nodeRequestId}/review`));
+      await page.getByRole("button", { name: "确认合入" }).click();
+      const nodeMerge = await nodeMergePromise;
+      expect(nodeMerge.status(), await nodeMerge.text()).toBe(200);
+      expect((await nodeMerge.json()).item.status).toBe("merged");
+      const sourceAfter = await sourceState();
+      const changedFile = sourceAfter.find((file) => sourceBefore.some((prior) => prior.id === file.id && prior.current_version_id !== file.current_version_id));
+      expect(changedFile, "approval must append and activate a source version").toBeTruthy();
+      expect(sourceAfter.filter((file) => sourceBefore.some((prior) => prior.id === file.id && prior.current_version_id !== file.current_version_id))).toHaveLength(1);
+      expect(await canonicalState()).toEqual(canonicalBefore);
+      const sourceContent = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${changedFile!.id}/versions/${changedFile!.current_version_id}/content`),
+        { headers: authHeadersForRole("software-user") });
+      expect(sourceContent.status()).toBe(200);
+      expect(await sourceContent.text()).toContain('status = "disabled"');
+      const appliedRevision = await withPgClient(async (client) => (await client.query<{ id: string }>(
+        "select id from dts_config_revisions where config_set_id=$1 order by revision_number desc limit 1", [topology.configSetId])).rows[0]!.id);
+      const appliedTopology = await listEffectiveTopologyNodes(request, topology.configSetId, appliedRevision);
+      expect(appliedTopology.nodes.find((node) => node.logicalNodeId === toggleNode!.logicalNodeId)?.enablement?.selfEnabled).toBe(false);
       const nodeEvidence = await withPgClient(async (client) => {
         const row = await client.query<{ status: string; edit_subject_kind: string; project_parameter_binding_id: string | null }>(
           "select status, edit_subject_kind, project_parameter_binding_id from parameter_change_requests where id = $1", [nodeRequestId]);
         const audits = await client.query<{ id: string; kind: string; action: string; target_id: string }>(
-          "select id, kind, action, target_id from audit_events where target_id = $1 and kind in ('parameter-review-advance','parameter-review-reject') order by created_at", [nodeRequestId]);
+          "select id, kind, action, target_id from audit_events where target_id = $1 and kind in ('parameter-review-advance','parameter-merge') order by created_at", [nodeRequestId]);
         return { row: row.rows[0], audits: audits.rows };
       });
-      expect(nodeEvidence.row).toEqual({ status: "rejected", edit_subject_kind: "node-enablement", project_parameter_binding_id: null });
-      expect(nodeEvidence.audits.map((audit) => audit.action)).toEqual(["advance", "reject"]);
+      expect(nodeEvidence.row).toEqual({ status: "merged", edit_subject_kind: "node-enablement", project_parameter_binding_id: null });
+      expect(nodeEvidence.audits.map((audit) => audit.action)).toEqual(["advance", "advance", "merge"]);
 
       await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
       await expect(nodeTracking).toContainText(disableReason);
       await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled();
       await nodeTracking.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: testInfo.outputPath("node-enablement-rejected-submission.png"), fullPage: true, animations: "disabled" });
+      await page.screenshot({ path: testInfo.outputPath("node-enablement-merged-submission.png"), fullPage: true, animations: "disabled" });
       await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
 
       await recordOperationEvidence({
@@ -2576,8 +2612,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           summarizeApiResponse(nodeAdvance, {
             method: "POST", path: `/api/v1/parameter-change-requests/${nodeRequestId}/review`, responseSummary: "assigned hardware reviewer advances node to software review"
           }),
-          summarizeApiResponse(nodeReject, {
-            method: "POST", path: `/api/v1/parameter-change-requests/${nodeRequestId}/review`, responseSummary: "assigned software reviewer rejects node with reason"
+          summarizeApiResponse(nodeSoftware, {
+            method: "POST", path: `/api/v1/parameter-change-requests/${nodeRequestId}/review`, responseSummary: "assigned software reviewer approves node"
+          }),
+          summarizeApiResponse(nodeMerge, {
+            method: "POST", path: `/api/v1/parameter-change-requests/${nodeRequestId}/review`, responseSummary: "assigned software user applies approved structural source change"
+          }),
+          summarizeApiResponse(sourceContent, {
+            method: "GET", path: `/api/v1/projects/${projectId}/parameter-files/${changedFile!.id}/versions/${changedFile!.current_version_id}/content`,
+            responseSummary: "source contains reviewed disabled status; effective node is disabled"
           })
         ],
         db: [
@@ -2589,7 +2632,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           },
           {
             table: "parameter_change_requests", predicate: `id=${nodeRequestId}`,
-            observed: "rejected; node-enablement; no Binding identity", rowCount: 1
+            observed: "merged; node-enablement; no Binding identity", rowCount: 1
+          },
+          {
+            table: "project_parameter_files, parameter_catalog.project_parameter_values, parameter_catalog.project_value_source_pins",
+            predicate: `config_set_id=${topology.configSetId}; project_id=${projectId}`,
+            observed: "one source file version advanced; all canonical Bindings, values and immutable source pins unchanged", rowCount: sourceAfter.length
           }
         ],
         audit: [
@@ -2602,7 +2650,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           ...nodeEvidence.audits.map((audit) => ({ id: audit.id, kind: audit.kind, action: audit.action, targetId: audit.target_id }))
         ],
         notes:
-          "UI proves disable requires reason + confirmation and survives reload. The canonical value round stays independent. Node submission is active with one item and withdrawal, the assigned hardware reviewer advances it, and the software reviewer rejects it with audited human decisions. Final structural source apply is outside this slice."
+          "UI proves disable requires reason + confirmation and survives reload. The canonical value round stays independent. The software user submits the node, actual assigned reviewers advance it, and the assigned software user applies the structural source change with audited human decisions."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({

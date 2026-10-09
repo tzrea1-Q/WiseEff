@@ -1554,7 +1554,7 @@ export async function findOpenChangeRequest(
 
 export async function getChangeRequestById(
   db: Queryable,
-  query: { organizationId: string; requestId: string }
+  query: { organizationId: string; requestId: string; lock?: boolean }
 ) {
   if (parameterIdentityMode() === "semantic") {
     const result = await db.query<ChangeRequestRow>(
@@ -1617,7 +1617,7 @@ export async function getChangeRequestById(
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
         and pcr.id = $2
-      for update of pcr
+      ${query.lock === false ? "" : "for update of pcr"}
       `,
       [query.organizationId, query.requestId]
     );
@@ -1667,7 +1667,7 @@ export async function getChangeRequestById(
     ${CR_MODULE_JOINS_LEGACY_SQL}
     where pcr.organization_id = $1
       and pcr.id = $2
-    for update of pcr
+    ${query.lock === false ? "" : "for update of pcr"}
     `,
     [query.organizationId, query.requestId]
   );
@@ -2034,7 +2034,6 @@ async function mergeEnablementChangeRequest(
         on locked_status_effects.effect_kind in ('set', 'override')
        and locked_status_effects.raw_text = candidate_lock.target_value
       where candidate_lock.action = 'set'
-      for update of locked_status_effects
     ),
     locked_delete_proof as materialized (
       select locked_status_effects.id
@@ -2047,7 +2046,6 @@ async function mergeEnablementChangeRequest(
           from locked_status_effects active
           where active.effect_kind in ('set', 'override')
         )
-      for update of locked_status_effects
     ),
     locked_request as (
       select candidate_lock.*
