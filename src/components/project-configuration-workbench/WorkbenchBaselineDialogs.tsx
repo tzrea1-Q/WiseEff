@@ -6,6 +6,8 @@ import type {
   DtsRestorePreviewResult
 } from "@/application/ports/DtsStructuredRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import { baselineRestoreBlockedReason } from "@/application/project-configuration/releaseBaselineSession";
 import { formatRestorePreviewDescription } from "./WorkbenchBaselineDock";
 
 export type WorkbenchBaselineDialogsProps = {
@@ -73,6 +75,21 @@ export function WorkbenchBaselineDialogs({
   onConfirmConfirmation,
   releaseRequiresConfirmation = false
 }: WorkbenchBaselineDialogsProps) {
+  const restoreBlockedReason = baselineRestoreBlockedReason(restorePreview, selectedBaselineId);
+  const restoreDescription = (
+    <div>
+      {restorePreview && restorePreview.baselineId === selectedBaselineId
+        ? formatRestorePreviewDescription(
+            baselines.find((item) => item.id === selectedBaselineId)?.name ?? selectedBaselineId,
+            restorePreview.members,
+            restorePreview.releasedBaselineUnchanged,
+            Boolean(restoreBlockedReason)
+          )
+        : "正在准备恢复预览…"}
+      {restoreBlockedReason ? <p role="note">{restoreBlockedReason}</p> : null}
+      {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
+    </div>
+  );
   return (
     <>
       <ConfirmDialog
@@ -138,21 +155,28 @@ export function WorkbenchBaselineDialogs({
         onConfirm={onConfirmRelease}
       />
 
-      <ConfirmDialog
+      {restoreBlockedReason ? (
+        <ModalDialog
+          open={restoreOpen}
+          onDismiss={onCancelRestore}
+          className="confirm-dialog governance-confirm-dialog"
+          backdropClassName="param-admin-modal-backdrop"
+          describedBy
+        >
+          {({ titleId, descriptionId }) => (
+            <>
+              <h2 id={titleId}>恢复基线预览</h2>
+              <div className="confirm-dialog__scroll" id={descriptionId}>{restoreDescription}</div>
+              <div className="dialog-actions">
+                <button className="button subtle" type="button" onClick={onCancelRestore}>关闭</button>
+              </div>
+            </>
+          )}
+        </ModalDialog>
+      ) : <ConfirmDialog
         open={restoreOpen}
         title="恢复基线确认"
-        description={
-          <div>
-            {restorePreview && selectedBaselineId
-              ? formatRestorePreviewDescription(
-                  baselines.find((item) => item.id === selectedBaselineId)?.name ?? selectedBaselineId,
-                  restorePreview.members,
-                  restorePreview.releasedBaselineUnchanged
-                )
-              : "正在准备恢复预览…"}
-            {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
-          </div>
-        }
+        description={restoreDescription}
         confirmLabel="确认恢复"
         cancelLabel="取消"
         pending={pendingAction === "restore-baseline"}
@@ -160,7 +184,7 @@ export function WorkbenchBaselineDialogs({
         tone="danger"
         onCancel={onCancelRestore}
         onConfirm={onConfirmRestore}
-      />
+      />}
 
       <ConfirmDialog
         open={leaveOpen}

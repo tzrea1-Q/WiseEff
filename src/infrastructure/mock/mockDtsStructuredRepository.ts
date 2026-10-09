@@ -608,6 +608,7 @@ export function createMockDtsStructuredRepository(
           fileId: item.fileId,
           fileName: item.fileId === fileId ? DEFAULT_FILE_NAME : item.fileId,
           fromVersionId: `${versionId}-current`,
+          canonicalOwned: false,
           fromVersionNumber: index + 2,
           toVersionId: versionId,
           toVersionNumber: index + 1,
