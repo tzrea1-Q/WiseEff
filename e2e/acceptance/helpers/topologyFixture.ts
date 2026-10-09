@@ -267,7 +267,7 @@ export async function registerCatalogDriverSubjects(
 
 /**
  * Stage continuity history and both file memberships before canonical activation.
- * The final upload activates the frozen ambiguous revision through the production
+ * The final HTTP upload activates the frozen ambiguous revision through the production
  * source producer; no membership or source is changed after canonical ownership.
  */
 export async function seedAmbiguousIdentityMappingConfigSet(
@@ -280,7 +280,8 @@ export async function seedAmbiguousIdentityMappingConfigSet(
     overlayFileName: string;
     overlayText: string;
     adminUserId: string;
-  }
+  },
+  request: APIRequestContext
 ): Promise<{ configSetId: string; baseRevisionId: string; ambiguousRevisionId: string }> {
   const db = createPostgresDatabase(runtime.databaseUrl);
   // The disposable API runs post-cutover in semantic identity mode; match it in-process.
@@ -293,12 +294,12 @@ export async function seedAmbiguousIdentityMappingConfigSet(
       name: input.configSetName,
       description: "Identity-mapping acceptance fixture"
     });
-    const upload = (fileName: string, text: string, activateCanonical = false) =>
+    const upload = (fileName: string, text: string) =>
       uploadProjectParameterFile(db, objectStore, auth, {
         projectId: input.projectId,
         fileName,
         bytes: Buffer.from(text, "utf8")
-      }, {}, undefined, activateCanonical ? db : undefined);
+      });
     const base = await upload(input.baseFileName, input.baseText);
     await addConfigSetFile(db, auth, { configSetId: configSet.id, fileId: base.file.id, role: "base", sortOrder: 0 });
     await upload(input.baseFileName, input.baseText);
@@ -310,7 +311,7 @@ export async function seedAmbiguousIdentityMappingConfigSet(
       role: "overlay",
       sortOrder: 1
     });
-    await upload(input.overlayFileName, input.overlayText, true);
+    await uploadDts(request, input.projectId, input.overlayFileName, input.overlayText);
     const ambiguous = await latestRevision(configSet.id);
     if (ambiguous.id === baseRevision.id || ambiguous.status !== "needs_mapping") {
       throw new Error(`identity-mapping fixture expected a needs_mapping revision, got ${ambiguous.status}`);

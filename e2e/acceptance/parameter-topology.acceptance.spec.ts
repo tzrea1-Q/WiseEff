@@ -103,6 +103,7 @@ const mappingR2 = `/dts-v1/;
 	compatible = "wiseeff,board";
 	bus {
 		compatible = "wiseeff,amba";
+		/delete-node/ dev@10;
 		left@10 {
 			compatible = "wiseeff,acceptance-map";
 			reg = <0x10>;
@@ -660,7 +661,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(mysteryReview, "unmatched mystery properties must remain governance work").toBeTruthy();
     expect(mysteryReview).toMatchObject({ historicalOnly: true, needsCanonicalDecision: true,
       successor: "/parameter-admin/specs?review=open",
-      sourceEvidence: { projectId, configRevisionId: reviewRevision.id } });
+      propertyKey: mysteryProp, evidence: expect.arrayContaining([`property=${mysteryProp}`]) });
     expect(openReviewBody.items).not.toContainEqual(expect.objectContaining({ id: mysteryReview.id }));
     const mysteryRefusal = await refuseLegacyTaskWrite(request, mysteryReview.id, "resolve", "spec");
     const reviewHistoryAfter = await request.get(openReviews.url(), { headers: adminHeaders() });
@@ -1472,7 +1473,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       baseFileName: r1Name, baseText: mappingR1,
       overlayFileName: r2Name, overlayText: mappingR2,
       adminUserId: "u-xu-yun"
-    });
+    }, request);
     expect(await legacyIdentityRows(), "ambiguous ingest must not create legacy identity tasks").toEqual(legacyRowsBefore);
     const blockedValidate = await request.post(
       apiRoute(`/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(seededMap.ambiguousRevisionId)}/validate`),
@@ -1814,7 +1815,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         baseFileName: r1Name, baseText: mappingR1,
         overlayFileName: r2Name, overlayText: mappingR2,
         adminUserId: "u-xu-yun"
-      });
+      }, request);
       expect(await legacyIdentityRows(), "ambiguous ingest must not create legacy identity tasks").toEqual(legacyRowsBefore);
       const validation = await request.post(
         apiRoute(`/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(seeded.ambiguousRevisionId)}/validate`),
