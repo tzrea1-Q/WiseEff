@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page } from "playwright/test";
 
 import {
-  pickReviewCandidate,
   requireMappingCandidate,
   requireMappingTask,
   requireReviewTask
@@ -22,6 +21,7 @@ import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCle
 import {
   applyDisposableRuntimeEnv,
   captureProcessEnvForDisposableRuntime,
+  readCanonicalFixtureBindings,
   restoreProcessEnvFromDisposableRuntime,
 } from "./helpers/semanticBindingFixture";
 import {
@@ -162,8 +162,8 @@ async function dismissXiaozeHint(page: Page) {
   }
 }
 
-async function listSpecs(request: APIRequestContext, query: string) {
-  return request.get(apiRoute(`/api/v2/parameter-specs?${query}`), { headers: adminHeaders() });
+async function listDefinitions(request: APIRequestContext, query: string) {
+  return request.get(apiRoute(`/api/v2/catalog/definitions?${query}`), { headers: adminHeaders() });
 }
 
 async function uploadDts(
@@ -333,62 +333,32 @@ async function waitForReviewTask(
   return requireReviewTask(finalBody.items, criteria);
 }
 
-async function resolveReviewsForCurrentRevision(
+async function assertCanonicalBindingsForCurrentRevision(
   request: APIRequestContext,
   revisionId: string,
   projectId: string
 ) {
   const list = await request.get(
     apiRoute(
-      `/api/v2/parameter-spec-review-tasks?status=open&configRevisionId=${encodeURIComponent(revisionId)}&projectId=${encodeURIComponent(projectId)}&limit=100`
+      `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings?revisionId=${encodeURIComponent(revisionId)}`
     ),
     { headers: adminHeaders() }
   );
-  expect(list.ok()).toBe(true);
+  expect(list.status(), await list.text()).toBe(200);
   const body = (await list.json()) as {
-    items: Array<{
-      id: string;
-      propertyKey?: string | null;
-      sourceEvidence?: { propertyKey?: string; nodeLocator?: string };
-      candidateSchemas?: Array<{ id: string; propertyKey?: string; label?: string }>;
-      candidates?: Array<{ id: string; propertyKey?: string | null; label?: string }>;
-    }>;
+    items: Array<{ id: string; definitionId: string; effectiveRevisionId: string }>;
   };
-  for (const task of body.items) {
-    const candidates = task.candidateSchemas ?? task.candidates ?? [];
-    if (candidates.length === 0) {
-      // No Catalog-compatible candidate exists, so the occurrence is dismissed as
-      // governance evidence rather than activating a spec (spec activation now
-      // requires an explicit coverage claim and is owned by Catalog governance).
-      const dismiss = await request.post(
-        apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
-        {
-          headers: adminHeaders(),
-          data: {
-            decision: "dismissed",
-            reason: `${descriptionPrefix} dismiss uncovered occurrence for revision ${revisionId}`
-          }
-        }
-      );
-      expect(dismiss.ok(), `dismiss review ${task.id}: ${await dismiss.text()}`).toBe(true);
-      continue;
-    }
-    const parameterSpecId = pickReviewCandidate(task, {
-      propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
-      nodeLocator: task.sourceEvidence?.nodeLocator
-    }).id;
-    const resolve = await request.post(
-      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
-      {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          parameterSpecId,
-          reason: `${descriptionPrefix} resolve review for revision ${revisionId}`
-        }
-      }
+  for (const binding of body.items) {
+    expect(binding.definitionId, `canonical owner for ${binding.id}`).toBeTruthy();
+    expect(binding.effectiveRevisionId, `pinned definition revision for ${binding.id}`).toBeTruthy();
+    const pinnedRevision = await request.get(
+      apiRoute(`/api/v2/catalog/definitions/${encodeURIComponent(binding.definitionId)}/revisions/${encodeURIComponent(binding.effectiveRevisionId)}`),
+      { headers: adminHeaders() }
     );
-    expect(resolve.ok(), `resolve review ${task.id}`).toBe(true);
+    expect(pinnedRevision.status(), await pinnedRevision.text()).toBe(200);
+    expect(await pinnedRevision.json()).toMatchObject({
+      item: { id: binding.effectiveRevisionId, definitionId: binding.definitionId }
+    });
   }
 }
 
@@ -469,25 +439,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const topology = await ensureAuroraSemanticTopology(request);
     let { configSetId, revisionId } = topology;
 
-    const specsResponse = await listSpecs(request, `propertyKey=${encodeURIComponent("gpio_int")}`);
-    expect(specsResponse.ok()).toBe(true);
-    const specsBody = (await specsResponse.json()) as {
-      items: Array<{ id: string; propertyKey: string | null; driverModule: string | null }>;
+    const definitionsResponse = await listDefinitions(request, `propertyKey=${encodeURIComponent("gpio_int")}`);
+    expect(definitionsResponse.status(), await definitionsResponse.text()).toBe(200);
+    const definitionsBody = (await definitionsResponse.json()) as {
+      items: Array<{ id: string; propertyKey: string; subject: { id: string }; currentRevision: { id: string; definitionId: string } }>;
     };
-    const gpioSpecs = specsBody.items.filter((item) => item.propertyKey === "gpio_int");
-    expect(gpioSpecs.length).toBeGreaterThanOrEqual(2);
-    const specSc = gpioSpecs.find(
-      (item) => item.driverModule === "sc8562" || item.id.includes("sc8562")
-    );
-    const specMt = gpioSpecs.find(
-      (item) =>
-        item.driverModule === "mt5788" ||
-        item.driverModule === "mt,mt5788" ||
-        item.id.includes("mt5788")
-    );
-    expect(specSc).toBeTruthy();
-    expect(specMt).toBeTruthy();
-    expect(specSc!.id).not.toBe(specMt!.id);
+    const gpioDefinitions = definitionsBody.items.filter((item) => item.propertyKey === "gpio_int");
+    expect(gpioDefinitions.length).toBeGreaterThanOrEqual(2);
+    const definitionSc = gpioDefinitions.find((item) => item.subject.id === "csub_drv_sc8562");
+    const definitionMt = gpioDefinitions.find((item) => item.subject.id === "csub_drv_mt_mt5788");
+    expect(definitionSc).toBeTruthy();
+    expect(definitionMt).toBeTruthy();
+    expect(definitionSc!.id).not.toBe(definitionMt!.id);
+    expect(definitionSc!.currentRevision.definitionId).toBe(definitionSc!.id);
+    expect(definitionMt!.currentRevision.definitionId).toBe(definitionMt!.id);
 
     // 2/3) Unknown properties remain explicit review evidence and never become recognized bindings.
     const reviewSuffix = runSuffix;
@@ -507,7 +472,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 	compatible = "wiseeff,board";
 	model = "Acceptance Unmatched Review";
 	probe {
-		compatible = "wiseeff,acceptance-map";
+		compatible = "vendor,chip123";
+		vendor-id = <123>;
 		acceptance_mystery_${reviewSuffix} = <42>;
 		status = "okay";
 	};
@@ -529,18 +495,19 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const mysteryProp = `acceptance_mystery_${reviewSuffix}`;
     const openReviews = await request.get(
       apiRoute(
-        `/api/v2/parameter-spec-review-tasks?status=open&projectId=${encodeURIComponent(projectId)}&configRevisionId=${encodeURIComponent(reviewRevision.id)}&limit=50`
+        `/api/v2/organizations/${organizationId}/parameter-review-items`
       ),
       { headers: adminHeaders() }
     );
-    expect(openReviews.ok()).toBe(true);
+    expect(openReviews.status(), await openReviews.text()).toBe(200);
     const openReviewBody = (await openReviews.json()) as {
-      items: Array<{ id: string; propertyKey?: string | null; sourceEvidence?: { propertyKey?: string } }>;
+      items: Array<{ id: string; status: string; observation?: { propertyKey: string } }>;
     };
     const mysteryReview = openReviewBody.items.find(
-      (item) => item.propertyKey === mysteryProp || item.sourceEvidence?.propertyKey === mysteryProp
+      (item) => item.observation?.propertyKey === `property:${mysteryProp}`
     );
     expect(mysteryReview, "unmatched mystery properties must remain governance work").toBeTruthy();
+    expect(mysteryReview!.status).toBe("open");
 
     const mysteryBindings = await request.get(
       apiRoute(
@@ -554,32 +521,27 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     };
     const mysteryBinding = mysteryBindingsBody.items.find((item) => item.propertyKey === mysteryProp);
     expect(mysteryBinding, `unmatched ${mysteryProp} must not create a recognized binding`).toBeUndefined();
+    expect(mysteryBindingsBody.items.find((item) => item.propertyKey === "vendor-id"), "published seed property must bind").toBeTruthy();
 
-    const provisionalDb = await withPgClient(async (client) => {
-      const result = await client.query<{ binding_count: number }>(
-        `select count(*)::int as binding_count
-         from project_parameter_bindings b
-         join project_parameter_binding_revisions br
-           on br.binding_id = b.id and br.config_revision_id = $2
-         join parameter_specs ps on ps.id = b.parameter_spec_id
-         left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-         where b.project_id = $1
-           and coalesce(ps.property_key, dps.property_key) = $3`,
-        [projectId, reviewRevision.id, mysteryProp]
-      );
-      return {
-        table: "project_parameter_bindings",
-        predicate: `project=${projectId}; revision=${reviewRevision.id}; property=${mysteryProp}`,
-        observed: `binding_count=${result.rows[0]?.binding_count ?? 0}`,
-        rowCount: result.rowCount ?? result.rows.length
-      };
-    });
+    const mysteryDefinitions = await listDefinitions(request, `propertyKey=${encodeURIComponent(mysteryProp)}`);
+    expect(mysteryDefinitions.status(), await mysteryDefinitions.text()).toBe(200);
+    const mysteryDefinitionsBody = (await mysteryDefinitions.json()) as { items: Array<{ id: string }> };
+    expect(mysteryDefinitionsBody.items, "unmatched evidence must not author a definition").toHaveLength(0);
+
+    const canonicalFixtureBindings = await readCanonicalFixtureBindings(projectId);
+    const reviewBindings = canonicalFixtureBindings.filter((binding) => binding.configRevisionId === reviewRevision.id);
+    expect(reviewBindings.find((binding) => binding.propertyKey === "vendor-id"), "published seed binding must persist for the reviewed source").toBeTruthy();
+    const unknownBindingCount = reviewBindings.filter((binding) => binding.propertyKey === mysteryProp).length;
+    expect(unknownBindingCount, "unmatched mystery property must have no persisted canonical binding").toBe(0);
+    const provisionalDb = {
+      table: "parameter_catalog.project_parameter_bindings",
+      predicate: `organization=${organizationId}; project=${projectId}; revision=${reviewRevision.id}; property=${mysteryProp}`,
+      observed: `binding_count=${unknownBindingCount}`,
+      rowCount: unknownBindingCount
+    };
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
-    // #847 replaced the spec-library region with CatalogPage. M1 seed leaves
-    // Catalog unpublished (lineage A is owned by catalog acceptance), so gpio_int
-    // rows live on GET /parameter-specs rather than the unpublished directory.
     const catalog = page.getByRole("region", { name: "参数定义目录" });
     await expect(catalog).toBeVisible({ timeout: 30_000 });
     await expect(catalog).toHaveAttribute("data-catalog-page", "true");
@@ -590,7 +552,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
-      title: "spec search with governed unmatched surface",
+      title: "canonical definition search with queued unmatched evidence",
       status: "passed",
       role: "Admin",
       route: "/parameter-admin",
@@ -598,24 +560,29 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       testInfo,
       assertions: ["ui", "api", "db"],
       api: [
-        summarizeApiResponse(specsResponse, {
+        summarizeApiResponse(definitionsResponse, {
           method: "GET",
-          path: "/api/v2/parameter-specs",
-          responseSummary: `gpio_int specs=${gpioSpecs.length}; distinct sc8562/mt5788`
+          path: "/api/v2/catalog/definitions",
+          responseSummary: `gpio_int definitions=${gpioDefinitions.length}; distinct canonical sc8562/mt5788 owners`
         }),
         summarizeApiResponse(openReviews, {
           method: "GET",
-          path: "/api/v2/parameter-spec-review-tasks",
+          path: `/api/v2/organizations/${organizationId}/parameter-review-items`,
           responseSummary: `open tasks=${openReviewBody.items.length}; mystery review=${mysteryReview!.id}`
         }),
         summarizeApiResponse(mysteryBindings, {
           method: "GET",
           path: `/api/v2/projects/${projectId}/parameter-bindings`,
           responseSummary: "mystery binding absent"
+        }),
+        summarizeApiResponse(mysteryDefinitions, {
+          method: "GET",
+          path: "/api/v2/catalog/definitions",
+          responseSummary: "unmatched mystery property has no published definition"
         })
       ],
       db: [provisionalDb],
-      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; CatalogPage is the /parameter-admin surface; gpio_int spec distinctness is GET /parameter-specs.`
+      notes: `${descriptionPrefix}: unmatched mystery property stays queued without resolution or a recognized binding; published vendor-id binds; gpio_int definitions have distinct canonical owners.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
@@ -695,7 +662,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         locator: string | null;
         rawValue: string;
         currentValueId: string;
-        parameterSpecId?: string;
+        definitionId: string;
       }>;
     };
     const gpioBindings = bindingsBody.items.filter((item) => item.propertyKey === "gpio_int");
@@ -708,12 +675,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     ).toBeTruthy();
     expect(mtBinding).toBeTruthy();
     expect(scBinding!.id).not.toBe(mtBinding!.id);
-    expect(scBinding!.parameterSpecId).toBeTruthy();
-    expect(mtBinding!.parameterSpecId).toBeTruthy();
+    expect(scBinding!.definitionId).toBeTruthy();
+    expect(mtBinding!.definitionId).toBeTruthy();
+    expect(scBinding!.definitionId).toBe(definitionSc!.id);
+    expect(mtBinding!.definitionId).toBe(definitionMt!.id);
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
     // driverModule is display-only from AttributionSubject / module name (D-AG-03); do not use it
     // as identity — both may show taxonomy labels like「未分类」when parked there.
-    expect(scBinding!.parameterSpecId).not.toBe(mtBinding!.parameterSpecId);
+    expect(scBinding!.definitionId).not.toBe(mtBinding!.definitionId);
 
     // ADR-0010: taxonomy tree has no provisional「未分类 · {driver}」buckets. Workbench uses
     // groupByDevice (module → device leaf). Expand ancestors, then scope via sc8562@6E device.
@@ -910,7 +879,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       cutover_migration_run_id: disposableRuntime.migrationRunId,
     });
 
-    await resolveReviewsForCurrentRevision(request, revisionId, projectId);
+    await assertCanonicalBindingsForCurrentRevision(request, revisionId, projectId);
     const editedRaw = "<&gpio13 30 0>";
     const typedEditReason = `${descriptionPrefix} successful typed edit writeback`;
     await signInBrowserAsRole(
@@ -1503,7 +1472,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const validateTargetId = seededMap.ambiguousRevisionId;
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
-    await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
+    await assertCanonicalBindingsForCurrentRevision(request, validateTargetId, projectId);
+    const retainedMysteryReview = await request.get(
+      apiRoute(`/api/v2/organizations/${organizationId}/parameter-review-items/${encodeURIComponent(mysteryReview!.id)}`),
+      { headers: adminHeaders() }
+    );
+    expect(retainedMysteryReview.status(), await retainedMysteryReview.text()).toBe(200);
+    expect(await retainedMysteryReview.json()).toMatchObject({ item: { id: mysteryReview!.id, status: "open" } });
 
     const validateResponse = await request.post(
       apiRoute(

@@ -150,18 +150,21 @@ async function createDebugModule(
   return { response, item: body.item };
 }
 
-async function assignBindingToModule(bindingId: string, moduleId: string) {
-  await withPgClient(async (client) => {
-    const result = await client.query(
-      `
-      update project_parameter_bindings
-      set module_id = $1
-      where organization_id = $2 and id = $3
-      `,
-      [moduleId, organizationId, bindingId]
-    );
-    expect(result.rowCount).toBe(1);
+async function assignBindingToModule(request: APIRequestContext, bindingId: string, moduleId: string) {
+  const bindingsResponse = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
+    headers: adminHeaders()
   });
+  expect(bindingsResponse.status(), await bindingsResponse.text()).toBe(200);
+  const bindings = (await bindingsResponse.json()).items as ParameterRecordDto[];
+  const binding = bindings.find((item) => item.id === bindingId);
+  expect(binding?.moduleId, "canonical Binding read model must expose its Placement module").toBeTruthy();
+  const placementModuleId = binding!.moduleId!;
+  const response = await request.post(apiRoute(`/api/v1/parameter-modules/${placementModuleId}/move`), {
+    headers: adminHeaders(), data: { parentId: moduleId }
+  });
+  expect(response.status(), await response.text()).toBe(200);
+  expect((await response.json()).item.parentId).toBe(moduleId);
+  return placementModuleId;
 }
 
 async function seedAssignableBinding(
@@ -216,7 +219,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     expect(child.item.path).toBe(`${parent.item.path}/${child.item.id}`);
 
     const binding = await seedAssignableBinding(request, "MOD-TREE-PARAM-001 semantic binding");
-    await assignBindingToModule(binding.bindingId, child.item.id);
+    const placementModuleId = await assignBindingToModule(request, binding.bindingId, child.item.id);
 
     const listResponse = await page.request.get(
       apiRoute(
@@ -228,7 +231,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     const listBody = (await listResponse.json()) as { items: ParameterRecordDto[] };
     const matched = listBody.items.find((item) => item.id === binding.bindingId);
     expect(matched).toBeTruthy();
-    expect(matched?.moduleId).toBe(child.item.id);
+    expect(matched?.moduleId).toBe(placementModuleId);
 
     const directOnlyResponse = await page.request.get(
       apiRoute(
@@ -290,7 +293,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     });
 
     const binding = await seedAssignableBinding(request, "MOD-TREE-PARAM-002 semantic binding", "iin_min");
-    await assignBindingToModule(binding.bindingId, child.item.id);
+    await assignBindingToModule(request, binding.bindingId, child.item.id);
 
     const moveResponse = await page.request.post(apiRoute(`/api/v1/parameter-modules/${child.item.id}/move`), {
       headers: adminHeaders(),
@@ -344,7 +347,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
           responseSummary: "CONFLICT cycle rejected"
         })
       ],
-      notes: "Moving a child module reparented it under a new root and subtree filtering followed; cycle move returned 409."
+      notes: "The canonical Placement's driver module remains the Binding's leaf beneath the test child. Moving that child reparented the whole subtree; canonical Binding filtering followed and the cycle move returned 409."
     });
   });
 

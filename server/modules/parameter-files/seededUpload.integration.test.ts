@@ -19,6 +19,7 @@ import { loadCommittedDtsSeedFiles } from "../../../scripts/compile-dts-seed";
 import { seedPublishedCatalog } from "../../testing/parameterCatalog/seedPublishedCatalog";
 import { VENDOR_CONSTRAINED_RELEASE_ID } from "../../../scripts/compile-vendor-catalog-release";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
+import { SEMANTIC_BINDING_FIXTURE_RELEASE_ID } from "../../testing/parameterCatalog/semanticBinding";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
@@ -89,6 +90,13 @@ describe("disposable acceptance post-cutover DTS upload", () => {
     expect(binding.rawValue).toBe("<80>");
     expect(binding.nodeLocator).toBe("/td079_cell");
     expect(binding.bindingId).toBeTruthy();
+    const identities = await request.get(apiRoute(`/api/v2/projects/${binding.projectId}/parameter-bindings`), {
+      headers: authHeadersForRole("admin")
+    });
+    expect(identities.status(), await identities.text()).toBe(200);
+    expect((await identities.json()).items).toContainEqual(expect.objectContaining({
+      id: binding.bindingId, definitionId: "pdef_acceptance_td079_iin_max", propertyKey: "iin_max"
+    }));
     const version = await lookupParameterFileVersion({ fileName: binding.fileName });
     expect(version.versionNumber).toBe(2);
     const subjects = await request.get(apiRoute("/api/v2/catalog/subjects"), { headers: authHeadersForRole("admin") });
@@ -102,9 +110,9 @@ describe("disposable acceptance post-cutover DTS upload", () => {
     if (discovery.status !== "ready") throw new Error("Disposable Catalog discovery is unavailable");
     expect(discovery.items.find((item) => item.source.status === "current"
       && item.source.fileVersionId === version.versionId)).toMatchObject({
-      observedCatalogReleaseId: pin!.id,
+      observedCatalogReleaseId: SEMANTIC_BINDING_FIXTURE_RELEASE_ID,
       compatibles: [{ compatible: "wiseeff,td079-cell", candidate: {
-        kind: "review-required", reason: "unknown", reviewItemIds: [expect.any(String)]
+        kind: "recognized", subjectId: "csub_acceptance_td079"
       } }]
     });
   });

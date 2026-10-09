@@ -88,21 +88,26 @@ async function expectSuccessfulApiResponse(page: Page, route: string) {
 
 async function parameterChangeDbSummary(requestId: string) {
   return withPgClient(async (client) => {
-    const result = await client.query<{ status: string; target_value: string }>(
+    const result = await client.query<{ status: string; target_value: unknown; reviewer_note: string; unchanged: boolean }>(
       `
-      select cr.status, psi.target_value
-      from parameter_change_requests cr
-      join parameter_submission_items psi on psi.change_request_id = cr.id
-      where cr.id = $1
+      select cr.status, cr.target_value, cr.reviewer_note,
+             binding.current_value_id = cr.base_current_value_id as unchanged
+      from project_parameter_value_change_requests cr
+      join parameter_catalog.project_parameter_bindings binding on binding.id = cr.binding_id
+      where cr.id = $1 and cr.project_id = $2
       `,
-      [requestId]
+      [requestId, projectId]
     );
     const row = result.rows[0];
+    expect(row).toMatchObject({
+      status: "rejected", target_value: integerCellTarget(rejectTargetValue),
+      reviewer_note: rejectionReason, unchanged: true
+    });
 
     return {
-      table: "parameter_change_requests",
+      table: "project_parameter_value_change_requests",
       predicate: `id=${requestId}`,
-      observed: row ? `status=${row.status}; targetValue=${row.target_value}` : "missing",
+      observed: row ? `status=${row.status}; targetValue=${JSON.stringify(row.target_value)}; reviewerNote=${row.reviewer_note}; unchanged=${row.unchanged}` : "missing",
       rowCount: result.rowCount ?? result.rows.length
     };
   });
@@ -271,54 +276,59 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     const requestId = submitted.requestId;
 
     const rejectResponse = await page.request.post(
-      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
+      apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`),
       {
-        headers: adminHeaders(),
+        headers: authHeadersForRole("software-committer"),
         data: { decision: "reject", note: rejectionReason }
       }
     );
     expect(rejectResponse.ok(), await rejectResponse.text()).toBe(true);
 
-    const listed = await page.request.get(apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`), {
+    const changesRoute = `/api/v2/projects/${projectId}/parameter-value-change-requests?status=rejected`;
+    const listed = await page.request.get(apiRoute(changesRoute), {
       headers: adminHeaders()
     });
     expect(listed.ok()).toBe(true);
     const listedBody = (await listed.json()) as {
-      items: Array<{ id: string; module: string; targetValue: string }>;
+      items: Array<{ id: string; bindingId: string; definitionId: string; targetValue: unknown }>;
     };
     const submittedItem = listedBody.items.find((item) => item.id === requestId);
     expect(submittedItem).toBeTruthy();
-    const moduleLabel = submittedItem!.module;
+    expect(submittedItem).toMatchObject({
+      bindingId: binding.bindingId, definitionId: binding.parameterSpecId,
+      targetValue: `<${rejectTargetValue}>`
+    });
 
-    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-review"));
-    await page.getByRole("tab", { name: "历史审阅" }).click();
-    const requestRow = page.getByRole("row").filter({ hasText: rejectTargetValue }).first();
+    await signInBrowserAsRole(page, "software-committer", disposablePageUrl(disposableRuntime, `/parameter-review?project=${projectId}&request=${requestId}`));
+    await page.getByRole("tab", { name: "历史", exact: true }).click();
+    const requestRow = page.getByRole("row").filter({ hasText: `${rejectReasonPrefix} submitted request` });
     await expect(requestRow).toBeVisible();
-    await expect(requestRow).toContainText(moduleLabel);
-    await requestRow.click();
+    await expect(requestRow).toContainText("DTS");
+    await requestRow.getByRole("button", { name: "查看请求", exact: true }).click();
 
-    const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
-    await expect(reviewDetail.locator(".rejection-reason-card")).toContainText(rejectionReason);
+    const reviewDetail = page.getByRole("article", { name: "源文件请求详情" });
+    await expect(reviewDetail).toContainText(binding.bindingId);
+    await expect(reviewDetail.getByLabel("固定源目标内容")).toContainText(rejectTargetValue);
     await expect(reviewDetail).toContainText(rejectionReason);
 
     await page.reload();
-    await page.getByRole("tab", { name: "历史审阅" }).click();
-    const reloadedRow = page.getByRole("row").filter({ hasText: rejectTargetValue }).first();
+    await page.getByRole("tab", { name: "历史", exact: true }).click();
+    const reloadedRow = page.getByRole("row").filter({ hasText: `${rejectReasonPrefix} submitted request` });
     await expect(reloadedRow).toBeVisible();
     await expect(reloadedRow.locator("td").last()).toContainText(/./);
-    await reloadedRow.click();
-    await expect(reviewDetail.locator(".rejection-reason-card")).toContainText(rejectionReason);
+    await reloadedRow.getByRole("button", { name: "查看请求", exact: true }).click();
+    await expect(reviewDetail).toContainText(rejectionReason);
 
-    const changesResponse = await expectSuccessfulApiResponse(page, `/api/v1/parameter-change-requests?projectId=${projectId}`);
+    const changesResponse = await expectSuccessfulApiResponse(page, changesRoute);
     const changesBody = (await changesResponse.json()) as {
-      items: Array<{ id: string; status: string; rejectReason?: string }>;
+      items: Array<{ id: string; status: string; reviewerNote?: string }>;
     };
     expect(changesBody.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: requestId,
           status: "rejected",
-          rejectReason: rejectionReason
+          reviewerNote: rejectionReason
         })
       ])
     );
@@ -330,8 +340,8 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     expect(auditBody.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          action: "reject",
-          kind: "parameter-review-reject",
+          action: "value-change-reviewed",
+          kind: "parameter-topology-governance",
           projectId,
           targetId: requestId
         })
@@ -347,7 +357,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       api: [
         summarizeApiResponse(changesResponse, {
           method: "GET",
-          path: `/api/v1/parameter-change-requests?projectId=${projectId}`,
+          path: changesRoute,
           responseSummary: `request ${requestId} status=rejected`
         }),
         summarizeApiResponse(auditResponse, {
@@ -359,12 +369,12 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       db: [await parameterChangeDbSummary(requestId)],
       audit: [
         auditSummaryFor(auditBody.items, {
-          kind: "parameter-review-reject",
-          action: "reject",
+          kind: "parameter-topology-governance",
+          action: "value-change-reviewed",
           targetId: requestId
         })
       ],
-      notes: `Parameter request ${requestId} was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence. Submitted via typed binding draft on disposable post-cutover identity (TD-079).`
+      notes: `Canonical request ${requestId} was rejected by a distinct software reviewer through the API; browser history preserves the rejection note across reload, with unchanged current value and trusted value-change-reviewed audit.`
     });
   });
 });
