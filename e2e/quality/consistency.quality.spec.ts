@@ -1,5 +1,6 @@
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
+import { requireOrganizationViewSwitchStyles } from "./view-switch";
 import {
   collectConsistencyMeasurements,
   consistencyRoutes,
@@ -21,7 +22,7 @@ test.beforeAll(() => seedQualityRuntime());
 
 for (const route of consistencyRoutes) {
   for (const theme of ["light", "dark"] as const) {
-    test(`asserts read-only primary color consistency for ${route.path} (${theme})`, async ({ context, page }, testInfo) => {
+    test(`asserts read-only UI consistency for ${route.path} (${theme})`, async ({ context, page }, testInfo) => {
       testInfo.annotations.push({ type: "setup", description: "Bridge pairing-code POSTs use a synthetic response; no server pairing code is issued." });
       const blockedRequests = await installConsistencyReadGuard(context);
       let measurements: ConsistencyMeasurements | null = null;
@@ -43,6 +44,7 @@ for (const route of consistencyRoutes) {
           measurements = await page.evaluate(collectConsistencyMeasurements);
           requireConsistencyMeasurements(measurements, route.required, route.path);
           requirePrimaryActionColors(measurements, route.path);
+          requireOrganizationViewSwitchStyles(measurements, route.path);
         }).toPass({ timeout: 20_000 });
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {

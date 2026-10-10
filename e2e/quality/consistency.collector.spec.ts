@@ -1,7 +1,54 @@
 import { expect, test } from "playwright/test";
 import { collectConsistencyMeasurements, installConsistencyReadGuard } from "./consistency";
 import { requirePrimaryActionColors } from "./primary-color";
+import { requireOrganizationViewSwitchStyles } from "./view-switch";
 import { settleQualityRoute } from "./helpers";
+
+test("resolves all three root switch signatures and catches scoped geometry or semantic drift", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      :root {
+        --space-10: 40px; --space-8: 32px; --space-6: 24px; --space-1: 4px;
+        --radius-full: 999px; --radius-md: 8px; --radius-sm: 6px;
+        --text-md: 14px; --text-base: 13px; --text-sm: 12px;
+        --leading-md: 22px; --leading-base: 20px; --leading-sm: 18px;
+        --view-switch-font-weight: 600;
+        --surface: rgb(255, 255, 255); --surface-sunken: rgb(247, 249, 252);
+        --nav-selected: rgb(0, 61, 155); --accent-soft: rgb(218, 226, 255);
+      }
+      button { display: inline-block; box-sizing: border-box; font-weight: var(--view-switch-font-weight); background: var(--surface); }
+      nav button { height: var(--space-10); border-radius: var(--radius-full); font-size: var(--text-md); line-height: var(--leading-md); }
+      [role="tab"] { height: var(--space-8); border-radius: var(--radius-md); font-size: var(--text-base); line-height: var(--leading-base); }
+      [role="radio"] { height: calc(var(--space-6) + var(--space-1)); border-radius: var(--radius-sm); font-size: var(--text-sm); line-height: var(--leading-sm); background: var(--surface-sunken); }
+      [aria-current="page"] { background: var(--nav-selected); }
+      [aria-selected="true"] { background: var(--accent-soft); }
+      [aria-checked="true"] { background: var(--surface); }
+      .scoped { --space-10: 43px; }
+    </style>
+    <main>
+      <nav aria-label="组织范围"><button class="view-switch__item" aria-current="page">组织管理</button><button class="view-switch__item">人员管理</button></nav>
+      <div role="tablist"><button class="view-switch__item" role="tab" aria-selected="true">账号库</button><button class="view-switch__item" role="tab" aria-selected="false">注册申请</button></div>
+      <div role="radiogroup"><button class="view-switch__item" role="radio" aria-checked="true">全部</button><button class="view-switch__item" role="radio" aria-checked="false">我的</button></div>
+      <div hidden><button class="view-switch__item" role="tab">隐藏</button></div>
+    </main>
+  `);
+  const measurements = await page.evaluate(collectConsistencyMeasurements);
+  expect(measurements.viewSwitches).toHaveLength(6);
+  expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28]]);
+  expect(() => requireOrganizationViewSwitchStyles(measurements, "/organization/members")).not.toThrow();
+  await page.locator("nav").evaluate((element) => element.classList.add("scoped"));
+  const overridden = await page.evaluate(collectConsistencyMeasurements);
+  expect(overridden.viewSwitchSignatures[0].height).toBe(40);
+  expect(() => requireOrganizationViewSwitchStyles(overridden, "/organization/members")).toThrow("matched 0");
+  await page.locator("nav").evaluate((element) => element.classList.remove("scoped"));
+  await page.getByRole("tablist").evaluate((element) => {
+    element.removeAttribute("role");
+    element.querySelectorAll("button").forEach((button) => button.removeAttribute("role"));
+  });
+  const missingRoles = await page.evaluate(collectConsistencyMeasurements);
+  expect(missingRoles.viewSwitches).toHaveLength(6);
+  expect(() => requireOrganizationViewSwitchStyles(missingRoles, "/organization/members")).toThrow("matched 0");
+});
 
 for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb(76, 141, 255)"]]) {
   test(`resolves the root primary color without hiding scoped overrides (${theme})`, async ({ page }) => {

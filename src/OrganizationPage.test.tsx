@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 import { createPrototypeState } from "@/infrastructure/mock/prototypeState";
 import { OrganizationPage, type OrganizationActions } from "./OrganizationPage";
@@ -62,6 +63,20 @@ describe("OrganizationPage", () => {
     renderOrganizationPage(createOrganizationActions(), { onNavigate });
 
     fireEvent.click(screen.getByRole("button", { name: "人员管理" }));
+    expect(onNavigate).toHaveBeenCalledWith("/organization/members");
+  });
+
+  it.each(["profile", "members"] as const)("supports keyboard section navigation from %s", async (area) => {
+    const onNavigate = vi.fn();
+    renderOrganizationPage(createOrganizationActions(), { area, onNavigate });
+    const navigation = screen.getByRole("navigation", { name: "组织管理范围" });
+    const profile = within(navigation).getByRole("button", { name: "组织管理" });
+    const members = within(navigation).getByRole("button", { name: "人员管理" });
+    profile.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(members).toHaveFocus();
+    expect(onNavigate).not.toHaveBeenCalled();
+    await userEvent.keyboard("{Enter}");
     expect(onNavigate).toHaveBeenCalledWith("/organization/members");
   });
 

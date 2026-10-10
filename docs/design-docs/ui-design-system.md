@@ -32,9 +32,14 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 | Table | `src/components/admin/DataTable.tsx` | Standard list shell: pagination, `aria-sort`, keyboard row navigation, filter empty state, `ColumnFilter` integration |
 | Column filter | `src/components/ColumnFilter.tsx` | Spec: [Table Column Multi-Select Filter UX](ux-table-column-filter.md) |
 | Search field | `src/components/common/SearchField.tsx` | One search-input chrome; filtering lives in `src/lib/search/` profiles, not in the input |
+| View switch | `src/components/ui/view-switch.tsx` + `view-switch.css` | Three tokenized styles: `section` navigation (40px / full radius / 14px, selected `--nav-selected`), `tabs` content tabs (32px / md radius / 13px, selected `--accent-soft`), `toggle` radio options (28px / sm radius / 12px, selected `--surface`) |
 | Loading/Empty/Error | `src/components/common/SectionState.tsx` (+ `AppShellSkeleton` for auth bootstrap) | Skeleton + empty + error-with-retry trio; parameter-home re-exports the same components |
 | Local token derivation | `src/features/parameter-home/parameter-home.css` | Derive scoped tokens from global tokens via `color-mix()`; never invent new literals |
 | Icons | `lucide-react` | No emoji glyphs, no `✓`/`↗` text characters as icons |
+
+**View-switch contract (UIA-016, expand):** `/organization` and `/organization/members` use the shared section navigation; the members account/registration workspace uses content tabs. Section arrows/Home/End move focus without navigating; Enter/Space activate. Content tabs use manual activation, roving focus and required item `id`/`panelId` pairs; callers render the active `role="tabpanel"` with that panel ID, `aria-labelledby` pointing to the item ID, and `tabIndex={0}`. Radio options select with arrows or Space. All styles share tokenized focus-visible and disabled states. The consistency project checks every visible switch on the two organization routes against exactly one root-token style signature in light and dark themes. Other legacy variants remain during expansion; the Bridge install stepper is a separate progress pattern, not a view switch.
+
+Inactive tab panels remain mounted and hidden so every `aria-controls` target exists; inactive panel contents may be unmounted.
 
 ## Design Tokens
 

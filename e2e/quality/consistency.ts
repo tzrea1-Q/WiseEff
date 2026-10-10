@@ -22,7 +22,7 @@ export function collectConsistencyMeasurements() {
   const viewSwitches = elements([
     '[role="tab"]', '[role="radiogroup"] [role="radio"]', '[role="group"][aria-label*="视图"] button[aria-pressed]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
-    ".parameter-admin-scope-nav__tab", ".parameter-admin-subnav__tab",
+    ".view-switch__item", ".parameter-admin-scope-nav__tab", ".parameter-admin-subnav__tab",
     ".protocol-switch-button", ".user-permissions-workspace-tab", ".logs-aux-tabs button",
     ".parameter-home__view-switcher-item", ".parameter-home__toggle-item",
     ".review-view-tabs button", ".param-admin-audit-filters .chip",
@@ -36,10 +36,34 @@ export function collectConsistencyMeasurements() {
       dom: signature(element), group: signature(group), role: role(element), groupRole: role(group),
       height: element.getBoundingClientRect().height,
       radius: [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].join(" "),
-      fontSize: style.fontSize, background: style.backgroundColor,
+      fontSize: style.fontSize, lineHeight: style.lineHeight, fontWeight: style.fontWeight, background: style.backgroundColor,
       selected: element.matches('[aria-selected="true"],[aria-checked="true"],[aria-pressed="true"],[aria-current]:not([aria-current="false"]),[data-state="on"],[data-active="true"],.is-active,.active,.chip-active')
     };
   });
+  const switchProbe = document.createElement("span");
+  switchProbe.style.cssText = "all: initial; position: absolute; visibility: hidden; pointer-events: none; display: block; width: 0";
+  document.documentElement.append(switchProbe);
+  const viewSwitchSignatures = [
+    { variant: "section", role: "button", groupRole: "navigation", height: "var(--space-10)", radius: "var(--radius-full)", fontSize: "var(--text-md)", lineHeight: "var(--leading-md)", background: "var(--surface)", selectedBackground: "var(--nav-selected)" },
+    { variant: "tabs", role: "tab", groupRole: "tablist", height: "var(--space-8)", radius: "var(--radius-md)", fontSize: "var(--text-base)", lineHeight: "var(--leading-base)", background: "var(--surface)", selectedBackground: "var(--accent-soft)" },
+    { variant: "toggle", role: "radio", groupRole: "radiogroup", height: "calc(var(--space-6) + var(--space-1))", radius: "var(--radius-sm)", fontSize: "var(--text-sm)", lineHeight: "var(--leading-sm)", background: "var(--surface-sunken)", selectedBackground: "var(--surface)" }
+  ].map((tier) => {
+    switchProbe.style.height = tier.height;
+    switchProbe.style.borderRadius = tier.radius;
+    switchProbe.style.fontSize = tier.fontSize;
+    switchProbe.style.lineHeight = tier.lineHeight;
+    switchProbe.style.fontWeight = "var(--view-switch-font-weight)";
+    switchProbe.style.backgroundColor = tier.background;
+    const style = getComputedStyle(switchProbe);
+    const resolved = {
+      ...tier, height: switchProbe.getBoundingClientRect().height,
+      radius: [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].join(" "),
+      fontSize: style.fontSize, lineHeight: style.lineHeight, fontWeight: style.fontWeight, background: style.backgroundColor
+    };
+    switchProbe.style.backgroundColor = tier.selectedBackground;
+    return { ...resolved, selectedBackground: getComputedStyle(switchProbe).backgroundColor };
+  });
+  switchProbe.remove();
   const primaryToken = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
   const primaryProbe = document.createElement("span");
   primaryProbe.style.cssText = "position: absolute; visibility: hidden; pointer-events: none";
@@ -111,7 +135,7 @@ export function collectConsistencyMeasurements() {
     .filter((element) => !element.matches(`${paginationSelector},${sortSelector}`) && !element.closest('tbody,[role="cell"],[role="dialog"]'))
     .map(control);
   return {
-    viewSwitches, primaryActions, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports,
+    viewSwitches, viewSwitchSignatures, primaryActions, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports,
     moduleTreeLabels, filterControls, sortControls, paginationControls
   };
 }
@@ -133,6 +157,7 @@ const viewSwitchPaths = [
 ];
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints"> = {
   viewSwitches: [...viewSwitchPaths, "/log-admin"],
+  viewSwitchSignatures: ["/organization", "/organization/members"],
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging"],

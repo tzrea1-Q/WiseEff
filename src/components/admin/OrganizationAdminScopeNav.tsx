@@ -5,6 +5,7 @@ import {
   buildOrganizationAdminPath,
   type OrganizationAdminArea
 } from "@/application/organization/organizationAdminPath";
+import { ViewSwitch } from "@/components/ui/view-switch";
 
 export type OrganizationAdminScopeNavProps = {
   active: OrganizationAdminArea;
@@ -17,25 +18,15 @@ export type OrganizationAdminScopeNavProps = {
  */
 export function OrganizationAdminScopeNav({ active, onNavigate }: OrganizationAdminScopeNavProps) {
   return (
-    <nav className="parameter-admin-scope-nav" aria-label={ORGANIZATION_ADMIN_UI.scopeNavAria}>
-      <button
-        type="button"
-        className={`parameter-admin-scope-nav__tab${active === "profile" ? " is-active" : ""}`}
-        aria-current={active === "profile" ? "page" : undefined}
-        onClick={() => onNavigate(buildOrganizationAdminPath("profile"))}
-      >
-        <Building2 size={16} aria-hidden="true" />
-        {ORGANIZATION_ADMIN_UI.profileScope}
-      </button>
-      <button
-        type="button"
-        className={`parameter-admin-scope-nav__tab${active === "members" ? " is-active" : ""}`}
-        aria-current={active === "members" ? "page" : undefined}
-        onClick={() => onNavigate(buildOrganizationAdminPath("members"))}
-      >
-        <Users size={16} aria-hidden="true" />
-        {ORGANIZATION_ADMIN_UI.membersScope}
-      </button>
-    </nav>
+    <ViewSwitch
+      variant="section"
+      ariaLabel={ORGANIZATION_ADMIN_UI.scopeNavAria}
+      value={active}
+      onValueChange={(value) => onNavigate(buildOrganizationAdminPath(value as OrganizationAdminArea))}
+      items={[
+        { value: "profile", label: <><Building2 size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.profileScope}</> },
+        { value: "members", label: <><Users size={16} aria-hidden="true" />{ORGANIZATION_ADMIN_UI.membersScope}</> }
+      ]}
+    />
   );
 }
