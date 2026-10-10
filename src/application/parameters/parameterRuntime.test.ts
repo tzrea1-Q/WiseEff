@@ -75,6 +75,17 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
 }
 
 describe("createParameterRuntimeActions", () => {
+  it.each(["mock", "api"] as const)("withdraws the detail action port in %s mode without calling the shared API read adapter", (runtimeMode) => {
+    const dispatch = vi.fn();
+    const repository = createRepository();
+    const actions = createParameterRuntimeActions({ runtimeMode, repository, dispatch });
+
+    expect(actions).not.toHaveProperty("getParameter");
+    expect(repository.getParameter).not.toHaveBeenCalled();
+    expect(repository.listParameterHistory).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it("hydrates a canonical-only project's Bindings without the failing historical semantic list", async () => {
     const dispatch = vi.fn();
     const repository = createRepository({
@@ -367,48 +378,6 @@ describe("createParameterRuntimeActions", () => {
         projects: [...apiProjects, secondProject],
         parameters: [apiParameter, secondParameter]
       })
-    );
-  });
-
-  it("loads a single parameter detail from the repository in api mode", async () => {
-    const dispatch = vi.fn();
-    const repository = createRepository();
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
-
-    await expect(actions.getParameter(apiParameter.id)).resolves.toEqual(apiParameter);
-
-    expect(repository.getParameter).toHaveBeenCalledWith(apiParameter.id);
-    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
-  });
-
-  it("preserves an archived old-link outcome instead of flattening it into a failure", async () => {
-    const dispatch = vi.fn();
-    const archived = new WiseEffApiError(
-      "GONE",
-      "legacy-parameter-id-retired",
-      { diagnostic: "legacy-parameter-id-retired", migrationEvidenceId: "mig-9" },
-      "req-archived"
-    );
-    const repository = createRepository({ getParameter: vi.fn().mockRejectedValue(archived) });
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
-
-    await expect(actions.getParameter("legacy-archived-1")).rejects.toBe(archived);
-    // An archived record is a documented outcome, so no failure notification.
-    expect(dispatch).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "ADD_NOTIFICATION" })
-    );
-  });
-
-  it("still flattens a genuine detail-loading failure into a notification", async () => {
-    const dispatch = vi.fn();
-    const repository = createRepository({
-      getParameter: vi.fn().mockRejectedValue(new Error("api down"))
-    });
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
-
-    await expect(actions.getParameter("p-1")).rejects.toThrow();
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "ADD_NOTIFICATION" })
     );
   });
 

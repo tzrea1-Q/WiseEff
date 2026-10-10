@@ -151,13 +151,26 @@ describe("DTO schema alignment", () => {
     expect(schema.safeParse({ items: [{ ...parameterCompatibilityFixture, currentValueId: undefined }] }).success).toBe(false);
   });
 
-  it("the historical detail contract retains metadata and history and does not become the compatibility list DTO", () => {
+  it("#1081 detail uses canonical compatibility identity and rejects legacy operational metadata", () => {
     const schema = dtoSchemaCatalog[schemaRegistry["parameters.get"].responseBody]!;
     const historical = { ...parameterRecordFixture, history: [{
       version: "v1", value: "2800", changedAt: "2026-05-24T02:00:00.000Z", changedBy: "Reviewer", requestId: "historical-request"
     }] };
-    expect(schema.parse({ item: historical })).toEqual({ item: historical });
-    expect(schema.safeParse({ item: parameterCompatibilityFixture }).success).toBe(false);
+    expect(schema.safeParse({ item: historical }).success).toBe(false);
+    expect(schema.parse({ item: parameterCompatibilityFixture })).toEqual({ item: parameterCompatibilityFixture });
+  });
+
+  it("#1081 history exposes canonical value and revision pins, not legacy value payloads", () => {
+    const schema = dtoSchemaCatalog[schemaRegistry["parameters.history"].responseBody]!;
+    const entry = {
+      id: "bhev-1081", bindingId: "pbind_1081", definitionId: "pdef_1081",
+      oldDefinitionRevisionId: null, newDefinitionRevisionId: "drev_1081",
+      oldCurrentValueId: null, newCurrentValueId: "pval_1081", valueState: "present",
+      reason: "source-registered", successAuditRef: "audit-1081", catalogReleaseId: "crel_1081",
+      createdAt: "2026-10-09T12:00:00Z"
+    };
+    expect(schema.parse({ items: [entry] })).toEqual({ items: [entry] });
+    expect(schema.safeParse({ items: [{ version: "v1", value: "legacy", changedAt: entry.createdAt, changedBy: "Legacy" }] }).success).toBe(false);
   });
 
   it("accepts a change-request fixture the HTTP client already maps", () => {

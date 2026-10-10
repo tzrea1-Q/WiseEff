@@ -199,7 +199,7 @@ describe("DefinitionEditorBody", () => {
         createIdempotencyKey={() => "idem-847-correction"}
       />
     );
-    return { ...view, preview, execute, continueReplacement };
+    return { ...view, catalog: ports.catalog, preview, execute, continueReplacement };
   }
 
   it("loads published knowledge by exact Definition identity and opens the entry", async () => {
@@ -210,6 +210,121 @@ describe("DefinitionEditorBody", () => {
     expect(load).toHaveBeenCalledWith(activeDefinition.id);
     await userEvent.setup().click(screen.getByRole("button", { name: "定义关联知识" }));
     expect(onOpenEntry).toHaveBeenCalledWith("kb-903");
+  });
+
+  it("requires a reason for an exact Definition semantic revision without policyTarget or migration", async () => {
+    const user = userEvent.setup();
+    const { catalog, preview, execute, continueReplacement } = renderDialog();
+    const createCandidate = vi.spyOn(catalog, "createPublicationCandidate");
+    const publishCandidate = vi.spyOn(catalog, "publishPublicationCandidate");
+    const save = screen.getByRole("button", { name: "保存内容修订" });
+
+    await user.type(screen.getByLabelText("最大值"), "32");
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(createCandidate).not.toHaveBeenCalled();
+    expect(publishCandidate).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("修改原因"), "   ");
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(createCandidate).not.toHaveBeenCalled();
+    expect(publishCandidate).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText("修改原因"));
+    await user.type(screen.getByLabelText("修改原因"), "限制允许的中断数量");
+    expect(save).toBeEnabled();
+    await user.click(save);
+    await waitFor(() => expect(publishCandidate).toHaveBeenCalledTimes(1));
+
+    expect(createCandidate).toHaveBeenCalledTimes(1);
+    expect(createCandidate).toHaveBeenCalledWith(
+      {
+        changeSet: [{
+          op: "revise-definition",
+          definitionId: activeDefinition.id,
+          class: "semantic",
+          content: {
+            displayName: activeDefinition.currentRevision.displayName,
+            documentation: activeDefinition.currentRevision.documentation,
+            unit: "us",
+            valueSchema: { type: "integer", maximum: 32 }
+          }
+        }]
+      },
+      { catalogReleaseId: CATALOG_RELEASE_ID }
+    );
+    const change = createCandidate.mock.calls[0][0].changeSet[0];
+    expect(change).not.toHaveProperty("policyTarget");
+    expect(change).toHaveProperty("content");
+    if ("content" in change) expect(change.content).not.toHaveProperty("policyTarget");
+    const candidate = await createCandidate.mock.results[0].value;
+    expect(publishCandidate).toHaveBeenCalledWith(
+      candidate.item.id,
+      { idempotencyKey: "idem-847-correction" },
+      { catalogReleaseId: CATALOG_RELEASE_ID }
+    );
+    expect(preview).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(continueReplacement).not.toHaveBeenCalled();
+  });
+
+  it("resets editor input and reason when a different Definition is selected", async () => {
+    const user = userEvent.setup();
+    const { catalog, rerender, preview, execute } = renderDialog();
+    const createCandidate = vi.spyOn(catalog, "createPublicationCandidate");
+    const nextDefinition: typeof activeDefinition = {
+      ...activeDefinition,
+      id: "pdef_next_selected",
+      propertyKey: "next-property",
+      currentRevision: {
+        ...activeDefinition.currentRevision,
+        id: "drev_next_selected",
+        definitionId: "pdef_next_selected",
+        displayName: "新定义",
+        documentation: "新定义的说明",
+        unit: { kind: "symbol", symbol: "mA" },
+        valueShape: { kind: "json-schema", schema: { type: "integer", minimum: 2, maximum: 8 } }
+      }
+    };
+
+    await user.type(screen.getByLabelText("显示名"), "旧输入");
+    await user.type(screen.getByLabelText("说明"), "旧说明");
+    await user.type(screen.getByLabelText("最大值"), "64");
+    await user.type(screen.getByLabelText("属性键"), "-old-edit");
+    await user.type(screen.getByLabelText("受影响项目"), "old-project");
+    await user.type(screen.getByLabelText("修改原因"), "旧审计原因");
+
+    rerender(
+      <DefinitionEditorBody
+        authoringAllowed
+        history={<div />}
+        actor="org-admin"
+        sessionPermissions={["catalog:author", "catalog:publish"]}
+        domainState={ready}
+        catalog={catalog}
+        catalogReleaseId={CATALOG_RELEASE_ID}
+        definition={nextDefinition}
+        subjects={[registeredSubject]}
+        createIdempotencyKey={() => "idem-847-correction"}
+      />
+    );
+
+    expect(screen.getByLabelText("属性键")).toHaveValue("next-property");
+    expect(screen.getByLabelText("显示名")).toHaveValue("新定义");
+    expect(screen.getByLabelText("说明")).toHaveValue("新定义的说明");
+    expect(screen.getByLabelText("单位")).toHaveValue("mA");
+    expect(screen.getByLabelText("取值形状")).toHaveValue("integer");
+    expect(screen.getByLabelText("最小值")).toHaveValue("2");
+    expect(screen.getByLabelText("最大值")).toHaveValue("8");
+    expect(screen.getByLabelText("受影响项目")).toHaveValue("");
+    expect(screen.getByLabelText("修改原因")).toHaveValue("");
+    const save = screen.getByRole("button", { name: "保存内容修订" });
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(createCandidate).not.toHaveBeenCalled();
+    expect(preview).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("requires an identity change, a project manifest and a reason before previewing", async () => {

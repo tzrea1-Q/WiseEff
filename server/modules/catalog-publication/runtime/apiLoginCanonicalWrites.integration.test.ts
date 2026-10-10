@@ -72,7 +72,7 @@ describe("API LOGIN canonical source writes", () => {
           ...scope, configSetId: set.id, entryFile: fileName, includeSearchPaths: ["."], overlayOrder: [],
           members: [{ fileId: uploaded.file.id, fileVersionId: uploaded.version.id, fileName,
             role: "base", sortOrder: 0, content: bytes.toString("utf8") }],
-        }, admin, { legacyProjection: "skip" });
+        }, admin);
         expect(revision.status).toBe("resolved");
         expect(await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot,
           { ...scope, configSetId: set.id, configRevisionId: revision.id }))).toBe(1);

@@ -965,20 +965,6 @@ export function createMockKnowledgeRepository(
       return clone(entry);
     },
 
-    async addParameterReference(entryId, specId) {
-      const entry = requireEntry(entryId);
-      if (!canManage && entry.createdByUserId !== userId) {
-        throw mockApiError("FORBIDDEN", "Editing someone else's entry references requires knowledge:manage.");
-      }
-      if (entry.status === "archived") {
-        throw mockApiError("INTERNAL_ERROR", "Archived knowledge entries cannot change parameter references.");
-      }
-      if (!entry.parameterReferences.some((reference) => reference.specId === specId)) {
-        entry.parameterReferences = [...entry.parameterReferences, mockReference(specId, userId)];
-      }
-      return clone(entry);
-    },
-
     async removeParameterReference(entryId, specId) {
       const entry = requireEntry(entryId);
       if (!canManage && entry.createdByUserId !== userId) {

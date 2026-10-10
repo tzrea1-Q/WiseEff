@@ -589,7 +589,7 @@ resolver 只能 lookup，且不拥有分类权。它读取 issue #678 在 `18393
 | Audit target | 保留 immutable legacy target fields，精确时新增 mapped target reference。 | 保留 legacy audit evidence 与 archived/ambiguous disposition，绝不重写历史。 |
 | Knowledge reference | 只有 exact mapping 才重写 definition/revision，并保留 legacy metadata。 | 标记 unresolved，排除出 current definition picker，不静默 retarget。 |
 | Debug/reload reference | cutover 时通过精确 binding/definition map 解析并固定 revision。 | 阻断 operation，交给 operator reconciliation；禁止按 property key 选择。 |
-| Export/import ID | 新 export 只含 canonical IDs 与 schema version；有界 legacy import 每行经过 typed mapping。 | 用稳定 reason 拒绝该行；禁止部分创建结构。 |
+| Export/import ID | 新 export 只含 canonical IDs 与 schema version；普通导入要求精确的当前 canonical Binding/Definition、revision、value 与 source pins。 | 旧 ID 和仅属性名的行被拒绝或标记冲突；运维迁移保持独立，禁止部分创建结构。 |
 | Deep link/bookmark | 只有精确且有权限的 mapping 才 redirect 到 canonical detail。 | ambiguous 显示 conflict；archived 显示 gone；unknown/out-of-scope 显示 not found。 |
 
 Issue #678 是全部 R0-R10 生产 disposition 的唯一 owner。与 ReviewEvidence 或 DefinitionProposal 同时保留的 `Archive` evidence 是 provenance，不是第二个 operational disposition。所有 legacy-ID API 只投影 typed mapping head，不得重新分类 row。archive ledger 是 append-only、typed、带 checksum 的迁移证据，不是公共 catalog resource。删除 legacy tables 或 mapping records 属于之后经验证的 retirement 决策；本 API 决策不授权删除。
@@ -614,13 +614,21 @@ parameter-modules 导航适配器在 registry envelope 中标记 `navigationOnly
 
 已退役的组织覆盖解析与 Platform 晋升界面链接至 Catalog 页面，通过定义提案与发布流程变更覆盖。`GET /api/v2/platform/driver-schema-promotion-history` 是经 Platform 授权的历史晋升记录只读投影，不是候选列表或有效 schema 读取。原有 legacy 标识仅保留为证据，不提供晋升、撤销或恢复操作。覆盖统计与导入不会将这些历史覆盖合并至运行时 schema 注册表。
 
+被前置路由遮蔽的 Spec/overlay 编写、物化、晋升与 cutover 实现已删除（#1084），不再作为退役路由后的备选 owner。前置退休 handler、可信拒绝审计、有界读取和晋升来源记录保持不变。仍有保留流程或运维工具调用的共享 registry、matcher、ingest 与值形状推断 helper 继续保留；删除 writer 不代表退休历史存储或迁移 fixture。
+
 Legacy read response 包含：
 
 spec 集合的精确 `id`/`specId` 筛选仍返回 `{ items, historicalItems }`，只有 `/:specId` 返回 `item` envelope。adapter 工作期间 Catalog 推进到新 release 时，返回 `409 release-drift`，并在 `X-WiseEff-Catalog-Release` 中标明新的当前 release，而不是已过期的捕获值。
 
-effective spec 列表与精确详情共用前置 read-window adapter，其 dispatch 优先于历史 spec handler。它只枚举 owner scope 内的 typed legacy identity 与 mapping head，不查询 `parameter_specs` 或 `parameter_spec_versions`。可操作的 `items` 包含精确 Definition mapping、规范 Definition 与 registration projection，以及独立映射的旧版本 ID 和不可变规范 Revision 内容组成的 `revisions`。版本映射不得以当前 Revision 替代其固定 target。非操作性映射，以及 `archived`、`ambiguous`、`not-found` disposition，单独放入只读 `historicalItems`；未映射的精确详情返回 404，歧义详情返回 409，已归档详情返回 410。不得通过规范 ID、property 或 display name 猜测旧 ID。governance、raw、migration 查询模式在身份认证和历史读取前返回退役合同。effective 读取保留有界 header、权限检查和 Catalog Release drift 拒绝，认证失败也带有有界 header。无调用方的 organization driver-schema client/port 方法已删除；有意保留的 410 合同覆盖不变。
+已删除仅供退役成功路径使用的请求、响应及 body schema 闭包（#1085）。OpenAPI 保留所有公开退役操作及其 `CatalogLegacyGoneResponse` 和必需的 successor `Link`，不再要求成功路径的请求 body，也不再声明成功响应。退役发生在 body 解析之前；发送旧写入 payload 不会重新启用 writer。有界读取 DTO、晋升历史、节点启用结构 schema、授权与可信拒绝审计均保持不变。
+
+effective spec 列表与精确详情共用前置 read-window adapter；被遮蔽的旧列表与详情 callback 已删除。它只枚举 owner scope 内的 typed legacy identity 与 mapping head，不查询 `parameter_specs` 或 `parameter_spec_versions`。可操作的 `items` 包含精确 Definition mapping、规范 Definition 与 registration projection，以及独立映射的旧版本 ID 和不可变规范 Revision 内容组成的 `revisions`。版本映射不得以当前 Revision 替代其固定 target。非操作性映射，以及 `archived`、`ambiguous`、`not-found` disposition，单独放入只读 `historicalItems`；未映射的精确详情返回 404，歧义详情返回 409，已归档详情返回 410。不得通过规范 ID、property 或 display name 猜测旧 ID。governance、raw、migration 查询模式在身份认证和历史读取前返回退役合同。effective 读取保留有界 header、权限检查和 Catalog Release drift 拒绝，认证失败也带有有界 header。无调用方的 organization driver-schema client/port 方法已删除；有意保留的 410 合同覆盖不变。
 
 任务读窗口将可精确适配的规范 `items` 与只读 `historicalItems` 分开返回。规格审核适配使用组织范围内的类型映射头和已授权的当前规范审核队列，不按属性名或节点名推断。只有恰好对应一个当前规范审核项的未决任务才会适配。其他任务保留原始证据与状态，标记 `historicalOnly: true`；开放或已忽略的任务另标记 `needsCanonicalDecision: true`。身份连续性选择没有等价的规范决议，保留为历史证据。任务退役与历史证据链接到 `/parameter-admin/specs?review=open`，打开规范审核队列；没有未决历史任务时，身份映射入口重定向到此处。
+
+组织审核队列需要目标 Organization 的组织范围管理员角色绑定，不依赖主角色。服务器同时校验已认证会话所属组织与持久化管理员角色绑定所属组织；其他组织的角色绑定不授予访问权。此租户校验权限仅适用于 Review Item 列表、详情读取与决议：同时持有 Platform 和 Organization 管理员角色的会话获准访问；仅有 Platform 权限、项目范围管理员、普通用户及跨租户会话均返回 `403`。决议保留可信拒绝审计、租户/来源/Observation/pin 校验、幂等性与 ETag。其他 Catalog、Registration、生命周期及发布授权保持不变，不扩大 Platform 权限。UI 从已完成认证上下文加载的组织范围管理员角色绑定判断队列权限：双角色会话显示队列操作，不显示仅限 Platform 的权限说明。认证上下文尚未加载或访客会话均不显示这两者。仅有 Platform 权限的会话会看到权限说明，不显示队列操作，也不读取队列；从身份映射入口重定向后同样如此。通用的 `parameter:view` 权限不授予组织审核访问权。
+
+审核决议会将来源引用（包括嵌套的精确修订和 proof 字段）校验为同一组织内的一条来源图。关联证据还须与其不可变 Observation 的来源、release 和 matcher pin 一致。跨组织、悬空或不一致的引用返回 `400`，审核项保持开放，不提交注册、placement、Binding、值、Proposal、决议、幂等行或成功审计。可信拒绝审计仍以追加方式保留。没有来源引用的分类历史证据仍可审核，不补造来源身份。
 
 DTS 审核证据可以证明 `needs_mapping` 修订中的不可变属性，但不会因此获得 Binding 或源写入证明。连续性证据保留前驱与候选的关系及匹配理由，不选择身份；候选有属性时使用精确属性锚点。无属性节点的连续性以修订绑定的 Review Evidence 进入规范 Review Queue：物化前验证持久化候选归属和连续性诊断、完整源成员的归属与字节，以及当前 Catalog pin。不创建属性定位、Parameter Observation、Binding 或源写入证明，也不解决前驱身份选择。源证明无效时仍以 `source-proof-invalid` 拒绝并回滚；仅缺少属性不会丢弃歧义证据。
 
@@ -634,13 +642,23 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 
 公布的 `Sunset` 不得早于 canonical launch 后两个 production releases 或 90 天，取较晚者。任一退出门槛未满足时可延后，不得提前。退役后，同一路由返回 410、`details.reason = "legacy-surface-retired"` 与 successor link。
 
+### v1 参数详情与历史的规范适配器（#1081）
+
+`GET /api/v1/parameters/:parameterId` 返回与 v1 列表相同的规范兼容记录：`id`、`bindingId` 和 `projectParameterBindingId` 均指向 `pbind_` Binding；Definition、有效修订、当前 Project value 以及源 occurrence/file pin 均使用规范身份。不支持的旧元数据明确标记为不可用，记录中的 `history` 仍为 `null`。`GET /api/v1/parameters/:parameterId/history` 返回规范 Binding 变更历史，包括变更前后的 Definition 修订与 Project value ID、值状态、原因、成功审计引用、Catalog Release 和时间戳，不返回旧模型的值载荷。
+
+两个适配器均要求有效且获授权的组织用户，在读取值或历史前校验解析出的 Binding 所属项目范围。同组织跨项目请求返回 `403`；未知或跨组织的规范身份返回 `404`。旧 ID 只能通过精确的 `wiseeff-v1` / `project-parameter-binding` / 项目范围 typed mapping head 解析到同项目的规范 Binding，不按属性、名称、flat value 或旧语义读取推断身份。缺失、归档、阻断、歧义或非 Binding 的映射返回退役合同中的 `410 GONE`，并带有 `Link: </api/v2/catalog>; rel="successor-version"`，即使旧身份记录中的项目不可访问也不例外。先判断映射是否精确有效，只有解析出的 Binding 才执行项目范围校验。保留旧 Binding/修订记录、历史读取器、Archive 和映射，不删除这些审计能力。
+
+保留的 vendor seed/运维入口仍是 `scripts/sync-vendor-property-docs.ts`。其操作名为 `ensurePublishedVendorCatalog`：确保已发布的不可变 vendor Catalog，而不是更新可变的旧文档。CLI JSON 返回 `releaseDefinitionCount`，表示该 release 中 Definition 的总数（幂等无变更时也一样），并非更新数量。历史盘点快照保留采集当时使用的名称。
+
 ## 消费者迁移矩阵
+
+B1 清理（#1083）删除参数管理后台未使用的 legacy Spec 编辑器及其 fallback。Catalog 是唯一定义管理界面，缺少其端口时也不回退；API 模式的历史身份任务保持只读。B5a（#1087，#1080 的负责人决定 Q3）撤下旧 mock Spec 治理、模块映射/注册身份、组织 overlay 编写、身份/Spec 审核任务处理和旧参数详情，以及它们对应的 handler、port、repository、fixture 和测试闭包。Mock 模式不显示相应控件或明确标为不可用。现有 canonical 等价 Catalog 演示、项目参数值编辑、共享业务分类和结构节点启用保留，不新增 canonical mock 实现。有界 API 读取、历史、拒绝审计及公开 410 契约保持不变。
 
 | 消费者 | 规范依赖 | Legacy 处置与迁移要求 |
 | --- | --- | --- |
 | Parameter definitions page | subjects、definitions、registration/placement、Review Queue、definition timeline | 用单页合同替代 Effective/Governance peer views；URL selection 改用 canonical IDs。 |
 | `ParameterTopologyRepository` HTTP adapter | 现有 project topology/binding routes 与 catalog readers | 将 catalog read/governance 与 project topology 拆成不同端口；删除 `ParameterSpec` create/update/lifecycle methods。 |
-| Mock parameter topology adapter | 与 HTTP 相同 application ports/DTO states | version/reset fixtures；覆盖 ready、unregistered、empty、loading、error、retired、stale-release；不得有 mock-only governance。 |
+| Mock parameter topology adapter | 保留的结构节点/修订端口；现有 canonical Catalog adapter | 撤下旧 mock 功能及其 fixture 闭包，只保留 canonical 等价功能。现有 Catalog fixtures 覆盖 ready、unregistered、empty、loading、error、retired、stale-release；不得有 mock-only governance 或新增 canonical 替代实现。 |
 | Project parameter workbench/value editing | canonical binding ID、`definitionId`、`effectiveRevisionId`、`currentValueId` | 删除 `parameterSpecId` 和 module-as-definition identity，保留产品 workflow。 |
 | DTS ingest/recognition | 内部 observation command、canonical subject matcher、registration policy | unknown/ambiguous occurrence evidence 只能创建 observation/review，不创建 provisional spec。ParameterObservation 必须具有自身完整的 project/logical-node/source-revision occurrence provenance；R6/R8 legacy spec ID 绝不提供该 identity。 |
 | File sync/writeback | canonical binding、pinned definition revision、source target | unresolved ID fail closed，不允许 property-key-only fallback。 |
@@ -650,7 +668,7 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 | DTS reload | canonical binding、value、definition revision、release anchor | prepare/finalize 前验证全部 references；release drift 阻断。 |
 | Knowledge definition picker | active canonical definitions 与显式历史 revision read | exact-map 旧 reference；unresolved legacy reference 不可选择。 |
 | Module/driver registry UI | subject type、registration、placement navigation | 退役 module/Organization-schema 的结构所有权；无关 runtime module 概念保持独立。 |
-| Import/export | versioned canonical IDs 与 typed legacy resolver | 新 export only；legacy import 在任何写入前验证全部 rows。 |
+| Import/export | versioned canonical IDs 与精确的当前 Binding/Definition/revision/value/source pins | 普通 preview 和草稿不再回退到旧 ID 或 property key；保留的迁移工具仅供 Operator 使用。 |
 | Audit/history viewer | canonical target 与保留的 legacy target metadata | 绝不重写历史 actor、target 或 decision evidence。 |
 | External API client/bookmark | canonical routes 或有界 typed resolver | 在公开 window 内迁移；resolver outcome 只投影 issue #678 的 typed mapping head，只有 exact deep link redirect，其余 outcome 显式。 |
 | Operations/migration tooling | operator-only reconciliation API、typed mapping head 与 archive ledger | 不调用公共 raw/governance modes，也不要求 API adapter 重新分类 R6/R8；诊断需要独立 operator authority。 |
@@ -743,6 +761,12 @@ Canonical launch 要求后续 release plan 在同一 candidate revision 上证�
 - “已生效”来自 Receipt 读取，不是 Proposal `accepted`，也不是 job `queued`。
 - 自托管低风险单人发布受策略门禁约束，且仍需要真实的 `catalog:publish` 授权。高风险自审仍然禁止。
 - Registration 仍是独立聚合。后续登记失败不得把已经成功的 Catalog 发布显示成全部回滚。
+
+## Canonical-only ingest 与导入 — 2026-10-09
+
+导入向导在解析、核对和 preview 中保留输入显式提供的 canonical `id`，绝不根据提示性的名称/模块匹配生成身份；只有名称的输入仍由 canonical owner 判定为冲突。
+
+规格 #1080 Q5 / #1089 将普通来源上传改为 canonical-only，不再需要显式 skip 标志。结构解析、确定性节点连续性与模块发现保留；ingest 仅将保留的 schema version 用作连续性证据，不读取 legacy matcher override，也不写 legacy Spec/Binding 投影或旧审核任务。Canonical source pins 与 Observation/Review 证据仍由现有 owner 负责。已由 canonical 拥有的来源仍须通过经审核的 source-commit 流程，不能直接上传激活。导入 preview 要求精确 canonical identity 与当前 source pins；唯一属性名不代表身份。草稿创建及导入 staging/replay 不回退到旧 Binding 或草稿。缺失 pin、多次出现造成的歧义和过期 revision/value pin 均 fail closed，preview 冲突明确说明缺失 canonical identity。Operator comparison/cutover 工具、有界读取、历史、审计与 410 tombstone 不变。
 
 ## 决策完整性
 

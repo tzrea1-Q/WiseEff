@@ -1,201 +1,40 @@
 import type {
-  ActivateParameterSpecInput,
   BindingDraftResult,
   CreateBindingDraftInput,
   CreateNodeEnablementDraftInput,
-  DeprecateParameterSpecInput,
   NodeEnablementDraftResult,
-  ParameterTopologyRepository,
-  ReattributeParameterSpecInput,
-  RenameParameterSpecPropertyKeyInput,
-  RestoreParameterSpecInput
+  ParameterTopologyRepository
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
   BindingCompareEntry,
   BindingHistoryEntry,
   ConfigRevisionSummary,
-  IdentityMappingEvidence,
-  IdentityMappingTask,
-  ParameterSpecDetail,
-  ParameterSpecSummary,
   ProjectParameterBinding,
-  SpecReviewTask,
   TopologyTree,
   ValidationRun
 } from "@/domain/parameter-topology/types";
-import { guardReopenIdentityMapping, guardResolveIdentityMapping } from "@/domain/parameter-topology/identityMappingGuard";
 import { driverFallbackModuleId } from "@/domain/parameter-topology/moduleRegistry";
 import {
   withEffectiveEnablement,
   withSourceEnablement
 } from "@/domain/parameter-topology/nodeEnablement";
-import {
-  guardActivateParameterSpec,
-  guardDeprecateParameterSpec,
-  guardRestoreParameterSpec,
-  guardSemanticFieldPatch,
-  guardUpdateParameterSpec,
-  nextSpecLifecycleAfterRestore,
-  stableJson
-} from "@/domain/parameter-topology/specLifecycleGuard";
 import { mockApiError } from "./mockApiError";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
 const DEFAULT_PROJECT_ID = "project-teaching";
 const DEFAULT_CONFIG_SET_ID = "config-set-teaching";
 const DEFAULT_REVISION_ID = "revision-teaching-1";
-const DEFAULT_ORG_ID = "org-teaching";
 const CURRENT_REVISION_ALIASES = new Set(["current", "latest", "head"]);
 
-type SpecFixture = ParameterSpecDetail & { activatedAt?: string | null };
-
 type Store = {
-  specs: Map<string, SpecFixture>;
-  reviewTasks: SpecReviewTask[];
   bindingsByRevision: Map<string, ProjectParameterBinding[]>;
   bindingHistory: Map<string, BindingHistoryEntry[]>;
   bindingCompare: Map<string, BindingCompareEntry[]>;
   sourceTopology: TopologyTree;
   effectiveTopology: TopologyTree;
-  mappingTasks: IdentityMappingTask[];
   validationRuns: Map<string, ValidationRun>;
   configRevisions: Map<string, ConfigRevisionSummary[]>;
 };
-
-function asIdentityMappingEvidence(
-  value: IdentityMappingTask["evidence"]
-): IdentityMappingEvidence {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as IdentityMappingEvidence;
-}
-
-function cloneIdentityMappingTask(task: IdentityMappingTask): IdentityMappingTask {
-  return {
-    ...task,
-    candidateLogicalNodeIds: [...task.candidateLogicalNodeIds],
-    evidence: task.evidence == null ? task.evidence : structuredClone(task.evidence)
-  };
-}
-
-export type MockParameterTopologyRepositoryOptions = {
-  mappingTasks?: IdentityMappingTask[];
-  mappingDownstreamUsage?: Record<
-    string,
-    { drafts: number; submissions: number; operations: number }
-  >;
-};
-
-function seedSpecs(): Map<string, SpecFixture> {
-  const specs: SpecFixture[] = [
-    {
-      id: "spec-sc8562-gpio-int",
-      organizationId: DEFAULT_ORG_ID,
-      sourceKind: "dts",
-      specificationKey: "dts/sc8562/gpio_int",
-      propertyKey: "gpio_int",
-      driverModule: "sc8562",
-      lifecycle: "active",
-      currentVersionId: "specver-sc8562-gpio-int-3",
-      currentVersion: 3,
-      displayName: "SC8562 GPIO interrupt",
-      description: "Interrupt GPIO cells for the SC8562 charge pump.",
-      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
-      schemaDefault: null,
-      exampleValue: "<&gpio13 29 0>",
-      schemaNamespace: "vendor,sc8562/bindings",
-      units: null,
-      constraints: { cellsPerGroup: 3 },
-      documentation: "gpio_int is a three-cell interrupt specifier.",
-      compatiblePatterns: ["vendor,sc8562"],
-      policyTarget: null,
-      attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
-      attributionSubjectId: "asub:driver:sc8562",
-      referenceCount: 1,
-      activatedAt: "2026-07-01T00:00:00.000Z"
-    },
-    {
-      id: "spec-mt5788-gpio-int",
-      organizationId: DEFAULT_ORG_ID,
-      sourceKind: "dts",
-      specificationKey: "dts/mt5788/gpio_int",
-      propertyKey: "gpio_int",
-      driverModule: "mt5788",
-      lifecycle: "active",
-      currentVersionId: "specver-mt5788-gpio-int-1",
-      currentVersion: 1,
-      displayName: "MT5788 GPIO interrupt",
-      description: "Interrupt GPIO cells for the MT5788 wireless charger.",
-      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
-      schemaDefault: null,
-      exampleValue: "<&gpio6 15 0>",
-      schemaNamespace: "vendor,mt5788/bindings",
-      units: null,
-      constraints: { cellsPerGroup: 3 },
-      documentation: "gpio_int is a three-cell interrupt specifier.",
-      compatiblePatterns: ["mediatek,mt5788"],
-      policyTarget: null,
-      attributionModules: [],
-      attributionSubjectId: "asub:driver:mt5788",
-      referenceCount: 0,
-      activatedAt: "2026-07-01T00:00:00.000Z"
-    },
-    {
-      id: "spec-draft-mystery",
-      organizationId: DEFAULT_ORG_ID,
-      sourceKind: "manual",
-      specificationKey: "manual/mystery_prop",
-      propertyKey: "mystery_prop",
-      driverModule: null,
-      lifecycle: "draft",
-      currentVersionId: "specver-draft-mystery-1",
-      currentVersion: 1,
-      displayName: "Mystery property (draft)",
-      description: "Draft spec awaiting review activation.",
-      valueShape: { kind: "strings" },
-      schemaDefault: null,
-      exampleValue: null,
-      schemaNamespace: "manual",
-      units: null,
-      constraints: null,
-      documentation: null,
-      compatiblePatterns: null,
-      policyTarget: null,
-      attributionModules: [],
-      attributionSubjectId: "asub:driver:mt5788",
-      referenceCount: 0,
-      activatedAt: null
-    },
-    {
-      id: "spec-deprecated-legacy",
-      organizationId: DEFAULT_ORG_ID,
-      sourceKind: "manual",
-      specificationKey: "manual/legacy_status",
-      propertyKey: "legacy_status",
-      driverModule: null,
-      lifecycle: "deprecated",
-      currentVersionId: "specver-deprecated-legacy-1",
-      currentVersion: 1,
-      displayName: "Legacy status (deprecated)",
-      description: "Soft-retired definition retained for parse coverage.",
-      valueShape: { kind: "string" },
-      schemaDefault: null,
-      exampleValue: null,
-      schemaNamespace: "manual",
-      units: null,
-      constraints: {},
-      documentation: "Deprecated fixture",
-      compatiblePatterns: null,
-      policyTarget: null,
-      attributionModules: [],
-      attributionSubjectId: "asub:driver:sc8562",
-      referenceCount: 0,
-      activatedAt: null
-    }
-  ];
-  return new Map(specs.map((spec) => [spec.id, spec]));
-}
 
 function seedBindings(): ProjectParameterBinding[] {
   return [
@@ -439,24 +278,6 @@ function seedEffectiveTopology(): TopologyTree {
 function seedStore(): Store {
   const bindings = seedBindings();
   return {
-    specs: seedSpecs(),
-    reviewTasks: [
-      {
-        id: "review-task-gpio-int",
-        status: "open",
-        parameterSpecId: null,
-        propertyKey: "gpio_int",
-        driverModule: "unknown-ic",
-        evidence: ["compatible unmatched"],
-        candidates: [
-          { id: "spec-sc8562-gpio-int", label: "vendor,sc8562 / gpio_int", propertyKey: "gpio_int", driverModule: "sc8562" },
-          { id: "spec-mt5788-gpio-int", label: "mediatek,mt5788 / gpio_int", propertyKey: "gpio_int", driverModule: "mt5788" }
-        ],
-        ambiguous: true,
-        projectCount: 2,
-        createdAt: MOCK_NOW
-      }
-    ],
     bindingsByRevision: new Map([[`${DEFAULT_PROJECT_ID}:${DEFAULT_REVISION_ID}`, bindings]]),
     bindingHistory: new Map([
       [
@@ -487,27 +308,6 @@ function seedStore(): Store {
     ]),
     sourceTopology: seedSourceTopology(),
     effectiveTopology: seedEffectiveTopology(),
-    mappingTasks: [
-      {
-        id: "mapping-task-1",
-        projectId: DEFAULT_PROJECT_ID,
-        configRevisionId: DEFAULT_REVISION_ID,
-        previousLogicalNodeId: "logical-sc8562-old",
-        candidateLogicalNodeIds: ["logical-sc8562", "logical-mt5788"],
-        evidence: {
-          previousNodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
-          evidence: ["unit address matched", "compatible ambiguous"],
-          candidates: [
-            { logicalNodeId: "logical-sc8562", nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E", name: "sc8562", unitAddress: "6E" },
-            { logicalNodeId: "logical-mt5788", nodeLocator: "/amba/i2c@FDF5E000/mt5788@55", name: "mt5788", unitAddress: "55" }
-          ],
-          risk: "high"
-        },
-        taskKind: "identity-ambiguity",
-        status: "open",
-        createdAt: MOCK_NOW
-      }
-    ],
     validationRuns: new Map([
       [
         `${DEFAULT_PROJECT_ID}:${DEFAULT_REVISION_ID}`,
@@ -534,96 +334,6 @@ function seedStore(): Store {
         ]
       ]
     ])
-  };
-}
-
-function toSummary(detail: SpecFixture): ParameterSpecSummary {
-  return {
-    id: detail.id,
-    organizationId: detail.organizationId,
-    sourceKind: detail.sourceKind,
-    specificationKey: detail.specificationKey,
-    propertyKey: detail.propertyKey,
-    driverModule: detail.driverModule,
-    lifecycle: detail.lifecycle,
-    currentVersionId: detail.currentVersionId,
-    currentVersion: detail.currentVersion,
-    valueShape:
-      detail.valueShape && typeof detail.valueShape === "object" && !Array.isArray(detail.valueShape)
-        ? { ...(detail.valueShape as Record<string, unknown>) }
-        : detail.valueShape,
-    compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null,
-    attributionModules: detail.attributionModules ? [...detail.attributionModules] : [],
-    attributionSubjectId: detail.attributionSubjectId ?? null,
-    referenceCount: detail.referenceCount ?? 0
-  };
-}
-
-function cloneDetail(detail: SpecFixture): ParameterSpecDetail {
-  const { activatedAt: _activatedAt, ...publicDetail } = detail;
-  return {
-    ...publicDetail,
-    compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null,
-    constraints: detail.constraints ? { ...detail.constraints } : null,
-    valueShape:
-      detail.valueShape && typeof detail.valueShape === "object" && !Array.isArray(detail.valueShape)
-        ? { ...(detail.valueShape as Record<string, unknown>) }
-        : detail.valueShape,
-    referenceCount: detail.referenceCount ?? 0,
-    attributionModules: detail.attributionModules ? [...detail.attributionModules] : [],
-    cutover: detail.cutover
-      ? {
-          ...detail.cutover,
-          impact: { ...detail.cutover.impact }
-        }
-      : undefined
-  };
-}
-
-function mockActivationContentChanged(
-  existing: SpecFixture,
-  input: ActivateParameterSpecInput
-): boolean {
-  if (stableJson(existing.valueShape) !== stableJson(input.valueShape)) return true;
-  if (stableJson(existing.constraints ?? {}) !== stableJson(input.constraints ?? {})) return true;
-  if ((existing.documentation ?? "").trim() !== input.documentation.trim()) return true;
-  if (input.displayName !== undefined && input.displayName !== (existing.displayName ?? null)) return true;
-  if (input.description !== undefined && input.description !== (existing.description ?? null)) return true;
-  if (input.units !== undefined && input.units !== (existing.units ?? null)) return true;
-  if (
-    input.exampleValue !== undefined &&
-    stableJson(input.exampleValue) !== stableJson(existing.exampleValue ?? null)
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function countTipBindings(store: Store, specId: string, versionId: string | null): number {
-  if (!versionId) return 0;
-  const seen = new Set<string>();
-  for (const bindings of store.bindingsByRevision.values()) {
-    for (const binding of bindings) {
-      if (binding.parameterSpecId === specId && binding.parameterSpecVersionId === versionId) {
-        seen.add(binding.id);
-      }
-    }
-  }
-  return seen.size;
-}
-
-function applyActivateContent(existing: SpecFixture, input: ActivateParameterSpecInput): SpecFixture {
-  return {
-    ...existing,
-    lifecycle: "active",
-    activatedAt: existing.activatedAt ?? MOCK_NOW,
-    valueShape: input.valueShape,
-    constraints: input.constraints,
-    documentation: input.documentation,
-    displayName: input.displayName === undefined ? existing.displayName : input.displayName,
-    description: input.description === undefined ? existing.description : input.description,
-    units: input.units === undefined ? existing.units : input.units,
-    exampleValue: input.exampleValue === undefined ? existing.exampleValue : input.exampleValue
   };
 }
 
@@ -714,336 +424,14 @@ function resolveListedRevisionId(
 
 /**
  * In-memory ParameterTopologyRepository for mock runtime demos and component tests.
- * Fixtures express the semantic model (specs, bindings, topology, review/mapping tasks, validation).
+ * Fixtures retain bindings, structural topology, node enablement, revisions and validation.
  * Identity is parameterSpecId / projectParameterBindingId — never path-derived flat keys.
  */
-export function createMockParameterTopologyRepository(
-  options: MockParameterTopologyRepositoryOptions = {}
-): ParameterTopologyRepository {
+export function createMockParameterTopologyRepository(): ParameterTopologyRepository {
   const store = seedStore();
-  if (options.mappingTasks) {
-    store.mappingTasks = options.mappingTasks.map(cloneIdentityMappingTask);
-  }
-  const mappingDownstreamUsage = new Map(Object.entries(options.mappingDownstreamUsage ?? {}));
   let draftCounter = 0;
 
   return {
-    async listSpecs(query) {
-      let items = Array.from(store.specs.values()).map(toSummary);
-      if (query.q) {
-        const needle = query.q.toLocaleLowerCase();
-        items = items.filter(
-          (item) =>
-            item.propertyKey?.toLocaleLowerCase().includes(needle) ||
-            item.driverModule?.toLocaleLowerCase().includes(needle) ||
-            item.specificationKey.toLocaleLowerCase().includes(needle) ||
-            item.id.toLocaleLowerCase().includes(needle)
-        );
-      }
-      if (query.sourceKind) {
-        items = items.filter((item) => item.sourceKind === query.sourceKind);
-      }
-      if (query.lifecycle) {
-        items = items.filter((item) => item.lifecycle === query.lifecycle);
-      }
-      if (query.attributionSubjectId) {
-        items = items.filter((item) => item.attributionSubjectId === query.attributionSubjectId);
-      }
-      if (query.propertyKey) {
-        items = items.filter((item) => item.propertyKey === query.propertyKey);
-      }
-      return items;
-    },
-
-    async getSpec(specId) {
-      const detail = store.specs.get(specId);
-      if (!detail) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      return cloneDetail(detail);
-    },
-
-    async createParameterSpec(_input) {
-      throw mockApiError("GONE", "Legacy structural writes are retired.", {
-        reason: "legacy-surface-retired",
-        successor: "/api/v2/catalog",
-        retryable: false,
-      });
-    },
-
-    async activateParameterSpec(specId, input: ActivateParameterSpecInput) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      const activateGate = guardActivateParameterSpec(existing.lifecycle, specId);
-      if (!activateGate.ok) throw mockApiError(activateGate.code, activateGate.message, activateGate.details);
-      const createSuccessor = existing.lifecycle === "active" && mockActivationContentChanged(existing, input);
-      if (createSuccessor) {
-        const nextVersion = (existing.currentVersion ?? 1) + 1;
-        const nextVersionId = `${existing.id}:v${nextVersion}`;
-        const tipBindingCount = countTipBindings(store, specId, existing.currentVersionId);
-        if (tipBindingCount === 0) {
-          const finalized = applyActivateContent(existing, input);
-          finalized.currentVersion = nextVersion;
-          finalized.currentVersionId = nextVersionId;
-          finalized.cutover = undefined;
-          store.specs.set(specId, finalized);
-          return cloneDetail(finalized);
-        }
-        const staged: SpecFixture = {
-          ...existing,
-          cutover: {
-            runId: `cutover-${specId}-${nextVersion}`,
-            status: "preparing",
-            fromVersionId: existing.currentVersionId ?? `${existing.id}:v${existing.currentVersion ?? 1}`,
-            toVersionId: nextVersionId,
-            fromVersion: existing.currentVersion ?? 1,
-            toVersion: nextVersion,
-            impact: {
-              pending: tipBindingCount,
-              ready: 0,
-              incompatible: 0,
-              skipped: 0,
-              total: tipBindingCount
-            }
-          }
-        };
-        store.specs.set(specId, staged);
-        return cloneDetail(staged);
-      }
-      const updated = applyActivateContent(existing, input);
-      store.specs.set(specId, updated);
-      return cloneDetail(updated);
-    },
-
-    async updateParameterSpec(specId, input) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      const updateGate = guardUpdateParameterSpec(existing.lifecycle, specId);
-      if (!updateGate.ok) throw mockApiError(updateGate.code, updateGate.message, updateGate.details);
-      const semanticGate = guardSemanticFieldPatch(
-        existing.lifecycle,
-        specId,
-        {
-          valueShape: existing.valueShape,
-          constraints: existing.constraints,
-          units: existing.units
-        },
-        {
-          valueShape: input.valueShape,
-          constraints: input.constraints,
-          units: input.units
-        }
-      );
-      if (!semanticGate.ok) throw mockApiError(semanticGate.code, semanticGate.message, semanticGate.details);
-      const updated: SpecFixture = {
-        ...existing,
-        valueShape: input.valueShape ?? existing.valueShape,
-        constraints: input.constraints,
-        documentation: input.documentation,
-        displayName: input.displayName === undefined ? existing.displayName : input.displayName,
-        description: input.description === undefined ? existing.description : input.description,
-        units: input.units === undefined ? existing.units : input.units,
-        exampleValue: input.exampleValue === undefined ? existing.exampleValue : input.exampleValue
-      };
-      store.specs.set(specId, updated);
-      return cloneDetail(updated);
-    },
-
-    async deprecateParameterSpec(specId, _input: DeprecateParameterSpecInput) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      const deprecateGate = guardDeprecateParameterSpec(existing.lifecycle, specId);
-      if (!deprecateGate.ok) throw mockApiError(deprecateGate.code, deprecateGate.message, deprecateGate.details);
-      const updated: SpecFixture = { ...existing, lifecycle: "deprecated" };
-      store.specs.set(specId, updated);
-      return cloneDetail(updated);
-    },
-
-    async restoreParameterSpec(specId, _input: RestoreParameterSpecInput) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      const restoreGate = guardRestoreParameterSpec(existing.lifecycle, specId);
-      if (!restoreGate.ok) throw mockApiError(restoreGate.code, restoreGate.message, restoreGate.details);
-      const updated: SpecFixture = {
-        ...existing,
-        lifecycle: nextSpecLifecycleAfterRestore(existing.activatedAt)
-      };
-      store.specs.set(specId, updated);
-      return cloneDetail(updated);
-    },
-
-    async reattributeParameterSpec(specId, input: ReattributeParameterSpecInput) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      const nextSubjectId = input.attributionSubjectId.trim();
-      const propertyKey = existing.propertyKey;
-      for (const [otherId, other] of store.specs) {
-        if (
-          otherId !== specId &&
-          other.attributionSubjectId === nextSubjectId &&
-          other.propertyKey === propertyKey
-        ) {
-          throw mockApiError(
-            "CONFLICT",
-            "A parameter definition already exists for this subject and property key.",
-            { parameterSpecId: otherId, lifecycle: other.lifecycle }
-          );
-        }
-      }
-      const updated: SpecFixture = {
-        ...existing,
-        attributionSubjectId: nextSubjectId,
-        driverModule: nextSubjectId,
-      };
-      store.specs.set(specId, updated);
-      return cloneDetail(updated);
-    },
-
-    async renameParameterSpecPropertyKey(specId, input: RenameParameterSpecPropertyKeyInput) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      const referenceCount = existing.referenceCount ?? 0;
-      if (referenceCount > 0) {
-        throw mockApiError(
-          "CONFLICT",
-          `Cannot rename property_key while ${referenceCount} project binding(s) reference this definition.`,
-          { parameterSpecId: specId, referenceCount }
-        );
-      }
-      const nextPropertyKey = input.propertyKey.trim();
-      for (const [otherId, other] of store.specs) {
-        if (
-          otherId !== specId &&
-          other.attributionSubjectId === existing.attributionSubjectId &&
-          other.propertyKey === nextPropertyKey
-        ) {
-          throw mockApiError(
-            "CONFLICT",
-            "A parameter definition already exists for this subject and property key.",
-            { parameterSpecId: otherId, lifecycle: other.lifecycle }
-          );
-        }
-      }
-      const updated: SpecFixture = {
-        ...existing,
-        propertyKey: nextPropertyKey,
-        specificationKey: `manual/${nextPropertyKey}`,
-      };
-      store.specs.set(specId, updated);
-      return cloneDetail(updated);
-    },
-
-    async getSpecVersionCutoverImpact(specId) {
-      const existing = store.specs.get(specId);
-      if (!existing?.cutover) {
-        throw mockApiError("CONFLICT", `No open cutover for spec: ${specId}`, { specId });
-      }
-      return existing.cutover;
-    },
-
-    async prepareSpecVersionCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Cutover prepare is unavailable in mock mode (${specId}).`, { specId });
-    },
-
-    async finalizeSpecVersionCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Cutover finalize is unavailable in mock mode (${specId}).`, { specId });
-    },
-
-    async previewPropertyKeyCutover(specId, input: { propertyKey: string }) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      return {
-        parameterSpecId: specId,
-        fromKey: existing.propertyKey ?? "",
-        toKey: input.propertyKey,
-        referenceCount: existing.referenceCount ?? 0,
-        writesCatalog: false as const,
-        writesSource: false as const,
-        inlineRenameEligible: (existing.referenceCount ?? 0) === 0,
-        startBlockers: [],
-        locations: [],
-      };
-    },
-    async startPropertyKeyCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Property-key cutover start is unavailable in mock mode (${specId}).`, { specId });
-    },
-    async preparePropertyKeyCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Property-key cutover prepare is unavailable in mock mode (${specId}).`, { specId });
-    },
-    async finalizePropertyKeyCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Property-key cutover finalize is unavailable in mock mode (${specId}).`, { specId });
-    },
-    async getPropertyKeyCutover() {
-      return null;
-    },
-
-    async listSpecReviewTasks(query = {}) {
-      let items = store.reviewTasks.map((task) => ({
-        ...task,
-        evidence: [...task.evidence],
-        candidates: task.candidates.map((candidate) => ({ ...candidate }))
-      }));
-      if (query.status) {
-        items = items.filter((task) => task.status === query.status);
-      }
-      const limit = query.limit ?? items.length;
-      return { items: items.slice(0, limit), nextCursor: null };
-    },
-
-    async resolveSpecReviewTask(taskId, input) {
-      const task = store.reviewTasks.find((item) => item.id === taskId);
-      if (!task) {
-        throw mockApiError("NOT_FOUND", `Spec review task not found: ${taskId}`, { taskId });
-      }
-      task.status = input.decision;
-      task.reason = input.reason;
-      task.resolvedAt = MOCK_NOW;
-      if (input.parameterSpecId) {
-        task.parameterSpecId = input.parameterSpecId;
-      }
-      if (input.createSpec && task.propertyKey) {
-        const newId = `spec-manual-${task.propertyKey}`;
-        store.specs.set(newId, {
-          id: newId,
-          organizationId: DEFAULT_ORG_ID,
-          sourceKind: "manual",
-          specificationKey: `manual/${task.propertyKey}`,
-          propertyKey: task.propertyKey,
-          driverModule: task.driverModule,
-          lifecycle: "draft",
-          currentVersionId: `specver-${newId}-1`,
-          currentVersion: 1,
-          displayName: task.propertyKey,
-          description: input.reason,
-          valueShape: { kind: "strings" },
-          schemaDefault: null,
-          exampleValue: null,
-          schemaNamespace: "manual",
-          units: null,
-          constraints: null,
-          documentation: input.reason,
-          compatiblePatterns: null,
-          policyTarget: null,
-          attributionModules: []
-        });
-        task.parameterSpecId = newId;
-      }
-    },
-
     async listBindings(projectId, revisionId) {
       const key = `${projectId}:${revisionId}`;
       const seeded = store.bindingsByRevision.get(key);
@@ -1095,83 +483,8 @@ export function createMockParameterTopologyRepository(
       };
     },
 
-    async listMappingTasks(projectId) {
-      return store.mappingTasks
-        .filter((task) => !projectId || task.projectId === projectId)
-        .map(cloneIdentityMappingTask);
-    },
-
-    async resolveMapping(taskId, input) {
-      const task = store.mappingTasks.find((item) => item.id === taskId);
-      const evidence = asIdentityMappingEvidence(task?.evidence);
-      const result = guardResolveIdentityMapping({
-        taskId,
-        status: task?.status,
-        taskKind: task?.taskKind,
-        decision: input.decision,
-        selectedLogicalNodeId: input.selectedLogicalNodeId,
-        priorSelectedLogicalNodeId: evidence.selectedLogicalNodeId,
-        previousLogicalNodeId: task?.previousLogicalNodeId,
-        candidateLogicalNodeIds: task?.candidateLogicalNodeIds
-      });
-      if (!result.ok) throw mockApiError(result.code, result.message, result.details);
-      if (input.decision === "resolved") {
-        const selectedLogicalNodeId = input.selectedLogicalNodeId;
-        if (task!.status === "resolved" && evidence.selectedLogicalNodeId === selectedLogicalNodeId) {
-          return;
-        }
-        if (task!.status === "resolved") {
-          const downstream = mappingDownstreamUsage.get(task!.id) ?? {
-            drafts: 0,
-            submissions: 0,
-            operations: 0
-          };
-          if (downstream.drafts + downstream.submissions + downstream.operations > 0) {
-            throw mockApiError(
-              "CONFLICT",
-              "Completed mapping has downstream workflow/device usage; migrate those references before re-resolving.",
-              {
-                code: "identity-mapping-migration-required",
-                taskId: task!.id,
-                downstream
-              }
-            );
-          }
-        }
-        if (!selectedLogicalNodeId || !task!.candidateLogicalNodeIds.includes(selectedLogicalNodeId)) {
-          throw mockApiError(
-            "VALIDATION_FAILED",
-            "selectedLogicalNodeId must be one of the candidate ids.",
-            {
-              selectedLogicalNodeId,
-              candidates: task!.candidateLogicalNodeIds
-            }
-          );
-        }
-        const selectedCandidate = evidence.candidates?.find(
-          (candidate) => candidate.logicalNodeId === selectedLogicalNodeId
-        );
-        task!.evidence = {
-          ...evidence,
-          selectedLogicalNodeId,
-          selectedNodeLocator: selectedCandidate?.nodeLocator ?? null,
-          selectedName: selectedCandidate?.name ?? null,
-          selectedUnitAddress: selectedCandidate?.unitAddress ?? null,
-          continuityReusable: true
-        };
-      }
-      task!.status = input.decision === "new-identity" ? "new_identity" : input.decision;
-      task!.reason = input.reason;
-      task!.resolvedAt = MOCK_NOW;
-    },
-
-    async reopenMapping(taskId, input) {
-      const task = store.mappingTasks.find((item) => item.id === taskId);
-      const result = guardReopenIdentityMapping({ taskId, status: task?.status });
-      if (!result.ok) throw mockApiError(result.code, result.message, result.details);
-      task!.status = "open";
-      task!.reason = input.reason;
-      task!.resolvedAt = null;
+    async listMappingTasks() {
+      return [];
     },
 
     async validateRevision(projectId, revisionId) {

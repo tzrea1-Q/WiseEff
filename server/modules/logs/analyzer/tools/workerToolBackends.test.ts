@@ -47,6 +47,30 @@ it("serves the frozen canonical context without making a database parameter read
   expect(query).not.toHaveBeenCalled();
 });
 
+it("uses an immutable database root without wrapping query for related-parameter or knowledge search", async () => {
+  const query = vi.fn(async (sql: string) => {
+    expect(sql).not.toContain("ps.specification_key");
+    return { rows: [], rowCount: 0 };
+  });
+  const db = Object.freeze({ query });
+  const tools = createWorkerLogAnalysisToolBackends({
+    db,
+    organizationId: "org-1",
+    relatedParameterId: "binding-1",
+    relatedParameterSnapshot: snapshot,
+    logDomainId: "domain-1"
+  });
+  expect(await tools.loadRelatedParameterContext!()).toMatchObject({ name: snapshot.propertyKey, snapshot });
+  expect(query).not.toHaveBeenCalled();
+  await tools.searchDomainKnowledge("iin_max");
+  expect(db.query).toBe(query);
+  expect(query).toHaveBeenCalledWith(
+    expect.stringContaining("log_domain_knowledge_links"),
+    ["org-1", "domain-1"]
+  );
+  expect(query).toHaveBeenCalledWith(expect.stringContaining("knowledge_entries"), expect.any(Array));
+});
+
 it("fails closed when the related binding has no matching frozen snapshot", () => {
   const db = { query: vi.fn() } as unknown as Queryable;
   expect(() => createWorkerLogAnalysisToolBackends({ db, organizationId: "org-1", relatedParameterId: "binding-1" })).toThrow(

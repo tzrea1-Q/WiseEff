@@ -12,7 +12,6 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { listParameterDefinitionsForImport } from "./importBatchRepository";
 import { getProjectParameterForUpdate, listParameters } from "./repository";
 import {
   createChangeRequest,
@@ -159,24 +158,6 @@ describe.skipIf(!databaseAvailable)("D6 lifecycle ranking", () => {
     });
   });
 
-  it("import matching reads the pinned version unit, not the draft successor", async () => {
-    const candidates = await listParameterDefinitionsForImport(db, {
-      organizationId: ORG,
-      projectId: PROJECT,
-      names: [PROPERTY_KEY],
-      definitionIds: []
-    });
-    expect(candidates).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: SPEC,
-          unit: "mA",
-          description: "pinned-deprecated-meaning",
-          currentValue: "<29>"
-        })
-      ])
-    );
-  });
 
   it("change-request display localizes a pinned legacy provisional description without rewriting it", async () => {
     await db.query(`alter table parameter_change_requests drop column if exists parameter_definition_id`);

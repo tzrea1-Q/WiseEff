@@ -256,7 +256,6 @@ describe("ParameterImportWizard", () => {
     );
     renderWizard({
       parameterActions: {
-        getParameter: vi.fn(),
         submitChanges: vi.fn(),
         stashChanges: vi.fn(),
         discardDrafts: vi.fn(),
@@ -305,7 +304,6 @@ describe("ParameterImportWizard", () => {
 
     renderWizard({
       parameterActions: {
-        getParameter: vi.fn(),
         submitChanges: vi.fn(),
         stashChanges: vi.fn(),
         discardDrafts: vi.fn(),
@@ -399,7 +397,6 @@ describe("ParameterImportWizard", () => {
     renderWizard(
       {
         parameterActions: {
-          getParameter: vi.fn(),
           submitChanges: vi.fn(),
           stashChanges: vi.fn(),
           discardDrafts: vi.fn(),
@@ -437,6 +434,42 @@ describe("ParameterImportWizard", () => {
 
     await within(dialog).findByRole("region", { name: "批次预览" });
     expect(createImportPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["canonical-binding", undefined])("preserves supplied identity %s without deriving it from names", async (id) => {
+    vi.spyOn(dtsStructuredRuntime, "resolveDtsStructuredRepository").mockReturnValue({
+      listConfigSets: vi.fn().mockResolvedValue([{ id: "cs-1", name: "default" }])
+    } as never);
+    vi.spyOn(parameterTopologyResolve, "resolveParameterTopologyRepository").mockReturnValue({
+      getTopology: vi.fn().mockResolvedValue({ revisionId: "canonical-revision" }),
+      listBindings: vi.fn().mockResolvedValue([
+        { id: "canonical-binding", propertyKey: "iin_max", driverModule: "Canonical Driver", rawValue: "3000" }
+      ])
+    } as never);
+    const createImportPreview = vi.fn().mockResolvedValue({
+      id: "batch-identity", items: [], summary: { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 }
+    });
+    renderWizard({
+      runtimeMode: "api",
+      parameterActions: {
+        submitChanges: vi.fn(), stashChanges: vi.fn(), discardDrafts: vi.fn(),
+        withdrawSubmissionRound: vi.fn(), reviewChange: vi.fn(), createImportPreview,
+        applyImportBatch: vi.fn(), parseDtsImport: vi.fn(), refresh: vi.fn()
+      }
+    });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fillPasteImportContent(dialog, JSON.stringify([
+      { id, name: "iin_max", module: "Canonical Driver", currentValue: "3100", risk: "Low" }
+    ]));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await within(dialog).findByRole("region", { name: "解析与校验" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "通过" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await waitFor(() => expect(createImportPreview).toHaveBeenCalledTimes(1));
+    const item = createImportPreview.mock.calls[0]![0].items[0];
+    if (id) expect(item).toHaveProperty("id", id);
+    else expect(item).not.toHaveProperty("id");
   });
 
   it("matches and reviews only canonical Bindings in API mode, never legacy shell rows", async () => {

@@ -23,7 +23,7 @@ import {
 } from "./compile-vendor-catalog-release";
 import { firstReleaseBundle } from "../server/testing/parameterCatalog/cutoverPopulatedFixture";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
-import { getRootPostgresPool, createPostgresDatabase, type Database, type Queryable, type RootDatabase } from "../server/shared/database/client";
+import { getRootPostgresPool, createPostgresDatabase, isRootDatabase, type Database, type Queryable, type RootDatabase } from "../server/shared/database/client";
 import type { AuthContext } from "../server/modules/auth/types";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../server/modules/audit/trustedRefusalSink";
@@ -191,12 +191,6 @@ const qualityFixtureSubmitterAuth: AuthContext = {
   organization: { id: "org-chargelab", name: "ChargeLab" },
   roles: [{ projectId: "aurora", roleId: "software-user" }],
   permissions: ["parameter:view", "parameter:edit"]
-};
-
-type BindingFixtureRow = {
-  binding_id: string;
-  parameter_spec_id: string;
-  current_value: string;
 };
 
 type FixtureCollisionRow = Record<string, string | number | boolean | null>;
@@ -519,128 +513,13 @@ async function seedCanonicalQualityVisualReview(
 /**
  * Seed one product-shaped, quality-only review row after the normal M1 seed.
  * The visual gate needs a populated review workbench as well as the empty-state
- * coverage held by component tests. Cleanup is restricted to the request,
- * submission round, and submission item fixture identities before recreation.
+ * coverage held by component tests. Canonical draft and software-review owners
+ * pin the source evidence; historical fixture cleanup remains ownership-checked.
  */
 export async function seedQualityVisualReview(db: Database) {
-  assertVisualReviewFixtureConfigured();
-  return db.transaction(async (tx) => {
-    await cleanupQualityVisualReviewRows(tx);
-
-    const binding = await tx.query<BindingFixtureRow>(
-      `
-      select
-        b.id as binding_id,
-        b.parameter_spec_id,
-        current_revision.raw_value as current_value
-      from project_parameter_bindings b
-      inner join parameter_specs ps on ps.id = b.parameter_spec_id
-      inner join lateral (
-        select r.raw_value
-        from project_parameter_binding_revisions r
-        where r.binding_id = b.id
-          and r.raw_value is not null
-        order by r.created_at desc, r.id desc
-        limit 1
-      ) current_revision on true
-      where b.organization_id = 'org-chargelab'
-        and b.project_id = 'aurora'
-        and ps.specification_key = $1
-      order by b.id
-      limit 1
-      `,
-      [FIXTURE_SPECIFICATION_KEY]
-    );
-    const selected = binding.rows[0];
-    if (!selected) {
-      throw new Error(
-        `Quality visual review fixture requires the seeded Aurora binding ${FIXTURE_SPECIFICATION_KEY}.`
-      );
-    }
-
-    // Pin the review-detail module intro to the linux visual baseline. Current
-    // seed classifies battery_charge_balance as a driver-group; the Hosted
-    // snapshot still expects the node-type sentence.
-    await tx.query(
-      `
-      update parameter_modules
-      set description = 'battery_charge_balance DTS 节点类型模块。'
-      where organization_id = 'org-chargelab'
-        and name = 'battery_charge_balance'
-      `,
-    );
-
-    await tx.query(
-      `
-      insert into parameter_submission_rounds (
-        id, organization_id, project_id, submitter_user_id, status, summary, created_at, updated_at
-      ) values ($1, 'org-chargelab', 'aurora', $3, $4, $2, $5, $5)
-      `,
-      [
-        FIXTURE_ROUND_ID,
-        FIXTURE_ROUND_SUMMARY,
-        FIXTURE_SUBMITTER_USER_ID,
-        FIXTURE_STATUS,
-        FIXTURE_TIMESTAMP
-      ]
-    );
-
-    await tx.query(
-      `
-      insert into parameter_change_requests (
-        id, organization_id, submission_round_id, project_id,
-        base_version, current_value, target_value, status, submitter_user_id,
-        assigned_to_user_id, workflow_hardware_committer_user_id,
-        workflow_software_committer_user_id, workflow_software_user_id,
-        parameter_spec_id, project_parameter_binding_id, action,
-        created_at, updated_at
-      ) values (
-        $1, 'org-chargelab', $2, 'aurora',
-        1, $5, $6, $7, $8,
-        $9, $9, $10, $11,
-        $3, $4, 'set',
-        $12, $12
-      )
-      `,
-      [
-        FIXTURE_REQUEST_ID,
-        FIXTURE_ROUND_ID,
-        selected.parameter_spec_id,
-        selected.binding_id,
-        selected.current_value,
-        FIXTURE_TARGET_VALUE,
-        FIXTURE_STATUS,
-        FIXTURE_SUBMITTER_USER_ID,
-        FIXTURE_HARDWARE_COMMITTER_USER_ID,
-        FIXTURE_SOFTWARE_COMMITTER_USER_ID,
-        FIXTURE_SOFTWARE_USER_ID,
-        FIXTURE_TIMESTAMP
-      ]
-    );
-
-    await tx.query(
-      `
-      insert into parameter_submission_items (
-        id, organization_id, submission_round_id, change_request_id,
-        current_value, target_value, reason, project_parameter_binding_id, action
-      ) values (
-        $1, 'org-chargelab', $2, $3,
-        $4, $5, $7, $6, 'set'
-      )
-      `,
-      [
-        FIXTURE_ITEM_ID,
-        FIXTURE_ROUND_ID,
-        FIXTURE_REQUEST_ID,
-        selected.current_value,
-        FIXTURE_TARGET_VALUE,
-        selected.binding_id,
-        FIXTURE_ITEM_REASON
-      ]
-    );
-
-    return { requestId: FIXTURE_REQUEST_ID, roundId: FIXTURE_ROUND_ID, bindingId: selected.binding_id };
-  });
+  await assertVisualReviewFixtureDatabase(db);
+  if (!isRootDatabase(db)) throw new Error("Quality canonical review fixture requires the root database.");
+  return seedCanonicalQualityVisualReview(db, createObjectStoreFromEnv(loadServerEnv(process.env)));
 }
 
 async function main() {
@@ -650,19 +529,20 @@ async function main() {
     throw new Error("DATABASE_URL is required to seed the quality visual review fixture.");
   }
   const db = createPostgresDatabase(env.DATABASE_URL);
-  const objectStore = createObjectStoreFromEnv(env);
-  if (process.argv.includes("--cleanup")) {
-    await cleanupCanonicalQualityVisualReview(db);
-    await cleanupQualityVisualReview(db);
-    console.log(`Removed deterministic quality review fixture ${FIXTURE_REQUEST_ID}.`);
-    return;
+  try {
+    if (process.argv.includes("--cleanup")) {
+      await cleanupCanonicalQualityVisualReview(db);
+      await cleanupQualityVisualReview(db);
+      console.log("Cleaned canonical quality review fixture and checked exact historical fixture ownership.");
+      return;
+    }
+    const canonical = await seedQualityCanonicalBindings(db);
+    console.log(`Seeded quality canonical bindings: ${JSON.stringify(canonical.written)}.`);
+    const seeded = await seedQualityVisualReview(db);
+    console.log(`Seeded canonical quality review request ${seeded.requestId} on ${seeded.bindingId}.`);
+  } finally {
+    await db.close();
   }
-  const canonical = await seedQualityCanonicalBindings(db);
-  console.log(`Seeded quality canonical bindings: ${JSON.stringify(canonical.written)}.`);
-  const seeded = await seedQualityVisualReview(db);
-  console.log(`Seeded deterministic quality review fixture ${seeded.requestId} on ${seeded.bindingId}.`);
-  const canonicalReview = await seedCanonicalQualityVisualReview(db, objectStore);
-  console.log(`Seeded canonical quality review request ${canonicalReview.requestId} on ${canonicalReview.bindingId}.`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

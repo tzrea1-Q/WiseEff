@@ -185,7 +185,7 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   });
 
   const db = createPostgresDatabase(workerUrl, { tracing: defaultTracingBoundary });
-  await resolveParameterIdentityMode(db);
+  await resolveParameterIdentityMode(db, env);
 
   const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });
   const observability = resolveLogWorkerObservabilityConfig(raw);

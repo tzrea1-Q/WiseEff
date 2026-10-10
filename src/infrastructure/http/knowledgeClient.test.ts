@@ -283,7 +283,7 @@ describe("createHttpKnowledgeRepository", () => {
     expect((await repository.removeDefinitionReference("entry-1", definitionId)).parameterReferences).toEqual([]);
   });
 
-  it("adds and removes parameter references with the encoded spec id and maps the reference list", async () => {
+  it("reads historical parameter references and removes them with the encoded spec id", async () => {
     const referencedDto: KnowledgeEntryDto = {
       ...baseEntryDto,
       parameterReferences: [
@@ -303,19 +303,17 @@ describe("createHttpKnowledgeRepository", () => {
     );
     const repository = createRepository(fetchMock);
 
-    const added = await repository.addParameterReference("entry-1", "pspec:abc");
-    expect(added.parameterReferences[0]).toMatchObject({
+    const entry = await repository.get("entry-1");
+    expect(entry?.parameterReferences[0]).toMatchObject({
       specId: "pspec:abc",
       lifecycle: "deprecated",
       driverModule: "SC8562"
     });
-    expect(String(fetchMock.mock.calls[0][0])).toBe(
-      "http://127.0.0.1:8787/api/v1/knowledge/entries/entry-1/parameter-references/pspec%3Aabc"
-    );
-    expect(fetchMock.mock.calls[0][1]?.method).toBe("PUT");
-
     const removed = await repository.removeParameterReference("entry-1", "pspec:abc");
     expect(removed.parameterReferences).toHaveLength(0);
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      "http://127.0.0.1:8787/api/v1/knowledge/entries/entry-1/parameter-references/pspec%3Aabc"
+    );
     expect(fetchMock.mock.calls[1][1]?.method).toBe("DELETE");
   });
 

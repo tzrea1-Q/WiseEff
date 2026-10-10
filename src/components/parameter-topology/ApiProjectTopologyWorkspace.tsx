@@ -44,6 +44,7 @@ import {
 import type { BindingEditInput, BindingEditValidation } from "./BindingDetailPanel";
 import {
   DtsBindingDraftTray,
+  mixedDraftOwnerMessage,
   type PendingTopologyDraft
 } from "./DtsBindingDraftTray";
 import { DtsNodeEnablementDialog } from "./DtsNodeEnablementDialog";
@@ -1089,7 +1090,7 @@ export function ApiProjectTopologyWorkspace({
           );
           if (submittedDrafts.some((draft) => draft.kind !== "binding")) {
             return {
-              notification: "节点启用草稿仍属于旧流程；请单独使用旧流程提交，已阻止混合提交。"
+              notification: mixedDraftOwnerMessage
             };
           }
           const catalog = await canonicalRepository.getCatalog();
@@ -1196,12 +1197,9 @@ export function ApiProjectTopologyWorkspace({
           propertyKey
         });
       }
-      if (runtimeMode === "mock" && repository?.getSpec) {
-        return repository.getSpec(definitionId);
-      }
       return Promise.reject(new Error("canonical definition repository unavailable"));
     },
-    [canonicalRepository, repository, runtimeMode]
+    [canonicalRepository]
   );
 
   const loadPrimaryDtsSource = useCallback(async () => {

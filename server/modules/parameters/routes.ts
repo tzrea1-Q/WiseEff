@@ -7,8 +7,9 @@ import {
   type TrustedRefusalAuditSink
 } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
-import { getRootPostgresPool, isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
-import { listCatalogBindingRowsForProject, loadPublishedCatalog, type CatalogBindingView } from "../parameter-bindings/catalogProjectValueSync";
+import { getRootPostgresPool, isRootDatabase, type Database } from "../../shared/database/client";
+import { resolveCanonicalParameter } from "../parameter-bindings/canonicalCompatibilityRead";
+import { listCatalogBindingRowsForProject, loadPublishedCatalog, readCanonicalBindingChangeHistory, type CatalogBindingView } from "../parameter-bindings/catalogProjectValueSync";
 import { catalogLegacyGoneResult, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -28,13 +29,7 @@ import {
   updateProjectForAuth
 } from "./projectService";
 import {
-  getParameterById,
-  listParameterHistory
-} from "./repository";
-import {
-  attachBindingPinTo,
-  attachDraftCanonicalPins,
-  attachSemanticBindingPin
+  attachDraftCanonicalPins
 } from "./canonicalParameterPin";
 import {
   getProjectAdminDetail,
@@ -44,8 +39,6 @@ import {
   listProjects
 } from "../projects/repository";
 import {
-  applyImportBatch,
-  createImportPreview,
   createParameterModuleForAuth,
   deleteDraft,
   deleteParameterModuleForAuth,
@@ -64,8 +57,6 @@ import {
   withdrawSubmissionRound
 } from "./service";
 import {
-  applyImportBatchBodySchema,
-  createImportBatchBodySchema,
   createParameterModuleBodySchema,
   createProjectBodySchema,
   listParametersQuerySchema,
@@ -105,9 +96,6 @@ const paramsWithRequestIdSchema = z.object({
   requestId: z.string().min(1)
 });
 
-const paramsWithBatchIdSchema = z.object({
-  batchId: z.string().min(1)
-});
 
 const listDraftsQuerySchema = z.object({
   projectId: z.string().min(1).optional()
@@ -156,30 +144,35 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-async function rejectRetiredLegacyParameterId(
-  db: Queryable,
-  organizationId: string,
-  legacyId: string
-): Promise<never | void> {
-  const result = await db.query<{ id: string }>(
-    `
-    select id
-    from legacy_parameter_migration_evidence
-    where legacy_id = $1
-      and organization_id = $2
-    order by created_at asc
-    limit 1
-    `,
-    [legacyId, organizationId]
-  );
-  const evidenceId = result.rows[0]?.id;
-  if (!evidenceId) {
-    return;
-  }
-  throw new ApiError("GONE", "legacy-parameter-id-retired", {
-    diagnostic: "legacy-parameter-id-retired",
-    migrationEvidenceId: evidenceId
-  });
+function toCanonicalCompatibilityRecord(binding: CatalogBindingView, modulesById: Map<string, Awaited<ReturnType<typeof listParameterModulesForAuth>>[number]>): CanonicalParameterCompatibilityRecordDto {
+  return {
+    id: binding.id,
+    bindingId: binding.id,
+    projectParameterBindingId: binding.id,
+    definitionId: binding.definitionId,
+    effectiveRevisionId: binding.effectiveRevisionId,
+    currentValueId: binding.currentValueId,
+    projectId: binding.projectId,
+    name: binding.propertyKey,
+    description: binding.description ?? "",
+    explanation: binding.documentation ?? "",
+    configFormat: binding.typedValue.kind === "json" ? "JSON" : "DTS",
+    module: binding.driverModule ?? "",
+    moduleId: binding.moduleId || undefined,
+    modulePath: modulesById.get(binding.moduleId)?.path.split("/").map((id) => modulesById.get(id)?.name ?? id),
+    sourceFileId: binding.sourceFileId,
+    sourceNodePath: binding.sourceNodePath ?? undefined,
+    sourceOccurrenceId: binding.sourceOccurrenceId,
+    currentValue: binding.rawValue,
+    recommendedValue: null,
+    range: null,
+    unit: null,
+    risk: null,
+    updatedAt: null,
+    updatedAtTs: null,
+    history: null,
+    metadataAvailability: { status: "unavailable", reason: "canonical-compatibility-metadata-unavailable" }
+  };
 }
 
 function requireCanReviewOrMerge(auth: AuthContext) {
@@ -493,34 +486,7 @@ export function registerParameterRoutes(
       });
       bindings.push(...rows);
     }
-    const items: CanonicalParameterCompatibilityRecordDto[] = bindings.map((binding) => ({
-      id: binding.id,
-      bindingId: binding.id,
-      projectParameterBindingId: binding.id,
-      definitionId: binding.definitionId,
-      effectiveRevisionId: binding.effectiveRevisionId,
-      currentValueId: binding.currentValueId,
-      projectId: binding.projectId,
-      name: binding.propertyKey,
-      description: binding.description ?? "",
-      explanation: binding.documentation ?? "",
-      configFormat: binding.typedValue.kind === "json" ? "JSON" : "DTS",
-      module: binding.driverModule ?? "",
-      moduleId: binding.moduleId || undefined,
-      modulePath: modulesById.get(binding.moduleId)?.path.split("/").map((id) => modulesById.get(id)?.name ?? id),
-      sourceFileId: binding.sourceFileId,
-      sourceNodePath: binding.sourceNodePath ?? undefined,
-      sourceOccurrenceId: binding.sourceOccurrenceId,
-      currentValue: binding.rawValue,
-      recommendedValue: null,
-      range: null,
-      unit: null,
-      risk: null,
-      updatedAt: null,
-      updatedAtTs: null,
-      history: null,
-      metadataAvailability: { status: "unavailable", reason: "canonical-compatibility-metadata-unavailable" }
-    }));
+    const items = bindings.map((binding) => toCanonicalCompatibilityRecord(binding, modulesById));
 
     return { status: 200, body: { items } };
   });
@@ -528,39 +494,32 @@ export function registerParameterRoutes(
   router.get("/api/v1/parameters/:parameterId", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    requireCanView(auth);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
-    const item = await getParameterById(db, {
-      organizationId: auth.organization.id,
-      parameterId: params.parameterId
+    const binding = await resolveCanonicalParameter(db, auth, params.parameterId);
+    if (!binding) return catalogLegacyGoneResult(request.requestId, "Legacy parameter identity has no exact canonical Binding mapping.");
+    const rows = await listCatalogBindingRowsForProject(db, auth, {
+      projectId: binding.project_id, bindingId: binding.id, limit: 1
     });
-
-    if (!item) {
-      await rejectRetiredLegacyParameterId(db, auth.organization.id, params.parameterId);
+    if (!rows[0]) {
       throw new ApiError("NOT_FOUND", "Parameter was not found.", { parameterId: params.parameterId });
     }
-
-    return { status: 200, body: { item: attachSemanticBindingPin(item) } };
+    const modules = await listParameterModulesForAuth(db, auth);
+    return { status: 200, body: { item: toCanonicalCompatibilityRecord(rows[0], new Map(modules.map((module) => [module.id, module]))) } };
   });
 
   router.get("/api/v1/parameters/:parameterId/history", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    requireCanView(auth);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
-    const items = await listParameterHistory(db, {
-      organizationId: auth.organization.id,
-      parameterId: params.parameterId
+    const binding = await resolveCanonicalParameter(db, auth, params.parameterId);
+    if (!binding) return catalogLegacyGoneResult(request.requestId, "Legacy parameter identity has no exact canonical Binding mapping.");
+    const pool = getRootPostgresPool(db);
+    if (!pool) throw new ApiError("INTERNAL_ERROR", "Canonical history requires the root database.");
+    const items = await readCanonicalBindingChangeHistory(pool, {
+      organizationId: auth.organization.id, projectId: binding.project_id, bindingId: binding.id
     });
-
-    if (items.length === 0) {
-      await rejectRetiredLegacyParameterId(db, auth.organization.id, params.parameterId);
-    }
-
-    return {
-      status: 200,
-      body: { items: items.map((entry) => attachBindingPinTo(entry, params.parameterId)) }
-    };
+    if (!items) throw new ApiError("NOT_FOUND", "Parameter was not found.", { parameterId: params.parameterId });
+    return { status: 200, body: { items } };
   });
 
   router.post("/api/v1/parameter-drafts", async (request) => {
@@ -721,24 +680,6 @@ export function registerParameterRoutes(
     return { status: 200, body: { item } };
   });
 
-  router.post("/api/v1/parameter-import-batches", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(createImportBatchBodySchema, request.body);
-    const item = await createImportPreview(db, auth, body, { requestId: request.requestId });
-
-    return { status: 201, body: { item } };
-  });
-
-  router.post("/api/v1/parameter-import-batches/:batchId/apply", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(paramsWithBatchIdSchema, request.params);
-    const body = parseWithSchema(applyImportBatchBodySchema, withRouteField(request.body, "batchId", params.batchId));
-    const item = await applyImportBatch(db, auth, body, { requestId: request.requestId });
-
-    return { status: 200, body: { item } };
-  });
 
   router.post("/api/v1/parameter-import/parse-dts", async (request) => {
     const auth = await options.getCurrentAuthContext(request);

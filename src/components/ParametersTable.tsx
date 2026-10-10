@@ -1,4 +1,4 @@
-import { Eye, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "@/domain/parameters/types";
@@ -60,7 +60,6 @@ export type ParametersTableProps = {
   onFocusRow: (id: string) => void;
   modifiedIds?: Set<string>;
   onEditRow?: (id: string) => void;
-  onViewRow?: (id: string) => void;
   stashedIds?: Set<string>;
   canEdit?: boolean;
 };
@@ -215,7 +214,6 @@ export function ParametersTable({
   onFocusRow,
   modifiedIds,
   onEditRow,
-  onViewRow,
   stashedIds,
   canEdit = true
 }: ParametersTableProps) {
@@ -506,19 +504,6 @@ export function ParametersTable({
                 <td data-label="更新时间" title={displayedUpdatedAt === row.updatedAt ? undefined : row.updatedAt}>{displayedUpdatedAt}</td>
                 <td data-label="操作">
                   <div className="parameters-table-row-actions">
-                  {onViewRow ? (
-                      <button
-                        type="button"
-                        className="view-row-button"
-                        aria-label={`查看 ${row.name}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onViewRow(row.id);
-                        }}
-                      >
-                        <Eye size={15} />
-                      </button>
-                    ) : null}
                   {canEdit ? (
                     <button
                       type="button"

@@ -23,6 +23,7 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import type { ParsedIndex } from "./types";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
+import { ingestDtsFileVersion } from "./structuralIngest";
 import type { DtsValue } from "../dts/types";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 
@@ -279,6 +280,7 @@ export async function commitCanonicalSourceRevision(
   const attribution = trustedDomainAttribution(invocation);
   const version = await insertFileVersion(db,{ id: randomUUID(),fileId: manifest.fileId,versionNumber: 0,storageKey: candidate.storage_key,
     checksum: candidate.checksum,sizeBytes: bytes.length,parsedIndex: candidate.parsed_index,origin: "writeback",attribution });
+  if (manifest.format === "dts") await ingestDtsFileVersion(db, version.id, after);
   const members = manifest.members.map((member,index) => ({
     fileId: member.fileId,fileVersionId: member.fileId === manifest.fileId ? version.id : member.fileVersionId,fileName: base.files[index]!.name,sourceName: member.sourceName,
     format: member.format,role: member.role as ConfigRevisionMemberRole,sortOrder: member.sortOrder,content: member.fileId === manifest.fileId ? after : base.files[index]!.content,

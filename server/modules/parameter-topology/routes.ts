@@ -17,13 +17,9 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   bindingCompareParamsSchema,
   bindingHistoryParamsSchema,
-  createBindingDraftBodySchema,
-  createBindingDraftParamsSchema,
   createNodeEnablementDraftBodySchema,
   createNodeEnablementDraftParamsSchema,
   listIdentityMappingTasksQuerySchema,
-  projectBindingsParamsSchema,
-  projectBindingsQuerySchema,
   topologyParamsSchema,
   topologyQuerySchema,
   listConfigRevisionsParamsSchema,
@@ -31,14 +27,12 @@ import {
   validateConfigRevisionParamsSchema
 } from "./schemas";
 import {
-  createBindingDraft,
   createNodeEnablementDraft,
   getBindingCompare,
   getBindingHistory,
   getTopology,
   listConfigRevisions,
   listIdentityMappingTasks,
-  listProjectBindings,
   validateConfigRevision
 } from "./service";
 
@@ -121,19 +115,6 @@ export function registerParameterTopologyRoutes(
     }
   );
 
-  router.get("/api/v2/projects/:projectId/parameter-bindings", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanView(auth);
-    const params = parseWithSchema(projectBindingsParamsSchema, request.params);
-    const query = parseWithSchema(projectBindingsQuerySchema, flattenQuery(request.query));
-    const result = await listProjectBindings(db, auth, {
-      projectId: params.projectId,
-      revisionId: query.revisionId
-    });
-    return { status: 200, body: result };
-  });
-
   router.get("/api/v2/projects/:projectId/bindings/:bindingId/history", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -193,33 +174,6 @@ export function registerParameterTopologyRoutes(
       { objectStore: options.objectStore }
     );
     return { status: 200, body: { item } };
-  });
-
-  router.post("/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanEdit(auth);
-    const params = parseWithSchema(createBindingDraftParamsSchema, request.params);
-    const body = parseWithSchema(createBindingDraftBodySchema, request.body ?? {});
-    if (!refusalAuditSink) {
-      throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for typed binding drafts.");
-    }
-    const item = await createBindingDraft(
-      db,
-      auth,
-      {
-        projectId: params.projectId,
-        bindingId: params.bindingId,
-        ...body
-      },
-      { objectStore: options.objectStore },
-      {
-        invocation: createUserInvocation(auth),
-        requestId: request.requestId,
-        refusalSink: refusalAuditSink
-      }
-    );
-    return { status: 201, body: { item } };
   });
 
   router.post("/api/v2/projects/:projectId/node-enablement-drafts", async (request) => {

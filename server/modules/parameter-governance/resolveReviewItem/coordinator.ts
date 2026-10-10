@@ -15,6 +15,7 @@ import {
   groupReviewEvidence,
   projectReviewQueueItem,
 } from "../review/group";
+import { loadReviewObservationSource } from "../queries/reviewObservationSource";
 
 import {
   fingerprintResolveReviewItemCommand,
@@ -38,6 +39,7 @@ import {
   lockReviewItem,
   recordDurableRefusal,
   reserveIdempotency,
+  reviewEvidenceSourceIsOwned,
   updateReviewItem,
   withReviewResolutionUnitOfWork,
   type ReviewItemRow,
@@ -139,6 +141,15 @@ const projectLockedItem = async (
       storedEtag: "",
       attemptedEtag: command.etag,
     });
+  }
+  for (const evidence of group.evidence) {
+    const source = evidence.observationId
+      ? await loadReviewObservationSource(client, command.organizationId, evidence.observationId) : null;
+    if ((evidence.observationId && (!source || source.catalogReleaseId !== evidence.evidence.catalogReleaseId
+      || source.matcherRevision !== evidence.evidence.matcherRevision))
+      || !await reviewEvidenceSourceIsOwned(client, command.organizationId, evidence.evidence.payload, source?.references)) {
+      return fail({ kind: "invalid-command", reason: "source-evidence-not-owned" });
+    }
   }
   const projected = projectReviewQueueItem(group, {
     capturedRelease: command.expectedRelease,

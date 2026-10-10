@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
-import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
+import type { DriverSchema, PropertySpec } from "./types";
 import {
   ensureAttributionSubjectForCompatible,
   ensureAttributionSubjectForDriverSchema,
@@ -57,74 +57,6 @@ function toDto(row: ReviewTaskRow): PersistedSpecReviewTask {
     createdAt: dateTimeToIso(row.created_at),
     resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
   };
-}
-
-export async function insertSpecReviewTask(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    draft: SpecReviewTaskDraft;
-  },
-): Promise<PersistedSpecReviewTask> {
-  const id = input.draft.id || randomUUID();
-  const evidence = input.draft.sourceEvidence ?? {};
-  const projectId =
-    input.draft.projectId ??
-    (typeof evidence.projectId === "string" && evidence.projectId.trim()
-      ? evidence.projectId
-      : null);
-  const configRevisionId =
-    input.draft.configRevisionId ??
-    (typeof evidence.configRevisionId === "string" &&
-    evidence.configRevisionId.trim()
-      ? evidence.configRevisionId
-      : null);
-  const propertyOccurrenceId =
-    input.draft.propertyOccurrenceId ??
-    (typeof evidence.propertyOccurrenceId === "string" &&
-    evidence.propertyOccurrenceId.trim()
-      ? evidence.propertyOccurrenceId
-      : null);
-  const blockerScope = input.draft.blockerScope ?? "revision";
-
-  const result = await db.query<ReviewTaskRow>(
-    `
-    insert into parameter_spec_review_tasks (
-      id, organization_id, parameter_spec_id, project_id, config_revision_id,
-      property_occurrence_id, blocker_scope, source_evidence, candidate_schemas,
-      project_count, status
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11)
-    returning *
-    `,
-    [
-      id,
-      input.organizationId,
-      input.draft.parameterSpecId ?? null,
-      projectId,
-      configRevisionId,
-      propertyOccurrenceId,
-      blockerScope,
-      JSON.stringify(evidence),
-      JSON.stringify(input.draft.candidateSchemas),
-      input.draft.projectCount,
-      input.draft.status,
-    ],
-  );
-  return toDto(result.rows[0]);
-}
-
-/** Persist open review-task drafts (unmatched/ambiguous). Binding callers land in Task 7. */
-export async function persistOpenReviewTaskDrafts(
-  db: Queryable,
-  organizationId: string,
-  drafts: SpecReviewTaskDraft[],
-): Promise<PersistedSpecReviewTask[]> {
-  const persisted: PersistedSpecReviewTask[] = [];
-  for (const draft of drafts) {
-    if (draft.status !== "open") continue;
-    persisted.push(await insertSpecReviewTask(db, { organizationId, draft }));
-  }
-  return persisted;
 }
 
 export async function listOpenSpecReviewTasks(
@@ -214,75 +146,6 @@ export async function listSpecReviewTaskRows(
   };
 }
 
-export async function getSpecReviewTaskById(
-  db: Queryable,
-  input: { organizationId: string; taskId: string },
-): Promise<PersistedSpecReviewTask | null> {
-  const result = await db.query<ReviewTaskRow>(
-    `
-    select *
-    from parameter_spec_review_tasks
-    where id = $1 and organization_id = $2
-    limit 1
-    `,
-    [input.taskId, input.organizationId],
-  );
-  const row = result.rows[0];
-  return row ? toDto(row) : null;
-}
-
-export async function resolveSpecReviewTaskRow(
-  db: Queryable,
-  input: {
-    taskId: string;
-    organizationId: string;
-    status: "resolved" | "dismissed";
-    parameterSpecId?: string | null;
-    reviewerUserId: string;
-    reason: string;
-  },
-): Promise<PersistedSpecReviewTask | null> {
-  const result = await db.query<ReviewTaskRow>(
-    `
-    update parameter_spec_review_tasks
-    set status = $3,
-        parameter_spec_id = coalesce($4, parameter_spec_id),
-        reviewer_user_id = $5,
-        reason = $6,
-        resolved_at = now()
-    where id = $1 and organization_id = $2 and status = 'open'
-    returning *
-    `,
-    [
-      input.taskId,
-      input.organizationId,
-      input.status,
-      input.parameterSpecId ?? null,
-      input.reviewerUserId,
-      input.reason,
-    ],
-  );
-  const row = result.rows[0];
-  return row ? toDto(row) : null;
-}
-
-export async function lockOpenSpecReviewTask(
-  db: Queryable,
-  input: { organizationId: string; taskId: string },
-): Promise<PersistedSpecReviewTask | null> {
-  const result = await db.query<ReviewTaskRow>(
-    `
-    select *
-    from parameter_spec_review_tasks
-    where id = $1 and organization_id = $2 and status = 'open'
-    for update
-    `,
-    [input.taskId, input.organizationId],
-  );
-  const row = result.rows[0];
-  return row ? toDto(row) : null;
-}
-
 export type MatcherOverrideDecision = "resolved" | "dismissed";
 
 export type PersistedMatcherOverride = {
@@ -353,16 +216,6 @@ export function matcherOverrideLookupKey(input: {
   return `${compatibleFingerprint(input.compatible)}\0${nodeLocatorFingerprint(input.nodeLocator)}\0${input.propertyKey}`;
 }
 
-function matcherOverrideIndexKey(override: PersistedMatcherOverride): string {
-  return `${override.compatibleFingerprint}\0${nodeLocatorFingerprint(override.nodeLocator)}\0${override.propertyKey}`;
-}
-
-export function persistedMatcherOverrideLookupKey(
-  override: PersistedMatcherOverride,
-): string {
-  return matcherOverrideIndexKey(override);
-}
-
 export async function listMatcherOverridesForProject(
   db: Queryable,
   input: { organizationId: string; projectId: string },
@@ -378,16 +231,6 @@ export async function listMatcherOverridesForProject(
   return result.rows.map(toMatcherOverride);
 }
 
-export type ValidatedSpecReviewLocate = {
-  organizationId: string;
-  projectId: string;
-  configRevisionId: string;
-  configSetId: string;
-  propertyOccurrenceId: string;
-  logicalNodeId: string;
-  propertyKey: string;
-};
-
 type ValidatedSpecReviewLocateRow = {
   organization_id: string;
   project_id: string;
@@ -397,87 +240,6 @@ type ValidatedSpecReviewLocateRow = {
   logical_node_id: string;
   property_key: string;
 };
-
-/**
- * Tenant-scoped join: task org + project org + revision org/project + occurrence on revision
- * + logical node org/project/config set + node revision on same config revision.
- */
-export async function validateSpecReviewTenantEvidence(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    taskId: string;
-    locate: {
-      projectId: string;
-      configRevisionId: string;
-      propertyOccurrenceId: string;
-      logicalNodeId: string;
-      propertyKey: string;
-    };
-  },
-): Promise<ValidatedSpecReviewLocate> {
-  const result = await db.query<ValidatedSpecReviewLocateRow>(
-    `
-    select
-      t.organization_id,
-      p.id as project_id,
-      cr.id as config_revision_id,
-      cr.config_set_id,
-      po.id as property_occurrence_id,
-      ln.id as logical_node_id,
-      po.property_name as property_key
-    from parameter_spec_review_tasks t
-    inner join projects p
-      on p.id = $3
-     and p.organization_id = t.organization_id
-    inner join dts_config_revisions cr
-      on cr.id = $4
-     and cr.organization_id = t.organization_id
-     and cr.project_id = p.id
-    inner join dts_property_occurrences po
-      on po.id = $5
-     and po.config_revision_id = cr.id
-     and po.property_name = $7
-    inner join dts_logical_nodes ln
-      on ln.id = $6
-     and ln.organization_id = t.organization_id
-     and ln.project_id = p.id
-     and ln.config_set_id = cr.config_set_id
-    inner join dts_logical_node_revisions lnr
-      on lnr.logical_node_id = ln.id
-     and lnr.config_revision_id = cr.id
-    where t.id = $2
-      and t.organization_id = $1
-    limit 1
-    `,
-    [
-      input.organizationId,
-      input.taskId,
-      input.locate.projectId,
-      input.locate.configRevisionId,
-      input.locate.propertyOccurrenceId,
-      input.locate.logicalNodeId,
-      input.locate.propertyKey,
-    ],
-  );
-  const row = result.rows[0];
-  if (!row) {
-    throw new ApiError(
-      "NOT_FOUND",
-      "Review task evidence could not be verified for this organization.",
-      { taskId: input.taskId },
-    );
-  }
-  return {
-    organizationId: row.organization_id,
-    projectId: row.project_id,
-    configRevisionId: row.config_revision_id,
-    configSetId: row.config_set_id,
-    propertyOccurrenceId: row.property_occurrence_id,
-    logicalNodeId: row.logical_node_id,
-    propertyKey: row.property_key,
-  };
-}
 
 export async function assertProjectBelongsToOrganization(
   db: Queryable,
@@ -501,175 +263,6 @@ export async function assertProjectBelongsToOrganization(
       },
     );
   }
-}
-
-export async function assertBindingBelongsToTenant(
-  db: Queryable,
-  input: { organizationId: string; projectId: string; bindingId: string },
-): Promise<void> {
-  const result = await db.query<{ id: string }>(
-    `
-    select id
-    from project_parameter_bindings
-    where id = $3
-      and organization_id = $1
-      and project_id = $2
-    limit 1
-    `,
-    [input.organizationId, input.projectId, input.bindingId],
-  );
-  if (!result.rows[0]) {
-    throw new ApiError(
-      "NOT_FOUND",
-      "Project parameter binding could not be verified for this organization.",
-      { bindingId: input.bindingId },
-    );
-  }
-}
-
-export async function upsertMatcherOverride(
-  db: Queryable,
-  input: {
-    id?: string;
-    organizationId: string;
-    projectId: string;
-    compatibleFingerprint: string;
-    nodeLocator?: string | null;
-    propertyKey: string;
-    decision: MatcherOverrideDecision;
-    parameterSpecId?: string | null;
-    sourceReviewTaskId?: string | null;
-    reason?: string | null;
-    createdByUserId: string;
-  },
-): Promise<PersistedMatcherOverride> {
-  await assertProjectBelongsToOrganization(db, {
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-  });
-  const id = input.id ?? randomUUID();
-  const locatorFingerprint = nodeLocatorFingerprint(input.nodeLocator);
-  const result = await db.query<MatcherOverrideRow>(
-    `
-    insert into parameter_spec_matcher_overrides (
-      id, organization_id, project_id, compatible_fingerprint, node_locator,
-      node_locator_fingerprint, property_key, decision, parameter_spec_id,
-      source_review_task_id, reason, created_by_user_id
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-    on conflict (organization_id, project_id, compatible_fingerprint, node_locator_fingerprint, property_key) do update set
-      node_locator = excluded.node_locator,
-      decision = excluded.decision,
-      parameter_spec_id = excluded.parameter_spec_id,
-      source_review_task_id = excluded.source_review_task_id,
-      reason = excluded.reason,
-      updated_at = now()
-    returning *
-    `,
-    [
-      id,
-      input.organizationId,
-      input.projectId,
-      input.compatibleFingerprint,
-      input.nodeLocator ?? null,
-      locatorFingerprint,
-      input.propertyKey,
-      input.decision,
-      input.parameterSpecId ?? null,
-      input.sourceReviewTaskId ?? null,
-      input.reason ?? null,
-      input.createdByUserId,
-    ],
-  );
-  return toMatcherOverride(result.rows[0]);
-}
-
-export async function upsertOccurrenceSpecDecision(
-  db: Queryable,
-  input: {
-    id?: string;
-    organizationId: string;
-    projectId: string;
-    configRevisionId: string;
-    propertyOccurrenceId: string;
-    logicalNodeId?: string | null;
-    propertyKey: string;
-    decision: MatcherOverrideDecision;
-    parameterSpecId?: string | null;
-    bindingId?: string | null;
-    reviewTaskId?: string | null;
-  },
-): Promise<void> {
-  await assertProjectBelongsToOrganization(db, {
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-  });
-  const revision = await db.query<{ id: string }>(
-    `
-    select cr.id
-    from dts_config_revisions cr
-    inner join projects p on p.id = cr.project_id and p.organization_id = $1
-    where cr.id = $2
-      and cr.organization_id = $1
-      and cr.project_id = $3
-    limit 1
-    `,
-    [input.organizationId, input.configRevisionId, input.projectId],
-  );
-  if (!revision.rows[0]) {
-    throw new ApiError(
-      "NOT_FOUND",
-      "Config revision could not be verified for this organization.",
-      { configRevisionId: input.configRevisionId },
-    );
-  }
-  const occurrence = await db.query<{ id: string }>(
-    `
-    select po.id
-    from dts_property_occurrences po
-    where po.id = $1
-      and po.config_revision_id = $2
-      and po.property_name = $3
-    limit 1
-    `,
-    [input.propertyOccurrenceId, input.configRevisionId, input.propertyKey],
-  );
-  if (!occurrence.rows[0]) {
-    throw new ApiError(
-      "NOT_FOUND",
-      "Property occurrence could not be verified for this organization.",
-      { propertyOccurrenceId: input.propertyOccurrenceId },
-    );
-  }
-  const id = input.id ?? randomUUID();
-  await db.query(
-    `
-    insert into dts_property_occurrence_spec_decisions (
-      id, organization_id, project_id, config_revision_id, property_occurrence_id,
-      logical_node_id, property_key, decision, parameter_spec_id, binding_id, review_task_id
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    on conflict (property_occurrence_id) do update set
-      logical_node_id = excluded.logical_node_id,
-      property_key = excluded.property_key,
-      decision = excluded.decision,
-      parameter_spec_id = excluded.parameter_spec_id,
-      binding_id = excluded.binding_id,
-      review_task_id = excluded.review_task_id,
-      updated_at = now()
-    `,
-    [
-      id,
-      input.organizationId,
-      input.projectId,
-      input.configRevisionId,
-      input.propertyOccurrenceId,
-      input.logicalNodeId ?? null,
-      input.propertyKey,
-      input.decision,
-      input.parameterSpecId ?? null,
-      input.bindingId ?? null,
-      input.reviewTaskId ?? null,
-    ],
-  );
 }
 
 export async function countOpenSpecReviewTasksForRevision(

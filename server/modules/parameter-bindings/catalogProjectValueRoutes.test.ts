@@ -47,8 +47,7 @@ vi.mock("../parameters/importBatchRepository", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../parameters/importBatchRepository")>();
   return {
     ...actual,
-    insertImportBatch: vi.fn(),
-    markImportBatchApplied: vi.fn()
+    insertImportBatch: vi.fn()
   };
 });
 
@@ -80,8 +79,6 @@ vi.mock("../parameters/service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../parameters/service")>();
   return {
     ...actual,
-    applyImportBatch: vi.fn(),
-    createImportPreview: vi.fn(),
     listDrafts: vi.fn(),
     deleteDraft: vi.fn()
   };
@@ -227,15 +224,15 @@ describe("catalog published-value import apply route", () => {
 
     expect(response.status).toBe(200);
     expect(parameterImportBatchResponseSchema.parse(response.body).item).toMatchObject({ status: "staged", summary: { staged: 1 } });
-    expect(parameterService.applyImportBatch).not.toHaveBeenCalled();
-    expect(importBatchRepository.markImportBatchApplied).not.toHaveBeenCalled();
+    expect(Object.keys(parameterService)).not.toContain("applyImportBatch");
+    expect(Object.keys(importBatchRepository)).not.toContain("markImportBatchApplied");
     expect(catalogSync.saveCanonicalProjectValue).not.toHaveBeenCalled();
     expect(importStaging.stageCanonicalImportBatch).toHaveBeenCalledWith(db, expect.anything(), expect.anything(),
       expect.objectContaining({ batchId: "batch-1", selectedItemIds: ["item-1"] }),
       expect.objectContaining({ requestId: "test-request", invocation: expect.anything(), refusalSink: expect.anything() }));
   });
 
-  it("rewrites a catalog import preview inside the audited write", async () => {
+  it("rewrites an exact canonical Binding import preview inside the audited write", async () => {
     const db = makeDb();
     const previewed = {
       id: "batch-preview-1",
@@ -272,7 +269,6 @@ describe("catalog published-value import apply route", () => {
         currentValue: "2000"
       }
     ]);
-    vi.mocked(parameterService.createImportPreview).mockResolvedValue(previewed);
     vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
     const response = await requestJson(makeServer({ db }), "/api/v1/parameter-import-batches", {
@@ -282,6 +278,7 @@ describe("catalog published-value import apply route", () => {
         sourceName: "pasted-import.txt",
         items: [
           {
+            id: "pbind-1",
             name: "iin_max",
             module: "Driver",
             risk: "Low",
@@ -298,7 +295,7 @@ describe("catalog published-value import apply route", () => {
     expect(body.item.summary).toEqual({ added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 });
     expect(body.item.items[0]?.classification).toBe("updated");
     expect(auditedWrite.withAuditedWrite).toHaveBeenCalled();
-    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+    expect(Object.keys(parameterService)).not.toContain("createImportPreview");
     expect(importBatchRepository.insertImportBatch).toHaveBeenCalledWith(db,
       expect.objectContaining({ projectId: "project-1", items: expect.arrayContaining([
         expect.objectContaining({ definitionId: "pdef_acme_power_iin_max", projectParameterValueId: "pbind-1" })
@@ -355,7 +352,6 @@ describe("catalog published-value import apply route", () => {
         currentValue: "2000"
       }
     ]);
-    vi.mocked(parameterService.createImportPreview).mockResolvedValue(previewed);
     vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
     const response = await requestJson(makeServer({ db }), "/api/v1/parameter-import-batches", {
@@ -414,26 +410,6 @@ describe("catalog published-value import apply route", () => {
         currentValue: "1111"
       }
     ]);
-    vi.mocked(parameterService.createImportPreview).mockResolvedValue({
-      id: "batch-preview-3",
-      projectId: "project-1",
-      sourceName: "pasted-import.txt",
-      status: "previewed",
-      createdAt: "2026-09-10T00:00:00.000Z",
-      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
-      items: [
-        {
-          id: "item-1",
-          name: "iin_max",
-          module: "Driver",
-          risk: "Low",
-          unit: "A",
-          range: "0-10",
-          currentValue: "3000",
-          classification: "added"
-        }
-      ]
-    });
 
     const response = await requestJson(makeServer({ db }), "/api/v1/parameter-import-batches", {
       method: "POST",
@@ -453,33 +429,16 @@ describe("catalog published-value import apply route", () => {
       })
     });
 
-    expect(response.status).toBe(409);
-    expect(parameterService.applyImportBatch).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    const item = parameterImportBatchResponseSchema.parse(response.body).item.items[0];
+    expect(item?.classification).toBe("conflict");
+    expect(item?.projectParameterValueId).toBeUndefined();
+    expect(Object.keys(parameterService)).not.toContain("applyImportBatch");
   });
 
   it("rejects a precise catalog identity when the target project has no catalog candidates", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
-    vi.mocked(parameterService.createImportPreview).mockResolvedValue({
-      id: "batch-should-not-exist",
-      projectId: "project-a",
-      sourceName: "pasted-import.txt",
-      status: "previewed",
-      createdAt: "2026-09-10T00:00:00.000Z",
-      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
-      items: [
-        {
-          id: "pbind-from-project-b",
-          name: "iin_max",
-          module: "Driver",
-          risk: "Low",
-          unit: "A",
-          range: "0-10",
-          currentValue: "3000",
-          classification: "added"
-        }
-      ]
-    });
 
     const response = await requestJson<{ code?: string }>(
       makeServer({ db }),
@@ -506,7 +465,7 @@ describe("catalog published-value import apply route", () => {
 
     expect(response.status).toBe(404);
     expect(response.body).toMatchObject({ error: { code: "NOT_FOUND" } });
-    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+    expect(Object.keys(parameterService)).not.toContain("createImportPreview");
     expect(auditedWrite.withAuditedWrite).not.toHaveBeenCalled();
   });
 
@@ -538,32 +497,12 @@ describe("catalog published-value import apply route", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+    expect(Object.keys(parameterService)).not.toContain("createImportPreview");
   });
 
   it("keeps an unbound row in the canonical preview without a legacy fallback", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
-    vi.mocked(parameterService.createImportPreview).mockResolvedValue({
-      id: "batch-legacy-1",
-      projectId: "project-a",
-      sourceName: "pasted-import.txt",
-      status: "previewed",
-      createdAt: "2026-09-10T00:00:00.000Z",
-      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
-      items: [
-        {
-          id: "item-1",
-          name: "iin_max",
-          module: "Driver",
-          risk: "Low",
-          unit: "A",
-          range: "0-10",
-          currentValue: "3000",
-          classification: "added"
-        }
-      ]
-    });
 
     const response = await requestJson(
       makeServer({ db }),
@@ -588,11 +527,11 @@ describe("catalog published-value import apply route", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+    expect(Object.keys(parameterService)).not.toContain("createImportPreview");
     expect(parameterImportBatchResponseSchema.parse(response.body).item.summary).toMatchObject({ added: 0, conflict: 1 });
   });
 
-  it("classifies a unique topology property as updated when catalog candidates are empty", async () => {
+  it("refuses to associate a unique legacy topology property when canonical candidates are empty", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
     vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
@@ -633,9 +572,11 @@ describe("catalog published-value import apply route", () => {
     expect(response.status).toBe(201);
     expect(parameterImportBatchResponseSchema.parse(response.body).item.summary).toMatchObject({
       added: 0,
-      updated: 1,
-      conflict: 0
+      updated: 0,
+      conflict: 1
     });
+    expect(parameterImportBatchResponseSchema.parse(response.body).item.items[0]?.projectParameterValueId).toBeUndefined();
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 });
 
@@ -935,8 +876,8 @@ describe("canonical import apply boundary", () => {
       error: { code: "CONFLICT" }
     });
     // The legacy whole-batch apply service is never used as a fallback.
-    expect(parameterService.applyImportBatch).not.toHaveBeenCalled();
-    expect(importBatchRepository.markImportBatchApplied).not.toHaveBeenCalled();
+    expect(Object.keys(parameterService)).not.toContain("applyImportBatch");
+    expect(Object.keys(importBatchRepository)).not.toContain("markImportBatchApplied");
   });
 });
 

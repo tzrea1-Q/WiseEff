@@ -10,14 +10,14 @@ import {
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
-import { resolveSeededSingleCellBinding, type XiaozeCanonicalBinding } from "./helpers/xiaozeCanonicalBinding";
+import { resolveSeededWritableSingleCellBinding, type XiaozeCanonicalBinding } from "./helpers/xiaozeCanonicalBinding";
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
 const organizationId = "org-chargelab";
 const threadId = "xiaoze-planning-thread";
 
 /**
- * Runs on the shared post-cutover acceptance database. Parameters are addressed
+ * Runs on the runtime owner's published canonical acceptance fixture. Parameters are addressed
  * by seeded canonical Catalog Binding id (`parameter_catalog.project_parameter_bindings.id`)
  * and DTS cell text; open requests are canonical
  * `project_parameter_value_change_requests` rows scoped by binding id.
@@ -188,7 +188,7 @@ test.describe("Xiaoze P2 planning", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
     await seedPlanningGuestUser();
-    seededBinding = await resolveSeededSingleCellBinding(request, projectId);
+    seededBinding = await resolveSeededWritableSingleCellBinding(request, projectId);
     expect(seededBinding.bindingId).toMatch(/^pbind_[0-9a-f]{64}$/);
   });
 

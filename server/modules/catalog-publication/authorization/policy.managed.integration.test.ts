@@ -143,7 +143,8 @@ describe("managed instance publication policy", () => {
     const { snapshot, pins } = await pinsOf(client);
     expect(snapshot.adopted).toBe(true);
     expect(snapshot.frozen).toBe(true);
-    expect(snapshot.databaseName.startsWith("wiseeffm")).toBe(true);
+    expect(snapshot.databaseName).toBe(new URL(url).pathname.slice(1));
+    expect(snapshot.ephemeralName).toBe(false);
 
     const stale = await withCommittedRole(client, CATALOG_MIGRATION_OWNER, async () =>
       revisePublicationPolicy(asQueryable(client), {

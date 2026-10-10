@@ -884,6 +884,7 @@ export async function saveCanonicalProjectValue(
 
 type CatalogBindingListInput = {
   projectId: string;
+  bindingId?: string;
   revisionId?: string;
   limit?: number;
   moduleIds?: readonly string[];
@@ -925,8 +926,9 @@ async function readBoundedCatalogParameters(
          and value.source_ref <> 'canonical-binding-identity'
          and ($5::text[] is null or placement.module_id = any($5::text[]))
          and ($6::text is null or module.name = $6)
+         and ($7::text is null or b.id = $7)
        order by b.id limit $4`,
-      [auth.organization.id, input.projectId, afterId, input.limit - items.length, input.moduleIds ?? null, input.module ?? null],
+      [auth.organization.id, input.projectId, afterId, input.limit - items.length, input.moduleIds ?? null, input.module ?? null, input.bindingId ?? null],
     );
     if (candidates.rows.length === 0) break;
     for (const row of candidates.rows) {
@@ -1156,13 +1158,6 @@ export function matchCatalogImportRow(
     }
     throw new ApiError("NOT_FOUND", "Published import identity was not found in this project.", {
       identity: source.id
-    });
-  }
-  const byName = candidates.filter((row) => row.name === source.name);
-  if (byName.length === 1) return byName[0]!;
-  if (byName.length > 1) {
-    throw new ApiError("CONFLICT", "Published parameter name matches more than one project value.", {
-      name: source.name
     });
   }
   return null;

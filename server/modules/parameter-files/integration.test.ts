@@ -13,6 +13,7 @@ import { testRefusalAuditSink } from "../audit/testRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { registerParameterFileRoutes } from "./routes";
 import { registerParameterRoutes } from "../parameters/routes";
+import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 
 function makeServer(db: InMemoryTestDatabase, objectStore: ObjectStore) {
   const router = createRouter();
@@ -23,6 +24,7 @@ function makeServer(db: InMemoryTestDatabase, objectStore: ObjectStore) {
     refusalAuditSink: testRefusalAuditSink,
     getCurrentAuthContext: () => auth
   };
+  registerCatalogProjectValueConsumerRoutes(router, routeOptions);
   registerParameterFileRoutes(router, routeOptions);
   registerParameterRoutes(router, routeOptions);
   return createHttpServer(router);

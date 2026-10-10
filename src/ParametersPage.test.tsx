@@ -11,7 +11,6 @@ import type { ParameterPageActions } from "./app/routes";
 import type { ParameterTopologyRepository } from "./application/ports/ParameterTopologyRepository";
 import type {
   EffectiveTopologyNode,
-  ParameterSpecDetail,
   ProjectParameterBinding,
   SourceTopologyNode
 } from "./domain/parameter-topology/types";
@@ -226,7 +225,6 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
 
 function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
   return {
-    getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
     discardDrafts: vi.fn().mockResolvedValue(undefined),
@@ -333,50 +331,12 @@ const API_SENTINEL_BINDING: ProjectParameterBinding = {
   moduleId: "mod-sentinel-device"
 };
 
-const API_SENTINEL_SPEC: ParameterSpecDetail = {
-  id: API_SENTINEL_BINDING.parameterSpecId,
-  organizationId: "org-api-boundary-sentinel-7ad0",
-  sourceKind: "dts",
-  specificationKey: "sentinel-device/sentinel_gpio_interrupt",
-  propertyKey: API_SENTINEL_PROPERTY,
-  driverModule: "sentinel-device",
-  lifecycle: "active",
-  currentVersionId: API_SENTINEL_BINDING.parameterSpecVersionId,
-  currentVersion: 1,
-  displayName: "Sentinel GPIO interrupt",
-  description: "API boundary sentinel only",
-  valueShape: { kind: "phandle-list", bits: 32, groups: 1, cellsPerGroup: 3 },
-  schemaDefault: null,
-  exampleValue: null,
-  schemaNamespace: "wiseeff,sentinel-device",
-  units: null,
-  constraints: { cells: 3 },
-  documentation: "API boundary sentinel fixture",
-  compatiblePatterns: ["wiseeff,sentinel-device"],
-  policyTarget: null
-};
 
 function createApiBoundaryRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
   return {
     listNodeEnablementDrafts: vi.fn().mockResolvedValue([]),
-    listSpecs: vi.fn<ParameterTopologyRepository["listSpecs"]>().mockResolvedValue([API_SENTINEL_SPEC]),
-    getSpec: vi.fn<ParameterTopologyRepository["getSpec"]>().mockResolvedValue(API_SENTINEL_SPEC),
-    activateParameterSpec: vi
-      .fn<ParameterTopologyRepository["activateParameterSpec"]>()
-      .mockResolvedValue(API_SENTINEL_SPEC),
-    updateParameterSpec: vi
-      .fn<ParameterTopologyRepository["updateParameterSpec"]>()
-      .mockResolvedValue(API_SENTINEL_SPEC),
-    deprecateParameterSpec: vi.fn(),
-    restoreParameterSpec: vi.fn(),
-    listSpecReviewTasks: vi
-      .fn<ParameterTopologyRepository["listSpecReviewTasks"]>()
-      .mockResolvedValue({ items: [], nextCursor: null }),
-    resolveSpecReviewTask: vi
-      .fn<ParameterTopologyRepository["resolveSpecReviewTask"]>()
-      .mockResolvedValue(undefined),
     listBindings: vi
       .fn<ParameterTopologyRepository["listBindings"]>()
       .mockResolvedValue([API_SENTINEL_BINDING]),
@@ -413,9 +373,6 @@ function createApiBoundaryRepository(
     listMappingTasks: vi
       .fn<ParameterTopologyRepository["listMappingTasks"]>()
       .mockResolvedValue([]),
-    resolveMapping: vi
-      .fn<ParameterTopologyRepository["resolveMapping"]>()
-      .mockResolvedValue(undefined),
     listConfigRevisions: vi
       .fn<ParameterTopologyRepository["listConfigRevisions"]>()
       .mockResolvedValue([]),
@@ -495,278 +452,61 @@ function fillVisibleDraftReasons(baseReason = "参数调整原因") {
   });
 }
 
-describe("ParametersPage archived old-link notice", () => {
-  const archivedError = () =>
-    new WiseEffApiError(
-      "GONE",
-      "legacy-id-archived",
-      { diagnostic: "legacy-id-archived", migrationEvidenceId: "mig-849" },
-      "req-archived"
-    );
+describe("ParametersPage Q3 mock detail withdrawal", () => {
+  it("withdraws legacy detail while retained mock values can still be edited and stashed", async () => {
+    const detailReads: string[] = [];
+    const stashed: Array<{ parameterId: string; targetValue: string; reason: string }> = [];
+    const parameterActions = {
+      ...createParameterActions(),
+      getParameter: async (parameterId: string) => {
+        detailReads.push(parameterId);
+        throw new Error("Legacy parameter detail is unavailable in mock mode.");
+      },
+      stashChanges: async (items: Parameters<ParameterPageActions["stashChanges"]>[0]) => { stashed.push(...items); }
+    };
+    const { container } = renderPage(vi.fn(), vi.fn(), parameterActions);
 
-  const renderWithSearch = (search: string, parameterActions: ParameterPageActions) =>
-    render(
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "编辑 fast_charge_current_limit_ma" }));
+    const draft = screen.getByRole("dialog", { name: "修改草稿" });
+    fireEvent.change(within(draft).getByLabelText(/目标值/), { target: { value: "3100" } });
+    fireEvent.change(within(draft).getByLabelText(/修改原因/), { target: { value: "Q3 retained value edit" } });
+    fireEvent.click(within(draft).getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getByRole("button", { name: /暂存/ }));
+
+    await waitFor(() => expect(stashed).toEqual([{
+      parameterId: initialState.parameters[0].id,
+      targetValue: "3100",
+      reason: "Q3 retained value edit"
+    }]));
+    expect(container.querySelector(".view-row-button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看 fast_charge_current_limit_ma/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(detailReads).toEqual([]);
+  });
+});
+
+describe("ParametersPage mock detail boundary", () => {
+  it("does not resolve a legacy query link through the detail port in mock mode", () => {
+    const getParameter = vi.fn().mockRejectedValue(new Error("Mock detail is unavailable"));
+    const parameterActions = { ...createParameterActions(), getParameter };
+    const { container } = render(
       <TopBarActionsHarness>
         <ParametersPage
           state={createParametersPageState()}
           dispatch={vi.fn()}
           onNavigate={vi.fn()}
-          search={search}
+          search="?parameter=p-legacy-archived-1"
           parameterActions={parameterActions}
+          runtimeMode="mock"
         />
       </TopBarActionsHarness>
     );
 
-  it("reports an archived old link instead of silently showing current data", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const { container } = renderWithSearch(
-      "?parameter=p-legacy-archived-1",
-      createParameterActions({ getParameter })
-    );
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    const banner = container.querySelector(".parameter-archived-link-banner")!;
-    expect(banner.getAttribute("role")).toBe("status");
-    expect(banner).toHaveTextContent("该参数旧链接已归档");
-    expect(banner).toHaveTextContent("p-legacy-archived-1");
-    expect(banner).toHaveTextContent("legacy-id-archived");
-    expect(banner).toHaveTextContent("mig-849");
-    expect(getParameter).toHaveBeenCalledWith("p-legacy-archived-1");
-  });
-
-  it("lets the reader dismiss the notice", async () => {
-    const { container } = renderWithSearch(
-      "?parameter=p-legacy-archived-2",
-      createParameterActions({ getParameter: vi.fn().mockRejectedValue(archivedError()) })
-    );
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    fireEvent.click(screen.getByRole("button", { name: "知道了" }));
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).toBeNull()
-    );
-  });
-
-  it("does not show the notice for a link that resolves, nor for a non-archived failure", async () => {
-    const resolving = renderWithSearch(
-      "?parameter=p-elsewhere",
-      createParameterActions({ getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]) })
-    );
-    await waitFor(() => expect(resolving.container.querySelector(".parameter-archived-link-banner")).toBeNull());
-
-    const failing = renderWithSearch(
-      "?parameter=p-broken",
-      createParameterActions({
-        getParameter: vi.fn().mockRejectedValue(new WiseEffApiError("INTERNAL_ERROR", "boom", {}, "req-x"))
-      })
-    );
-    await waitFor(() => expect(failing.container.querySelector(".parameter-archived-link-banner")).toBeNull());
-  });
-
-  it("surfaces the notice when a listed record turns out to be archived in the Catalog", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const { container } = renderPage(
-      vi.fn(),
-      vi.fn(),
-      createParameterActions({ getParameter })
-    );
-    const viewButton = container.querySelector<HTMLButtonElement>(".view-row-button");
-    expect(viewButton).not.toBeNull();
-    fireEvent.click(viewButton!);
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    expect(container.querySelector(".parameter-archived-link-banner")).toHaveTextContent(
-      "该参数旧链接已归档"
-    );
-  });
-
-  it("still reports an archived link when the project has no parameters at all", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const emptyState = { ...createParametersPageState(), parameters: [] };
-    const { container } = render(
-      <TopBarActionsHarness>
-        <ParametersPage
-          state={emptyState}
-          dispatch={vi.fn()}
-          onNavigate={vi.fn()}
-          search="?parameter=p-legacy-archived-3"
-          parameterActions={createParameterActions({ getParameter })}
-        />
-      </TopBarActionsHarness>
-    );
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    expect(getParameter).toHaveBeenCalledWith("p-legacy-archived-3");
-  });
-
-  it("does not probe without a requestable id or an available fetcher", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const { container } = renderWithSearch("?project=p1", createParameterActions({ getParameter }));
-    await waitFor(() => expect(container.querySelector(".parameter-archived-link-banner")).toBeNull());
     expect(getParameter).not.toHaveBeenCalled();
-  });
-});
-
-describe("ParametersPage parameter detail modal", () => {
-  it("opens the detail modal from a row view action without changing the pathname", () => {
-    window.history.pushState({}, "", "/parameters");
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-
-    expect(window.location.pathname).toBe("/parameters");
-    expect(screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" })).toBeInTheDocument();
-  });
-
-  it("loads API detail history when opening a parameter detail modal", async () => {
-    const detailedParameter = {
-      ...initialState.parameters[0],
-      history: [
-        {
-          version: "api-v2",
-          value: "3333",
-          changedAt: "2026-05-29T00:00:00.000Z",
-          changedBy: "API Detail Loader"
-        }
-      ]
-    };
-    const getParameter = vi.fn().mockResolvedValue(detailedParameter);
-    const parameterActions = createParameterActions() as ParameterPageActions & {
-      getParameter: typeof getParameter;
-    };
-    parameterActions.getParameter = getParameter;
-    const { container } = renderPage(vi.fn(), vi.fn(), parameterActions);
-    const viewButton = container.querySelector<HTMLButtonElement>(".view-row-button");
-
-    expect(viewButton).not.toBeNull();
-    fireEvent.click(viewButton!);
-
-    await waitFor(() => expect(getParameter).toHaveBeenCalledWith(initialState.parameters[0].id));
-    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
-    await waitFor(() => expect(within(dialog).getByText(/API Detail Loader/)).toBeInTheDocument());
-  });
-
-  it("shows the parameter definition and every runtime project", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
-
-    expect(within(dialog).getByRole("region", { name: "参数定义" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "跨项目对比" })).toBeInTheDocument();
-    ["AUR-Prod", "NEB-RD", "ATL-Intl"].forEach((projectCode) => {
-      expect(within(dialog).getAllByText(projectCode).length).toBeGreaterThan(0);
-    });
-  });
-
-  it("updates the focused delta when the comparison target changes", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
-    expect(within(dialog).getByText("+350 mA (+9.1%)")).toBeInTheDocument();
-    expect(within(dialog).getByText("对比 AUR-Prod 与 NEB-RD")).toBeInTheDocument();
-
-    fireEvent.change(within(dialog).getByLabelText("对比目标项目"), {
-      target: { value: "atlas" }
-    });
-
-    expect(within(dialog).getByText("-850 mA (-22.1%)")).toBeInTheDocument();
-    expect(within(dialog).getByText("对比 AUR-Prod 与 ATL-Intl")).toBeInTheDocument();
-  });
-
-  it("adds the viewed parameter to the existing modification draft sheet", () => {
-    const { container } = renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    fireEvent.click(screen.getByRole("button", { name: "加入修改草稿" }));
-
-    expect(document.body.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("3200")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-  });
-
-  it("adds the recommended config from the detail modal to the modification draft", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    fireEvent.click(screen.getByRole("button", { name: "使用推荐配置加入草稿" }));
-
-    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
-    expect(within(sheet).getByDisplayValue("3200")).toBeInTheDocument();
-    expect(within(sheet).getByDisplayValue("使用推荐配置生成草稿")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-  });
-
-  it("adds the selected comparison project value from the detail modal to the modification draft", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
-    fireEvent.change(within(dialog).getByLabelText("对比目标项目"), {
-      target: { value: "atlas" }
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "使用该项目配置加入草稿" }));
-
-    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
-    expect(within(sheet).getByDisplayValue("3000")).toBeInTheDocument();
-    expect(within(sheet).getByDisplayValue("参考 ATL-Intl 项目当前配置生成草稿")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-  });
-
-  it("reuses an existing draft when viewing the same parameter from the modal", () => {
-    const { container } = renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-
-    expect(screen.getByRole("button", { name: "已在草稿中" })).toBeDisabled();
-    expect(document.body.querySelectorAll(".draft-card")).toHaveLength(1);
-    expect(screen.getByDisplayValue("3200")).toBeInTheDocument();
-  });
-
-  it("closes the stale detail modal on project switch and cannot add the old project parameter to drafts", () => {
-    const { container, rerender } = render(
-      <TopBarActionsHarness>
-        <ParametersPage
-          state={initialState}
-          dispatch={vi.fn()}
-          onNavigate={vi.fn()}
-          search=""
-          effectiveProjectId="aurora"
-        />
-      </TopBarActionsHarness>
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    expect(screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" })).toBeInTheDocument();
-
-    rerender(
-      <TopBarActionsHarness>
-        <ParametersPage
-          state={initialState}
-          dispatch={vi.fn()}
-          onNavigate={vi.fn()}
-          search=""
-          effectiveProjectId="nebula"
-        />
-      </TopBarActionsHarness>
-    );
-
-    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "加入修改草稿" })).not.toBeInTheDocument();
-    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(container.querySelector(".parameter-archived-link-banner")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看 fast_charge_current_limit_ma/ })).not.toBeInTheDocument();
   });
 
   it("ignores stale log-linked parameters from another project when seeding drafts", () => {
@@ -805,7 +545,7 @@ describe("ParametersPage parameter detail modal", () => {
     expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
   });
 
-  it("shows initialization-specific disabled reasons when initialization is locked even if canEdit is false", () => {
+  it("keeps the initialization lock notice without mock detail or edit controls", () => {
     render(
       <TopBarActionsHarness>
         <ParametersPage
@@ -819,15 +559,13 @@ describe("ParametersPage parameter detail modal", () => {
       </TopBarActionsHarness>
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
-
-    expect(dialog.querySelector(".parameter-detail-disabled-reason")).toHaveTextContent("初始化通过前暂不可提交普通参数变更。");
+    expect(screen.queryByRole("button", { name: /查看 fast_charge_current_limit_ma/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /编辑 fast_charge_current_limit_ma/ })).not.toBeInTheDocument();
     expect(screen.getByText("该项目可查看，初始化通过前暂不可提交普通参数变更。")).toBeInTheDocument();
     expect(screen.queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
   });
 
-  it("allows read-only users to view details but disables adding to the draft", () => {
+  it("keeps read-only mock values visible without detail or draft actions", () => {
     const { container } = render(
       <TopBarActionsHarness>
         <ParametersPage
@@ -840,12 +578,9 @@ describe("ParametersPage parameter detail modal", () => {
       </TopBarActionsHarness>
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
-
-    expect(dialog).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "加入修改草稿" })).toBeDisabled();
-    expect(dialog.querySelector(".parameter-detail-disabled-reason")).toHaveTextContent("需要 User 角色才能编辑、暂存或提交参数变更。");
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看 fast_charge_current_limit_ma/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /编辑 fast_charge_current_limit_ma/ })).not.toBeInTheDocument();
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
   });
 
@@ -1789,7 +1524,7 @@ describe("ParametersPage API topology workspace", () => {
     expect(banner).not.toHaveTextContent(/迁移证据|archive-op08-gone|candidate/);
     expect(getLegacyIdentifier).toHaveBeenCalledWith("project-parameter-binding", "old-archived-1070");
     expect(onNavigate).not.toHaveBeenCalled();
-    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+    expect(parameterActions).not.toHaveProperty("getParameter");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     fireEvent.click(within(banner as HTMLElement).getByRole("button", { name: "知道了" }));
     expect(container.querySelector(".parameter-archived-link-banner")).not.toBeInTheDocument();
@@ -1813,7 +1548,7 @@ describe("ParametersPage API topology workspace", () => {
 
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(`/parameters?project=aurora&binding=${API_SENTINEL_BINDING.id}`));
     expect(getLegacyIdentifier).toHaveBeenCalledWith("project-parameter-binding", "old-binding-1075");
-    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+    expect(parameterActions).not.toHaveProperty("getParameter");
   });
 
   it("opens an exact historical mapping in the canonical Binding's owning project", async () => {
@@ -1850,7 +1585,7 @@ describe("ParametersPage API topology workspace", () => {
     expect(await screen.findByText("旧参数链接仅供历史参考")).toBeInTheDocument();
     expect(screen.getByText(/不会按名称猜测或载入旧参数数据/)).toBeInTheDocument();
     expect(onNavigate).not.toHaveBeenCalled();
-    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+    expect(parameterActions).not.toHaveProperty("getParameter");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -1922,8 +1657,8 @@ describe("ParametersPage API topology workspace", () => {
     expect(await screen.findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("该参数旧链接已归档")).not.toBeInTheDocument();
-    expect(parameterActions.getParameter).not.toHaveBeenCalled();
-    expect(topologyRepository.getSpec).not.toHaveBeenCalled();
+    expect(parameterActions).not.toHaveProperty("getParameter");
+    expect(topologyRepository).not.toHaveProperty("getSpec");
     expect(topologyRepository.createBindingDraft).not.toHaveBeenCalled();
     expect(listProtectedProjectBindings).toHaveBeenCalledWith("aurora");
   });

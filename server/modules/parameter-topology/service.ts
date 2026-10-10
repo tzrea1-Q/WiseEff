@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -20,29 +20,16 @@ import { getRootPostgresPool, type Database, type Queryable } from "../../shared
 import { ApiError, pinnedSourceGraphConflict } from "../../shared/http/errors";
 import { readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
 import {
-  applyReviewedIdentityMapping,
-  continuityReuseFromTaskEvidence,
   countBlockingIdentityMappingTasksForRevision,
-  countIdentityMappingDownstreamUsage,
-  countOpenIdentityMappingTasksForRevision,
-  getIdentityMappingTaskById,
   listCanonicalBindingCompareRows,
   listCanonicalBindingHistoryValueRows,
   listIdentityMappingTaskRows,
   listProjectBindingRows,
-  lockOpenIdentityMappingTask,
-  reopenIdentityMappingTaskRow,
-  reResolveReviewedIdentityMapping,
-  resolveIdentityMappingTaskRow,
-  selectedCandidateBelongsToRevision,
-  countSingletonCardinalityConflicts,
-  updateResolvedIdentityMappingTaskRow
+  countSingletonCardinalityConflicts
 } from "./bindingService";
 import { normalizeBindingSchemaState } from "./schemaState";
 import {
-  createBindingDraft as createBindingDraftEdit,
   createNodeEnablementDraft as createNodeEnablementDraftEdit,
-  type BindingDraftResult,
   type NodeEnablementDraftResult
 } from "./editService";
 import { type CreateBindingDraftDeps } from "./overlayWriteback";
@@ -72,12 +59,9 @@ import {
   type ConfigRevisionMemberRow
 } from "./repository";
 import type {
-  CreateBindingDraftBody,
   CreateNodeEnablementDraftBody,
   DtsValueDto,
   ProjectBindingDto,
-  ReopenIdentityMappingTaskBody,
-  ResolveIdentityMappingTaskBody,
   TopologyView
 } from "./schemas";
 import { dtsValueSchema, projectBindingDtoSchema } from "./schemas";
@@ -135,10 +119,6 @@ async function rejectLegacyTopologyBinding(
   throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
     bindingId: input.bindingId,
   });
-}
-
-function evidenceHash(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(value ?? null), "utf8").digest("hex").slice(0, 16);
 }
 
 function toEffectiveValue(typedValue: unknown): DtsValueDto {
@@ -545,363 +525,6 @@ export async function getBindingCompare(
       valueState: row.valueState,
     })),
   };
-}
-
-export async function resolveIdentityMappingTask(
-  db: Database,
-  auth: AuthContext,
-  input: ResolveIdentityMappingTaskBody & { taskId: string },
-  context: AuditCorrelationContext = {}
-) {
-  requireCanAdmin(auth);
-
-  return db.transaction(async (tx) => {
-    const existing = await lockOpenIdentityMappingTask(tx, {
-      organizationId: auth.organization.id,
-      taskId: input.taskId
-    });
-    if (!existing) {
-      const known = await getIdentityMappingTaskById(tx, {
-        organizationId: auth.organization.id,
-        taskId: input.taskId
-      });
-      if (!known) {
-        throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", {
-          taskId: input.taskId
-        });
-      }
-      if (
-        known.status === "resolved" &&
-        known.taskKind === "identity-ambiguity" &&
-        input.decision === "resolved" &&
-        input.selectedLogicalNodeId
-      ) {
-        const priorSelectedLogicalNodeId =
-          typeof known.evidence.selectedLogicalNodeId === "string"
-            ? known.evidence.selectedLogicalNodeId
-            : null;
-        if (priorSelectedLogicalNodeId === input.selectedLogicalNodeId) {
-          return {
-            id: known.id,
-            status: known.status,
-            selectedLogicalNodeId: input.selectedLogicalNodeId,
-            idempotent: true
-          };
-        }
-        if (
-          !priorSelectedLogicalNodeId ||
-          !known.previousLogicalNodeId ||
-          !known.candidateLogicalNodeIds.includes(input.selectedLogicalNodeId)
-        ) {
-          throw new ApiError(
-            "CONFLICT",
-            "Completed mapping lacks reversible continuity evidence; an explicit migration is required.",
-            { code: "identity-mapping-migration-required", taskId: input.taskId }
-          );
-        }
-        const belongs = await selectedCandidateBelongsToRevision(tx, {
-          organizationId: auth.organization.id,
-          projectId: known.projectId,
-          configRevisionId: known.configRevisionId,
-          selectedLogicalNodeId: input.selectedLogicalNodeId
-        });
-        if (!belongs) {
-          throw new ApiError(
-            "CONFLICT",
-            "Completed mapping candidate is outside the original revision scope; an explicit migration is required.",
-            {
-              code: "identity-mapping-migration-required",
-              taskId: input.taskId,
-              selectedLogicalNodeId: input.selectedLogicalNodeId,
-              configRevisionId: known.configRevisionId
-            }
-          );
-        }
-        const downstream = await countIdentityMappingDownstreamUsage(tx, {
-          organizationId: auth.organization.id,
-          projectId: known.projectId,
-          logicalNodeIds: [
-            known.previousLogicalNodeId,
-            ...known.candidateLogicalNodeIds
-          ]
-        });
-        if (downstream.drafts + downstream.submissions + downstream.operations > 0) {
-          throw new ApiError(
-            "CONFLICT",
-            "Completed mapping has downstream workflow/device usage; migrate those references before re-resolving.",
-            {
-              code: "identity-mapping-migration-required",
-              taskId: input.taskId,
-              downstream
-            }
-          );
-        }
-
-        await reResolveReviewedIdentityMapping(tx, {
-          organizationId: auth.organization.id,
-          projectId: known.projectId,
-          configRevisionId: known.configRevisionId,
-          previousLogicalNodeId: known.previousLogicalNodeId,
-          priorSelectedLogicalNodeId,
-          nextSelectedLogicalNodeId: input.selectedLogicalNodeId
-        });
-        const continuityReuse = continuityReuseFromTaskEvidence(
-          known.evidence,
-          input.selectedLogicalNodeId
-        );
-        const updated = await updateResolvedIdentityMappingTaskRow(tx, {
-          taskId: input.taskId,
-          organizationId: auth.organization.id,
-          selectedLogicalNodeId: input.selectedLogicalNodeId,
-          reviewerUserId: auth.user.id,
-          reason: input.reason,
-          continuityReuse
-        });
-        if (!updated) {
-          throw new ApiError("CONFLICT", "Identity mapping task changed during re-resolve.", {
-            taskId: input.taskId
-          });
-        }
-        await writeGovernanceAudit(
-          asAuditTx(tx),
-          auth,
-          {
-            action: "identity-mapping-resolved",
-            projectId: known.projectId,
-            targetType: "identity-mapping-task",
-            targetId: updated.id,
-            metadata: {
-              taskId: updated.id,
-              configRevisionId: known.configRevisionId,
-              priorSelectedLogicalNodeId,
-              selectedLogicalNodeId: input.selectedLogicalNodeId,
-              reResolved: true,
-              downstream,
-              reasonHash: evidenceHash(input.reason)
-            }
-          },
-          context
-        );
-        return {
-          id: updated.id,
-          status: updated.status,
-          selectedLogicalNodeId: input.selectedLogicalNodeId,
-          reResolved: true
-        };
-      }
-      throw new ApiError("CONFLICT", "Identity mapping task is not open.", { taskId: input.taskId });
-    }
-
-    if (existing.taskKind === "singleton-cardinality") {
-      throw new ApiError(
-        "CONFLICT",
-        "Singleton-per-project conflicts must be fixed in the registration or topology; identity decisions cannot discard instances.",
-        {
-          code: "singleton-cardinality-conflict",
-          taskId: input.taskId,
-          candidateCount: existing.candidateLogicalNodeIds.length
-        }
-      );
-    }
-
-    if (
-      input.decision === "new-identity" &&
-      existing.candidateLogicalNodeIds.length > 1 &&
-      input.confirmAllCandidates !== true
-    ) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Confirm all candidates before keeping multiple new identities.",
-        {
-          code: "confirm-all-candidates-required",
-          candidateCount: existing.candidateLogicalNodeIds.length
-        }
-      );
-    }
-
-    if (
-      input.decision === "resolved" &&
-      input.selectedLogicalNodeId &&
-      !existing.candidateLogicalNodeIds.includes(input.selectedLogicalNodeId)
-    ) {
-      throw new ApiError("VALIDATION_FAILED", "selectedLogicalNodeId must be one of the candidate ids.", {
-        selectedLogicalNodeId: input.selectedLogicalNodeId,
-        candidates: existing.candidateLogicalNodeIds
-      });
-    }
-
-    if (input.decision === "resolved" && input.selectedLogicalNodeId) {
-      const belongs = await selectedCandidateBelongsToRevision(tx, {
-        organizationId: auth.organization.id,
-        projectId: existing.projectId,
-        configRevisionId: existing.configRevisionId,
-        selectedLogicalNodeId: input.selectedLogicalNodeId
-      });
-      if (!belongs) {
-        throw new ApiError(
-          "VALIDATION_FAILED",
-          "selectedLogicalNodeId must belong to the same organization, project, and config revision.",
-          {
-            selectedLogicalNodeId: input.selectedLogicalNodeId,
-            configRevisionId: existing.configRevisionId
-          }
-        );
-      }
-
-      await applyReviewedIdentityMapping(tx, {
-        organizationId: auth.organization.id,
-        projectId: existing.projectId,
-        configRevisionId: existing.configRevisionId,
-        previousLogicalNodeId: existing.previousLogicalNodeId,
-        selectedLogicalNodeId: input.selectedLogicalNodeId
-      });
-    }
-
-    const continuityReuse =
-      input.decision === "resolved" && input.selectedLogicalNodeId
-        ? continuityReuseFromTaskEvidence(existing.evidence, input.selectedLogicalNodeId)
-        : null;
-
-    const resolved = await resolveIdentityMappingTaskRow(tx, {
-      taskId: input.taskId,
-      organizationId: auth.organization.id,
-      status: input.decision === "new-identity" ? "new_identity" : input.decision,
-      selectedLogicalNodeId: input.selectedLogicalNodeId,
-      reviewerUserId: auth.user.id,
-      reason: input.reason,
-      continuityReuse
-    });
-    if (!resolved) {
-      throw new ApiError("CONFLICT", "Identity mapping task is not open.", { taskId: input.taskId });
-    }
-
-    const openRemaining = await countOpenIdentityMappingTasksForRevision(tx, {
-      organizationId: auth.organization.id,
-      configRevisionId: existing.configRevisionId
-    });
-    const singletonConflicts = await countSingletonCardinalityConflicts(tx, {
-      organizationId: auth.organization.id,
-      projectId: existing.projectId,
-      configRevisionId: existing.configRevisionId
-    });
-    const blockingRemaining = singletonConflicts + await countBlockingIdentityMappingTasksForRevision(tx, {
-      organizationId: auth.organization.id,
-      configRevisionId: existing.configRevisionId
-    });
-
-    // Dismissed and singleton tasks remain blocking; resolved/new_identity clear.
-    const nextStatus = blockingRemaining === 0 ? "resolved" : "needs_mapping";
-
-    await updateConfigRevisionStatus(tx, {
-      id: existing.configRevisionId,
-      status: nextStatus,
-      resolvedAt: nextStatus === "resolved" ? new Date().toISOString() : null
-    });
-
-    await writeGovernanceAudit(
-      asAuditTx(tx),
-      auth,
-      {
-        action:
-          input.decision === "resolved"
-            ? "identity-mapping-resolved"
-            : input.decision === "new-identity"
-              ? "identity-mapping-new-identity"
-              : "identity-mapping-dismissed",
-        projectId: existing.projectId,
-        targetType: "identity-mapping-task",
-        targetId: resolved.id,
-        metadata: {
-          taskId: resolved.id,
-          configRevisionId: existing.configRevisionId,
-          previousLogicalNodeId: existing.previousLogicalNodeId,
-          selectedLogicalNodeId: input.selectedLogicalNodeId ?? null,
-          candidateCount: existing.candidateLogicalNodeIds.length,
-          openMappingTasksRemaining: openRemaining,
-          blockingMappingTasksRemaining: blockingRemaining,
-          revisionStatus: nextStatus,
-          evidenceHash: evidenceHash(existing.evidence),
-          reasonHash: evidenceHash(input.reason)
-        }
-      },
-      context
-    );
-
-    return {
-      id: resolved.id,
-      status: resolved.status,
-      selectedLogicalNodeId: input.selectedLogicalNodeId
-    };
-  });
-}
-
-export async function reopenIdentityMappingTask(
-  db: Database,
-  auth: AuthContext,
-  input: ReopenIdentityMappingTaskBody & { taskId: string },
-  context: AuditCorrelationContext = {}
-) {
-  requireCanAdmin(auth);
-
-  return db.transaction(async (tx) => {
-    const known = await getIdentityMappingTaskById(tx, {
-      organizationId: auth.organization.id,
-      taskId: input.taskId
-    });
-    if (!known) {
-      throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", {
-        taskId: input.taskId
-      });
-    }
-    if (known.taskKind !== "identity-ambiguity" || known.status === "resolved") {
-      throw new ApiError(
-        "CONFLICT",
-        "This completed mapping cannot be reopened; use protected re-resolve for an applied mapping.",
-        { taskId: input.taskId, status: known.status, taskKind: known.taskKind }
-      );
-    }
-    if (known.status === "open") {
-      throw new ApiError("CONFLICT", "Identity mapping task is already open.", {
-        taskId: input.taskId
-      });
-    }
-
-    const reopened = await reopenIdentityMappingTaskRow(tx, {
-      taskId: input.taskId,
-      organizationId: auth.organization.id,
-      reason: input.reason
-    });
-    if (!reopened) {
-      throw new ApiError("CONFLICT", "Identity mapping task cannot be reopened.", {
-        taskId: input.taskId,
-        status: known.status
-      });
-    }
-
-    await updateConfigRevisionStatus(tx, {
-      id: known.configRevisionId,
-      status: "needs_mapping",
-      resolvedAt: null
-    });
-    await writeGovernanceAudit(
-      asAuditTx(tx),
-      auth,
-      {
-        action: "identity-mapping-reopened",
-        projectId: known.projectId,
-        targetType: "identity-mapping-task",
-        targetId: reopened.id,
-        metadata: {
-          taskId: reopened.id,
-          configRevisionId: known.configRevisionId,
-          previousStatus: known.status,
-          reasonHash: evidenceHash(input.reason)
-        }
-      },
-      context
-    );
-    return { id: reopened.id, status: reopened.status };
-  });
 }
 
 export type ValidateConfigRevisionDeps = {
@@ -1665,99 +1288,7 @@ export async function validateConfigRevision(
   };
 }
 
-export type CreateBindingDraftServiceResult = {
-  draftId: string;
-  parameterId: string;
-  candidateRevisionId: string;
-  workingCandidateRevisionId: string;
-  rebasedDraftIds: string[];
-  rawText: string;
-  action: "set" | "delete";
-  parameterSpecId: string;
-  projectParameterBindingId: string;
-  writeTarget: BindingDraftResult["writeTarget"];
-  overlayFileId: string;
-  overlayFileName: string;
-};
 
-/**
- * Org-isolated typed binding draft API: precise Config Set writeback + fail-closed validate.
- */
-export async function createBindingDraft(
-  db: Database,
-  auth: AuthContext,
-  input: {
-    projectId: string;
-    bindingId: string;
-  } & CreateBindingDraftBody,
-  deps: CreateBindingDraftDeps = {},
-  context: TrustedSensitiveNodeWriteContext
-): Promise<CreateBindingDraftServiceResult> {
-  requireCanEdit(auth);
-
-  const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId
-  });
-  if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
-      projectId: input.projectId
-    });
-  }
-
-  const bindingProject = await db.query<{ project_id: string }>(
-    `
-    select project_id
-    from project_parameter_bindings
-    where id = $1 and organization_id = $2
-    limit 1
-    `,
-    [input.bindingId, auth.organization.id]
-  );
-  if (!bindingProject.rows[0] || bindingProject.rows[0].project_id !== input.projectId) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
-      projectId: input.projectId,
-      bindingId: input.bindingId
-    });
-  }
-
-  // The edit helper creates the immutable candidate file blob before it reaches
-  // its audited draft/rebase step. Keep every database write (file version,
-  // candidate revision, binding carry-forward, draft and success audit) inside
-  // one outer transaction so an audit failure cannot leave committed domain
-  // rows behind. The blob write does not participate in the database
-  // transaction and may remain as an unreachable orphan on rollback.
-  const draft = await db.transaction((tx) =>
-    createBindingDraftEdit(
-      tx,
-      auth,
-      {
-        bindingId: input.bindingId,
-        baseRevisionId: input.baseRevisionId,
-        targetValue: input.targetValue,
-        action: input.action,
-        reason: input.reason
-      },
-      deps,
-      context
-    )
-  );
-
-  return {
-    draftId: draft.draftId,
-    parameterId: draft.parameterId,
-    candidateRevisionId: draft.candidateRevisionId,
-    workingCandidateRevisionId: draft.workingCandidateRevisionId,
-    rebasedDraftIds: draft.rebasedDraftIds,
-    rawText: draft.rawText,
-    action: draft.action,
-    parameterSpecId: draft.parameterSpecId,
-    projectParameterBindingId: draft.projectParameterBindingId,
-    writeTarget: draft.writeTarget,
-    overlayFileId: draft.overlayFileId,
-    overlayFileName: draft.overlayFileName
-  };
-}
 
 export type CreateNodeEnablementDraftServiceResult = NodeEnablementDraftResult;
 

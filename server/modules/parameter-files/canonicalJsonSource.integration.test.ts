@@ -20,7 +20,6 @@ import { loadCanonicalSourceSnapshot, preparePinnedSourceChange } from "./canoni
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { uploadProjectParameterFile } from "./service";
 import { getProjectParameterFileById, insertFileVersion } from "./repository";
-import { applyImportBatch as applyLegacyImportBatch } from "../parameters/service";
 import { commitCanonicalSourceRevision } from "./canonicalSourceCommit";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { createCanonicalValueDraft, listCanonicalValueDraftsForUser } from "../parameter-bindings/drafts/service";
@@ -525,10 +524,8 @@ describe("canonical JSON configuration source", () => {
     expect(brokenStage.status,JSON.stringify(brokenStage.body)).toBe(400);
     expect(await counts()).toEqual(beforeFailure);
     expect((await db.query(`select status,applied_at from parameter_import_batches where id=$1`, [brokenPreview.body.item.id])).rows[0]).toEqual({ status: "previewed",applied_at: null });
-    // An old/abnormal batch without canonical marker fields cannot bypass the
-    // source owner simply by hiding its Binding IDs from the legacy service.
     await db.query(`update parameter_import_batches set items='[]'::jsonb where id=$1`, [brokenPreview.body.item.id]);
-    await expect(applyLegacyImportBatch(db,auth,{ batchId: brokenPreview.body.item.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await api(`/api/v1/parameter-import-batches/${brokenPreview.body.item.id}/apply`, {})).status).toBe(400);
     expect(await counts()).toEqual(beforeFailure);
     await db.query(
       `update user_role_bindings set role_id='software-user',project_id=$1 where id in ('t11-json-admin','t11-json-admin-role')`,

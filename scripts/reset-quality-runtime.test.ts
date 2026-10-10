@@ -231,60 +231,17 @@ describe("quality runtime reset wiring", () => {
     }
   );
 
-  it("seeds one internally consistent review request and submission item", async () => {
+  it("requires a root database for canonical visual review writes", async () => {
     const { db, queries } = createRecordingDb((text) => {
       if (text.includes("current_database()")) {
         return { rows: [{ database_name: "wiseeff_test" }], rowCount: 1 };
       }
-      if (text.includes("from parameter_change_requests cr")) {
-        return {
-          rows: [exactFixtureRequestRow],
-          rowCount: 1
-        };
-      }
-      if (text.includes("from parameter_submission_rounds")) {
-        return {
-          rows: [exactFixtureRoundRow],
-          rowCount: 1
-        };
-      }
-      if (text.includes("from parameter_submission_items")) {
-        return {
-          rows: [exactFixtureItemRow],
-          rowCount: 1
-        };
-      }
-      if (text.includes("select b.id as binding_id")) {
-        return {
-          rows: [{ binding_id: "binding-1", parameter_spec_id: "spec-1", current_value: "<4500 0>" }],
-          rowCount: 1
-        };
-      }
       return { rows: [], rowCount: 0 };
     });
 
-    await expect(seedQualityVisualReview(db)).resolves.toEqual({
-      requestId: "PRQ-8910",
-      roundId: "PSR-2026-08-22-001",
-      bindingId: "binding-1"
-    });
-
-    const bindingSelection = queries.find((query) => query.text.startsWith("select b.id as binding_id"));
-    expect(bindingSelection?.values).toEqual(["vendor/nodename/battery0/cccv_0"]);
-
-    const itemInsert = queries.find((query) => query.text.includes("insert into parameter_submission_items"));
-    expect(itemInsert?.values).toEqual([
-      "PSI-2026-08-22-001",
-      "PSR-2026-08-22-001",
-      "PRQ-8910",
-      "<4500 0>",
-      "<4600 0>",
-      "binding-1",
-      "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600"
-    ]);
-    expect(queries.findIndex((query) => query.text.includes("delete from parameter_submission_items"))).toBeLessThan(
-      queries.findIndex((query) => query.text.includes("delete from parameter_change_requests"))
-    );
+    await expect(seedQualityVisualReview(db)).rejects.toThrow("requires the root database");
+    expect(queries).toHaveLength(1);
+    expect(queries.some((query) => /^(insert|delete|update) /.test(query.text))).toBe(false);
   });
 
   it("removes only the exact visual review fixture and leaves unknown requests untouched", async () => {

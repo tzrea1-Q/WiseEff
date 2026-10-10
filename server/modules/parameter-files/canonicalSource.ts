@@ -12,7 +12,7 @@ import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sens
 import { parseDts, parseDtsValue, renderDtsValue, type DtsDocument, type DtsPropertyCst } from "../dts";
 import { resolveDtsConfigSet } from "../dts/configSetResolver";
 import { ensureOverlayProperty } from "../parameter-topology/overlayWriteback";
-import { resolveEnablementWriteLock, verifyEnablementWriteLock } from "../parameter-topology/writeLock";
+import { canonicalizeLogicalNodeCompatible, resolveEnablementWriteLock, verifyEnablementWriteLock } from "../parameter-topology/writeLock";
 import { getChangeRequestEnablementWriteLock } from "../parameter-drafts/repository";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import { insertFileVersion } from "./repository";
@@ -281,7 +281,7 @@ export async function assertPinnedCanonicalSensitiveNodeWriteAllowed(
       projectId: manifest.projectId,
       nodePath: row.node_locator,
       sourcePath: { kind: "node-locator", value: row.node_locator },
-      compatible: row.compatible,
+      compatible: canonicalizeLogicalNodeCompatible(row.compatible),
       compatibleIsAuthoritative: true,
       invocation: context.invocation,
       requestId: context.requestId,

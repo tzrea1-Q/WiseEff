@@ -8,47 +8,20 @@ import { OrganizationIdentityMappingPanel } from "./OrganizationIdentityMappingP
 import { ParameterAdminProvider } from "./ParameterAdminProvider";
 
 const stubTopology = {
-  listSpecs: vi.fn(),
-  getSpec: vi.fn(),
-  listReviewTasks: vi.fn(),
-  resolveReviewTask: vi.fn(),
   listMappingTasks: vi.fn(),
-  resolveMapping: vi.fn(),
-  reopenMapping: vi.fn(),
-  activateParameterSpec: vi.fn(),
-  updateParameterSpec: vi.fn(),
-  deprecateParameterSpec: vi.fn(),
-  restoreParameterSpec: vi.fn(),
-  reattributeParameterSpec: vi.fn(),
-  renameParameterSpecPropertyKey: vi.fn(),
-  prepareSpecVersionCutover: vi.fn(),
-  finalizeSpecVersionCutover: vi.fn()
 };
 
 const stubModules = {
   getRegistry: vi.fn(),
-  getDiscoveryHints: vi.fn(),
-  dismissCompatible: vi.fn(),
-  restoreDismissedCompatible: vi.fn(),
   createModule: vi.fn(),
   updateModule: vi.fn(),
   deleteModule: vi.fn(),
-  previewMapping: vi.fn(),
-  createMapping: vi.fn(),
-  deleteMapping: vi.fn(),
-  recomputeBindings: vi.fn(),
-  listDriverRegistry: vi.fn(),
-  registerOrClaimDriver: vi.fn(),
-  updateDriverRegistration: vi.fn(),
-  updateDriverRegistrationDefault: vi.fn(),
-  replayDriverPlacement: vi.fn()
+  listDriverRegistry: vi.fn()
 };
 
 describe("OrganizationIdentityMappingPanel", () => {
   beforeEach(() => {
     stubTopology.listMappingTasks.mockReset();
-    stubTopology.resolveMapping.mockReset();
-    stubTopology.reopenMapping.mockReset();
   });
 
   it("keeps unresolved historical evidence and resolved history read-only without name inference", async () => {
@@ -97,8 +70,8 @@ describe("OrganizationIdentityMappingPanel", () => {
     );
     expect(screen.getByText("原因：Recorded dismissed evidence")).toBeInTheDocument();
     expect(screen.getByText("原因：Recorded new_identity evidence")).toBeInTheDocument();
-    expect(stubTopology.resolveMapping).not.toHaveBeenCalled();
-    expect(stubTopology.reopenMapping).not.toHaveBeenCalled();
+    expect(stubTopology).not.toHaveProperty("resolveMapping");
+    expect(stubTopology).not.toHaveProperty("reopenMapping");
     expect(tasks[0].status).toBe("open");
     expect(tasks[0].candidateLogicalNodeIds).toEqual(["candidate-node-1", "candidate-node-2"]);
   });

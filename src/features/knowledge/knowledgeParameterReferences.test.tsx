@@ -3,15 +3,18 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
-import {
-  ParameterSpecDetail,
-  createSpecEditorDraft,
-  type ParameterSpecDetailView
-} from "@/components/parameter-topology/ParameterSpecDetail";
+import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
+import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
+import { DefinitionEditorBody } from "@/features/parameter-catalog-governance/DefinitionEditorBody";
 import { KnowledgePage } from "./KnowledgePage";
 import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceChips";
 import type { KnowledgeDefinitionPickerPage } from "./KnowledgeEntryEditorDialog";
-import { activeDefinition } from "@/application/parameter-catalog/fixtures";
+import {
+  CATALOG_RELEASE_ID,
+  activeDefinition,
+  readyCatalogDocument,
+  registeredSubject
+} from "@/application/parameter-catalog/fixtures";
 
 const editorCapability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
 
@@ -227,23 +230,21 @@ describe("knowledge entry editor reference picker", () => {
 });
 
 describe("definition detail 相关知识 section", () => {
-  function makeDetail(): ParameterSpecDetailView {
-    return {
-      id: "spec-sc8562-gpio-int",
-      organizationId: "org-1",
-      propertyKey: "gpio_int",
-      driverModule: "sc8562",
-      reviewState: "active",
-      valueType: "cells",
-      valueShape: { kind: "cells" },
-      exampleValue: null,
-      usageCount: 0,
-      schemaSource: "dts",
-      compatibles: [],
-      attributionModules: [],
-      attributionSubjectId: null,
-      moduleNames: []
-    } as unknown as ParameterSpecDetailView;
+  function definitionEditor(relatedKnowledge?: Parameters<typeof DefinitionEditorBody>[0]["relatedKnowledge"]) {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    return (
+      <DefinitionEditorBody
+        actor="org-admin"
+        domainState={deriveCatalogDomainState({ document: readyCatalogDocument })}
+        catalog={ports.catalog}
+        catalogReleaseId={CATALOG_RELEASE_ID}
+        definition={activeDefinition}
+        relatedKnowledge={relatedKnowledge}
+        subjects={[registeredSubject]}
+        history={null}
+        authoringAllowed={false}
+      />
+    );
   }
 
   it("lists published referencing entries and deep-links into /knowledge", async () => {
@@ -251,19 +252,10 @@ describe("definition detail 相关知识 section", () => {
       { entryId: "mock-kb-1", title: "快充温控调参经验", excerpt: "当电池温度超过 45 度…", updatedAt: "2026-08-10T06:30:00.000Z" }
     ]);
     const onOpenEntry = vi.fn();
-    const detail = makeDetail();
-    render(
-      <ParameterSpecDetail
-        detail={detail}
-        draft={createSpecEditorDraft(detail)}
-        onDraftChange={() => undefined}
-        editable={false}
-        relatedKnowledge={{ load, onOpenEntry }}
-      />
-    );
+    render(definitionEditor({ load, onOpenEntry }));
 
     const section = await screen.findByTestId("spec-related-knowledge");
-    expect(load).toHaveBeenCalledWith("spec-sc8562-gpio-int");
+    expect(load).toHaveBeenCalledWith(activeDefinition.id);
     expect(await within(section).findByText("快充温控调参经验")).toBeInTheDocument();
     expect(within(section).getByText("仅显示已发布条目；草稿与已归档不出现。")).toBeInTheDocument();
 
@@ -272,27 +264,13 @@ describe("definition detail 相关知识 section", () => {
   });
 
   it("shows an honest empty state and stays hidden without the injected source", async () => {
-    const detail = makeDetail();
     const { rerender } = render(
-      <ParameterSpecDetail
-        detail={detail}
-        draft={createSpecEditorDraft(detail)}
-        onDraftChange={() => undefined}
-        editable={false}
-        relatedKnowledge={{ load: async () => [], onOpenEntry: () => undefined }}
-      />
+      definitionEditor({ load: async () => [], onOpenEntry: () => undefined })
     );
     const section = await screen.findByTestId("spec-related-knowledge");
     expect(await within(section).findByText("暂无引用该定义的已发布知识条目。")).toBeInTheDocument();
 
-    rerender(
-      <ParameterSpecDetail
-        detail={detail}
-        draft={createSpecEditorDraft(detail)}
-        onDraftChange={() => undefined}
-        editable={false}
-      />
-    );
+    rerender(definitionEditor());
     expect(screen.queryByTestId("spec-related-knowledge")).not.toBeInTheDocument();
   });
 });

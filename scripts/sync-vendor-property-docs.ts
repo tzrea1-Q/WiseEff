@@ -1,76 +1,34 @@
 import pg from "pg";
 import { pathToFileURL } from "node:url";
 
-import type { Database } from "../server/shared/database/client";
-import { loadSchemaRegistry } from "../server/modules/parameter-specs/schemaLoader";
-import {
-  upsertMatchedDriverSchema,
-  upsertMatchedPropertySpec,
-} from "../server/modules/parameter-specs/repository";
-import type { PropertySpec } from "../server/modules/parameter-specs/types";
-import { isStructuralPropertyKey } from "../src/domain/parameter-topology/parameterSurface";
+import { getRootPostgresPool, type Database } from "../server/shared/database/client";
+import { seedPublishedCatalog } from "../server/testing/parameterCatalog/seedPublishedCatalog";
 
-type Queryable = Pick<Database, "query"> | pg.Pool;
-
-export function isSyncableVendorProperty(property: Pick<PropertySpec, "propertyKey">): boolean {
-  return !isStructuralPropertyKey(property.propertyKey);
-}
-
-/**
- * Refresh the complete schema graph from the pinned YAML catalog. Driver roots
- * are materialized first so every property can inherit the same canonical
- * DriverRegistration subject; a property-only sync must never create a
- * subjectless platform definition.
- */
-async function syncVendorPropertyDocsInTransaction(db: Pick<Database, "query">): Promise<number> {
-  const registry = loadSchemaRegistry("schemas/dts");
-  for (const driver of registry.drivers) {
-    await upsertMatchedDriverSchema(db, driver);
-  }
-  let updated = 0;
-  for (const property of registry.properties) {
-    if (!isSyncableVendorProperty(property)) continue;
-    await upsertMatchedPropertySpec(db, property);
-    updated += 1;
-  }
-  return updated;
-}
-
-/**
- * Refresh the catalog atomically when called with the server database root.
- * Callers that already own a transaction may pass its query handle directly;
- * the CLI below always uses one checked-out pool client so retiring an old
- * active version cannot commit without its replacement.
- */
-export async function syncVendorPropertyDocs(db: Queryable | Database): Promise<number> {
-  if ("transaction" in db && typeof db.transaction === "function") {
-    return db.transaction((tx) => syncVendorPropertyDocsInTransaction(tx));
-  }
-  return syncVendorPropertyDocsInTransaction(db);
+export async function ensurePublishedVendorCatalog(db: Database | pg.Pool): Promise<number> {
+  const pool = db instanceof pg.Pool ? db : getRootPostgresPool(db);
+  if (!pool) throw new Error("Published vendor Catalog installation requires the root PostgreSQL database.");
+  const release = await seedPublishedCatalog(pool);
+  const definitions = await pool.query<{ count: number }>(
+    `select count(*)::int as count from parameter_catalog.catalog_release_definition_heads where release_id = $1`,
+    [release.id],
+  );
+  return definitions.rows[0]!.count;
 }
 
 async function main() {
   const pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL ?? "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
   });
-  const client = await pool.connect();
   try {
-    await client.query("begin");
-    const updated = await syncVendorPropertyDocsInTransaction(client);
-    const sample = await client.query(
-      `select psv.description, psv.example_value, dps.documentation
-       from parameter_spec_versions psv
-       left join dts_property_specs dps on dps.parameter_spec_id = psv.parameter_spec_id
-       where psv.id = $1`,
-      ["propspec:vendor/huawei,bypass_bst_hl7603:const_vout:v1"]
+    const releaseDefinitionCount = await ensurePublishedVendorCatalog(pool);
+    const sample = await pool.query(
+      `select revision.content from parameter_catalog.parameter_definitions definition
+       join parameter_catalog.definition_revisions revision on revision.id = definition.current_revision_id
+       where definition.id = $1`,
+      ["pdef_drv_huawei_bypass_bst_hl7603_const_vout"]
     );
-    await client.query("commit");
-    console.log(JSON.stringify({ updated, sample: sample.rows[0] }, null, 2));
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined);
-    throw error;
+    console.log(JSON.stringify({ releaseDefinitionCount, sample: sample.rows[0] }, null, 2));
   } finally {
-    client.release();
     await pool.end();
   }
 }

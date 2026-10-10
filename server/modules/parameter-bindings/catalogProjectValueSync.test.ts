@@ -119,12 +119,7 @@ describe("catalog import identity matching", () => {
   });
 
   it("refuses a name-only import when more than one published value shares the name", () => {
-    expect(() => matchCatalogImportRow({ name: "iin_max" }, [bindingB, bindingA])).toThrow(ApiError);
-    try {
-      matchCatalogImportRow({ name: "iin_max" }, [bindingA, bindingB]);
-    } catch (error) {
-      expect(error).toMatchObject({ code: "CONFLICT" });
-    }
+    expect(matchCatalogImportRow({ name: "iin_max" }, [bindingB, bindingA])).toBeNull();
   });
 
   it("does not fall back to a same-name value when the precise identity is missing", () => {
@@ -141,8 +136,8 @@ describe("catalog import identity matching", () => {
     expect(matchCatalogImportRow({ name: "iin_max" }, [])).toBeNull();
   });
 
-  it("matches a unique name when no precise identity is supplied", () => {
-    expect(matchCatalogImportRow({ name: "iin_max" }, [bindingA])).toEqual(bindingA);
+  it("refuses even a unique name when no precise identity is supplied", () => {
+    expect(matchCatalogImportRow({ name: "iin_max" }, [bindingA])).toBeNull();
   });
 });
 

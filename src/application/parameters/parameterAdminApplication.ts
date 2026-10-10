@@ -1,23 +1,7 @@
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type {
-  ActivateParameterSpecInput,
-  CreateParameterSpecInput,
-  DeprecateParameterSpecInput,
-  ParameterTopologyRepository,
-  ReattributeParameterSpecInput,
-  RenameParameterSpecPropertyKeyInput,
-  ReopenMappingInput,
-  ResolveMappingInput,
-  ResolveSpecReviewInput,
-  RestoreParameterSpecInput,
-  UpdateParameterSpecInput,
-} from "@/application/ports/ParameterTopologyRepository";
-import type {
-  CreateModuleMappingInput,
   CreateParameterModuleInput,
-  MappingMutationResult,
-  ModuleDiscoveryHints,
   ParameterModuleRegistryRepository,
-  RecomputeBindingModulesResult,
   UpdateParameterModuleInput,
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
@@ -37,14 +21,6 @@ import type { ParameterFileRepository } from "@/application/ports/ParameterFileR
 import type {
   ConfigRevisionSummary,
   IdentityMappingTask,
-  ParameterSpecDetail,
-  ParameterSpecSummary,
-  ParameterSpecCutoverSummary,
-  PropertyKeyCutoverPreview,
-  PropertyKeyCutoverRun,
-  SpecQuery,
-  SpecReviewTaskListResult,
-  SpecReviewTaskQuery,
   ValidationRun,
 } from "@/domain/parameter-topology/types";
 
@@ -65,76 +41,7 @@ export type ParameterAdminImportActions = {
  * Panels depend on this seam only — never on multiple HTTP/mock clients.
  */
 export type ParameterAdminApplication = {
-  listSpecs(query?: SpecQuery): Promise<ParameterSpecSummary[]>;
-  getSpec(
-    specId: string,
-    options?: { view?: "effective" | "governance" },
-  ): Promise<ParameterSpecDetail>;
-  createParameterSpec(
-    input: CreateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  listSpecReviewTasks(
-    query?: SpecReviewTaskQuery,
-  ): Promise<SpecReviewTaskListResult>;
-  resolveSpecReviewTask(
-    taskId: string,
-    input: ResolveSpecReviewInput,
-  ): Promise<void>;
-  activateParameterSpec(
-    specId: string,
-    input: ActivateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  updateParameterSpec(
-    specId: string,
-    input: UpdateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  deprecateParameterSpec(
-    specId: string,
-    input: DeprecateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  restoreParameterSpec(
-    specId: string,
-    input: RestoreParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  reattributeParameterSpec(
-    specId: string,
-    input: ReattributeParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  renameParameterSpecPropertyKey(
-    specId: string,
-    input: RenameParameterSpecPropertyKeyInput,
-  ): Promise<ParameterSpecDetail>;
-  getSpecVersionCutoverImpact(
-    specId: string,
-  ): Promise<ParameterSpecCutoverSummary>;
-  prepareSpecVersionCutover(
-    specId: string,
-    input?: { reason?: string },
-  ): Promise<ParameterSpecDetail>;
-  finalizeSpecVersionCutover(
-    specId: string,
-    input: { reason: string },
-  ): Promise<ParameterSpecDetail>;
-  previewPropertyKeyCutover?(
-    specId: string,
-    input: { propertyKey: string },
-  ): Promise<PropertyKeyCutoverPreview>;
-  startPropertyKeyCutover?(
-    specId: string,
-    input: { propertyKey: string; reason: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  preparePropertyKeyCutover?(
-    specId: string,
-    input?: { reason?: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  finalizePropertyKeyCutover?(
-    specId: string,
-    input: { reason: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  getPropertyKeyCutover?(specId: string): Promise<PropertyKeyCutoverRun | null>;
-
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
-  getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
   createModule(
     input: CreateParameterModuleInput,
   ): Promise<ParameterModuleRegistry>;
@@ -143,13 +50,6 @@ export type ParameterAdminApplication = {
     input: UpdateParameterModuleInput,
   ): Promise<ParameterModuleRegistry>;
   deleteModule(moduleId: string): Promise<ParameterModuleRegistry>;
-  createModuleMapping(
-    input: CreateModuleMappingInput,
-  ): Promise<MappingMutationResult>;
-  deleteModuleMapping(mappingId: string): Promise<MappingMutationResult>;
-  recomputeBindingModules(input?: {
-    projectId?: string;
-  }): Promise<RecomputeBindingModulesResult>;
   asModuleRegistryRepository(): ParameterModuleRegistryRepository;
 
   createImportPreview(
@@ -161,8 +61,6 @@ export type ParameterAdminApplication = {
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
 
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
-  resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
-  reopenMapping(taskId: string, input: ReopenMappingInput): Promise<void>;
   listConfigRevisions(
     projectId: string,
     configSetId: string,
@@ -206,93 +104,16 @@ export function createParameterAdminApplication({
 }: CreateParameterAdminApplicationOptions): ParameterAdminApplication {
   const asModuleRegistryRepository = (): ParameterModuleRegistryRepository => ({
     getRegistry: () => moduleRegistry.getRegistry(),
-    getDiscoveryHints: () => moduleRegistry.getDiscoveryHints(),
-    dismissCompatible: (input) => moduleRegistry.dismissCompatible(input),
-    restoreDismissedCompatible: (compatible) =>
-      moduleRegistry.restoreDismissedCompatible(compatible),
     createModule: (input) => moduleRegistry.createModule(input),
     updateModule: (moduleId, input) =>
       moduleRegistry.updateModule(moduleId, input),
     deleteModule: (moduleId) => moduleRegistry.deleteModule(moduleId),
-    previewMapping: (input) => moduleRegistry.previewMapping(input),
-    createMapping: (input) => moduleRegistry.createMapping(input),
-    deleteMapping: (mappingId) => moduleRegistry.deleteMapping(mappingId),
-    recomputeBindings: (input) => moduleRegistry.recomputeBindings(input),
     listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
-    registerOrClaimDriver: (input) =>
-      moduleRegistry.registerOrClaimDriver(input),
-    updateDriverRegistration: (moduleId, input) =>
-      moduleRegistry.updateDriverRegistration(moduleId, input),
-    updateDriverRegistrationDefault: (moduleId, input) =>
-      moduleRegistry.updateDriverRegistrationDefault(moduleId, input),
-    replayDriverPlacement: (moduleId) =>
-      moduleRegistry.replayDriverPlacement(moduleId),
   });
 
   return {
-    listSpecs(query = {}) {
-      return topology.listSpecs(query);
-    },
-    getSpec(specId, options) {
-      return topology.getSpec(specId, options);
-    },
-    createParameterSpec(input) {
-      return topology.createParameterSpec(input);
-    },
-    listSpecReviewTasks(query = {}) {
-      return topology.listSpecReviewTasks(query);
-    },
-    resolveSpecReviewTask(taskId, input) {
-      return topology.resolveSpecReviewTask(taskId, input);
-    },
-    activateParameterSpec(specId, input) {
-      return topology.activateParameterSpec(specId, input);
-    },
-    updateParameterSpec(specId, input) {
-      return topology.updateParameterSpec(specId, input);
-    },
-    deprecateParameterSpec(specId, input) {
-      return topology.deprecateParameterSpec(specId, input);
-    },
-    restoreParameterSpec(specId, input) {
-      return topology.restoreParameterSpec(specId, input);
-    },
-    reattributeParameterSpec(specId, input) {
-      return topology.reattributeParameterSpec(specId, input);
-    },
-    renameParameterSpecPropertyKey(specId, input) {
-      return topology.renameParameterSpecPropertyKey(specId, input);
-    },
-    getSpecVersionCutoverImpact(specId) {
-      return topology.getSpecVersionCutoverImpact(specId);
-    },
-    prepareSpecVersionCutover(specId, input = {}) {
-      return topology.prepareSpecVersionCutover(specId, input);
-    },
-    finalizeSpecVersionCutover(specId, input) {
-      return topology.finalizeSpecVersionCutover(specId, input);
-    },
-    previewPropertyKeyCutover: topology.previewPropertyKeyCutover
-      ? (specId, input) => topology.previewPropertyKeyCutover!(specId, input)
-      : undefined,
-    startPropertyKeyCutover: topology.startPropertyKeyCutover
-      ? (specId, input) => topology.startPropertyKeyCutover!(specId, input)
-      : undefined,
-    preparePropertyKeyCutover: topology.preparePropertyKeyCutover
-      ? (specId, input) => topology.preparePropertyKeyCutover!(specId, input)
-      : undefined,
-    finalizePropertyKeyCutover: topology.finalizePropertyKeyCutover
-      ? (specId, input) => topology.finalizePropertyKeyCutover!(specId, input)
-      : undefined,
-    getPropertyKeyCutover: topology.getPropertyKeyCutover
-      ? (specId) => topology.getPropertyKeyCutover!(specId)
-      : undefined,
-
     getModuleRegistry() {
       return moduleRegistry.getRegistry();
-    },
-    getModuleDiscoveryHints() {
-      return moduleRegistry.getDiscoveryHints();
     },
     createModule(input) {
       return moduleRegistry.createModule(input);
@@ -302,15 +123,6 @@ export function createParameterAdminApplication({
     },
     deleteModule(moduleId) {
       return moduleRegistry.deleteModule(moduleId);
-    },
-    createModuleMapping(input) {
-      return moduleRegistry.createMapping(input);
-    },
-    deleteModuleMapping(mappingId) {
-      return moduleRegistry.deleteMapping(mappingId);
-    },
-    recomputeBindingModules(input) {
-      return moduleRegistry.recomputeBindings(input);
     },
     asModuleRegistryRepository,
 
@@ -335,17 +147,6 @@ export function createParameterAdminApplication({
 
     listMappingTasks(projectId) {
       return topology.listMappingTasks(projectId);
-    },
-    resolveMapping(taskId, input) {
-      return topology.resolveMapping(taskId, input);
-    },
-    reopenMapping(taskId, input) {
-      if (!topology.reopenMapping) {
-        throw new Error(
-          "Identity mapping reopen is unavailable in this runtime.",
-        );
-      }
-      return topology.reopenMapping(taskId, input);
     },
     listConfigRevisions(projectId, configSetId) {
       return topology.listConfigRevisions(projectId, configSetId);

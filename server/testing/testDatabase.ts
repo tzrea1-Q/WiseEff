@@ -34,7 +34,8 @@ const DATABASE_DISCONNECT_POLL_MS = 25;
 const DATABASE_PREFIX = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
 if (!/^[a-z][a-z0-9_]{0,15}$/.test(DATABASE_PREFIX)) throw new Error("Invalid test database prefix");
 const TEMPLATE_PREFIX = `${DATABASE_PREFIX}_test_tpl_`;
-const WORKER_PREFIX = `${DATABASE_PREFIX}_test_wk_`;
+const WORKER_PREFIX = `wiseeff_test_wk_${DATABASE_PREFIX.length.toString(36)}_${DATABASE_PREFIX}_`;
+const MIGRATIONS_FINGERPRINT_LENGTH = 12;
 
 export function testDatabasePrefixPattern(prefix: string): string {
   return `${prefix.replace(/[\\%_]/g, "\\$&")}%`;
@@ -104,7 +105,7 @@ async function migrationsFingerprint(): Promise<string> {
     hash.update(await fs.readFile(path.join(migrationsDir, file), "utf8"));
     hash.update("\0");
   }
-  cachedFingerprint = hash.digest("hex").slice(0, 12);
+  cachedFingerprint = hash.digest("hex").slice(0, MIGRATIONS_FINGERPRINT_LENGTH);
   return cachedFingerprint;
 }
 
@@ -217,14 +218,18 @@ async function ensureTemplateDatabase(admin: pg.Client, fingerprint: string): Pr
 function currentRunToken(): string {
   // Set by server/testing/globalSetup.ts for vitest runs; the pid fallback covers
   // direct harness use outside the configured suite.
-  return (process.env.WISEEFF_TEST_RUN_TOKEN?.trim() || `p${process.pid}`).replace(
+  const token = (process.env.WISEEFF_TEST_RUN_TOKEN?.trim() || `p${process.pid}`).replace(
     /[^a-z0-9_]/gi,
     ""
   );
+  return /^[pr](0|[1-9]\d*)$/.test(token)
+    ? `${token.slice(0, 1)}${BigInt(token.slice(1)).toString(36)}`
+    : `x${Buffer.from(token).toString("hex")}`;
 }
 
 function currentPoolId(): string {
-  return (process.env.VITEST_POOL_ID?.trim() || String(process.pid)).replace(/[^a-z0-9_]/gi, "");
+  const poolId = (process.env.VITEST_POOL_ID?.trim() || String(process.pid)).replace(/[^a-z0-9_]/gi, "");
+  return /^\d+$/.test(poolId) ? BigInt(poolId).toString(36) : poolId;
 }
 
 /**
@@ -261,9 +266,9 @@ export async function setupTestDatabaseRun(): Promise<void> {
         `select datname
          from pg_database d
          where datname like $1
-           and strpos(datname, $2) = 0
+           and not starts_with(substr(datname, $2), $3)
            and not exists (select 1 from pg_stat_activity a where a.datname = d.datname)`,
-        [testDatabasePrefixPattern(WORKER_PREFIX), `_${currentRunToken()}_`]
+        [testDatabasePrefixPattern(WORKER_PREFIX), WORKER_PREFIX.length + MIGRATIONS_FINGERPRINT_LENGTH + 2, `${currentRunToken()}_`]
       );
       for (const row of orphans.rows) {
         // No force: if another live run connects between the check and the drop, the
@@ -288,8 +293,8 @@ export async function teardownTestDatabaseRun(): Promise<void> {
   try {
     const failures: unknown[] = [];
     const rows = await admin.query<{ datname: string }>(
-      `select datname from pg_database where datname like $1 and strpos(datname, $2) > 0 order by datname`,
-      [testDatabasePrefixPattern(WORKER_PREFIX), `_${token}_`]
+      `select datname from pg_database where datname like $1 and starts_with(substr(datname, $2), $3) order by datname`,
+      [testDatabasePrefixPattern(WORKER_PREFIX), WORKER_PREFIX.length + MIGRATIONS_FINGERPRINT_LENGTH + 2, `${token}_`]
     );
     for (const row of rows.rows) {
       try {
@@ -305,6 +310,7 @@ export async function teardownTestDatabaseRun(): Promise<void> {
 }
 
 async function cloneTemplateDatabase(name: string): Promise<void> {
+  if (Buffer.byteLength(name) > 63) throw new Error("Test database name exceeds PostgreSQL's 63-byte identifier limit");
   const fingerprint = await migrationsFingerprint();
   const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
   await admin.connect();
@@ -426,7 +432,8 @@ export async function createEphemeralTestDatabase(label: string): Promise<Epheme
   const fingerprint = await migrationsFingerprint();
   const safeLabel = label.replace(/[^a-z0-9]/gi, "").slice(0, 8) || "eph";
   const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
-  const name = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e${safeLabel}_${rand}`;
+  const namePrefix = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e`;
+  const name = `${namePrefix}${safeLabel.slice(0, Math.max(0, 63 - namePrefix.length - rand.length - 1))}_${rand}`;
   await cloneTemplateDatabase(name);
   let dropped = false;
   return {

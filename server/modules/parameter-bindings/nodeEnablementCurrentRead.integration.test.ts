@@ -72,7 +72,7 @@ describe.each([
         { fileId: baseFile.file.id, fileVersionId: baseFile.version.id, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: base },
         { fileId: overlayFile.file.id, fileVersionId: overlayFile.version.id, fileName: "overlay.dts", sourceName: "overlay.dts", role: "overlay", sortOrder: 1, content: overlay }
       ]
-    }, admin, { legacyProjection: "skip" });
+    }, admin);
     revisionId = revision.id;
     const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!catalog) throw new Error("Canonical fixture requires a published Catalog");
@@ -98,7 +98,7 @@ describe.each([
     const siblingRevision = await ingestConfigRevision(db, {
       organizationId, projectId, configSetId: siblingSet.id, entryFile: "sibling.dts", includeSearchPaths: ["."], overlayOrder: [],
       members: [{ fileId: siblingFile.file.id, fileVersionId: siblingFile.version.id, fileName: "sibling.dts", sourceName: "sibling.dts", role: "base", sortOrder: 0, content: siblingSource }]
-    }, admin, { legacyProjection: "skip" });
+    }, admin);
     siblingRevisionId = siblingRevision.id;
     await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
       organizationId, projectId, configSetId: siblingSet.id, configRevisionId: siblingRevisionId

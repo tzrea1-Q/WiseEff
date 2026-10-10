@@ -121,10 +121,6 @@ const paramsWithBaselineIdSchema = paramsWithProjectIdSchema.extend({
   baselineId: z.string().min(1)
 });
 
-const uploadBodySchema = z.object({
-  fileName: z.string().min(1),
-  contentBase64: z.string().min(1)
-});
 
 const uploadVersionBodySchema = z.object({
   fileName: z.string().min(1).optional(),
@@ -344,36 +340,6 @@ export function registerParameterFileRoutes(
     return { status: 200, body: { item } };
   });
 
-  router.post("/api/v1/projects/:projectId/parameter-files", async (request) => {
-    const db = requireDb(options.db);
-    const objectStore = requireObjectStore(options.objectStore);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
-    const body = parseWithSchema(uploadBodySchema, request.body, "Invalid parameter file upload payload.");
-    const result = await uploadProjectParameterFile(
-      db,
-      objectStore,
-      auth,
-      {
-        projectId: params.projectId,
-        fileName: body.fileName.trim(),
-        bytes: decodeContentBase64(body.contentBase64)
-      },
-      { requestId: request.requestId },
-      undefined,
-      db
-    );
-
-    return {
-      status: 201,
-      body: {
-        item: result.file,
-        version: result.version,
-        ...(result.driverSummary ? { driverSummary: result.driverSummary } : {}),
-      }
-    };
-  });
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/versions", async (request) => {
     const db = requireDb(options.db);
@@ -400,7 +366,6 @@ export function registerParameterFileRoutes(
         bytes: decodeContentBase64(body.contentBase64)
       },
       { requestId: request.requestId },
-      undefined,
       db
     );
 

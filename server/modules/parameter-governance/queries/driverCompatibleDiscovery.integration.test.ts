@@ -62,7 +62,7 @@ describe("#897 C1 authenticated current DTS discovery", () => {
       entryFile: fileName,includeSearchPaths: [],overlayOrder: [],members: [
         { fileId,fileVersionId,fileName,sourceName:fileName,content,role:"base",sortOrder:0 },
       ] };
-    const revision = await ingestConfigRevision(db,manifest,admin,{ legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db,manifest,admin);
     expect(revision.status).toBe("resolved");
     const row = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string;
       propertyOccurrenceId: string }>(
@@ -189,7 +189,7 @@ describe("#897 C1 authenticated current DTS discovery", () => {
     await db.query("update project_parameter_files set current_version_id=$2 where id=$1",[first.fileId,newVersionId]);
     const nextManifest = structuredClone(first.manifest);
     nextManifest.members[0] = { ...nextManifest.members[0]!,fileVersionId:newVersionId,content:newContent };
-    const nextRevision = await ingestConfigRevision(db,nextManifest,admin,{legacyProjection:"skip"});
+    const nextRevision = await ingestConfigRevision(db,nextManifest,admin);
     expect(nextRevision.status).toBe("resolved");
     const historical = await listDriverCompatibleDiscovery({ db,objectStore:storage,auth:viewer,
       observationId:first.observationId });
@@ -211,6 +211,14 @@ describe("#897 C1 authenticated current DTS discovery", () => {
     const pin = await captureCurrentCatalogPin(pool);
     if (!pin) throw new Error("Catalog pin unavailable");
     const ingest = createEvidenceIngest(pool);
+    const observationId = "obs-c1-review";
+    await insertDtsObservationSourceFixture(db, { organizationId: ORG, projectId: PROJECT,
+      configSetId: first.configSetId, fileId: first.fileId, logicalNodeId: first.logicalNodeId,
+      configRevisionId: first.revision.id, occurrenceId: "occ-c1-first", observationId,
+      catalogReleaseId: pin.id, matcherRevision: subjectMatcherRevision,
+      locator: { kind: "dts-property", fileVersionId: first.fileVersionId,
+        nodeOccurrenceId: first.nodeOccurrenceId, propertyOccurrenceId: first.propertyOccurrenceId,
+        propertyName: "limit" } });
     const writtenIds: string[] = [];
     for (const [key,index,compatible] of [["closed-c1",1,"vendor,device"],
       ["closed-c1",2,"vendor,device"],["sibling-c1",3,"vendor,device"],
@@ -223,7 +231,7 @@ describe("#897 C1 authenticated current DTS discovery", () => {
       writtenIds.push(written.value.id);
     }
     const unlinked = await listDriverCompatibleDiscovery({db,objectStore:storage,auth:admin,
-      observationId:first.observationId});
+      observationId});
     expect(unlinked.status === "ready" && unlinked.items[0]?.compatibles[0]?.candidate)
       .toMatchObject({kind:"review-required",reviewItemIds:null});
     for (const [index,writtenId] of writtenIds.entries()) {
@@ -233,7 +241,7 @@ describe("#897 C1 authenticated current DTS discovery", () => {
         (id,organization_id,observation_id,reason,candidate_safe_digest,r_class,source_graph_ref,evidence)
         select $1,organization_id,$2,reason,candidate_safe_digest,r_class,source_graph_ref,evidence
           from parameter_catalog.parameter_review_evidence where id=$3`,
-        [`prev-c1-linked-${index}`,first.observationId,writtenId]);
+        [`prev-c1-linked-${index}`,observationId,writtenId]);
     }
     const reader = createReviewQueueReader(pool);
     const context = { actorKind:"org-admin" as const,principalId:admin.user.id,organizationId:ORG };
@@ -247,9 +255,9 @@ describe("#897 C1 authenticated current DTS discovery", () => {
     const resolved = await resolveReviewItem(pool,{ resolution:"mark-out-of-scope",organizationId:ORG,
       reviewItemId:closed.id,expectedRelease:pin,etag:closed.etag,idempotencyKey:"c1-ignore-closed",
       context,reason:closed.reason,outOfScopeReason:"Not relevant" });
-    expect(resolved.ok).toBe(true);
+    expect(resolved.ok, JSON.stringify(resolved)).toBe(true);
     const result = await listDriverCompatibleDiscovery({ db,objectStore:storage,auth:admin,
-      observationId:first.observationId });
+      observationId });
     expect(result.status === "ready" && result.ignoredReviewItemCount).toBe(1);
     if (result.status !== "ready") return;
     const unknown = result.items[0]!.compatibles.find((entry) => entry.compatible === "vendor,device");

@@ -118,7 +118,10 @@ describe("log worker runner", () => {
       get: vi.fn(),
       checkHealth: vi.fn()
     }));
-    const createPostgresDatabase = vi.fn(() => ({ query: vi.fn(), transaction: vi.fn() }));
+    const createPostgresDatabase = vi.fn(() => ({
+      query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+      transaction: vi.fn()
+    }));
     const loadServerEnv = vi.fn(() => ({
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
       OBJECT_STORE_MODE: "s3",

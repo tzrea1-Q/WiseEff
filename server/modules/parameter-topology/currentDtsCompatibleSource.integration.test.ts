@@ -57,7 +57,7 @@ describe("#897 source-owned DTS compatible currentness without Binding pins", ()
   }
 
   async function observe(manifest: ConfigRevisionManifest) {
-    const revision = await ingestConfigRevision(db, manifest, auth, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, auth);
     expect(revision.status).toBe("resolved");
     const rows = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string;
       propertyOccurrenceId: string; fileVersionId: string }>(
@@ -273,7 +273,7 @@ describe("#897 source-owned DTS compatible currentness without Binding pins", ()
       [first.includeId]))).toMatchObject({ status: "unavailable",reason: "source-membership-drift" });
     const rollback = new Error("rollback ambiguity");
     await expect(db.transaction(async (tx) => {
-      const duplicate = await ingestConfigRevision(createSavepointDatabase(tx),first.manifest,auth,{ legacyProjection: "skip" });
+      const duplicate = await ingestConfigRevision(createSavepointDatabase(tx),first.manifest,auth);
       expect(duplicate.id).not.toBe(first.revision.id);
       expect(await readCurrentDtsCompatibleSource(createSavepointDatabase(tx),storage,viewer,first.input))
         .toMatchObject({ status: "unavailable",reason: "ambiguous-current-revision" });

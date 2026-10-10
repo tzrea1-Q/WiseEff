@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
 import { OrganizationSpecsArea } from "./OrganizationSpecsArea";
 import { ParameterAdminProvider } from "./ParameterAdminProvider";
+import { ToastProvider } from "@/components/common/toast/ToastProvider";
 
 const historicalTask: IdentityMappingTask = {
   id: "historical-task-1",
@@ -36,6 +37,29 @@ function renderIdentityEntry(tasks: IdentityMappingTask[] | Error) {
 }
 
 describe("OrganizationSpecsArea identity-mapping entry", () => {
+  it("does not fall back to retired Spec governance when Catalog is unavailable", async () => {
+    const topology = {
+      listMappingTasks: vi.fn().mockResolvedValue([]),
+    };
+    render(
+      <ToastProvider>
+        <ParameterAdminProvider topology={topology as never} moduleRegistry={{} as never}>
+          <OrganizationSpecsArea
+            pathname="/parameter-admin/specs"
+            search=""
+            onNavigate={vi.fn()}
+            catalogLibrary={null}
+          />
+        </ParameterAdminProvider>
+      </ToastProvider>
+    );
+
+    await waitFor(() => expect(topology.listMappingTasks).toHaveBeenCalled());
+    expect(topology).not.toHaveProperty("listSpecs");
+    expect(topology).not.toHaveProperty("listSpecReviewTasks");
+    expect(screen.queryByRole("button", { name: /新建/ })).not.toBeInTheDocument();
+  });
+
   it("redirects resolved history alone to the canonical Review Queue", async () => {
     const { onNavigate } = renderIdentityEntry([historicalTask]);
 

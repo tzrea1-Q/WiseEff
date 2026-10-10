@@ -75,6 +75,7 @@ type RegistrationPairRow = {
 
 type EvidenceRow = {
   id: string;
+  observation_id: string | null;
   organization_id: string;
   reason: ReviewReason;
   candidate_safe_digest: string;
@@ -227,7 +228,7 @@ export const loadEvidenceRecords = async (
   organizationId: string,
 ): Promise<ReviewEvidenceRecord[]> => {
   const result = await client.query<EvidenceRow>(
-    `select id, organization_id, reason, candidate_safe_digest, r_class, source_graph_ref, evidence
+    `select id, organization_id, observation_id, reason, candidate_safe_digest, r_class, source_graph_ref, evidence
        from parameter_catalog.parameter_review_evidence
       where organization_id = $1`,
     [organizationId],
@@ -238,6 +239,7 @@ export const loadEvidenceRecords = async (
     if (!evidence) continue;
     records.push({
       id: row.id,
+      observationId: row.observation_id,
       organizationId: row.organization_id,
       reason: row.reason,
       candidateSafeDigest: row.candidate_safe_digest,
@@ -247,6 +249,82 @@ export const loadEvidenceRecords = async (
     });
   }
   return records;
+};
+
+export const reviewEvidenceSourceIsOwned = async (
+  client: ReviewResolutionWriterClient,
+  organizationId: string,
+  evidencePayload: StoredReviewEvidenceBody["payload"],
+  expectedSource: Readonly<Record<string, unknown>> = {},
+): Promise<boolean> => {
+  const sourceFields = ["projectId", "configRevisionId", "propertyOccurrenceId", "logicalNodeId", "configSetId",
+    "logicalNodeRevisionId", "fileVersionId", "nodeOccurrenceId", "propertyName", "fileId", "nodeLocator"] as const;
+  const references = { ...expectedSource };
+  const checkSource = async (payload: StoredReviewEvidenceBody["payload"]): Promise<boolean> => {
+    for (const field of sourceFields) {
+      if (payload[field] === undefined) continue;
+      if (references[field] !== undefined && payload[field] !== references[field]) return false;
+      references[field] = payload[field];
+    }
+    for (const field of ["sourceRevision", "sourceProof"] as const) {
+      const source = payload[field];
+      if (source === undefined) continue;
+      if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+      const nested = source as StoredReviewEvidenceBody["payload"];
+      if (!isUsableToken(nested.configRevisionId)
+        || !await checkSource(nested)) return false;
+    }
+    if (payload.organizationId !== undefined && payload.organizationId !== organizationId) return false;
+    if (!sourceFields.some((field) => payload[field] !== undefined)) return true;
+    if (!isUsableToken(payload.configRevisionId)
+      || sourceFields.some((field) => payload[field] !== undefined && payload[field] !== null && !isUsableToken(payload[field]))) return false;
+    if ((payload.nodeOccurrenceId != null || payload.propertyName != null) && !isUsableToken(payload.propertyOccurrenceId)) return false;
+    const result = await client.query<{ owned: boolean }>(
+      `select exists (
+         select 1 from public.projects project
+         join public.dts_config_revisions revision on revision.project_id = project.id
+           and revision.organization_id = project.organization_id
+         where project.organization_id = $1 and ($2::text is null or project.id = $2) and revision.id = $3
+           and ($6::text is null or revision.config_set_id = $6)
+           and ($4::text is null or exists (
+             select 1 from public.dts_property_occurrences property
+             join public.project_parameter_file_versions version on version.id = property.file_version_id
+             join public.dts_config_revision_members member on member.file_version_id = version.id
+               and member.file_id = version.file_id and member.config_revision_id = revision.id
+             join public.project_parameter_files file on file.id = version.file_id
+               and file.organization_id = project.organization_id and file.project_id = project.id
+             join public.dts_occurrence_effects effect on effect.property_occurrence_id = property.id
+               and effect.config_revision_id = property.config_revision_id
+             join public.dts_logical_node_revisions logical on logical.id = effect.logical_node_revision_id
+               and logical.config_revision_id = revision.id
+             where property.id = $4 and property.config_revision_id = revision.id
+               and ($5::text is null or logical.logical_node_id = $5)
+               and ($8::text is null or property.file_version_id = $8)
+               and ($9::text is null or property.node_occurrence_id = $9)
+               and ($10::text is null or property.property_name = $10)
+               and ($11::text is null or file.id = $11)))
+           and (($5::text is null and $7::text is null and $12::text is null) or exists (
+             select 1 from public.dts_logical_node_revisions logical
+             join public.dts_logical_nodes node on node.id = logical.logical_node_id
+               and node.organization_id = project.organization_id and node.project_id = project.id
+               and node.config_set_id = revision.config_set_id
+             where ($5::text is null or logical.logical_node_id = $5) and logical.config_revision_id = revision.id
+               and ($7::text is null or logical.id = $7) and ($12::text is null or logical.node_locator = $12)))
+           and (($8::text is null and $11::text is null) or exists (
+             select 1 from public.dts_config_revision_members member
+             join public.project_parameter_files file on file.id = member.file_id
+               and file.organization_id = project.organization_id and file.project_id = project.id
+             where member.config_revision_id = revision.id
+               and ($8::text is null or member.file_version_id = $8) and ($11::text is null or file.id = $11)))
+       ) as owned`,
+      [organizationId, payload.projectId ?? null, payload.configRevisionId, payload.propertyOccurrenceId ?? null,
+        payload.logicalNodeId ?? null, payload.configSetId ?? null, payload.logicalNodeRevisionId ?? null,
+        payload.fileVersionId ?? null, payload.nodeOccurrenceId ?? null, payload.propertyName ?? null,
+        payload.fileId ?? null, payload.nodeLocator ?? null],
+    );
+    return result.rows[0]?.owned === true;
+  };
+  return checkSource(evidencePayload);
 };
 
 export const fingerprintResolvedItem = (input: {

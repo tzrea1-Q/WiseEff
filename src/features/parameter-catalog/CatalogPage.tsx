@@ -246,6 +246,7 @@ export function CatalogPage({
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
   listReviewItemsRef.current = listReviewItems;
+  const reviewItemsAvailable = Boolean(listReviewItems);
   const repositoryRef = useRef(repository);
   repositoryRef.current = repository;
 
@@ -420,7 +421,7 @@ export function CatalogPage({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, reviewItemsAvailable]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -775,19 +776,21 @@ export function CatalogPage({
               {action.label}
             </button>
           ))}
-          <button
-            type="button"
-            className="button subtle sm"
-            data-catalog-action="open-pending-work"
-            onClick={() => onOpenPendingWork?.()}
-          >
-            {catalogPendingWorkLabel}
-            {reviewItemCount > 0 ? (
-              <span className="parameter-catalog__badge" data-tone="warning">
-                {reviewItemCount}
-              </span>
-            ) : null}
-          </button>
+          {onOpenPendingWork ? (
+            <button
+              type="button"
+              className="button subtle sm"
+              data-catalog-action="open-pending-work"
+              onClick={onOpenPendingWork}
+            >
+              {catalogPendingWorkLabel}
+              {reviewItemCount > 0 ? (
+                <span className="parameter-catalog__badge" data-tone="warning">
+                  {reviewItemCount}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
         </div>
       </div>
 

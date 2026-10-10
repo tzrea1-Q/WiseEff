@@ -10,6 +10,7 @@ import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { countLegacyProjectBindings, installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { installLegacyBindingReadFixture } from "../../testing/parameterCatalog/legacyBindingRead";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { parameterListResponseSchema } from "../contracts/dtoSchemas";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -27,9 +28,17 @@ const otherProjectId = "project-1075-compatibility-other";
 const foreignProjectId = "project-1075-compatibility-foreign";
 const adminId = "admin-1075-compatibility-list";
 const readerId = "reader-1075-compatibility-list";
+const foreignReaderId = "reader-1081-foreign";
 const definitionId = "pdef_acme_power_iin_max";
 const schemaId = "wiseeff.1075.list";
 const admin = makeTestAuthContext({ userId: adminId, organizationId });
+const legacyReadIds = {
+  mappedId: "10810000-0000-4000-8000-000000000001",
+  unmappedId: "10810000-0000-4000-8000-000000000002",
+  deniedId: "10810000-0000-4000-8000-000000000003",
+  nonBindingId: "10810000-0000-4000-8000-000000000004",
+  unmappedInaccessibleId: "10810000-0000-4000-8000-000000000006"
+};
 
 describe("#1075 canonical v1 compatibility list", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
@@ -40,6 +49,7 @@ describe("#1075 canonical v1 compatibility list", () => {
   let otherBindingId: string;
   let boundModuleId: string;
   let rootModuleId: string;
+  let retained: Awaited<ReturnType<typeof installLegacyBindingReadFixture>>;
 
   beforeEach(() => setParameterIdentityMode("semantic"));
 
@@ -57,6 +67,10 @@ describe("#1075 canonical v1 compatibility list", () => {
     await createProject(db, { organizationId, id: otherProjectId, name: "Other canonical", code: "OTHER1075" });
     await db.query("insert into organizations(id,name) values ($1,'Foreign compatibility')", ["org-1075-foreign"]);
     await createProject(db, { organizationId: "org-1075-foreign", id: foreignProjectId, name: "Foreign", code: "FOREIGN1075" });
+    await db.query(`insert into users(id,organization_id,name,title,is_active)
+      values ($1,'org-1075-foreign','Foreign reader','Software',true)`, [foreignReaderId]);
+    await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+      values ('1081-foreign-reader',$1,'org-1075-foreign',$2,'software-user')`, [foreignReaderId, foreignProjectId]);
     await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values
       ('1075-compat-admin',$1,$3,null,'admin'),('1075-compat-reader',$2,$3,$4,'software-user')`,
     [adminId, readerId, organizationId, projectId]);
@@ -84,6 +98,9 @@ describe("#1075 canonical v1 compatibility list", () => {
     expect(bindingId).toMatch(/^pbind_/);
     expect(await countLegacyProjectBindings(db, { organizationId, projectIds: [projectId, otherProjectId] })).toBe(0);
     boundModuleId = (await listCatalogBindingRowsForProject(db, admin, { projectId }))[0]!.moduleId;
+    retained = await installLegacyBindingReadFixture(db, {
+      organizationId, moduleId: boundModuleId, projectId, otherProjectId, bindingId, otherBindingId, ...legacyReadIds
+    });
   }, 60_000);
 
   afterAll(async () => {
@@ -146,6 +163,111 @@ describe("#1075 canonical v1 compatibility list", () => {
     expect(result.status, result.bodyText).toBe(200);
     expect.soft(result.body.items).toEqual([expect.objectContaining({ id: bindingId, definitionId })]);
     expect.soft(legacyReads).toEqual([]);
+  });
+
+  it("#1081 list, detail and history round-trip the canonical Binding and Project value pins", async () => {
+    const server = createWiseEffServer({ db, objectStore: storage });
+    const headers = { "X-WiseEff-User": readerId };
+    const list = await requestJson<{ items: Array<Record<string, unknown>> }>(
+      server, `/api/v1/parameters?projectId=${projectId}`, { headers }
+    );
+    expect(list.status, list.bodyText).toBe(200);
+    const listed = list.body.items[0]!;
+    expect(listed.id).toMatch(/^pbind_/);
+    const { result: detail, legacyReads: detailReads } = await observeReads(() =>
+      requestJson<{ item: Record<string, unknown> }>(server, `/api/v1/parameters/${listed.id}`, { headers })
+    );
+    expect(detail.status, detail.bodyText).toBe(200);
+    expect(detail.body.item).toEqual(listed);
+    expect(detail.body.item.sourceFileId).toEqual(expect.any(String));
+    expect(detail.body.item.sourceOccurrenceId).toEqual(expect.any(String));
+    expect(detailReads).toEqual([]);
+    const canonicalHistory = await requestJson<{ items: Array<Record<string, unknown>> }>(
+      server, `/api/v2/projects/${projectId}/parameter-bindings/${listed.id}/change-history`, { headers }
+    );
+    expect(canonicalHistory.status, canonicalHistory.bodyText).toBe(200);
+    expect(canonicalHistory.body.items.length).toBeGreaterThan(0);
+    const { result: history, legacyReads: historyReads } = await observeReads(() =>
+      requestJson<{ items: Array<Record<string, unknown>> }>(server, `/api/v1/parameters/${listed.id}/history`, { headers })
+    );
+    expect(history.status, history.bodyText).toBe(200);
+    expect(history.body).toEqual(canonicalHistory.body);
+    expect(history.body.items).toContainEqual(expect.objectContaining({
+      bindingId: listed.id, definitionId, newCurrentValueId: listed.currentValueId,
+      newDefinitionRevisionId: listed.effectiveRevisionId
+    }));
+    expect(historyReads).toEqual([]);
+  });
+
+  it("#1081 refuses cross-project detail and history before reading values", async () => {
+    const server = createWiseEffServer({ db, objectStore: storage });
+    for (const suffix of ["", "/history"]) {
+      const { result, reads } = await observeReads(() => requestJson(
+        server, `/api/v1/parameters/${otherBindingId}${suffix}`, { headers: { "X-WiseEff-User": readerId } }
+      ));
+      expect.soft(result.status, result.bodyText).toBe(403);
+      expect.soft(reads.filter(({ text }) => /(?:from|join) parameter_catalog\.(?:project_parameter_values|binding_history_events)/.test(text))).toEqual([]);
+    }
+  });
+
+  it("#1081 missing and cross-tenant canonical identities stay hidden on both reads", async () => {
+    const server = createWiseEffServer({ db, objectStore: storage });
+    for (const [parameterId, userId] of [["pbind_missing", readerId], [bindingId, foreignReaderId]]) {
+      for (const suffix of ["", "/history"]) {
+        const { result, legacyReads } = await observeReads(() => requestJson(server,
+          `/api/v1/parameters/${parameterId}${suffix}`, { headers: { "X-WiseEff-User": userId } }
+        ));
+        expect(result.status, result.bodyText).toBe(404);
+        expect(result.bodyText).not.toContain("36.5");
+        expect(legacyReads).toEqual([]);
+      }
+    }
+  });
+
+  it("#1081 old UUIDs require an exact typed Binding mapping, ignoring another source kind with the same UUID", async () => {
+    const { mappedId, unmappedId, deniedId, nonBindingId } = legacyReadIds;
+    const server = createWiseEffServer({ db, objectStore: storage });
+    const headers = { "X-WiseEff-User": readerId };
+    for (const suffix of ["", "/history"]) {
+      const canonical = await requestJson(server, `/api/v1/parameters/${bindingId}${suffix}`, { headers });
+      const { result: mapped, legacyReads } = await observeReads(() => requestJson(server, `/api/v1/parameters/${mappedId}${suffix}`, { headers }));
+      expect.soft(mapped.status, mapped.bodyText).toBe(200);
+      expect.soft(mapped.body).toEqual(canonical.body);
+      expect.soft(legacyReads).toEqual([]);
+      const unmapped = await requestJson(server, `/api/v1/parameters/${unmappedId}${suffix}`, { headers });
+      expect.soft(unmapped.status, unmapped.bodyText).toBe(410);
+      expect.soft(unmapped.body).toMatchObject({ error: { code: "GONE", details: { successor: "/api/v2/catalog", retryable: false } } });
+      expect.soft(unmapped.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+      expect.soft(unmapped.bodyText).not.toContain("legacy-value-never-returned");
+      for (const id of [nonBindingId, "10810000-0000-4000-8000-000000000005"]) {
+        const refused = await requestJson(server, `/api/v1/parameters/${id}${suffix}`, { headers });
+        expect.soft(refused.status, refused.bodyText).toBe(410);
+        expect.soft(refused.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+        expect.soft(refused.bodyText).not.toContain("legacy-value-never-returned");
+      }
+      const { result: denied, reads: deniedReads } = await observeReads(() => requestJson(server, `/api/v1/parameters/${deniedId}${suffix}`, { headers }));
+      expect.soft(denied.status, denied.bodyText).toBe(403);
+      expect.soft(deniedReads.filter(({ text }) => /(?:from|join) parameter_catalog\.(?:project_parameter_values|binding_history_events)/.test(text))).toEqual([]);
+      const foreign = await requestJson(server, `/api/v1/parameters/${mappedId}${suffix}`, { headers: { "X-WiseEff-User": foreignReaderId } });
+      expect.soft(foreign.status, foreign.bodyText).toBe(410);
+      expect.soft(foreign.bodyText).not.toContain(bindingId);
+    }
+    expect(await retained.readRetainedValue())
+      .toEqual([{ raw_value: "legacy-value-never-returned" }]);
+  });
+
+  it("#1081 unmapped UUIDs in inaccessible projects return historical 410 before project scope", async () => {
+    const unmappedId = legacyReadIds.unmappedInaccessibleId;
+    const server = createWiseEffServer({ db, objectStore: storage });
+    for (const suffix of ["", "/history"]) {
+      const { result, reads } = await observeReads(() => requestJson(
+        server, `/api/v1/parameters/${unmappedId}${suffix}`, { headers: { "X-WiseEff-User": readerId } }
+      ));
+      expect.soft(result.status, result.bodyText).toBe(410);
+      expect.soft(result.body).toMatchObject({ error: { code: "GONE", details: { successor: "/api/v2/catalog", retryable: false } } });
+      expect.soft(result.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+      expect.soft(reads.filter(({ text }) => /(?:from|join) parameter_catalog\.(?:project_parameter_values|binding_history_events)/.test(text))).toEqual([]);
+    }
   });
 
   it("an organization-wide reader lists both actual projects and applies the global limit", async () => {

@@ -89,7 +89,7 @@ describe("#906 C mixed DTS batch over production HTTP", () => {
       entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
       members: [{ fileId, fileVersionId: uploaded.version.id, fileName: "board.dts",
         sourceName: "board.dts", role: "base", sortOrder: 0, content: BASE }] };
-    const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, admin);
     const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!catalog) throw new Error("Published Catalog fixture is unavailable");
     await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog,

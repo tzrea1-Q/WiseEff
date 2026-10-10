@@ -459,9 +459,7 @@ export async function seedCanonicalParameterFixture(
       },
     ],
   };
-  const revision = await ingestConfigRevision(root, manifest, seedAuth, {
-    legacyProjection: "skip",
-  });
+  const revision = await ingestConfigRevision(root, manifest, seedAuth);
   if (revision.status !== "resolved")
     throw new Error(
       `Issue 905 source ingest did not resolve: ${revision.status}`,

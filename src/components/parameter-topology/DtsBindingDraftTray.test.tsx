@@ -155,14 +155,16 @@ describe("DtsBindingDraftTray", () => {
     expect(onSubmitCanonical).not.toHaveBeenCalled();
   });
 
-  it("never sends a mixed canonical and node-enablement batch to either owner", () => {
+  it.each([undefined, new Set(["binding-sc8562-gpio-int"])])("never sends a mixed canonical and node-enablement batch to either owner (selection %s)", (selectedBindingIds) => {
     const onSubmit = vi.fn();
     const onSubmitCanonical = vi.fn();
-    render(<DtsBindingDraftTray projectId="aurora" drafts={[
+    render(<DtsBindingDraftTray projectId="aurora" selectedBindingIds={selectedBindingIds} drafts={[
       draft({ writeTarget: { role: "canonical-project-value-draft",propertyKey: "limit" } }),enablementDraft()
     ]} candidates={candidates} onRemove={vi.fn()} onSubmit={onSubmit} onSubmitCanonical={onSubmitCanonical} onNavigate={vi.fn()} />);
     expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent("分开提交");
+    expect(screen.getByRole("alert")).toHaveTextContent("节点启用与 canonical 参数值须分开提交，各自保留结构或 canonical 历史、审核与来源归属");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("旧流程");
+    expect(screen.queryAllByText(/一并提交|所见即所提/)).toHaveLength(0);
     expect(onSubmit).not.toHaveBeenCalled();
     expect(onSubmitCanonical).not.toHaveBeenCalled();
   });

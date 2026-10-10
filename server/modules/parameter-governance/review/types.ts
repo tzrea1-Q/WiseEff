@@ -56,6 +56,7 @@ export type StoredReviewEvidenceBody = {
 
 export type ReviewEvidenceRecord = {
   readonly id: string;
+  readonly observationId?: string | null;
   readonly organizationId: string;
   readonly reason: ReviewReason;
   readonly candidateSafeDigest: string;

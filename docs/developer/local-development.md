@@ -10,7 +10,7 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 - npm 11 or a compatible npm version.
 - Docker Desktop or Docker Engine for the one-command local PostgreSQL path.
 - PostgreSQL reachable from `DATABASE_URL` if you run the services manually.
-- Device Tree Compiler (`dtc`). Install it through the repository bootstrap below; M1 seed treats it as required.
+- Device Tree Compiler (`dtc`) for compiler checks and DTS publish validation. M1 seeding parses the committed project-primary boards without requiring a compiler run.
 - Optional: live Xiaoze LLM values (`XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`) if you are testing non-deterministic Agent behavior.
 
 ## First Setup
@@ -28,7 +28,7 @@ npm run dts:toolchain:check -- --required
 npm run dtc:seed:compile
 ```
 
-The overlays may report `reg_format` / `ranges_format` warnings when compiled without their external base DTS. Compiler errors or an unavailable compiler fail the command and block M1 seeding.
+The overlays may report `reg_format` / `ranges_format` warnings when compiled without their external base DTS. Compiler errors or an unavailable compiler fail this optional compiler check. M1 seeding separately rejects committed boards that fail its parse-only integrity check.
 
 For fail-closed production publish validation (dtc + fdtoverlay + dt-validate at pinned versions from `tools/dts-toolchain/versions.json`):
 
@@ -40,7 +40,7 @@ npm run dts:config:validate
 
 `dts:toolchain:check --required` compares resolved versions to the pin file and fails on missing tools, unparseable version output, or mismatch. Controlled deployments may provide `WISEEFF_DTC_PATH`, `WISEEFF_FDTOVERLAY_PATH`, or `WISEEFF_DT_VALIDATE_PATH`; an invalid explicit override fails closed instead of falling back.
 
-Semantic identity migration rehearsal (dry-run by default; apply only in a maintenance window):
+Legacy-cohort operator semantic identity migration rehearsal only (dry-run by default; apply only in a maintenance window). This is not part of fresh canonical seeding or startup:
 
 ```bash
 npm run parameter-identities:migrate
@@ -71,15 +71,15 @@ npm run dev:all
 
 This command starts Docker PostgreSQL through `compose.yaml`, waits for it to accept connections, runs migrations and M0-M3 seeds, then starts the API and an API-mode Vite frontend. The API process starts the log-analysis worker when `DATABASE_URL` and local object storage are configured.
 
-`db:seed:m1` defaults to **semantic-only** demo data plus an idempotent **local post-cutover finalize** so typed binding drafts can be submitted for review. It does **not** seed flat `parameter_definitions` / `project_parameter_values`, and it will **refuse** to cut over a dirty dual-track developer database in place — wipe the Docker volume (`docker compose down -v`) and re-run `npm run dev:all`. Production identity cutover remains the fail-closed maintenance path in [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md).
+`db:seed:all` and `db:seed:m1` initialize parameter data **only through canonical owners**. M1 installs the pinned constrained vendor Catalog through `seedPublishedCatalog` (the existing Catalog installer), creates taxonomy/modules and canonical-only source structural revisions, then registers canonical Subjects and materializes canonical Bindings and Project values. It does not initialize legacy Spec, Binding, flat Definition, or PPV rows. The Aurora `watchdog_time` demo history comes from a real canonical draft → submit → review → source commit, not direct history inserts. Seeding is idempotent; reruns should not duplicate canonical Catalog, Binding, value, or history rows.
 
-`npm run dev:api` (and the API process started by `dev:all`) also runs the same **idempotent local post-cutover** before listen when `NODE_ENV=development` (default). That closes the gap where code was updated but an old Docker volume still had `cutovers=0`. Dirty dual-track DBs **fail API startup** with the wipe guidance instead of serving a stack that 409s on submit. Opt out with `WISEEFF_LOCAL_POST_CUTOVER=0`, or use `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` for dual-track rehearsal (startup finalize stays off; typed submit remains blocked). Never enabled when `NODE_ENV=production`.
+**Fresh canonical seeding requires no semantic identity cutover.** M1 does not run the old semantic identity migration or `ensureLocalPostCutoverIdentity`. At API startup, a clean, fully source-pinned canonical installation skips legacy finalize: startup does not invoke the legacy migration for that state.
 
-To seed the old dual-track flat identity without local cutover (typed submit stays blocked until a real cutover):
+In development and tests, the startup identity resolver also recognizes that canonical state without a legacy cutover marker: legacy Specs and Bindings must be empty, canonical Bindings must exist, and every current value must have a source pin to its file's active version. This read-only fallback tolerates absent canonical tables or rows and reuses the existing clean-database guard, refusing retained flat Definition/PPV rows, history without a Binding or logical-node identity, and unbound binding-subject drafts/change requests. In production, both API and log-worker startup use only the existing cutover marker or retired flat-table probe; fresh canonical and mixed databases do not switch modes through this local fallback. It does not replace an operator cutover. Node-enablement rows retain their separate logical-node identity and do not require a Binding. Canonical single and batch source commits index their new DTS versions in the same transaction, so structure navigation and Binding source locations remain available after the demo history write.
 
-```bash
-WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1 npm run db:seed:m1
-```
+`npm run dev:api` (and the API process started by `dev:all`) retains the **idempotent local post-cutover boot guard for legacy cohorts** before listen in development; legacy operator helpers remain available. The local finalize hook never runs in production and runs in tests only with explicit opt-in; the read-only clean-database check also protects canonical-seed identity resolution. `WISEEFF_LOCAL_POST_CUTOVER=0` disables this boot hook. The deprecated `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` is retained only as an API-boot compatibility opt-out for existing legacy operator workflows. **M1 ignores it**: there is no legacy flat seed option. Skipping the boot hook does not perform a legacy cutover or make blocked typed submissions valid.
+
+An existing dual-track database can fail the local cutover/boot guard. Do not use seeding to upgrade populated pre-canonical data or wipe a database/volume as a default remedy. First inventory the database, Docker volumes, object storage, and other checkouts using them; any destructive reset requires explicit authorization. Prefer a separate empty local database for demo seeding. Populated-upgrade operator workflows (#824) are unchanged; follow [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md) for the fail-closed maintenance path.
 
 Before starting, the launcher checks the required local ports. If port `5432` is already used by a WiseEff PostgreSQL Docker container, it restarts that container and waits for readiness. If ports `8787` or `5173` are already used by WiseEff API/web services, it stops those existing processes so the current checkout can restart them. Unknown services on those ports are left untouched and reported as blockers.
 
@@ -102,6 +102,8 @@ postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
 
 That compose URL is the API-mode application database. It is **not** catalog-launch evidence: the image is `postgres:16-alpine`, the database is shared across checkouts, and it often lacks pgvector.
 
+For isolated server tests, set `DATABASE_URL`, `TEST_DATABASE_URL`, and `WISEEFF_TEST_DATABASE_PREFIX` to the dedicated lane. Templates use `<lane>_test_tpl_*`; disposable workers use `wiseeff_test_wk_<base36-lane-length>_<lane>_*`, preserving literal lane isolation while satisfying the unchanged ephemeral-publication policy. Disposable names retain their complete run identity and unique suffix within PostgreSQL's 63-byte identifier limit; cleanup matches the run field, not substrings in the lane or fingerprint. Managed-instance fixtures remain non-ephemeral and require the existing adoption proof.
+
 ### Catalog launch lanes (Wayfinder #668)
 
 Remaining catalog launch Issues provision an isolated pgvector database per Issue and must pass a local gate before Hosted:
@@ -115,7 +117,14 @@ npm run catalog:lane:env -- cleanup --abandoned
 
 The helper uses `pgvector/pgvector:pg16` on `127.0.0.1:55438` and database `wiseeff_lane_<issue>`. It rejects `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff`. After Catalog role migrations exist, `doctor` / `accept` run a `catalog_migration_owner` SELECT canary against `public.parameter_specs` so Hosted is confirmation, not discovery. Full rules: [Catalog Launch Operating Rules](../agents/catalog-launch-operating-rules.md).
 
-Then run migrations and seed data:
+For an empty local development database, run migrations and the ordered seeds:
+
+```bash
+npm run db:migrate
+npm run db:seed:all
+```
+
+The individual commands remain available:
 
 ```bash
 npm run db:migrate
@@ -128,9 +137,21 @@ npm run db:seed:m3
 Seeds are ordered by milestone:
 
 - `db:seed:m0`: organization, users, roles, and project foundation.
-- `db:seed:m1`: semantic project-primary DTS baselines, topology bindings/specs, vendor property docs, a demo binding-revision history, and local post-cutover finalize (so typed binding submit works). Flat `parameter_definitions` / PPV are not seeded by default. It runs the required dtc gate first.
+- `db:seed:m1`: pinned canonical vendor Catalog, taxonomy/modules, project-primary DTS baselines and structural revisions without legacy projection, canonical Subject registrations/Bindings/Project values, and reviewed source-commit demo history. It requires the M0 foundation and installs the Catalog itself, including when run standalone; it does not depend on a prior `db:seed:all` invocation.
 - `db:seed:m2`: log-analysis sample data.
 - `db:seed:m3`: simulator debugging device and catalog.
+
+Fresh databases seeded from the same commit have identical canonical module counts, Subject registrations/placements, Binding-to-module assignments and current values, including after quality visual seeding. Seed placement keeps curated-module priority and orders available modules by their stable source key (or name), not generated UUIDs; existing registrations are never moved. The real-PostgreSQL regression is `npm run test:server -- server/scripts/seed-all.determinism.integration.test.ts` with `DATABASE_URL` and `TEST_DATABASE_URL` set. It compares natural-key outputs, not generated row IDs or audit timestamps.
+
+### Pinned vendor documentation
+
+M1 invokes vendor documentation sync. To rerun it independently against the local demo database:
+
+```bash
+npx tsx scripts/sync-vendor-property-docs.ts
+```
+
+The sync uses `seedPublishedCatalog` to materialize the pinned canonical Definition revisions through the Catalog installer; it does not directly upsert legacy documentation/Definitions or rewrite installed revisions. Mutable documentation edits or new Catalog documentation require governed Catalog publication, not a seed/sync rewrite. Do not use the pinned demo installer to overwrite a newer or independently governed Catalog.
 
 ### Development demo logins (API mode)
 

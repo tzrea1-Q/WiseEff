@@ -8,6 +8,7 @@ import type { QueryResult } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
 import { provisionPublicationRuntimeLogins } from "../modules/catalog-publication/runtime/provisionRuntimeLogins";
 import { provisionPublicationRuntimeLogins as provisionLabRuntimeLogins } from "./labRuntimeLogins";
+import { isEphemeralTestDatabaseName } from "../modules/catalog-publication/authorization";
 import { applyTestMigrations, migrationsDir, withAdminClient, withTempDatabase } from "./tempDatabase";
 import { readCanonicalSchemaFingerprint } from "./parameterCatalog";
 import {
@@ -54,6 +55,116 @@ describe("test database query scheduling", () => {
 const databaseAvailable = await isTestDatabaseAvailable();
 
 describe("literal test database namespace isolation", () => {
+  it.each([
+    { prefix: "t1080ci2_qglj", token: "r1234567", foreign: ["p1234567", "qglj"] },
+    { prefix: "t1080ci2_f_x66", token: "f", foreign: ["b"] }
+  ])("preserves foreign runs when cleaning token $token in lane $prefix", async ({ prefix, token, foreign }) => {
+    vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", prefix);
+    vi.resetModules();
+    const databases: Awaited<ReturnType<typeof createEphemeralTestDatabase>>[] = [];
+    try {
+      const { createEphemeralTestDatabase: createLaneDatabase, teardownTestDatabaseRun } = await import("./testDatabase");
+      for (const runToken of foreign) {
+        vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", runToken);
+        databases.push(await createLaneDatabase("foreign"));
+      }
+      const foreignNames = databases.map((database) => new URL(database.url).pathname.slice(1));
+      vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", token);
+      const owned = await createLaneDatabase("owned");
+      databases.push(owned);
+      const names = [...foreignNames, new URL(owned.url).pathname.slice(1)];
+      await teardownTestDatabaseRun();
+      await withAdminClient(async (admin) => {
+        const remaining = await admin.query<{ datname: string }>("select datname from pg_database where datname = any($1)", [names]);
+        expect(remaining.rows.map((row) => row.datname).sort()).toEqual(foreignNames.sort());
+      });
+    } finally {
+      for (const database of databases) await database.drop();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
+  it("preserves unique suffixes within PostgreSQL's identifier limit for a maximum-length lane", async () => {
+    vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", "t1080ci2_maximum");
+    vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", "r1234567");
+    vi.resetModules();
+    let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>> | undefined;
+    let second: Awaited<ReturnType<typeof createEphemeralTestDatabase>> | undefined;
+    try {
+      const { createEphemeralTestDatabase: createMaximumLaneDatabase, teardownTestDatabaseRun } = await import("./testDatabase");
+      database = await createMaximumLaneDatabase("longlabel");
+      const name = new URL(database.url).pathname.slice(1);
+      expect(name.length).toBeLessThanOrEqual(63);
+      expect(isEphemeralTestDatabaseName(name)).toBe(true);
+      second = await createMaximumLaneDatabase("longlabel");
+      expect(second.url).not.toBe(database.url);
+      expect(new URL(second.url).pathname.slice(1).length).toBeLessThanOrEqual(63);
+      const client = new pg.Client({ connectionString: database.url });
+      await client.connect();
+      try {
+        expect((await client.query("select current_database() as name")).rows).toEqual([{ name }]);
+      } finally {
+        await client.end();
+      }
+      await teardownTestDatabaseRun();
+      await withAdminClient(async (admin) => {
+        expect((await admin.query("select datname from pg_database where datname = any($1)",
+          [[name, new URL(second!.url).pathname.slice(1)]])).rows).toEqual([]);
+      });
+    } finally {
+      await second?.drop();
+      await database?.drop();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
+  it("keeps maximum-length worker names within PostgreSQL's identifier limit before DDL", async () => {
+    vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", "t1080ci2_maximum");
+    vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", "r1234567");
+    vi.stubEnv("VITEST_POOL_ID", "1234567");
+    vi.resetModules();
+    const original = pg.Client.prototype.query;
+    let workerName: string | undefined;
+    const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, sql: unknown, values?: unknown) {
+      if (typeof sql === "string" && sql.startsWith("create database wiseeff_test_wk_g_t1080ci2_maximum_")) {
+        workerName = sql.split(" ")[2];
+        return Promise.reject(new Error("stop before worker DDL"));
+      }
+      return Reflect.apply(original, this, [sql, values]);
+    } as typeof original);
+    try {
+      const { resolveWorkerDatabaseUrl } = await import("./testDatabase");
+      await expect(resolveWorkerDatabaseUrl()).rejects.toThrow("stop before worker DDL");
+      expect(workerName).toBeDefined();
+      expect(workerName!.length).toBeLessThanOrEqual(63);
+    } finally {
+      spy.mockRestore();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
+  it("keeps lane-isolated database names eligible for the unchanged publication test policy", async () => {
+    const database = await createEphemeralTestDatabase("policy");
+    try {
+      const name = new URL(database.url).pathname.slice(1);
+      const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
+      expect(isEphemeralTestDatabaseName(name)).toBe(true);
+      expect(name.length).toBeLessThanOrEqual(63);
+      const namespace = `wiseeff_test_wk_${prefix.length.toString(36)}_${prefix}_`;
+      expect(name.startsWith(namespace)).toBe(true);
+      const foreign = name.replace(namespace, `wiseeff_test_wk_${(prefix.length + 2).toString(36)}_${prefix}_x_`);
+      await withAdminClient(async (admin) => {
+        expect((await admin.query("select datname from unnest($1::text[]) as fixture(datname) where datname like $2",
+          [[name, foreign], testDatabasePrefixPattern(namespace)])).rows).toEqual([{ datname: name }]);
+      });
+    } finally {
+      await database.drop();
+    }
+  });
+
   it.each(["tpl", "wk"])("matches only the literal %s namespace on PostgreSQL", async (kind) => {
     expect(databaseAvailable).toBe(true);
     const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
@@ -282,6 +393,7 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
 
 describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () => {
   it("uses a new fingerprint for changed SQL and never publishes a failed build", async () => {
+    const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
     const last = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort().at(-1)!;
     const sqlPath = path.join(migrationsDir, last);
     const readFile = fs.readFile;
@@ -296,7 +408,8 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
         if (file === last) hash.update(suffix);
         hash.update("\0");
       }
-      const ownedNames = [`wiseeff_test_tpl_${hash.digest("hex").slice(0, 12)}`, `wiseeff_test_tplbuild_${process.pid}`];
+      const fingerprint = hash.digest("hex").slice(0, 12);
+      const ownedNames = [`${prefix}_test_tpl_${fingerprint}`, `${prefix}_test_tplbuild_${process.pid}`];
       if (fails) await withAdminClient(async (admin) => {
         expect((await admin.query("select datname from pg_database where datname=any($1::text[])", [ownedNames])).rows).toEqual([]);
       });
@@ -316,7 +429,8 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
         } else {
           const next = await changed("fingerprintnew");
           try {
-            expect(new URL(next.url).pathname.split("_").slice(0, 4)).not.toEqual(new URL(originalUrl).pathname.split("_").slice(0, 4));
+            expect(new URL(next.url).pathname).toContain(`_${fingerprint}_`);
+            expect(new URL(originalUrl).pathname).not.toContain(`_${fingerprint}_`);
             const client = new pg.Client({ connectionString: next.url });
             await client.connect();
             try { expect((await client.query("select name from schema_migrations order by name desc limit 1")).rows).toEqual([{ name: last }]); }

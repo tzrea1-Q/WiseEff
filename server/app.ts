@@ -184,7 +184,6 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterSpecRoutes(router, {
     db: options.db,
-    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterModuleRoutes(router, {

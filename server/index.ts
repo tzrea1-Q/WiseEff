@@ -28,7 +28,7 @@ import { defaultTracingBoundary } from "./observability/tracing";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
 import { createPostgresDatabase } from "./shared/database/client";
 import {
-  ensureLocalPostCutoverIdentity,
+  maybeEnsureLocalPostCutoverOnApiBoot,
   shouldEnsureLocalPostCutoverOnApiBoot
 } from "./modules/parameter-topology/localPostCutover";
 import { resolveParameterIdentityMode } from "./modules/parameter-kernel/parameterIdentityMode";
@@ -217,11 +217,13 @@ process.on("SIGTERM", () => void shutdown());
 async function start() {
   if (db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
     try {
-      const cutover = await ensureLocalPostCutoverIdentity(db);
+      const cutover = await maybeEnsureLocalPostCutoverOnApiBoot(db);
       if (cutover.status === "already-complete") {
         console.log("[local-post-cutover] already complete");
-      } else {
+      } else if (cutover.status === "applied") {
         console.log(`[local-post-cutover] applied (run ${cutover.migrationRunId})`);
+      } else {
+        console.log("[local-post-cutover] canonical source plane; legacy finalize skipped");
       }
     } catch (error) {
       console.error("[local-post-cutover] refused to start API:", error);
@@ -230,7 +232,7 @@ async function start() {
   }
 
   if (db) {
-    const identityMode = await resolveParameterIdentityMode(db);
+    const identityMode = await resolveParameterIdentityMode(db, env);
     console.log(`[parameter-identity] mode: ${identityMode}`);
   }
 

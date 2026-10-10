@@ -32,6 +32,7 @@ import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-n
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
 import { ProjectsOperationsPanel } from "@/components/parameter-admin-next/ProjectsOperationsPanel";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
+import type { AuthContextDto } from "@/infrastructure/http/authClient";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -71,6 +72,7 @@ export type ParameterAdminNextPageProps = {
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
   sessionPermissions?: readonly string[] | null;
+  sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
 };
 
 /**
@@ -100,7 +102,8 @@ export function ParameterAdminNextPage({
   definitionRelatedKnowledge,
   runtime,
   catalogOrganizationId,
-  sessionPermissions
+  sessionPermissions,
+  sessionRoles
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
     () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
@@ -140,7 +143,6 @@ export function ParameterAdminNextPage({
       ? null
       : parsedOrganizationView ??
         (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
-  const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
   const handleCatalogAnchorChange = useCallback(
     (href: string, mode: "push" | "replace") => {
       if (mode === "replace") {
@@ -160,6 +162,7 @@ export function ParameterAdminNextPage({
           roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
         })}
         sessionPermissions={sessionPermissions}
+        sessionRoles={runtimeMode === "api" ? sessionRoles ?? null : sessionRoles}
         search={search}
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
@@ -244,14 +247,21 @@ export function ParameterAdminNextPage({
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
             />
-            {organizationView === "specs" ? (
+            {organizationView === "specs" && runtimeMode === "api" ? (
               <OrganizationSpecsArea
                 pathname={pathname}
                 search={search}
                 onNavigate={onNavigate}
-                isPlatformSuperAdmin={isPlatformSuperAdmin}
                 catalogLibrary={catalogLibrary}
               />
+            ) : null}
+            {organizationView === "specs" && runtimeMode === "mock" ? (
+              <>
+                {pathname.endsWith("/identity-mapping") ? (
+                  <p role="status">Mock 模式不提供旧节点对应任务。请使用 API 模式的规范审核队列。</p>
+                ) : null}
+                {catalogLibrary}
+              </>
             ) : null}
             {organizationView === "modules" ? (
               <OrganizationModuleGovernancePanel

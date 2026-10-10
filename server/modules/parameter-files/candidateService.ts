@@ -1031,7 +1031,7 @@ export async function activateCandidate(
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source
-      }, undefined, producerRoot);
+      }, producerRoot);
     }
 
     const activated = await markParameterFileCandidateActive(tx, {

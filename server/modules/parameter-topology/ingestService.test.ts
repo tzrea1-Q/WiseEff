@@ -379,7 +379,7 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
   );
 
   it(
-    "reuses stable bindingId for sc8562@6E.gpio_int across consecutive full-config-set revisons",
+    "preserves node continuity and separate property occurrences without legacy bindings",
     async () => {
       const manifest = goldenManifest({ useRealBase: true });
       for (const member of manifest.members) {
@@ -402,16 +402,19 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
 
       const firstGpio = await bindingForNodeProperty(db!, first.id, SC8562_LOCATOR, "gpio_int");
       const secondGpio = await bindingForNodeProperty(db!, second.id, SC8562_LOCATOR, "gpio_int");
-      expect(firstGpio).toBeTruthy();
-      expect(secondGpio).toBeTruthy();
-      expect(secondGpio!.bindingId).toBe(firstGpio!.bindingId);
-      expect(secondGpio!.logicalNodeId).toBe(firstGpio!.logicalNodeId);
-
       const mt5788First = await bindingForNodeProperty(db!, first.id, MT5788_LOCATOR, "gpio_int");
-      expect(mt5788First).toBeTruthy();
-      expect(mt5788First!.parameterSpecId).not.toBe(firstGpio!.parameterSpecId);
-      expect(mt5788First!.parameterSpecId).toMatch(/mt5788/i);
-      expect(firstGpio!.parameterSpecId).toMatch(/sc8562/i);
+      expect([firstGpio, secondGpio, mt5788First]).toEqual([null, null, null]);
+      const nodes = async (revisionId: string) => (await db!.query(
+        `select logical_node_id,node_locator from dts_logical_node_revisions
+         where config_revision_id=$1 and node_locator=any($2::text[]) order by node_locator`,
+        [revisionId, [SC8562_LOCATOR, MT5788_LOCATOR]],
+      )).rows;
+      const firstNodes = await nodes(first.id);
+      expect(firstNodes).toHaveLength(2);
+      expect(await nodes(second.id)).toEqual(firstNodes);
+      expect(firstNodes[0]!.logical_node_id).not.toBe(firstNodes[1]!.logical_node_id);
+      expect(await effectiveProperty(db!, second.id, SC8562_LOCATOR, "gpio_int")).toBeTruthy();
+      expect(await effectiveProperty(db!, second.id, MT5788_LOCATOR, "gpio_int")).toBeTruthy();
     },
     60_000
   );
@@ -581,7 +584,7 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
     });
   });
 
-  it("keeps unknown properties as review evidence without a definition or binding", async () => {
+  it("keeps unknown source occurrences without legacy reviews, definitions or bindings", async () => {
     setParameterIdentityMode("semantic");
     const content = `/dts-v1/;
 / {
@@ -634,7 +637,9 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
       `,
       [ORG_ID],
     );
-    expect(Number(review.rows[0]?.count ?? 0)).toBe(1);
+    expect(Number(review.rows[0]?.count ?? 0)).toBe(0);
+    expect(await effectiveProperty(db!, revision.id, "/unknown_driver", "mystery_property_649"))
+      .toMatchObject({ propertyName: "mystery_property_649", rawText: "<1>" });
 
     const bindings = await db!.query<{ count: string }>(
       `

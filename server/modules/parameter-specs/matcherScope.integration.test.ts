@@ -7,17 +7,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { seedSpecBindingGraph } from "../../testing/fixtures";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import {
   backfillReviewTaskScopeColumns,
+  compatibleFingerprint,
   countOpenSpecReviewTasksForRevision,
   listMatcherOverridesForProject,
   matcherOverrideLookupKey,
   nodeLocatorFingerprint,
 } from "./repository";
-import { resolveSpecReviewTask } from "./service";
 
 const ORG_ID = "org-matcher-scope";
 const OTHER_ORG = "org-matcher-scope-other";
@@ -98,31 +99,18 @@ async function seedGraph(db: InMemoryTestDatabase) {
     [SPEC_A, SPEC_A_VERSION, "twin_a_mystery", "dps-twin-a"],
     [SPEC_B, SPEC_B_VERSION, "twin_b_mystery", "dps-twin-b"],
   ] as const) {
+    await seedSpecBindingGraph(db, {
+      organizationId: ORG_ID,
+      specs: [{
+        id: specId, specificationKey: `manual/${key}`, sourceKind: "manual",
+        versions: [{ id: versionId, displayName: key, description: "Manual twin mystery", valueShape: { kind: "cells" } }],
+        propertySpec: { id: dpsId, propertyKey: PROPERTY_KEY, schemaNamespace: "manual" },
+      }],
+    });
     await db.query(
-      `
-      insert into parameter_specs (id, organization_id, source_kind, specification_key)
-      values ($1, $2, 'manual', $3)
-      on conflict (id) do nothing
-      `,
-      [specId, ORG_ID, `manual/${key}`],
-    );
-    await db.query(
-      `
-      insert into parameter_spec_versions (
-        id, parameter_spec_id, version, display_name, description, value_shape,
-        schema_default, example_value, lifecycle
-      ) values ($1, $2, 1, $3, 'Manual twin mystery', '{"kind":"cells"}'::jsonb, null, null, 'active')
-      on conflict (id) do nothing
-      `,
-      [versionId, specId, key],
-    );
-    await db.query(
-      `
-      insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints, documentation)
-      values ($1, $2, $3, 'manual', '{"cells": 1}'::jsonb, 'Manual twin mystery spec')
-      on conflict (id) do nothing
-      `,
-      [dpsId, specId, PROPERTY_KEY],
+      `update dts_property_specs set constraints = '{"cells":1}'::jsonb,
+        documentation = 'Manual twin mystery spec' where id = $1`,
+      [dpsId],
     );
   }
 }
@@ -212,7 +200,7 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
     }
   });
 
-  it("same-compatible different-locator nodes keep distinct overrides across re-ingest", async () => {
+  it("retains historical locator overrides without applying them on re-ingest", async () => {
     const fileId = "file-twin-scope";
     const versionId = "fv-twin-scope-1";
     await insertPinnedMember(db!, {
@@ -231,30 +219,20 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
     );
     expect(revision1.status).toBe("resolved");
 
-    const tasks = await db!.query<{
-      id: string;
-      project_id: string | null;
-      config_revision_id: string | null;
-      property_occurrence_id: string | null;
-      blocker_scope: string;
-      source_evidence: Record<string, unknown>;
-    }>(
-      `
-      select id, project_id, config_revision_id, property_occurrence_id, blocker_scope, source_evidence
-      from parameter_spec_review_tasks
-      where organization_id = $1
-        and status = 'open'
-        and source_evidence->>'propertyKey' = $2
-      order by source_evidence->>'nodeLocator' asc
-      `,
-      [ORG_ID, PROPERTY_KEY],
+    const occurrences = await db!.query<{ id: string; node_locator: string }>(
+      `select property.id,node.node_path as node_locator from dts_property_occurrences property
+       join dts_node_occurrences node on node.id=property.node_occurrence_id
+       where property.config_revision_id=$1 and property.property_name=$2 order by node.node_path`,
+      [revision1.id, PROPERTY_KEY],
     );
-    expect(tasks.rows).toHaveLength(2);
-    for (const row of tasks.rows) {
-      expect(row.project_id).toBe(PROJECT_A);
-      expect(row.config_revision_id).toBe(revision1.id);
-      expect(row.property_occurrence_id).toBeTruthy();
-      expect(row.blocker_scope).toBe("revision");
+    expect(occurrences.rows).toHaveLength(2);
+    const tasks = { rows: occurrences.rows.map((row) => ({ id: randomUUID(), source_evidence: { nodeLocator: row.node_locator } })) };
+    for (const [index, occurrence] of occurrences.rows.entries()) {
+      await db!.query(
+        `insert into parameter_spec_review_tasks(id,organization_id,project_id,config_revision_id,property_occurrence_id,blocker_scope,source_evidence,candidate_schemas,project_count,status,parameter_spec_id,reviewer_user_id,resolved_at)
+         values ($1,$2,$3,$4,$5,'revision',$6::jsonb,'[]'::jsonb,1,'resolved',$7,$8,now())`,
+        [tasks.rows[index]!.id, ORG_ID, PROJECT_A, revision1.id, occurrence.id, JSON.stringify({ nodeLocator: occurrence.node_locator, propertyKey: PROPERTY_KEY }), [SPEC_A, SPEC_B][index], USER_ID],
+      );
     }
 
     const [taskA, taskB] = tasks.rows;
@@ -262,18 +240,17 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
     const locatorB = String(taskB!.source_evidence.nodeLocator);
     expect(locatorA).not.toBe(locatorB);
 
-    await resolveSpecReviewTask(db!, makeAuth(), {
-      taskId: taskA!.id,
-      decision: "resolved",
-      parameterSpecId: SPEC_A,
-      reason: "Map twin_a mystery",
-    });
-    await resolveSpecReviewTask(db!, makeAuth(), {
-      taskId: taskB!.id,
-      decision: "resolved",
-      parameterSpecId: SPEC_B,
-      reason: "Map twin_b mystery",
-    });
+    for (const [task, locator, specId] of [[taskA!, locatorA, SPEC_A], [taskB!, locatorB, SPEC_B]] as const) {
+      await db!.query(
+        `insert into parameter_spec_matcher_overrides (
+          id, organization_id, project_id, compatible_fingerprint, node_locator,
+          node_locator_fingerprint, property_key, decision, parameter_spec_id, source_review_task_id,
+          reason, created_by_user_id
+        ) values ($1,$2,$3,$4,$5,$6,$7,'resolved',$8,$9,'Historical matcher fixture',$10)`,
+        [randomUUID(), ORG_ID, PROJECT_A, compatibleFingerprint(["wiseeff,twin-device"]), locator,
+          nodeLocatorFingerprint(locator), PROPERTY_KEY, specId, task.id, USER_ID],
+      );
+    }
 
     const overrides = await listMatcherOverridesForProject(db!, {
       organizationId: ORG_ID,
@@ -329,12 +306,7 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
       `,
       [revision2.id],
     );
-    expect(bindings.rows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ node_locator: locatorA, parameter_spec_id: SPEC_A }),
-        expect.objectContaining({ node_locator: locatorB, parameter_spec_id: SPEC_B }),
-      ]),
-    );
+    expect(bindings.rows).toEqual([]);
 
     const openMysteryOnRevision2 = await db!.query<{ count: string }>(
       `

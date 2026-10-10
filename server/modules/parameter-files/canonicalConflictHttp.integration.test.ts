@@ -127,7 +127,7 @@ async function fixture(format: "json" | "dts") {
       members: [{ fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
         fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: source }]
     };
-    const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, admin);
     const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!catalog) throw new Error("Published Catalog unavailable");
     await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
