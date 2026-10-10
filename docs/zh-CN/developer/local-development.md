@@ -20,7 +20,7 @@
 
 ## dtc 与 M1 全量种子
 
-首次运行 M1 seed 前安装并检查 Device Tree Compiler：
+需要编译检查或 DTS 发布校验时，安装并检查 Device Tree Compiler；M1 seed 自身对已提交的项目主 DTS 板做解析完整性检查，不要求运行编译器：
 
 ```bash
 npm run dts:toolchain:bootstrap
@@ -28,7 +28,7 @@ npm run dts:toolchain:check -- --required
 npm run dtc:seed:compile
 ```
 
-`dts:toolchain:bootstrap` 在忽略提交的 `.wiseeff-tools/dts-toolchain` 创建项目 venv 并安装钉扎 dtschema；同时确保 dtc/fdtoverlay 匹配 `tools/dts-toolchain/versions.json`（宿主已是钉扎版本则复用，否则从钉扎 commit 构建到项目 toolchain bin）。API runtime、seed 脚本与检查命令共用该解析器，不要求把个人 Python bin 加入 `PATH`。`db:seed:m1` 会先用真实 dtc 编译 Aurora、Nebula、Atlas 三份 overlay；编译器缺失或出现 error 时停止写库。
+`dts:toolchain:bootstrap` 在忽略提交的 `.wiseeff-tools/dts-toolchain` 创建项目 venv 并安装钉扎 dtschema；同时确保 dtc/fdtoverlay 匹配 `tools/dts-toolchain/versions.json`（宿主已是钉扎版本则复用，否则从钉扎 commit 构建到项目 toolchain bin）。API runtime、seed 编译检查与 CLI 检查共用该解析器，不要求把个人 Python bin 加入 `PATH`。可选的 `dtc:seed:compile` 校验 Aurora、Nebula、Atlas seed 板；编译器缺失或出现 error 时该命令失败。M1 的独立解析检查失败时会停止写库。
 
 完整失败关闭工具链与配置校验（版本钉扎见 `tools/dts-toolchain/versions.json`）：
 
@@ -40,7 +40,7 @@ npm run dts:config:validate
 
 `dts:toolchain:check --required` 会对比共享解析器找到的版本与钉扎文件；缺工具、版本无法解析或不匹配时失败。受控部署可显式提供 `WISEEFF_DTC_PATH`、`WISEEFF_FDTOVERLAY_PATH`、`WISEEFF_DT_VALIDATE_PATH`；无效 override 失败关闭，不静默回退。
 
-语义身份迁移演练（默认 dry-run；仅维护窗口 `--apply`）：
+仅供 legacy cohorts 的 operator 语义身份迁移演练（默认 dry-run；仅维护窗口 `--apply`）；不属于全新 canonical 种子或启动流程：
 
 ```bash
 npm run parameter-identities:migrate
@@ -62,15 +62,47 @@ npm run catalog:lane:env -- cleanup --abandoned
 
 完整规则见[目录 launch 操作规则](../agents/catalog-launch-operating-rules.md)。
 
-`db:seed:m1` **默认**为语义种子（项目主 DTS baseline、bindings/specs、vendor docs、demo binding 历史）并做幂等的**本地 post-cutover finalize**，以便类型化 binding 草稿可提交审核。默认不种 flat `parameter_definitions` / `project_parameter_values`。若本地库仍是旧双轨脏数据，finalize 会失败关闭并要求清空 Docker volume（如 `docker compose down -v`）后重跑 `npm run dev:all`——禁止对脏共享开发库就地 cutover。生产 cutover 仍走维护窗口 runbook。
+## Canonical-only 本地种子
 
-`npm run dev:api`（以及 `dev:all` 拉起的 API）在 `NODE_ENV=development`（默认）下，listen 前还会跑同一套**幂等本地 post-cutover**，避免「代码已更新、Docker volume 仍是 cutovers=0」的常见坑。脏双轨库会**直接导致 API 启动失败**并给出 wipe 指引，而不是起来后在提交审核时才 409。可用 `WISEEFF_LOCAL_POST_CUTOVER=0` 关闭；`WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` 双轨排练时启动 finalize 亦关闭（typed 提交仍拦截）。`NODE_ENV=production` 下永不启用。
+`npm run dev:all` 启动 Docker PostgreSQL，执行 migrations 与 M0–M3 seeds，再启动 API 和 API-mode 前端。`db:seed:all` 与 `db:seed:m1` **只通过 canonical owners 初始化参数数据**：M1 使用现有 Catalog installer 的 `seedPublishedCatalog` 安装钉扎的受约束 vendor Catalog，创建 taxonomy/modules，并以 `legacyProjection: "skip"` 导入来源结构修订；随后注册 canonical Subjects，物化 canonical Bindings 和 Project values。不初始化 legacy Spec、Binding、flat Definition 或 PPV 行。Aurora 的 `watchdog_time` 演示历史来自真实 canonical 草稿 → 提交 → 审核 → source commit，不直接插入历史。种子保持幂等，重复运行不应增加重复的 canonical Catalog、Binding、value 或 history 行。
 
-需要旧双轨 flat 身份且不自动 cutover 时（typed 提交仍会 409）：
+空的本地开发库使用有序种子：
 
 ```bash
-WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1 npm run db:seed:m1
+npm run db:migrate
+npm run db:seed:all
 ```
+
+也可逐项执行：
+
+```bash
+npm run db:migrate
+npm run db:seed:m0
+npm run db:seed:m1
+npm run db:seed:m2
+npm run db:seed:m3
+```
+
+- `db:seed:m0`：organization、users、roles 与项目基础数据。
+- `db:seed:m1`：钉扎 canonical vendor Catalog、taxonomy/modules、项目主 DTS baselines 与无 legacy projection 的结构修订、canonical Subject registrations/Bindings/Project values，以及经过审核的 source-commit 演示历史。**单独运行也必须先有 M0 foundation，M1 会自行安装 Catalog**，不要求先运行 `db:seed:all`。
+- `db:seed:m2`：日志分析演示数据。
+- `db:seed:m3`：模拟器调试设备与目录。
+
+**全新 canonical 种子不需要语义身份 cutover。** M1 不运行旧语义身份迁移，也不调用 `ensureLocalPostCutoverIdentity`。API 启动时，干净且所有来源 pin 完整的 canonical 安装会跳过 legacy finalize；该状态下启动不会调用旧迁移。
+
+`npm run dev:api`（以及 `dev:all` 拉起的 API）为 legacy cohorts 保留 development 下 listen 前的**幂等本地 post-cutover 启动 guard**，旧 operator helpers 仍可使用；production 永不运行该 guard，test 仅显式开启时运行。`WISEEFF_LOCAL_POST_CUTOVER=0` 关闭该启动 guard。已弃用的 `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` 仅为现有 legacy operator 工作流保留 API 启动兼容 opt-out；**M1 忽略它，不再有 legacy flat 种子选项**。跳过启动 guard 不等于完成 legacy cutover，也不会使被阻断的 typed 提交变为有效。
+
+已有双轨数据的库可能无法通过本地 cutover/启动 guard。不要用 seed 升级 populated pre-canonical 数据，也不要默认清空数据库或 volume。先盘点数据库、Docker volumes、对象存储及使用它们的其他 checkout；任何破坏性重置都必须获得明确授权。演示种子优先使用独立空库。#824 的 populated-upgrade operator 工作流保持不变；失败关闭的维护路径见 [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md)。
+
+### 钉扎 vendor 文档同步
+
+M1 会调用 vendor 文档同步。需要对本地演示库单独重跑时：
+
+```bash
+npx tsx scripts/sync-vendor-property-docs.ts
+```
+
+同步通过 `seedPublishedCatalog` 调用 Catalog installer，物化钉扎的 canonical Definition revisions；不直接 upsert legacy 文档/Definitions，也不重写已安装的修订。修改文档或新增 Catalog 文档必须走受治理的 Catalog publication，不能通过 seed/sync 重写。不要用钉扎演示 installer 覆盖更新的或独立治理的 Catalog。
 
 ### Development 演示登录（API 模式）
 

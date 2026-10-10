@@ -11,10 +11,10 @@ import {
   VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { loadCommittedDtsSeedFiles } from "../../../../scripts/compile-dts-seed";
-import { seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../../scripts/seed-m1-parameters";
+import { parsePowerManagementConfig, seedM1Parameters, seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../../scripts/seed-m1-parameters";
+import { seedM0Foundation } from "../../../../scripts/seed-m0";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
 import { makeTestAuthContext } from "../../../testing/authContext";
-import { seedCoreGraph } from "../../../testing/fixtures";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import { seedPublishedCatalog } from "../../../testing/parameterCatalog/seedPublishedCatalog";
 import { createCatalogKernel, jsonCatalogReleaseSource, type CatalogSnapshot } from "../../catalog-kernel/interface";
@@ -29,7 +29,6 @@ import type { Binding } from "../binding";
 import { dtsValueToPayload } from "../catalogProjectValueSync";
 import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { assertCanonicalValueConstraints } from "./service";
-import { ensureLocalPostCutoverIdentity } from "../../parameter-topology/localPostCutover";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../seedInitialization/seedCanonicalAfterLegacy";
 
 const definitionId = ParameterDefinitionId("pdef_drv_sc8562_gpio_int");
@@ -211,20 +210,17 @@ describe("published vendor constraint enforcement", () => {
       const projectFiles = (await loadCommittedDtsSeedFiles(process.cwd()))
         .filter((file) => file.projectId === "aurora");
       const seed = async () => {
-        await seedCoreGraph(freshDb, {
-          organization: { id: seedAuth.organization.id },
-          users: [{ id: seedAuth.user.id }],
-          projects: [{ id: "aurora" }],
-        });
+        await seedM0Foundation(freshDb);
+        const configPath = "src/config/power-management.json";
+        await seedM1Parameters(freshDb, parsePowerManagementConfig(configPath, readFileSync(configPath, "utf8")));
         const release = await seedPublishedCatalog(getRootPostgresPool(freshDb)!);
         expect(release.id).toBe(VENDOR_CONSTRAINED_RELEASE_ID);
         await seedM1DtsFiles(freshDb, objectStore, projectFiles);
         await seedM1SemanticTopology(freshDb, projectFiles);
-        await seedM1BindingRevisionHistory(freshDb, objectStore, projectFiles);
-        await ensureLocalPostCutoverIdentity(freshDb);
         await ensureCanonicalCatalogAfterLegacySeed(freshDb, seedAuth, {
           organizationId: seedAuth.organization.id, seedDigest: "vendor-constraint-seed",
         });
+        await seedM1BindingRevisionHistory(freshDb, objectStore, projectFiles);
       };
       await seed();
       const before = await counts();

@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { loadServerEnv } from "../server/config/env";
-import { resolveDts } from "../server/modules/dts";
 import { parseDts } from "../server/modules/dts/parser";
 import { createObjectStoreFromEnv } from "../server/objectStoreFactory";
 import type { AuthContext } from "../server/modules/auth/types";
@@ -13,16 +12,19 @@ import { buildDtsParsedIndex } from "../server/modules/parameter-files/parseInde
 import { ingestDtsFileVersion } from "../server/modules/parameter-files/structuralIngest";
 import type { ObjectStore } from "../server/modules/logs/objectStore";
 import { ingestConfigRevisionInTransaction } from "../server/modules/parameter-topology/ingestService";
-import { recomputeBindingModules } from "../server/modules/parameter-modules/service";
 import type { ConfigRevisionManifest } from "../server/modules/parameter-topology/types";
-import { createPostgresDatabase, type Database } from "../server/shared/database/client";
-import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile, buildSeedModuleMappings } from "./dts-power-seed";
+import { createPostgresDatabase, getRootPostgresPool, type Database, type RootDatabase } from "../server/shared/database/client";
+import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile } from "./dts-power-seed";
 import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
-import { ensureLocalPostCutoverIdentity } from "../server/modules/parameter-topology/localPostCutover";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
-import { LEGACY_SQL } from "../server/modules/parameter-topology/migration";
 import { syncVendorPropertyDocs } from "./sync-vendor-property-docs";
 import { insertAttributionSubjectForNewModule } from "../server/modules/parameter-modules/attributionSubjectRepository";
+import { getAuthContext } from "../server/modules/auth/repository";
+import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../server/modules/audit/trustedRefusalSink";
+import { parseDtsValue } from "../server/modules/dts/valueAst";
+import { listCatalogBindingRowsForProject, loadPublishedCatalog } from "../server/modules/parameter-bindings/catalogProjectValueSync";
+import { createCanonicalValueDraft, loadCanonicalBindingPins, submitCanonicalValueChange, reviewCanonicalValueChange } from "../server/modules/parameter-bindings/drafts";
 
 /**
  * Demo projects use one self-contained project-primary DTS per project
@@ -71,10 +73,6 @@ export type PowerManagementConfig = {
   parameterLibrary: PowerManagementParameter[];
 };
 
-type ProjectParameterValueSeedRow = {
-  id: string;
-  value_version: number;
-};
 
 const powerManagementConfigSchema = z.object({
   projects: z.array(
@@ -133,8 +131,8 @@ const workflowRoleBindings = [
 ] as const;
 
 /**
- * Legacy M1 seed rows still key on a flat `module` display field. Map the
- * semantic seed's `businessCategory` onto it here rather than reintroducing
+ * The demo taxonomy config uses a flat `module` display field. Map the
+ * DTS seed's `businessCategory` onto it here rather than reintroducing
  * `module` on `DtsPowerSeedParameter` itself.
  */
 function toPowerManagementParameter(parameter: DtsPowerSeedParameter): PowerManagementParameter {
@@ -228,44 +226,11 @@ export function parsePowerManagementConfig(configPath: string, source: string): 
   }
 }
 
-export type SeedModuleMapping = {
-  matchKind: "node-type" | "compatible";
-  /** Already-normalized match value (trim + lower). */
-  matchValue: string;
-  moduleName: string;
-  priority?: number;
-};
-
-export type SeedM1ParametersOptions = {
-  /**
-   * When true, also seed flat `parameter_definitions` / PPV / PPV history.
-   * Default false: local/dev is semantic-only and finishes with local post-cutover.
-   */
-  includeLegacyFlatIdentity?: boolean;
-  /**
-   * Lowercased DTS instance name (e.g. "sc8562@6e") -> business-category module
-   * name. Seeds `parameter_module_mappings` so semantic ingest resolves real
-   * bindings across distinct modules instead of falling back to "未分类" for
-   * every write. Defaults to no mappings (existing legacy-only seed callers).
-   *
-   * @deprecated Prefer `moduleMappings`. Kept for call-site compatibility.
-   */
-  instanceModuleAssignments?: ReadonlyMap<string, string>;
-  /**
-   * Explicit instance/compatible/driver → module mappings for the demo registry.
-   * When provided, replaces the instance-only map above.
-   */
-  moduleMappings?: readonly SeedModuleMapping[];
-};
 
 export async function seedM1Parameters(
   db: Database,
-  config: PowerManagementConfig,
-  options: SeedM1ParametersOptions = {}
+  config: PowerManagementConfig
 ): Promise<void> {
-  const includeLegacyFlatIdentity = options.includeLegacyFlatIdentity === true;
-  const instanceModuleAssignments = options.instanceModuleAssignments ?? new Map<string, string>();
-  const moduleMappings = options.moduleMappings ?? [];
   await db.transaction(async (tx) => {
     for (const project of config.projects) {
       await tx.query(
@@ -392,40 +357,6 @@ export async function seedM1Parameters(
       modulePathByName.set(module.name, parentPath ? `${parentPath}/${persistedId}` : persistedId);
     }
 
-    const resolvedMappings: SeedModuleMapping[] = moduleMappings.length > 0
-      ? [...moduleMappings]
-      : [...instanceModuleAssignments.entries()].map(([matchValue, moduleName]) => ({
-          matchKind: "node-type" as const,
-          matchValue: matchValue.includes("@") ? matchValue.split("@")[0]! : matchValue,
-          moduleName,
-          priority: 500
-        }));
-
-    for (const mapping of resolvedMappings) {
-      const parameterModuleId = moduleIdByName.get(mapping.moduleName);
-      if (!parameterModuleId || !mapping.matchValue) continue;
-      const priority = mapping.priority
-        ?? (mapping.matchKind === "node-type" ? 500 : mapping.matchKind === "compatible" ? 300 : 100);
-      await tx.query(
-        `
-        insert into parameter_module_mappings (
-          id, organization_id, parameter_module_id, match_kind, match_value, priority
-        )
-        values ($1, $2, $3, $4, $5, $6)
-        on conflict (organization_id, match_kind, match_value) do update set
-          parameter_module_id = excluded.parameter_module_id,
-          priority = excluded.priority
-        `,
-        [
-          stableSeedId("pmap-seed", `${mapping.matchKind}:${mapping.matchValue}`),
-          organizationId,
-          parameterModuleId,
-          mapping.matchKind,
-          mapping.matchValue,
-          priority
-        ]
-      );
-    }
 
     const modules = [...new Set(config.parameterLibrary.map((parameter) => parameter.module))];
     for (const project of config.projects) {
@@ -464,148 +395,6 @@ export async function seedM1Parameters(
       }
     }
 
-    if (!includeLegacyFlatIdentity) {
-      return;
-    }
-
-    for (const parameter of config.parameterLibrary) {
-      await tx.query(
-        `
-        insert into parameter_definitions (
-          id,
-          organization_id,
-          name,
-          description,
-          explanation,
-          config_format,
-          module,
-          default_range,
-          unit,
-          risk,
-          value_kind,
-          parameter_module_id
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        on conflict (id) do update set
-          organization_id = excluded.organization_id,
-          name = excluded.name,
-          description = excluded.description,
-          explanation = excluded.explanation,
-          config_format = excluded.config_format,
-          module = excluded.module,
-          default_range = excluded.default_range,
-          unit = excluded.unit,
-          risk = excluded.risk,
-          value_kind = excluded.value_kind,
-          parameter_module_id = excluded.parameter_module_id,
-          updated_at = now()
-        `,
-        [
-          parameter.id,
-          organizationId,
-          parameter.name,
-          parameter.description,
-          parameter.explanation,
-          parameter.configFormat,
-          parameter.module,
-          parameter.range,
-          parameter.unit,
-          parameter.risk,
-          parameter.valueKind ??
-            (parameter.configFormat.trim().startsWith("DTS:") ||
-            parameter.configFormat.toLowerCase().includes("string-list")
-              ? "complex"
-              : "scalar"),
-          moduleIdByName.get(parameter.module) ?? null
-        ]
-      );
-
-      for (const project of config.projects) {
-        const value = parameter.values[project.id];
-        if (!value) {
-          continue;
-        }
-
-        const projectParameterValueId = `${project.id}-${parameter.id}`;
-        const projectParameterValue = await tx.query<ProjectParameterValueSeedRow>(
-          `
-          insert into project_parameter_values (
-            id,
-            organization_id,
-            project_id,
-            parameter_definition_id,
-            current_value,
-            ${LEGACY_SQL.recommendedValueColumn},
-            value_version,
-            updated_by_user_id,
-            source_file_name,
-            source_node_path
-          )
-          values ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9)
-          on conflict (project_id, parameter_definition_id) do update set
-            organization_id = excluded.organization_id,
-            current_value = excluded.current_value,
-            ${LEGACY_SQL.recommendedValueColumn} = excluded.${LEGACY_SQL.recommendedValueColumn},
-            value_version = case
-              when project_parameter_values.current_value is distinct from excluded.current_value
-                then project_parameter_values.value_version + 1
-              else project_parameter_values.value_version
-            end,
-            updated_by_user_id = excluded.updated_by_user_id,
-            source_file_name = excluded.source_file_name,
-            source_node_path = excluded.source_node_path,
-            updated_at = now()
-          returning id, value_version
-          `,
-          [
-            projectParameterValueId,
-            organizationId,
-            project.id,
-            parameter.id,
-            value.currentValue,
-            value.recommendedValue,
-            seedUserId,
-            parameter.sourceFileName ?? null,
-            parameter.sourceNodePath ?? null
-          ]
-        );
-        const seededValue = projectParameterValue.rows[0];
-        if (!seededValue) {
-          throw new Error(`Failed to seed parameter value for project ${project.id} and definition ${parameter.id}.`);
-        }
-
-        await tx.query(
-          `
-          insert into parameter_history_entries (
-            id,
-            organization_id,
-            project_id,
-            parameter_definition_id,
-            project_parameter_value_id,
-            version,
-            value,
-            changed_by_user_id
-          )
-          select $1, $2, $3, $4, $5, $6, $7, $8
-          where not exists (
-            select 1 from parameter_history_entries
-            where project_parameter_value_id = $5
-              and version = $6
-          )
-          `,
-          [
-            `${seededValue.id}-history-v${seededValue.value_version}`,
-            organizationId,
-            project.id,
-            parameter.id,
-            seededValue.id,
-            seededValue.value_version,
-            value.currentValue,
-            seedUserId
-          ]
-        );
-      }
-    }
   });
 }
 
@@ -737,7 +526,7 @@ export async function seedM1DtsFiles(
       await tx.query(
         `
         update project_parameter_files
-        set current_version_id = $2,
+        set current_version_id = coalesce(current_version_id, $2),
           updated_at = now()
         where id = $1
         `,
@@ -786,8 +575,7 @@ export async function seedM1DtsFiles(
 type SeedFileRow = { id: string; current_version_id: string | null };
 
 /**
- * Materialize module-aware `project_parameter_bindings` for each project's
- * self-contained primary DTS via the production ingest pipeline.
+ * Resolve each project's primary DTS without legacy parameter projection.
  * Must run after `seedM1DtsFiles`. Idempotent per primary file version.
  */
 export async function seedM1SemanticTopology(
@@ -842,18 +630,10 @@ export async function seedM1SemanticTopology(
           }
         ]
       };
-      await ingestConfigRevisionInTransaction(tx, manifest, auth);
+      await ingestConfigRevisionInTransaction(tx, manifest, auth, undefined, { legacyProjection: "skip" });
     }
   });
 
-  // Seed fixtures may provide explicit curated compatible mappings whose
-  // historical attribution subject predates the schema catalog.  Recompute
-  // once after ingest so those declared mappings remain authoritative; normal
-  // product recognition still uses the subject-checked effective placement
-  // seam in ingestService.
-  for (const projectId of new Set(projectFiles.map((projectFile) => projectFile.projectId))) {
-    await recomputeBindingModules(db, auth, { projectId });
-  }
 }
 
 /** Default demo mutation: nudge one sc8562 property so its binding gains a 2nd revision. */
@@ -863,145 +643,46 @@ export const BINDING_REVISION_HISTORY_DEMO = {
   replace: "watchdog_time = <6000>;"
 } as const;
 
-/**
- * Demo-only: drive a SECOND config revision through the same production ingest
- * path with one changed overlay property so at least one binding accumulates two
- * `project_parameter_binding_revisions` rows. History is binding-revision based
- * only; this gives the detail dialog real from→to data. Idempotent: skips when
- * the revised overlay version has already been ingested, but still repairs the
- * object-store bytes / parsed_index so typed edits can load source text.
- * Must run after `seedM1SemanticTopology`.
- */
 export async function seedM1BindingRevisionHistory(
-  db: Database,
+  db: RootDatabase,
   objectStore: ObjectStore,
   projectFiles: readonly DtsPowerSeedProjectFile[],
   options: { projectId?: string; find?: string; replace?: string } = {}
 ): Promise<void> {
-  const targetProjectId = options.projectId ?? BINDING_REVISION_HISTORY_DEMO.projectId;
+  const projectId = options.projectId ?? BINDING_REVISION_HISTORY_DEMO.projectId;
   const find = options.find ?? BINDING_REVISION_HISTORY_DEMO.find;
   const replace = options.replace ?? BINDING_REVISION_HISTORY_DEMO.replace;
-  const projectFile = projectFiles.find((file) => file.projectId === targetProjectId);
-  if (!projectFile || !projectFile.source.includes(find)) return;
-  const revisedSource = projectFile.source.replace(find, replace);
-  if (revisedSource === projectFile.source) return;
-
-  const auth = seedAuthContext();
-  const configSetId = `dcs-default-${targetProjectId}`;
-  const revisedBytes = Buffer.from(revisedSource, "utf8");
-  const stored = await objectStore.put({
-    organizationId,
-    fileName: projectFile.fileName,
-    contentType: "text/plain",
-    bytes: revisedBytes
+  if (!projectFiles.some((file) => file.projectId === projectId && file.source.includes(find)) || find === replace) return;
+  const propertyKey = find.split("=")[0]!.trim();
+  const baseValue = find.slice(find.indexOf("=") + 1).trim().replace(/;$/, "");
+  const targetValue = replace.slice(replace.indexOf("=") + 1).trim().replace(/;$/, "");
+  const bindings = await listCatalogBindingRowsForProject(db, seedAuthContext(), { projectId });
+  const binding = bindings.find((item) => item.propertyKey === propertyKey);
+  if (!binding) throw new Error(`Canonical history seed requires ${propertyKey}'s Binding.`);
+  if (binding.rawValue === targetValue) return;
+  if (binding.rawValue !== baseValue) throw new Error(`Canonical history seed refuses to replace an unexpected ${propertyKey} value.`);
+  const pins = await loadCanonicalBindingPins(db, { organizationId, projectId, bindingId: binding.id });
+  if (!pins) throw new Error("Canonical history seed requires exact source pins.");
+  const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+  if (!snapshot) throw new Error("Canonical history seed requires a published Catalog.");
+  const submitter = await getAuthContext(db, "u-liu-min");
+  const reviewer = await getAuthContext(db, "u-sun-mei");
+  const refusalSink = createTrustedRefusalAuditSink(db);
+  const invocation = createUserInvocation(submitter);
+  const draft = await createCanonicalValueDraft(db, submitter, {
+    projectId, bindingId: binding.id, targetValue: parseDtsValue(propertyKey, targetValue).value,
+    reason: "M1 canonical source history demo", baseRevisionId: pins.configRevisionId,
+    baseCurrentValueId: pins.currentValueId,
+  }, { objectStore, invocation, requestId: "seed-m1-history-draft", refusalSink });
+  const request = await submitCanonicalValueChange(db, submitter, {
+    projectId, draftId: draft.id, assignedToUserId: reviewer.user.id,
+    invocation, requestId: "seed-m1-history-submit", refusalSink,
   });
-  const parsedIndex = buildDtsParsedIndex(revisedSource);
-
-  await db.transaction(async (tx) => {
-    const primaryFileRow = await tx.query<SeedFileRow>(
-      `select id, current_version_id from project_parameter_files where project_id = $1 and file_name = $2`,
-      [targetProjectId, projectFile.fileName]
-    );
-    const primaryFile = primaryFileRow.rows[0];
-    if (!primaryFile?.id) return;
-
-    const alreadyIngested = await tx.query<{ c: string; version_id: string | null }>(
-      `
-      select count(*)::text as c, max(v.id) as version_id
-      from dts_config_revision_members m
-      inner join dts_config_revisions cr on cr.id = m.config_revision_id
-      inner join project_parameter_file_versions v on v.id = m.file_version_id
-      where cr.config_set_id = $1 and v.file_id = $2 and v.checksum = $3
-      `,
-      [configSetId, primaryFile.id, stored.checksumSha256]
-    );
-    if (Number(alreadyIngested.rows[0]?.c ?? 0) > 0) {
-      const versionId = alreadyIngested.rows[0]?.version_id;
-      if (versionId) {
-        await tx.query(
-          `update project_parameter_files set current_version_id = $2, updated_at = now() where id = $1`,
-          [primaryFile.id, versionId]
-        );
-      }
-      return;
-    }
-
-    const existingRevised = await tx.query<{ id: string }>(
-      `select id from project_parameter_file_versions where file_id = $1 and checksum = $2 limit 1`,
-      [primaryFile.id, stored.checksumSha256]
-    );
-    let revisedVersionId = existingRevised.rows[0]?.id;
-    if (!revisedVersionId) {
-      const nextVersion = await tx.query<{ n: number | string }>(
-        `select coalesce(max(version_number), 0) + 1 as n from project_parameter_file_versions where file_id = $1`,
-        [primaryFile.id]
-      );
-      revisedVersionId = `seed-dts-version-${targetProjectId}-${stored.checksumSha256.slice(0, 16)}`;
-      await tx.query(
-        `
-        insert into project_parameter_file_versions (
-          id, file_id, version_number, storage_key, checksum,
-          size_bytes, parsed_index, origin, created_by_user_id
-        )
-        values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'upload', $8)
-        on conflict (id) do update set
-          storage_key = excluded.storage_key,
-          checksum = excluded.checksum,
-          size_bytes = excluded.size_bytes,
-          parsed_index = excluded.parsed_index,
-          created_by_user_id = excluded.created_by_user_id
-        `,
-        [
-          revisedVersionId,
-          primaryFile.id,
-          Number(nextVersion.rows[0]?.n ?? 2),
-          stored.storageKey,
-          stored.checksumSha256,
-          stored.fileSizeBytes,
-          JSON.stringify(parsedIndex),
-          seedUserId
-        ]
-      );
-      await ingestDtsFileVersion(tx, revisedVersionId, revisedSource);
-    } else {
-      await tx.query(
-        `
-        update project_parameter_file_versions
-        set storage_key = $2,
-          size_bytes = $3,
-          parsed_index = $4::jsonb,
-          created_by_user_id = $5
-        where id = $1
-        `,
-        [revisedVersionId, stored.storageKey, stored.fileSizeBytes, JSON.stringify(parsedIndex), seedUserId]
-      );
-    }
-    await tx.query(
-      `update project_parameter_files set current_version_id = $2, updated_at = now() where id = $1`,
-      [primaryFile.id, revisedVersionId]
-    );
-
-    const manifest: ConfigRevisionManifest = {
-      organizationId,
-      projectId: targetProjectId,
-      configSetId,
-      entryFile: projectFile.fileName,
-      includeSearchPaths: ["."],
-      overlayOrder: [],
-      members: [
-        {
-          fileId: primaryFile.id,
-          fileVersionId: revisedVersionId,
-          fileName: projectFile.fileName,
-          role: "base",
-          sortOrder: 0,
-          content: revisedSource
-        }
-      ]
-    };
-    await ingestConfigRevisionInTransaction(tx, manifest, auth);
-  });
+  await reviewCanonicalValueChange(db, reviewer, {
+    projectId, requestId: request.id, decision: "approve",
+  }, { objectStore, snapshot, invocation: createUserInvocation(reviewer), traceId: "seed-m1-history-review", refusalSink });
 }
+
 
 /** Parse-only integrity gate for committed `*-board.dts` artifacts (no dtc required). */
 export function assertCommittedDtsSeedParses(projectFiles: readonly DtsPowerSeedProjectFile[]) {
@@ -1046,42 +727,23 @@ async function main() {
       ...dtsSeed.parameterLibrary.map(toPowerManagementParameter)
     ]
   };
-  const moduleMappingsByKey = new Map<string, SeedModuleMapping>();
-  for (const mapping of buildSeedModuleMappings(resolveDts(auroraPrimary))) {
-    moduleMappingsByKey.set(`${mapping.matchKind}:${mapping.matchValue}`, mapping);
-  }
-  const includeLegacyFlatIdentity =
-    process.env.WISEEFF_SEED_LEGACY_FLAT_IDENTITY?.trim() === "1";
-
-  await seedM1Parameters(db, config, {
-    includeLegacyFlatIdentity,
-    moduleMappings: [...moduleMappingsByKey.values()]
-  });
-  await seedM1DtsFiles(db, createObjectStoreFromEnv(env), projectFiles);
-  await seedM1SemanticTopology(db, projectFiles);
-  await syncVendorPropertyDocs(db);
-  await recomputeBindingModules(db, seedAuthContext(), {});
-  await seedM1BindingRevisionHistory(db, createObjectStoreFromEnv(env), projectFiles);
-
-  if (includeLegacyFlatIdentity) {
+  try {
+    await syncVendorPropertyDocs(db);
+    await seedM1Parameters(db, config);
+    await seedM1DtsFiles(db, createObjectStoreFromEnv(env), projectFiles);
+    await seedM1SemanticTopology(db, projectFiles);
+    const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, seedAuthContext(), {
+      organizationId,
+      seedDigest: "seed-m1-canonical",
+    });
+    await seedM1BindingRevisionHistory(db, createObjectStoreFromEnv(env), projectFiles);
     console.log(
-      "Seeded M1 parameter data (legacy flat identity enabled), full project DTS baselines, module-aware topology bindings, vendor property docs, and a demo binding-revision history. Local post-cutover skipped; typed binding submit requires cutover."
+      "Seeded M1 canonical Catalog, source-backed Bindings, Project values and source-commit history.",
+      `Canonical catalog ${canonical.catalogReleaseId ?? "unpublished"}; written=${JSON.stringify(canonical.written)}; skipped=${canonical.skipped.join(",") || "none"}.`
     );
-    return;
+  } finally {
+    await db.close();
   }
-
-  const cutover = await ensureLocalPostCutoverIdentity(db);
-  const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, seedAuthContext(), {
-    organizationId,
-    seedDigest: "seed-m1-legacy-canonical",
-  });
-  console.log(
-    "Seeded M1 semantic parameter data, full project DTS baselines, module-aware topology bindings, vendor property docs, and a demo binding-revision history.",
-    cutover.status === "already-complete"
-      ? "Local post-cutover already complete."
-      : `Local post-cutover applied (run ${cutover.migrationRunId}).`,
-    `Canonical catalog ${canonical.catalogReleaseId ?? "unpublished"}; written=${JSON.stringify(canonical.written)}; skipped=${canonical.skipped.join(",") || "none"}.`
-  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

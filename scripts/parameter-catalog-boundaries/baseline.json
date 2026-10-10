@@ -615,15 +615,8 @@
     "server/modules/parameters/schemas.ts": {
       "legacy-parameter-spec-identifier": 3
     },
-    "server/modules/parameters/seedM1BindingRevisionHistory.integration.test.ts": {
-      "legacy-catalog-raw-read": 5
-    },
     "server/modules/parameters/seedM1Parameters.test.ts": {
       "legacy-catalog-raw-read": 1,
-      "legacy-catalog-sql-write": 4
-    },
-    "server/modules/parameters/seedM1SemanticTopology.integration.test.ts": {
-      "legacy-catalog-raw-read": 6,
       "legacy-catalog-sql-write": 4
     },
     "server/modules/parameters/semanticParameterIdentityNames.ts": {
