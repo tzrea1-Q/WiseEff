@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
@@ -812,10 +813,9 @@ export function UserPermissionsPage({
             </label>
           </div>
 
-          <div
+          <TabPanel
             className="user-permissions-grid"
             role={approvalWorkflowEnabled ? "tabpanel" : undefined}
-            tabIndex={approvalWorkflowEnabled ? 0 : undefined}
             id="user-permissions-workspace-accounts-panel"
             aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
           >
@@ -839,13 +839,12 @@ export function UserPermissionsPage({
                 columns={accountColumns}
               />
             )}
-          </div>
+          </TabPanel>
         </>
       ) : (
-        <section
+        <TabPanel
           className="user-permissions-approval-queue"
           role="tabpanel"
-          tabIndex={0}
           id="user-permissions-workspace-approvals-panel"
           aria-labelledby="user-permissions-workspace-approvals"
           aria-label="注册角色申请"
@@ -898,7 +897,7 @@ export function UserPermissionsPage({
           ) : (
             <p className="user-permissions-approval-empty">暂无待处理角色申请。</p>
           )}
-        </section>
+        </TabPanel>
       )}
 
       {approvalWorkflowEnabled ? (

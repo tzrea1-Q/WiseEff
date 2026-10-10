@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { useEffect, useId, useRef, useState } from "react";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import type {
@@ -600,7 +601,7 @@ export function CanonicalProjectValueReviewPanel({
             { value: "history", label: "历史", id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: busy }
           ]} />
       </header>
-      <div role="tabpanel" id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`} tabIndex={0}>
+      <TabPanel role="tabpanel" id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`}>
       {error ? <p role="alert">{error}</p> : null}
       {staleRequestId ? (
         <p role="alert">请求「{staleRequestId}」已失效、已归档或不属于当前项目，未自动切换到其他请求。</p>
@@ -865,9 +866,9 @@ export function CanonicalProjectValueReviewPanel({
           ) : null}
         </div>
       ) : null}
-      </div>
+      </TabPanel>
       <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
-        aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} tabIndex={0} hidden />
+        aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden />
     </section>
   );
 }

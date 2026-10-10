@@ -506,7 +506,7 @@ export function NodeDebuggingPage({
               id: `node-debugging-${value}-tab`, panelId: `node-debugging-${value}-panel` }))} />
         </div>
         <div className="workbench-one-col" role="tabpanel" id={`node-debugging-${protocol}-panel`}
-          aria-labelledby={`node-debugging-${protocol}-tab`} tabIndex={0}>
+          aria-labelledby={`node-debugging-${protocol}-tab`}>
         <LocalDeviceBridgePanel
           target={target}
           detecting={detecting}

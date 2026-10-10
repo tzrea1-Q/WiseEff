@@ -161,7 +161,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
 
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="reviewer-1" onSelectRequest={onSelectRequest} />);
     const panel = await screen.findByRole("region", { name: "软件配置审核" });
-    expect(within(panel).getAllByText("JSON").length).toBeGreaterThan(0);
+    expect((await within(panel).findAllByText("JSON")).length).toBeGreaterThan(0);
     expect(within(panel).getByLabelText("固定源目标内容")).toHaveTextContent("cells");
     expect(await within(panel).findByLabelText("固定源变更前")).toHaveTextContent("enabled");
     expect(await within(panel).findByLabelText("固定源变更后")).toHaveTextContent("enabled");

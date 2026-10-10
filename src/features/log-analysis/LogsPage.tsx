@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
@@ -1429,7 +1430,7 @@ function LogsAuxPanel({
         onValueChange={(value) => onTabChange(value as LogsAuxTab)}
         items={tabs.map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))}
       />
-      <div aria-labelledby={`logs-aux-tab-${auxTab}`} className="logs-aux-panel__body" id={`logs-aux-${auxTab}`} role="tabpanel" tabIndex={0}>
+      <TabPanel aria-labelledby={`logs-aux-tab-${auxTab}`} className="logs-aux-panel__body" id={`logs-aux-${auxTab}`} role="tabpanel">
         {auxTab === "history" ? (
           <div className="history-panel">
             {logs.map((log) => (
@@ -1463,7 +1464,7 @@ function LogsAuxPanel({
           </dl>
         ) : null}
         {auxTab === "related" ? <EmptyState text="没有找到关联日志。" /> : null}
-      </div>
+      </TabPanel>
     </aside>
   );
 }

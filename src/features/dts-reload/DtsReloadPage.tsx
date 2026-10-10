@@ -726,7 +726,7 @@ export function DtsReloadPage({
         </div>
 
         <div className="workbench-one-col" role="tabpanel" id={`dts-reload-${protocol}-panel`}
-          aria-labelledby={`dts-reload-${protocol}-tab`} tabIndex={0}>
+          aria-labelledby={`dts-reload-${protocol}-tab`}>
         <LocalDeviceBridgePanel
           target={connectedBridgeId ? targetRef.trim() || undefined : undefined}
           detecting={detectingTargets}

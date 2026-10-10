@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { toggleFilterValue, uniqueFilterValues } from "@/components/tableFilterUtils";
@@ -841,7 +842,7 @@ export function ParameterReviewPage({
             meta={reviewMeta}
           />
         </div>
-        <div role="tabpanel" id={`review-${reviewMode}-panel`} aria-labelledby={`review-${reviewMode}-tab`} tabIndex={0}>
+        <TabPanel role="tabpanel" id={`review-${reviewMode}-panel`} aria-labelledby={`review-${reviewMode}-tab`}>
         {runtimeMode === "api" && reviewMode === "history" ? (
           <p role="note">此处的旧版审阅记录仅作为只读归档，不能作为当前新版请求继续处理。</p>
         ) : null}
@@ -1077,9 +1078,9 @@ export function ParameterReviewPage({
             onConfirm={() => void runBatchAdvance()}
           />
         </div>
-        </div>
+        </TabPanel>
         <div role="tabpanel" id={`review-${reviewMode === "pending" ? "history" : "pending"}-panel`}
-          aria-labelledby={`review-${reviewMode === "pending" ? "history" : "pending"}-tab`} tabIndex={0} hidden />
+          aria-labelledby={`review-${reviewMode === "pending" ? "history" : "pending"}-tab`} hidden />
       </section>
       <aside className="review-detail" ref={detailRef} tabIndex={-1} aria-labelledby="review-detail-heading">
         <h2 id="review-detail-heading" className="sr-only">

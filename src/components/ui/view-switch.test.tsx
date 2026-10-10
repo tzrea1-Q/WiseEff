@@ -1,3 +1,4 @@
+import { TabPanel } from "./tab-panel";
 import { useState } from "react";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -131,9 +132,9 @@ describe("ViewSwitch", () => {
           { value: "approvals", label: "注册申请", id: "approvals-tab", panelId: "approvals-panel" }
         ]} />
         {["accounts", "disabled", "approvals"].map((panel) => (
-          <div key={panel} role="tabpanel" id={`${panel}-panel`} aria-labelledby={`${panel}-tab`} tabIndex={0} hidden={panel !== value}>
+          <TabPanel key={panel} role="tabpanel" id={`${panel}-panel`} aria-labelledby={`${panel}-tab`} hidden={panel !== value}>
             {panel === "accounts" ? "平台用户" : "待处理申请"}
-          </div>
+          </TabPanel>
         ))}
       </>;
     }

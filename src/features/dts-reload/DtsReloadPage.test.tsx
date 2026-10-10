@@ -667,7 +667,13 @@ describe("DtsReloadPage", () => {
     const panel = screen.getByRole("tabpanel", { name: "ADB" });
     expect(panel).toHaveAttribute("id", adb.getAttribute("aria-controls"));
     expect(panel).toHaveAttribute("aria-labelledby", adb.id);
-    expect(panel).toHaveAttribute("tabindex", "0");
+    expect(panel).not.toHaveAttribute("tabindex");
+    adb.focus();
+    await user.tab();
+    expect(screen.getByRole("combobox", { name: "选择项目" })).toHaveFocus();
+    await user.tab();
+    expect(panel).toContainElement(document.activeElement as HTMLElement);
+    expect(panel).not.toHaveFocus();
     expect(within(panel).getByRole("region", { name: "模块导航" })).toBeInTheDocument();
     expect(document.getElementById(hdc.getAttribute("aria-controls")!)).not.toBeVisible();
 
