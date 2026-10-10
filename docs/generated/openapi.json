@@ -4127,7 +4127,7 @@
     "/api/v1/parameters/{parameterId}": {
       "get": {
         "operationId": "parameters.get",
-        "summary": "Get parameter",
+        "summary": "Get canonical parameter Binding (legacy IDs require an exact typed mapping)",
         "tags": [
           "parameters"
         ],
@@ -4155,6 +4155,25 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "410": {
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -4164,7 +4183,7 @@
     "/api/v1/parameters/{parameterId}/history": {
       "get": {
         "operationId": "parameters.history",
-        "summary": "Get parameter history",
+        "summary": "Get canonical Binding and Project value history",
         "tags": [
           "parameters"
         ],
@@ -4191,6 +4210,22 @@
           },
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "410": {
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -17906,21 +17941,16 @@
                 "type": "string"
               },
               "recommendedValue": {
-                "type": "string"
+                "type": "null"
               },
               "range": {
-                "type": "string"
+                "type": "null"
               },
               "unit": {
-                "type": "string"
+                "type": "null"
               },
               "risk": {
-                "type": "string",
-                "enum": [
-                  "High",
-                  "Medium",
-                  "Low"
-                ]
+                "type": "null"
               },
               "sourceFileName": {
                 "type": "string"
@@ -17928,56 +17958,63 @@
               "sourceNodePath": {
                 "type": "string"
               },
-              "parameterSpecId": {
-                "type": "string"
-              },
               "projectParameterBindingId": {
                 "type": "string"
               },
               "updatedAt": {
-                "type": "string"
+                "type": "null"
               },
               "updatedAtTs": {
-                "type": "string"
+                "type": "null"
               },
               "history": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "version": {
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": "string"
-                    },
-                    "changedAt": {
-                      "type": "string"
-                    },
-                    "changedBy": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "requestId": {
-                      "type": "string"
-                    },
-                    "projectParameterBindingId": {
-                      "type": "string"
-                    },
-                    "parameterSpecId": {
-                      "type": "string"
-                    }
+                "type": "null"
+              },
+              "bindingId": {
+                "type": "string"
+              },
+              "definitionId": {
+                "type": "string"
+              },
+              "effectiveRevisionId": {
+                "type": "string"
+              },
+              "currentValueId": {
+                "type": "string"
+              },
+              "sourceFileId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceOccurrenceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "metadataAvailability": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "unavailable"
+                    ]
                   },
-                  "required": [
-                    "version",
-                    "value",
-                    "changedAt",
-                    "changedBy"
-                  ],
-                  "additionalProperties": false
-                }
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "canonical-compatibility-metadata-unavailable"
+                    ]
+                  }
+                },
+                "required": [
+                  "status",
+                  "reason"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -17993,9 +18030,15 @@
               "range",
               "unit",
               "risk",
+              "projectParameterBindingId",
               "updatedAt",
               "updatedAtTs",
-              "history"
+              "history",
+              "bindingId",
+              "definitionId",
+              "effectiveRevisionId",
+              "currentValueId",
+              "metadataAvailability"
             ],
             "additionalProperties": false
           }
@@ -18014,36 +18057,75 @@
             "items": {
               "type": "object",
               "properties": {
-                "version": {
+                "id": {
                   "type": "string"
                 },
-                "value": {
+                "bindingId": {
                   "type": "string"
                 },
-                "changedAt": {
+                "definitionId": {
                   "type": "string"
                 },
-                "changedBy": {
+                "oldDefinitionRevisionId": {
                   "type": [
                     "string",
                     "null"
                   ]
                 },
-                "requestId": {
+                "newDefinitionRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "oldCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "newCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "valueState": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "present",
+                    "deleted"
+                  ]
+                },
+                "reason": {
                   "type": "string"
                 },
-                "projectParameterBindingId": {
+                "successAuditRef": {
                   "type": "string"
                 },
-                "parameterSpecId": {
+                "catalogReleaseId": {
+                  "type": "string"
+                },
+                "createdAt": {
                   "type": "string"
                 }
               },
               "required": [
-                "version",
-                "value",
-                "changedAt",
-                "changedBy"
+                "id",
+                "bindingId",
+                "definitionId",
+                "oldDefinitionRevisionId",
+                "newDefinitionRevisionId",
+                "oldCurrentValueId",
+                "newCurrentValueId",
+                "valueState",
+                "reason",
+                "successAuditRef",
+                "catalogReleaseId",
+                "createdAt"
               ],
               "additionalProperties": false
             }

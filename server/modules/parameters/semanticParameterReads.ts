@@ -116,14 +116,3 @@ export async function listSemanticParameters(
   );
   return result.rows;
 }
-
-export async function getSemanticParameterById(
-  db: Queryable,
-  query: { organizationId: string; parameterId: string }
-): Promise<SemanticParameterRow | null> {
-  const rows = await listSemanticParameters(db, {
-    organizationId: query.organizationId,
-    limit: 500
-  });
-  return rows.find((row) => row.id === query.parameterId) ?? null;
-}
