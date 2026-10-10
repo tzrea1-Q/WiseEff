@@ -10,14 +10,11 @@ import { testRefusalAuditSink } from "../audit/testRefusalSink";
 import { registerParameterSpecRoutes } from "../parameter-specs/routes";
 import { registerParameterTopologyRoutes } from "./routes";
 import * as specService from "../parameter-specs/service";
-import * as cutoverService from "../parameter-specs/propertyKeyCutover";
 import * as topologyService from "./service";
 
 vi.mock("../parameter-specs/service", () => ({
   listParameterSpecs: vi.fn(),
-  getParameterSpec: vi.fn(),
-  listSpecReviewTasks: vi.fn(),
-  resolveSpecReviewTask: vi.fn()
+  listSpecReviewTasks: vi.fn()
 }));
 
 vi.mock("./service", () => ({
@@ -32,13 +29,6 @@ vi.mock("./service", () => ({
   createNodeEnablementDraft: vi.fn()
 }));
 
-vi.mock("../parameter-specs/propertyKeyCutover", () => ({
-  getOpenPropertyKeySourceCutover: vi.fn(),
-  previewPropertyKeySourceCutover: vi.fn(),
-  startPropertyKeySourceCutover: vi.fn(),
-  preparePropertyKeySourceCutover: vi.fn(),
-  finalizePropertyKeySourceCutover: vi.fn()
-}));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
@@ -109,42 +99,6 @@ describe("parameter semantic v2 routes", () => {
     vi.clearAllMocks();
   });
 
-  it("GET /api/v2/parameter-specs lets viewers list specs", async () => {
-    vi.mocked(specService.listParameterSpecs).mockResolvedValue({
-      items: [
-        {
-          id: "spec-1",
-          sourceKind: "dts",
-          specificationKey: "sc8562/gpio_int",
-          propertyKey: "gpio_int",
-          driverModule: "sc8562",
-          lifecycle: "active",
-          currentVersionId: "spec-ver-1",
-          currentVersion: 1
-        }
-      ]
-    });
-
-    const response = await requestJson<{ items: Array<{ id: string; propertyKey: string }> }>(
-      makeServer({ db: makeDb() }),
-      "/api/v2/parameter-specs"
-    );
-
-    expect(response.status).toBe(200);
-    expect(response.body?.items[0]).toMatchObject({ id: "spec-1", propertyKey: "gpio_int" });
-    expect(response.body?.items[0]).not.toHaveProperty("path");
-  });
-
-  it("GET /api/v2/parameter-specs/:specId returns 404 for cross-org ids", async () => {
-    const { ApiError } = await import("../../shared/http/errors");
-    vi.mocked(specService.getParameterSpec).mockRejectedValue(
-      new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: "spec-x" })
-    );
-
-    const response = await requestJson(makeServer({ db: makeDb() }), "/api/v2/parameter-specs/spec-x");
-    expect(response.status).toBe(404);
-  });
-
   it("POST /api/v2/parameter-spec-review-tasks/:taskId/resolve is retired for viewers", async () => {
     const response = await requestJson(makeServer({ db: makeDb(), auth: makeAuth() }), "/api/v2/parameter-spec-review-tasks/task-1/resolve", {
       method: "POST",
@@ -152,7 +106,7 @@ describe("parameter semantic v2 routes", () => {
     });
     expect(response.status).toBe(410);
     expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
-    expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
+    expect(response.headers.get("link")).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
   });
 
   it("GET /api/v2/parameter-spec-review-tasks requires parameter admin", async () => {
@@ -198,13 +152,6 @@ describe("parameter semantic v2 routes", () => {
   });
 
   it("POST /api/v2/parameter-spec-review-tasks/:taskId/resolve is retired for admins", async () => {
-    vi.mocked(specService.resolveSpecReviewTask).mockResolvedValue({
-      id: "task-1",
-      status: "resolved",
-      parameterSpecId: "spec-1",
-      reason: "Matched linux schema"
-    });
-
     const response = await requestJson(
       makeServer({ db: makeDb(), auth: makeAdminAuth() }),
       "/api/v2/parameter-spec-review-tasks/task-1/resolve",
@@ -217,17 +164,9 @@ describe("parameter semantic v2 routes", () => {
     expect(response.status).toBe(410);
     expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
     expect(response.headers.get("link")).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
-    expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
   });
 
   it("POST retired resolve never creates a spec or confirms a mismatch", async () => {
-    vi.mocked(specService.resolveSpecReviewTask).mockResolvedValue({
-      id: "task-1",
-      status: "resolved",
-      parameterSpecId: "spec-new",
-      reason: "Created"
-    });
-
     const response = await requestJson(
       makeServer({ db: makeDb(), auth: makeAdminAuth() }),
       "/api/v2/parameter-spec-review-tasks/task-1/resolve",
@@ -243,7 +182,7 @@ describe("parameter semantic v2 routes", () => {
     );
 
     expect(response.status).toBe(410);
-    expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
+    expect(response.headers.get("link")).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
   });
 
   it("POST retired resolve takes precedence over legacy body validation", async () => {
@@ -257,7 +196,7 @@ describe("parameter semantic v2 routes", () => {
     );
 
     expect(response.status).toBe(410);
-    expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
+    expect(response.headers.get("link")).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
   });
 
   it("GET topology lets viewers read source and effective views", async () => {
@@ -594,13 +533,10 @@ describe("parameter semantic v2 routes", () => {
     );
   });
 
-  it("property-key prepare constructs User provenance and ignores client actor spoofing", async () => {
-    vi.mocked(cutoverService.preparePropertyKeySourceCutover).mockResolvedValue({
-      item: { id: "cutover-1", status: "ready" }
-    } as never);
-
+  it("property-key prepare stays retired despite client actor spoofing", async () => {
+    const db = makeDb();
     const response = await requestJson(
-      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      makeServer({ db, auth: makeAdminAuth() }),
       "/api/v2/parameter-specs/spec-1/property-key-cutover/prepare?actorType=agent",
       {
         method: "POST",
@@ -608,18 +544,12 @@ describe("parameter semantic v2 routes", () => {
         body: JSON.stringify({ reason: "prepare", actorType: "agent", provenance: { initiator: "system" } })
       }
     );
-
-    expect(response.status).toBe(200);
-    expect(cutoverService.preparePropertyKeySourceCutover).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
-      { specId: "spec-1", reason: "prepare" },
-      expect.objectContaining({
-        invocation: expect.objectContaining({ initiator: "user" }),
-        requestId: expect.any(String),
-        refusalSink: testRefusalAuditSink
-      }),
-      undefined
-    );
+    expect(response.status).toBe(410);
+    expect(response.body.error.details).toEqual({
+      reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false
+    });
+    expect(response.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+    expect(db.query).not.toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 });

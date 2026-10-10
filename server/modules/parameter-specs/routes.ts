@@ -2,67 +2,18 @@ import { z } from "zod";
 import { readSpecTaskWindow } from "../parameter-catalog-api/taskReadWindow";
 
 import type { AuthContext } from "../auth/types";
-import { createUserInvocation } from "../auth/trustedInvocation";
-import {
-  assertTrustedRefusalAuditSink,
-  createTrustedRefusalAuditSink,
-  type TrustedRefusalAuditSink
-} from "../audit/trustedRefusalSink";
-import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
-import {
-  catalogLegacyGoneResult,
-  legacyRouteSuccessor,
-  LEGACY_GOVERNANCE_GONE_MESSAGE,
-  LEGACY_WRITE_GONE_MESSAGE,
-} from "../parameter-catalog-api/legacy/gone";
-import { legacyDriverSchemaRetirementRouteManifest } from "../parameter-catalog-api/legacy/routes";
+import { canAdminParameters } from "../parameter-kernel/policy";
+import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
+import { legacyWriteRouteManifest } from "../parameter-catalog-api/legacy/routes";
 import {
   driverSchemaPromotionHistoryListResponseSchema,
 } from "./promotionHistory";
 import { listDriverSchemaPromotions } from "./driverSchemaOverlayRepository";
-import { isRootDatabase, type Database } from "../../shared/database/client";
+import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
-import {
-  activateParameterSpecBodySchema,
-  deprecateParameterSpecBodySchema,
-  finalizeParameterSpecCutoverBodySchema,
-  listParameterSpecsQuerySchema,
-  listSpecReviewTasksQuerySchema,
-  parameterSpecDetailQuerySchema,
-  parameterSpecParamsSchema,
-  prepareParameterSpecCutoverBodySchema,
-  previewPropertyKeyCutoverBodySchema,
-  startPropertyKeyCutoverBodySchema,
-  preparePropertyKeyCutoverBodySchema,
-  finalizePropertyKeyCutoverBodySchema,
-  reattributeParameterSpecBodySchema,
-  renameParameterSpecPropertyKeyBodySchema,
-  restoreParameterSpecBodySchema,
-  updateParameterSpecBodySchema,
-} from "./schemas";
-import {
-  activateParameterSpec,
-  deprecateParameterSpec,
-  finalizeParameterSpecVersionCutoverForSpec,
-  getParameterSpec,
-  getParameterSpecVersionCutoverImpact,
-  listParameterSpecs,
-  listSpecReviewTasks,
-  prepareParameterSpecVersionCutover,
-  reattributeParameterSpec,
-  renameParameterSpecPropertyKey,
-  restoreParameterSpec,
-  updateParameterSpec,
-} from "./service";
-import {
-  finalizePropertyKeySourceCutover,
-  getOpenPropertyKeySourceCutover,
-  preparePropertyKeySourceCutover,
-  previewPropertyKeySourceCutover,
-  startPropertyKeySourceCutover,
-} from "./propertyKeyCutover";
+import { listSpecReviewTasksQuerySchema } from "./schemas";
+import { listSpecReviewTasks } from "./service";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -97,12 +48,6 @@ function flattenQuery(query: Record<string, string | string[]>) {
   );
 }
 
-function requireCanView(auth: AuthContext) {
-  if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
-  }
-}
-
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
@@ -113,52 +58,11 @@ export function registerParameterSpecRoutes(
   router: WiseEffRouter,
   options: {
     db?: Database;
-    objectStore?: ObjectStore;
-    refusalAuditSink?: TrustedRefusalAuditSink;
     getCurrentAuthContext: (
       request: RouteRequest,
     ) => Promise<AuthContext> | AuthContext;
   },
 ) {
-  const refusalAuditSink = options.refusalAuditSink
-    ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
-    : options.db && isRootDatabase(options.db)
-      ? createTrustedRefusalAuditSink(options.db)
-      : undefined;
-  router.get("/api/v2/parameter-specs", async (request) => {
-    const query = parseWithSchema(
-      listParameterSpecsQuerySchema,
-      flattenQuery(request.query),
-    );
-    if (query.view === "governance") {
-      return catalogLegacyGoneResult(request.requestId, LEGACY_GOVERNANCE_GONE_MESSAGE);
-    }
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanView(auth);
-    const result = await listParameterSpecs(db, auth, query);
-    return { status: 200, body: result };
-  });
-
-  router.post("/api/v2/parameter-specs", async (request) => {
-    return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
-  });
-
-  router.get("/api/v2/parameter-specs/:specId", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanView(auth);
-    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-    const query = parseWithSchema(
-      parameterSpecDetailQuerySchema,
-      flattenQuery(request.query),
-    );
-    const result = await getParameterSpec(db, auth, params.specId, {
-      view: query.view ?? "effective",
-    });
-    return { status: 200, body: result };
-  });
-
   router.get("/api/v2/parameter-spec-review-tasks", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -171,309 +75,6 @@ export function registerParameterSpecRoutes(
     const window = await readSpecTaskWindow(db, auth, result.items);
     return { status: 200, headers: window.headers, body: { ...window.body, nextCursor: result.nextCursor } };
   });
-
-  router.post(
-    "/api/v2/parameter-spec-review-tasks/:taskId/resolve",
-    async (request) => {
-      await options.getCurrentAuthContext(request);
-      return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE,
-        legacyRouteSuccessor("parameterSpecs.resolveReviewTask"));
-    },
-  );
-
-  router.post("/api/v2/parameter-specs/:specId/activate", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-    const body = parseWithSchema(
-      activateParameterSpecBodySchema,
-      request.body ?? {},
-    );
-    const result = await activateParameterSpec(
-      db,
-      auth,
-      {
-        ...body,
-        constraints: body.constraints ?? {},
-        specId: params.specId,
-      },
-      { requestId: request.requestId },
-    );
-    return { status: 200, body: result };
-  });
-
-  router.get("/api/v2/parameter-specs/:specId/cutover", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanView(auth);
-    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-    const result = await getParameterSpecVersionCutoverImpact(
-      db,
-      auth,
-      params.specId,
-    );
-    return { status: 200, body: result };
-  });
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/cutover/prepare",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        prepareParameterSpecCutoverBodySchema,
-        request.body ?? {},
-      );
-      const result = await prepareParameterSpecVersionCutover(
-        db,
-        auth,
-        { ...body, specId: params.specId },
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/cutover/finalize",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        finalizeParameterSpecCutoverBodySchema,
-        request.body ?? {},
-      );
-      const result = await finalizeParameterSpecVersionCutoverForSpec(
-        db,
-        auth,
-        { ...body, specId: params.specId },
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post("/api/v2/parameter-specs/:specId/deprecate", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-    const body = parseWithSchema(
-      deprecateParameterSpecBodySchema,
-      request.body ?? {},
-    );
-    const result = await deprecateParameterSpec(
-      db,
-      auth,
-      { ...body, specId: params.specId },
-      { requestId: request.requestId },
-    );
-    return { status: 200, body: result };
-  });
-
-  router.post("/api/v2/parameter-specs/:specId/restore", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-    const body = parseWithSchema(
-      restoreParameterSpecBodySchema,
-      request.body ?? {},
-    );
-    const result = await restoreParameterSpec(
-      db,
-      auth,
-      { ...body, specId: params.specId },
-      { requestId: request.requestId },
-    );
-    return { status: 200, body: result };
-  });
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/reattribute",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        reattributeParameterSpecBodySchema,
-        request.body ?? {},
-      );
-      const result = await reattributeParameterSpec(
-        db,
-        auth,
-        { ...body, specId: params.specId },
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/rename-property-key",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        renameParameterSpecPropertyKeyBodySchema,
-        request.body ?? {},
-      );
-      const result = await renameParameterSpecPropertyKey(
-        db,
-        auth,
-        { ...body, specId: params.specId },
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.get(
-    "/api/v2/parameter-specs/:specId/property-key-cutover",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const result = await getOpenPropertyKeySourceCutover(
-        db,
-        auth,
-        params.specId,
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/property-key-cutover/preview",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        previewPropertyKeyCutoverBodySchema,
-        request.body ?? {},
-      );
-      const result = await previewPropertyKeySourceCutover(db, auth, {
-        specId: params.specId,
-        propertyKey: body.propertyKey,
-      });
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/property-key-cutover/start",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        startPropertyKeyCutoverBodySchema,
-        request.body ?? {},
-      );
-      const result = await startPropertyKeySourceCutover(
-        db,
-        auth,
-        {
-          specId: params.specId,
-          propertyKey: body.propertyKey,
-          reason: body.reason,
-        },
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/property-key-cutover/prepare",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        preparePropertyKeyCutoverBodySchema,
-        request.body ?? {},
-      );
-      if (!refusalAuditSink) {
-        throw new ApiError(
-          "INTERNAL_ERROR",
-          "Trusted refusal audit sink is required for property-key cutover prepare.",
-        );
-      }
-      const result = await preparePropertyKeySourceCutover(
-        db,
-        auth,
-        { specId: params.specId, reason: body.reason },
-        {
-          invocation: createUserInvocation(auth),
-          requestId: request.requestId,
-          refusalSink: refusalAuditSink,
-        },
-        options.objectStore ? { objectStore: options.objectStore } : undefined,
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.post(
-    "/api/v2/parameter-specs/:specId/property-key-cutover/finalize",
-    async (request) => {
-      const db = requireDb(options.db);
-      const auth = await options.getCurrentAuthContext(request);
-      requireCanAdmin(auth);
-      const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-      const body = parseWithSchema(
-        finalizePropertyKeyCutoverBodySchema,
-        request.body ?? {},
-      );
-      const result = await finalizePropertyKeySourceCutover(
-        db,
-        auth,
-        { specId: params.specId, reason: body.reason },
-        { requestId: request.requestId },
-      );
-      return { status: 200, body: result };
-    },
-  );
-
-  router.patch("/api/v2/parameter-specs/:specId", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
-    const body = parseWithSchema(
-      updateParameterSpecBodySchema,
-      request.body ?? {},
-    );
-    const result = await updateParameterSpec(
-      db,
-      auth,
-      {
-        ...body,
-        specId: params.specId,
-      },
-      { requestId: request.requestId },
-    );
-    return { status: 200, body: result };
-  });
-
-  for (const route of legacyDriverSchemaRetirementRouteManifest) {
-    const add = router[route.method.toLowerCase() as Lowercase<typeof route.method>];
-    add.call(router, route.path, async (request) => catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE));
-  }
 
   router.get("/api/v2/platform/driver-schema-promotion-history", async (request) => {
     const db = requireDb(options.db);
@@ -497,4 +98,10 @@ export function registerParameterSpecRoutes(
       }),
     };
   });
+
+  for (const route of legacyWriteRouteManifest.filter((entry) => entry.id.startsWith("parameterSpecs."))) {
+    const add = router[route.method.toLowerCase() as Lowercase<typeof route.method>];
+    add.call(router, route.path, async (request) =>
+      catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE, legacyRouteSuccessor(route.id)));
+  }
 }

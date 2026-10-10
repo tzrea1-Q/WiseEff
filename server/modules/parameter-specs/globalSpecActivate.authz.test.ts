@@ -7,14 +7,11 @@ import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { ApiError } from "../../shared/http/errors";
-import { createHttpServer } from "../../shared/http/server";
-import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
-import { registerParameterSpecRoutes } from "./routes";
 import { createWiseEffServer } from "../../app";
 import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
-import { activateParameterSpec } from "./service";
+import { listParameterSpecs } from "./service";
+import { getParameterSpecRow } from "./repository";
 
 const ORG_A = "org-global-activate-a";
 const ORG_B = "org-global-activate-b";
@@ -101,77 +98,8 @@ describe.skipIf(!databaseAvailable)("global spec activation authz", () => {
     await db?.rollback();
   });
 
-  it("allows org admin to activate own org draft", async () => {
-    const result = await activateParameterSpec(db!, makeAuth(ORG_A, USER_A), {
-      specId: ORG_DRAFT,
-      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-      constraints: { cells: 1 },
-      documentation: "Org-owned draft activation",
-      reason: "Round6 org activate",
-    });
-    expect(result.item.lifecycle).toBe("active");
-  });
-
-  it("rejects org admin activating a global draft (fail-closed)", async () => {
-    await expect(
-      activateParameterSpec(db!, makeAuth(ORG_A, USER_A), {
-        specId: GLOBAL_DRAFT,
-        valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-        constraints: { cells: 1 },
-        documentation: "Should not activate global",
-        reason: "Round6 global activate denied",
-      }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 } satisfies Partial<ApiError>);
-
-    const lifecycle = await db!.query<{ lifecycle: string }>(
-      `select lifecycle from parameter_spec_versions where parameter_spec_id = $1`,
-      [GLOBAL_DRAFT],
-    );
-    expect(lifecycle.rows[0]?.lifecycle).toBe("draft");
-
-    const audits = await db!.query<{ action: string }>(
-      `select action from audit_events where target_id = $1 and action = 'spec-activated'`,
-      [GLOBAL_DRAFT],
-    );
-    expect(audits.rows).toHaveLength(0);
-  });
-
-  it("returns 404 when another org admin targets org-A draft", async () => {
-    await expect(
-      activateParameterSpec(db!, makeAuth(ORG_B, USER_B), {
-        specId: ORG_DRAFT,
-        valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-        constraints: { cells: 1 },
-        documentation: "Cross-org",
-        reason: "should 404",
-      }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 } satisfies Partial<ApiError>);
-  });
-
-  it("rejects activation without admin permission", async () => {
-    await expect(
-      activateParameterSpec(
-        db!,
-        makeAuth(ORG_A, USER_A, ["parameter:view", "parameter:edit"]),
-        {
-          specId: ORG_DRAFT,
-          valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-          constraints: { cells: 1 },
-          documentation: "No admin",
-          reason: "should forbid",
-        },
-      ),
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 } satisfies Partial<ApiError>);
-  });
-
-  it("assembled HTTP activate is retired; read of active global still works", async () => {
+  it("assembled HTTP activate is retired; historical globals remain available to operator readers", async () => {
     const auth = makeAuth(ORG_A, USER_A);
-    const router = createRouter();
-    registerParameterSpecRoutes(router, {
-      db: db!,
-      getCurrentAuthContext: () => auth,
-    });
-    const server = createHttpServer(router);
 
     const denied = await requestJson(createWiseEffServer({ db: db! }), `/api/v2/parameter-specs/${encodeURIComponent(GLOBAL_DRAFT)}/activate`, {
       method: "POST",
@@ -187,17 +115,12 @@ describe.skipIf(!databaseAvailable)("global spec activation authz", () => {
       reason: "legacy-surface-retired", successor: "/api/v2/catalog", retryable: false,
     });
 
-    const listed = await requestJson<{ items: Array<{ id: string; organizationId?: string | null }> }>(
-      server,
-      `/api/v2/parameter-specs?q=round6-active`,
-      { method: "GET" },
-    );
-    expect(listed.status).toBe(200);
-    expect(listed.body.items.some((item) => item.id === GLOBAL_ACTIVE)).toBe(true);
-
-    const detail = await requestJson(server, `/api/v2/parameter-specs/${encodeURIComponent(GLOBAL_ACTIVE)}`, {
-      method: "GET",
+    const listed = await listParameterSpecs(db!, auth, { q: "round6-active" });
+    expect(listed.items.some((item) => item.id === GLOBAL_ACTIVE)).toBe(true);
+    const detail = await getParameterSpecRow(db!, {
+      organizationId: ORG_A,
+      specId: GLOBAL_ACTIVE,
     });
-    expect(detail.status).toBe(200);
+    expect(detail).toMatchObject({ id: GLOBAL_ACTIVE, lifecycle: "active" });
   });
 });

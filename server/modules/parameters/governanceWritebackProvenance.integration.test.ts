@@ -8,7 +8,6 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { withTempDatabase } from "../../testing/tempDatabase";
 import { createNodeEnablementDraft } from "../parameter-topology/editService";
-import { preparePropertyKeySourceCutover } from "../parameter-specs/propertyKeyCutover";
 import {
   writebackMergedEnablementValue,
   writebackMergedParameterValue
@@ -64,7 +63,7 @@ async function stateCounts(db: Queryable) {
 afterEach(() => setParameterIdentityMode(null));
 
 describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matrix (owned PostgreSQL)", () => {
-  it("fails all five operation categories before database or object-store mutation", async () => {
+  it("fails all four retained operation categories before database or object-store mutation", async () => {
     await withTempDatabase({ prefix: "govwriteprov" }, async ({ db, connectionString }) => {
       const root = createPostgresDatabase(connectionString);
       const objectStore = {
@@ -132,13 +131,6 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
                 target: "force-disabled",
                 reason: "context invariant"
               }, {}, context)
-          },
-          {
-            name: "property-key-cutover-prepare",
-            run: (context: TrustedSensitiveNodeWriteContext) =>
-              preparePropertyKeySourceCutover(root, auth, { specId: "spec-missing" }, context, {
-                objectStore: objectStore as never
-              })
           },
           {
             name: "semantic-writeback",

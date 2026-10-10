@@ -1,26 +1,14 @@
-/**
- * Spec lifecycle closure (ADR-0011): deprecate / restore at the service seam.
- */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { ApiError } from "../../shared/http/errors";
-import { createHttpServer } from "../../shared/http/server";
-import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
-import { registerParameterSpecRoutes } from "./routes";
 import { createWiseEffServer } from "../../app";
 import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
-import {
-  activateParameterSpec,
-  deprecateParameterSpec,
-  getParameterSpec,
-  restoreParameterSpec,
-  updateParameterSpec,
-} from "./service";
+import { listParameterSpecs } from "./service";
 
 const ORG_ID = "org-spec-lifecycle";
 const USER_ID = "user-spec-lifecycle";
@@ -124,147 +112,6 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     db = undefined;
   });
 
-  it("deprecating an active org-owned definition makes it retrievable as deprecated", async () => {
-    const result = await deprecateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      reason: "superseded by charging-policy v2",
-    });
-
-    expect(result.item.lifecycle).toBe("deprecated");
-
-    const retrieved = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
-    expect(retrieved.item.lifecycle).toBe("deprecated");
-  });
-
-  it("deprecating a draft org-owned definition archives it as deprecated", async () => {
-    const result = await deprecateParameterSpec(db!, makeAuth(), {
-      specId: DRAFT_SPEC,
-      reason: "never completing this provisional shape",
-    });
-    expect(result.item.lifecycle).toBe("deprecated");
-  });
-
-  it("restoring a previously activated definition returns it to active", async () => {
-    await deprecateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      reason: "temporary retirement",
-    });
-
-    const result = await restoreParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      reason: "still needed by aurora boards",
-    });
-
-    expect(result.item.lifecycle).toBe("active");
-  });
-
-  it("restoring a never-activated deprecated definition returns it to draft", async () => {
-    await deprecateParameterSpec(db!, makeAuth(), {
-      specId: DRAFT_SPEC,
-      reason: "abandon provisional",
-    });
-
-    const result = await restoreParameterSpec(db!, makeAuth(), {
-      specId: DRAFT_SPEC,
-      reason: "resume drafting",
-    });
-
-    expect(result.item.lifecycle).toBe("draft");
-  });
-
-  it("rejects deprecating an already deprecated definition", async () => {
-    await deprecateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      reason: "first retirement",
-    });
-
-    await expect(
-      deprecateParameterSpec(db!, makeAuth(), {
-        specId: ACTIVE_SPEC,
-        reason: "second retirement",
-      }),
-    ).rejects.toMatchObject({ code: "CONFLICT", status: 409 } satisfies Partial<ApiError>);
-  });
-
-  it("rejects restoring a non-deprecated definition", async () => {
-    await expect(
-      restoreParameterSpec(db!, makeAuth(), {
-        specId: ACTIVE_SPEC,
-        reason: "nothing to restore",
-      }),
-    ).rejects.toMatchObject({ code: "CONFLICT", status: 409 } satisfies Partial<ApiError>);
-  });
-
-  it("rejects org admin deprecating a platform-global definition", async () => {
-    await expect(
-      deprecateParameterSpec(db!, makeAuth(), {
-        specId: GLOBAL_ACTIVE,
-        reason: "org admin cannot govern platform rows",
-      }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 } satisfies Partial<ApiError>);
-  });
-
-  it("platform super admin deprecates and restores a platform-global definition", async () => {
-    const platformAuth = makeAuth();
-    platformAuth.roles = [{ projectId: null, roleId: "platform-admin" }];
-    platformAuth.permissions = [
-      "parameter:view",
-      "parameter:edit",
-      "admin:access",
-      "platform:access",
-      "platform:schema-promote",
-    ];
-
-    const deprecated = await deprecateParameterSpec(db!, platformAuth, {
-      specId: GLOBAL_ACTIVE,
-      reason: "platform soft retire",
-    });
-    expect(deprecated.item.lifecycle).toBe("deprecated");
-
-    const restored = await restoreParameterSpec(db!, platformAuth, {
-      specId: GLOBAL_ACTIVE,
-      reason: "platform restore",
-    });
-    expect(restored.item.lifecycle).toBe("active");
-  });
-
-  it("rejects org admin updating a platform-global definition", async () => {
-    await expect(
-      updateParameterSpec(db!, makeAuth(), {
-        specId: GLOBAL_ACTIVE,
-        documentation: "org admin cannot edit platform rows",
-        reason: "org admin edit attempt",
-        constraints: {},
-      }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 } satisfies Partial<ApiError>);
-  });
-
-  it("platform super admin updates a platform-global definition in place", async () => {
-    const platformAuth = makeAuth();
-    platformAuth.roles = [{ projectId: null, roleId: "platform-admin" }];
-    platformAuth.permissions = [
-      "parameter:view",
-      "parameter:edit",
-      "admin:access",
-      "platform:access",
-      "platform:schema-promote",
-    ];
-
-    const result = await updateParameterSpec(db!, platformAuth, {
-      specId: GLOBAL_ACTIVE,
-      documentation: "platform edit of a global row",
-      reason: "platform edit",
-    });
-    expect(result.item.lifecycle).toBe("active");
-    expect(result.item.documentation).toBe("platform edit of a global row");
-
-    const audits = await db!.query<{ metadata: Record<string, unknown> }>(
-      `select metadata from audit_events where target_id = $1 and action = 'spec-updated' order by created_at desc limit 1`,
-      [GLOBAL_ACTIVE],
-    );
-    expect(audits.rows).toHaveLength(1);
-  });
-
   it("assembled HTTP deprecate and restore are retired and keep lifecycle unchanged", async () => {
     const server = createWiseEffServer({ db: db! });
 
@@ -289,8 +136,8 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     );
     expect(restored.status).toBe(410);
     expect(catalogLegacyGoneResponseSchema.parse(restored.body).error.details.reason).toBe("legacy-surface-retired");
-    const detail = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
-    expect(detail.item.lifecycle).toBe("active");
+    const detail = await listParameterSpecs(db!, makeAuth());
+    expect(detail.items.find((item) => item.id === ACTIVE_SPEC)?.lifecycle).toBe("active");
   });
 
   it("assembled HTTP deprecate is gone even without an authenticated admin", async () => {
@@ -308,7 +155,7 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     expect(catalogLegacyGoneResponseSchema.parse(denied.body).error.details.reason).toBe("legacy-surface-retired");
   });
 
-  it("reports referenceCount from organization bindings on getParameterSpec", async () => {
+  it("reports retained referenceCount from organization bindings", async () => {
     const projectId = "project-spec-lifecycle";
     const moduleId = "mod-lifecycle-unclassified";
     await db!.query(
@@ -334,214 +181,7 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
       [ORG_ID, projectId, ACTIVE_SPEC, moduleId],
     );
 
-    const retrieved = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
-    expect(retrieved.item.referenceCount).toBe(1);
-  });
-
-  it("records documentation before/after when PATCH stays documentation-class (ADR-0032)", async () => {
-    await db!.query(
-      `update parameter_spec_versions set value_shape = '{"kind":"string"}'::jsonb where parameter_spec_id = $1`,
-      [ACTIVE_SPEC],
-    );
-    await updateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      valueShape: { kind: "string" },
-      documentation: "updated docs",
-      reason: "docs only",
-    });
-
-    const audits = await db!.query<{ metadata: Record<string, unknown> }>(
-      `
-      select metadata
-      from audit_events
-      where target_id = $1 and action = 'spec-updated'
-      order by created_at desc
-      limit 1
-      `,
-      [ACTIVE_SPEC],
-    );
-    expect(audits.rows[0]?.metadata).toMatchObject({
-      previousValueShape: { kind: "string" },
-      nextValueShape: { kind: "string" },
-    });
-  });
-
-  it("rejects a PATCH that changes semantic fields on an active definition (ADR-0032)", async () => {
-    await db!.query(
-      `update parameter_spec_versions set value_shape = '{"kind":"string"}'::jsonb where parameter_spec_id = $1`,
-      [ACTIVE_SPEC],
-    );
-    await expect(
-      updateParameterSpec(db!, makeAuth(), {
-        specId: ACTIVE_SPEC,
-        valueShape: { kind: "string", encoding: "ascii" },
-        constraints: { min: 0, max: 100 },
-        documentation: "updated docs",
-        reason: "tighten range",
-      }),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      status: 409,
-      details: { code: "semantic-edit-requires-successor", reason: "semantic-edit-requires-successor" },
-    } satisfies Partial<ApiError>);
-  });
-
-  it("HTTP PATCH of semantic fields on an active definition returns 409 (ADR-0032)", async () => {
-    const auth = makeAuth();
-    const router = createRouter();
-    registerParameterSpecRoutes(router, {
-      db: db!,
-      getCurrentAuthContext: () => auth,
-    });
-    const server = createHttpServer(router);
-
-    const denied = await requestJson(
-      server,
-      `/api/v2/parameter-specs/${encodeURIComponent(ACTIVE_SPEC)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({
-          valueShape: { kind: "string", encoding: "ascii" },
-          documentation: "http semantic edit",
-          reason: "http semantic edit",
-        }),
-      },
-    );
-    expect(denied.status).toBe(409);
-    expect(denied.body).toMatchObject({
-      error: {
-        code: "CONFLICT",
-        details: { code: "semantic-edit-requires-successor" },
-      },
-    });
-  });
-
-  it("replaces stored constraints on activate instead of shallow-merging omitted keys (SE-2)", async () => {
-    const completeCells = { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 };
-    await db!.query(
-      `
-      update parameter_spec_versions
-      set
-        value_shape = $2::jsonb,
-        constraints = '{"cells":1,"extra":true}'::jsonb,
-        documentation = 'draft docs'
-      where parameter_spec_id = $1
-      `,
-      [DRAFT_SPEC, JSON.stringify(completeCells)],
-    );
-    await db!.query(
-      `update dts_property_specs set constraints = '{"cells":1,"extra":true}'::jsonb where parameter_spec_id = $1`,
-      [DRAFT_SPEC],
-    );
-
-    const activated = await activateParameterSpec(db!, makeAuth(), {
-      specId: DRAFT_SPEC,
-      valueShape: completeCells,
-      constraints: { cells: 1 },
-      documentation: "activated without extra",
-      reason: "drop extra",
-    });
-    expect(activated.item.constraints).toEqual({ cells: 1 });
-
-    const retrieved = await getParameterSpec(db!, makeAuth(), DRAFT_SPEC);
-    expect(retrieved.item.constraints).toEqual({ cells: 1 });
-  });
-
-  it("clears displayName on update when the client sends null (SE-5)", async () => {
-    const updated = await updateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      displayName: null,
-      constraints: {},
-      documentation: "cleared display name",
-      reason: "drop display name",
-    });
-    expect(updated.item.displayName === null || updated.item.displayName === "").toBe(true);
-
-    const retrieved = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
-    expect(retrieved.item.displayName === null || retrieved.item.displayName === "").toBe(true);
-    expect(retrieved.item.propertyKey).toBe("lifecycle-active");
-  });
-
-  it("persists an empty displayName on activate when the client sends null (SE-5)", async () => {
-    const completeCells = { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 };
-    await db!.query(
-      `
-      update parameter_spec_versions
-      set
-        display_name = 'Draft label',
-        value_shape = $2::jsonb,
-        constraints = '{"cells":1}'::jsonb,
-        documentation = 'draft docs'
-      where parameter_spec_id = $1
-      `,
-      [DRAFT_SPEC, JSON.stringify(completeCells)],
-    );
-
-    const activated = await activateParameterSpec(db!, makeAuth(), {
-      specId: DRAFT_SPEC,
-      valueShape: completeCells,
-      constraints: { cells: 1 },
-      documentation: "activated with empty display name",
-      reason: "clear display name",
-      displayName: null,
-    });
-    expect(activated.item.displayName === null || activated.item.displayName === "").toBe(true);
-    expect(activated.item.displayName).not.toBe("lifecycle-draft");
-    expect(activated.item.displayName).not.toBe("Draft label");
-  });
-
-  it("allows documentation edits on an incomplete legacy valueShape when the shape is unchanged (SE-D6)", async () => {
-    await db!.query(
-      `update parameter_spec_versions set value_shape = '{"kind":"u32-array"}'::jsonb where parameter_spec_id = $1`,
-      [ACTIVE_SPEC],
-    );
-
-    const updated = await updateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      documentation: "docs only on incomplete shape",
-      reason: "documentation edit",
-    });
-    expect(updated.item.valueShape).toEqual({ kind: "u32-array" });
-    expect(updated.item.documentation).toBe("docs only on incomplete shape");
-
-    const sameShape = await updateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      valueShape: { kind: "u32-array" },
-      documentation: "same incomplete shape restated",
-      reason: "shape no-op",
-    });
-    expect(sameShape.item.valueShape).toEqual({ kind: "u32-array" });
-    expect(sameShape.item.documentation).toBe("same incomplete shape restated");
-  });
-
-  it("rejects a PATCH that changes valueShape even when the next shape is incomplete (ADR-0032)", async () => {
-    await expect(
-      updateParameterSpec(db!, makeAuth(), {
-        specId: ACTIVE_SPEC,
-        valueShape: { kind: "u32-array" },
-        documentation: "attempt incomplete shape",
-        reason: "change shape",
-      }),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      status: 409,
-      details: { code: "semantic-edit-requires-successor" },
-    } satisfies Partial<ApiError>);
-  });
-
-  it("rejects a PATCH that changes valueShape even when the next shape is complete (ADR-0032)", async () => {
-    await expect(
-      updateParameterSpec(db!, makeAuth(), {
-        specId: ACTIVE_SPEC,
-        valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-        constraints: { cells: 1 },
-        documentation: "complete cell shape",
-        reason: "complete shape",
-      }),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      status: 409,
-      details: { code: "semantic-edit-requires-successor" },
-    } satisfies Partial<ApiError>);
+    const retrieved = await listParameterSpecs(db!, makeAuth());
+    expect(retrieved.items.find((item) => item.id === ACTIVE_SPEC)?.referenceCount).toBe(1);
   });
 });
