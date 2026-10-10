@@ -149,6 +149,7 @@
   --topbar-height: 64px;
   --module-navigator-min-width: 15rem;
   --module-navigator-max-width: min(32.5rem, 42vw);
+  --module-navigator-disclosure-size: 28px;
 
   /* ── Legacy palette (kept as-is until surfaces migrate; do not extend) ── */
   --surface-low: #f0f3ff;
@@ -22443,7 +22444,7 @@ body.xiaoze-popup-drag-active {
 
 .dts-topology-navigator__item {
   display: grid;
-  grid-template-columns: minmax(28px, auto) max-content auto;
+  grid-template-columns: var(--module-navigator-disclosure-size) max-content auto;
   align-items: center;
   width: 100%;
   min-height: 42px;
@@ -22479,8 +22480,8 @@ body.xiaoze-popup-drag-active {
 .dts-topology-navigator__disclosure {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--module-navigator-disclosure-size);
+  height: var(--module-navigator-disclosure-size);
   margin: 0;
   padding: 0;
   color: #7f8ea4;
@@ -24179,6 +24180,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 @media (max-width: 480px) {
+  :root {
+    --module-navigator-disclosure-size: 44px;
+  }
+
   .dts-parameter-workbench__toolbar {
     grid-template-columns: 1fr;
   }
@@ -24210,11 +24215,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .dts-topology-navigator__item {
     min-height: 44px;
-  }
-
-  button.dts-topology-navigator__disclosure {
-    width: 44px;
-    height: 44px;
   }
 
   .dts-parameter-workbench-table__row > [role="cell"] {

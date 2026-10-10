@@ -544,7 +544,7 @@ export function CatalogPage({
       selectSubject(node.subjectId);
       return;
     }
-    selectModuleNode(node.id);
+    selectModuleNode(node.id === anchor.moduleNodeId && !anchor.subjectId ? null : node.id);
   };
 
   const selectSubject = (subjectId: string) => {

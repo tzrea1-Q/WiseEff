@@ -7,6 +7,7 @@ import {
   consistencyRoutes,
   installConsistencyReadGuard,
   requireConsistencyMeasurements,
+  requireModuleTreeAlignment,
   requireRowActionVisibility,
   requireCompactControlHeights,
   shouldRequireXiaozeHint,
@@ -25,6 +26,8 @@ import {
 
 test.beforeAll(() => seedQualityRuntime());
 
+const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", "/parameter-admin/specs"];
+
 const parameterRoute = consistencyRoutes.find((route) => route.path === "/parameters")!;
 const routes = [
   ...consistencyRoutes,
@@ -38,13 +41,14 @@ for (const route of routes) {
       const blockedRequests = await installConsistencyReadGuard(context);
       let measurements: ConsistencyMeasurements | null = null;
       try {
+        const routePath = route.path.split("?")[0];
         const [authResponse] = await Promise.all([
           page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/me" && response.request().method() === "GET"),
           page.goto(route.path)
         ]);
         expect(authResponse.ok(), "consistency measurements require the real API runtime").toBe(true);
         await expectUsablePage(page);
-        await settleQualityRoute(page, route.path.split("?")[0], { readOnly: true });
+        await settleQualityRoute(page, routePath, { readOnly: true });
         await closeXiaozePopupIfOpen(page);
         await settleXiaozePopupClosed(page);
         await settleAppToasts(page);
@@ -62,6 +66,9 @@ for (const route of routes) {
         await expect(async () => {
           measurements = await page.evaluate(collectConsistencyMeasurements);
           requireConsistencyMeasurements(measurements, route.required, route.path);
+          if (moduleNavigationPaths.includes(routePath)) {
+            requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
+          }
           requirePrimaryActionColors(measurements, route.path);
           if (route.required.includes("rowActions")) {
             requireRowActionVisibility(measurements.rowActions, route.path);
@@ -98,6 +105,45 @@ for (const route of routes) {
           await expect.poll(() => surface.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe(restingShadow);
           await page.keyboard.press("Shift+ArrowUp");
           assertXiaozePlacement(await page.evaluate(collectConsistencyMeasurements), route.path);
+        }
+        if (moduleNavigationPaths.includes(routePath)) {
+          await test.step("module selection survives reload and clears on reselect without label drift", async () => {
+            const catalog = route.path === "/parameter-admin/specs";
+            const node = page.locator(catalog
+              ? '.parameter-catalog__tree-select[data-catalog-node-kind="module"]'
+              : '.dts-topology-navigator__item[role="treeitem"]').first();
+            const selectedAttribute = catalog ? "aria-pressed" : "aria-selected";
+            const queryKey = catalog ? "moduleNodeId" : "moduleNode";
+            await expect(node).toHaveAttribute(selectedAttribute, "false");
+            await node.click();
+            await expect(node).toHaveAttribute(selectedAttribute, "true");
+            const selectedId = new URL(page.url()).searchParams.get(queryKey);
+            expect(selectedId).toBeTruthy();
+            await waitForFontsAndNextPaint(page);
+            requireModuleTreeAlignment((await page.evaluate(collectConsistencyMeasurements)).moduleTreeLabels, route.path);
+            await page.reload();
+            await expectUsablePage(page);
+            await settleQualityRoute(page, routePath, { readOnly: true });
+            await closeXiaozePopupIfOpen(page);
+            await settleXiaozePopupClosed(page);
+            await settleAppToasts(page);
+            await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+            await page.mouse.move(0, 0);
+            await waitForFontsAndNextPaint(page);
+            await expect(node).toHaveAttribute(selectedAttribute, "true");
+            requireModuleTreeAlignment((await page.evaluate(collectConsistencyMeasurements)).moduleTreeLabels, route.path);
+            expect(new URL(page.url()).searchParams.get(queryKey)).toBe(selectedId);
+            await node.click();
+            await expect(node).toHaveAttribute(selectedAttribute, "false");
+            await expect.poll(() => new URL(page.url()).searchParams.get(queryKey)).toBeNull();
+            if (routePath === "/node-debugging") {
+              const table = page.getByRole("region", { name: "节点调试参数", exact: true }).getByRole("table");
+              await expect(table.getByText("Fast charge current", { exact: true })).toHaveCount(1);
+            }
+            await waitForFontsAndNextPaint(page);
+            measurements = await page.evaluate(collectConsistencyMeasurements);
+            requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
+          });
         }
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {

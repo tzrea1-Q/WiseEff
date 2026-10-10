@@ -507,9 +507,13 @@ Admin **list** tables use `src/components/admin/DataTable` (sort + `aria-sort`, 
 
 ## Shared Module Navigation
 
-`DtsTopologyNavigator` is the shared module-first tree on parameter editing, parameter debugging, and `/parameter-admin/specs`. The spec-governance adapter derives its tree from observed attribution paths, rolls up distinct definition counts, filters the selected subtree, and stores the selected node in `?moduleNode=`; selecting the active node again clears the scope.
+`DtsTopologyNavigator` is the shared module-first tree on `/parameters`, `/node-debugging`, and `/dts-reload`. `CatalogModuleNavigator` on `/parameter-admin/specs` retains its module/subject distinction and subject metadata while reusing the shared row, disclosure, and nested-group geometry. Disclosure columns have a fixed tokenized width, so label length and selection do not move same-depth label anchors; all four surfaces use the same chevrons and indentation.
 
-Module names stay on one line. On desktop, the navigation pane grows with its content up to the declared layout-token cap and then scrolls horizontally inside the pane. Below the two-column breakpoint, it uses the full available width so the page itself does not gain horizontal overflow.
+Selecting a module scopes its subtree; selecting it again clears the scope. The three workbenches persist selection in `?moduleNode=` and restore it after reload or browser history navigation. Catalog keeps its existing `moduleNodeId` release-anchor query contract and distinct-subject roll-up counts.
+
+Workbenches retain the URL node id while rows or the module registry load. A restored node does not filter rows or appear selected until it becomes available. DTS/JSON editing and DTS reload retain their stale-selection behavior: once a selected node has been observed, removing it clears its scope and URL selection; a later reappearance does not silently reselect it.
+
+Module names stay on one line. On desktop, the workbench navigation pane grows with its content up to the declared layout-token cap and then scrolls horizontally inside the pane. Below the two-column breakpoint, it uses the full available width so the page itself does not gain horizontal overflow. Catalog retains its existing bounded pane and overflow rules.
 
 ## Testing
 

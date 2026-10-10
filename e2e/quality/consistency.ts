@@ -147,7 +147,9 @@ export function collectConsistencyMeasurements() {
     && (element.matches('td,th,[role="cell"],[role="columnheader"],[data-sticky-action-area]')
       || element.querySelector('button,a[href],[role="button"]'))
   ).flatMap(clippedGeometry);
+  const moduleTrees = elements('[role="tree"],nav > .parameter-catalog__tree');
   const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label").map((element) => {
+    const tree = element.closest('[role="tree"],nav > .parameter-catalog__tree') ?? element.parentElement!;
     const treeItem = element.closest('[role="treeitem"]');
     let depth = Number(treeItem?.getAttribute("aria-level")) || 0;
     if (!depth) {
@@ -155,7 +157,7 @@ export function collectConsistencyMeasurements() {
         if (ancestor.matches('.parameter-catalog__tree-node,[role="treeitem"]')) depth++;
       }
     }
-    return { dom: signature(element), tree: signature(element.closest('[role="tree"],.parameter-catalog__tree') ?? element.parentElement!), depth, left: element.getBoundingClientRect().left };
+    return { dom: signature(element), tree: `${signature(tree)}[${moduleTrees.indexOf(tree)}]`, depth, left: element.getBoundingClientRect().left };
   });
   const paginationControls = elements('[data-compact-control="pagination"]').map(control);
   const sortControls = elements('[data-compact-control="sort"]').map(control);
@@ -168,6 +170,28 @@ export function collectConsistencyMeasurements() {
 
 export type ConsistencyMeasurements = ReturnType<typeof collectConsistencyMeasurements>;
 export type ConsistencyCategory = keyof ConsistencyMeasurements;
+
+export function requireModuleTreeAlignment(
+  labels: ConsistencyMeasurements["moduleTreeLabels"],
+  routePath: string
+) {
+  requireConsistencyMeasurements({ moduleTreeLabels: labels }, ["moduleTreeLabels"], routePath);
+  const anchors = new Map<string, Map<number, { min: number; max: number }>>();
+  for (const label of labels) {
+    let depths = anchors.get(label.tree);
+    if (!depths) {
+      depths = new Map();
+      anchors.set(label.tree, depths);
+    }
+    const range = depths.get(label.depth) ?? { min: label.left, max: label.left };
+    range.min = Math.min(range.min, label.left);
+    range.max = Math.max(range.max, label.left);
+    depths.set(label.depth, range);
+    if (range.max - range.min > 1) {
+      throw new Error(`${routePath}: module tree ${label.tree} depth ${label.depth} label anchors differ by ${range.max - range.min}px (maximum 1px)`);
+    }
+  }
+}
 
 export function requireRowActionVisibility(rows: ConsistencyMeasurements["rowActions"], routePath: string) {
   if (!rows.length) throw new Error(`${routePath}: missing row actions`);
