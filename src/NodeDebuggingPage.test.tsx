@@ -1617,7 +1617,7 @@ describe("/node-debugging", () => {
       };
     });
 
-    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+    const first = renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
     const navigator = screen.getByRole("region", { name: "模块导航" });
@@ -1633,9 +1633,18 @@ describe("/node-debugging", () => {
     expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
     expect(findRowByText("battery.impedance_mohm")).toBeInTheDocument();
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
 
-    fireEvent.click(chargingPolicy);
+    first.unmount();
+    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const restored = within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
+    expect(restored).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
+    fireEvent.click(restored);
     expect(findRowByText("battery.thermal_foldback_pct")).toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
   });
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {

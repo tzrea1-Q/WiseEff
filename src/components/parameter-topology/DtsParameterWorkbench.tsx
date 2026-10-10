@@ -43,6 +43,7 @@ import {
 } from "./DtsBindingDraftDialog";
 import { DtsParameterWorkbenchTable } from "./DtsParameterWorkbenchTable";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
+import { useModuleNodeSelection } from "@/hooks/useModuleNodeSelection";
 import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
 
 type WorkbenchResultsMode = "parameters" | "dtsSource";
@@ -200,7 +201,6 @@ export function DtsParameterWorkbench({
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string[]>([]);
   const [resultsMode, setResultsMode] = useState<WorkbenchResultsMode>("parameters");
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
   const [uncontrolledSelectedBindingIds, setUncontrolledSelectedBindingIds] = useState<Set<string>>(new Set());
   const selectedBindingIds = controlledSelectedBindingIds ?? uncontrolledSelectedBindingIds;
@@ -225,6 +225,15 @@ export function DtsParameterWorkbench({
 
   const currentRows = effectiveRows;
   const handledRequest = useRef<string | null>(null);
+  const moduleTree = useMemo(
+    () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules, groupByDevice: true }),
+    [currentRows, moduleRegistry],
+  );
+  const tree = moduleTree;
+  const [selectedNodeId, setSelectedNodeId] = useModuleNodeSelection((nodeId) => treeContainsNode(tree, nodeId));
+  const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
+  const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
+
   useEffect(() => {
     const key = `${projectId ?? ""}:${requestedBindingId ?? ""}`;
     if (!requestedBindingId || handledRequest.current === key
@@ -237,18 +246,7 @@ export function DtsParameterWorkbench({
     setSelectedBindingId(requestedBindingId);
     setDetailIntent("view");
     onSelectBinding(requestedBindingId);
-  }, [currentRows, onSelectBinding, projectId, requestedBindingId]);
-  const moduleTree = useMemo(
-    () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules, groupByDevice: true }),
-    [currentRows, moduleRegistry],
-  );
-  const tree = moduleTree;
-  const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
-  const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
-
-  useEffect(() => {
-    if (selectedNodeId && !selectedNodeExists) setSelectedNodeId(null);
-  }, [selectedNodeExists, selectedNodeId]);
+  }, [currentRows, onSelectBinding, projectId, requestedBindingId, setSelectedNodeId]);
 
   const [dtsSourceStatus, setDtsSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [dtsSource, setDtsSource] = useState<PrimaryDtsSource | null>(null);

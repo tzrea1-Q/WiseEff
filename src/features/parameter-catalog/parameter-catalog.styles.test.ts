@@ -5,6 +5,18 @@ import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 const stylesheet = "src/features/parameter-catalog/parameter-catalog.css";
 
 describe("parameter catalog layout contract", () => {
+  it("keeps a usable selection target without introducing padding or selection-border label drift", () => {
+    const styles = readStylesheet(stylesheet);
+    const select = declarationsFor(styles, ".parameter-catalog__tree-select");
+    const selectedRow = declarationsFor(styles, ".parameter-catalog__tree-row.is-selected");
+
+    expect(select["min-height"]).toBe("var(--module-navigator-disclosure-size)");
+    expect(select["grid-column"]).toBe("2 / -1");
+    expect(select.padding).toBe("0");
+    expect(select.border).toBe("0");
+    expect(selectedRow["border-left"]).toBeUndefined();
+  });
+
   it("gives the definition table the main work area beside a bounded module navigator", () => {
     const styles = readStylesheet(stylesheet);
     const page = declarationsFor(styles, ".parameter-catalog");

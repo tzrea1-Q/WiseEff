@@ -12,6 +12,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
+import { useModuleNodeSelection } from "@/hooks/useModuleNodeSelection";
 import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
 import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
@@ -167,7 +168,6 @@ export function JsonBindingPanel({
   const [jsonFindQuery, setJsonFindQuery] = useState("");
   const [findNextToken, setFindNextToken] = useState(0);
   const [findStatus, setFindStatus] = useState({ matchCount: 0, activeIndex: 0 });
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   // Source viewer states
   const [jsonSourceStatus, setJsonSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -179,15 +179,6 @@ export function JsonBindingPanel({
   const [viewingBindingId, setViewingBindingId] = useState<string | null>(null);
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const handledRequest = useRef<string | null>(null);
-  useEffect(() => {
-    if (!requestedBindingId || handledRequest.current === requestedBindingId
-      || !jsonBindings.some((binding) => binding.id === requestedBindingId)) return;
-    handledRequest.current = requestedBindingId;
-    setResultsMode("parameters");
-    setQuery("");
-    setSelectedNodeId(null);
-    setViewingBindingId(requestedBindingId);
-  }, [jsonBindings, requestedBindingId]);
 
   // Draft form states inside edit dialog
   const activeEditBinding = useMemo(
@@ -266,12 +257,19 @@ export function JsonBindingPanel({
     });
   }, [jsonRows, moduleRegistry]);
 
+  const [selectedNodeId, setSelectedNodeId] = useModuleNodeSelection((nodeId) => treeContainsNode(tree, nodeId));
   const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
   const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
 
   useEffect(() => {
-    if (selectedNodeId && !selectedNodeExists) setSelectedNodeId(null);
-  }, [selectedNodeExists, selectedNodeId]);
+    if (!requestedBindingId || handledRequest.current === requestedBindingId
+      || !jsonBindings.some((binding) => binding.id === requestedBindingId)) return;
+    handledRequest.current = requestedBindingId;
+    setResultsMode("parameters");
+    setQuery("");
+    setSelectedNodeId(null);
+    setViewingBindingId(requestedBindingId);
+  }, [jsonBindings, requestedBindingId, setSelectedNodeId]);
 
   const subtreeBindingIds = useMemo(
     () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),

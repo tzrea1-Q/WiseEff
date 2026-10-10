@@ -18,6 +18,7 @@ import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import { DtsTopologyNavigator } from "./components/parameter-topology/DtsTopologyNavigator";
+import { useModuleNodeSelection } from "./hooks/useModuleNodeSelection";
 import {
   probeLocalBridgeHealthDetailed,
   type LocalBridgeProbeResult
@@ -378,7 +379,7 @@ export function NodeDebuggingPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [moduleFilters, setModuleFilters] = useState<string[]>([]);
-  const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
+  const [selectedModuleNodeId, setSelectedModuleNodeId] = useModuleNodeSelection();
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
