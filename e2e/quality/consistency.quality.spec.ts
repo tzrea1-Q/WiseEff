@@ -136,6 +136,10 @@ for (const route of routes) {
             await node.click();
             await expect(node).toHaveAttribute(selectedAttribute, "false");
             await expect.poll(() => new URL(page.url()).searchParams.get(queryKey)).toBeNull();
+            if (routePath === "/node-debugging") {
+              const table = page.getByRole("region", { name: "节点调试参数", exact: true }).getByRole("table");
+              await expect(table.getByText("Fast charge current", { exact: true })).toHaveCount(1);
+            }
             await waitForFontsAndNextPaint(page);
             measurements = await page.evaluate(collectConsistencyMeasurements);
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
