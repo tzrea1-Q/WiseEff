@@ -3,15 +3,14 @@ import { createHmac } from "node:crypto";
 import { expect, test, type APIRequestContext } from "playwright/test";
 
 import { signInBrowserAsRole } from "./helpers/bearerAuth";
-import { runNpmScript, withPgClient } from "./helpers/database";
+import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
-import { assertPostCutoverIdentity } from "./helpers/semanticBindingFixture";
-import { resolveSeededSingleCellBinding } from "./helpers/xiaozeCanonicalBinding";
+import { resolveSeededWritableSingleCellBinding } from "./helpers/xiaozeCanonicalBinding";
 import { assertDeterministicXiaozeReady } from "./helpers/xiaozeDeterministicEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -20,7 +19,8 @@ const actorUserId = "u-xu-yun";
 const threadId = "xiaoze-action-thread";
 
 /**
- * Shared CI acceptance is post-cutover. This spec addresses canonical
+ * Shared CI acceptance uses the runtime owner's published fixture, not legacy
+ * cutover markers or per-spec seed replay. This spec addresses canonical
  * Catalog Bindings (`parameter_catalog.project_parameter_bindings.id`, the id the
  * Parameters page and Xiaoze approval payload use) and DTS cell text, and it
  * observes canonical value change requests
@@ -38,7 +38,7 @@ function cellValue(offset: number) {
 }
 
 async function resolveSeededBinding(request: APIRequestContext) {
-  const binding = await resolveSeededSingleCellBinding(request, projectId);
+  const binding = await resolveSeededWritableSingleCellBinding(request, projectId);
   parameterId = binding.bindingId;
   baseCellValue = binding.baseValue;
 }
@@ -215,14 +215,19 @@ async function latestAgentAuditForSession(sessionId: string) {
 test.skip(!databaseUrl, "DATABASE_URL is required for Xiaoze action acceptance evidence.");
 
 test.beforeAll(async ({ request }) => {
-  runNpmScript("db:migrate");
-  runNpmScript("db:seed:m0");
-  runNpmScript("db:seed:m1");
-  await assertPostCutoverIdentity();
   await resolveSeededBinding(request);
   expect(parameterId).not.toBe("aurora-fast-charge-current");
   expect(parameterId).toMatch(/^pbind_[0-9a-f]{64}$/);
   await withPgClient(async (client) => {
+    const legacyColumn = await client.query<{ c: string }>(
+      `select count(*)::text as c from information_schema.columns
+       where table_schema = 'public' and table_name = 'parameter_change_requests'
+         and column_name = 'project_parameter_value_id'`
+    );
+    expect(
+      Number(legacyColumn.rows[0]?.c ?? 0),
+      "disposable spec refuses the retired project_parameter_value_id column"
+    ).toBe(0);
     await client.query(`update users set is_active = true where id = $1`, [actorUserId]);
     await client.query(
       `

@@ -80,7 +80,7 @@ export async function probeCanonicalSeedReady(db: Queryable): Promise<boolean> {
  * resolved mode so callers can log it.
  */
 export async function resolveParameterIdentityMode(db: Queryable): Promise<ParameterIdentityMode> {
-  const semantic = (await probeCutoverComplete(db)) || (await probeLegacyTablesRetired(db));
+  const semantic = (await probeCutoverComplete(db)) || (await probeLegacyTablesRetired(db)) || (await probeCanonicalSeedReady(db));
   activeMode = semantic ? "semantic" : "legacy";
   return activeMode;
 }

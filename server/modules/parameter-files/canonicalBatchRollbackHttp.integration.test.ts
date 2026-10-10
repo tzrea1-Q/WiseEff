@@ -14,7 +14,8 @@ import { createLocalObjectStore } from "../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { parseDtsValue } from "../dts";
-import { installConfigurationSourceFixture, captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
+import { parameterIdentityMode, resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { installConfigurationSourceFixture, captureConfigurationSourceState, countLegacyProjectBindings } from "../../testing/parameterCatalog/configurationSource";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog,
   readCanonicalBindingChangeHistory, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
@@ -30,7 +31,7 @@ import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { createCandidate } from "./candidateService";
 import { getCanonicalSourceWorkflow, previewCanonicalCandidate, submitCanonicalCandidate } from "./canonicalFileWorkflow";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { canonicalBatchRollbackPrepareResponseSchema, canonicalBatchRollbackSubmitResponseSchema } from "../contracts/dtoSchemas/canonicalBatchRollback";
 import { canonicalManualSyncPrepareResponseSchema } from "../contracts/dtoSchemas/canonicalManualSync";
@@ -190,6 +191,154 @@ const reviewPath = (requestId: string) =>
 const prepareBody = (f: Fixture) => ({
   versionId: f.baseVersionId, expectedCurrentVersionId: f.activeVersionId,
   expectedWorkflowProofToken: f.workflowProofToken
+});
+
+describe("#1080 canonical DTS source commit structural continuity", () => {
+  async function api<Body>(f: Fixture, path: string, userId = ADMIN, body?: unknown) {
+    return requestJson<Body>(createWiseEffServer({ db: f.db, objectStore: f.storage }), path, {
+      headers: { "X-WiseEff-User": userId, "X-Request-Id": `1080-${randomUUID()}` },
+      ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) })
+    });
+  }
+
+  async function pending(f: Fixture, kind: "single" | "batch") {
+    if (kind === "single") {
+      const binding = (await listCatalogBindingRowsForProject(f.db, admin, { projectId: PROJECT }))
+        .find((item) => item.instanceName === "device@0")!;
+      const pin = await loadOwnedProjectValueSourcePin(f.db, { organizationId: ORG, projectId: PROJECT,
+        bindingId: binding.id, projectValueId: binding.currentValueId });
+      expect(pin).not.toBeNull();
+      const draft = await api<{ item: { draftId: string } }>(f,
+        `/api/v2/projects/${PROJECT}/parameter-bindings/${binding.id}/drafts`, ADMIN, {
+          baseRevisionId: pin!.configRevisionId, baseCurrentValueId: binding.currentValueId,
+          targetValue: parseDtsValue("iin_max", "<90>").value, reason: "#1080 structural continuity"
+        });
+      expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+      const submitted = await api<{ item: { id: string; status: string } }>(f,
+        `/api/v2/projects/${PROJECT}/parameter-value-drafts/${draft.body.item.draftId}/submit`,
+        ADMIN, { assignedToUserId: REVIEWER });
+      expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+      expect(submitted.body.item.status).toBe("pending");
+      return { requestId: submitted.body.item.id, reviewBody: { decision: "approve" } };
+    }
+    const prepared = await api<{ item: Prepared }>(f,
+      `/api/v1/projects/${PROJECT}/parameter-files/${f.fileId}/source-manual-sync/prepare`, ADMIN, {
+        contentBase64: Buffer.from(f.after.replace("<50>", "<90>").replace("<60>", "<100>"))
+          .toString("base64"),
+        expectedCurrentVersionId: f.activeVersionId, expectedWorkflowProofToken: f.workflowProofToken
+      });
+    expect(prepared.status, JSON.stringify(prepared.body)).toBe(201);
+    expect(prepared.body.item.targets).toHaveLength(2);
+    const submitted = await api<{ item: { id: string; status: string; batchProofDigest: string } }>(f,
+      `/api/v2/projects/${PROJECT}/parameter-value-change-requests/batches`, ADMIN, {
+        candidateId: prepared.body.item.candidateId, expectedProofToken: prepared.body.item.proofToken,
+        reason: "#1080 structural continuity", assignedToUserId: REVIEWER
+      });
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    expect(submitted.body.item.status).toBe("pending");
+    return { requestId: submitted.body.item.id,
+      reviewBody: { decision: "approve", batchProofDigest: submitted.body.item.batchProofDigest } };
+  }
+
+  async function structuralState(f: Fixture) {
+    return (await f.db.query(`select
+      (select count(*)::int from dts_nodes) as nodes,
+      (select count(*)::int from dts_properties) as properties,
+      (select count(*)::int from dts_phandle_refs) as refs`)).rows[0];
+  }
+
+  async function assertCurrentStructure(f: Fixture, kind: "single" | "batch") {
+    const versionId = (await f.db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [f.fileId]))
+      .rows[0]!.current_version_id;
+    expect(versionId).not.toBe(f.activeVersionId);
+    const structure = await api<{ nodes: Array<{ nodePath: string; properties: Array<{
+      name: string; rawText: string; source: { startOffset: number; endOffset: number }
+    }> }> }>(f, `/api/v1/projects/${PROJECT}/parameter-files/${f.fileId}/versions/${versionId}/structure`);
+    expect(structure.status, JSON.stringify(structure.body)).toBe(200);
+    expect(structure.body.nodes.map((node) => node.nodePath).sort())
+      .toEqual(["", "device@0", "device@1", "device@2"]);
+    for (const [nodePath, value] of [["device@0", 90], ["device@1", kind === "batch" ? 100 : 60],
+      ["device@2", 72]] as const) {
+      const property = structure.body.nodes.find((node) => node.nodePath === nodePath)!
+        .properties.find((item) => item.name === "iin_max")!;
+      expect(property.rawText).toBe(`<${value}>`);
+      expect(property.source.startOffset).toBeGreaterThan(0);
+      expect(property.source.endOffset).toBeGreaterThan(property.source.startOffset);
+    }
+    const bindings = await api<{ items: Array<{ id: string; currentValueId: string;
+      sourceNodePath: string | null }> }>(f, `/api/v2/projects/${PROJECT}/parameter-bindings`);
+    expect(bindings.status, JSON.stringify(bindings.body)).toBe(200);
+    expect(bindings.body.items.map((binding) => binding.sourceNodePath).sort())
+      .toEqual(["device@0", "device@1", "device@2"]);
+    for (const binding of bindings.body.items) {
+      const pin = await loadOwnedProjectValueSourcePin(f.db, { organizationId: ORG, projectId: PROJECT,
+        bindingId: binding.id, projectValueId: binding.currentValueId });
+      expect(pin?.fileVersionId).toBe(versionId);
+    }
+    expect(await countLegacyProjectBindings(f.db, { organizationId: ORG, projectIds: [PROJECT] })).toBe(0);
+  }
+
+  it("resolves source-backed canonical identity without a legacy cutover marker", async () => {
+    const f = await fixture("dts", false, true);
+    const previousMode = parameterIdentityMode();
+    try {
+      expect((await f.db.query("select count(*)::int as count from parameter_identity_cutovers")).rows[0]!.count).toBe(0);
+      const bindings = await api<{ items: Array<{ id: string; sourceNodePath: string }> }>(f,
+        `/api/v2/projects/${PROJECT}/parameter-bindings`);
+      expect(bindings.status, JSON.stringify(bindings.body)).toBe(200);
+      expect(bindings.body.items).toHaveLength(3);
+      expect(bindings.body.items.every((binding) => /^pbind_[0-9a-f]{64}$/.test(binding.id)
+        && typeof binding.sourceNodePath === "string" && binding.sourceNodePath.length > 0)).toBe(true);
+      expect(await resolveParameterIdentityMode(f.db)).toBe("semantic");
+    } finally {
+      setParameterIdentityMode(previousMode);
+    }
+  });
+
+  it.each(["single", "batch"] as const)("indexes the new %s DTS version for structure and source-pin API reads", async (kind) => {
+    const f = await fixture("dts", false, true);
+    const original = await api<{ nodes: unknown[] }>(f,
+      `/api/v1/projects/${PROJECT}/parameter-files/${f.fileId}/versions/${f.baseVersionId}/structure`);
+    expect(original.status).toBe(200);
+    expect(original.body.nodes).toHaveLength(4);
+    const submitted = await pending(f, kind);
+    const approved = await api<{ item: { status: string } }>(f,
+      `${reviewPath(submitted.requestId)}/review`, REVIEWER, submitted.reviewBody);
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect(approved.body.item.status).toBe("approved");
+    await assertCurrentStructure(f, kind);
+    const beforeReplay = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeReplayStructure = await structuralState(f);
+    expect((await api<{ item: { status: string } }>(f, `${reviewPath(submitted.requestId)}/review`,
+      REVIEWER, submitted.reviewBody)).body.item.status).toBe("approved");
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(beforeReplay);
+    expect(await structuralState(f)).toEqual(beforeReplayStructure);
+  });
+
+  it.each(["single", "batch"] as const)("rolls back the %s DTS structural rows on a late audit failure and retries", async (kind) => {
+    const f = await fixture("dts", false, true);
+    const submitted = await pending(f, kind);
+    const before = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const beforeStructure = await structuralState(f);
+    await f.db.query(`create function public.t1080_fail_source_audit() returns trigger language plpgsql as $$ begin
+      if new.action='value-change-applied' then raise exception 'injected #1080 late source audit failure'; end if;
+      return new;
+    end $$`);
+    await f.db.query(`create trigger t1080_fail_source_audit before insert on audit_events
+      for each row execute function public.t1080_fail_source_audit()`);
+    const failed = await api(f, `${reviewPath(submitted.requestId)}/review`, REVIEWER, submitted.reviewBody);
+    expect(failed.status, JSON.stringify(failed.body)).toBe(500);
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(before);
+    expect(await structuralState(f)).toEqual(beforeStructure);
+    await f.db.query("drop trigger t1080_fail_source_audit on audit_events");
+    await f.db.query("drop function public.t1080_fail_source_audit()");
+    const approved = await api<{ item: { status: string } }>(f,
+      `${reviewPath(submitted.requestId)}/review`, REVIEWER, submitted.reviewBody);
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect(approved.body.item.status).toBe("approved");
+    await assertCurrentStructure(f, kind);
+  });
 });
 
 async function fileDecisions(f: Fixture, prepared: Pick<Prepared, "candidateId" | "targets">) {

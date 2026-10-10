@@ -8,7 +8,6 @@
       "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/knowledge.acceptance.spec.ts": {
-      "legacy-catalog-raw-read": 1,
       "legacy-catalog-route": 2,
       "legacy-catalog-sql-write": 3
     },

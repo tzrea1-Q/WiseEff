@@ -90,6 +90,8 @@ npm run db:seed:m3
 
 **全新 canonical 种子不需要语义身份 cutover。** M1 不运行旧语义身份迁移，也不调用 `ensureLocalPostCutoverIdentity`。API 启动时，干净且所有来源 pin 完整的 canonical 安装会跳过 legacy finalize；该状态下启动不会调用旧迁移。
 
+启动时的身份模式解析也会识别这个 canonical 状态，无需旧 cutover 标记：旧 Spec 和 Binding 必须为空，canonical Binding 必须存在，每个当前值的来源 pin 必须指向文件的活跃版本。Canonical 单项和批量来源提交会在同一事务内为新 DTS 版本建立结构索引，因此演示历史写入后仍可导航结构并读取 Binding 的来源位置。
+
 `npm run dev:api`（以及 `dev:all` 拉起的 API）为 legacy cohorts 保留 development 下 listen 前的**幂等本地 post-cutover 启动 guard**，旧 operator helpers 仍可使用；production 永不运行该 guard，test 仅显式开启时运行。`WISEEFF_LOCAL_POST_CUTOVER=0` 关闭该启动 guard。已弃用的 `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` 仅为现有 legacy operator 工作流保留 API 启动兼容 opt-out；**M1 忽略它，不再有 legacy flat 种子选项**。跳过启动 guard 不等于完成 legacy cutover，也不会使被阻断的 typed 提交变为有效。
 
 已有双轨数据的库可能无法通过本地 cutover/启动 guard。不要用 seed 升级 populated pre-canonical 数据，也不要默认清空数据库或 volume。先盘点数据库、Docker volumes、对象存储及使用它们的其他 checkout；任何破坏性重置都必须获得明确授权。演示种子优先使用独立空库。#824 的 populated-upgrade operator 工作流保持不变；失败关闭的维护路径见 [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md)。

@@ -2527,7 +2527,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(declarationFor(css, ".submission-history-summary .metric-bar", "height")).toBe("4px");
   });
 
-  it("keeps row-level detail view available without exposing a standalone comparison action", () => {
+  it("withdraws legacy mock row detail while keeping parameter editing and no standalone comparison action", () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderAppForCurrentPath();
@@ -2537,11 +2537,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: "对比参数" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "跨项目对比" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(table).getByRole("button", { name: "编辑 fast_charge_current_limit_ma" })).toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: /^查看 / })).not.toBeInTheDocument();
 
     expect(window.location.pathname).toBe("/parameters");
-    expect(screen.getByRole("dialog", { name: /fast_charge_current_limit_ma/ })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "跨项目对比" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /fast_charge_current_limit_ma/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "跨项目对比" })).not.toBeInTheDocument();
   });
 
   it("renders a no-entry state for the retired standalone comparison route without redirecting", () => {
@@ -3734,12 +3737,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
   });
 
-  it("keeps identity-mapping on ParameterAdminNextPage instead of CatalogPage", async () => {
+  it("withdraws legacy mock identity-mapping tasks while keeping the canonical Catalog", async () => {
     window.history.replaceState(null, "", "/parameter-admin/specs/identity-mapping");
-    renderApp({ initialAppState: adminState });
+    renderApp({ initialAppState: adminState, runtimeMode: "mock" });
 
-    expect(await screen.findByRole("region", { name: "节点对应确认" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-page", "true");
+    expect(screen.getByText("Mock 模式不提供旧节点对应任务。请使用 API 模式的规范审核队列。")).toHaveAttribute("role", "status");
+    expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
   });
 
   it("omits unfinished workflows from sidebar discovery", () => {
