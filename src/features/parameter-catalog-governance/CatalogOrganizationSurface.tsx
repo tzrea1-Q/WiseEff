@@ -60,6 +60,7 @@ export function CatalogOrganizationSurface({
   relatedKnowledge
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
+  const reviewQueueAllowed = actor === "org-admin";
   const anchor = parseCatalogUrlAnchor(search);
   const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
@@ -176,6 +177,11 @@ export function CatalogOrganizationSurface({
           <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>
         </section>
       ) : null}
+      {!reviewQueueAllowed ? (
+        <p className="parameter-catalog__muted">
+          组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。
+        </p>
+      ) : null}
       <CatalogPage
         key={surfaceEpoch}
         repository={catalog}
@@ -185,11 +191,11 @@ export function CatalogOrganizationSurface({
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
         onAction={handleAction}
-        onOpenPendingWork={() => setPendingWorkOpen(true)}
+        onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         organizationId={organizationId}
         listReviewItems={
-          organizationId ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
+          organizationId && reviewQueueAllowed ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
         }
         definitionPublishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
         onDefinitionCommand={(command, definition) => {
@@ -238,7 +244,7 @@ export function CatalogOrganizationSurface({
             : undefined
         }
       />
-      {domainState && catalogReleaseId && organizationId ? (
+      {reviewQueueAllowed && domainState && catalogReleaseId && organizationId ? (
         <ModalDialog
           open={pendingWorkOpen}
           onDismiss={() => setPendingWorkOpen(false)}

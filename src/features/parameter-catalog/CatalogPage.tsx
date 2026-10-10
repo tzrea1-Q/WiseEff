@@ -775,19 +775,21 @@ export function CatalogPage({
               {action.label}
             </button>
           ))}
-          <button
-            type="button"
-            className="button subtle sm"
-            data-catalog-action="open-pending-work"
-            onClick={() => onOpenPendingWork?.()}
-          >
-            {catalogPendingWorkLabel}
-            {reviewItemCount > 0 ? (
-              <span className="parameter-catalog__badge" data-tone="warning">
-                {reviewItemCount}
-              </span>
-            ) : null}
-          </button>
+          {onOpenPendingWork ? (
+            <button
+              type="button"
+              className="button subtle sm"
+              data-catalog-action="open-pending-work"
+              onClick={onOpenPendingWork}
+            >
+              {catalogPendingWorkLabel}
+              {reviewItemCount > 0 ? (
+                <span className="parameter-catalog__badge" data-tone="warning">
+                  {reviewItemCount}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
         </div>
       </div>
 
