@@ -8,7 +8,7 @@ import { dashboardHotspotDtoSchema } from "./dtoSchemas/parameters";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
-  it("publishes list-only unavailable metadata without weakening historical parameter detail", () => {
+  it("publishes the same canonical compatibility identity and unavailable metadata for list and detail", () => {
     const document = buildOpenApiDocument();
     const list = document.components.schemas.ParameterListResponse as {
       properties: { items: { items: { required: string[]; properties: Record<string, unknown> } } }
@@ -22,9 +22,12 @@ describe("DTO schema catalog coverage", () => {
     for (const field of ["risk", "range", "unit", "recommendedValue", "updatedAt", "updatedAtTs", "history"]) {
       expect(list.properties.items.items.properties[field], field).toMatchObject({ type: "null" });
     }
-    expect(detail.properties.item.properties.risk).toMatchObject({ type: "string", enum: ["High", "Medium", "Low"] });
-    expect(detail.properties.item.properties.history).toMatchObject({ type: "array" });
-    expect(detail.properties.item.properties.metadataAvailability).toBeUndefined();
+    expect(detail.properties.item.properties).toEqual(list.properties.items.items.properties);
+    for (const routeId of ["parameters.get", "parameters.history"]) {
+      expect(schemaRegistry[routeId].additionalResponses).toMatchObject({
+        "403": "ErrorResponse", "404": "ErrorResponse", "410": "CatalogLegacyGoneResponse"
+      });
+    }
   });
 
   it("realizes request/response schemas for every covered route", () => {

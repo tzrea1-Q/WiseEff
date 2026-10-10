@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
+import { catalogBindingChangeHistoryEntryDtoSchema } from "./parameterCatalog";
 
 export const parameterRiskLevelSchema = z.enum(["High", "Medium", "Low"]);
 export const parameterValueKindSchema = z.enum(["scalar", "complex"]);
@@ -294,8 +295,8 @@ export const dashboardHotspotDtoSchema = z.object({
 
 export const projectListResponseSchema = itemsEnvelopeSchema(projectDtoSchema);
 export const parameterListResponseSchema = itemsEnvelopeSchema(canonicalParameterCompatibilityRecordDtoSchema);
-export const parameterResponseSchema = itemEnvelopeSchema(parameterRecordDtoSchema);
-export const parameterHistoryResponseSchema = itemsEnvelopeSchema(parameterHistoryEntryDtoSchema);
+export const parameterResponseSchema = itemEnvelopeSchema(canonicalParameterCompatibilityRecordDtoSchema);
+export const parameterHistoryResponseSchema = itemsEnvelopeSchema(catalogBindingChangeHistoryEntryDtoSchema);
 export const parameterDraftResponseSchema = itemEnvelopeSchema(parameterDraftDtoSchema);
 export const parameterDraftListResponseSchema = itemsEnvelopeSchema(parameterDraftDtoSchema);
 export const parameterSubmissionRoundResponseSchema = itemEnvelopeSchema(parameterSubmissionRoundDtoSchema);
