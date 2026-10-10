@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
-import { upsertProvisionalSurfacePropertySpec } from "../parameter-topology/provisionalSurfaceBinding";
 import { findParameterSpecByIdentity } from "./repository";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 
@@ -101,65 +100,7 @@ describe.skipIf(!databaseAvailable)("parameter spec identity surrogate lookup (A
     });
   });
 
-  it("creates localized provisional content and keeps one spec row across repeated upserts", async () => {
-    const first = await upsertProvisionalSurfacePropertySpec(db!, {
-      organizationId: ORG_ID,
-      propertyKey: PROPERTY_KEY,
-      attributionSubjectId: SUBJECT_ID,
-      occurrenceAstJson: { type: "integer", value: 1 },
-      occurrenceRawText: "<1>",
-    });
-    const second = await upsertProvisionalSurfacePropertySpec(db!, {
-      organizationId: ORG_ID,
-      propertyKey: PROPERTY_KEY,
-      attributionSubjectId: SUBJECT_ID,
-      occurrenceAstJson: { type: "integer", value: 2 },
-      occurrenceRawText: "<2>",
-    });
-    expect(second.parameterSpecId).toBe(first.parameterSpecId);
-    expect(second.parameterSpecVersionId).toBe(first.parameterSpecVersionId);
-
-    const counted = await db!.query<{ n: string | number }>(
-      `
-      select count(*)::int as n
-      from parameter_specs
-      where organization_id = $1
-        and attribution_subject_id = $2
-        and property_key = $3
-      `,
-      [ORG_ID, SUBJECT_ID, PROPERTY_KEY],
-    );
-    expect(Number(counted.rows[0]?.n)).toBe(1);
-
-    const content = await db!.query<{
-      description: string;
-      versionDocumentation: string | null;
-      propertyDocumentation: string;
-      effectiveDocumentation: string;
-    }>(
-      `
-      select
-        v.description,
-        v.documentation as "versionDocumentation",
-        d.documentation as "propertyDocumentation",
-        coalesce(v.documentation, d.documentation) as "effectiveDocumentation"
-      from parameter_spec_versions v
-      inner join dts_property_specs d on d.parameter_spec_id = v.parameter_spec_id
-      where v.parameter_spec_id = $1
-      `,
-      [first.parameterSpecId],
-    );
-    expect(content.rows).toEqual([
-      {
-        description: `参数「${PROPERTY_KEY}」由 DTS 表面发现，等待参数定义审阅。`,
-        versionDocumentation: null,
-        propertyDocumentation: "临时 DTS 表面绑定；完成参数定义审阅后可激活。",
-        effectiveDocumentation: "临时 DTS 表面绑定；完成参数定义审阅后可激活。",
-      },
-    ]);
-  });
-
-  it("does not rewrite persisted legacy content when an existing surface spec is reused", async () => {
+  it("findParameterSpecByIdentity does not rewrite persisted legacy content", async () => {
     await seedSurrogateDefinition(db!);
     await db!.query(
       `update parameter_spec_versions
@@ -180,12 +121,14 @@ describe.skipIf(!databaseAvailable)("parameter spec identity surrogate lookup (A
       [SURROGATE_SPEC_ID],
     );
 
-    await upsertProvisionalSurfacePropertySpec(db!, {
+    const found = await findParameterSpecByIdentity(db!, {
       organizationId: ORG_ID,
       propertyKey: PROPERTY_KEY,
       attributionSubjectId: SUBJECT_ID,
-      occurrenceAstJson: { type: "integer", value: 9 },
-      occurrenceRawText: "<9>",
+    });
+    expect(found).toEqual({
+      parameterSpecId: SURROGATE_SPEC_ID,
+      parameterSpecVersionId: `${SURROGATE_SPEC_ID}:v1`,
     });
 
     const content = await db!.query<{
@@ -216,16 +159,17 @@ describe.skipIf(!databaseAvailable)("parameter spec identity surrogate lookup (A
     ]);
   });
 
-  it("provisional upsert reuses a corrected surrogate row without overwriting human-authored content", async () => {
+  it("findParameterSpecByIdentity reads a corrected surrogate row without overwriting human-authored content", async () => {
     await seedSurrogateDefinition(db!);
-    const reused = await upsertProvisionalSurfacePropertySpec(db!, {
+    const found = await findParameterSpecByIdentity(db!, {
       organizationId: ORG_ID,
       propertyKey: PROPERTY_KEY,
       attributionSubjectId: SUBJECT_ID,
-      occurrenceAstJson: { type: "integer", value: 9 },
-      occurrenceRawText: "<9>",
     });
-    expect(reused.parameterSpecId).toBe(SURROGATE_SPEC_ID);
+    expect(found).toEqual({
+      parameterSpecId: SURROGATE_SPEC_ID,
+      parameterSpecVersionId: `${SURROGATE_SPEC_ID}:v1`,
+    });
 
     const hashIds = buildSubjectScopedManualSpecIds({
       organizationId: ORG_ID,

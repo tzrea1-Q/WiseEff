@@ -15,7 +15,6 @@ import {
 } from "./modulePlacement";
 import type {
   ModuleImportance,
-  ModuleMatchKind,
   ParameterModuleMappingRow,
   ParameterModuleRegistryDto,
   ParameterModuleRow
@@ -122,7 +121,7 @@ function definitionFactsFromCatalog(
 
 /**
  * Registry read: modules from the v1 parameter_modules tree + DTS mappings.
- * Module CRUD lives in v1 (`parameterModuleRepository`); this module only owns mappings.
+ * Module CRUD lives in v1 (`parameterModuleRepository`); mappings are read-only history.
  */
 export async function readRegistry(
   db: Queryable,
@@ -184,73 +183,6 @@ export async function readRegistry(
   };
 }
 
-export async function moduleExists(
-  db: Queryable,
-  input: { organizationId: string; moduleId: string }
-): Promise<boolean> {
-  const result = await db.query<{ id: string }>(
-    `select id from parameter_modules where organization_id = $1 and id = $2`,
-    [input.organizationId, input.moduleId]
-  );
-  return result.rows.length > 0;
-}
-
-export async function insertMapping(
-  db: Queryable,
-  input: {
-    id: string;
-    organizationId: string;
-    moduleId: string;
-    matchKind: ModuleMatchKind;
-    matchValue: string;
-    priority: number;
-  }
-): Promise<void> {
-  const matchValue =
-    normalizeMatchToken(input.matchValue) ?? input.matchValue.trim().toLowerCase();
-  await db.query(
-    `insert into parameter_module_mappings
-       (id, organization_id, parameter_module_id, match_kind, match_value, priority)
-     values ($1, $2, $3, $4, $5, $6)
-     on conflict (organization_id, match_kind, match_value)
-       do update set parameter_module_id = excluded.parameter_module_id,
-                     priority = excluded.priority`,
-    [input.id, input.organizationId, input.moduleId, input.matchKind, matchValue, input.priority]
-  );
-}
-
-export async function findCompatibleMapping(
-  db: Queryable,
-  input: { organizationId: string; compatible: string },
-): Promise<{ id: string; moduleId: string; matchValue: string; priority: number } | null> {
-  const matchValue =
-    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
-  const result = await db.query<{
-    id: string;
-    parameter_module_id: string;
-    match_value: string;
-    priority: number;
-  }>(
-    `
-    select id, parameter_module_id, match_value, priority
-    from parameter_module_mappings
-    where organization_id = $1
-      and match_kind = 'compatible'
-      and match_value = $2
-    limit 1
-    `,
-    [input.organizationId, matchValue],
-  );
-  const row = result.rows[0];
-  if (!row) return null;
-  return {
-    id: row.id,
-    moduleId: row.parameter_module_id,
-    matchValue: row.match_value,
-    priority: row.priority,
-  };
-}
-
 export async function listRegisteredCompatibles(
   db: Queryable,
   organizationId: string,
@@ -266,92 +198,6 @@ export async function listRegisteredCompatibles(
     [organizationId],
   );
   return result.rows.map((row) => row.match_value);
-}
-
-export async function deleteMappingRow(
-  db: Queryable,
-  input: { organizationId: string; mappingId: string }
-): Promise<number> {
-  const result = await db.query(
-    `delete from parameter_module_mappings where organization_id = $1 and id = $2`,
-    [input.organizationId, input.mappingId]
-  );
-  return result.rowCount ?? 0;
-}
-
-export async function listSubtreeModuleIds(
-  db: Queryable,
-  input: { organizationId: string; moduleId: string },
-): Promise<string[]> {
-  const result = await db.query<{ id: string }>(
-    `
-    select child.id
-    from parameter_modules root
-    inner join parameter_modules child
-      on child.organization_id = root.organization_id
-     and (child.id = root.id or child.path like root.path || '/%')
-    where root.organization_id = $1
-      and root.id = $2
-    order by child.depth desc, child.path desc
-    `,
-    [input.organizationId, input.moduleId],
-  );
-  return result.rows.map((row) => row.id);
-}
-
-export async function deleteMappingsForModules(
-  db: Queryable,
-  input: { organizationId: string; moduleIds: string[] },
-): Promise<Array<{ id: string; matchKind: ModuleMatchKind; matchValue: string }>> {
-  if (input.moduleIds.length === 0) return [];
-  const result = await db.query<{
-    id: string;
-    match_kind: ModuleMatchKind;
-    match_value: string;
-  }>(
-    `
-    delete from parameter_module_mappings
-    where organization_id = $1
-      and parameter_module_id = any($2::text[])
-    returning id, match_kind, match_value
-    `,
-    [input.organizationId, input.moduleIds],
-  );
-  return result.rows.map((row) => ({
-    id: row.id,
-    matchKind: row.match_kind,
-    matchValue: row.match_value,
-  }));
-}
-
-/** Delete empty auto instance/driver-group modules in a subtree, deepest first. Keeps the root id. */
-export async function deleteEmptyAutoDescendants(
-  db: Queryable,
-  input: { organizationId: string; rootModuleId: string; subtreeModuleIds: string[] },
-): Promise<string[]> {
-  const deleted: string[] = [];
-  for (const moduleId of input.subtreeModuleIds) {
-    if (moduleId === input.rootModuleId) continue;
-    const result = await db.query<{ id: string }>(
-      `
-      delete from parameter_modules pm
-      where pm.organization_id = $1
-        and pm.id = $2
-        and pm.origin = 'auto'
-        and pm.kind in ('node-type', 'driver-group', 'unclassified')
-        and not exists (
-          select 1 from parameter_modules child where child.parent_id = pm.id
-        )
-        and not exists (
-          select 1 from project_parameter_bindings b where b.module_id = pm.id
-        )
-      returning pm.id
-      `,
-      [input.organizationId, moduleId],
-    );
-    if (result.rows[0]) deleted.push(result.rows[0].id);
-  }
-  return deleted;
 }
 
 export type RecomputeBindingRow = {
@@ -631,23 +477,6 @@ export async function insertDismissedCompatible(
       input.dismissedByUserId,
     ],
   );
-}
-
-export async function deleteDismissedCompatible(
-  db: Queryable,
-  input: { organizationId: string; compatible: string },
-): Promise<number> {
-  const compatible =
-    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
-  const result = await db.query(
-    `
-    delete from parameter_module_dismissed_compatibles
-    where organization_id = $1
-      and lower(trim(both '"' from trim(both '''' from trim(both from compatible)))) = $2
-    `,
-    [input.organizationId, compatible],
-  );
-  return result.rowCount ?? 0;
 }
 
 /**

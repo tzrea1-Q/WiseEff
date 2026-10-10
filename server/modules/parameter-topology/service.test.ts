@@ -11,7 +11,6 @@ import {
   listCanonicalBindingCompareRows,
   listCanonicalBindingHistoryValueRows,
   getBindingForProject,
-  listBindingCompareRows,
   listBindingRevisionRows,
   listIdentityMappingTaskRows,
   listProjectBindingRows
@@ -40,13 +39,10 @@ vi.mock("../parameter-bindings/catalogProjectValueSync", () => ({
 vi.mock("./bindingService", () => ({
   listProjectBindingRows: vi.fn(),
   listIdentityMappingTaskRows: vi.fn(),
-  getIdentityMappingTaskById: vi.fn(),
-  resolveIdentityMappingTaskRow: vi.fn(),
   getBindingForProject: vi.fn(),
   listCanonicalBindingCompareRows: vi.fn().mockResolvedValue(null),
   listCanonicalBindingHistoryValueRows: vi.fn().mockResolvedValue([]),
-  listBindingRevisionRows: vi.fn(),
-  listBindingCompareRows: vi.fn()
+  listBindingRevisionRows: vi.fn()
 }));
 
 vi.mock("./repository", () => ({
@@ -379,7 +375,6 @@ describe("parameter topology service org scope", () => {
     ]);
     expect(result.items.some((item) => item.bindingId === "binding-1")).toBe(false);
     expect(getBindingForProject).not.toHaveBeenCalled();
-    expect(listBindingCompareRows).not.toHaveBeenCalled();
     expect(listCanonicalBindingCompareRows).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       organizationId: "org-1",
       projectId: "project-1",
@@ -400,7 +395,6 @@ describe("parameter topology service org scope", () => {
     } satisfies Partial<ApiError>);
 
     expect(getBindingForProject).not.toHaveBeenCalled();
-    expect(listBindingCompareRows).not.toHaveBeenCalled();
   });
 
   it("getBindingCompare returns 404 when the binding does not belong to the project", async () => {
@@ -414,8 +408,6 @@ describe("parameter topology service org scope", () => {
       status: 404,
       details: { bindingId: "ghost-binding" }
     } satisfies Partial<ApiError>);
-
-    expect(listBindingCompareRows).not.toHaveBeenCalled();
   });
 
   it("listConfigRevisions returns org-scoped listed revisions and 404s missing config sets", async () => {

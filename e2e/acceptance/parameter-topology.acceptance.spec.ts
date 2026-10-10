@@ -2944,53 +2944,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
   });
 
-  test.describe("Organization driver schema overlay — pending browser automation", () => {
-    test("DRV-SCHEMA-001: author and activate overlay; chip shows organization coverage", async ({
-      page
-    }) => {
-      // @acceptance-planned DRV-SCHEMA-001
-      // @operation-planned DRV-SCHEMA-001
-      test.skip(
-        true,
-        "Pending: playwright coverage for authoring/activating an org overlay from an uncovered driver group."
-      );
-      void page;
-    });
-
-    test("DRV-SCHEMA-002: overlay-only compatible binds typed properties on upload", async ({
-      page
-    }) => {
-      // @acceptance-planned DRV-SCHEMA-002
-      // @operation-planned DRV-SCHEMA-002
-      test.skip(
-        true,
-        "Pending: playwright + API coverage for DTS upload matching only an active organization overlay."
-      );
-      void page;
-    });
-
-    test("DRV-SCHEMA-003: reject overlay when pinned schema already covers", async ({ page }) => {
-      // @acceptance-planned DRV-SCHEMA-003
-      // @operation-planned DRV-SCHEMA-003
-      test.skip(
-        true,
-        "Pending: playwright/API coverage for rejecting overlay activate when pinned schema covers the compatible."
-      );
-      void page;
-    });
-
-    test("DRV-SCHEMA-004: activate upgrades provisional specs without re-upload", async ({
-      page
-    }) => {
-      // @acceptance-planned DRV-SCHEMA-004
-      // @operation-planned DRV-SCHEMA-004
-      test.skip(
-        true,
-        "Pending: playwright/API coverage for retroactive provisional-spec upgrade on overlay activate."
-      );
-      void page;
-    });
-  });
 
   test.describe("Pre-upload module create — pending browser automation", () => {
     test("MOD-ATTR-CREATE-KIND-001: create business/driver-group with parent rules and not-yet-observed", async ({

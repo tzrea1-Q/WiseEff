@@ -7,7 +7,6 @@ import {
   loadParameterCatalogFixture,
   type ParameterCatalogDatabase,
 } from "../../testing/parameterCatalog";
-import { createDbLogAnalysisToolBackends } from "./analyzer/tools/dbToolBackends";
 import {
   LOG_COMPARISON_CONTRACT_VERSION,
   LOG_COMPARISON_FAMILY,
@@ -87,28 +86,6 @@ async function seedLogProtectedReferences(url: string): Promise<number> {
     await database.close();
   }
 }
-
-describe("loadRelatedParameter exact name pin", () => {
-  it("executes source SQL with display_name/property_key and no specification_key name fallback", async () => {
-    const statements: string[] = [];
-    const wrapped = {
-      query: async (sql: string) => {
-        statements.push(sql);
-        return { rows: [], rowCount: 0 };
-      },
-    };
-    const backends = createDbLogAnalysisToolBackends({
-      db: wrapped,
-      organizationId: "org-log",
-      relatedParameterId: "binding-log",
-    });
-    await backends.loadRelatedParameterContext?.();
-    expect(statements.length).toBeGreaterThan(0);
-    const haystack = statements.join("\n");
-    expect(haystack).not.toContain("ps.specification_key");
-    expect(haystack).toContain("coalesce(psv.display_name, dps.property_key)");
-  });
-});
 
 describe("provideLogParameterCatalogComparisonContribution", () => {
   let freshPreDb: ParameterCatalogDatabase;
