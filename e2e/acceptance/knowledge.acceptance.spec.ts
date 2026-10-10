@@ -7,6 +7,8 @@ import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrow
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { loadCanonicalBindingPins } from "../../server/modules/parameter-bindings/drafts";
+import { insertReloadRunTarget } from "../../server/modules/dts-reload/repository";
 
 // Browser acceptance artifacts for this spec are written by Playwright to:
 // - test-results/acceptance
@@ -133,13 +135,6 @@ async function cleanupKnowledgeAcceptanceRows() {
       await client.query("delete from knowledge_entries where id = any($1::uuid[])", [entryIds]);
     }
 
-    // KB-XREF fixtures: seeded parameter definitions (reference rows cascade
-    // with their entries above, so only the catalog rows remain).
-    await client.query(`delete from knowledge_parameter_references where parameter_spec_id like 'pspec:kb-xref-%'`);
-    await client.query(`delete from parameter_spec_versions where parameter_spec_id like 'pspec:kb-xref-%'`);
-    await client.query(`delete from parameter_specs where id like 'pspec:kb-xref-%'`);
-    await client.query(`delete from attribution_subjects where id like 'asub:kb-xref-%'`);
-
     // Distillation-source fixtures: seeded completed log analyses (KB-DISTILL/KB-ADMIN).
     const logs = await client.query<{ id: string }>(`select id from log_records where file_name like 'kb-acceptance-distill-%'`);
     const logIds = logs.rows.map((row) => row.id);
@@ -239,7 +234,7 @@ type SeededTerminalReloadRun = { runId: string; propertyKey: string; deviceId: s
  * Seeds a TERMINAL (unverifiable) reload run with snapshot evidence directly,
  * the same seeding approach as the dts-reload acceptance specs: the run row is
  * the stored evidence subject, so distillation needs no bridge or deploy.
- * Targets reference a real project binding (FK) from the M1 seed catalog.
+ * Targets retain the complete canonical Binding and source pins from the M1 seed Catalog.
  */
 async function seedTerminalReloadRun(): Promise<SeededTerminalReloadRun> {
   const runId = `${reloadRunIdPrefix}${runStamp}-${randomUUID().slice(0, 8)}`;
@@ -249,13 +244,23 @@ async function seedTerminalReloadRun(): Promise<SeededTerminalReloadRun> {
 
   await withPgClient(async (client) => {
     const binding = await client.query<{ id: string; project_id: string }>(
-      `select id, project_id from project_parameter_bindings where organization_id = $1 order by id limit 1`,
+      `select id, project_id from parameter_catalog.current_project_parameter_bindings
+       where organization_id = $1 order by id limit 1`,
       [organizationId]
     );
     const bindingRow = binding.rows[0];
     if (!bindingRow) {
-      throw new Error("No project_parameter_bindings available; run db:seed:m1 before KB-DISTILL-002.");
+      throw new Error("No canonical Bindings available; run db:seed:m1 before KB-DISTILL-002.");
     }
+    const pins = await loadCanonicalBindingPins(client, {
+      organizationId, projectId: bindingRow.project_id, bindingId: bindingRow.id
+    });
+    expect(pins).not.toBeNull();
+    const sourcePin = (await client.query<{ source_occurrence_id: string; locator: unknown }>(
+      `select source_occurrence_id, locator from parameter_catalog.project_value_source_pins where id = $1`,
+      [pins!.sourcePinId]
+    )).rows[0]!;
+    expect(pins!.sourceFormat).toBe("dts");
 
     const snapshot = {
       libraryBaselines: [
@@ -303,14 +308,22 @@ async function seedTerminalReloadRun(): Promise<SeededTerminalReloadRun> {
       `,
       [runId, organizationId, bindingRow.project_id, deviceId, targetRef, JSON.stringify(snapshot), committerUserId]
     );
-    await client.query(
-      `
-      insert into dts_reload_run_targets (
-        id, reload_run_id, binding_id, node_path, property_key, baseline_value, debug_value, sort_order
-      ) values ($1, $2, $3, '/amba/i2c@FF120000/charger@6E', $4, '<6000>', '<7000>', 0)
-      `,
-      [randomUUID(), runId, bindingRow.id, propertyKey]
-    );
+    await insertReloadRunTarget(client, {
+      id: randomUUID(), reloadRunId: runId, bindingId: null,
+      nodePath: "/amba/i2c@FF120000/charger@6E", propertyKey,
+      baselineValue: "<6000>", debugValue: "<7000>", sortOrder: 0,
+      canonicalBindingId: pins!.bindingId,
+      canonicalDefinitionId: pins!.definitionId,
+      canonicalDefinitionRevisionId: pins!.definitionRevisionId,
+      canonicalCurrentValueId: pins!.currentValueId,
+      canonicalCatalogReleaseId: pins!.catalogReleaseId,
+      canonicalSourcePinId: pins!.sourcePinId,
+      canonicalSourceOccurrenceId: sourcePin.source_occurrence_id,
+      canonicalConfigRevisionId: pins!.configRevisionId,
+      canonicalSourceRef: pins!.sourceRef,
+      canonicalSourceFormat: "dts",
+      canonicalSourceLocator: sourcePin.locator
+    });
   });
 
   return { runId, propertyKey, deviceId, targetRef };

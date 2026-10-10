@@ -25,6 +25,7 @@ import { rethrowSourceTransactionError } from "./sourceVersion";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import type { ParsedIndex } from "./types";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
+import { ingestDtsFileVersion } from "./structuralIngest";
 import type { DtsValue } from "../dts/types";
 import type { CanonicalBatchDraftCompositionProof } from "../parameter-bindings/drafts/batchChangeService";
 import { catalogBatchCompositionProofSchema } from "../contracts/dtoSchemas/parameterCatalog";
@@ -247,6 +248,7 @@ export async function commitCanonicalSourceBatchRevision(
       sizeBytes: bytes.length, parsedIndex: candidate.parsed_index,
       origin: "writeback", attribution
     });
+    if (proof.format === "dts") await ingestDtsFileVersion(tx, version.id, after);
     const members = manifest.members.map((member, index) => ({
       fileId: member.fileId, fileVersionId: member.fileId === proof.fileId ? version.id : member.fileVersionId,
       fileName: base.files[index]!.name, sourceName: member.sourceName,

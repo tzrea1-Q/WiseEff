@@ -3,15 +3,14 @@ import { createHmac } from "node:crypto";
 import { expect, test, type APIRequestContext } from "playwright/test";
 
 import { signInBrowserAsRole } from "./helpers/bearerAuth";
-import { runNpmScript, withPgClient } from "./helpers/database";
+import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
-import { assertPostCutoverIdentity } from "./helpers/semanticBindingFixture";
-import { resolveSeededSingleCellBinding } from "./helpers/xiaozeCanonicalBinding";
+import { resolveSeededWritableSingleCellBinding } from "./helpers/xiaozeCanonicalBinding";
 import { assertDeterministicXiaozeReady } from "./helpers/xiaozeDeterministicEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -20,7 +19,8 @@ const actorUserId = "u-xu-yun";
 const threadId = "xiaoze-action-thread";
 
 /**
- * Shared CI acceptance is post-cutover. This spec addresses canonical
+ * Shared CI acceptance uses the runtime owner's published fixture, not legacy
+ * cutover markers or per-spec seed replay. This spec addresses canonical
  * Catalog Bindings (`parameter_catalog.project_parameter_bindings.id`, the id the
  * Parameters page and Xiaoze approval payload use) and DTS cell text, and it
  * observes canonical value change requests
@@ -38,7 +38,7 @@ function cellValue(offset: number) {
 }
 
 async function resolveSeededBinding(request: APIRequestContext) {
-  const binding = await resolveSeededSingleCellBinding(request, projectId);
+  const binding = await resolveSeededWritableSingleCellBinding(request, projectId);
   parameterId = binding.bindingId;
   baseCellValue = binding.baseValue;
 }
@@ -189,6 +189,17 @@ async function countOpenChangeRequests() {
   });
 }
 
+async function countRetainedLegacyChangeRequests() {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ count: string }>(
+      `select count(*)::text as count from public.parameter_change_requests
+       where organization_id = 'org-chargelab' and project_id = $1`,
+      [projectId]
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  });
+}
+
 async function latestAgentAuditForSession(sessionId: string) {
   return withPgClient(async (client) => {
     const result = await client.query<{
@@ -215,10 +226,6 @@ async function latestAgentAuditForSession(sessionId: string) {
 test.skip(!databaseUrl, "DATABASE_URL is required for Xiaoze action acceptance evidence.");
 
 test.beforeAll(async ({ request }) => {
-  runNpmScript("db:migrate");
-  runNpmScript("db:seed:m0");
-  runNpmScript("db:seed:m1");
-  await assertPostCutoverIdentity();
   await resolveSeededBinding(request);
   expect(parameterId).not.toBe("aurora-fast-charge-current");
   expect(parameterId).toMatch(/^pbind_[0-9a-f]{64}$/);
@@ -270,6 +277,7 @@ test.describe("Xiaoze P1 action", () => {
     // @acceptance XIAOZE-ACTION-APPROVE-001
     // @operation XIAOZE-ACTION-APPROVE-001
     const openBefore = await countOpenChangeRequests();
+    const legacyBefore = await countRetainedLegacyChangeRequests();
     const actionPrompt = `set ${parameterId} to ${cellValue(1)}`;
     const approveThread = `${threadId}-approve-${Date.now()}`;
     const started = await postXiaoze(request, adminHeaders(), {
@@ -328,6 +336,10 @@ test.describe("Xiaoze P1 action", () => {
     expect(persisted?.binding_id).toBe(parameterId);
     expect(persisted?.status).toBe("pending");
     expect(persisted?.target_value?.groups?.[0]?.[0]?.raw).toBe(String(baseCellValue + 1));
+    expect(
+      await countRetainedLegacyChangeRequests(),
+      "Canonical approval must not write retained legacy history tables (spec #1080 defers schema retirement)."
+    ).toBe(legacyBefore);
 
     const followUp = await postXiaoze(request, adminHeaders(), {
       threadId: approveThread,
