@@ -111,7 +111,7 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
       [aria-level="2"] .dts-topology-navigator__label { margin-left: 48px; }
     </style>
     <main>
-      <div class="clip"><div class="data-table-scroll"><div role="table"><div role="row"><div role="cell" class="dts-parameter-workbench-table__actions"><button>编辑</button></div></div></div></div></div>
+      <div class="clip"><div class="data-table-scroll"><div role="table"><div role="row"><span data-label="重要性" style="position: absolute; left: 200px; width: 60px">高</span><div role="cell" class="dts-parameter-workbench-table__actions"><button>编辑</button></div></div></div></div></div>
       <div class="controls">
         <button class="button primary">提交</button>
         <select aria-label="项目筛选"><option>项目</option></select>
@@ -129,7 +129,11 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
   expect(measurements.primaryActions).toEqual([expect.objectContaining({ background: "rgb(10, 20, 30)" })]);
   expect(measurements.rowActions).toEqual([expect.objectContaining({
     cell: expect.objectContaining({ left: 350, right: 430, height: 40 }),
-    row: expect.objectContaining({ left: 20, right: 380, height: 40 })
+    row: expect.objectContaining({ left: 20, right: 380, height: 40 }),
+    clip: { left: 20, right: 320 },
+    scrollLeft: 0,
+    actions: [expect.objectContaining({ rect: expect.objectContaining({ left: 350, height: 32 }) })],
+    statuses: [expect.objectContaining({ rect: expect.objectContaining({ left: 220, right: 280 }) })]
   })]);
   expect(measurements.tableScrollports).toEqual([expect.objectContaining({ rect: { left: 20, top: 30, right: 320, bottom: 90, width: 300, height: 60 } })]);
   expect(measurements.xiaozeLaunchers).toEqual([expect.objectContaining({ rect: expect.objectContaining({ right: 1430, bottom: 890 }) })]);
@@ -141,4 +145,6 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
   expect(measurements.filterControls.map((control) => control.height)).toEqual([32]);
   expect(measurements.sortControls.map((control) => control.height)).toEqual([28]);
   expect(measurements.paginationControls.map((control) => control.height)).toEqual([30]);
+  await page.locator(".data-table-scroll").evaluate((element) => { element.scrollLeft = 40; });
+  expect((await page.evaluate(collectConsistencyMeasurements)).rowActions[0].scrollLeft).toBe(40);
 });

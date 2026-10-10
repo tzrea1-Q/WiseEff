@@ -656,6 +656,7 @@ export function CatalogPage({
     {
       key: "lifecycle",
       header: "生命周期",
+      className: "parameter-catalog__lifecycle",
       render: (row) => (
         <span className="parameter-catalog__badge" data-tone={row.lifecycle === "active" ? undefined : "retired"}>
           {catalogLifecycleLabel(row.lifecycle)}
@@ -896,6 +897,7 @@ export function CatalogPage({
                   rows={visibleDefinitions}
                   rowKey={(row) => row.id}
                   columns={columns}
+                  tableClassName="parameter-catalog__table"
                   selectedRowKey={definition?.id}
                   onRowClick={selectDefinition}
                   aria-label={catalogDefinitionsLabel}
