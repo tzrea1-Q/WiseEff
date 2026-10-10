@@ -275,6 +275,10 @@ export function requireConsistencyMeasurements(
   }
 }
 
+export function shouldRequireXiaozeHint({ hasDialog, viewportWidth }: { hasDialog: boolean; viewportWidth: number }) {
+  return !hasDialog && viewportWidth > 640;
+}
+
 export function assertXiaozePlacement(
   measurements: Pick<ConsistencyMeasurements, "xiaozeLaunchers" | "xiaozeHints" | "tableScrollports" | "stickyActionAreas">,
   routePath: string

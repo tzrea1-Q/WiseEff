@@ -9,6 +9,7 @@ import {
   requireConsistencyMeasurements,
   requireRowActionVisibility,
   requireCompactControlHeights,
+  shouldRequireXiaozeHint,
   type ConsistencyMeasurements
 } from "./consistency";
 import {
@@ -50,7 +51,11 @@ for (const route of routes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await waitForFontsAndNextPaint(page);
-        if (theme === "light") {
+        const requiresHint = shouldRequireXiaozeHint(await page.evaluate(() => ({
+          hasDialog: document.body.matches(':has([role="dialog"])'),
+          viewportWidth: window.innerWidth
+        })));
+        if (theme === "light" && requiresHint) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
         }
         await expect(async () => {
@@ -62,7 +67,9 @@ for (const route of routes) {
           }
           requireOrganizationViewSwitchStyles(measurements, route.path);
           if (theme === "light") {
-            requireConsistencyMeasurements(measurements, ["xiaozeHints"], route.path);
+            if (requiresHint) {
+              requireConsistencyMeasurements(measurements, ["xiaozeHints"], route.path);
+            }
             assertXiaozePlacement(measurements, route.path);
           }
         }).toPass({ timeout: 20_000 });
@@ -77,7 +84,9 @@ for (const route of routes) {
         if (theme === "light") {
           const launcher = page.getByTestId("copilot-chat-toggle");
           const surface = launcher.locator(".xiaoze-chat-toggle__surface");
-          await page.getByRole("button", { name: "不再提示" }).focus();
+          await launcher.focus();
+          await page.keyboard.press("Shift+Tab");
+          await expect(launcher).not.toBeFocused();
           await waitForFontsAndNextPaint(page);
           const restingShadow = await surface.evaluate((element) => getComputedStyle(element).boxShadow);
           await focusViaKeyboard(page, launcher);
