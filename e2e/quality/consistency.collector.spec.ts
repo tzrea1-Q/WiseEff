@@ -183,6 +183,7 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
       .xiaoze-chat-toggle, .xiaoze-toggle-hint { position: fixed; right: 10px; bottom: 10px; width: 40px; height: 40px; }
       .xiaoze-toggle-hint { bottom: 60px; width: 180px; }
       .controls { position: absolute; top: 200px; }
+      .sticky-actions { position: fixed; left: 20px; bottom: 100px; width: 300px; height: 40px; }
       select, button { box-sizing: border-box; height: 32px; }
       .library-sort { height: 28px; }
       .parameter-catalog__pagination button { height: 30px; }
@@ -200,6 +201,7 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
         <nav class="parameter-catalog__pagination"><button data-compact-control="pagination" aria-label="下一页">下一页</button></nav>
         <select data-compact-control="filter" hidden><option>隐藏</option></select>
       </div>
+      <div class="sticky-actions"><button>提交变更</button></div>
       <div class="tree" role="tree"><div role="treeitem" aria-level="1"><span class="dts-topology-navigator__label">模块</span></div><div role="treeitem" aria-level="2"><span class="dts-topology-navigator__label">参数</span></div></div>
       <ul class="parameter-catalog__tree"><li class="parameter-catalog__tree-node"><span class="parameter-catalog__tree-label">旧模块</span><ul><li class="parameter-catalog__tree-node"><span class="parameter-catalog__tree-label">旧参数</span></li></ul></li></ul>
     </main>
@@ -219,6 +221,9 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
   expect(measurements.tableScrollports).toEqual([expect.objectContaining({ rect: { left: 20, top: 30, right: 320, bottom: 90, width: 300, height: 60 } })]);
   expect(measurements.xiaozeLaunchers).toEqual([expect.objectContaining({ rect: expect.objectContaining({ right: 1430, bottom: 890 }) })]);
   expect(measurements.xiaozeHints).toHaveLength(1);
+  expect(measurements.stickyActionAreas).toEqual([expect.objectContaining({
+    rect: { left: 20, top: 760, right: 320, bottom: 800, width: 300, height: 40 }
+  })]);
   expect(measurements.moduleTreeLabels).toEqual(expect.arrayContaining([
     expect.objectContaining({ depth: 1, left: 32 }), expect.objectContaining({ depth: 2, left: 48 })
   ]));
