@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { requireModuleTreeAlignment } from "../e2e/quality/consistency";
+import { requireModuleTreeAlignment } from "../e2e/quality/consistency-assertions";
 
 const label = (left: number, depth = 1, tree = "modules") => ({
   dom: "span.module-label", tree, depth, left

@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { collectConsistencyMeasurements, requireCompactControlHeights } from "../../e2e/quality/consistency";
+import { collectConsistencyMeasurements } from "../../e2e/quality/consistency-collector";
+import { requireCompactControlHeights } from "../../e2e/quality/consistency-assertions";
 import { LibrarySelectFilter } from "../components/admin/LibrarySelectFilter";
 import { Select, SelectTrigger, SelectValue } from "../components/ui/select";
 import { declarationsFor, readStylesheet } from "./cssAssertions";
@@ -56,6 +57,7 @@ describe("compact control measurement scope", () => {
         <button className="parameter-catalog__tree-select" data-measured-height="40">模块</button>
         <button className="parameters-column-filter__trigger" data-measured-height="24">筛选模块</button>
         <select className="compact-filter-control" data-compact-control="filter"><option>项目</option></select>
+        <button data-compact-control="pagination">下一页</button>
       </main>
       <button className="xiaoze-chat-toggle">小泽</button>
     </>);

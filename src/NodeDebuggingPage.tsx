@@ -769,6 +769,7 @@ export function NodeDebuggingPage({
               </button>
               <button
                 className="submit-round-button debugging-deploy-button"
+                data-primary-action="true"
                 type="button"
                 disabled={!connected || batchTargetRows.length === 0}
                 onClick={() => void session.requestBulkWrite(debuggingActions)}
@@ -817,6 +818,7 @@ export function NodeDebuggingPage({
                   </button>
                   <button
                     className="submit-round-button debugging-deploy-button"
+                    data-primary-action="true"
                     type="button"
                     disabled={!connected || editingRow.runtimeStatus === "执行中"}
                     onClick={() => void session.requestWrite(editingRow.id, debuggingActions)}

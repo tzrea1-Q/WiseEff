@@ -425,6 +425,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
             <div className="debugging-action-buttons">
               <button
                 className="submit-round-button debugging-deploy-button"
+                data-primary-action="true"
                 type="button"
                 disabled={!connected || pendingRuntimeActions.has("push") || (selectedIds.size > 0 ? pendingSelected.length === 0 : pendingParameters.length === 0)}
                 onClick={pushPendingValues}
@@ -460,6 +461,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               </button>
               <button
                 className="submit-round-button debugging-deploy-button"
+                data-primary-action="true"
                 type="button"
                 disabled={!connected || pendingRuntimeActions.has("push") || editingParameter.status !== "待下发"}
                 onClick={() => {

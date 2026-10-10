@@ -75,7 +75,7 @@ type LocalDeviceBridgeWizardProps = {
   detecting: boolean;
   connectError: string;
   onConnectError: (message: string) => void;
-  onRefresh: () => Promise<{
+  onRefresh: (options?: { connectionAttempt?: boolean }) => Promise<{
     connected: boolean;
     health?: LocalBridgeHealthState | null;
     registeredBridgeIds?: string[];
@@ -319,7 +319,7 @@ export function LocalDeviceBridgeWizard({
         timeoutMs: shouldLaunchScheme ? 45_000 : 30_000,
         ...(pairingStale && previousBridgeId ? { excludeBridgeId: previousBridgeId } : {})
       });
-      const refreshSnapshot = await onRefresh();
+      const refreshSnapshot = await onRefresh({ connectionAttempt: true });
       if (refreshSnapshot.connected) {
         onConnectError("");
         onDetect();

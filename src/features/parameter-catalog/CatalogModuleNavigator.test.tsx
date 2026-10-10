@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency";
+import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
 import { CatalogModuleNavigator } from "./CatalogModuleNavigator";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 

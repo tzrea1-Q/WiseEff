@@ -12,6 +12,7 @@ import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workb
 import {
   allSelectors,
   declarationFor,
+  declarationsFor,
   hasAtRule,
   hasRule,
   readStylesheet
@@ -623,12 +624,28 @@ describe("DtsParameterWorkbench", () => {
 
   it("reserves the same three-action track in header and rows, with or without draft selection", () => {
     const styles = readStylesheet("src/styles.css");
+    const tokens = declarationsFor(styles, ":root");
+    expect(tokens["--dts-workbench-table-min-width"]).toBe("680px");
+    expect(tokens["--dts-workbench-scrollbar-width"]).toBe("var(--space-3)");
+    expect(tokens["--space-3"]).toBe("12px");
+    expect(tokens["--space-8"]).toBe("32px");
+    expect(tokens["--space-1"]).toBe("4px");
+    expect(tokens["--space-16"]).toBe("64px");
+    expect(tokens["--dts-workbench-table-columns"]).toBe(
+      "calc(var(--space-8) + var(--space-1)) var(--dts-workbench-table-columns-without-selection)"
+    );
+    expect(tokens["--dts-workbench-table-columns-without-selection"]).toBe(
+      "minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width)"
+    );
     for (const columns of ["--dts-workbench-table-columns", "--dts-workbench-table-columns-without-selection"]) {
-      expect(declarationFor(styles, ".dts-parameter-workbench", columns))
+      expect(tokens[columns].replace(
+        "var(--dts-workbench-table-columns-without-selection)",
+        tokens["--dts-workbench-table-columns-without-selection"]
+      ))
         .toMatch(/var\(--dts-workbench-table-actions-width\)$/);
     }
-    expect(declarationFor(styles, ".dts-parameter-workbench", "--dts-workbench-table-actions-width"))
-      .toBe("calc(3 * 32px + 2 * var(--space-1))");
+    expect(tokens["--dts-workbench-table-actions-width"])
+      .toBe("calc(3 * var(--space-8) + 2 * var(--space-1))");
   });
 
   it("renders importance as the primary column and only surfaces anomaly governance badges", () => {

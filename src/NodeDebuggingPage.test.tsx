@@ -14,6 +14,7 @@ import { initialState } from "./mockData";
 import type { PrototypeState } from "./mockData";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
+import * as bridgeLauncher from "./infrastructure/http/bridgeConnectLauncher";
 import { createTestDebuggingGateway, renderApp } from "./test/harness";
 
 /**
@@ -222,12 +223,19 @@ afterEach(() => {
 
 describe("/node-debugging", () => {
   it("explains an unreachable local Bridge and keeps its technical detail expandable", async () => {
+    vi.spyOn(bridgeLauncher, "connectLocalBridge").mockResolvedValue({ reachable: true, ok: true, accepted: true });
+    vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockResolvedValue(null);
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (url.includes("/health")) throw new TypeError("Failed to fetch");
-      return new Response(JSON.stringify({ items: [], item: { code: "123456", expiresAt: "2099-01-01T00:00:00Z" } }));
+      return new Response(JSON.stringify({ items: [], code: "123456", expiresAt: "2099-01-01T00:00:00Z" }));
     });
     renderNodeDebuggingPage({ state: userState, debuggingActions: createDebuggingActions() });
+
+    fireEvent.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
+    const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
 
     const message = await screen.findByText("无法连接本地 Bridge，请确认本机 Bridge 已启动，然后刷新代理状态重试。");
     const alert = message.closest('[role="alert"]') as HTMLElement;

@@ -339,10 +339,18 @@ describe("DtsReloadPage", () => {
 
   it("explains an unreachable local Bridge with expandable details and a working retry", async () => {
     const user = userEvent.setup();
+    vi.spyOn(bridgeLauncher, "connectLocalBridge").mockResolvedValue({ reachable: true, ok: true, accepted: true });
+    vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockResolvedValue(null);
     vi.spyOn(bridgeLauncher, "probeLocalBridgeHealthDetailed")
       .mockResolvedValueOnce({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })
-      .mockResolvedValue({ health: null, reachability: "offline" });
+      .mockResolvedValueOnce({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })
+      .mockResolvedValue({ health: null, reachability: "ok" });
     renderPage(createRepository(), { bridges: undefined, probeBridgeHealth: undefined });
+
+    await user.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
+    const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+    await waitFor(() => expect(connect).toBeEnabled());
+    await user.click(connect);
 
     const message = await screen.findByText("无法连接本地 Bridge，请确认本机 Bridge 已启动，然后刷新代理状态重试。");
     const alert = message.closest('[role="alert"]') as HTMLElement;

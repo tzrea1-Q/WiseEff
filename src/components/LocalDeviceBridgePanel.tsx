@@ -130,10 +130,10 @@ export function LocalDeviceBridgePanel({
   }, []);
 
   const refreshBridgeState = useCallback(
-    async (options?: { silent?: boolean }) => {
+    async (options?: { silent?: boolean; connectionAttempt?: boolean }) => {
       if (!options?.silent) {
         setChecking(true);
-        setPanelError(null);
+        setPanelError((current) => current?.source === "local" ? current : null);
       }
       try {
         const probe = probeHealth ?? (() => probeLocalBridgeHealthDetailed());
@@ -144,7 +144,11 @@ export function LocalDeviceBridgePanel({
           healthProbe = { health: null, reachability: "offline", error };
         }
         if (healthProbe.error != null) {
-          setPanelError({ source: "local", error: healthProbe.error });
+          setPanelError((current) => options?.connectionAttempt || current?.source === "local"
+            ? { source: "local", error: healthProbe.error }
+            : current);
+        } else if (healthProbe.reachability === "ok" && healthProbe.error == null) {
+          setPanelError((current) => current?.source === "local" ? null : current);
         }
         const nextHealth = healthProbe.health;
         setHealthReachability((current) =>
@@ -405,8 +409,8 @@ export function LocalDeviceBridgePanel({
         detecting={detecting}
         connectError={connectError}
         onConnectError={setConnectError}
-        onRefresh={async () => {
-          const snapshot = await refreshBridgeState();
+        onRefresh={async (options) => {
+          const snapshot = await refreshBridgeState(options);
           return {
             connected: snapshot.connected,
             health: snapshot.health,

@@ -36,6 +36,7 @@ describe("AgentInsightBar", () => {
     expect(screen.getByText(/高风险闲置参数/)).toBeInTheDocument();
     const action = screen.getByRole("button", { name: "查看闲置参数" });
     expect(action).toHaveClass("insight-action", "insight-action--primary");
+    expect(action).toHaveAttribute("data-primary-action", "true");
     fireEvent.click(action);
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "今天先不看" })).toHaveClass("insight-action--ghost");

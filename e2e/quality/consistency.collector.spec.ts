@@ -1,5 +1,6 @@
 import { expect, test } from "playwright/test";
-import { collectConsistencyMeasurements, installConsistencyReadGuard } from "./consistency";
+import { collectConsistencyMeasurements } from "./consistency-collector";
+import { installConsistencyReadGuard } from "./consistency";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
 import { settleQualityRoute } from "./helpers";

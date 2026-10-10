@@ -97,6 +97,30 @@ describe("ViewSwitch", () => {
     expect(members).toHaveFocus();
   });
 
+  it("keeps focus on the sole enabled section for navigation keys and lets Tab leave the navigation", async () => {
+    const user = userEvent.setup();
+    render(<>
+      <ViewSwitch variant="section" ariaLabel="组织管理范围" value="members" onValueChange={() => {}} items={[
+        { value: "profile", label: "组织管理", disabled: true },
+        { value: "members", label: "人员管理" },
+        { value: "disabled", label: "不可用", disabled: true }
+      ]} />
+      <button type="button">下一步</button>
+    </>);
+    const members = screen.getByRole("button", { name: "人员管理" });
+    await user.tab();
+    expect(members).toHaveFocus();
+    for (const key of ["ArrowLeft", "ArrowRight", "Home", "End", "ArrowUp", "ArrowDown"]) {
+      await user.keyboard(`{${key}}`);
+      expect(members).toHaveFocus();
+      expect(members).toHaveAttribute("aria-current", "page");
+    }
+    await user.tab();
+    expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(members).toHaveFocus();
+  });
+
   it("links content tabs to panels, roves past disabled tabs, and requires activation to change content", async () => {
     function ContentTabs() {
       const [value, setValue] = useState("accounts");

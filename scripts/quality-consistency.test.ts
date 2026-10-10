@@ -1,9 +1,39 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, collectConsistencyMeasurements, consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights, shouldRequireXiaozeHint } from "../e2e/quality/consistency";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, shouldRequireXiaozeHint } from "../e2e/quality/consistency-assertions";
+
+function collectMarkup(markup: string) {
+  const dom = new JSDOM(`<main>${markup}</main>`);
+  vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockReturnValue({
+    x: 100, y: 100, left: 100, top: 100, right: 200, bottom: 132, width: 100, height: 32, toJSON: () => ({})
+  });
+  dom.window.Element.prototype.checkVisibility = () => true;
+  vi.stubGlobal("document", dom.window.document);
+  vi.stubGlobal("getComputedStyle", dom.window.getComputedStyle.bind(dom.window));
+  vi.stubGlobal("innerWidth", 1440);
+  vi.stubGlobal("innerHeight", 900);
+  try {
+    return collectConsistencyMeasurements();
+  } finally {
+    vi.unstubAllGlobals();
+    dom.window.close();
+  }
+}
+import { collectConsistencyMeasurements } from "../e2e/quality/consistency-collector";
+import { consistencyRoutes } from "../e2e/quality/consistency-routes";
+import { installConsistencyReadGuard } from "../e2e/quality/consistency";
 
 describe("view-switch collection", () => {
+  it("checks actual switches nested in module navigator containers while excluding only tree items", () => {
+    const measurements = collectMarkup(`
+      <div class="dts-parameter-workbench__navigator"><div role="tablist"><button role="tab">Protocol</button></div></div>
+      <div class="dts-topology-navigator"><div role="radiogroup"><button role="radio">Scope</button></div></div>
+      <div role="tree"><button role="treeitem" class="view-switch__item">Module</button></div>
+      <button class="parameter-catalog__tree-select--group view-switch__item">Catalog module</button>
+    `);
+    expect(measurements.viewSwitches.map((control) => control.role)).toEqual(["tab", "radio"]);
+  });
   it("collects shared and legacy switches, never Catalog tree-select or module navigator selections", () => {
     const dom = new JSDOM(`
       <header class="topbar"><button class="view-switch__item">Topbar switch</button></header>
@@ -15,13 +45,13 @@ describe("view-switch collection", () => {
         <div role="group" aria-label="日志视图切换"><button aria-pressed="true">Legacy log switch</button></div>
         <nav><ul class="parameter-catalog__tree"><li>
           <button class="parameter-catalog__tree-select" aria-pressed="true"><span class="parameter-catalog__tree-label">Module</span></button>
-          <button class="view-switch__item" aria-selected="true">Misclassified navigator item</button>
+          <button role="treeitem" class="view-switch__item" aria-selected="true">Misclassified navigator item</button>
         </li></ul></nav>
         <nav><button class="parameter-catalog__tree-select" aria-pressed="false">Standalone module</button></nav>
         <nav><button role="treeitem" aria-selected="true" class="view-switch__item">Tree item</button></nav>
-        <div role="tree"><button class="protocol-switch-button" aria-pressed="true">Tree selection</button></div>
-        <div class="dts-topology-navigator"><button class="view-switch__item" aria-pressed="true">Topology selection</button></div>
-        <div class="dts-parameter-workbench__navigator"><button class="view-switch__item" aria-selected="true">Navigator selection</button></div>
+        <div role="tree"><button role="treeitem" class="protocol-switch-button" aria-pressed="true">Tree selection</button></div>
+        <div class="dts-topology-navigator"><button role="treeitem" class="view-switch__item" aria-pressed="true">Topology selection</button></div>
+        <div class="dts-parameter-workbench__navigator"><button role="treeitem" class="view-switch__item" aria-selected="true">Navigator selection</button></div>
         <button class="parameter-catalog__tree-select--group view-switch__item" aria-pressed="true">Catalog class family</button>
         <nav><button aria-pressed="true">Legacy section button</button><a aria-current="page">Legacy section link</a></nav>
         <div role="tablist"><button role="tab" aria-selected="true">Semantic tab</button></div>
@@ -50,7 +80,39 @@ describe("view-switch collection", () => {
   });
 });
 
+describe("primary action collection", () => {
+  it("measures every shared primary marker, including disabled actions and new callers", () => {
+    const measurements = collectMarkup(`
+      <button class="button primary">Legacy primary</button>
+      <button data-slot="button" data-variant="default" disabled>Disabled primary</button>
+      <a data-slot="button" data-variant="primary" href="#">New primary caller</a>
+      <button data-primary-action="true">Shared legacy action</button>
+      <button data-slot="button" data-variant="secondary">Not primary</button>
+    `);
+    expect(measurements.primaryActions.map((action) => action.disabled)).toEqual([false, true, false, false]);
+  });
+});
+
 describe("Xiaoze placement contract", () => {
+  it("requires protected areas whenever a consistency route renders a table", () => {
+    expect(() => assertXiaozePlacement({
+      xiaozeLaunchers: [], xiaozeHints: [], tableScrollports: [], stickyActionAreas: [], visibleTableCount: 1
+    }, "/parameter-review")).toThrow("missing consistency measurements: tableScrollports");
+  });
+  it("protects native and ARIA tables without scroll containers on every table route", () => {
+    const measurements = collectMarkup('<table><tr><td>Audit</td></tr></table><div role="grid">Logs</div><div role="table">Members</div>');
+    expect(measurements.tableScrollports.map((area) => area.dom)).toEqual(["table", "div", "div"]);
+    for (const path of ["/audit", "/logs", "/user-permissions", "/organization/members"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("tableScrollports");
+      expect(() => requireMeasuredCategories({ tableScrollports: [] }, ["tableScrollports"], path))
+        .toThrow(`${path}: missing consistency measurements: tableScrollports`);
+    }
+  });
+  it("protects the audit route's row list even though it is not a native or ARIA table", () => {
+    const measurements = collectMarkup('<div class="audit-workspace-list"><ul><li>审计记录</li></ul></div>');
+    expect(measurements.tableScrollports.map((area) => area.dom)).toEqual(["div.audit-workspace-list"]);
+    expect(consistencyRoutes.find((route) => route.path === "/audit")?.required).toContain("tableScrollports");
+  });
   it.each([
     [false, 1440, true],
     [true, 1440, false],
@@ -79,6 +141,23 @@ describe("Xiaoze placement contract", () => {
 });
 
 describe("compact filter, sort and pagination height contract", () => {
+  it("rejects unmarked selects and select triggers in target toolbars, filters and pagination", () => {
+    const measurements = collectMarkup(`
+      <div class="audit-filters"><select aria-label="项目"><option>项目</option></select></div>
+      <div role="toolbar"><button data-slot="select-trigger">状态</button><input role="combobox" aria-label="搜索" /></div>
+      <nav class="pagination"><button role="combobox">每页数量</button></nav>
+      <div class="filters"><button aria-haspopup="listbox" data-compact-control="filter">合规筛选</button></div>
+      <select aria-label="普通表单"><option>表单</option></select>
+    `);
+    expect(measurements.unmarkedCompactControls.map((control) => control.dom))
+      .toEqual(["select", "button", "button"]);
+    expect(() => requireCompactControlHeights(measurements, "/audit"))
+      .toThrow("unmarked compact control: select");
+  });
+  it("rejects an empty applicable category instead of vacuously accepting a route", () => {
+    expect(() => requireCompactControlHeights({}, "/audit"))
+      .toThrow("missing consistency measurements: filterControls");
+  });
   const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: null, height, compactControl });
 
   it.each([
@@ -89,7 +168,8 @@ describe("compact filter, sort and pagination height contract", () => {
     ["moduleTreeLabels", "button.parameter-catalog__tree-select", 40],
     ["xiaozeLaunchers", "button.xiaoze-chat-toggle", undefined]
   ])("ignores unrelated %s measurement %s in the full route result", (category, dom, height) => {
-    const measurements = { [category]: [{ dom, height }], filterControls: [control("select.compact-filter-control", 32)] };
+    const measurements = { [category]: [{ dom, height }], filterControls: [control("select.compact-filter-control", 32)],
+      paginationControls: [control("button.next-page", 32, "pagination")] };
     expect(() => requireCompactControlHeights(measurements, "/parameter-admin/specs")).not.toThrow();
   });
 
@@ -121,8 +201,8 @@ describe("compact filter, sort and pagination height contract", () => {
   it("accepts native and custom peers across all three jobs at 32px", () => {
     expect(() => requireCompactControlHeights({
       filterControls: [control("select", 32), control("button", 32)],
-      sortControls: [control("select.library-sort", 32)],
-      paginationControls: [control("button", 32), control("select", 32)]
+      sortControls: [control("select.library-sort", 32, "sort")],
+      paginationControls: [control("button", 32, "pagination"), control("select", 32, "pagination")]
     }, "/parameter-admin/specs")).not.toThrow();
   });
 
@@ -138,17 +218,17 @@ describe("compact filter, sort and pagination height contract", () => {
 
 describe("consistency measurement coverage", () => {
   it("fails with the route and missing applicable category instead of silently passing", () => {
-    expect(() => requireConsistencyMeasurements({ viewSwitches: [] }, ["viewSwitches"], "/parameters"))
+    expect(() => requireMeasuredCategories({ viewSwitches: [] }, ["viewSwitches"], "/parameters"))
       .toThrow("/parameters: missing consistency measurements: viewSwitches");
   });
 
   it("reports every missing required category, including absent fields", () => {
-    expect(() => requireConsistencyMeasurements({}, ["primaryActions", "rowActions", "xiaozeHints"], "/parameter-admin/specs"))
+    expect(() => requireMeasuredCategories({}, ["primaryActions", "rowActions", "xiaozeHints"], "/parameter-admin/specs"))
       .toThrow("/parameter-admin/specs: missing consistency measurements: primaryActions, rowActions, xiaozeHints");
   });
 
   it("accepts collected categories and ignores categories that do not apply", () => {
-    expect(() => requireConsistencyMeasurements({ primaryActions: [{}], rowActions: [] }, ["primaryActions"], "/log-dashboard"))
+    expect(() => requireMeasuredCategories({ primaryActions: [{}], rowActions: [] }, ["primaryActions"], "/log-dashboard"))
       .not.toThrow();
   });
 

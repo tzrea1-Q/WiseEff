@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { requireViewSwitchStyles } from "../e2e/quality/view-switch";
-import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency";
+import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency-routes";
 
 const signatures = [
   { variant: "section", role: "button", groupRole: "navigation", height: 40, radius: "999px 999px 999px 999px", fontSize: "14px", lineHeight: "22px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(0, 61, 155)" },
