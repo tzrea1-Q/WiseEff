@@ -51,10 +51,11 @@ for (const route of routes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await waitForFontsAndNextPaint(page);
-        const requiresHint = shouldRequireXiaozeHint(await page.evaluate(() => ({
+        const pageState = await page.evaluate(() => ({
           hasDialog: document.body.matches(':has([role="dialog"])'),
           viewportWidth: window.innerWidth
-        })));
+        }));
+        const requiresHint = shouldRequireXiaozeHint(pageState);
         if (theme === "light" && requiresHint) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
         }
@@ -81,7 +82,9 @@ for (const route of routes) {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
         }
-        if (theme === "light") {
+        // Routes that deep-link into a modal (e.g. identity mapping's pending work) trap focus by design,
+        // so the launcher behind the dialog is intentionally unreachable by keyboard.
+        if (theme === "light" && !pageState.hasDialog) {
           const launcher = page.getByTestId("copilot-chat-toggle");
           const surface = launcher.locator(".xiaoze-chat-toggle__surface");
           await launcher.focus();
