@@ -2652,20 +2652,10 @@
     "/api/v2/parameter-modules/discovery-hints/dismissals": {
       "post": {
         "operationId": "parameterModules.dismissCompatible",
-        "summary": "Dismiss a compatible from the unclassified queue",
+        "summary": "Retired: Dismiss a compatible from the unclassified queue",
         "tags": [
           "parameter-modules"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DismissCompatibleRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2681,6 +2671,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -2692,7 +2690,7 @@
     "/api/v2/parameter-modules/discovery-hints/dismissals/{compatible}": {
       "delete": {
         "operationId": "parameterModules.restoreCompatible",
-        "summary": "Restore a dismissed compatible to the unclassified queue",
+        "summary": "Retired: Restore a dismissed compatible to the unclassified queue",
         "tags": [
           "parameter-modules"
         ],
@@ -2724,6 +2722,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -2735,20 +2741,10 @@
     "/api/v2/parameter-modules/mappings/preview": {
       "post": {
         "operationId": "parameterModules.previewMapping",
-        "summary": "Preview scoped impact of creating a module mapping",
+        "summary": "Retired: Preview scoped impact of creating a module mapping",
         "tags": [
           "parameter-modules"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateModuleMappingRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2767,6 +2763,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -2778,20 +2782,10 @@
     "/api/v2/parameter-modules/mappings": {
       "post": {
         "operationId": "parameterModules.createMapping",
-        "summary": "Create a module mapping and apply scoped recompute",
+        "summary": "Retired: Create a module mapping and apply scoped recompute",
         "tags": [
           "parameter-modules"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateModuleMappingRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2813,6 +2807,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -2824,7 +2826,7 @@
     "/api/v2/parameter-modules/mappings/{mappingId}": {
       "delete": {
         "operationId": "parameterModules.deleteMapping",
-        "summary": "Delete a module mapping and apply scoped recompute",
+        "summary": "Retired: Delete a module mapping and apply scoped recompute",
         "tags": [
           "parameter-modules"
         ],
@@ -2859,6 +2861,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -2870,20 +2880,10 @@
     "/api/v2/parameter-modules/recompute-bindings": {
       "post": {
         "operationId": "parameterModules.recomputeBindings",
-        "summary": "Recompute binding module assignments (operations tool)",
+        "summary": "Retired: Recompute binding module assignments (operations tool)",
         "tags": [
           "parameter-modules"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RecomputeBindingModulesRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2900,6 +2900,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -2976,20 +2984,10 @@
       },
       "post": {
         "operationId": "parameterModules.registerDriver",
-        "summary": "Register or claim a driver group with exact compatible mappings",
+        "summary": "Retired: Register or claim a driver group with exact compatible mappings",
         "tags": [
           "parameter-modules"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterOrClaimDriverRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3009,6 +3007,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3022,7 +3028,7 @@
     "/api/v2/parameter-modules/driver-registry/{moduleId}": {
       "patch": {
         "operationId": "parameterModules.updateDriverRegistration",
-        "summary": "Update driver registration nature and/or instance cardinality",
+        "summary": "Retired: Update driver registration nature and/or instance cardinality",
         "tags": [
           "parameter-modules"
         ],
@@ -3036,16 +3042,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDriverRegistrationRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3062,6 +3058,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3075,7 +3079,7 @@
     "/api/v2/parameter-modules/driver-registry/{moduleId}/default-business-category": {
       "patch": {
         "operationId": "parameterModules.updateDriverRegistrationDefault",
-        "summary": "Update driver registration default business category and replay auto placements",
+        "summary": "Retired: Update driver registration default business category and replay auto placements",
         "tags": [
           "parameter-modules"
         ],
@@ -3089,16 +3093,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDriverRegistrationDefaultRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3115,6 +3109,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3128,7 +3130,7 @@
     "/api/v2/parameter-modules/driver-registry/{moduleId}/replay-placement": {
       "post": {
         "operationId": "parameterModules.replayDriverPlacement",
-        "summary": "Replay auto driver-group placement from registration default business category",
+        "summary": "Retired: Replay auto driver-group placement from registration default business category",
         "tags": [
           "parameter-modules"
         ],
@@ -3160,6 +3162,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -3171,7 +3181,7 @@
     "/api/v2/organization-driver-schemas": {
       "get": {
         "operationId": "parameterSpecs.listOrganizationDriverSchemas",
-        "summary": "List organization-owned manual driver schema overlays",
+        "summary": "Retired: List organization-owned manual driver schema overlays",
         "tags": [
           "parameters"
         ],
@@ -3190,6 +3200,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -3199,20 +3217,10 @@
       },
       "post": {
         "operationId": "parameterSpecs.createOrganizationDriverSchema",
-        "summary": "Create a draft organization driver schema overlay",
+        "summary": "Retired: Create a draft organization driver schema overlay",
         "tags": [
           "parameters"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateOrganizationDriverSchemaRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3229,6 +3237,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3242,7 +3258,7 @@
     "/api/v2/organization-driver-schemas/{schemaId}": {
       "get": {
         "operationId": "parameterSpecs.getOrganizationDriverSchema",
-        "summary": "Get one organization driver schema overlay",
+        "summary": "Retired: Get one organization driver schema overlay",
         "tags": [
           "parameters"
         ],
@@ -3274,6 +3290,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -3283,7 +3307,7 @@
       },
       "patch": {
         "operationId": "parameterSpecs.updateOrganizationDriverSchema",
-        "summary": "Update a draft organization driver schema overlay",
+        "summary": "Retired: Update a draft organization driver schema overlay",
         "tags": [
           "parameters"
         ],
@@ -3297,16 +3321,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateOrganizationDriverSchemaRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3323,6 +3337,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3336,7 +3358,7 @@
     "/api/v2/organization-driver-schemas/{schemaId}/activate": {
       "post": {
         "operationId": "parameterSpecs.activateOrganizationDriverSchema",
-        "summary": "Activate an organization driver schema overlay and upgrade provisional specs",
+        "summary": "Retired: Activate an organization driver schema overlay and upgrade provisional specs",
         "tags": [
           "parameters"
         ],
@@ -3369,6 +3391,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3382,7 +3412,7 @@
     "/api/v2/organization-driver-schemas/{schemaId}/deprecation-impact": {
       "get": {
         "operationId": "parameterSpecs.previewOrganizationDriverSchemaDeprecation",
-        "summary": "Preview coverage and usage impact before overlay retirement",
+        "summary": "Retired: Preview coverage and usage impact before overlay retirement",
         "tags": [
           "parameters"
         ],
@@ -3414,6 +3444,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -3425,7 +3463,7 @@
     "/api/v2/organization-driver-schemas/{schemaId}/deprecate": {
       "post": {
         "operationId": "parameterSpecs.deprecateOrganizationDriverSchema",
-        "summary": "Deprecate an organization driver schema overlay",
+        "summary": "Retired: Deprecate an organization driver schema overlay",
         "tags": [
           "parameters"
         ],
@@ -3439,16 +3477,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeprecateOrganizationDriverSchemaRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3470,6 +3498,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -3481,7 +3517,7 @@
     "/api/v2/platform/driver-schemas/promotion-candidates": {
       "get": {
         "operationId": "parameterSpecs.listPromotionCandidates",
-        "summary": "List platform driver-schema promotion candidates by compatible",
+        "summary": "Retired: List platform driver-schema promotion candidates by compatible",
         "tags": [
           "parameters"
         ],
@@ -3498,6 +3534,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3544,20 +3588,10 @@
     "/api/v2/platform/driver-schemas/promotions": {
       "post": {
         "operationId": "parameterSpecs.promoteDriverSchemaOverlay",
-        "summary": "Promote organization driver schema overlays into a platform-tier schema",
+        "summary": "Retired: Promote organization driver schema overlays into a platform-tier schema",
         "tags": [
           "parameters"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PromoteDriverSchemaOverlayRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3576,6 +3610,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -3587,7 +3629,7 @@
     "/api/v2/platform/driver-schemas/promotions/{promotionId}/revert": {
       "post": {
         "operationId": "parameterSpecs.revertDriverSchemaPromotion",
-        "summary": "Revert a platform driver-schema promotion and restore contributor overlays",
+        "summary": "Retired: Revert a platform driver-schema promotion and restore contributor overlays",
         "tags": [
           "parameters"
         ],
@@ -3620,6 +3662,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -4726,20 +4776,10 @@
       },
       "post": {
         "operationId": "parameterSpecs.create",
-        "summary": "Create a draft parameter definition bound to an attribution subject",
+        "summary": "Retired: Create a draft parameter definition bound to an attribution subject",
         "tags": [
           "parameters"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateParameterSpecRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4756,6 +4796,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -4851,7 +4899,7 @@
       },
       "patch": {
         "operationId": "parameterSpecs.update",
-        "summary": "Update documentation-class fields on an active definition",
+        "summary": "Retired: Update documentation-class fields on an active definition",
         "tags": [
           "parameters"
         ],
@@ -4865,16 +4913,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateParameterSpecRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4894,6 +4932,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -4907,7 +4953,7 @@
     "/api/v2/parameter-specs/{specId}/cutover": {
       "get": {
         "operationId": "parameterSpecs.getCutover",
-        "summary": "Get open parameter spec version cutover impact",
+        "summary": "Retired: Get open parameter spec version cutover impact",
         "tags": [
           "parameters"
         ],
@@ -4937,6 +4983,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -4950,7 +5004,7 @@
     "/api/v2/parameter-specs/{specId}/cutover/prepare": {
       "post": {
         "operationId": "parameterSpecs.prepareCutover",
-        "summary": "Prepare binding items for parameter spec version cutover",
+        "summary": "Retired: Prepare binding items for parameter spec version cutover",
         "tags": [
           "parameters"
         ],
@@ -4964,16 +5018,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PrepareParameterSpecCutoverRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4995,6 +5039,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -5006,7 +5058,7 @@
     "/api/v2/parameter-specs/{specId}/cutover/finalize": {
       "post": {
         "operationId": "parameterSpecs.finalizeCutover",
-        "summary": "Finalize parameter spec version cutover after prepare",
+        "summary": "Retired: Finalize parameter spec version cutover after prepare",
         "tags": [
           "parameters"
         ],
@@ -5020,16 +5072,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FinalizeParameterSpecCutoverRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5049,6 +5091,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5127,7 +5177,7 @@
     "/api/v2/parameter-spec-review-tasks/{taskId}/resolve": {
       "post": {
         "operationId": "parameterSpecs.resolveReviewTask",
-        "summary": "Resolve a parameter specification review task",
+        "summary": "Retired: Resolve a parameter specification review task",
         "tags": [
           "parameters"
         ],
@@ -5141,16 +5191,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResolveParameterSpecReviewTaskRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5170,6 +5210,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5183,7 +5231,7 @@
     "/api/v2/parameter-specs/{specId}/deprecate": {
       "post": {
         "operationId": "parameterSpecs.deprecate",
-        "summary": "Soft-deprecate a parameter definition (definition lifecycle)",
+        "summary": "Retired: Soft-deprecate a parameter definition (definition lifecycle)",
         "tags": [
           "parameters"
         ],
@@ -5197,16 +5245,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeprecateParameterSpecRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5226,6 +5264,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5239,7 +5285,7 @@
     "/api/v2/parameter-specs/{specId}/restore": {
       "post": {
         "operationId": "parameterSpecs.restore",
-        "summary": "Restore a soft-deprecated parameter definition",
+        "summary": "Retired: Restore a soft-deprecated parameter definition",
         "tags": [
           "parameters"
         ],
@@ -5253,16 +5299,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RestoreParameterSpecRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5282,6 +5318,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5295,7 +5339,7 @@
     "/api/v2/parameter-specs/{specId}/reattribute": {
       "post": {
         "operationId": "parameterSpecs.reattribute",
-        "summary": "Correct a parameter definition attribution subject in place",
+        "summary": "Retired: Correct a parameter definition attribution subject in place",
         "tags": [
           "parameters"
         ],
@@ -5309,16 +5353,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReattributeParameterSpecRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5338,6 +5372,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5351,7 +5393,7 @@
     "/api/v2/parameter-specs/{specId}/rename-property-key": {
       "post": {
         "operationId": "parameterSpecs.renamePropertyKey",
-        "summary": "Rename a zero-reference parameter definition property key in place",
+        "summary": "Retired: Rename a zero-reference parameter definition property key in place",
         "tags": [
           "parameters"
         ],
@@ -5365,16 +5407,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RenameParameterSpecPropertyKeyRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5394,6 +5426,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5407,7 +5447,7 @@
     "/api/v2/parameter-specs/{specId}/property-key-cutover": {
       "get": {
         "operationId": "parameterSpecs.getPropertyKeyCutover",
-        "summary": "Read the open property-key source cutover run for a spec",
+        "summary": "Retired: Read the open property-key source cutover run for a spec",
         "tags": [
           "parameters"
         ],
@@ -5437,6 +5477,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5450,7 +5498,7 @@
     "/api/v2/parameter-specs/{specId}/property-key-cutover/preview": {
       "post": {
         "operationId": "parameterSpecs.previewPropertyKeyCutover",
-        "summary": "Preview a referenced property-key source cutover without writing catalog or source",
+        "summary": "Retired: Preview a referenced property-key source cutover without writing catalog or source",
         "tags": [
           "parameters"
         ],
@@ -5464,16 +5512,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PreviewPropertyKeyCutoverRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5490,6 +5528,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5503,7 +5549,7 @@
     "/api/v2/parameter-specs/{specId}/property-key-cutover/start": {
       "post": {
         "operationId": "parameterSpecs.startPropertyKeyCutover",
-        "summary": "Start a referenced property-key source cutover run from the preview locations",
+        "summary": "Retired: Start a referenced property-key source cutover run from the preview locations",
         "tags": [
           "parameters"
         ],
@@ -5517,16 +5563,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartPropertyKeyCutoverRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5546,6 +5582,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5559,7 +5603,7 @@
     "/api/v2/parameter-specs/{specId}/property-key-cutover/prepare": {
       "post": {
         "operationId": "parameterSpecs.preparePropertyKeyCutover",
-        "summary": "Stage property-key source rewrites as file-candidate drafts without writing live source or catalog",
+        "summary": "Retired: Stage property-key source rewrites as file-candidate drafts without writing live source or catalog",
         "tags": [
           "parameters"
         ],
@@ -5573,16 +5617,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PreparePropertyKeyCutoverRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5604,6 +5638,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -5615,7 +5657,7 @@
     "/api/v2/parameter-specs/{specId}/property-key-cutover/finalize": {
       "post": {
         "operationId": "parameterSpecs.finalizePropertyKeyCutover",
-        "summary": "Finalize a property-key source cutover by rewriting the catalog triple after sources moved",
+        "summary": "Retired: Finalize a property-key source cutover by rewriting the catalog triple after sources moved",
         "tags": [
           "parameters"
         ],
@@ -5629,16 +5671,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FinalizePropertyKeyCutoverRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5658,6 +5690,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5997,7 +6037,7 @@
     "/api/v2/identity-mapping-tasks/{taskId}/resolve": {
       "post": {
         "operationId": "parameterTopology.resolveIdentityMappingTask",
-        "summary": "Resolve or protected re-resolve an identity mapping task",
+        "summary": "Retired: Resolve or protected re-resolve an identity mapping task",
         "tags": [
           "parameters"
         ],
@@ -6011,16 +6051,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResolveIdentityMappingTaskRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -6042,6 +6072,14 @@
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
                 }
               }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "500": {
@@ -6053,7 +6091,7 @@
     "/api/v2/identity-mapping-tasks/{taskId}/reopen": {
       "post": {
         "operationId": "parameterTopology.reopenIdentityMappingTask",
-        "summary": "Reopen a non-destructive identity mapping outcome",
+        "summary": "Retired: Reopen a non-destructive identity mapping outcome",
         "tags": [
           "parameters"
         ],
@@ -6067,16 +6105,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReopenIdentityMappingTaskRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -6096,6 +6124,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -16451,7 +16487,7 @@
     "/api/v2/parameter-specs/{specId}/activate": {
       "post": {
         "operationId": "parameterSpecs.activate",
-        "summary": "Activate a draft, or mint a successor on an active definition",
+        "summary": "Retired: Activate a draft, or mint a successor on an active definition",
         "tags": [
           "parameters"
         ],
@@ -16484,6 +16520,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -17362,45 +17406,9 @@
         "type": "object",
         "x-wiseeff-schema": "ParameterModuleDiscoveryHintsResponse"
       },
-      "DismissCompatibleRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "DismissCompatibleRequest"
-      },
-      "CreateModuleMappingRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "CreateModuleMappingRequest"
-      },
-      "RecomputeBindingModulesRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "RecomputeBindingModulesRequest"
-      },
       "DriverRegistryListResponse": {
         "type": "object",
         "x-wiseeff-schema": "DriverRegistryListResponse"
-      },
-      "RegisterOrClaimDriverRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "RegisterOrClaimDriverRequest"
-      },
-      "UpdateDriverRegistrationRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "UpdateDriverRegistrationRequest"
-      },
-      "UpdateDriverRegistrationDefaultRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "UpdateDriverRegistrationDefaultRequest"
-      },
-      "CreateOrganizationDriverSchemaRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "CreateOrganizationDriverSchemaRequest"
-      },
-      "UpdateOrganizationDriverSchemaRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "UpdateOrganizationDriverSchemaRequest"
-      },
-      "DeprecateOrganizationDriverSchemaRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "DeprecateOrganizationDriverSchemaRequest"
       },
       "DriverSchemaPromotionHistoryListResponse": {
         "type": "object",
@@ -17456,10 +17464,6 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "DriverSchemaPromotionHistoryListResponse"
-      },
-      "PromoteDriverSchemaOverlayRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "PromoteDriverSchemaOverlayRequest"
       },
       "ProjectAdminListResponse": {
         "type": "object",
@@ -20498,10 +20502,6 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogLegacySpecListResponse"
       },
-      "CreateParameterSpecRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "CreateParameterSpecRequest"
-      },
       "CatalogLegacySpecResponse": {
         "type": "object",
         "properties": {
@@ -21154,53 +21154,9 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogLegacySpecResponse"
       },
-      "PrepareParameterSpecCutoverRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "PrepareParameterSpecCutoverRequest"
-      },
-      "FinalizeParameterSpecCutoverRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "FinalizeParameterSpecCutoverRequest"
-      },
       "ParameterSpecReviewTaskListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterSpecReviewTaskListResponse"
-      },
-      "ResolveParameterSpecReviewTaskRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "ResolveParameterSpecReviewTaskRequest"
-      },
-      "DeprecateParameterSpecRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "DeprecateParameterSpecRequest"
-      },
-      "RestoreParameterSpecRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "RestoreParameterSpecRequest"
-      },
-      "ReattributeParameterSpecRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "ReattributeParameterSpecRequest"
-      },
-      "RenameParameterSpecPropertyKeyRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "RenameParameterSpecPropertyKeyRequest"
-      },
-      "PreviewPropertyKeyCutoverRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "PreviewPropertyKeyCutoverRequest"
-      },
-      "StartPropertyKeyCutoverRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "StartPropertyKeyCutoverRequest"
-      },
-      "PreparePropertyKeyCutoverRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "PreparePropertyKeyCutoverRequest"
-      },
-      "FinalizePropertyKeyCutoverRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "FinalizePropertyKeyCutoverRequest"
       },
       "ConfigRevisionListResponse": {
         "type": "object",
@@ -21570,14 +21526,6 @@
       "IdentityMappingTaskListResponse": {
         "type": "object",
         "x-wiseeff-schema": "IdentityMappingTaskListResponse"
-      },
-      "ResolveIdentityMappingTaskRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "ResolveIdentityMappingTaskRequest"
-      },
-      "ReopenIdentityMappingTaskRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "ReopenIdentityMappingTaskRequest"
       },
       "ValidateConfigRevisionRequest": {
         "type": "object",
@@ -34401,10 +34349,6 @@
       "ParameterWorkflowAssigneeListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterWorkflowAssigneeListResponse"
-      },
-      "UpdateParameterSpecRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "UpdateParameterSpecRequest"
       },
       "DeviceBridgePairingCodeResponse": {
         "type": "object",
