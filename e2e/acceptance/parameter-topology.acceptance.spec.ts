@@ -2343,6 +2343,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       expect(candidateBindings.status(), await candidateBindings.text()).toBe(200);
       expect((await candidateBindings.json()).items).toEqual(bindingsBody.items);
       await expect(semanticBindingRow(workspace, "sc8562@6E")).toBeVisible({ timeout: 20_000 });
+      const selectedScope = workspace.getByRole("treeitem", { selected: true });
+      await expect(selectedScope).toHaveCount(1);
+      await selectedScope.click();
+      await expect(workspace.getByRole("treeitem", { selected: true })).toHaveCount(0);
+      expect(new URL(page.url()).searchParams.has("moduleNode")).toBe(false);
+      await expect(semanticBindingRow(workspace, "mt5788@2B")).toBeVisible();
       const nodeDraftReadPath = "/api/v1/parameter-drafts/mine";
       const nodeDraftReadUrl = apiRoute(`${nodeDraftReadPath}?projectId=${encodeURIComponent(projectId)}`);
       const valueDraftReadPath = `/api/v2/projects/${projectId}/parameter-value-drafts`;

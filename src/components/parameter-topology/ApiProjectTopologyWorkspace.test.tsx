@@ -795,6 +795,54 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(failedOwner === "value" ? listNodeEnablementDrafts : listDrafts).toHaveBeenCalledTimes(1);
   });
 
+  it.each([false, true])("preserves navigator scope across a failed node-enablement hydration read (cleared=%s)", async (clearScope) => {
+    const previousUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.history.replaceState(null, "", "/parameters?project=aurora");
+    try {
+      const listNodeEnablementDrafts = vi.fn().mockResolvedValue([]);
+      const listDrafts = vi.fn().mockResolvedValue([]);
+      const repository = createRepository({ listNodeEnablementDrafts });
+      const workspace = <ApiProjectTopologyWorkspace projectId="aurora" canEdit topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+      />;
+      const first = render(workspace);
+      expect(await screen.findByRole("row", { name: /gpio_int.*mt5788|mt5788.*gpio_int/ })).toBeVisible();
+      const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+      const module = within(workbench).getByRole("treeitem", { name: /未分类 · sc8562/ });
+      fireEvent.keyDown(module, { key: "ArrowRight" });
+      const device = within(workbench).getByRole("treeitem", { name: /sc8562@6E/ });
+      fireEvent.click(device);
+      const selectedId = new URL(window.location.href).searchParams.get("moduleNode");
+      expect(selectedId).toBeTruthy();
+      expect(screen.getByRole("tab", { name: "参数列表" })).toHaveAttribute("aria-selected", "true");
+      if (clearScope) {
+        fireEvent.click(device);
+        expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+        expect(within(workbench).getByRole("row", { name: /gpio_int.*mt5788|mt5788.*gpio_int/ })).toBeVisible();
+      }
+      first.unmount();
+
+      listNodeEnablementDrafts.mockRejectedValueOnce(new Error("Node enablement draft read unavailable"));
+      render(workspace);
+      expect(await screen.findByRole("alert", { name: "节点启用草稿加载失败" })).toHaveTextContent("节点启用草稿加载失败");
+      expect(screen.queryByRole("alert", { name: "参数值草稿加载失败" })).not.toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "参数列表" })).toHaveAttribute("aria-selected", "true");
+      expect(await screen.findByRole("row", { name: /gpio_int.*sc8562|sc8562.*gpio_int/ })).toBeVisible();
+      expect(new URL(window.location.href).searchParams.get("moduleNode")).toBe(clearScope ? null : selectedId);
+      expect(screen.getByRole("treeitem", { name: /sc8562@6E/ })).toHaveAttribute("aria-selected", String(!clearScope));
+      if (clearScope) {
+        expect(screen.getByRole("row", { name: /gpio_int.*mt5788|mt5788.*gpio_int/ })).toBeVisible();
+      } else {
+        expect(screen.queryByRole("row", { name: /gpio_int.*mt5788|mt5788.*gpio_int/ })).not.toBeInTheDocument();
+      }
+      expect(listNodeEnablementDrafts).toHaveBeenCalledTimes(2);
+      expect(listDrafts).toHaveBeenCalledTimes(2);
+    } finally {
+      window.history.replaceState(null, "", previousUrl);
+    }
+  });
+
   it("shows both owner errors without an empty tray when both draft reads fail", async () => {
     render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit
       topologyRepository={createRepository({
