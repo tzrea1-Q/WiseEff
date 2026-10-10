@@ -66,6 +66,9 @@ export function ReviewResolutionDialog({
   const [resolutionType, setResolutionType] = useState<ResolutionType>(
     allowedResolutions[0] ?? "mark-out-of-scope"
   );
+  const [subjectId, setSubjectId] = useState(
+    item.candidates.length === 1 ? item.candidates[0].subjectId : ""
+  );
   const [placementMode, setPlacementMode] = useState<"use-default" | "choose-parent">("use-default");
   const [parentPlacementId, setParentPlacementId] = useState(placementOptions[0]?.id ?? "");
   const [displayName, setDisplayName] = useState(placementOptions[0]?.displayName ?? "");
@@ -83,6 +86,7 @@ export function ReviewResolutionDialog({
     }
     gateRef.current = createGovernanceSubmitGate();
     setResolutionType(item.allowedResolutions[0] ?? "mark-out-of-scope");
+    setSubjectId(item.candidates.length === 1 ? item.candidates[0].subjectId : "");
     setPlacementMode("use-default");
     setParentPlacementId(placementOptions[0]?.id ?? "");
     setDisplayName(placementOptions[0]?.displayName ?? "");
@@ -103,14 +107,16 @@ export function ReviewResolutionDialog({
     choice.mode === "use-default" ||
     (choice.parentPlacementId.trim().length > 0 && choice.displayName.trim().length > 0);
   const restoreReady = resolutionType !== "restore-registration" || registrationId.trim().length > 0;
-  const canContinue = allowed && reasonReady && placementReady && restoreReady;
+  const subjectReady = resolutionType !== "register-subject" ||
+    item.candidates.some((candidate) => candidate.subjectId === subjectId);
+  const canContinue = allowed && reasonReady && placementReady && restoreReady && subjectReady;
 
   const buildBody = (): CatalogResolveReviewItemRequest => {
     if (resolutionType === "register-subject") {
       return {
         resolution: {
           type: "register-subject",
-          subjectId: item.candidates[0]?.subjectId ?? "",
+          subjectId,
           placement: placementIntentFromChoice(choice)
         },
         reason: reason.trim()
@@ -197,6 +203,23 @@ export function ReviewResolutionDialog({
                         </label>
                       ))}
                     </fieldset>
+                    {resolutionType === "register-subject" && item.candidates.length > 1 ? (
+                      <label>
+                        选择候选主体
+                        <select
+                          aria-label="选择候选主体"
+                          value={subjectId}
+                          onChange={(event) => setSubjectId(event.target.value)}
+                        >
+                          <option value="">请选择候选主体</option>
+                          {item.candidates.map((candidate) => (
+                            <option key={candidate.subjectId} value={candidate.subjectId}>
+                              {candidate.subjectId}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     {resolutionType === "register-subject" ? (
                       <fieldset>
                         <legend>{governanceCopy.placementMode}</legend>

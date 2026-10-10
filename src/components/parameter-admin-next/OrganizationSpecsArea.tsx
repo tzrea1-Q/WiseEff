@@ -7,16 +7,14 @@ import {
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { presentError } from "@/infrastructure/http/presentError";
 import { OrganizationIdentityMappingPanel } from "./OrganizationIdentityMappingPanel";
-import { OrganizationSpecGovernancePanel } from "./OrganizationSpecGovernancePanel";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
 export type OrganizationSpecsAreaProps = {
   pathname: string;
   search: string;
   onNavigate: (path: string) => void;
-  isPlatformSuperAdmin?: boolean;
   /** Live Catalog destination for `/parameter-admin/specs`. Identity-mapping stays nested. */
-  catalogLibrary?: ReactNode;
+  catalogLibrary: ReactNode;
 };
 
 type MappingCountState =
@@ -32,7 +30,6 @@ export function OrganizationSpecsArea({
   pathname,
   search,
   onNavigate,
-  isPlatformSuperAdmin = false,
   catalogLibrary
 }: OrganizationSpecsAreaProps) {
   const { application, dispatch } = useParameterAdmin();
@@ -154,22 +151,8 @@ export function OrganizationSpecsArea({
 
       {activeSubView === "identity-mapping" ? (
         <OrganizationIdentityMappingPanel onTasksLoaded={handleMappingTasksLoaded} />
-      ) : catalogLibrary ? (
-        catalogLibrary
       ) : (
-        <OrganizationSpecGovernancePanel
-          search={search}
-          pathname={pathname}
-          isPlatformSuperAdmin={isPlatformSuperAdmin}
-          onNavigate={onNavigate}
-          onOpenIdentityMapping={
-            hasMappingSurface ? () => goToSubView("identity-mapping") : undefined
-          }
-          identityMappingOpenCount={openCount}
-          identityMappingCountError={
-            mappingCounts.status === "error" ? mappingCounts.message : null
-          }
-        />
+        catalogLibrary
       )}
     </>
   );

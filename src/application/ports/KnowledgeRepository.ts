@@ -87,8 +87,6 @@ export interface KnowledgeRepository {
   /** Add or remove only a verified canonical Definition reference. */
   addDefinitionReference(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
   removeDefinitionReference(entryId: string, definitionId: string): Promise<KnowledgeEntry>;
-  /** Add a structural definition reference (idempotent; entry-edit gated). */
-  addParameterReference(entryId: string, specId: string): Promise<KnowledgeEntry>;
   /** Remove a structural definition reference (entry-edit gated). */
   removeParameterReference(entryId: string, specId: string): Promise<KnowledgeEntry>;
   getFileObjectUrl(entryId: string): Promise<string>;

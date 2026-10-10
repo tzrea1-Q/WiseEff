@@ -140,7 +140,6 @@ export function ParameterAdminNextPage({
       ? null
       : parsedOrganizationView ??
         (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
-  const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
   const handleCatalogAnchorChange = useCallback(
     (href: string, mode: "push" | "replace") => {
       if (mode === "replace") {
@@ -249,7 +248,6 @@ export function ParameterAdminNextPage({
                 pathname={pathname}
                 search={search}
                 onNavigate={onNavigate}
-                isPlatformSuperAdmin={isPlatformSuperAdmin}
                 catalogLibrary={catalogLibrary}
               />
             ) : null}

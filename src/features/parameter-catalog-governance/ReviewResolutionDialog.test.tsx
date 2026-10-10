@@ -70,6 +70,55 @@ async function confirmResolve() {
 }
 
 describe("ReviewResolutionDialog", () => {
+  it("requires an explicit candidate and reason instead of accepting the first ambiguous subject", async () => {
+    const user = userEvent.setup();
+    const selectedSubjectId = "csub_explicit_selection";
+    const { resolveReviewItem, createRegistration } = renderDialog({
+      reviewItem: item({
+        candidates: [
+          { subjectId: CATALOG_SUBJECT_ID, evidence: ["first candidate"] },
+          { subjectId: selectedSubjectId, evidence: ["second candidate"] }
+        ],
+        allowedResolutions: ["register-subject"]
+      })
+    });
+    const proceed = screen.getByRole("button", { name: "继续确认" });
+
+    expect(screen.queryByRole("button", { name: /接受第一个|accept first/i })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("原因"), "按证据选择主体");
+    expect(proceed).toBeDisabled();
+    await user.click(proceed);
+    expect(screen.queryByRole("dialog", { name: "确认处理审核" })).not.toBeInTheDocument();
+    expect(resolveReviewItem).not.toHaveBeenCalled();
+
+    const candidates = screen.getByRole("combobox", { name: "选择候选主体" });
+    expect(candidates).toHaveValue("");
+    await user.selectOptions(candidates, selectedSubjectId);
+    await user.clear(screen.getByLabelText("原因"));
+    await user.type(screen.getByLabelText("原因"), "   ");
+    expect(proceed).toBeDisabled();
+    await user.click(proceed);
+    expect(resolveReviewItem).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText("原因"));
+    await confirmResolve();
+    await waitFor(() => expect(resolveReviewItem).toHaveBeenCalledTimes(1));
+    expect(resolveReviewItem).toHaveBeenCalledWith(
+      CATALOG_ORGANIZATION_ID,
+      CATALOG_REVIEW_ITEM_ID,
+      {
+        resolution: {
+          type: "register-subject",
+          subjectId: selectedSubjectId,
+          placement: { mode: "use-default" }
+        },
+        reason: "按证据处理"
+      },
+      { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "key-resolve", ifMatch: "etag-1" }
+    );
+    expect(createRegistration).not.toHaveBeenCalled();
+  });
+
   it("submits one atomic resolveReviewItem command with release, ETag, and idempotency", async () => {
     const { resolveReviewItem, createRegistration } = renderDialog({
       reviewItem: item({ allowedResolutions: ["register-subject"] })
@@ -95,6 +144,38 @@ describe("ReviewResolutionDialog", () => {
       }
     );
     expect(createRegistration).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "   "])("does not write with a blank review reason %j", async (reason) => {
+    const user = userEvent.setup();
+    const { resolveReviewItem } = renderDialog();
+    if (reason) await user.type(screen.getByLabelText("原因"), reason);
+
+    const proceed = screen.getByRole("button", { name: "继续确认" });
+    expect(proceed).toBeDisabled();
+    await user.click(proceed);
+    expect(screen.queryByRole("dialog", { name: "确认处理审核" })).not.toBeInTheDocument();
+    expect(resolveReviewItem).not.toHaveBeenCalled();
+  });
+
+  it("keeps mark-out-of-scope available without choosing an ambiguous subject", async () => {
+    const { resolveReviewItem } = renderDialog({
+      reviewItem: item({
+        candidates: [
+          { subjectId: CATALOG_SUBJECT_ID, evidence: ["first candidate"] },
+          { subjectId: "csub_other_candidate", evidence: ["second candidate"] }
+        ],
+        allowedResolutions: ["register-subject", "mark-out-of-scope"]
+      })
+    });
+    await userEvent.setup().click(screen.getByRole("radio", { name: "标为范围外" }));
+    await confirmResolve();
+
+    await waitFor(() => expect(resolveReviewItem).toHaveBeenCalledTimes(1));
+    expect(resolveReviewItem.mock.calls[0]?.[2]).toEqual({
+      resolution: { type: "mark-out-of-scope" },
+      reason: "按证据处理"
+    });
   });
 
   it("does not create a Registration or Proposal as a partial second command", async () => {

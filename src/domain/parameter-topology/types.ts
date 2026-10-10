@@ -491,25 +491,6 @@ export type SpecReviewTaskListResult = {
   nextCursor: string | null;
 };
 
-export type ResolveSpecReviewInput = {
-  decision: "resolved" | "dismissed";
-  parameterSpecId?: string;
-  reason: string;
-  confirmPropertyMismatch?: boolean;
-  createSpec?: boolean;
-};
-
-export type ResolveMappingInput = {
-  decision: "resolved" | "dismissed" | "new-identity";
-  selectedLogicalNodeId?: string;
-  reason: string;
-  confirmAllCandidates?: boolean;
-};
-
-export type ReopenMappingInput = {
-  reason: string;
-};
-
 export type ConfigRevisionStatus =
   | "draft"
   | "resolving"
