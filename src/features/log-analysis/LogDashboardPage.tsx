@@ -252,8 +252,8 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
               </div>
               <div className="topic-failure-record">
                 <span>{compactLogLabel(failedLogs[0])}</span>
-                <strong>{failedLogs[0]?.stage ? STAGE_LABELS[failedLogs[0].stage] : "当前队列正常"}</strong>
-                <p>{failedLogs[0]?.source ?? "解析流程未发现阻断项"}</p>
+                <strong>{failedLogs[0]?.stage ? STAGE_LABELS[failedLogs[0].stage] : totalCount === 0 ? noSampleVerdict : "当前队列正常"}</strong>
+                <p>{failedLogs[0]?.source ?? (totalCount === 0 ? "今日暂无处理样本。" : "解析流程未发现阻断项")}</p>
               </div>
             </section>
 
