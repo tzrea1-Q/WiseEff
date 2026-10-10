@@ -22,10 +22,6 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   // exists and the seam derives actor/org from auth; all sites are in-transaction.
   "modules/auth/bootstrapLocalAdmin.ts": 1,
   "modules/auth/localAuth.ts": 1,
-  // parameter-modules/service.ts keeps ONE direct call: the driver-registration audit
-  // attributed to the SUBJECT's organization (not the actor's) — outside the seam's
-  // auth-derived axis; it is already in-transaction.
-  "modules/parameter-modules/service.ts": 1,
   // parameter-kernel/sensitiveNode.ts keeps ONE direct call: the transitional deny-audit
   // fallback for callers that have not wired a refusalDb pool handle yet. Wired callers
   // (merge writeback, structured-edit submit) already use writeRefusalAudit.

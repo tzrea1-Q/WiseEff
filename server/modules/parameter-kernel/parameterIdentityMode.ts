@@ -80,7 +80,12 @@ export async function probeCanonicalSeedReady(db: Queryable): Promise<boolean> {
  * resolved mode so callers can log it.
  */
 export async function resolveParameterIdentityMode(db: Queryable): Promise<ParameterIdentityMode> {
-  const semantic = (await probeCutoverComplete(db)) || (await probeLegacyTablesRetired(db));
+  let semantic = (await probeCutoverComplete(db)) || (await probeLegacyTablesRetired(db));
+  if (!semantic && await probeCanonicalSeedReady(db)) {
+    const { assertLocalDatabaseCleanForPostCutover } = await import("../parameter-topology/localPostCutover");
+    await assertLocalDatabaseCleanForPostCutover(db);
+    semantic = true;
+  }
   activeMode = semantic ? "semantic" : "legacy";
   return activeMode;
 }
