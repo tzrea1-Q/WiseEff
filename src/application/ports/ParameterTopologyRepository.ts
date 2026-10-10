@@ -5,13 +5,7 @@ import type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
-  ParameterSpecCutoverSummary,
-  PropertyKeyCutoverPreview,
-  PropertyKeyCutoverRun,
   ProjectParameterBinding,
-  ReopenMappingInput,
-  ResolveMappingInput,
-  ResolveSpecReviewInput,
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
@@ -28,11 +22,7 @@ export type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
-  ParameterSpecCutoverSummary,
   ProjectParameterBinding,
-  ReopenMappingInput,
-  ResolveMappingInput,
-  ResolveSpecReviewInput,
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
@@ -125,20 +115,6 @@ export type ActivateParameterSpecInput = {
   };
 };
 
-export type CreateParameterSpecInput = {
-  attributionSubjectId: string;
-  propertyKey: string;
-  reason: string;
-  displayName?: string;
-  description?: string;
-  documentation?: string;
-  valueShape?: Record<string, unknown>;
-  constraints?: Record<string, unknown>;
-  units?: string | null;
-  exampleValue?: unknown;
-  overridePlatform?: boolean;
-};
-
 export type UpdateParameterSpecInput = {
   valueShape?: Record<string, unknown>;
   constraints: Record<string, unknown>;
@@ -168,19 +144,11 @@ export type ReattributeParameterSpecInput = {
   reason: string;
 };
 
-export type RenameParameterSpecPropertyKeyInput = {
-  propertyKey: string;
-  reason: string;
-};
-
 export interface ParameterTopologyRepository {
   listSpecs(query: SpecQuery): Promise<ParameterSpecSummary[]>;
   getSpec(
     specId: string,
     options?: { view?: NonNullable<SpecQuery["view"]> },
-  ): Promise<ParameterSpecDetail>;
-  createParameterSpec(
-    input: CreateParameterSpecInput,
   ): Promise<ParameterSpecDetail>;
   activateParameterSpec(
     specId: string,
@@ -202,45 +170,9 @@ export interface ParameterTopologyRepository {
     specId: string,
     input: ReattributeParameterSpecInput,
   ): Promise<ParameterSpecDetail>;
-  renameParameterSpecPropertyKey(
-    specId: string,
-    input: RenameParameterSpecPropertyKeyInput,
-  ): Promise<ParameterSpecDetail>;
-  getSpecVersionCutoverImpact(
-    specId: string,
-  ): Promise<ParameterSpecCutoverSummary>;
-  prepareSpecVersionCutover(
-    specId: string,
-    input?: { reason?: string },
-  ): Promise<ParameterSpecDetail>;
-  finalizeSpecVersionCutover(
-    specId: string,
-    input: { reason: string },
-  ): Promise<ParameterSpecDetail>;
-  previewPropertyKeyCutover?(
-    specId: string,
-    input: { propertyKey: string },
-  ): Promise<PropertyKeyCutoverPreview>;
-  startPropertyKeyCutover?(
-    specId: string,
-    input: { propertyKey: string; reason: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  preparePropertyKeyCutover?(
-    specId: string,
-    input?: { reason?: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  finalizePropertyKeyCutover?(
-    specId: string,
-    input: { reason: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  getPropertyKeyCutover?(specId: string): Promise<PropertyKeyCutoverRun | null>;
   listSpecReviewTasks(
     query?: SpecReviewTaskQuery,
   ): Promise<SpecReviewTaskListResult>;
-  resolveSpecReviewTask(
-    taskId: string,
-    input: ResolveSpecReviewInput,
-  ): Promise<void>;
   listBindings(
     projectId: string,
     revisionId: string,
@@ -266,8 +198,6 @@ export interface ParameterTopologyRepository {
     view: TopologyView,
   ): Promise<TopologyTree>;
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
-  resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
-  reopenMapping?(taskId: string, input: ReopenMappingInput): Promise<void>;
   validateRevision(
     projectId: string,
     revisionId: string,

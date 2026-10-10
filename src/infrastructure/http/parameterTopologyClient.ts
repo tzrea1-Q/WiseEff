@@ -12,12 +12,9 @@ import type {
   ConfigRevisionSummary,
   IdentityMappingTask,
   ParameterSpecDetail,
-  PropertyKeyCutoverPreview,
-  PropertyKeyCutoverRun,
   ParameterSpecSummary,
   ParameterBindingValue,
   ProjectParameterBinding,
-  ResolveSpecReviewInput,
   SpecQuery,
   SpecReviewTask,
   SpecReviewTaskListResult,
@@ -534,18 +531,6 @@ export function createHttpParameterTopologyRepository(
       >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}${query}`);
       return specDetailFromDto(response.item);
     },
-    async createParameterSpec(_input) {
-      throw new WiseEffApiError(
-        "GONE",
-        "Legacy structural writes are retired.",
-        {
-          reason: "legacy-surface-retired",
-          successor: "/api/v2/catalog",
-          retryable: false,
-        },
-        "",
-      );
-    },
     async listSpecReviewTasks(query = {}) {
       const response = await apiClient.get<{
         historicalItems?: SpecReviewTaskDto[];
@@ -555,19 +540,6 @@ export function createHttpParameterTopologyRepository(
         items: (response.historicalItems ?? []).map(specReviewTaskFromDto),
         nextCursor: response.nextCursor ?? null,
       } satisfies SpecReviewTaskListResult;
-    },
-    async resolveSpecReviewTask(taskId, input: ResolveSpecReviewInput) {
-      await apiClient.post<
-        ItemEnvelope<{
-          id: string;
-          status: string;
-          draftCreated?: boolean;
-          message?: string;
-        }>
-      >(
-        `/api/v2/parameter-spec-review-tasks/${encodeURIComponent(taskId)}/resolve`,
-        input,
-      );
     },
     async activateParameterSpec(specId, input) {
       const response = await apiClient.post<
@@ -608,93 +580,6 @@ export function createHttpParameterTopologyRepository(
       );
       return specDetailFromDto(response.item);
     },
-    async renameParameterSpecPropertyKey(specId, input) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/rename-property-key`,
-        input,
-      );
-      return specDetailFromDto(response.item);
-    },
-    async getSpecVersionCutoverImpact(specId) {
-      const response = await apiClient.get<
-        ItemEnvelope<NonNullable<ParameterSpecDetailDto["cutover"]>>
-      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover`);
-      return response.item;
-    },
-    async prepareSpecVersionCutover(specId, input = {}) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/prepare`,
-        input,
-      );
-      return specDetailFromDto(response.item);
-    },
-    async finalizeSpecVersionCutover(specId, input) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/finalize`,
-        input,
-      );
-      return specDetailFromDto(response.item);
-    },
-    async previewPropertyKeyCutover(specId, input: { propertyKey: string }) {
-      const response = await apiClient.post<
-        ItemEnvelope<PropertyKeyCutoverPreview>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/preview`,
-        input,
-      );
-      return response.item;
-    },
-    async startPropertyKeyCutover(
-      specId,
-      input: { propertyKey: string; reason: string },
-    ) {
-      const response = await apiClient.post<
-        ItemEnvelope<PropertyKeyCutoverRun>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/start`,
-        input,
-      );
-      return response.item;
-    },
-    async preparePropertyKeyCutover(specId, input: { reason?: string } = {}) {
-      const response = await apiClient.post<
-        ItemEnvelope<PropertyKeyCutoverRun>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/prepare`,
-        input,
-      );
-      return response.item;
-    },
-    async finalizePropertyKeyCutover(specId, input: { reason: string }) {
-      const response = await apiClient.post<
-        ItemEnvelope<PropertyKeyCutoverRun>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/finalize`,
-        input,
-      );
-      return response.item;
-    },
-    async getPropertyKeyCutover(specId) {
-      try {
-        const response = await apiClient.get<
-          ItemEnvelope<PropertyKeyCutoverRun>
-        >(
-          `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover`,
-        );
-        return response.item;
-      } catch (error) {
-        if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") {
-          return null;
-        }
-        throw error;
-      }
-    },
     async listBindings(projectId, revisionId) {
       const response = await apiClient.get<ItemsEnvelope<ProjectBindingDto>>(
         buildBindingsPath(projectId, revisionId),
@@ -730,18 +615,6 @@ export function createHttpParameterTopologyRepository(
         buildMappingTasksPath(projectId),
       );
       return (response.historicalItems ?? []).map(mappingTaskFromDto);
-    },
-    async resolveMapping(taskId, input) {
-      await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(
-        `/api/v2/identity-mapping-tasks/${encodeURIComponent(taskId)}/resolve`,
-        input,
-      );
-    },
-    async reopenMapping(taskId, input) {
-      await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(
-        `/api/v2/identity-mapping-tasks/${encodeURIComponent(taskId)}/reopen`,
-        input,
-      );
     },
     async validateRevision(projectId, revisionId) {
       const response = await apiClient.post<ItemEnvelope<ValidationRun>>(

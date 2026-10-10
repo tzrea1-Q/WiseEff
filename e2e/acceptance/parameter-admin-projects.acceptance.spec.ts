@@ -2,7 +2,7 @@ import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
 
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import {
@@ -10,7 +10,7 @@ import {
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
-import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
+import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
@@ -24,6 +24,47 @@ async function dismissXiaozeHint(page: Page) {
     await dismiss.click({ force: true });
   }
 }
+
+test("B1 preserves canonical admin and read-only Definition pages at PC 1440x900", async ({ page, request }, testInfo) => {
+  await seedAcceptanceRoleMatrix();
+  const legacyWrites: string[] = [];
+  page.on("request", (browserRequest) => {
+    if (browserRequest.method() !== "GET" && /parameter-specs|parameter-spec-review-tasks|identity-mapping-tasks/.test(browserRequest.url())) {
+      legacyWrites.push(browserRequest.url());
+    }
+  });
+  const actor = acceptanceAdminOnlyUser;
+  const definitions = await request.get(apiRoute("/api/v2/catalog/definitions?limit=50"), {
+    headers: authHeadersForUser(actor.userId, actor.email, actor.name)
+  });
+  expect(definitions.status()).toBe(200);
+  const body = await definitions.json();
+  const definition = body.items.find((item: { lifecycle: string }) => item.lifecycle === "active");
+  expect(definition).toBeTruthy();
+  await signInBrowserAsUser(page, actor.userId, actor.email, actor.name, "/parameter-admin/specs");
+  await dismissXiaozeHint(page);
+  await expect(page.getByRole("region", { name: "参数定义目录" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+  const query = new URLSearchParams({
+    subjectId: definition.subject.id,
+    definitionId: definition.id,
+    catalogReleaseId: body.catalogReleaseId
+  });
+  await page.goto(`/parameter-admin/specs?${query}`);
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
+  await expect(dialog.getByText(definition.id, { exact: true }).first()).toBeVisible();
+  await expect(dialog.getByText("当前会话缺少目录编写能力，只能查看该定义。")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "保存内容修订" })).toHaveCount(0);
+  await expect(dialog.getByRole("textbox", { name: "属性键" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: /查看历史/ }).click();
+  await expect(dialog.getByRole("region", { name: "定义时间线" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const screenshot = testInfo.outputPath("b1-org-admin-definition-1440.png");
+  await page.screenshot({ path: screenshot, fullPage: true });
+  await testInfo.attach("b1-org-admin-definition-1440", { path: screenshot, contentType: "image/png" });
+  expect(legacyWrites).toEqual([]);
+});
 
 test.describe("parameter-admin project list", () => {
   test.beforeAll(async () => {

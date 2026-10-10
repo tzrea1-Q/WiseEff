@@ -638,6 +638,8 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 
 ## 消费者迁移矩阵
 
+B1 清理（#1083）删除参数管理后台未使用的 legacy Spec 编辑器及其 fallback。Catalog 是唯一定义管理界面，缺少其端口时也不回退；历史身份任务保持只读。孤立的写操作回调及其转发方法一并删除，有界读取、共享模块展示和仍在渲染的 mock 生命周期控件则保留至各自的退役批次。
+
 | 消费者 | 规范依赖 | Legacy 处置与迁移要求 |
 | --- | --- | --- |
 | Parameter definitions page | subjects、definitions、registration/placement、Review Queue、definition timeline | 用单页合同替代 Effective/Governance peer views；URL selection 改用 canonical IDs。 |

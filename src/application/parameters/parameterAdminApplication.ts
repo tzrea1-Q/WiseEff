@@ -1,13 +1,8 @@
 import type {
   ActivateParameterSpecInput,
-  CreateParameterSpecInput,
   DeprecateParameterSpecInput,
   ParameterTopologyRepository,
   ReattributeParameterSpecInput,
-  RenameParameterSpecPropertyKeyInput,
-  ReopenMappingInput,
-  ResolveMappingInput,
-  ResolveSpecReviewInput,
   RestoreParameterSpecInput,
   UpdateParameterSpecInput,
 } from "@/application/ports/ParameterTopologyRepository";
@@ -39,9 +34,6 @@ import type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
-  ParameterSpecCutoverSummary,
-  PropertyKeyCutoverPreview,
-  PropertyKeyCutoverRun,
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
@@ -70,16 +62,9 @@ export type ParameterAdminApplication = {
     specId: string,
     options?: { view?: "effective" | "governance" },
   ): Promise<ParameterSpecDetail>;
-  createParameterSpec(
-    input: CreateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
   listSpecReviewTasks(
     query?: SpecReviewTaskQuery,
   ): Promise<SpecReviewTaskListResult>;
-  resolveSpecReviewTask(
-    taskId: string,
-    input: ResolveSpecReviewInput,
-  ): Promise<void>;
   activateParameterSpec(
     specId: string,
     input: ActivateParameterSpecInput,
@@ -100,38 +85,6 @@ export type ParameterAdminApplication = {
     specId: string,
     input: ReattributeParameterSpecInput,
   ): Promise<ParameterSpecDetail>;
-  renameParameterSpecPropertyKey(
-    specId: string,
-    input: RenameParameterSpecPropertyKeyInput,
-  ): Promise<ParameterSpecDetail>;
-  getSpecVersionCutoverImpact(
-    specId: string,
-  ): Promise<ParameterSpecCutoverSummary>;
-  prepareSpecVersionCutover(
-    specId: string,
-    input?: { reason?: string },
-  ): Promise<ParameterSpecDetail>;
-  finalizeSpecVersionCutover(
-    specId: string,
-    input: { reason: string },
-  ): Promise<ParameterSpecDetail>;
-  previewPropertyKeyCutover?(
-    specId: string,
-    input: { propertyKey: string },
-  ): Promise<PropertyKeyCutoverPreview>;
-  startPropertyKeyCutover?(
-    specId: string,
-    input: { propertyKey: string; reason: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  preparePropertyKeyCutover?(
-    specId: string,
-    input?: { reason?: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  finalizePropertyKeyCutover?(
-    specId: string,
-    input: { reason: string },
-  ): Promise<PropertyKeyCutoverRun>;
-  getPropertyKeyCutover?(specId: string): Promise<PropertyKeyCutoverRun | null>;
 
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
   getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
@@ -161,8 +114,6 @@ export type ParameterAdminApplication = {
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
 
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
-  resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
-  reopenMapping(taskId: string, input: ReopenMappingInput): Promise<void>;
   listConfigRevisions(
     projectId: string,
     configSetId: string,
@@ -236,14 +187,8 @@ export function createParameterAdminApplication({
     getSpec(specId, options) {
       return topology.getSpec(specId, options);
     },
-    createParameterSpec(input) {
-      return topology.createParameterSpec(input);
-    },
     listSpecReviewTasks(query = {}) {
       return topology.listSpecReviewTasks(query);
-    },
-    resolveSpecReviewTask(taskId, input) {
-      return topology.resolveSpecReviewTask(taskId, input);
     },
     activateParameterSpec(specId, input) {
       return topology.activateParameterSpec(specId, input);
@@ -260,33 +205,6 @@ export function createParameterAdminApplication({
     reattributeParameterSpec(specId, input) {
       return topology.reattributeParameterSpec(specId, input);
     },
-    renameParameterSpecPropertyKey(specId, input) {
-      return topology.renameParameterSpecPropertyKey(specId, input);
-    },
-    getSpecVersionCutoverImpact(specId) {
-      return topology.getSpecVersionCutoverImpact(specId);
-    },
-    prepareSpecVersionCutover(specId, input = {}) {
-      return topology.prepareSpecVersionCutover(specId, input);
-    },
-    finalizeSpecVersionCutover(specId, input) {
-      return topology.finalizeSpecVersionCutover(specId, input);
-    },
-    previewPropertyKeyCutover: topology.previewPropertyKeyCutover
-      ? (specId, input) => topology.previewPropertyKeyCutover!(specId, input)
-      : undefined,
-    startPropertyKeyCutover: topology.startPropertyKeyCutover
-      ? (specId, input) => topology.startPropertyKeyCutover!(specId, input)
-      : undefined,
-    preparePropertyKeyCutover: topology.preparePropertyKeyCutover
-      ? (specId, input) => topology.preparePropertyKeyCutover!(specId, input)
-      : undefined,
-    finalizePropertyKeyCutover: topology.finalizePropertyKeyCutover
-      ? (specId, input) => topology.finalizePropertyKeyCutover!(specId, input)
-      : undefined,
-    getPropertyKeyCutover: topology.getPropertyKeyCutover
-      ? (specId) => topology.getPropertyKeyCutover!(specId)
-      : undefined,
 
     getModuleRegistry() {
       return moduleRegistry.getRegistry();
@@ -335,17 +253,6 @@ export function createParameterAdminApplication({
 
     listMappingTasks(projectId) {
       return topology.listMappingTasks(projectId);
-    },
-    resolveMapping(taskId, input) {
-      return topology.resolveMapping(taskId, input);
-    },
-    reopenMapping(taskId, input) {
-      if (!topology.reopenMapping) {
-        throw new Error(
-          "Identity mapping reopen is unavailable in this runtime.",
-        );
-      }
-      return topology.reopenMapping(taskId, input);
     },
     listConfigRevisions(projectId, configSetId) {
       return topology.listConfigRevisions(projectId, configSetId);

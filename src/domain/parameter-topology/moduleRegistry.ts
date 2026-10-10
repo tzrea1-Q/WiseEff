@@ -9,14 +9,6 @@
 /** How a mapping rule matches a binding. Priority: node-type > compatible. */
 export type ModuleMatchKind = "compatible" | "node-type";
 
-export const MODULE_MATCH_PRIORITY: Record<ModuleMatchKind, number> = {
-  "node-type": 3,
-  compatible: 2
-};
-
-/** Mapping priority is capped so it cannot cross a match-kind boundary. */
-export const MODULE_MAPPING_PRIORITY_MAX = 999;
-
 export type ModuleImportance = "high" | "medium" | "low";
 
 export type ModuleKind = "business" | "driver-group" | "node-type" | "unclassified";
@@ -107,75 +99,9 @@ function candidateValue(kind: ModuleMatchKind, input: ModuleAssignmentInput): st
   }
 }
 
-function compareRank(
-  left: { kindRank: number; priority: number },
-  right: { kindRank: number; priority: number }
-): number {
-  if (left.kindRank !== right.kindRank) return left.kindRank - right.kindRank;
-  return left.priority - right.priority;
-}
-
-/**
- * Resolves the business module for a binding using the admin registry.
- * Order: mapping(compatible > node-type) → declared v1 module → driver fallback.
- * Remap tooling only — not a display path.
- */
-export function deriveModuleAssignment(
-  input: ModuleAssignmentInput,
-  registry: ParameterModuleRegistry
-): ModuleAssignment {
-  const moduleById = new Map(registry.modules.map((module) => [module.id, module]));
-
-  let best: { mapping: ParameterModuleMapping; kindRank: number; priority: number } | null = null;
-  for (const mapping of registry.mappings) {
-    const value = candidateValue(mapping.matchKind, input);
-    if (value === null || value !== normalize(mapping.matchValue)) continue;
-    if (!moduleById.has(mapping.moduleId)) continue;
-    const kindRank = MODULE_MATCH_PRIORITY[mapping.matchKind];
-    const priority = Math.max(0, Math.min(MODULE_MAPPING_PRIORITY_MAX, mapping.priority));
-    const candidate = { mapping, kindRank, priority };
-    if (!best || compareRank(candidate, best) > 0) {
-      best = candidate;
-    }
-  }
-
-  if (best) {
-    const module = moduleById.get(best.mapping.moduleId)!;
-    return {
-      moduleId: module.id,
-      moduleName: module.name,
-      importance: module.importance,
-      sortOrder: module.sortOrder,
-      mapped: true
-    };
-  }
-
-  if (input.declaredModuleId) {
-    const declared = moduleById.get(input.declaredModuleId);
-    if (declared) {
-      return {
-        moduleId: declared.id,
-        moduleName: declared.name,
-        importance: declared.importance,
-        sortOrder: declared.sortOrder,
-        mapped: false
-      };
-    }
-  }
-
-  const driver = input.driverModule?.trim();
-  return {
-    moduleId: driverFallbackModuleId(input.driverModule),
-    moduleName: driver && driver !== "" ? `${UNCLASSIFIED_LABEL} · ${driver}` : UNCLASSIFIED_LABEL,
-    importance: "medium",
-    sortOrder: Number.MAX_SAFE_INTEGER,
-    mapped: false
-  };
-}
-
 /**
  * Describes the business module already assigned to a binding (DB `moduleId`, phase-2 §5.1
- * browse source of truth). Unlike `deriveModuleAssignment`, this never substitutes a different
+ * browse source of truth). This never substitutes a different
  * module than the persisted `moduleId` — it only decides whether an admin mapping explicitly
  * targets this module for display (`mapped`), and falls back to unclassified naming when the
  * module record is missing from the registry (e.g. registry still loading).
