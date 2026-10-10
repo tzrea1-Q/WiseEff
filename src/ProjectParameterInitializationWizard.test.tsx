@@ -762,7 +762,7 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(baseButtonRule["border-radius"]).toBe("var(--radius-md)");
     expect(baseSubtleRule.background).toBe("var(--surface)");
     expect(basePrimaryRule.color).toBe("var(--primary-foreground)");
-    expect(basePrimaryRule.background).toBe("var(--accent)");
+    expect(basePrimaryRule.background).toBe("var(--primary)");
   });
 
   it("allows selecting parameters from the library when starting from empty", () => {
