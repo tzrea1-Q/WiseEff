@@ -51,6 +51,17 @@ describe("assembled spec-governance retirement on PostgreSQL", () => {
     await fixture?.drop();
   });
 
+  it.each(["view=governance", "view=raw", "mode=raw", "mode=migration"])(
+    "retires spec list and detail %s before legacy readers or authentication",
+    async (query) => {
+      for (const path of ["/api/v2/parameter-specs", specPath]) {
+        await harness.assertRetired({ method: "GET", path: `${path}?${query}` }, {
+          headers: { "X-WiseEff-User": "missing-user" },
+        });
+      }
+    },
+  );
+
   it.each(actions)("POST %s is gone without changing legacy specs", async (action) => {
     await harness.assertRetired({ method: "POST", path: `${specPath}/${action}` }, {
       headers: { "X-WiseEff-User": "user-t1063" },
@@ -140,15 +151,18 @@ describe("assembled spec-governance retirement on PostgreSQL", () => {
     }
   });
 
-  it("preserves the effective spec list and exact detail read window", async () => {
+  it("does not reinterpret unmapped legacy specs as current Definitions", async () => {
     const init = { headers: { "X-WiseEff-User": "user-t1063" } };
     const list = await requestJson<{ items: Array<{ id: string }> }>(
       harness.server, "/api/v2/parameter-specs?view=effective", init,
     );
     expect(list.status).toBe(200);
-    expect(list.body.items).toContainEqual(expect.objectContaining({ id: "spec-t1063" }));
-    const detail = await requestJson<{ item: { id: string } }>(harness.server, `${specPath}?view=effective`, init);
-    expect(detail.status).toBe(200);
-    expect(detail.body.item.id).toBe("spec-t1063");
+    expect(list.body).toEqual({ items: [], historicalItems: [] });
+    expect(list.headers.get("deprecation")).toBe("true");
+    const detail = await requestJson<{ error: { details: { disposition: string } } }>(
+      harness.server, `${specPath}?view=effective`, init);
+    expect(detail.status).toBe(404);
+    expect(detail.body.error.details.disposition).toBe("not-found");
+    expect(detail.headers.get("deprecation")).toBe("true");
   });
 });

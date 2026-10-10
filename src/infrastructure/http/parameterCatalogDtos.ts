@@ -1,4 +1,6 @@
 import type { z } from "zod";
+import type { ParameterRecord } from "@/domain/parameters/types";
+import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 
 import type {
   bindingDraftResponseSchema,
@@ -206,4 +208,31 @@ export function catalogDefinitionFromDto(dto: CatalogDefinitionResponse): Catalo
 
 export function catalogProjectBindingFromDto(dto: CatalogProjectBindingDto): CatalogProjectBindingDto {
   return dto;
+}
+
+export function parameterRecordFromBinding(
+  projectId: string,
+  binding: Pick<ProjectParameterBinding,
+    "id" | "propertyKey" | "rawValue" | "driverModule" | "moduleId" | "sourceNodePath" | "description" | "documentation">
+): ParameterRecord {
+  return {
+    id: binding.id,
+    projectId,
+    name: binding.propertyKey,
+    description: binding.description ?? "",
+    explanation: binding.documentation ?? "",
+    configFormat: "DTS",
+    module: binding.driverModule ?? "",
+    moduleId: binding.moduleId || undefined,
+    sourceNodePath: binding.sourceNodePath ?? undefined,
+    currentValue: binding.rawValue,
+    recommendedValue: "",
+    range: "",
+    unit: "",
+    risk: "Low",
+    valueKind: "scalar",
+    updatedAt: "",
+    updatedAtTs: "",
+    history: []
+  };
 }

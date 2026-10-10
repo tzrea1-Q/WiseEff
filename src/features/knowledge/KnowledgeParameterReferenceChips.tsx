@@ -39,6 +39,11 @@ export function KnowledgeParameterReferenceChips({
         const orphaned = mappingStatus === "orphaned" || mappingStatus === "unmapped";
         const archived = mappingStatus === "archived";
         const unavailable = canonical && reference.availability === "unavailable";
+        const unavailableReason = canonical
+          ? unavailable
+            ? "当前会话无法读取该定义，引用保留但无法打开。"
+            : !onOpenDefinition ? "当前会话未提供可访问的参数定义读取入口。" : undefined
+          : undefined;
         const statusLabel = unavailable
           ? "不可用"
           : orphaned
@@ -74,7 +79,11 @@ export function KnowledgeParameterReferenceChips({
                 {label}
               </button>
             ) : (
-              <span className="knowledge-parameter-reference-chip__link">{label}</span>
+              <span
+                className="knowledge-parameter-reference-chip__link"
+                title={unavailableReason}
+                aria-label={unavailableReason ? `${label}。${unavailableReason}` : undefined}
+              >{label}</span>
             )}
             <span
               className={`knowledge-parameter-reference-chip__lifecycle ${statusClass}`}

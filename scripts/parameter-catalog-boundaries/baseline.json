@@ -17,8 +17,8 @@
       "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/parameter-topology.acceptance.spec.ts": {
-      "canonical-catalog-raw-access": 7,
-      "legacy-catalog-raw-read": 5,
+      "canonical-catalog-raw-access": 9,
+      "legacy-catalog-raw-read": 6,
       "legacy-catalog-route": 8,
       "legacy-effective-governance-contract": 6,
       "legacy-parameter-spec-identifier": 4
@@ -392,8 +392,8 @@
       "legacy-parameter-spec-identifier": 7
     },
     "server/modules/parameter-specs/parameterSpecHttpAdapter.test.ts": {
-      "legacy-catalog-route": 7,
-      "legacy-effective-governance-contract": 2,
+      "legacy-catalog-route": 8,
+      "legacy-effective-governance-contract": 4,
       "legacy-overlay-catalog-contract": 1
     },
     "server/modules/parameter-specs/populatedUpgrade.integration.test.ts": {
@@ -738,7 +738,7 @@
     },
     "server/modules/parameters/reviewWorkflowRepository.ts": {
       "legacy-catalog-module-import": 1,
-      "legacy-catalog-raw-read": 25,
+      "legacy-catalog-raw-read": 24,
       "legacy-parameter-spec-identifier": 8,
       "unresolved-boundary-expression": 16
     },
@@ -805,7 +805,7 @@
       "legacy-parameter-spec-identifier": 1
     },
     "src/application/ports/ParameterModuleRegistryRepository.ts": {
-      "legacy-overlay-catalog-contract": 25,
+      "legacy-overlay-catalog-contract": 8,
       "legacy-parameter-spec-identifier": 2
     },
     "src/application/ports/ParameterRepository.ts": {
@@ -824,8 +824,7 @@
       "unresolved-boundary-expression": 2
     },
     "src/infrastructure/http/parameterModuleRegistryClient.ts": {
-      "legacy-catalog-route": 2,
-      "legacy-overlay-catalog-contract": 26
+      "legacy-catalog-route": 1
     },
     "src/infrastructure/http/parameterTopologyClient.test.ts": {
       "legacy-catalog-route": 12,

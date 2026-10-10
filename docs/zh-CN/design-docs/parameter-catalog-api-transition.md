@@ -27,6 +27,8 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 - Organization Admin 管理本 Organization 的 registration、placement、review resolution 和 proposal submission。Platform Admin 审核 publication proposal，可跨 Organization 读取诊断，但不能修改 Organization 结构。任何人都不能接受自己提交的 proposal。
 - 规范命名空间上线时立即退役 legacy 结构写接口。符合条件的 legacy 读接口至少保留两个生产发布或 90 天，取较晚者；且只有本页全部退出门槛通过后才可退役。
 
+Knowledge Definition 引用对没有参数后台访问权限的读者使用 `/parameters/definitions?definitionId=<opaque-id>`。该规范 Catalog 页面只读，导航保持精确 Definition 身份与 release pin，并复用现有授权 Catalog 读取 API。管理员继续使用 `/parameter-admin/specs`。如果当前会话无法读取 Definition，或未提供可读入口，引用不允许导航，并提供可访问的原因说明。此行为不授予管理员或发布权限，也不改变后端授权。
+
 ## 决策依据
 
 本合同对照 `406c23bcaf0dcfca284de3135e27bfcd19c29c4e` 的 current `origin/main`，并使用以下已接受的 Wayfinder 输入完成校核。尚未集成到 `main` 的 accepted decision commit 只能作为设计证据；本页不会把它误报成 `main` 当前实现。
@@ -144,11 +146,25 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 
 ### 发布就绪
 
+节点启用草稿属于结构性工作，不是 Definition、Binding 或 Project value。工作台通过保留的、按当前用户隔离的 `GET /api/v1/parameter-drafts/mine?projectId=...` 独立读取这类草稿，仅将属于已加载配置集逻辑节点的 `node-enablement` 项与规范值草稿合并显示在提交托盘。任一读取失败或迟迟未完成，都不会阻塞另一所有者的草稿。每个失败的所有者读取分别显示错误和重试操作，不能当作空列表。稍后返回的结果只补充缺失草稿，不覆盖本地编辑，也不切换到其他配置集的候选修订。成功推进结构性工作版本的 mutation 会使尚未返回的读取失效，并重新加载持久化草稿，避免 rebase 前的快照恢复旧候选修订。
+
+规范当前 Binding 读取不会把尚未物化的 draft 配置修订当作 source pin。当 `revisionId` 指向这类候选修订时，返回该候选所属已授权项目和配置集的当前规范 Binding。已经物化的修订仍按确切 source pin 筛选；未知或其他租户、项目的修订不会回退到别的项目或配置集的 Binding。读取候选修订不会物化候选，也不会推进任何不可变 pin。
+
 配置集的发布就绪检查同时读取待审核的规范值变更请求和保留的旧工作流计数。面向源 occurrence 的请求只计入其触及的源 cohort 所属配置集；仅面向项目的请求阻止该项目所有配置集发布。批准、拒绝或撤回后，待处理变更阻塞解除，不创建旧变更请求镜像。节点启用工作流保留各自的规则。
+
+已提交的节点启用轮次仍是独立的结构性工作，在本人提交记录和实际指派审阅人的项目队列中展示。保留的提交项 DTO 使用 `editSubjectKind: "node-enablement"` 和 `logicalNodeId` 标识节点项，读取时不要求存在 Binding 或 Definition。可撤回轮次提供撤回操作，已结束的结构性记录与旧参数归档分开展示。待处理节点审阅仅向当前指派人或获授权管理员展示，现有阶段角色校验和可信人工决策审计不变。推进、打回或撤回后重新读取服务端记录。
+
+硬件与软件审阅通过后，指派的软件合入人通过规范 parameter-files 源所有者应用节点启用修改；结构性历史和可信审阅、回写审计在同一事务中提交。准备阶段先取得共享源 cohort 锁，再锁定工作流，重新核对不可变成员清单与当前文件版本、验证现有规范 pin，并仅重建精确锁定的 `status` 修改。应用追加文件版本和配置修订。对该源 cohort 的每个当前 Binding，规范所有者核对业务值未变，追加不可变的源修订后继值和精确后继 pin，再通过已审阅的 compare-and-swap 推进当前值指针并追加 Binding 历史。Definition 和 Binding 身份、旧值、旧 pin 与历史保持不变。源过期或被占用时拒绝整个事务；打回不会修改源文件。非用户发起的调用不能应用修改，共享旧源写入围栏仍拒绝其他规范源变更。
+
+后续普通规范值准备和应用使用这些精确后继 pin 和成员版本。此源修订传播不将节点状态建模为参数，也不放宽冻结源检查。旧 pin 仍可重放原始源文件；基于旧值准备的请求仍会过期，需要重新准备。
 
 基线创建和发布使用同一就绪门禁。门禁 token 包含待审核规范请求的确切 ID，因此在评估后出现新待审核工作时，使用旧评估确认会被判为过期并拒绝。就绪检查不再同步或创建旧身份映射任务；保留的历史任务仅被读取。
 
+两种基线写入都通过 `FOR UPDATE` 锁定所属配置集行，与规范提交和源写入使用同一串行化边界。完整就绪检查、对象存储读取和工具链验证在锁外执行。在事务内、写入之前，只核对该 cohort 待审核规范请求 ID 的指纹是否仍与已确认门禁的空待处理状态一致。并发提交要么先提交，使确认过期；要么等待基线写入提交。写入被拒绝后验证审计仍保留；已确认门禁本身不能授权最终写入。
+
 ### 共享模块归属
+
+保留的 `/api/v1/parameters` 兼容列表只解析当前规范 Binding 身份。此投影无法解析的推荐值、展示范围和单位、风险、旧时间戳与旧历史返回 `null`，并标记 `metadataAvailability.status = "unavailable"`、原因 `canonical-compatibility-metadata-unavailable`；未知风险不匹配任何指定风险筛选。历史详情 DTO 保持独立。列表在值物化前应用已授权的项目、模块范围和请求 limit，填满 limit 后停止，并批量读取精确 pin 的源定位信息。
 
 Registration 与 Placement 写入接受可选 `destinationModuleId`，它是可信 Organization 内现存模块的精确 ID。Driver 目标必须是 `driver-group`，NodeType 必须是 `node-type`，ConfigurationSchema 必须是 `business`。显式目标无效时拒绝，不回退到名称匹配。未传此字段的既有调用方保留 PlacementIntent 契约。
 
@@ -600,6 +616,10 @@ parameter-modules 导航适配器在 registry envelope 中标记 `navigationOnly
 
 Legacy read response 包含：
 
+spec 集合的精确 `id`/`specId` 筛选仍返回 `{ items, historicalItems }`，只有 `/:specId` 返回 `item` envelope。adapter 工作期间 Catalog 推进到新 release 时，返回 `409 release-drift`，并在 `X-WiseEff-Catalog-Release` 中标明新的当前 release，而不是已过期的捕获值。
+
+effective spec 列表与精确详情共用前置 read-window adapter，其 dispatch 优先于历史 spec handler。它只枚举 owner scope 内的 typed legacy identity 与 mapping head，不查询 `parameter_specs` 或 `parameter_spec_versions`。可操作的 `items` 包含精确 Definition mapping、规范 Definition 与 registration projection，以及独立映射的旧版本 ID 和不可变规范 Revision 内容组成的 `revisions`。版本映射不得以当前 Revision 替代其固定 target。非操作性映射，以及 `archived`、`ambiguous`、`not-found` disposition，单独放入只读 `historicalItems`；未映射的精确详情返回 404，歧义详情返回 409，已归档详情返回 410。不得通过规范 ID、property 或 display name 猜测旧 ID。governance、raw、migration 查询模式在身份认证和历史读取前返回退役合同。effective 读取保留有界 header、权限检查和 Catalog Release drift 拒绝，认证失败也带有有界 header。无调用方的 organization driver-schema client/port 方法已删除；有意保留的 410 合同覆盖不变。
+
 任务读窗口将可精确适配的规范 `items` 与只读 `historicalItems` 分开返回。规格审核适配使用组织范围内的类型映射头和已授权的当前规范审核队列，不按属性名或节点名推断。只有恰好对应一个当前规范审核项的未决任务才会适配。其他任务保留原始证据与状态，标记 `historicalOnly: true`；开放或已忽略的任务另标记 `needsCanonicalDecision: true`。身份连续性选择没有等价的规范决议，保留为历史证据。任务退役与历史证据链接到 `/parameter-admin/specs?review=open`，打开规范审核队列；没有未决历史任务时，身份映射入口重定向到此处。
 
 DTS 审核证据可以证明 `needs_mapping` 修订中的不可变属性，但不会因此获得 Binding 或源写入证明。连续性证据保留前驱与候选的关系及匹配理由，不选择身份；候选有属性时使用精确属性锚点。无属性节点的连续性以修订绑定的 Review Evidence 进入规范 Review Queue：物化前验证持久化候选归属和连续性诊断、完整源成员的归属与字节，以及当前 Catalog pin。不创建属性定位、Parameter Observation、Binding 或源写入证明，也不解决前驱身份选择。源证明无效时仍以 `source-proof-invalid` 拒绝并回滚；仅缺少属性不会丢弃歧义证据。
@@ -649,6 +669,14 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 | Retired/deprecated | 指定 detail/filter 返回明确 membership/definition/registration lifecycle | 历史读保留；按合同禁用新 matching/binding。 |
 | Review placement choice | unresolved Review Item ETag、current release anchor、允许的 `register-subject` resolution | Org Admin 必须显式选择 `use-default` 或 `choose-parent`；不得预选或推断 parent。 |
 | Review resolution conflict | 409，reason 为 `placement-conflict`、`invalid-placement-parent`、`release-drift` 或 `revision-conflict` | 保留用户 selection，刷新 release/item/placement evidence，并要求重新确认；不得展示部分 Registration。 |
+
+## 规范项目删除门禁（#1070 / #1074）
+
+项目运营列表及详情响应提供服务端计算的 `canonicalOwned` 布尔值。租户范围内的项目只要存在任何规范 Binding、Project value 或来源固定记录（包括保留的历史），该值即为 true；显示的参数数量不能用来判断规范所有权。
+
+`DELETE /api/v1/parameters/admin/projects/:projectId` 对规范所有项目返回 HTTP 409 `CONFLICT`，并携带 `details.reason = "canonical-project-retained"` 和 `details.projectId`。`project-delete-refused` 审计的身份来自已认证调用，且在返回拒绝前提交。项目、规范、旧版及来源数据行均不改变。界面禁用删除，并提供可见、可访问的说明：规范历史必须保留，归档或处置功能尚未开放。
+
+删除事务获取项目行锁后，通过独立语句重新读取所有权，以包含等待锁期间规范写入者已提交的数据。空项目及仅含旧版数据的项目保留原有删除路径。此门禁不新增归档、退役或特权处置，也不修改外键及固定来源保护。
 
 ## OpenAPI 与前端后续影响
 

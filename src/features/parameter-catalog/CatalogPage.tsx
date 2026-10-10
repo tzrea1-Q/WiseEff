@@ -241,6 +241,7 @@ export function CatalogPage({
   const [unpublished, setUnpublished] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const definitionActionLabel = renderDefinitionEditor ? "编辑" : "查看";
   /** Cursors already traversed, so Previous is exact rather than guessed. */
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
@@ -871,11 +872,11 @@ export function CatalogPage({
                     <button
                       type="button"
                       className="button subtle sm"
-                      aria-label={`编辑 ${item.propertyKey}`}
-                      data-catalog-row-action="edit"
+                      aria-label={`${definitionActionLabel} ${item.propertyKey}`}
+                      data-catalog-row-action={renderDefinitionEditor ? "edit" : "read"}
                       onClick={() => selectDefinition(item)}
                     >
-                      编辑
+                      {definitionActionLabel}
                     </button>
                   </div>
                 ))}
@@ -895,11 +896,11 @@ export function CatalogPage({
                       <button
                         type="button"
                         className="button subtle sm"
-                        aria-label={`编辑 ${row.propertyKey}`}
-                        data-catalog-row-action="edit"
+                        aria-label={`${definitionActionLabel} ${row.propertyKey}`}
+                        data-catalog-row-action={renderDefinitionEditor ? "edit" : "read"}
                         onClick={() => selectDefinition(row)}
                       >
-                        编辑
+                        {definitionActionLabel}
                       </button>
                       {definitionPublishingAllowed && onDefinitionCommand ? (
                         <button
@@ -999,7 +1000,7 @@ export function CatalogPage({
                     </span>
                     <code className="parameter-catalog__editor-id-pill">{definition.id}</code>
                   </div>
-                  <h2 id={titleId}>{`编辑 ${definition.propertyKey}`.trim()}</h2>
+                  <h2 id={titleId}>{`${definitionActionLabel} ${definition.propertyKey}`.trim()}</h2>
                 </div>
                 <button
                   type="button"

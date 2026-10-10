@@ -66,6 +66,12 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 ## 端口和实现
 
+API 模式的 shell 参数行通过 `ParameterCatalogRepository.listProtectedProjectBindings` 读取（`GET /api/v2/projects/:projectId/parameter-bindings`，不带候选修订过滤），因此仅有规范 Binding 的项目也能填充参数库与模块投影。`ParameterRepository` 继续加载项目与项目范围草稿；旧语义 v1 参数列表不再是 shell 数据源。可选历史归档只在对应页面读取，失败不会清空 shell 的项目、草稿、参数库或模块。
+
+旧 `?parameter=` 链接通过历史 Catalog 适配器按 `project-parameter-binding` 类型精确查找；只有可操作且具有可读规范参数行的 `parameter-binding` 映射才跳转到该 Binding 所属项目的 `?binding=` 链接。归档、歧义、未知、越权或仅历史证据的结果显示历史提示，不按名称猜测。审阅归档的项目筛选使用保留的请求/提交轮次项目 ID 与显示快照；缺少精确元数据时明确标记为历史记录。
+
+API 导入向导的匹配、模块选项与逐行核对仅使用项目规范 Binding；即使项目没有配置集，也不合并或回退到 shell/旧参数行。mock 模式保留内存输入。
+
 前端页面不要直接拼业务写入逻辑，而是调用 application ports：
 
 - 参数管理：`ParameterRepository`

@@ -27,6 +27,27 @@ export const projectDtoSchema = z.object({
   code: z.string()
 });
 
+export const projectAdminSummaryDtoSchema = projectDtoSchema.extend({
+  status: z.string(),
+  initializationStatus: z.string(),
+  moduleCount: z.number(),
+  parameterCount: z.number(),
+  openConflictCount: z.number(),
+  releasedBaselineCount: z.number(),
+  canonicalOwned: z.boolean(),
+  updatedAt: z.string()
+});
+
+export const projectAdminSummaryResponseSchema = itemEnvelopeSchema(projectAdminSummaryDtoSchema);
+export const projectAdminListResponseSchema = itemsEnvelopeSchema(projectAdminSummaryDtoSchema);
+export const projectAdminDetailResponseSchema = itemEnvelopeSchema(projectAdminSummaryDtoSchema.extend({
+  modules: z.array(z.object({
+    id: z.string(), projectId: z.string(), name: z.string(), sortOrder: z.number(),
+    parentId: z.string().nullable().optional(), path: z.string().optional(),
+    depth: z.number().optional(), parameterModuleId: z.string().nullable().optional()
+  }))
+}));
+
 export const parameterHistoryEntryDtoSchema = z.object({
   version: z.string(),
   value: z.string(),
@@ -61,6 +82,31 @@ export const parameterRecordDtoSchema = z.object({
   updatedAtTs: z.string(),
   history: z.array(parameterHistoryEntryDtoSchema)
 });
+
+export const canonicalParameterCompatibilityRecordDtoSchema = parameterRecordDtoSchema
+  .omit({ parameterSpecId: true })
+  .extend({
+    bindingId: z.string(),
+    projectParameterBindingId: z.string(),
+    definitionId: z.string(),
+    effectiveRevisionId: z.string(),
+    currentValueId: z.string(),
+    sourceFileId: z.string().nullable().optional(),
+    sourceOccurrenceId: z.string().nullable().optional(),
+    recommendedValue: z.null(),
+    range: z.null(),
+    unit: z.null(),
+    risk: z.null(),
+    updatedAt: z.null(),
+    updatedAtTs: z.null(),
+    history: z.null(),
+    metadataAvailability: z.object({
+      status: z.literal("unavailable"),
+      reason: z.literal("canonical-compatibility-metadata-unavailable")
+    })
+  });
+
+export type CanonicalParameterCompatibilityRecordDto = z.infer<typeof canonicalParameterCompatibilityRecordDtoSchema>;
 
 export const parameterDraftDtoSchema = z.object({
   id: z.string(),
@@ -140,6 +186,8 @@ export const changeRequestDtoSchema = z.object({
 
 export const parameterSubmissionItemDtoSchema = z.object({
   requestId: z.string(),
+  editSubjectKind: z.enum(["binding", "node-enablement"]).optional(),
+  logicalNodeId: z.string().optional(),
   parameterId: z.string(),
   name: z.string(),
   module: z.string(),
@@ -245,7 +293,7 @@ export const dashboardHotspotDtoSchema = z.object({
 });
 
 export const projectListResponseSchema = itemsEnvelopeSchema(projectDtoSchema);
-export const parameterListResponseSchema = itemsEnvelopeSchema(parameterRecordDtoSchema);
+export const parameterListResponseSchema = itemsEnvelopeSchema(canonicalParameterCompatibilityRecordDtoSchema);
 export const parameterResponseSchema = itemEnvelopeSchema(parameterRecordDtoSchema);
 export const parameterHistoryResponseSchema = itemsEnvelopeSchema(parameterHistoryEntryDtoSchema);
 export const parameterDraftResponseSchema = itemEnvelopeSchema(parameterDraftDtoSchema);

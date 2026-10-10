@@ -31,7 +31,8 @@ import {
 
 // Release readiness stays a mocked service seam (it is not the database); the real
 // readiness gate is exercised end-to-end in configSetBaseline.integration.test.ts.
-vi.mock("./releaseReadinessService", () => ({
+vi.mock("./releaseReadinessService", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./releaseReadinessService")>(),
   assertReleaseGateAllows: vi.fn(async (_db, _auth, input: { configSetId: string }) => ({
     available: true,
     level: "ready",

@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 
-import type { ChangeRequestDto, ParameterRecordDto } from "../../../src/infrastructure/http/parameterDtos";
+import type { CanonicalParameterCompatibilityRecordDto, ChangeRequestDto, ParameterRecordDto } from "../../../src/infrastructure/http/parameterDtos";
 import type { LogRecordDto } from "../../../src/infrastructure/http/logDtos";
 import type { XiaozeThreadListItemDto } from "../../../src/infrastructure/http/xiaozeThreadsClient";
-import type { ParameterRecordDto as BackendParameterRecordDto } from "../parameters/types";
+import type { CanonicalParameterCompatibilityRecordDto as BackendParameterCompatibilityRecordDto, ParameterRecordDto as BackendParameterRecordDto } from "../parameters/types";
 import type { LogRecordDto as BackendLogRecordDto } from "../logs/types";
 import type { XiaozeThreadListItem } from "../agent/xiaoze/threadRepository";
 import {
   changeRequestDtoSchema,
+  canonicalParameterCompatibilityRecordDtoSchema,
+  dtoSchemaCatalog,
   logRecordDtoSchema,
   parameterRecordDtoSchema,
   xiaozeAgUiRunRequestSchema,
   xiaozeThreadListItemDtoSchema
 } from "./dtoSchemas";
+import { schemaRegistry } from "./schemaRegistry";
 
 type Assignable<Left, Right> = Left extends Right ? true : false;
 type Expect<T extends true> = T;
@@ -23,6 +26,15 @@ type ParameterRecordBackendFitsSchema = Expect<
 >;
 type ParameterRecordSchemaFitsFrontend = Expect<
   Assignable<z.infer<typeof parameterRecordDtoSchema>, ParameterRecordDto>
+>;
+type ParameterCompatibilityBackendFitsSchema = Expect<
+  Assignable<BackendParameterCompatibilityRecordDto, z.infer<typeof canonicalParameterCompatibilityRecordDtoSchema>>
+>;
+type ParameterCompatibilitySchemaFitsBackend = Expect<
+  Assignable<z.infer<typeof canonicalParameterCompatibilityRecordDtoSchema>, BackendParameterCompatibilityRecordDto>
+>;
+type ParameterCompatibilitySchemaFitsFrontend = Expect<
+  Assignable<z.infer<typeof canonicalParameterCompatibilityRecordDtoSchema>, CanonicalParameterCompatibilityRecordDto>
 >;
 type LogRecordBackendFitsSchema = Expect<Assignable<BackendLogRecordDto, z.infer<typeof logRecordDtoSchema>>>;
 type LogRecordSchemaFitsFrontend = Expect<Assignable<z.infer<typeof logRecordDtoSchema>, LogRecordDto>>;
@@ -36,11 +48,14 @@ type XiaozeThreadSchemaFitsFrontend = Expect<
 const _typeChecks: [
   ParameterRecordBackendFitsSchema,
   ParameterRecordSchemaFitsFrontend,
+  ParameterCompatibilityBackendFitsSchema,
+  ParameterCompatibilitySchemaFitsBackend,
+  ParameterCompatibilitySchemaFitsFrontend,
   LogRecordBackendFitsSchema,
   LogRecordSchemaFitsFrontend,
   XiaozeThreadBackendFitsSchema,
   XiaozeThreadSchemaFitsFrontend
-] = [true, true, true, true, true, true];
+] = [true, true, true, true, true, true, true, true, true];
 
 const parameterRecordFixture: ParameterRecordDto = {
   id: "aurora-fast-charge-current",
@@ -58,6 +73,27 @@ const parameterRecordFixture: ParameterRecordDto = {
   updatedAt: "2026-05-25 10:00",
   updatedAtTs: "2026-05-25T02:00:00.000Z",
   history: []
+};
+
+const parameterCompatibilityFixture: BackendParameterCompatibilityRecordDto = {
+  ...parameterRecordFixture,
+  id: "pbind_compatibility",
+  bindingId: "pbind_compatibility",
+  projectParameterBindingId: "pbind_compatibility",
+  definitionId: "pdef_compatibility",
+  effectiveRevisionId: "drev_compatibility",
+  currentValueId: "pval_compatibility",
+  sourceFileId: "file-compatibility",
+  sourceNodePath: "",
+  sourceOccurrenceId: "occurrence-compatibility",
+  recommendedValue: null,
+  range: null,
+  unit: null,
+  risk: null,
+  updatedAt: null,
+  updatedAtTs: null,
+  history: null,
+  metadataAvailability: { status: "unavailable", reason: "canonical-compatibility-metadata-unavailable" }
 };
 
 const logRecordFixture: LogRecordDto = {
@@ -91,12 +127,37 @@ const logRecordFixture: LogRecordDto = {
 
 describe("DTO schema alignment", () => {
   it("keeps the compile-time backend/frontend assignability checks", () => {
-    expect(_typeChecks).toEqual([true, true, true, true, true, true]);
+    expect(_typeChecks).toEqual([true, true, true, true, true, true, true, true, true]);
   });
 
   it("parses representative parameter and log frontend fixtures", () => {
     expect(parameterRecordDtoSchema.parse(parameterRecordFixture).id).toBe(parameterRecordFixture.id);
     expect(logRecordDtoSchema.parse(logRecordFixture).id).toBe(logRecordFixture.id);
+  });
+
+  it("the registered v1 list contract preserves exact pins and explicitly unavailable metadata", () => {
+    const schema = dtoSchemaCatalog[schemaRegistry["parameters.list"].responseBody]!;
+    const response = { items: [parameterCompatibilityFixture] };
+    expect(schema.parse(response)).toEqual(response);
+    expect(schema.parse({ items: [] })).toEqual({ items: [] });
+  });
+
+  it("the registered v1 list contract rejects fabricated metadata and missing canonical identity", () => {
+    const schema = dtoSchemaCatalog[schemaRegistry["parameters.list"].responseBody]!;
+    expect(schema.safeParse({ items: [{ ...parameterCompatibilityFixture,
+      recommendedValue: "", range: "", unit: "", risk: "Low", updatedAt: "", updatedAtTs: "", history: []
+    }] }).success).toBe(false);
+    expect(schema.safeParse({ items: [{ ...parameterCompatibilityFixture, metadataAvailability: undefined }] }).success).toBe(false);
+    expect(schema.safeParse({ items: [{ ...parameterCompatibilityFixture, currentValueId: undefined }] }).success).toBe(false);
+  });
+
+  it("the historical detail contract retains metadata and history and does not become the compatibility list DTO", () => {
+    const schema = dtoSchemaCatalog[schemaRegistry["parameters.get"].responseBody]!;
+    const historical = { ...parameterRecordFixture, history: [{
+      version: "v1", value: "2800", changedAt: "2026-05-24T02:00:00.000Z", changedBy: "Reviewer", requestId: "historical-request"
+    }] };
+    expect(schema.parse({ item: historical })).toEqual({ item: historical });
+    expect(schema.safeParse({ item: parameterCompatibilityFixture }).success).toBe(false);
   });
 
   it("accepts a change-request fixture the HTTP client already maps", () => {

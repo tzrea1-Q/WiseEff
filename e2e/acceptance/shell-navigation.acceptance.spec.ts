@@ -12,7 +12,8 @@ useBrowserDiagnostics(test, {
   expectedApiFailures: [
     { method: "POST", path: "/api/v1/debugging/targets/detect", status: 409 },
     { method: "GET", path: "/api/v2/organizations/org-chargelab/parameter-review-items", status: 403 },
-    { method: "GET", path: "/api/v2/organizations/org-chargelab/parameter-review-items", status: 410 }
+    { method: "GET", path: "/api/v2/organizations/org-chargelab/parameter-review-items", status: 410 },
+    { method: "GET", path: "/api/v2/catalog/legacy-identifiers/project-parameter-binding/unknown-shell-1075", status: 404 }
   ]
 });
 
@@ -81,6 +82,44 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
 test.describe("M5.4 manual flow A - shell navigation", () => {
   test.beforeAll(async () => {
     await seedAcceptanceRoleMatrix();
+  });
+
+  test("contains unavailable historical reads while showing current canonical parameters", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const historicalReads: string[] = [];
+    await page.route(/\/api\/v1\/parameters\?/, async (route) => {
+      historicalReads.push(route.request().url());
+      await route.fulfill({ status: 500, contentType: "application/json", body: '{"error":{"code":"INTERNAL_ERROR","message":"Historical read unavailable"}}' });
+    });
+    const route = "/parameters?project=aurora&parameter=unknown-shell-1075";
+    const canonicalRead = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/v2/projects/aurora/parameter-bindings"
+      && response.request().method() === "GET"
+    );
+    await signInBrowserAsRole(page, "admin", route);
+    const response = await canonicalRead;
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    expect(body.items.length).toBeGreaterThan(0);
+    expect(body.items.every((item: { id: string }) => item.id.startsWith("pbind_"))).toBe(true);
+    await expect(page.getByText("旧参数链接仅供历史参考")).toBeVisible();
+    await expect(page.getByText(/不会按名称猜测或载入旧参数数据/)).toBeVisible();
+    await expect(page.locator(".api-runtime-error-banner")).toHaveCount(0);
+    await expect(page.getByLabel("DTS 参数工作台")).toBeVisible();
+    await expect(page.getByRole("table", { name: "DTS 参数列表" })).toBeVisible();
+    await expect(page.getByRole("table", { name: "DTS 参数列表" }).getByRole("row").filter({ hasText: "gpio_int" }).first()).toBeVisible();
+    expect(historicalReads).toEqual([]);
+    await page.keyboard.press("Tab");
+    await expect(page.locator(":focus")).toBeVisible();
+    await expectUsableShell(page, testInfo, "/parameters");
+    await recordOperationEvidence({
+      operationId: "SHELL-DIAG-001", title: "canonical shell with unavailable historical read",
+      status: "passed", role: "Admin", route, assertions: ["ui"], page, testInfo,
+      notes: "Current canonical Bindings remain visible; no historical semantic list is requested; unresolved old links are visibly historical."
+    });
+    await testInfo.attach("shell-canonical-historical-notice-1075", {
+      body: await page.screenshot({ fullPage: true }), contentType: "image/png"
+    });
   });
 
   for (const route of routes) {

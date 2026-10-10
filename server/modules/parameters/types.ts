@@ -61,6 +61,8 @@ export type ParameterRecordDto = {
   history: ParameterHistoryEntryDto[];
 };
 
+export type { CanonicalParameterCompatibilityRecordDto } from "../contracts/dtoSchemas/parameters";
+
 /**
  * New binding-centric draft surface — no recommendedValue.
  * Initialization suggestions use policyTarget ?? schemaDefault; exampleValue is non-enforced.
@@ -148,6 +150,8 @@ export type ChangeRequestDto = {
 
 export type ParameterSubmissionItemDto = {
   requestId: string;
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
   parameterId: string;
   name: string;
   module: string;

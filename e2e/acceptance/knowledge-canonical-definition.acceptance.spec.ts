@@ -72,6 +72,7 @@ test("manages exact Definition references, published-only reverse links and same
       [organizationId]);
     for (const [id, organization, role] of [
       [userId, organizationId, "hardware-user"],
+      ["user-kb-903-software", organizationId, "software-user"],
       ["user-kb-903-manager", organizationId, "admin"],
       ["user-kb-903-viewer", organizationId, "guest"],
       ["user-kb-903-nonowner", organizationId, "hardware-user"],
@@ -108,7 +109,7 @@ test("manages exact Definition references, published-only reverse links and same
       debugGateway: createSimulatorDebugDeviceGateway({ targets: [] }),
       auth: { mode: "production", verifier: createTokenVerifier({ issuer, secret }) }
     });
-    await new Promise<void>((resolve) => api!.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => api!.listen(8853, "127.0.0.1", resolve));
     const apiUrl = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
     const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
     const request = async (method: string, path: string, body?: unknown, expectedStatus = 200, actorToken = token) => {
@@ -217,7 +218,7 @@ test("manages exact Definition references, published-only reverse links and same
     vite = await createViteServer({
       cacheDir: join(storageRoot, "vite-cache"),
       server: {
-        host: "127.0.0.1", port: 5203, strictPort: false, hmr: false, watch: null,
+        host: "127.0.0.1", port: 5193, strictPort: true, hmr: false, watch: null,
         proxy: { "/api": { target: apiUrl, changeOrigin: true } }
       },
       define: {
@@ -269,6 +270,36 @@ test("manages exact Definition references, published-only reverse links and same
     await page.getByRole("dialog").getByRole("button", { name: "发布", exact: true }).click();
     expect((await published).status()).toBe(200);
     await page.screenshot({ path: testInfo.outputPath("knowledge-active-reference-1440x900.png"), animations: "disabled" });
+
+    await page.evaluate((value) => localStorage.setItem("wiseeff.localAuthToken", value), tokenFor("user-kb-903-software"));
+    await page.goto(`${frontendUrl}/knowledge?entryId=${entryId}`);
+    await expect(page.getByRole("dialog").getByText("KB-903 canonical browser entry")).toBeVisible();
+    const beforeReaderNavigation = await snapshot();
+    const definitionRead = page.waitForResponse((response) => response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/v2/catalog/definitions/${definitionId}`);
+    await chip.getByRole("button").click();
+    await expect(page).toHaveURL(new RegExp(`/parameters/definitions\\?definitionId=${definitionId}`));
+    const readerResponse = await definitionRead;
+    expect(readerResponse.status()).toBe(200);
+    expect(readerResponse.headers()["x-wiseeff-catalog-release"]).toBe(fixture.pin.id);
+    expect(catalogDefinitionResponseSchema.parse(await readerResponse.json()).item).toEqual(definition);
+    http.push({ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}`, status: readerResponse.status(),
+      catalogReleaseId: readerResponse.headers()["x-wiseeff-catalog-release"], body: await readerResponse.json() });
+    const readerDetail = page.getByRole("region", { name: "定义详情" });
+    await expect(readerDetail).toBeVisible();
+    await expect(readerDetail.getByText(definition.propertyKey, { exact: true })).toBeVisible();
+    await expect(readerDetail.getByRole("textbox")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: `查看 ${definition.propertyKey}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `编辑 ${definition.propertyKey}` })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("knowledge-software-definition-1440x900.png"), animations: "disabled" });
+    expect(await snapshot()).toEqual(beforeReaderNavigation);
+    await page.reload();
+    await expect(page.getByRole("region", { name: "定义详情" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭定义详情" }).click();
+    await expect(page).toHaveURL(`${frontendUrl}/parameters/definitions?catalogReleaseId=${fixture.pin.id}`);
+    await page.evaluate((value) => localStorage.setItem("wiseeff.localAuthToken", value), token);
+    await page.goto(`${frontendUrl}/knowledge?entryId=${entryId}`);
 
     // Authorized test producer before publication takeover; not an online activation or authoring API.
     const advanced = await fixture.advanceToDeprecated();
@@ -369,9 +400,10 @@ test("manages exact Definition references, published-only reverse links and same
       // The existing evidence recorder reads the runtime URL from this environment variable.
       process.env.WISEEFF_API_BASE_URL = apiUrl;
       await recordOperationEvidence({ operationId: "KB-XREF-001", title: testInfo.title, status: "passed",
-        testInfo, role: "Hardware User, Admin", route: "/knowledge", assertions: ["ui", "api", "db", "audit"],
+        testInfo, role: "Hardware User, Software User, Admin", route: "/knowledge", assertions: ["ui", "api", "db", "audit"],
         artifacts: [testInfo.outputPath("knowledge-active-reference-1440x900.png"),
-          testInfo.outputPath("knowledge-deprecated-reference-1440x900.png")],
+          testInfo.outputPath("knowledge-deprecated-reference-1440x900.png"),
+          testInfo.outputPath("knowledge-software-definition-1440x900.png")],
         api: http.map(({ method, path, status }) => ({ method, path, status })),
         db: [{ table: "knowledge_definition_references", predicate: `definition_id=${definitionId}`,
           rowCount: refs.rowCount ?? 0, observed: JSON.stringify(refs.rows) }],

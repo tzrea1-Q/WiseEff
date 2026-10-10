@@ -1015,7 +1015,14 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
     } as never);
     vi.spyOn(parameterTopologyResolve, "resolveParameterTopologyRepository").mockReturnValue({
       getTopology: vi.fn().mockResolvedValue({ revisionId: "rev-1" }),
-      listBindings: vi.fn().mockResolvedValue([])
+      listBindings: vi.fn().mockResolvedValue([
+        {
+          id: "canonical-charge-current-binding",
+          propertyKey: "fast_charge_current_limit_ma",
+          driverModule: "Charging Policy",
+          rawValue: "3200"
+        }
+      ])
     } as never);
     const parameterActions = createParameterActions();
     renderPage({ parameterActions, runtimeMode: "api" });

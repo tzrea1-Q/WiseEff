@@ -12,6 +12,7 @@ export type ParameterAdminProjectRow = {
   parameterCount: number;
   openConflictCount: number;
   releasedBaselineCount: number;
+  canonicalOwned?: boolean;
   baselineLabel: string;
   updatedAt: string;
   updatedAtLabel: string;
@@ -112,6 +113,7 @@ export function mapProjectAdminSummaryDto(item: ProjectAdminSummaryDto): Paramet
     parameterCount: item.parameterCount,
     openConflictCount,
     releasedBaselineCount,
+    canonicalOwned: item.canonicalOwned ?? false,
     baselineLabel: baselineLabelFor(releasedBaselineCount),
     updatedAt: item.updatedAt,
     updatedAtLabel: formatUpdatedAt(item.updatedAt)

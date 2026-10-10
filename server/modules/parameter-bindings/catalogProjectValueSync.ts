@@ -34,6 +34,8 @@ import {
 import { stabilizeCanonicalBinding, type Binding } from "../parameter-bindings/binding";
 import {
   readProjectProtectedParameters,
+  readProtectedReference,
+  type ProjectProtectedParameter,
   writebackProtectedReference,
 } from "../parameter-bindings/adapters";
 import { hasDeletedCurrentValue, type ProjectValuePayload } from "../parameter-bindings/values";
@@ -880,22 +882,120 @@ export async function saveCanonicalProjectValue(
   };
 }
 
+type CatalogBindingListInput = {
+  projectId: string;
+  revisionId?: string;
+  limit?: number;
+  moduleIds?: readonly string[];
+  module?: string;
+  q?: string;
+};
+
+async function readBoundedCatalogParameters(
+  pool: pg.Pool,
+  auth: AuthContext,
+  input: CatalogBindingListInput & { limit: number },
+): Promise<ProjectProtectedParameter[]> {
+  if (!auth.user.isActive || !canViewParameters(auth) ||
+      !auth.roles.some((role) => role.projectId === null || role.projectId === input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
+  }
+  const project = await pool.query("select 1 from public.projects where id = $1 and organization_id = $2", [
+    input.projectId, auth.organization.id,
+  ]);
+  if (project.rowCount !== 1) throw new ApiError("NOT_FOUND", "Project was not found.");
+  if (input.moduleIds?.length === 0) return [];
+  const kernel = createCatalogKernel(pool);
+  const snapshots = new Map<string, CatalogSnapshot>();
+  const items: ProjectProtectedParameter[] = [];
+  const term = input.q?.toLowerCase();
+  let afterId = "";
+  while (items.length < input.limit) {
+    const candidates = await pool.query<CatalogBindingRow>(
+      `select b.id, b.organization_id, b.catalog_release_id, b.project_id, b.logical_node_id,
+              b.registration_id, b.subject_id, b.definition_id, b.effective_revision_id, b.current_value_id
+       from parameter_catalog.current_project_parameter_bindings b
+       join parameter_catalog.project_parameter_values value on value.id = b.current_value_id and value.binding_id = b.id
+       left join parameter_catalog.organization_subject_registrations registration
+         on registration.id = b.registration_id and registration.organization_id = b.organization_id
+       left join parameter_catalog.subject_placements placement
+         on placement.id = registration.current_placement_id and placement.organization_id = b.organization_id
+       left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
+       where b.organization_id = $1 and b.project_id = $2 and b.id > $3
+         and value.source_ref <> 'canonical-binding-identity'
+         and ($5::text[] is null or placement.module_id = any($5::text[]))
+         and ($6::text is null or module.name = $6)
+       order by b.id limit $4`,
+      [auth.organization.id, input.projectId, afterId, input.limit - items.length, input.moduleIds ?? null, input.module ?? null],
+    );
+    if (candidates.rows.length === 0) break;
+    for (const row of candidates.rows) {
+      afterId = row.id;
+      let snapshot = snapshots.get(row.catalog_release_id);
+      if (!snapshot) {
+        const pin = await kernel.resolveCatalogReleasePin(CatalogReleaseId(row.catalog_release_id));
+        if (!pin.ok) throw new ApiError("CONFLICT", "Configured Catalog release is unavailable.", { reason: pin.error.kind });
+        const loaded = await kernel.loadPinnedCatalog(pin.value);
+        if (!loaded.ok) throw new ApiError("CONFLICT", "Configured Catalog snapshot is unavailable.", { reason: loaded.error.kind });
+        snapshot = loaded.value;
+        snapshots.set(row.catalog_release_id, snapshot);
+      }
+      const binding = toBinding(row, snapshot);
+      const definition = snapshot.getDefinitionById(binding.definitionId);
+      const revision = snapshot.getDefinitionRevision({ definitionId: binding.definitionId, revisionId: binding.effectiveRevisionId });
+      if ((definition.status !== "found" && definition.status !== "retired") || revision.status !== "found") {
+        throw new ApiError("CONFLICT", "Configured Definition revision is unavailable.", { reason: "revision-disagreement" });
+      }
+      const content = revision.revision.content;
+      if (term && ![definition.definition.propertyKey, content.displayName,
+        content.description.kind === "present" ? content.description.value : null,
+        content.documentation.kind === "present" ? content.documentation.value : null,
+      ].some((text) => text?.toLowerCase().includes(term))) continue;
+      const read = await readProtectedReference(pool, { snapshot, binding, definitionRevisionId: binding.effectiveRevisionId });
+      if (!read.ok) throw new ApiError("CONFLICT", "Configured parameter cannot be read at its exact pin.", { reason: read.error.reason });
+      items.push({ pin: read.value, propertyKey: definition.definition.propertyKey, revision: revision.revision });
+    }
+  }
+  return items;
+}
+
 export async function listCatalogBindingRowsForProject(
   db: Database,
   auth: AuthContext,
-  input: { projectId: string; revisionId?: string },
+  input: CatalogBindingListInput,
 ): Promise<CatalogBindingView[]> {
   const pool = getRootPostgresPool(db);
   if (!pool) return [];
-  const protectedRows = await readProjectProtectedParameters(pool, {
-    invocation: createUserInvocation(auth),
-    projectId: input.projectId,
-  });
-  const items: CatalogBindingView[] = [];
-  for (const row of protectedRows) {
-    if (row.pin.source.sourceRef === "canonical-binding-identity") continue;
-    if (input.revisionId && row.pin.source.configRevisionId !== input.revisionId) continue;
-    const locator = await db.query<{
+  const protectedRows = input.limit === undefined
+    ? await readProjectProtectedParameters(pool, { invocation: createUserInvocation(auth), projectId: input.projectId })
+    : await readBoundedCatalogParameters(pool, auth, { ...input, limit: input.limit });
+  const currentRevisions = input.revisionId
+    ? await db.query<{ config_revision_id: string }>(
+      `select distinct pin.config_revision_id
+       from dts_config_revisions candidate
+       join parameter_catalog.project_value_source_pins pin
+         on pin.organization_id = candidate.organization_id
+        and pin.project_id = candidate.project_id
+       join dts_config_revisions pinned_revision
+         on pinned_revision.id = pin.config_revision_id
+        and pinned_revision.config_set_id = candidate.config_set_id
+       join parameter_catalog.current_project_parameter_bindings binding
+         on binding.id = pin.binding_id and binding.current_value_id = pin.project_value_id
+       where candidate.id = $1 and candidate.organization_id = $2 and candidate.project_id = $3
+         and candidate.status = 'draft'
+         and not exists (
+           select 1 from parameter_catalog.project_value_source_pins materialized
+           where materialized.config_revision_id = candidate.id
+         )`,
+      [input.revisionId, auth.organization.id, input.projectId]
+    )
+    : null;
+  const revisionIds = new Set([input.revisionId, ...(currentRevisions?.rows.map((row) => row.config_revision_id) ?? [])]);
+  const rows = protectedRows.filter((row) => row.pin.source.sourceRef !== "canonical-binding-identity" &&
+    (!input.revisionId || revisionIds.has(row.pin.source.configRevisionId)));
+  if (rows.length === 0) return [];
+  const locator = await db.query<{
+      binding_id: string;
       node_locator: string | null;
       instance_name: string | null;
       module_id: string | null;
@@ -906,7 +1006,8 @@ export async function listCatalogBindingRowsForProject(
       source_occurrence_id: string | null;
     }>(
       `
-      select
+      select distinct on (b.id)
+        b.id as binding_id,
         coalesce(lnr.node_locator, source_pin.locator->>'pointer') as node_locator,
         case
           when lnr.unit_address is not null then lnr.name || '@' || lnr.unit_address
@@ -919,6 +1020,10 @@ export async function listCatalogBindingRowsForProject(
         coalesce(structured_node.node_path, source_occurrence.root_pointer) as source_node_path,
         source_pin.source_occurrence_id
       from parameter_catalog.current_project_parameter_bindings b
+      join unnest($1::text[], $2::text[], $3::text[], $4::text[])
+        selected(binding_id, current_value_id, effective_revision_id, catalog_release_id)
+        on b.id = selected.binding_id and b.current_value_id = selected.current_value_id
+       and b.effective_revision_id = selected.effective_revision_id and b.catalog_release_id = selected.catalog_release_id
       left join parameter_catalog.project_parameter_values value
         on value.id = b.current_value_id
        and value.binding_id = b.id
@@ -954,13 +1059,17 @@ export async function listCatalogBindingRowsForProject(
         on placement.id = registration.current_placement_id
       left join public.parameter_modules module
         on module.id = placement.module_id
-      where b.id = $1 and b.current_value_id = $2 and b.effective_revision_id = $3 and b.catalog_release_id = $4
-      order by lnr.config_revision_id desc nulls last
-      limit 1
+      where b.organization_id = $5 and b.project_id = $6
+      order by b.id, lnr.config_revision_id desc nulls last
       `,
-      [row.pin.bindingId,row.pin.currentValueId,row.pin.definitionRevisionId,row.pin.catalogRelease.id],
+      [rows.map((row) => row.pin.bindingId), rows.map((row) => row.pin.currentValueId),
+        rows.map((row) => row.pin.definitionRevisionId), rows.map((row) => row.pin.catalogRelease.id),
+        auth.organization.id, input.projectId],
     );
-    const loc = locator.rows[0];
+  const locators = new Map(locator.rows.map((row) => [row.binding_id, row]));
+  const items: CatalogBindingView[] = [];
+  for (const row of rows) {
+    const loc = locators.get(row.pin.bindingId);
     if (!loc?.source_format) throw new ApiError("CONFLICT", "Canonical read requires an exact owned source pin.");
     const view = payloadToBindingView(row.pin.payload, loc?.source_format ?? undefined);
     items.push({

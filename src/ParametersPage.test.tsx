@@ -360,6 +360,7 @@ function createApiBoundaryRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
   return {
+    listNodeEnablementDrafts: vi.fn().mockResolvedValue([]),
     listSpecs: vi.fn<ParameterTopologyRepository["listSpecs"]>().mockResolvedValue([API_SENTINEL_SPEC]),
     getSpec: vi.fn<ParameterTopologyRepository["getSpec"]>().mockResolvedValue(API_SENTINEL_SPEC),
     activateParameterSpec: vi
@@ -1766,6 +1767,131 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
+  it("reports a canonical archived old link without legacy shell rows or an editable fallback", async () => {
+    const onNavigate = vi.fn();
+    const parameterActions = createParameterActions();
+    const getLegacyIdentifier = vi.fn().mockRejectedValue(new WiseEffApiError(
+      "GONE", "The legacy identifier was archived and is not available for operational reads.",
+      { reason: "legacy-id-archived", retryable: false }, "archived-1070"
+    ));
+    const { container } = render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState({ parameters: [] })} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-archived-1070" runtimeMode="api" canEdit={false}
+      parameterActions={parameterActions} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier }}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    expect(await screen.findByText("该参数旧链接已归档")).toBeInTheDocument();
+    const banner = container.querySelector(".parameter-archived-link-banner")!;
+    expect(banner).toHaveTextContent("old-archived-1070");
+    expect(banner).toHaveTextContent("legacy-id-archived");
+    expect(banner).not.toHaveTextContent(/迁移证据|archive-op08-gone|candidate/);
+    expect(getLegacyIdentifier).toHaveBeenCalledWith("project-parameter-binding", "old-archived-1070");
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(within(banner as HTMLElement).getByRole("button", { name: "知道了" }));
+    expect(container.querySelector(".parameter-archived-link-banner")).not.toBeInTheDocument();
+  });
+
+  it("resolves an old ?parameter= link only through an exact typed historical mapping", async () => {
+    const onNavigate = vi.fn();
+    const parameterActions = createParameterActions();
+    const getLegacyIdentifier = vi.fn().mockResolvedValue({ item: {
+      legacyType: "project-parameter-binding", legacyId: "old-binding-1075", disposition: "mapped",
+      target: { kind: "parameter-binding", id: API_SENTINEL_BINDING.id, href: "/api/v2/catalog" }, historicalOnly: false
+    } });
+    const canonicalRepository = { ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier };
+    render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState({ parameters: [{ ...initialState.parameters[0], id: API_SENTINEL_BINDING.id, projectId: "aurora" }] })} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-binding-1075" runtimeMode="api" canEdit={false}
+      parameterActions={parameterActions} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={canonicalRepository}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(`/parameters?project=aurora&binding=${API_SENTINEL_BINDING.id}`));
+    expect(getLegacyIdentifier).toHaveBeenCalledWith("project-parameter-binding", "old-binding-1075");
+    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+  });
+
+  it("opens an exact historical mapping in the canonical Binding's owning project", async () => {
+    const onNavigate = vi.fn();
+    const getLegacyIdentifier = vi.fn().mockResolvedValue({ item: {
+      legacyType: "project-parameter-binding", legacyId: "old-in-nebula", disposition: "mapped",
+      target: { kind: "parameter-binding", id: "pbind_nebula", href: "/api/v2/catalog" }, historicalOnly: false
+    } });
+    render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState({ parameters: [{ ...initialState.parameters[0], id: "pbind_nebula", projectId: "nebula" }] })}
+      dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-in-nebula" runtimeMode="api" canEdit={false}
+      parameterActions={createParameterActions()} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier }}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameters?project=nebula&binding=pbind_nebula"));
+  });
+
+  it.each(["NOT_FOUND", "CONFLICT", "GONE"])("keeps an unmapped old ?parameter= link visibly historical (%s)", async (code) => {
+    const onNavigate = vi.fn();
+    const parameterActions = createParameterActions();
+    const getLegacyIdentifier = vi.fn().mockRejectedValue(new WiseEffApiError(code, "No operational mapping", {}, "historical-1075"));
+    const canonicalRepository = { ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier };
+    render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState()} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-binding-with-same-name" runtimeMode="api" canEdit={false}
+      parameterActions={parameterActions} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={canonicalRepository}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    expect(await screen.findByText("旧参数链接仅供历史参考")).toBeInTheDocument();
+    expect(screen.getByText(/不会按名称猜测或载入旧参数数据/)).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(parameterActions.getParameter).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps a mapped but unreadable Binding visibly historical without guessing its project", async () => {
+    const onNavigate = vi.fn();
+    const getLegacyIdentifier = vi.fn().mockResolvedValue({ item: {
+      legacyType: "project-parameter-binding", legacyId: "old-unreadable", disposition: "mapped",
+      target: { kind: "parameter-binding", id: "pbind_unreadable", href: "/api/v2/catalog" }, historicalOnly: false
+    } });
+    render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState()} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-unreadable" runtimeMode="api" canEdit={false}
+      parameterActions={createParameterActions()} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier }}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    expect(await screen.findByText(/Binding 当前不可读，不能确定所属项目/)).toBeInTheDocument();
+    expect(screen.getByText("旧参数链接仅供历史参考")).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("does not promote an exact historical evidence target into a current Binding", async () => {
+    const onNavigate = vi.fn();
+    const getLegacyIdentifier = vi.fn().mockResolvedValue({ item: {
+      legacyType: "project-parameter-binding", legacyId: "old-evidence", disposition: "mapped",
+      target: { kind: "review-evidence", id: "review-evidence-1075", href: "/api/v2/catalog" }, historicalOnly: true
+    } });
+    render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState()} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-evidence" runtimeMode="api" canEdit={false}
+      parameterActions={createParameterActions()} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier }}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    expect(await screen.findByText("旧参数链接仅供历史参考")).toBeInTheDocument();
+    expect(screen.getByText(/该精确映射仅指向历史证据/)).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
   it.each(["binding", "bindingId"])("reports a stale ?%s= target without opening another Binding or probing Archive", async (queryKey) => {
     const topologyRepository = createApiBoundaryRepository();
     const parameterActions = createParameterActions();

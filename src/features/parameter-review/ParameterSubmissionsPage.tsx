@@ -19,7 +19,7 @@ import { ArrowRight, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import "./parameter-review.css";
 
-type LegacyArchiveState = {
+type SubmissionProjectionState = {
   status: "idle" | "loading" | "ready" | "error";
   rounds: LegacySubmissionRound[];
   error: string | null;
@@ -55,21 +55,25 @@ export function ParameterSubmissionsPage({
   const memberRequestId = new URLSearchParams(search).get("memberRequest") ?? undefined;
   const canonicalProject = state.configDraft.projects.find((project) => project.id === canonicalProjectId);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const [submissionProjection, setSubmissionProjection] = useState<SubmissionProjectionState>({ status: "idle", rounds: [], error: null });
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const historicalRounds = submissionProjection.rounds.filter((round) => round.projectId === canonicalProjectId
+    && !round.items.some((item) => item.editSubjectKind === "node-enablement"));
   const submitterAliases = new Set(
     currentUser ? getUserDisplayAliases(currentUser) : [activeRoleLabel(state.activeRoleId), "平台用户"]
   );
   // API mode uses the server-side exact-owner archive projection below; the
   // reducer's legacy rounds never decide personal ownership by display name.
   const myRounds = runtimeMode === "api"
-    ? []
+    ? submissionProjection.rounds.filter((round) => round.projectId === canonicalProjectId
+      && round.items.some((item) => item.editSubjectKind === "node-enablement"))
     : state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
-  const [legacyArchive, setLegacyArchive] = useState<LegacyArchiveState>({ status: "idle", rounds: [], error: null });
   const [selectedArchiveRoundId, setSelectedArchiveRoundId] = useState("");
   const [withdrawingRound, setWithdrawingRound] = useState(false);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
-  const selectedArchiveRound = legacyArchive.rounds.find((round) => round.id === selectedArchiveRoundId) ?? legacyArchive.rounds[0];
+  const selectedArchiveRound = historicalRounds.find((round) => round.id === selectedArchiveRoundId) ?? historicalRounds[0];
   const timelineView = deriveSubmissionTimeline(selectedRound ?? null);
   const workflowStages = useMemo(() => {
     if (!selectedRound) {
@@ -132,21 +136,21 @@ export function ParameterSubmissionsPage({
 
   useEffect(() => {
     if (!isApiMode) {
-      setLegacyArchive({ status: "idle", rounds: [], error: null });
+      setSubmissionProjection({ status: "idle", rounds: [], error: null });
       return;
     }
     const parameterRepository = runtime?.parameterRepository;
     if (!parameterRepository) {
-      setLegacyArchive({ status: "error", rounds: [], error: "旧版提交归档接口未配置，暂时无法加载。" });
+      setSubmissionProjection({ status: "error", rounds: [], error: "提交记录接口未配置，暂时无法加载。" });
       return;
     }
     if (!canonicalProject) {
-      setLegacyArchive({ status: "idle", rounds: [], error: null });
+      setSubmissionProjection({ status: "idle", rounds: [], error: null });
       return;
     }
 
     let cancelled = false;
-    setLegacyArchive({ status: "loading", rounds: [], error: null });
+    setSubmissionProjection((current) => ({ ...current, status: "loading", error: null }));
     type SubmissionRoundListMethod = NonNullable<typeof parameterRepository>["listSubmissionRounds"];
     const listSubmissionRounds = parameterRepository.listSubmissionRounds as (
       query: Parameters<SubmissionRoundListMethod>[0] & { mine: true }
@@ -154,7 +158,7 @@ export function ParameterSubmissionsPage({
     void listSubmissionRounds({ projectId: canonicalProject.id, mine: true })
       .then((rounds) => {
         if (cancelled) return;
-        setLegacyArchive({
+        setSubmissionProjection({
           status: "ready",
           // `mine=true` is a server-owned projection. Legacy round DTOs do not
           // expose submitter IDs, so the API client must trust this response.
@@ -164,19 +168,19 @@ export function ParameterSubmissionsPage({
       })
       .catch((error) => {
         if (!cancelled) {
-          setLegacyArchive({ status: "error", rounds: [], error: presentError(error, "旧版提交归档加载失败，请稍后重试。") });
+          setSubmissionProjection({ status: "error", rounds: [], error: presentError(error, "提交记录加载失败，请稍后重试。") });
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [canonicalProject, isApiMode, runtime?.parameterRepository]);
+  }, [canonicalProject, isApiMode, runtime?.parameterRepository, refreshVersion]);
 
   useEffect(() => {
-    if (!legacyArchive.rounds.some((round) => round.id === selectedArchiveRoundId)) {
-      setSelectedArchiveRoundId(legacyArchive.rounds[0]?.id ?? "");
+    if (!submissionProjection.rounds.some((round) => round.id === selectedArchiveRoundId)) {
+      setSelectedArchiveRoundId(submissionProjection.rounds[0]?.id ?? "");
     }
-  }, [legacyArchive.rounds, selectedArchiveRoundId]);
+  }, [submissionProjection.rounds, selectedArchiveRoundId]);
 
   useTopBarActions(
     <Button
@@ -224,6 +228,7 @@ export function ParameterSubmissionsPage({
         if (result && "notification" in result && !result.alreadyNotified) {
           dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
         }
+        if (!result || !("notification" in result)) setRefreshVersion((version) => version + 1);
         return;
       }
 
@@ -266,22 +271,19 @@ export function ParameterSubmissionsPage({
           ) : (
             <p role="alert">新版参数提交暂不可用，请稍后重试。</p>
           )}
-          {canonicalProject ? (
+          {submissionProjection.status === "loading" ? <p role="status">正在加载提交记录…</p> : null}
+          {submissionProjection.error ? <p role="alert">{submissionProjection.error}</p> : null}
+          {canonicalProject && historicalRounds.length > 0 ? (
             <section className="submission-history-archive" aria-label="旧版提交归档">
               <header>
                 <h2>旧版提交归档</h2>
                 <p>旧版记录仅供本人只读查看，不会进入新版请求或提供撤回操作。</p>
               </header>
-              {legacyArchive.status === "loading" ? <p role="status">正在加载旧版提交归档…</p> : null}
-              {legacyArchive.error ? <p role="alert">{legacyArchive.error}</p> : null}
-              {legacyArchive.status === "ready" && legacyArchive.rounds.length === 0 ? (
-                <p role="note">旧版提交记录已离线归档，当前项目没有可展示的旧版本人记录。</p>
-              ) : null}
-              {legacyArchive.rounds.length > 0 ? (
+              {historicalRounds.length > 0 ? (
                 <div className="submission-history-layout">
                   <aside className="history-panel" aria-label="旧版提交记录">
-                    <PanelHeader title="旧版提交记录" meta={`${legacyArchive.rounds.length} 轮`} />
-                    {legacyArchive.rounds.map((round) => (
+                    <PanelHeader title="旧版提交记录" meta={`${historicalRounds.length} 轮`} />
+                    {historicalRounds.map((round) => (
                       <Button
                         aria-pressed={round.id === selectedArchiveRound?.id}
                         className={round.id === selectedArchiveRound?.id ? "history-item active" : "history-item"}
@@ -331,12 +333,13 @@ export function ParameterSubmissionsPage({
             </section>
           ) : null}
         </>
-      ) : (
-        <>
+      ) : null}
+      {!isApiMode || myRounds.length > 0 ? (
+        <section aria-label={isApiMode ? "节点启用提交" : "我的提交"}>
         <section className="comparison-summary submission-history-summary">
           <MetricCard title="我的提交轮次" value={`${myRounds.length}`} trend="按轮次归档" tone="blue" />
           <MetricCard title="进行中轮次" value={`${activeRoundCount}`} trend="可撤回或等待审阅" tone="teal" />
-          <MetricCard title="参数项总数" value={`${myRounds.reduce((total, round) => total + round.items.length, 0)}`} trend="包含单参数和多参数提交" tone="purple" />
+          <MetricCard title={isApiMode ? "节点变更项总数" : "参数项总数"} value={`${myRounds.reduce((total, round) => total + round.items.length, 0)}`} trend="包含单项和多项提交" tone="purple" />
         </section>
       <section className="submission-history-layout">
         <aside className="history-panel" aria-label="我的提交轮次">
@@ -364,13 +367,13 @@ export function ParameterSubmissionsPage({
               <div className="detail-card">
                 <div className="detail-heading">
                   <div>
-                    <span className="eyebrow">提交轮次</span>
+                    <span className="eyebrow">{isApiMode ? "节点启用提交" : "提交轮次"}</span>
                     <h2>{selectedRound.projectName}</h2>
                   </div>
                   <StatusBadge status={selectedRound.status} />
                 </div>
                 <p>
-                  本轮提交包含 {selectedRound.items.length} 个参数，由 {selectedRound.submitter} 在{" "}
+                  本轮提交包含 {selectedRound.items.length} 项变更，由 {selectedRound.submitter} 在{" "}
                   {formatSubmissionTimestamp(selectedRound.createdAt)} 提交。
                 </p>
                 <SubmissionWorkflowTimeline activeIndex={timelineView.activeIndex} workflowStages={workflowStages} />
@@ -416,8 +419,8 @@ export function ParameterSubmissionsPage({
         }}
         onConfirm={() => void withdrawSelectedRound()}
       />
-        </>
-      )}
+        </section>
+      ) : null}
     </div>
   );
 }

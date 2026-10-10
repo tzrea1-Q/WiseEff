@@ -1,5 +1,5 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useMemo, useState, type Dispatch } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import { buildImportTemplateWorkbook } from "@/application/parameters/import/buildImportTemplate";
@@ -10,7 +10,7 @@ import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepos
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { presentError } from "@/infrastructure/http/presentError";
-import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
+import { parameterRecordFromBinding } from "@/infrastructure/http/parameterCatalogDtos";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -31,28 +31,6 @@ function reviewRowMatchKey(row: ReviewedImportRow): string {
   return `${row.name}::${row.module}`;
 }
 
-function bindingToLibraryRecord(projectId: string, binding: ProjectParameterBinding): ParameterRecord {
-  return {
-    id: binding.id,
-    name: binding.propertyKey,
-    description: binding.description ?? "",
-    explanation: "",
-    configFormat: "DTS",
-    module: binding.driverModule ?? "",
-    moduleId: binding.moduleId || undefined,
-    projectId,
-    currentValue: binding.rawValue,
-    recommendedValue: "",
-    range: "",
-    unit: "",
-    risk: "Low",
-    valueKind: "scalar",
-    updatedAt: "",
-    updatedAtTs: "",
-    history: []
-  };
-}
-
 async function libraryForImport(
   parameters: ParameterRecord[],
   projectId: string,
@@ -64,14 +42,12 @@ async function libraryForImport(
   const sets = await resolveDtsStructuredRepository("api").listConfigSets(projectId);
   const configSet = sets.find((item) => item.name === "default") ?? sets[0];
   if (!configSet) {
-    return parameters;
+    return [];
   }
   const topology = resolveParameterTopologyRepository("api");
   const tree = await topology.getTopology(projectId, configSet.id, "current", "effective");
   const items = await topology.listBindings(projectId, tree.revisionId);
-  const fromBindings = items.map((binding) => bindingToLibraryRecord(projectId, binding));
-  const seen = new Set(fromBindings.map((item) => item.id));
-  return [...fromBindings, ...parameters.filter((item) => !seen.has(item.id))];
+  return items.map((binding) => parameterRecordFromBinding(projectId, binding));
 }
 
 function reconcileReviewedRows(rows: ReviewedImportRow[], parameters: ParameterRecord[], targetProjectId: string): ReviewedImportRow[] {
@@ -173,6 +149,8 @@ export function ParameterImportWizard({
   const [createProjectError, setCreateProjectError] = useState("");
   const [parsedRows, setParsedRows] = useState<ParsedImportRow[]>([]);
   const [reviewedRows, setReviewedRows] = useState<ReviewedImportRow[]>([]);
+  const [canonicalLibrary, setCanonicalLibrary] = useState<{ projectId: string; parameters: ParameterRecord[] } | null>(null);
+  const importRequestGeneration = useRef(0);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [previewBatch, setPreviewBatch] = useState<ParameterImportBatchDto | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -180,10 +158,16 @@ export function ParameterImportWizard({
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingProjectChangeId, setPendingProjectChangeId] = useState<string | null>(null);
 
-  const libraryParameters = useMemo(() => buildParameterLibraryFromRecords(parameters, projects), [parameters, projects]);
+  const importParameters = useMemo(
+    () => isApiMode
+      ? (canonicalLibrary?.projectId === targetProjectId ? canonicalLibrary.parameters : [])
+      : parameters,
+    [isApiMode, canonicalLibrary, targetProjectId, parameters]
+  );
+  const libraryParameters = useMemo(() => buildParameterLibraryFromRecords(importParameters, projects), [importParameters, projects]);
   const moduleNames = useMemo(
-    () => listParameterModuleNames(buildParameterModulesFromRecords(parameters)),
-    [parameters]
+    () => listParameterModuleNames(buildParameterModulesFromRecords(importParameters)),
+    [importParameters]
   );
   const targetProject = useMemo(
     () => projects.find((project) => project.id === targetProjectId),
@@ -191,6 +175,7 @@ export function ParameterImportWizard({
   );
 
   useEffect(() => {
+    importRequestGeneration.current += 1;
     if (!open) {
       return;
     }
@@ -204,11 +189,13 @@ export function ParameterImportWizard({
     setCreateProjectError("");
     setParsedRows([]);
     setReviewedRows([]);
+    setCanonicalLibrary(null);
     setParseErrors([]);
     setPreviewBatch(null);
     setSelectedItemIds(new Set());
     setApplyPending(false);
     setCloseConfirmOpen(false);
+    return () => { importRequestGeneration.current += 1; };
   }, [open, activeProjectId]);
 
   // Progress worth protecting: any step past the source picker, or parse /
@@ -233,6 +220,7 @@ export function ParameterImportWizard({
   }
 
   const parseAndMatch = async (projectId: string) => {
+    const requestGeneration = ++importRequestGeneration.current;
     const errors: string[] = [];
     let parsed: ParsedImportRow[] = [];
     try {
@@ -257,25 +245,41 @@ export function ParameterImportWizard({
         errors.push(presentError(error, "解析失败，请检查文件内容。"));
       }
     }
-    setParsedRows(parsed);
+    if (requestGeneration !== importRequestGeneration.current) {
+      return false;
+    }
     try {
       const library = await libraryForImport(parameters, projectId, runtimeMode);
+      if (requestGeneration !== importRequestGeneration.current) {
+        return false;
+      }
+      setCanonicalLibrary({ projectId, parameters: library });
       setReviewedRows(matchToLibrary(parsed, library, projectId));
     } catch (error) {
+      if (requestGeneration !== importRequestGeneration.current) {
+        return false;
+      }
       errors.push(presentError(error, "无法加载当前项目的已发布参数，已停止匹配以免误建新定义。"));
       setReviewedRows([]);
+      setCanonicalLibrary(null);
     }
+    setParsedRows(parsed);
     setParseErrors(errors);
+    return true;
   };
 
   const handleParseAndAdvance = async () => {
-    await parseAndMatch(targetProjectId);
-    setStep(2);
+    if (await parseAndMatch(targetProjectId)) {
+      setStep(2);
+    }
   };
 
   const applyProjectChange = (nextProjectId: string) => {
     setTargetProjectId(nextProjectId);
-    void parseAndMatch(nextProjectId).then(() => {
+    void parseAndMatch(nextProjectId).then((isCurrentRequest) => {
+      if (!isCurrentRequest) {
+        return;
+      }
       setPreviewBatch(null);
       setSelectedItemIds(new Set());
       setStep(2);
@@ -290,6 +294,8 @@ export function ParameterImportWizard({
       setPendingProjectChangeId(nextProjectId);
       return;
     }
+    importRequestGeneration.current += 1;
+    setCanonicalLibrary(null);
     setTargetProjectId(nextProjectId);
   };
 
@@ -300,11 +306,11 @@ export function ParameterImportWizard({
       if (isApiMode) {
         const created = await adminClient.createProject({ name: input.name, code: input.code });
         await parameterActions?.refresh();
-        setTargetProjectId(created.id);
+        handleTargetProjectChange(created.id);
       } else {
         const id = slugifyProjectCode(input.code) || `project-${Date.now()}`;
         dispatch({ type: "ADD_PARAMETER_ADMIN_PROJECT", project: { id, name: input.name, code: input.code } });
-        setTargetProjectId(id);
+        handleTargetProjectChange(id);
       }
       setCreateProjectOpen(false);
     } catch (error) {
@@ -327,7 +333,7 @@ export function ParameterImportWizard({
   const handleUpdateRow = (rowId: string, patch: Partial<ParsedImportRow>) => {
     setReviewedRows((current) => {
       const updated = current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row));
-      return reconcileReviewedRows(updated, parameters, targetProjectId);
+      return reconcileReviewedRows(updated, importParameters, targetProjectId);
     });
   };
 

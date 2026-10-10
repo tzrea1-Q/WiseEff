@@ -121,6 +121,8 @@ export type ParameterRecord = {
 
 export type ChangeRequest = {
   id: string;
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
   submissionRoundId?: string;
   projectId?: string;
   parameterId: string;
@@ -152,6 +154,8 @@ export type ChangeRequest = {
 
 export type ParameterSubmissionItem = {
   requestId: string;
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
   parameterId: string;
   name: string;
   module: string;

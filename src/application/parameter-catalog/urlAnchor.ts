@@ -1,4 +1,5 @@
 export const CATALOG_PAGE_PATH = "/parameter-admin/specs";
+export const CATALOG_READ_PAGE_PATH = "/parameters/definitions";
 
 export type CatalogUrlAnchor = {
   subjectId: string | null;

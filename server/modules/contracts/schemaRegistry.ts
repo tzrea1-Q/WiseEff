@@ -665,10 +665,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
 
   "parameterSpecs.list": {
-    summary: "List versioned parameter specifications",
+    summary: "Read exact canonical spec mappings during the legacy read window",
     tags: ["parameters"],
-    responseBody: "ParameterSpecListResponse",
-    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" },
+    responseBody: "CatalogLegacySpecListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "ErrorResponse", "503": "ErrorResponse" },
     successHeaders: boundedLegacyReadHeaders
   },
   "parameterSpecs.create": retireLegacySurface({
@@ -680,10 +680,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
   }),
   "parameterSpecs.get": {
-    summary: "Get a parameter specification detail",
+    summary: "Read an exact canonical spec mapping during the legacy read window",
     tags: ["parameters"],
-    responseBody: "ParameterSpecDetailResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "410": "ErrorResponse" },
+    responseBody: "CatalogLegacySpecResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "ErrorResponse", "503": "ErrorResponse" },
     successHeaders: boundedLegacyReadHeaders
   },
   "parameterSpecs.getCutover": retireLegacySurface({
@@ -1924,10 +1924,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
 
   "parameters.deleteAdminProject": {
-    summary: "Delete a project and its parameter-management data (cascade)",
+    summary: "Delete an empty or legacy-only project; retain canonical project history",
     tags: ["parameters"],
     responseBody: "ProjectDeleteResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameters.parseDtsImport": {
     summary: "Parse a full DTS source into import preview rows",

@@ -14,6 +14,8 @@ import type {
   ProjectSummary
 } from "@/application/ports/ParameterRepository";
 
+export type { CanonicalParameterCompatibilityRecordDto } from "@wiseeff/dto-schemas";
+
 export type BackendRiskLevel = RiskLevel;
 
 export type BackendChangeRequestStatus =

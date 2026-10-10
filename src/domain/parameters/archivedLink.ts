@@ -52,9 +52,11 @@ export function archivedParameterLinkNotice(
       : {};
   const diagnostic = isArchivedLinkDiagnostic(details.diagnostic)
     ? details.diagnostic
-    : isArchivedLinkDiagnostic(candidate.message)
-      ? candidate.message
-      : null;
+    : isArchivedLinkDiagnostic(details.reason)
+      ? details.reason
+      : isArchivedLinkDiagnostic(candidate.message)
+        ? candidate.message
+        : null;
   if (!diagnostic) {
     return null;
   }

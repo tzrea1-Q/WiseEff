@@ -23005,7 +23005,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-parameter-workbench-table__enablement-path {
-  color: var(--muted, #667085);
+  color: var(--text-muted);
 }
 
 .dts-parameter-workbench-table__actions-col {
@@ -26398,7 +26398,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .param-admin-shell .spec-review-queue__picked-detail {
   margin: 0;
   font-size: var(--text-base);
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /*

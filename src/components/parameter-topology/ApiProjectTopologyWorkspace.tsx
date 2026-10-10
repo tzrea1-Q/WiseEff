@@ -96,6 +96,11 @@ export type ApiProjectTopologyWorkspaceProps = {
   onNavigate?: (path: string) => void;
 };
 
+type DraftReadState =
+  | { kind: "loading" }
+  | { kind: "ready"; drafts: readonly TrayHydrationDraft[] }
+  | { kind: "error"; message: string };
+
 type LoadState =
   | { kind: "loading" }
   | { kind: "empty"; message: string }
@@ -139,7 +144,6 @@ function mapServerDraftsToPending(
     const candidateRevisionId = draft.candidateConfigRevisionId?.trim() || sharedTip || "";
     if (!candidateRevisionId) return [];
 
-    // TODO: drop optional chaining once listDrafts always returns enablement draft fields.
     if (draft.editSubjectKind === "node-enablement") {
       const logicalNodeId = draft.logicalNodeId?.trim();
       if (!logicalNodeId) return [];
@@ -394,7 +398,21 @@ export function ApiProjectTopologyWorkspace({
   const pendingDraftsRef = useRef(pendingDrafts);
   pendingDraftsRef.current = pendingDrafts;
   const [submitSuccessNotice, setSubmitSuccessNotice] = useState<string | null>(null);
-  const [serverDrafts, setServerDrafts] = useState<readonly TrayHydrationDraft[] | null>(null);
+  const [valueDraftRead, setValueDraftRead] = useState<DraftReadState>({ kind: "loading" });
+  const [enablementDraftRead, setEnablementDraftRead] = useState<DraftReadState>({ kind: "loading" });
+  const [valueDraftRetryToken, setValueDraftRetryToken] = useState(0);
+  const [enablementDraftRetryToken, setEnablementDraftRetryToken] = useState(0);
+  const serverDrafts = useMemo(() => [
+    ...(valueDraftRead.kind === "ready" ? valueDraftRead.drafts : []),
+    ...(enablementDraftRead.kind === "ready" ? enablementDraftRead.drafts : [])
+  ], [valueDraftRead, enablementDraftRead]);
+  const removeCachedServerDraft = (draftId: string) => {
+    for (const setRead of [setValueDraftRead, setEnablementDraftRead]) {
+      setRead((current) => current.kind === "ready"
+        ? { ...current, drafts: current.drafts.filter((draft) => draft.id !== draftId) }
+        : current);
+    }
+  };
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
   const [activeFormatTab, setActiveFormatTab] = useState<"dts" | "json">("dts");
   const [enablementDialogTarget, setEnablementDialogTarget] = useState<{
@@ -449,7 +467,6 @@ export function ApiProjectTopologyWorkspace({
   useEffect(() => {
     setPreferredRevision(null);
     setPendingDrafts([]);
-    setServerDrafts(null);
     setSelectedDraftBindingIds(new Set());
     setSubmitSuccessNotice(null);
     setEnablementDialogTarget(null);
@@ -461,53 +478,60 @@ export function ApiProjectTopologyWorkspace({
 
   useEffect(() => {
     let cancelled = false;
-    // The draft source is injected by the composition point (ParametersPage). This
-    // component must not build an HTTP client of its own: doing so bypassed the
-    // injectable seams and, before Issue #849, silently read the legacy
-    // `parameter-drafts` surface instead of the canonical pending drafts.
     const resolveListDrafts = listDraftsRef.current;
-    if (!resolveListDrafts) {
-      setServerDrafts([]);
-      return undefined;
-    }
-    setServerDrafts(null);
-    resolveListDrafts(projectId)
-      .then((drafts) => {
-        if (!cancelled) setServerDrafts(drafts);
-      })
-      .catch(() => {
-        if (!cancelled) setServerDrafts([]);
-      });
+    setValueDraftRead({ kind: "loading" });
+    void (resolveListDrafts?.(projectId) ?? Promise.resolve([])).then((drafts) => {
+      if (!cancelled) setValueDraftRead({ kind: "ready", drafts });
+    }).catch((error) => {
+      if (!cancelled) setValueDraftRead({ kind: "error", message: presentError(error, "请稍后重试。") });
+    });
     return () => {
       cancelled = true;
     };
-  }, [projectId, runtimeMode, draftsReloadToken]);
+  }, [projectId, repository, runtimeMode, draftsReloadToken, valueDraftRetryToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEnablementDraftRead({ kind: "loading" });
+    void repository.listNodeEnablementDrafts(projectId).then((drafts) => {
+      if (!cancelled) setEnablementDraftRead({ kind: "ready", drafts });
+    }).catch((error) => {
+      if (!cancelled) setEnablementDraftRead({ kind: "error", message: presentError(error, "请稍后重试。") });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, repository, runtimeMode, draftsReloadToken, enablementDraftRetryToken]);
 
   useEffect(() => {
     if (!serverDrafts || loadState.kind !== "ready") return;
+    const logicalNodeIds = new Set(loadState.effectiveNodes.map((node) => node.logicalNodeId));
     const bindingDrafts = serverDrafts.filter(
       (draft) =>
         draft.projectId === projectId &&
-        (draft.projectParameterBindingId || draft.editSubjectKind === "node-enablement")
+        (draft.projectParameterBindingId ||
+          (draft.editSubjectKind === "node-enablement" && draft.logicalNodeId && logicalNodeIds.has(draft.logicalNodeId)))
     );
     if (bindingDrafts.length === 0) return;
 
+    const existing = pendingDraftsRef.current.filter((draft) => draft.projectId === projectId);
+    const missingDrafts = bindingDrafts.filter((draft) => !existing.some((pending) => pending.draftId === draft.id));
+    if (missingDrafts.length === 0) return;
     const sharedTip = resolveSharedWorkingTip(bindingDrafts);
-    if (sharedTip && loadState.revisionId !== sharedTip) {
+    if (existing.length === 0 && sharedTip && loadState.revisionId !== sharedTip) {
       setPreferredRevision({ projectId, revisionId: sharedTip });
       return;
     }
 
-    if (pendingDraftsRef.current.some((draft) => draft.projectId === projectId)) return;
     const hydrated = mapServerDraftsToPending(
       projectId,
-      bindingDrafts,
+      missingDrafts,
       loadState.bindings,
       loadState.effectiveNodes,
       moduleRegistry,
       sharedTip
     );
-    setPendingDrafts(hydrated);
+    setPendingDrafts((current) => [...current, ...hydrated.filter((draft) => !current.some((pending) => pending.draftId === draft.draftId))]);
     // WYSIWYG submission: hydrated drafts start fully checked.
     const hydratedBindingIds = hydrated
       .filter((draft) => draft.kind === "binding")
@@ -782,6 +806,7 @@ export function ApiProjectTopologyWorkspace({
       );
       setSubmitSuccessNotice(null);
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
+      if (!canonicalDraft) setDraftsReloadToken((token) => token + 1);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
           valid: false,
@@ -942,6 +967,7 @@ export function ApiProjectTopologyWorkspace({
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setReloadToken((token) => token + 1);
+      setDraftsReloadToken((token) => token + 1);
       setEnablementDialogTarget(null);
     } catch (error) {
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
@@ -976,7 +1002,7 @@ export function ApiProjectTopologyWorkspace({
       const remaining = pendingDraftsRef.current.filter((draft) => draft.draftId !== draftId);
       setPendingDrafts(remaining);
       // Keep the cached server list consistent so hydrate never revives a deleted draft.
-      setServerDrafts((current) => current?.filter((draft) => draft.id !== draftId) ?? current);
+      removeCachedServerDraft(draftId);
       if (removed?.kind === "binding") {
         setSelectedDraftBindingIds((selected) => {
           if (!selected.has(removed.projectParameterBindingId)) return selected;
@@ -1090,7 +1116,7 @@ export function ApiProjectTopologyWorkspace({
             setPendingDrafts((current) => current.filter((draft) =>
               draft.projectId !== input.projectId || draft.draftId !== draftId
             ));
-            setServerDrafts((current) => current?.filter((draft) => draft.id !== draftId) ?? null);
+            removeCachedServerDraft(draftId);
             const submittedDraft = submittedDrafts.find((draft) => draft.draftId === draftId);
             if (submittedDraft?.kind === "binding") {
               setSelectedDraftBindingIds((current) => new Set(
@@ -1287,7 +1313,16 @@ export function ApiProjectTopologyWorkspace({
       .filter((draft) => draft.kind === "binding")
       .map((draft) => draft.projectParameterBindingId)
   );
-  const currentEdits = projectDrafts.length > 0 ? (
+  const draftReadNotices = [
+    { label: "参数值草稿", state: valueDraftRead, retry: () => setValueDraftRetryToken((token) => token + 1) },
+    { label: "节点启用草稿", state: enablementDraftRead, retry: () => setEnablementDraftRetryToken((token) => token + 1) }
+  ].map(({ label, state, retry }) => state.kind === "error" ? (
+    <div key={label} className="project-topology-workspace__error" role="alert" aria-label={`${label}加载失败`}>
+      {label}加载失败：{state.message}
+      <button type="button" className="button subtle" onClick={retry}>重试加载{label}</button>
+    </div>
+  ) : state.kind === "loading" ? <p key={label} role="status" aria-label={`正在加载${label}`}>正在加载{label}…</p> : null);
+  const currentDraftTray = projectDrafts.length > 0 ? (
     <DtsBindingDraftTray
       projectId={projectId}
       drafts={projectDrafts}
@@ -1323,6 +1358,8 @@ export function ApiProjectTopologyWorkspace({
       </div>
     </section>
   ) : null;
+  const currentEdits = currentDraftTray || valueDraftRead.kind !== "ready" || enablementDraftRead.kind !== "ready"
+    ? <>{draftReadNotices}{currentDraftTray}</> : null;
 
   const jsonContent = jsonState?.state === "error" && (canonicalRepository || loadState.kind !== "ready" || (requestedBindingId && !requestedBinding)) ? (
     <div className="project-topology-workspace__error" role="alert">

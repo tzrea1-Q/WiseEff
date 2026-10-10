@@ -8,7 +8,7 @@ import {
 } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { getRootPostgresPool, isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
-import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { listCatalogBindingRowsForProject, loadPublishedCatalog, type CatalogBindingView } from "../parameter-bindings/catalogProjectValueSync";
 import { catalogLegacyGoneResult, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -29,8 +29,7 @@ import {
 } from "./projectService";
 import {
   getParameterById,
-  listParameterHistory,
-  listParameters
+  listParameterHistory
 } from "./repository";
 import {
   attachBindingPinTo,
@@ -39,6 +38,7 @@ import {
 } from "./canonicalParameterPin";
 import {
   getProjectAdminDetail,
+  getProjectById,
   listProjectAdminSummaries,
   listProjectModules,
   listProjects
@@ -84,6 +84,7 @@ import {
   updateProjectBodySchema
 } from "./schemas";
 import type { ListParametersQuery } from "./schemas";
+import type { CanonicalParameterCompatibilityRecordDto } from "./types";
 import { canAdminParameters, canMergeParameters, canReviewParameters, canViewParameters } from "../parameter-kernel/policy";
 import { parameterSubmissionRoundStatuses } from "./status";
 import { parameterChangeRequestStatuses } from "../parameter-kernel/workflowStatus";
@@ -258,7 +259,8 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
-    const items = await listProjects(db, { organizationId: auth.organization.id });
+    const items = (await listProjects(db, { organizationId: auth.organization.id }))
+      .filter((project) => auth.roles.some((role) => role.projectId === null || role.projectId === project.id));
 
     return { status: 200, body: { items } };
   });
@@ -455,9 +457,70 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
+    if (!auth.user.isActive) {
+      throw new ApiError("FORBIDDEN", "Missing permission: parameter:view.");
+    }
     const query = parseWithSchema(listParametersQuerySchema, request.query) as ListParametersQuery;
     const resolved = await resolveParameterListQuery(db, auth.organization.id, query);
-    const items = (await listParameters(db, resolved)).map(attachSemanticBindingPin);
+    const project = resolved.projectId
+      ? await getProjectById(db, { organizationId: auth.organization.id, projectId: resolved.projectId })
+      : null;
+    if (resolved.projectId && !project) {
+      throw new ApiError("NOT_FOUND", "Project was not found for this organization.", { projectId: resolved.projectId });
+    }
+    const projects = project ? [project] : (await listProjects(db, { organizationId: auth.organization.id }))
+      .filter((candidate) => auth.roles.some((role) => role.projectId === null || role.projectId === candidate.id));
+    if (project && !auth.roles.some((role) => role.projectId === null || role.projectId === project.id)) {
+      throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
+    }
+    if (resolved.risk !== undefined) return { status: 200, body: { items: [] } };
+    const modules = await listParameterModulesForAuth(db, auth);
+    const modulesById = new Map(modules.map((module) => [module.id, module]));
+    const moduleIds = new Set(modules.filter((module) =>
+      module.id === resolved.moduleId ||
+      (resolved.includeDescendants !== false && module.path.split("/").includes(resolved.moduleId!))
+    ).map((module) => module.id));
+    const bindings: CatalogBindingView[] = [];
+    const limit = resolved.limit ?? 100;
+    for (const scopedProject of projects) {
+      if (bindings.length === limit) break;
+      const rows = await listCatalogBindingRowsForProject(db, auth, {
+        projectId: scopedProject.id,
+        limit: limit - bindings.length,
+        moduleIds: resolved.moduleId ? [...moduleIds] : undefined,
+        module: resolved.module,
+        q: resolved.q
+      });
+      bindings.push(...rows);
+    }
+    const items: CanonicalParameterCompatibilityRecordDto[] = bindings.map((binding) => ({
+      id: binding.id,
+      bindingId: binding.id,
+      projectParameterBindingId: binding.id,
+      definitionId: binding.definitionId,
+      effectiveRevisionId: binding.effectiveRevisionId,
+      currentValueId: binding.currentValueId,
+      projectId: binding.projectId,
+      name: binding.propertyKey,
+      description: binding.description ?? "",
+      explanation: binding.documentation ?? "",
+      configFormat: binding.typedValue.kind === "json" ? "JSON" : "DTS",
+      module: binding.driverModule ?? "",
+      moduleId: binding.moduleId || undefined,
+      modulePath: modulesById.get(binding.moduleId)?.path.split("/").map((id) => modulesById.get(id)?.name ?? id),
+      sourceFileId: binding.sourceFileId,
+      sourceNodePath: binding.sourceNodePath ?? undefined,
+      sourceOccurrenceId: binding.sourceOccurrenceId,
+      currentValue: binding.rawValue,
+      recommendedValue: null,
+      range: null,
+      unit: null,
+      risk: null,
+      updatedAt: null,
+      updatedAtTs: null,
+      history: null,
+      metadataAvailability: { status: "unavailable", reason: "canonical-compatibility-metadata-unavailable" }
+    }));
 
     return { status: 200, body: { items } };
   });

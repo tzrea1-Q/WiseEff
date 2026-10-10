@@ -590,3 +590,25 @@ export async function assertReleaseGateAllows(
 
   return readiness;
 }
+
+export async function assertReleaseGatePendingWorkUnchanged(
+  db: Queryable,
+  auth: AuthContext,
+  confirmed: ReleaseReadinessResult,
+): Promise<void> {
+  let pendingIds: string[];
+  try {
+    pendingIds = await listPendingCanonicalValueChangeRequestIds(db, {
+      organizationId: auth.organization.id, projectId: confirmed.projectId, configSetId: confirmed.configSetId
+    });
+  } catch {
+    throw new ApiError("CONFLICT", "Release readiness could not load pending change requests.", {
+      code: "readiness-unavailable", configSetId: confirmed.configSetId
+    });
+  }
+  if (!confirmed.available || !confirmed.canCreateBaseline || fingerprintPayload({ pendingIds }) !== fingerprintPayload({ pendingIds: [] })) {
+    throw new ApiError("CONFLICT", "Release readiness gate token is stale.", {
+      code: "readiness-gate-stale", configSetId: confirmed.configSetId, gateToken: confirmed.gateToken
+    });
+  }
+}

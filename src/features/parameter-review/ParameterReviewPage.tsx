@@ -33,6 +33,7 @@ import { buildPowerManagementModuleTree } from "@/powerManagementConfig";
 import {
   StatusBadge,
   VerticalTimeline,
+  findRetainedSubmissionRound,
   formatWorkflowDisplayText,
   getParameterInitializationReviewStatusLabel,
   getUserName,
@@ -80,35 +81,36 @@ export function ParameterReviewPage({
   runtime,
   runtimeMode
 }: PageProps) {
-  const [legacyHistory, setLegacyHistory] = useState<{
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [reviewProjection, setReviewProjection] = useState<{
     projectId: string;
     requests: ChangeRequest[];
     rounds: ParameterSubmissionRound[];
   } | null>(null);
-  const legacyProjectId = getContextQuery(search).projectId || state.activeProjectId;
+  const reviewProjectId = getContextQuery(search).projectId || state.activeProjectId;
   const parameterRepository = runtime?.parameterRepository;
   useEffect(() => {
-    if (runtimeMode !== "api" || !parameterRepository || !legacyProjectId) return;
+    if (runtimeMode !== "api" || !parameterRepository || !reviewProjectId) return;
     let cancelled = false;
-    setLegacyHistory(null);
+    setReviewProjection(null);
     void Promise.all([
-      parameterRepository.listChangeRequests({ projectId: legacyProjectId, status: ["已合入", "已打回"] }),
-      parameterRepository.listSubmissionRounds({ projectId: legacyProjectId, status: ["已合入", "已打回"] })
+      parameterRepository.listChangeRequests({ projectId: reviewProjectId }),
+      parameterRepository.listSubmissionRounds({ projectId: reviewProjectId })
     ]).then(([requests, rounds]) => {
-      if (!cancelled) setLegacyHistory({ projectId: legacyProjectId, requests, rounds });
+      if (!cancelled) setReviewProjection({ projectId: reviewProjectId, requests, rounds });
     }).catch((error) => {
       if (!cancelled) {
-        setLegacyHistory({ projectId: legacyProjectId, requests: [], rounds: [] });
-        dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "旧版审阅归档加载失败，请稍后重试。") });
+        setReviewProjection({ projectId: reviewProjectId, requests: [], rounds: [] });
+        dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "审阅记录加载失败，请稍后重试。") });
       }
     });
     return () => { cancelled = true; };
-  }, [dispatch, legacyProjectId, parameterRepository, runtimeMode]);
+  }, [dispatch, reviewProjectId, parameterRepository, runtimeMode, refreshVersion]);
   if (runtimeMode === "api" && parameterRepository) {
     state = {
       ...state,
-      changeRequests: legacyHistory?.projectId === legacyProjectId ? legacyHistory.requests : [],
-      parameterSubmissionRounds: legacyHistory?.projectId === legacyProjectId ? legacyHistory.rounds : []
+      changeRequests: reviewProjection?.projectId === reviewProjectId ? reviewProjection.requests : [],
+      parameterSubmissionRounds: reviewProjection?.projectId === reviewProjectId ? reviewProjection.rounds : []
     };
   }
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
@@ -165,8 +167,8 @@ export function ParameterReviewPage({
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const legacyHistoryPending = runtimeMode === "api" && parameterRepository && legacyHistory?.projectId !== legacyProjectId;
-  const requestedRequestId = requestedLegacyStateId || legacyHistoryPending ? "" : requestedUrlRequestId;
+  const reviewProjectionPending = runtimeMode === "api" && parameterRepository && reviewProjection?.projectId !== reviewProjectId;
+  const requestedRequestId = requestedLegacyStateId || reviewProjectionPending ? "" : requestedUrlRequestId;
   const canonicalProjectId = contextQuery.projectId || state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const canReviewCanonical = Boolean(currentUser?.isActive && currentUser.roles?.some((role) =>
@@ -180,13 +182,15 @@ export function ParameterReviewPage({
     // old actions beside the canonical workflow. Initialization reviews have
     // a separate contract and remain visible below.
     if (runtimeMode === "api") {
+      const nodes = state.changeRequests.filter((request) => request.editSubjectKind === "node-enablement"
+        && (request.assignedTo === state.currentUserId || reviewerRoleId === "admin"));
       return {
-        pending: [],
+        pending: splitChangeRequestsForReviewQueue(reviewerRoleId, nodes).pending,
         history: splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests).history
       };
     }
     return splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests);
-  }, [reviewerRoleId, runtimeMode, state.changeRequests]);
+  }, [reviewerRoleId, runtimeMode, state.changeRequests, state.currentUserId]);
   const pendingInitializationRows = useMemo(
     () =>
       canReviewInitialization
@@ -218,7 +222,7 @@ export function ParameterReviewPage({
     () => [...visibleInitializationRows, ...visibleRequests.map((request) => ({ kind: "change" as const, request }))],
     [visibleInitializationRows, visibleRequests]
   );
-  const getReviewRowField = useCallback((row: ParameterReviewRow, field: "id" | "project" | "module" | "submitter" | "change" | "status") => {
+  const getReviewRowField = useCallback((row: ParameterReviewRow, field: "id" | "projectId" | "project" | "module" | "submitter" | "change" | "status") => {
     if (row.kind === "initialization") {
       const submitter = resolveRetainedUserName(state.users, row.review.submittedBy);
       const modules = row.draft.parameterSnapshots.map((snapshot) => snapshot.module);
@@ -226,6 +230,7 @@ export function ParameterReviewPage({
       const moduleText = modules.length > 1 ? `${primaryModule} 等 ${modules.length} 个模块` : primaryModule;
       const values = {
         id: row.review.id,
+        projectId: row.draft.projectId,
         project: row.draft.projectName,
         module: moduleText,
         submitter,
@@ -237,17 +242,20 @@ export function ParameterReviewPage({
 
     const { request } = row;
     const parameter = state.parameters.find((item) => item.id === request.parameterId);
-    const project = state.configDraft.projects.find((item) => item.id === (request.projectId ?? parameter?.projectId));
+    const round = findRetainedSubmissionRound(state.parameterSubmissionRounds, request);
+    const projectId = request.projectId ?? round?.projectId ?? parameter?.projectId;
+    const project = state.configDraft.projects.find((item) => item.id === projectId);
     const values = {
       id: request.id,
-      project: project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目",
+      projectId: projectId ?? "",
+      project: project?.name ?? round?.projectName ?? projectId ?? "未关联项目",
       module: request.module,
       submitter: request.submitter,
         change: `${request.currentValue} → ${request.targetValue}`,
         status: formatWorkflowDisplayText(request.status)
     };
     return values[field];
-  }, [state.configDraft.projects, state.parameters, state.users]);
+  }, [state.configDraft.projects, state.parameters, state.parameterSubmissionRounds, state.users]);
   const modules = useMemo(
     () =>
       Array.from(
@@ -306,7 +314,7 @@ export function ParameterReviewPage({
   const reviewRows = useMemo<ParameterReviewRow[]>(
     () =>
       unfilteredReviewRows.filter((row) => {
-        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "project"))) return false;
+        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "projectId"))) return false;
         if (filterModules.length) {
           if (row.kind === "initialization") {
             if (
@@ -353,30 +361,30 @@ export function ParameterReviewPage({
     [visibleInitializationRows, visibleRequests, state.users]
   );
   const projectOptions = useMemo(() => {
-    const ids = new Set(visibleRequests.map((r) => state.parameters.find((p) => p.id === r.parameterId)?.projectId).filter(Boolean));
-    const changeProjects = state.configDraft.projects.filter((p) => ids.has(p.id));
-    const initializationProjects = visibleInitializationRows.map((row) => ({ id: row.draft.projectId, name: row.draft.projectName, code: row.draft.projectCode }));
-    return [...initializationProjects, ...changeProjects].filter(
-      (project, index, allProjects) => allProjects.findIndex((item) => item.name === project.name) === index
+    return unfilteredReviewRows.map((row) => ({
+      id: getReviewRowField(row, "projectId"),
+      name: getReviewRowField(row, "project")
+    })).filter(
+      (project, index, allProjects) => project.id && allProjects.findIndex((item) => item.id === project.id) === index
     );
-  }, [visibleInitializationRows, visibleRequests, state.parameters, state.configDraft.projects]);
+  }, [getReviewRowField, unfilteredReviewRows]);
   const statusOptions = useMemo(() => uniqueFilterValues(unfilteredReviewRows, (row) => getReviewRowField(row, "status")), [getReviewRowField, unfilteredReviewRows]);
 
   const selectedRound = useMemo(() => {
     if (!selected?.submissionRoundId) return null;
-    return state.parameterSubmissionRounds.find((r) => r.id === selected.submissionRoundId) ?? null;
+    return findRetainedSubmissionRound(state.parameterSubmissionRounds, selected);
   }, [selected, state.parameterSubmissionRounds]);
   const selectedDetailRound = useMemo((): ParameterSubmissionRound | null => {
     if (!selected) return null;
     if (selectedRound) return selectedRound;
 
     const parameter = state.parameters.find((item) => item.id === selected.parameterId);
-    const project = state.configDraft.projects.find((item) => item.id === (selected.projectId ?? parameter?.projectId));
+    const row = { kind: "change" as const, request: selected };
 
     return {
       id: selected.submissionRoundId ?? selected.id,
-      projectId: selected.projectId ?? parameter?.projectId ?? "unknown",
-      projectName: project?.name ?? selected.projectId ?? "未关联项目",
+      projectId: getReviewRowField(row, "projectId") || "unknown",
+      projectName: getReviewRowField(row, "project"),
       submitter: selected.submitter,
       createdAt: selected.createdAt,
       status: selected.status,
@@ -396,11 +404,14 @@ export function ParameterReviewPage({
         }
       ]
     };
-  }, [selected, selectedRound, state.parameters, state.configDraft.projects]);
+  }, [getReviewRowField, selected, selectedRound, state.parameters]);
   const selectedReviewParameter = useMemo(
     () => (selected ? state.parameters.find((item) => item.id === selected.parameterId) : undefined),
     [selected, state.parameters]
   );
+  const historicalMetadataNotice = reviewMode === "history" && selected && selected.editSubjectKind !== "node-enablement" && !selectedReviewParameter && !selectedRound
+    ? <p role="note">历史参数引用缺少精确的显示元数据，仅展示归档记录，不推测当前参数。</p>
+    : null;
   const selectedModuleDescription = selected?.moduleDescription?.trim() || "";
   const selectedParameterDescription =
     selected?.parameterDescription?.trim() ||
@@ -473,7 +484,7 @@ export function ParameterReviewPage({
 
     const matchingRequest = state.changeRequests.find((request) => {
       const parameter = state.parameters.find((item) => item.id === request.parameterId);
-      const projectMatches = !contextQuery.projectId || parameter?.projectId === contextQuery.projectId;
+      const projectMatches = !contextQuery.projectId || (request.projectId ?? parameter?.projectId) === contextQuery.projectId;
       const moduleMatches = !contextQuery.module || request.module === contextQuery.module;
 
       return projectMatches && moduleMatches;
@@ -561,6 +572,7 @@ export function ParameterReviewPage({
     if (dispatchParameterActionFailure(result)) {
       return;
     }
+    setRefreshVersion((version) => version + 1);
     setRejectOpen(false);
   };
   const advanceSelected = async () => {
@@ -587,7 +599,7 @@ export function ParameterReviewPage({
             ...(requiresMergeLink ? { note: trimmedMergeLink } : {})
           })
         );
-    dispatchParameterActionFailure(result);
+    if (!dispatchParameterActionFailure(result)) setRefreshVersion((version) => version + 1);
   };
   const openSubmissionDetail = (request: ChangeRequest) => {
     setSelectedId(request.id);
@@ -664,6 +676,7 @@ export function ParameterReviewPage({
         setBatchProgress({ done: index + 1, total: targets.length });
       }
     } finally {
+      setRefreshVersion((version) => version + 1);
       setBatchProgress(null);
       setBatchConfirmOpen(false);
     }
@@ -880,7 +893,14 @@ export function ParameterReviewPage({
                     <ColumnFilter
                       label="项目"
                       groupLabel="项目筛选"
-                      values={projectOptions.map((project) => project.name)}
+                      values={projectOptions.map((project) => project.id)}
+                      renderLabel={(projectId) => {
+                        const project = projectOptions.find((item) => item.id === projectId);
+                        if (project && projectOptions.some((item) => item.id !== projectId && item.name === project.name)) {
+                          return `${project.name}（${projectId}）`;
+                        }
+                        return project?.name ?? projectId;
+                      }}
                       selectedValues={filterProjects}
                       onToggle={(project) => setFilterProjects((current) => toggleFilterValue(current, project))}
                       onClear={() => setFilterProjects([])}
@@ -982,7 +1002,6 @@ export function ParameterReviewPage({
 
                 const { request } = row;
                 const parameter = state.parameters.find((item) => item.id === request.parameterId);
-                const project = state.configDraft.projects.find((item) => item.id === (request.projectId ?? parameter?.projectId));
                 const isComplexReviewChange = shouldSummarizeReviewChange(request, parameter);
 
                 return (
@@ -1013,7 +1032,7 @@ export function ParameterReviewPage({
                         ) : null}
                       </TableCell>
                     ) : null}
-                    <TableCell>{project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目"}</TableCell>
+                    <TableCell>{getReviewRowField(row, "project")}</TableCell>
                     <TableCell>{request.module}</TableCell>
                     <TableCell>{request.submitter}</TableCell>
                     <TableCell className="change-cell">
@@ -1177,6 +1196,7 @@ export function ParameterReviewPage({
                   {selected.submitter} 提交
                 </p>
               </div>
+              {historicalMetadataNotice}
               <SectionLabel icon={<Sparkles size={16} />} label="审阅摘要" />
               <ReviewDetailSummary
                 onOpenSubmissionDetail={() => openSubmissionDetail(selected)}
@@ -1290,6 +1310,7 @@ export function ParameterReviewPage({
                   <span className="eyebrow">{selectedDetailRound.projectName}</span>
                   <h2 id={titleId}>提交详情</h2>
                   <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
+                  {historicalMetadataNotice}
                   {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
                 </div>
               </div>

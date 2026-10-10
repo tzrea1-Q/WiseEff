@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type {
   CreateModuleMappingInput,
-  CreateOrganizationDriverSchemaInput,
   CreateParameterModuleInput,
   ParameterModuleRegistryRepository,
   UpdateParameterModuleInput
@@ -181,27 +180,6 @@ export function OrganizationModuleGovernancePanel({
         const result = await base.replayDriverPlacement(moduleId);
         await refreshRecentAudits();
         return result;
-      },
-      createOrganizationDriverSchema: (input: CreateOrganizationDriverSchemaInput) =>
-        base.createOrganizationDriverSchema(input),
-      listOrganizationDriverSchemas: () => base.listOrganizationDriverSchemas(),
-      updateOrganizationDriverSchema: (schemaId, input) =>
-        base.updateOrganizationDriverSchema(schemaId, input),
-      activateOrganizationDriverSchema: async (schemaId) => {
-        const result = await base.activateOrganizationDriverSchema(schemaId);
-        await refreshRecentAudits();
-        return result;
-      },
-      previewOrganizationDriverSchemaDeprecation: (schemaId) =>
-        base.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
-        Promise.reject(new Error("Overlay deprecation preview is unavailable.")),
-      deprecateOrganizationDriverSchema: async (schemaId, input) => {
-        if (!base.deprecateOrganizationDriverSchema) {
-          throw new Error("Overlay deprecation is unavailable.");
-        }
-        const schema = await base.deprecateOrganizationDriverSchema(schemaId, input);
-        await refreshRecentAudits();
-        return schema;
       }
     };
   }, [application, refreshRecentAudits]);
