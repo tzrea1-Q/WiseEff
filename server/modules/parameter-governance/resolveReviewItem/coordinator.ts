@@ -15,7 +15,7 @@ import {
   groupReviewEvidence,
   projectReviewQueueItem,
 } from "../review/group";
-import { loadReviewObservationSource } from "../review/query";
+import { loadReviewObservationSource } from "../queries/reviewObservationSource";
 
 import {
   fingerprintResolveReviewItemCommand,

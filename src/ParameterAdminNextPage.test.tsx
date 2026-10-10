@@ -284,7 +284,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(resolveReviewItem).not.toHaveBeenCalled();
   });
 
-  it("explains Organization review authority to a non-admin session without reading the queue", async () => {
+  it("hides Organization review work from a non-admin session without the Platform-only explanation", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
     const resolveReviewItem = vi.spyOn(ports.governance, "resolveReviewItem");
@@ -299,8 +299,9 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
       catalogOrganizationId: CATALOG_ORGANIZATION_ID
     });
 
-    expect(await screen.findByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。"))
-      .toBeVisible();
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /待处理工作/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "待处理工作" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "处理审核" })).not.toBeInTheDocument();
     expect(listReviewItems).not.toHaveBeenCalled();

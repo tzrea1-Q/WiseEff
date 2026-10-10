@@ -28,6 +28,41 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     }
   );
 
+  it.each([
+    { actor: "user" as const },
+    { roleId: "guest" },
+    {}
+  ])("does not explain or read the queue for a non-permitted or unhydrated session %j", async (session) => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
+    render(<CatalogOrganizationSurface {...ports} {...session}
+      sessionPermissions={["parameter:view"]} search="?review=open"
+      organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="organization-reader"
+      onAnchorChange={vi.fn()} />);
+
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /待处理工作/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "待处理工作" })).not.toBeInTheDocument();
+    expect(listReviewItems).not.toHaveBeenCalled();
+  });
+
+  it("shows the queue action after the guest role hydrates to Organization admin", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const props = { ...ports, sessionPermissions: ["parameter:view"], search: "",
+      organizationId: CATALOG_ORGANIZATION_ID, currentPersonId: "organization-reader",
+      onAnchorChange: vi.fn() };
+    const { rerender } = render(<CatalogOrganizationSurface {...props} roleId="guest" />);
+
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /待处理工作/ })).not.toBeInTheDocument();
+    rerender(<CatalogOrganizationSurface {...props} roleId="admin" />);
+    expect(await screen.findByRole("button", { name: /待处理工作/ })).toBeVisible();
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+  });
+
   it("keeps the Organization queue available to an Organization admin", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");

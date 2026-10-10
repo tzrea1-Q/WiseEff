@@ -23,7 +23,7 @@ export async function captureDtsReviewEvidenceStateFixture(db: Queryable, input:
 export async function insertDtsObservationSourceFixture(db: Queryable, input: {
   organizationId: string; projectId: string; configSetId: string; fileId: string;
   logicalNodeId: string; configRevisionId: string; occurrenceId: string;
-  observationId: string; catalogReleaseId: string;
+  observationId: string; catalogReleaseId: string; matcherRevision?: string;
   locator: { kind: "dts-property"; fileVersionId: string; nodeOccurrenceId: string;
     propertyOccurrenceId: string; propertyName: string };
 }) {
@@ -34,10 +34,11 @@ export async function insertDtsObservationSourceFixture(db: Queryable, input: {
   await db.query(`insert into parameter_catalog.parameter_observations
     (id,organization_id,project_id,logical_node_id,config_revision_id,source_identity,source_locator,
      catalog_release_id,matcher_revision,evidence_fingerprint,source_occurrence_id,parameter_locator_digest)
-    values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,'matcher-d897','fingerprint-d897',$9,
+    values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$10,'fingerprint-d897',$9,
       parameter_catalog.canonical_dts_parameter_locator_digest($7::jsonb))`,
     [input.observationId,input.organizationId,input.projectId,input.logicalNodeId,input.configRevisionId,
-      input.observationId,JSON.stringify(input.locator),input.catalogReleaseId,input.occurrenceId]);
+      input.observationId,JSON.stringify(input.locator),input.catalogReleaseId,input.occurrenceId,
+      input.matcherRevision ?? "matcher-d897"]);
 }
 
 /** Mirrors the exact Catalog-owner handoff without adding a production query in the DTS owner. */

@@ -178,7 +178,7 @@ export function CatalogOrganizationSurface({
           <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>
         </section>
       ) : null}
-      {!reviewQueueAllowed ? (
+      {!reviewQueueAllowed && actor === "platform-admin" ? (
         <p className="parameter-catalog__muted">
           组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。
         </p>
