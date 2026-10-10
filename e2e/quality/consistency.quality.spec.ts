@@ -1,6 +1,6 @@
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
-import { requireOrganizationViewSwitchStyles } from "./view-switch";
+import { requireViewSwitchStyles } from "./view-switch";
 import {
   collectConsistencyMeasurements,
   consistencyRoutes,
@@ -55,7 +55,7 @@ for (const route of routes) {
           if (route.required.includes("rowActions")) {
             requireRowActionVisibility(measurements.rowActions, route.path);
           }
-          requireOrganizationViewSwitchStyles(measurements, route.path);
+          requireViewSwitchStyles(measurements, route.path);
         }).toPass({ timeout: 20_000 });
         requireCompactControlHeights(measurements, route.path);
         if (route.required.includes("rowActions")) {

@@ -1,4 +1,4 @@
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import type { OverviewScope } from "@/domain/parameters/dashboardTypes";
 
 type Props = {
@@ -8,21 +8,12 @@ type Props = {
 
 export function OverviewScopeToggle({ scope, onScopeChange }: Props) {
   return (
-    <ToggleGroup
-      aria-label="概览视角"
-      className="parameter-home__toggle-group parameter-home__overview-scope-toggle"
-      type="single"
+    <ViewSwitch
+      variant="toggle"
+      ariaLabel="概览视角"
       value={scope}
-      onValueChange={(next) => {
-        if (next) onScopeChange(next as OverviewScope);
-      }}
-    >
-      <ToggleGroupItem className="parameter-home__toggle-item" value="personal">
-        个人
-      </ToggleGroupItem>
-      <ToggleGroupItem className="parameter-home__toggle-item" value="overall">
-        整体
-      </ToggleGroupItem>
-    </ToggleGroup>
+      onValueChange={(next) => onScopeChange(next as OverviewScope)}
+      items={[{ value: "personal", label: "个人" }, { value: "overall", label: "整体" }]}
+    />
   );
 }

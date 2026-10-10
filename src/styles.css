@@ -18249,27 +18249,6 @@ body.xiaoze-popup-drag-active {
   font-size: var(--text-md);
 }
 
-.param-admin-audit-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.param-admin-audit-filters .chip {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border);
-  background: var(--card);
-  font-size: var(--text-sm);
-}
-
-.param-admin-audit-filters .chip-active {
-  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
-  background: color-mix(in srgb, var(--primary) 8%, var(--card));
-  color: var(--primary);
-}
-
 .param-admin-audit-status {
   margin: 0 var(--space-4) var(--space-2);
   font-size: var(--text-base);
@@ -22326,13 +22305,6 @@ body.xiaoze-popup-drag-active {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-}
-
-.dts-parameter-workbench__header-actions .button.subtle.is-active,
-.dts-parameter-workbench__header-actions .button.subtle[aria-pressed="true"] {
-  color: var(--dts-workbench-blue);
-  background: var(--dts-workbench-blue-soft);
-  border-color: #c8dcf7;
 }
 
 .dts-parameter-workbench__toolbar {

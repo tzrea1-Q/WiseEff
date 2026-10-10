@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuditCenterPage } from "./AuditCenterPage";
 import { initialState } from "./mockData";
 
@@ -8,6 +8,18 @@ afterEach(() => {
 });
 
 describe("AuditCenterPage", () => {
+  it("selects one severity while preserving the other query filters", () => {
+    const onNavigate = vi.fn();
+    render(<AuditCenterPage state={initialState} dispatch={() => undefined} onNavigate={onNavigate}
+      search="?app=parameters&severity=Medium&q=fast&tw=7d&projectId=aurora&traceId=trace-example" />);
+    const severity = screen.getByRole("radiogroup", { name: "严重度筛选" });
+    expect(within(severity).getByRole("radio", { name: "中" })).toBeChecked();
+    fireEvent.click(within(severity).getByRole("radio", { name: "高" }));
+    expect(onNavigate).toHaveBeenCalledWith("/audit?app=parameters&severity=High&q=fast&tw=7d&projectId=aurora&traceId=trace-example");
+    fireEvent.click(within(severity).getByRole("radio", { name: "全部" }));
+    expect(onNavigate).toHaveBeenCalledWith("/audit?app=parameters&q=fast&tw=7d&projectId=aurora&traceId=trace-example");
+  });
+
   it("renders cross-module audit events with filters", () => {
     render(
       <AuditCenterPage

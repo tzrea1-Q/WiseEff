@@ -1,7 +1,6 @@
 import { Flame, LayoutDashboard } from "lucide-react";
 import type { SectionStatus } from "@/application/parameters/dashboardState";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn } from "@/lib/utils";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import type { WorkbenchPage } from "../workbenchPage";
 
 type WorkbenchPageToggleProps = {
@@ -30,53 +29,26 @@ export function WorkbenchPageToggle({
           : null;
 
   return (
-    <ToggleGroup
-      aria-label="工作台视图"
-      className={cn(
-        isBar
-          ? "parameter-home__view-switcher"
-          : "parameter-home__toggle-group parameter-home__workbench-page-toggle"
-      )}
-      type="single"
+    <ViewSwitch
+      variant="toggle"
+      ariaLabel="工作台视图"
       value={page}
-      onValueChange={(nextValue) => {
-        if (nextValue) {
-          onPageChange(nextValue as WorkbenchPage);
-        }
-      }}
-    >
-      <ToggleGroupItem
-        className={cn(
-          isBar ? "parameter-home__view-switcher-item" : "parameter-home__toggle-item"
-        )}
-        value="overview"
-      >
-        {isBar ? <LayoutDashboard aria-hidden size={15} strokeWidth={2.2} /> : null}
-        {isBar ? "概览" : "工作台"}
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        className={cn(
-          isBar
-            ? "parameter-home__view-switcher-item parameter-home__view-switcher-item--hotspots"
-            : "parameter-home__toggle-item parameter-home__workbench-page-toggle-item"
-        )}
-        value="hotspots"
-      >
-        {isBar ? <Flame aria-hidden size={15} strokeWidth={2.2} /> : null}
-        热榜
-        {hotspotCountLabel ? (
-          <span
-            className={cn(
-              isBar
-                ? "parameter-home__view-switcher-count"
-                : "parameter-home__workbench-page-toggle-count"
-            )}
-            aria-hidden="true"
-          >
-            {hotspotCountLabel}
-          </span>
-        ) : null}
-      </ToggleGroupItem>
-    </ToggleGroup>
+      onValueChange={(nextValue) => onPageChange(nextValue as WorkbenchPage)}
+      items={[
+        { value: "overview", label: <>
+          {isBar ? <LayoutDashboard aria-hidden size={15} strokeWidth={2.2} /> : null}
+          {isBar ? "概览" : "工作台"}
+        </> },
+        { value: "hotspots", label: <>
+          {isBar ? <Flame aria-hidden size={15} strokeWidth={2.2} /> : null}
+          热榜
+          {hotspotCountLabel ? (
+            <span className={isBar ? "parameter-home__view-switcher-count" : "parameter-home__workbench-page-toggle-count"} aria-hidden="true">
+              {hotspotCountLabel}
+            </span>
+          ) : null}
+        </> }
+      ]}
+    />
   );
 }
