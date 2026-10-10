@@ -252,6 +252,26 @@ beforeEach(() => window.history.replaceState(null, "", "/parameters"));
 afterEach(() => window.history.replaceState(null, "", "/"));
 
 describe("DtsParameterWorkbench", () => {
+  it("shows every hydrated row on a fresh reload without inventing a module scope", () => {
+    const view = renderWorkbench({ sourceRows: [], effectiveRows: [] });
+    const partialRows = effectiveRows.filter((row) => row.driverModule === "sc8562");
+    view.rerender(<DtsParameterWorkbench {...view.props} effectiveRows={partialRows} />);
+    expect(visibleBindingRows()).toHaveLength(2);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(screen.queryByRole("treeitem", { selected: true })).not.toBeInTheDocument();
+
+    view.rerender(<DtsParameterWorkbench {...view.props} sourceRows={sourceRows} effectiveRows={effectiveRows} />);
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(screen.queryByRole("treeitem", { selected: true })).not.toBeInTheDocument();
+    view.unmount();
+
+    renderWorkbench();
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(screen.getByRole("tab", { name: "参数列表" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("keeps a URL-selected module through loading and restores its subtree after reload", () => {
     window.history.replaceState(null, "", "/parameters?moduleNode=module%3Adriver%3Asc8562");
     const view = renderWorkbench({
