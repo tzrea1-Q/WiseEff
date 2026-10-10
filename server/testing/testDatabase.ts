@@ -34,7 +34,8 @@ const DATABASE_DISCONNECT_POLL_MS = 25;
 const DATABASE_PREFIX = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
 if (!/^[a-z][a-z0-9_]{0,15}$/.test(DATABASE_PREFIX)) throw new Error("Invalid test database prefix");
 const TEMPLATE_PREFIX = `${DATABASE_PREFIX}_test_tpl_`;
-const WORKER_PREFIX = `wiseeff_test_wk_${DATABASE_PREFIX.length}_${DATABASE_PREFIX}_`;
+const WORKER_PREFIX = `wiseeff_test_wk_${DATABASE_PREFIX.length.toString(36)}_${DATABASE_PREFIX}_`;
+const MIGRATIONS_FINGERPRINT_LENGTH = 12;
 
 export function testDatabasePrefixPattern(prefix: string): string {
   return `${prefix.replace(/[\\%_]/g, "\\$&")}%`;
@@ -104,7 +105,7 @@ async function migrationsFingerprint(): Promise<string> {
     hash.update(await fs.readFile(path.join(migrationsDir, file), "utf8"));
     hash.update("\0");
   }
-  cachedFingerprint = hash.digest("hex").slice(0, 12);
+  cachedFingerprint = hash.digest("hex").slice(0, MIGRATIONS_FINGERPRINT_LENGTH);
   return cachedFingerprint;
 }
 
@@ -221,7 +222,9 @@ function currentRunToken(): string {
     /[^a-z0-9_]/gi,
     ""
   );
-  return /^[pr]\d+$/.test(token) ? BigInt(token.slice(1)).toString(36) : token;
+  return /^[pr](0|[1-9]\d*)$/.test(token)
+    ? `${token.slice(0, 1)}${BigInt(token.slice(1)).toString(36)}`
+    : `x${Buffer.from(token).toString("hex")}`;
 }
 
 function currentPoolId(): string {
@@ -263,9 +266,9 @@ export async function setupTestDatabaseRun(): Promise<void> {
         `select datname
          from pg_database d
          where datname like $1
-           and strpos(datname, $2) = 0
+           and not starts_with(substr(datname, $2), $3)
            and not exists (select 1 from pg_stat_activity a where a.datname = d.datname)`,
-        [testDatabasePrefixPattern(WORKER_PREFIX), `_${currentRunToken()}_`]
+        [testDatabasePrefixPattern(WORKER_PREFIX), WORKER_PREFIX.length + MIGRATIONS_FINGERPRINT_LENGTH + 2, `${currentRunToken()}_`]
       );
       for (const row of orphans.rows) {
         // No force: if another live run connects between the check and the drop, the
@@ -290,8 +293,8 @@ export async function teardownTestDatabaseRun(): Promise<void> {
   try {
     const failures: unknown[] = [];
     const rows = await admin.query<{ datname: string }>(
-      `select datname from pg_database where datname like $1 and strpos(datname, $2) > 0 order by datname`,
-      [testDatabasePrefixPattern(WORKER_PREFIX), `_${token}_`]
+      `select datname from pg_database where datname like $1 and starts_with(substr(datname, $2), $3) order by datname`,
+      [testDatabasePrefixPattern(WORKER_PREFIX), WORKER_PREFIX.length + MIGRATIONS_FINGERPRINT_LENGTH + 2, `${token}_`]
     );
     for (const row of rows.rows) {
       try {

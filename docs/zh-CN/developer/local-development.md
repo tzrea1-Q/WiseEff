@@ -49,7 +49,7 @@ npm run parameter-identities:check
 
 操作流程见 [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md)。
 
-隔离 server 测试时，将 `DATABASE_URL`、`TEST_DATABASE_URL` 与 `WISEEFF_TEST_DATABASE_PREFIX` 配到专用 lane。模板库使用 `<lane>_test_tpl_*`，一次性 worker 库使用 `wiseeff_test_wk_<lane-length>_<lane>_*`，保留按字面值隔离的命名空间，同时满足未改动的 ephemeral-publication 策略。一次性库名在 PostgreSQL 的 63-byte 标识符上限内保留唯一后缀。Managed-instance fixtures 仍为 non-ephemeral，必须提供原有 adoption proof。
+隔离 server 测试时，将 `DATABASE_URL`、`TEST_DATABASE_URL` 与 `WISEEFF_TEST_DATABASE_PREFIX` 配到专用 lane。模板库使用 `<lane>_test_tpl_*`，一次性 worker 库使用 `wiseeff_test_wk_<base36-lane-length>_<lane>_*`，保留按字面值隔离的命名空间，同时满足未改动的 ephemeral-publication 策略。一次性库名在 PostgreSQL 的 63-byte 标识符上限内保留完整 run identity 与唯一后缀；清理只匹配 run 字段，不匹配 lane 或 fingerprint 内的子串。Managed-instance fixtures 仍为 non-ephemeral，必须提供原有 adoption proof。
 
 ### Catalog launch lane（Wayfinder #668）
 

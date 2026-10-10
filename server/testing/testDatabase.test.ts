@@ -55,6 +55,36 @@ describe("test database query scheduling", () => {
 const databaseAvailable = await isTestDatabaseAvailable();
 
 describe("literal test database namespace isolation", () => {
+  it.each([
+    { prefix: "t1080ci2_qglj", token: "r1234567", foreign: ["p1234567", "qglj"] },
+    { prefix: "t1080ci2_f_x66", token: "f", foreign: ["b"] }
+  ])("preserves foreign runs when cleaning token $token in lane $prefix", async ({ prefix, token, foreign }) => {
+    vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", prefix);
+    vi.resetModules();
+    const databases: Awaited<ReturnType<typeof createEphemeralTestDatabase>>[] = [];
+    try {
+      const { createEphemeralTestDatabase: createLaneDatabase, teardownTestDatabaseRun } = await import("./testDatabase");
+      for (const runToken of foreign) {
+        vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", runToken);
+        databases.push(await createLaneDatabase("foreign"));
+      }
+      const foreignNames = databases.map((database) => new URL(database.url).pathname.slice(1));
+      vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", token);
+      const owned = await createLaneDatabase("owned");
+      databases.push(owned);
+      const names = [...foreignNames, new URL(owned.url).pathname.slice(1)];
+      await teardownTestDatabaseRun();
+      await withAdminClient(async (admin) => {
+        const remaining = await admin.query<{ datname: string }>("select datname from pg_database where datname = any($1)", [names]);
+        expect(remaining.rows.map((row) => row.datname).sort()).toEqual(foreignNames.sort());
+      });
+    } finally {
+      for (const database of databases) await database.drop();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
   it("preserves unique suffixes within PostgreSQL's identifier limit for a maximum-length lane", async () => {
     vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", "t1080ci2_maximum");
     vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", "r1234567");
@@ -98,7 +128,7 @@ describe("literal test database namespace isolation", () => {
     const original = pg.Client.prototype.query;
     let workerName: string | undefined;
     const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, sql: unknown, values?: unknown) {
-      if (typeof sql === "string" && sql.startsWith("create database wiseeff_test_wk_16_t1080ci2_maximum_")) {
+      if (typeof sql === "string" && sql.startsWith("create database wiseeff_test_wk_g_t1080ci2_maximum_")) {
         workerName = sql.split(" ")[2];
         return Promise.reject(new Error("stop before worker DDL"));
       }
@@ -123,9 +153,9 @@ describe("literal test database namespace isolation", () => {
       const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
       expect(isEphemeralTestDatabaseName(name)).toBe(true);
       expect(name.length).toBeLessThanOrEqual(63);
-      const namespace = `wiseeff_test_wk_${prefix.length}_${prefix}_`;
+      const namespace = `wiseeff_test_wk_${prefix.length.toString(36)}_${prefix}_`;
       expect(name.startsWith(namespace)).toBe(true);
-      const foreign = name.replace(namespace, `wiseeff_test_wk_${prefix.length + 2}_${prefix}_x_`);
+      const foreign = name.replace(namespace, `wiseeff_test_wk_${(prefix.length + 2).toString(36)}_${prefix}_x_`);
       await withAdminClient(async (admin) => {
         expect((await admin.query("select datname from unnest($1::text[]) as fixture(datname) where datname like $2",
           [[name, foreign], testDatabasePrefixPattern(namespace)])).rows).toEqual([{ datname: name }]);

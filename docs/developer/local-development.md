@@ -102,7 +102,7 @@ postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
 
 That compose URL is the API-mode application database. It is **not** catalog-launch evidence: the image is `postgres:16-alpine`, the database is shared across checkouts, and it often lacks pgvector.
 
-For isolated server tests, set `DATABASE_URL`, `TEST_DATABASE_URL`, and `WISEEFF_TEST_DATABASE_PREFIX` to the dedicated lane. Templates use `<lane>_test_tpl_*`; disposable workers use `wiseeff_test_wk_<lane-length>_<lane>_*`, preserving literal lane isolation while satisfying the unchanged ephemeral-publication policy. Disposable names retain their unique suffix within PostgreSQL's 63-byte identifier limit. Managed-instance fixtures remain non-ephemeral and require the existing adoption proof.
+For isolated server tests, set `DATABASE_URL`, `TEST_DATABASE_URL`, and `WISEEFF_TEST_DATABASE_PREFIX` to the dedicated lane. Templates use `<lane>_test_tpl_*`; disposable workers use `wiseeff_test_wk_<base36-lane-length>_<lane>_*`, preserving literal lane isolation while satisfying the unchanged ephemeral-publication policy. Disposable names retain their complete run identity and unique suffix within PostgreSQL's 63-byte identifier limit; cleanup matches the run field, not substrings in the lane or fingerprint. Managed-instance fixtures remain non-ephemeral and require the existing adoption proof.
 
 ### Catalog launch lanes (Wayfinder #668)
 
