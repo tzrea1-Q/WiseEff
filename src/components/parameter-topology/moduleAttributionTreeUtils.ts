@@ -291,7 +291,6 @@ export function canEditModuleDetails(module: ParameterModule): boolean {
   return editModuleDetailsDecision(module).allowed;
 }
 
-/** Unclassified root has no mutations; expose a view entry so Admins can inspect / open the queue. */
 export function canViewUnclassifiedRoot(module: ParameterModule): boolean {
   return isUnclassifiedRoot(module);
 }
