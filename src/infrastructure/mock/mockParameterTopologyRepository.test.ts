@@ -1,33 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
-import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockParameterTopologyRepository } from "./mockParameterTopologyRepository";
 
 const PROJECT_ID = "project-teaching";
 const CONFIG_SET_ID = "config-set-teaching";
 const REVISION_ID = "revision-teaching-1";
-
-function resolvedMappingTask(id: string): IdentityMappingTask {
-  return {
-    id,
-    projectId: PROJECT_ID,
-    configRevisionId: REVISION_ID,
-    previousLogicalNodeId: "ln-previous",
-    candidateLogicalNodeIds: ["ln-a", "ln-b"],
-    evidence: {
-      selectedLogicalNodeId: "ln-a",
-      candidates: [
-        { logicalNodeId: "ln-a", nodeLocator: "/bus/a@1" },
-        { logicalNodeId: "ln-b", nodeLocator: "/bus/b@2" }
-      ]
-    },
-    taskKind: "identity-ambiguity",
-    status: "resolved",
-    createdAt: "2026-08-18T00:00:00.000Z"
-  };
-}
 
 describe("createMockParameterTopologyRepository (ParameterTopologyRepository contract)", () => {
   function createRepo(): ParameterTopologyRepository {
@@ -94,36 +73,17 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     );
   });
 
-  it("listSpecReviewTasks and resolveSpecReviewTask cover the review queue", async () => {
+  it("listSpecReviewTasks returns the review queue", async () => {
     const repo = createRepo();
     const open = await repo.listSpecReviewTasks({ status: "open" });
     expect(open.items.length).toBeGreaterThan(0);
-    const task = open.items[0];
-
-    await repo.resolveSpecReviewTask(task.id, {
-      decision: "resolved",
-      parameterSpecId: "spec-sc8562-gpio-int",
-      reason: "Matched SC8562"
-    });
-
-    const after = await repo.listSpecReviewTasks({ status: "open" });
-    expect(after.items.find((item) => item.id === task.id)).toBeUndefined();
   });
 
-  it("listMappingTasks and resolveMapping cover identity mapping governance", async () => {
+  it("listMappingTasks returns identity mapping evidence", async () => {
     const repo = createRepo();
     const tasks = await repo.listMappingTasks(PROJECT_ID);
     expect(tasks.length).toBeGreaterThan(0);
     expect(tasks[0].candidateLogicalNodeIds.length).toBeGreaterThan(0);
-
-    await repo.resolveMapping(tasks[0].id, {
-      decision: "resolved",
-      selectedLogicalNodeId: tasks[0].candidateLogicalNodeIds[0],
-      reason: "Keep current sc8562 node"
-    });
-
-    const after = await repo.listMappingTasks(PROJECT_ID);
-    expect(after.find((task) => task.id === tasks[0].id)?.status).toBe("resolved");
   });
 
   it("validateRevision returns a ValidationRun", async () => {
@@ -300,24 +260,9 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     expect(tip?.parameterSpecVersionId).toBe("specver-sc8562-gpio-int-3");
   });
 
-  it("createParameterSpec is retired and does not mint a mock spec", async () => {
+  it("does not expose retired spec minting or mint a mock spec", async () => {
     const repo = createRepo();
-    const error = await repo
-      .createParameterSpec({
-        attributionSubjectId: "asub:driver:sc8562",
-        propertyKey: "successor_prop",
-        reason: "must not mint"
-      })
-      .catch((caught: unknown) => caught);
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "GONE",
-      details: {
-        reason: "legacy-surface-retired",
-        successor: "/api/v2/catalog",
-        retryable: false
-      }
-    });
+    expect(repo).not.toHaveProperty("createParameterSpec");
     await expect(repo.getSpec("pspec:mock:asub:driver:sc8562:successor_prop")).rejects.toMatchObject({
       code: "NOT_FOUND"
     });
@@ -366,169 +311,6 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
-  it("re-resolves an already resolved identity mapping task to another candidate", async () => {
-    const repo = createRepo();
-    const tasks = await repo.listMappingTasks(PROJECT_ID);
-    const task = tasks[0];
-    const [firstCandidate, nextCandidate] = task.candidateLogicalNodeIds;
-    await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: firstCandidate,
-      reason: "Keep current sc8562 node"
-    });
-
-    await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: nextCandidate,
-      reason: "Correct the continuity choice"
-    });
-
-    const [after] = await repo.listMappingTasks(PROJECT_ID);
-    expect(after).toMatchObject({
-      id: task.id,
-      status: "resolved",
-      reason: "Correct the continuity choice",
-      evidence: { selectedLogicalNodeId: nextCandidate }
-    });
-  });
-
-  it("rejects a non-resolve decision for an already resolved identity mapping task", async () => {
-    const repo = createRepo();
-    const [task] = await repo.listMappingTasks(PROJECT_ID);
-    await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: task.candidateLogicalNodeIds[0],
-      reason: "Keep current sc8562 node"
-    });
-
-    const error = await repo.resolveMapping(task.id, {
-      decision: "dismissed",
-      reason: "Try to discard an applied mapping"
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toMatchObject({ code: "CONFLICT", details: { taskId: task.id } });
-  });
-
-  it("requires continuity evidence before re-resolving a completed mock task", async () => {
-    const task: IdentityMappingTask = {
-      id: "mapping-incomplete",
-      projectId: PROJECT_ID,
-      configRevisionId: REVISION_ID,
-      previousLogicalNodeId: "ln-previous",
-      candidateLogicalNodeIds: ["ln-a", "ln-b"],
-      evidence: {
-        candidates: [
-          { logicalNodeId: "ln-a", nodeLocator: "/bus/a@1" },
-          { logicalNodeId: "ln-b", nodeLocator: "/bus/b@2" }
-        ]
-      },
-      taskKind: "identity-ambiguity",
-      status: "resolved",
-      createdAt: "2026-08-18T00:00:00.000Z"
-    };
-    const repo = createMockParameterTopologyRepository({ mappingTasks: [task] });
-
-    const error = await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: "ln-b",
-      reason: "Try to infer missing continuity"
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      details: { code: "identity-mapping-migration-required", taskId: task.id }
-    });
-  });
-
-  it("preserves the singleton-cardinality gate in mock mode", async () => {
-    const task: IdentityMappingTask = {
-      id: "mapping-singleton",
-      projectId: PROJECT_ID,
-      configRevisionId: REVISION_ID,
-      previousLogicalNodeId: null,
-      candidateLogicalNodeIds: ["ln-a", "ln-b"],
-      evidence: {},
-      taskKind: "singleton-cardinality",
-      status: "open",
-      createdAt: "2026-08-18T00:00:00.000Z"
-    };
-    const repo = createMockParameterTopologyRepository({ mappingTasks: [task] });
-
-    const error = await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: "ln-a",
-      reason: "Try to discard the duplicate"
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      details: { code: "singleton-cardinality-conflict", taskId: task.id }
-    });
-  });
-
-  it("blocks mock re-resolve when the modeled task has downstream usage", async () => {
-    const task = resolvedMappingTask("mapping-with-downstream");
-    const downstream = { drafts: 1, submissions: 0, operations: 0 };
-    const repo = createMockParameterTopologyRepository({
-      mappingTasks: [task],
-      mappingDownstreamUsage: { [task.id]: downstream }
-    });
-
-    const error = await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: "ln-b",
-      reason: "Try to move a referenced mapping"
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      details: {
-        code: "identity-mapping-migration-required",
-        taskId: task.id,
-        downstream
-      }
-    });
-  });
-
-  it("requires explicit migration when a mock re-resolve target leaves the candidate scope", async () => {
-    const task = resolvedMappingTask("mapping-outside-scope");
-    const repo = createMockParameterTopologyRepository({ mappingTasks: [task] });
-
-    const error = await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: "ln-foreign",
-      reason: "Try to cross the revision boundary"
-    }).catch((caught: unknown) => caught);
-
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      details: { code: "identity-mapping-migration-required", taskId: task.id }
-    });
-  });
-
-  it("reopenMapping throws CONFLICT when the identity mapping task is already resolved", async () => {
-    const repo = createRepo();
-    const tasks = await repo.listMappingTasks(PROJECT_ID);
-    const task = tasks[0];
-    await repo.resolveMapping(task.id, {
-      decision: "resolved",
-      selectedLogicalNodeId: task.candidateLogicalNodeIds[0],
-      reason: "Keep current sc8562 node"
-    });
-
-    const error = await repo
-      .reopenMapping(task.id, { reason: "need another look" })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      message: "Resolved identity mapping tasks cannot be reopened.",
-      requestId: "mock",
-      details: { taskId: task.id }
-    });
-  });
-
   it("reattributeParameterSpec throws CONFLICT when another spec already uses the subject and property key", async () => {
     const repo = createRepo();
     await repo.reattributeParameterSpec("spec-sc8562-gpio-int", {
@@ -552,51 +334,14 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
-  it("renameParameterSpecPropertyKey throws CONFLICT when project bindings still reference the definition", async () => {
-    const repo = createRepo();
-    const error = await repo
-      .renameParameterSpecPropertyKey("spec-sc8562-gpio-int", {
-        propertyKey: "gpio_int_renamed",
-        reason: "rename bound spec"
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      message: "Cannot rename property_key while 1 project binding(s) reference this definition.",
-      requestId: "mock",
-      details: { parameterSpecId: "spec-sc8562-gpio-int", referenceCount: 1 }
-    });
-  });
-
-  it("renameParameterSpecPropertyKey throws CONFLICT when another spec already uses the subject and property key", async () => {
-    const repo = createRepo();
-    const error = await repo
-      .renameParameterSpecPropertyKey("spec-mt5788-gpio-int", {
-        propertyKey: "mystery_prop",
-        reason: "duplicate property key"
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      message: "A parameter definition already exists for this subject and property key.",
-      requestId: "mock",
-      details: { parameterSpecId: "spec-draft-mystery", lifecycle: "draft" }
-    });
-  });
-
   it("reattributeParameterSpec throws CONFLICT when a deprecated definition already owns the triple", async () => {
     const repo = createRepo();
-    await repo.reattributeParameterSpec("spec-deprecated-legacy", {
+    await repo.deprecateParameterSpec("spec-mt5788-gpio-int", {
+      reason: "retire definition"
+    });
+    await repo.reattributeParameterSpec("spec-mt5788-gpio-int", {
       attributionSubjectId: "asub:nodetype:charger",
       reason: "park legacy"
-    });
-    await repo.renameParameterSpecPropertyKey("spec-deprecated-legacy", {
-      propertyKey: "gpio_int",
-      reason: "same key as sc8562"
     });
 
     const error = await repo
@@ -611,7 +356,7 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
       code: "CONFLICT",
       message: "A parameter definition already exists for this subject and property key.",
       requestId: "mock",
-      details: { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" }
+      details: { parameterSpecId: "spec-mt5788-gpio-int", lifecycle: "deprecated" }
     });
   });
 });

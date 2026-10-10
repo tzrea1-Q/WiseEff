@@ -640,6 +640,8 @@ The announced `Sunset` is no earlier than two production releases or 90 days aft
 
 ## Consumer transition matrix
 
+The B1 cleanup (#1083) removes the unused legacy Spec editor and its fallback from the parameter-admin page. Catalog is the only definition-management surface, including when its ports are unavailable; historical identity tasks remain read-only. Orphan writer callbacks and their forwarding methods are removed, while bounded reads, shared module presentation and still-rendered mock lifecycle controls remain until their own retirement batch.
+
 | Consumer | Canonical dependency | Legacy disposition and required transition |
 | --- | --- | --- |
 | Parameter definitions page | Subjects, definitions, registrations/placement, Review Queue, definition timeline | Replace Effective/Governance peer views with the one-page contract; preserve URL-backed selection using canonical IDs. |

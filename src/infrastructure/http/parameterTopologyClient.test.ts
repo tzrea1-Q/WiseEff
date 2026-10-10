@@ -156,25 +156,12 @@ describe("parameterTopologyClient DTO mapping", () => {
 });
 
 describe("createHttpParameterTopologyRepository", () => {
-  it("does not parse a spec body for retired createParameterSpec mint", async () => {
+  it("does not expose retired spec minting or make a request", () => {
     const fetchMock = fetchQueue({ item: specDetailDto });
     const repository = createHttpParameterTopologyRepository(
       createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
     );
-    await expect(
-      repository.createParameterSpec({
-        attributionSubjectId: "asub:driver:sc8562",
-        propertyKey: "gpio_int",
-        reason: "must not mint"
-      })
-    ).rejects.toMatchObject({
-      code: "GONE",
-      details: {
-        reason: "legacy-surface-retired",
-        successor: "/api/v2/catalog",
-        retryable: false
-      }
-    });
+    expect(repository).not.toHaveProperty("createParameterSpec");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -208,7 +195,7 @@ describe("createHttpParameterTopologyRepository", () => {
     );
   });
 
-  it("posts identity correction routes and preserves 409 collision details", async () => {
+  it("posts reattribution and preserves 409 collision details", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (String(url).includes("/reattribute")) {
         return response(
@@ -249,70 +236,6 @@ describe("createHttpParameterTopologyRepository", () => {
         method: "POST",
         body: JSON.stringify({ attributionSubjectId: "asub:driver:mt5788", reason: "fix subject" })
       })
-    );
-
-    await repository.renameParameterSpecPropertyKey("spec-1", {
-      propertyKey: "gpio_int_renamed",
-      reason: "typo"
-    });
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://api.test/api/v2/parameter-specs/spec-1/rename-property-key",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ propertyKey: "gpio_int_renamed", reason: "typo" })
-      })
-    );
-  });
-
-  it("calls property-key cutover preview/start/prepare/finalize routes", async () => {
-    const run = {
-      id: "run-1",
-      parameterSpecId: "spec-1",
-      fromKey: "typo_prop",
-      toKey: "corrected_prop",
-      status: "ready",
-      referenceCount: 1,
-      writesCatalog: false,
-      writesSource: false,
-      stagedSource: true,
-      startBlockers: [],
-      items: []
-    };
-    const fetchMock = fetchQueue(
-      { item: { parameterSpecId: "spec-1", fromKey: "typo_prop", toKey: "corrected_prop", locations: [], startBlockers: [], writesCatalog: false, writesSource: false, inlineRenameEligible: false, referenceCount: 1 } },
-      { item: run },
-      { item: run },
-      { item: { ...run, status: "finalized", writesCatalog: true } }
-    );
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
-    );
-
-    await repository.previewPropertyKeyCutover!("spec-1", { propertyKey: "corrected_prop" });
-    await repository.startPropertyKeyCutover!("spec-1", { propertyKey: "corrected_prop", reason: "fix" });
-    await repository.preparePropertyKeyCutover!("spec-1", { reason: "stage" });
-    await repository.finalizePropertyKeyCutover!("spec-1", { reason: "done" });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/preview",
-      expect.objectContaining({ method: "POST" })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/start",
-      expect.objectContaining({ method: "POST" })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/prepare",
-      expect.objectContaining({ method: "POST" })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
-      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/finalize",
-      expect.objectContaining({ method: "POST" })
     );
   });
 
@@ -436,8 +359,7 @@ describe("createHttpParameterTopologyRepository", () => {
             }
           ]
         })
-      )
-      .mockResolvedValueOnce(response({ item: { id: "map-1", status: "resolved", selectedLogicalNodeId: "ln-a" } }));
+      );
 
     const repository = createHttpParameterTopologyRepository(
       createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
@@ -453,13 +375,6 @@ describe("createHttpParameterTopologyRepository", () => {
       successor: "/api/v2/organizations/org-1/parameter-review-items"
     });
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/v2/identity-mapping-tasks?projectId=project-1");
-
-    await repository.resolveMapping("map-1", {
-      decision: "resolved",
-      selectedLogicalNodeId: "ln-a",
-      reason: "Same board instance"
-    });
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://api.test/api/v2/identity-mapping-tasks/map-1/resolve");
   });
 
   it.each([
@@ -715,7 +630,7 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(detail).not.toHaveProperty("recommendedValue");
   });
 
-  it("lists and resolves parameter spec review tasks", async () => {
+  it("lists historical parameter spec review tasks", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -736,8 +651,7 @@ describe("createHttpParameterTopologyRepository", () => {
           ],
           nextCursor: "cursor-1"
         })
-      )
-      .mockResolvedValueOnce(response({ item: { id: "task-1", status: "resolved" } }));
+      );
 
     const repository = createHttpParameterTopologyRepository(
       createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
@@ -748,19 +662,6 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(listed.nextCursor).toBe("cursor-1");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/v2/parameter-spec-review-tasks");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("status=open");
-
-    const resolution = {
-      decision: "resolved" as const,
-      parameterSpecId: "pspec:a",
-      reason: "ok"
-    };
-    await repository.resolveSpecReviewTask("task-1", resolution);
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
-      "/api/v2/parameter-spec-review-tasks/task-1/resolve"
-    );
-
-    const resolveBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body));
-    expect(resolveBody).toMatchObject(resolution);
   });
 
   it("hydrates only this project's structural enablement drafts without canonical identity aliases", async () => {
@@ -845,31 +746,6 @@ describe("createHttpParameterTopologyRepository", () => {
     );
 
     await expect(repository.listSpecReviewTasks()).resolves.toEqual({ items: [], nextCursor: null });
-  });
-
-  it("forwards confirmPropertyMismatch and createSpec on resolve", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(response({ item: { id: "task-2", status: "resolved" } }));
-
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
-    );
-
-    await repository.resolveSpecReviewTask("task-2", {
-      decision: "resolved",
-      createSpec: true,
-      reason: "create from review",
-      confirmPropertyMismatch: true
-    });
-
-    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
-    expect(body).toEqual({
-      decision: "resolved",
-      createSpec: true,
-      reason: "create from review",
-      confirmPropertyMismatch: true
-    });
   });
 
   it("preserves WiseEffApiError for stale-revision and structured diagnostics", async () => {

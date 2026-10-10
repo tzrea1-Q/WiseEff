@@ -35,16 +35,11 @@ const stubTopology = {
   listReviewTasks: vi.fn(),
   resolveReviewTask: vi.fn(),
   listMappingTasks: vi.fn(),
-  resolveMapping: vi.fn(),
-  reopenMapping: vi.fn(),
   activateParameterSpec: vi.fn(),
   updateParameterSpec: vi.fn(),
   deprecateParameterSpec: vi.fn(),
   restoreParameterSpec: vi.fn(),
   reattributeParameterSpec: vi.fn(),
-  renameParameterSpecPropertyKey: vi.fn(),
-  prepareSpecVersionCutover: vi.fn(),
-  finalizeSpecVersionCutover: vi.fn()
 };
 
 const stubModules = {
