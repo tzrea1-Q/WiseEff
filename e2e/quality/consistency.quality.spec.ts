@@ -1,6 +1,6 @@
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
-import { requireOrganizationViewSwitchStyles } from "./view-switch";
+import { requireViewSwitchStyles } from "./view-switch";
 import {
   assertXiaozePlacement,
   collectConsistencyMeasurements,
@@ -66,7 +66,7 @@ for (const route of routes) {
           if (route.required.includes("rowActions")) {
             requireRowActionVisibility(measurements.rowActions, route.path);
           }
-          requireOrganizationViewSwitchStyles(measurements, route.path);
+          requireViewSwitchStyles(measurements, route.path);
           if (theme === "light") {
             if (requiresHint) {
               requireConsistencyMeasurements(measurements, ["xiaozeHints"], route.path);

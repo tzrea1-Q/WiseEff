@@ -129,6 +129,7 @@ describe("consistency measurement coverage", () => {
       "primaryActions", "paginationControls", "moduleTreeLabels", "rowActions"
     ]));
     expect(consistencyRoutes.find((route) => route.path === "/debugging-admin/nodes")?.required).toContain("filterControls");
+    expect(consistencyRoutes.find((route) => route.path === "/parameter-home")?.required).toContain("filterControls");
     expect(consistencyRoutes.find((route) => route.path === "/parameters")?.required).not.toContain("filterControls");
     expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/specs")?.required).not.toContain("sortControls");
   });

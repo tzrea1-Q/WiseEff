@@ -6,7 +6,7 @@ import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLa
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
 import { useAuditEvents, useAuditTraceEvents } from "@/hooks/useAuditEvents";
 import type { AuditEvent } from "@/domain/prototype/types";
-import { cn } from "@/lib/utils";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { SearchField } from "@/components/common/SearchField";
 
 export type AuditWorkspaceProps = {
@@ -162,26 +162,16 @@ export function AuditWorkspace({
               <option value="30d">近 30 天</option>
             </select>
           </label>
-          <div className="param-admin-audit-filters" role="group" aria-label="严重度筛选">
-            {(
-              [
-                ["all", "全部"],
-                ["High", "高"],
-                ["Medium", "中"],
-                ["Low", "低"]
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={cn("chip", query.severity === value && "chip-active")}
-                aria-pressed={query.severity === value}
-                onClick={() => onQueryChange?.({ severity: value })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <ViewSwitch
+            variant="toggle"
+            ariaLabel="严重度筛选"
+            value={query.severity}
+            onValueChange={(severity) => onQueryChange?.({ severity: severity as AuditQueryState["severity"] })}
+            items={[
+              { value: "all", label: "全部" }, { value: "High", label: "高" },
+              { value: "Medium", label: "中" }, { value: "Low", label: "低" }
+            ]}
+          />
           <button
             type="button"
             className="button subtle audit-workspace-export"

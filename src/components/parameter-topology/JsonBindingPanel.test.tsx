@@ -352,17 +352,18 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    const group = screen.getByRole("group", { name: "结果模式" });
-    expect(within(group).getByRole("button", { name: "参数列表" })).toBeInTheDocument();
-    expect(within(group).getByRole("button", { name: "JSON 源码" })).toBeInTheDocument();
-    expect(within(group).getByRole("button", { name: "导出当前结果" })).toBeInTheDocument();
+    const group = screen.getByRole("tablist", { name: "结果模式" });
+    const list = within(group).getByRole("tab", { name: "参数列表", selected: true });
+    expect(list).toHaveAttribute("aria-controls", screen.getByRole("tabpanel", { name: "参数列表" }).id);
+    expect(within(group).getByRole("tab", { name: "JSON 源码" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出当前结果" })).toBeInTheDocument();
 
     // Default mode is parameters list
-    expect(within(group).getByRole("button", { name: "参数列表" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "JSON 源码" })).toHaveAttribute("aria-pressed", "false");
+    expect(list).toHaveAttribute("aria-selected", "true");
+    expect(within(group).getByRole("tab", { name: "JSON 源码" })).toHaveAttribute("aria-selected", "false");
 
     // Clicking "导出当前结果" calls onExportRows with filtered bindings
-    fireEvent.click(within(group).getByRole("button", { name: "导出当前结果" }));
+    fireEvent.click(screen.getByRole("button", { name: "导出当前结果" }));
     expect(handleExport).toHaveBeenCalledWith([jsonBinding, secondBinding]);
   });
 
@@ -381,31 +382,31 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    const group = screen.getByRole("group", { name: "结果模式" });
-    fireEvent.click(within(group).getByRole("button", { name: "JSON 源码" }));
+    const group = screen.getByRole("tablist", { name: "结果模式" });
+    fireEvent.mouseDown(within(group).getByRole("tab", { name: "JSON 源码" }));
 
     // Verify view mode updated
-    expect(within(group).getByRole("button", { name: "JSON 源码" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "参数列表" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(group).getByRole("tab", { name: "JSON 源码" })).toHaveAttribute("aria-selected", "true");
+    expect(within(group).getByRole("tab", { name: "参数列表" })).toHaveAttribute("aria-selected", "false");
 
     // "下载 JSON" button appears in place of "导出当前结果"
-    expect(await within(group).findByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
-    expect(within(group).queryByRole("button", { name: "导出当前结果" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "导出当前结果" })).not.toBeInTheDocument();
 
     // Search bar adapts to source code find mode
     expect(screen.getByRole("searchbox", { name: "在 JSON 源码中查找" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("在 JSON 文本中查找")).toBeInTheDocument();
 
     // JSON source viewer renders with custom aria label and content
-    expect(await screen.findByLabelText("JSON 源码")).toBeInTheDocument();
+    expect(await within(screen.getByRole("tabpanel", { name: "JSON 源码" })).findByLabelText("JSON 源码")).toBeInTheDocument();
     expect(screen.getByLabelText("custom-config.json · v3")).toBeInTheDocument();
     expect(loadPrimaryJsonSource).toHaveBeenCalledTimes(1);
 
     // Switching back to "参数列表" restores table mode
-    fireEvent.click(within(group).getByRole("button", { name: "参数列表" }));
-    expect(within(group).getByRole("button", { name: "参数列表" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.mouseDown(within(group).getByRole("tab", { name: "参数列表" }));
+    expect(within(group).getByRole("tab", { name: "参数列表" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "JSON 参数列表" })).toBeInTheDocument();
-    expect(within(group).getByRole("button", { name: "导出当前结果" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出当前结果" })).toBeInTheDocument();
   });
 
   it("synthesizes JSON source when loadPrimaryJsonSource is not provided", async () => {
@@ -417,10 +418,10 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    const group = screen.getByRole("group", { name: "结果模式" });
-    fireEvent.click(within(group).getByRole("button", { name: "JSON 源码" }));
+    const group = screen.getByRole("tablist", { name: "结果模式" });
+    fireEvent.mouseDown(within(group).getByRole("tab", { name: "JSON 源码" }));
 
-    expect(await screen.findByLabelText("JSON 源码")).toBeInTheDocument();
+    expect(await within(screen.getByRole("tabpanel", { name: "JSON 源码" })).findByLabelText("JSON 源码")).toBeInTheDocument();
     expect(screen.getByLabelText("aurora.json · v1")).toBeInTheDocument();
     expect(screen.getByText(/"charging-policy"/)).toBeInTheDocument();
   });
@@ -439,8 +440,8 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "JSON 源码" }));
-    expect(await screen.findByLabelText("JSON 源码")).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "JSON 源码" }));
+    expect(await within(screen.getByRole("tabpanel", { name: "JSON 源码" })).findByLabelText("JSON 源码")).toBeInTheDocument();
 
     // Click module "充电管理" in module navigator
     const moduleItem = screen.getByRole("treeitem", { name: /充电管理/ });
@@ -467,7 +468,7 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "JSON 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "JSON 源码" }));
     const downloadBtn = await screen.findByRole("button", { name: "下载 JSON" });
 
     fireEvent.click(downloadBtn);
