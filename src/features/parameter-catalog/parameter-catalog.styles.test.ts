@@ -45,6 +45,22 @@ describe("parameter catalog layout contract", () => {
     expect(table["min-width"]).toBe("48rem");
   });
 
+  it("keeps secondary table cells single-line without shrinking status or actions", () => {
+    const styles = readStylesheet(stylesheet);
+    const secondaryCells = declarationsFor(
+      styles,
+      '.parameter-catalog__table td:not(.parameter-catalog__lifecycle):not([data-label="操作"])'
+    );
+    const lifecycle = declarationsFor(styles, ".parameter-catalog__table .parameter-catalog__lifecycle");
+    const actions = declarationsFor(styles, ".parameter-catalog__table th:last-child");
+
+    expect(secondaryCells["white-space"]).toBe("nowrap");
+    expect(secondaryCells.overflow).toBe("hidden");
+    expect(secondaryCells["text-overflow"]).toBe("ellipsis");
+    expect(lifecycle.width).toBe("var(--pcat-table-status-width)");
+    expect(actions.width).toBe("var(--pcat-table-actions-width)");
+  });
+
   it("keeps narrow-screen navigation and identity text manageable", () => {
     // The detail and timeline are disclosed in one dialog at every viewport, so
     // there is no inline detail/timeline pane left to hide here.

@@ -267,7 +267,7 @@
 
 .review-view-tabs button.active {
   color: var(--primary-foreground);
-  background: var(--app-primary);
+  background: var(--nav-selected);
   box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 

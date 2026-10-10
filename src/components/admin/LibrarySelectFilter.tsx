@@ -21,7 +21,8 @@ export function LibrarySelectFilter<T extends string = string>({
   return (
     <select
       aria-label={ariaLabel}
-      className="library-sort"
+      className="compact-filter-control"
+      data-compact-control="filter"
       disabled={disabled}
       value={value}
       onChange={(event) => onChange(event.target.value as T)}

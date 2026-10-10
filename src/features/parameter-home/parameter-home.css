@@ -32,58 +32,6 @@
   gap: var(--ph-section-gap);
 }
 
-.parameter-home__view-switcher {
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 0.15rem;
-  padding: 0.22rem;
-  border: 1px solid color-mix(in srgb, var(--outline) 55%, transparent);
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--surface-low) 72%, var(--surface) 28%);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent);
-}
-
-.parameter-home__view-switcher-item {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  min-width: 4.75rem;
-  height: 2rem;
-  padding-inline: 0.75rem;
-  border: none !important;
-  border-radius: 0.55rem !important;
-  background: transparent !important;
-  color: var(--text-muted);
-  font-size: 0.84rem;
-  font-weight: 600;
-  line-height: 1;
-  box-shadow: none !important;
-}
-
-.parameter-home__view-switcher-item:hover:not([data-state="on"]) {
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--surface) 55%, transparent) !important;
-}
-
-.parameter-home__view-switcher-item[data-state="on"] {
-  background: var(--surface) !important;
-  color: var(--app-primary);
-  font-weight: 700;
-  box-shadow:
-    0 1px 3px color-mix(in srgb, var(--foreground) 8%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--foreground) 5%, transparent) !important;
-}
-
-.parameter-home__view-switcher-item:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--app-primary) 35%, transparent);
-  outline-offset: 1px;
-}
-
-.parameter-home__view-switcher-item--hotspots {
-  gap: 0.35rem;
-}
-
 .parameter-home__view-switcher-count {
   display: inline-flex;
   align-items: center;
@@ -103,14 +51,6 @@
   margin-bottom: 0;
   flex: 1;
   min-width: min(100%, 20rem);
-}
-
-.parameter-home__workbench-page-toggle {
-  flex-shrink: 0;
-}
-
-.parameter-home__workbench-page-toggle-item {
-  gap: 0.35rem;
 }
 
 .parameter-home__workbench-page-toggle-count {
@@ -318,10 +258,6 @@
   align-items: flex-start;
 }
 
-.parameter-home__overview-scope-toggle {
-  flex-shrink: 0;
-}
-
 @media (max-width: 900px) {
   .parameter-home__panel--situation .parameter-home__panel-head {
     flex-direction: column;
@@ -402,65 +338,6 @@
 
 .parameter-home__context-select {
   min-width: 9.5rem;
-  background: var(--ph-surface);
-  border-color: var(--ph-border);
-  color: var(--ph-text);
-}
-
-.parameter-home__context-select:hover {
-  background: var(--ph-surface-hover);
-}
-
-.parameter-home__toggle-group {
-  flex-wrap: wrap;
-  gap: 0.15rem;
-  padding: 0.15rem;
-  border: 1px solid var(--ph-border-subtle);
-  border-radius: 0.55rem;
-  background: color-mix(in srgb, var(--surface-low) 45%, var(--ph-surface) 55%);
-}
-
-.parameter-home__toggle-item {
-  font-size: 0.78rem;
-  height: 1.65rem;
-  min-width: 0;
-  padding-inline: 0.55rem;
-  border: none !important;
-  border-radius: 0.4rem !important;
-  background: transparent !important;
-  color: var(--ph-text-muted);
-  font-weight: 500;
-  box-shadow: none !important;
-}
-
-.parameter-home__toggle-item:hover:not([data-state="on"]) {
-  color: var(--ph-text);
-  background: color-mix(in srgb, var(--ph-surface) 70%, var(--surface-low) 30%) !important;
-}
-
-.parameter-home__toggle-item[data-state="on"] {
-  background: var(--ph-surface) !important;
-  color: var(--ph-accent) !important;
-  font-weight: 600;
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent),
-    0 0 0 1px var(--ph-border-subtle) !important;
-}
-
-.parameter-home__toggle-item[data-state="on"]:hover {
-  background: var(--ph-surface-selected) !important;
-}
-
-.parameter-home__toggle-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ph-accent-light) 45%, transparent) !important;
-}
-
-.parameter-home__toggle-item[data-state="on"]:focus-visible {
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent),
-    0 0 0 1px var(--ph-border-subtle),
-    0 0 0 3px color-mix(in srgb, var(--ph-accent-light) 35%, transparent) !important;
 }
 
 .parameter-home__chart-shell {

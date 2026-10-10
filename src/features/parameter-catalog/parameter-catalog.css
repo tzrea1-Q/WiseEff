@@ -18,6 +18,9 @@
   --pcat-nav-chevron: var(--text-muted);
   --pcat-success: var(--success);
   --pcat-success-soft: var(--success-soft);
+  --pcat-table-min-width: 40rem;
+  --pcat-table-status-width: 7rem;
+  --pcat-table-actions-width: 8rem;
 
   display: grid;
   gap: var(--space-4);
@@ -820,6 +823,33 @@ button.parameter-catalog__tree-toggle:hover {
   border-color: var(--border-strong);
 }
 
+.parameter-catalog .parameter-catalog__table {
+  width: 100%;
+  min-width: var(--pcat-table-min-width);
+  table-layout: fixed;
+}
+
+.parameter-catalog__table th,
+.parameter-catalog__table td {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.parameter-catalog__table td:not(.parameter-catalog__lifecycle):not([data-label="操作"]) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parameter-catalog__table .parameter-catalog__lifecycle {
+  width: var(--pcat-table-status-width);
+}
+
+.parameter-catalog__table th:last-child {
+  width: var(--pcat-table-actions-width);
+  min-width: 0;
+}
+
 /* The actions cell is the last, narrowest column; trimming its padding keeps the
    table at the pane width so no action is clipped. */
 .parameter-catalog table td[data-label="操作"] {
@@ -909,16 +939,6 @@ button.parameter-catalog__tree-toggle:hover {
   gap: var(--space-2);
   color: var(--pcat-secondary);
   font-size: var(--text-sm);
-}
-
-.parameter-catalog__page-size select {
-  height: 28px;
-  padding: 0 var(--space-2);
-  color: var(--pcat-text);
-  background: var(--surface-sunken);
-  border: 1px solid var(--pcat-border);
-  border-radius: var(--radius-sm);
-  font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans);
 }
 
 .parameter-catalog__page-buttons {

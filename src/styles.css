@@ -52,6 +52,7 @@
   --accent: #0052cc;
   --accent-hover: color-mix(in srgb, var(--accent) 88%, #000);
   --accent-pressed: #003d9b;
+  --nav-selected: #003d9b;
   --accent-soft: #dae2ff;
   --bg: #f7f8fc;
   --surface: #ffffff;
@@ -103,6 +104,10 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-full: 999px;
+  --view-switch-font-weight: 600;
+  --view-switch-border-width: 1px;
+  --view-switch-focus-width: 2px;
+  --view-switch-disabled-opacity: 0.5;
 
   /* ── Elevation ── */
   --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.04);
@@ -167,7 +172,7 @@
   --risk-low: var(--chart-1);
 
   /* ── Legacy aliases (bridge onto semantic tokens; migrate consumers, then drop) ── */
-  --app-primary: var(--accent-pressed);
+  --app-primary: var(--primary);
   --primary-container: var(--accent);
   --primary-soft: var(--accent-soft);
   --outline: var(--border-strong);
@@ -274,6 +279,7 @@
   --accent: #4c8dff;
   --accent-hover: color-mix(in srgb, var(--accent) 88%, #fff);
   --accent-pressed: #3a72d9;
+  --nav-selected: #4c8dff;
   --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--bg));
   --bg: #0b1220;
   --surface: #0f172a;
@@ -314,10 +320,6 @@
   --tertiary-soft: color-mix(in srgb, var(--tertiary) 16%, var(--surface));
   --amber: #eba53f;
   --amber-soft: rgba(235, 165, 63, 0.16);
-  /* Brand fills/active-text read as the brightened accent on dark (the
-     light value derives from --accent-pressed, which is too dim here). */
-  --app-primary: var(--accent);
-
   /* App shell chrome */
   --shell-canvas: radial-gradient(circle at 65% 8%, color-mix(in srgb, var(--app-secondary) 7%, transparent), transparent 30%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
@@ -360,6 +362,48 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+}
+
+.compact-filter-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: var(--space-8);
+  min-height: var(--space-8);
+  padding: 0 var(--space-2);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.compact-filter-control:is(select, [data-slot="select-trigger"]) {
+  appearance: none;
+  padding-right: var(--space-6);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right var(--space-3) center, right var(--space-2) center;
+  background-size: var(--space-1) var(--space-1);
+  background-repeat: no-repeat;
+}
+
+.compact-filter-control:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.compact-filter-control:active:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.compact-filter-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 /*
@@ -408,8 +452,8 @@
 
 .button.primary {
   color: var(--primary-foreground);
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .button.primary:hover:not(:disabled) {
@@ -4936,55 +4980,6 @@ td small {
   line-height: 1.2;
 }
 
-.user-permissions-workspace-tabs {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  padding: var(--space-1);
-  background: #eef2f8;
-  border: 1px solid var(--shell-sidebar-border);
-  border-radius: 10px;
-}
-
-.user-permissions-workspace-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 36px;
-  padding: 0 14px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: #475569;
-  font: inherit;
-  font-size: var(--text-base);
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.user-permissions-workspace-tab:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-}
-
-.user-permissions-workspace-tab.active,
-.user-permissions-workspace-tab[aria-selected="true"] {
-  color: var(--text);
-  background: var(--surface);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
-}
-
-.user-permissions-workspace-tab:focus-visible {
-  outline: 2px solid rgba(0, 93, 224, 0.2);
-  outline-offset: 2px;
-}
-
 .user-permissions-workspace-tab-count {
   display: inline-flex;
   align-items: center;
@@ -5226,8 +5221,7 @@ td small {
   text-transform: uppercase;
 }
 
-.user-permissions-filters input,
-.user-permissions-filters select {
+.user-permissions-filters input {
   width: 100%;
   min-width: 0;
   min-height: 38px;
@@ -5240,11 +5234,15 @@ td small {
   font-size: var(--text-base);
 }
 
-.user-permissions-filters input:focus-visible,
-.user-permissions-filters select:focus-visible {
+.user-permissions-filters input:focus-visible {
   border-color: var(--app-primary);
   outline: 2px solid color-mix(in srgb, var(--accent) 16%, transparent);
   outline-offset: 1px;
+}
+
+.user-permissions-filter-field .compact-filter-control {
+  width: 100%;
+  min-width: 0;
 }
 
 .user-permissions-approval-queue {
@@ -5593,15 +5591,6 @@ td small {
   .user-permissions-summary .button,
   .user-permissions-toolbar .user-permissions-primary-action {
     width: 100%;
-  }
-
-  .user-permissions-workspace-tabs {
-    width: 100%;
-  }
-
-  .user-permissions-workspace-tab {
-    flex: 1 1 auto;
-    justify-content: center;
   }
 
   .user-permissions-filters {
@@ -7504,11 +7493,6 @@ td small {
 
 .dts-reload-page .dts-reload-project-select select {
   min-width: 200px;
-  min-height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  background: var(--surface);
 }
 
 .dts-reload-residue-banner {
@@ -8457,18 +8441,6 @@ td small {
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
-}
-
-.local-device-bridge-panel__install-cta {
-  color: var(--primary-foreground);
-  background: var(--app-primary);
-  border-color: var(--app-primary);
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-primary) 24%, transparent);
-}
-
-.local-device-bridge-panel__install-cta:hover {
-  background: var(--primary-container);
-  border-color: var(--primary-container);
 }
 
 .local-device-bridge-panel__already-installed {
@@ -12628,6 +12600,11 @@ td small {
 }
 
 /* ── Xiaoze floating toggle ── */
+body:has([data-xiaoze-launcher-anchor]) .main-content {
+  margin-bottom: calc(var(--space-16) + max(var(--space-6), env(safe-area-inset-bottom, 0px)));
+  padding-bottom: var(--space-6);
+}
+
 .xiaoze-chat-toggle-anchor {
   position: fixed;
   right: 1.5rem;
@@ -12833,6 +12810,17 @@ body:has([role="dialog"]) .xiaoze-toggle-hint {
   border-right: 1px solid var(--xiaoze-border-strong);
   border-bottom: 1px solid var(--xiaoze-border-strong);
   transform: rotate(-45deg);
+}
+
+.xiaoze-chat-toggle-anchor[data-xiaoze-hint-side="right"] .xiaoze-toggle-hint {
+  left: calc(100% + var(--space-3));
+  right: auto;
+}
+
+.xiaoze-chat-toggle-anchor[data-xiaoze-hint-side="right"] .xiaoze-toggle-hint::after {
+  left: calc(var(--space-3) / -2);
+  right: auto;
+  transform: rotate(135deg);
 }
 
 .xiaoze-toggle-hint__body {
@@ -14568,8 +14556,8 @@ body.xiaoze-popup-drag-active {
 
 .parameter-admin-scope-nav__tab.is-active {
   color: var(--primary-foreground);
-  background: var(--app-primary);
-  border-color: var(--app-primary);
+  background: var(--nav-selected);
+  border-color: var(--nav-selected);
 }
 
 .parameter-admin-subnav {
@@ -18278,27 +18266,6 @@ body.xiaoze-popup-drag-active {
   font-size: var(--text-md);
 }
 
-.param-admin-audit-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.param-admin-audit-filters .chip {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border);
-  background: var(--card);
-  font-size: var(--text-sm);
-}
-
-.param-admin-audit-filters .chip-active {
-  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
-  background: color-mix(in srgb, var(--primary) 8%, var(--card));
-  color: var(--primary);
-}
-
 .param-admin-audit-status {
   margin: 0 var(--space-4) var(--space-2);
   font-size: var(--text-base);
@@ -18493,11 +18460,6 @@ body.xiaoze-popup-drag-active {
 
 .audit-workspace-select-wrap select {
   min-width: 140px;
-  height: 34px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0 10px;
-  background: var(--card);
 }
 
 .audit-workspace-trace-banner {
@@ -19033,7 +18995,6 @@ body.xiaoze-popup-drag-active {
 }
 
 .param-admin-shell .dropdown-trigger,
-.library-sort,
 .chip,
 .clear-filters {
   min-height: 30px;
@@ -19045,10 +19006,6 @@ body.xiaoze-popup-drag-active {
   cursor: pointer;
   font: inherit;
   font-size: var(--text-sm);
-}
-
-.library-sort {
-  border-radius: var(--radius-md);
 }
 
 .clear-filters {
@@ -22227,6 +22184,11 @@ body.xiaoze-popup-drag-active {
  * gains a topology-aware browse surface without changing the binding contract.
  */
 .dts-parameter-workbench {
+  --dts-workbench-table-min-width: 680px;
+  --dts-workbench-scrollbar-width: 12px;
+  --dts-workbench-table-actions-width: calc(3 * 32px + 2 * var(--space-1));
+  --dts-workbench-table-columns: 36px minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) 68px var(--dts-workbench-table-actions-width);
+  --dts-workbench-table-columns-without-selection: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) 68px var(--dts-workbench-table-actions-width);
   --dts-workbench-ink: #152238;
   --dts-workbench-muted: #52657d;
   --dts-workbench-border: #dbe3ef;
@@ -22362,13 +22324,6 @@ body.xiaoze-popup-drag-active {
   gap: 6px;
 }
 
-.dts-parameter-workbench__header-actions .button.subtle.is-active,
-.dts-parameter-workbench__header-actions .button.subtle[aria-pressed="true"] {
-  color: var(--dts-workbench-blue);
-  background: var(--dts-workbench-blue-soft);
-  border-color: #c8dcf7;
-}
-
 .dts-parameter-workbench__toolbar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto;
@@ -22474,6 +22429,12 @@ body.xiaoze-popup-drag-active {
   overflow: hidden;
 }
 
+@media (min-width: 1201px) {
+  .dts-parameter-workbench .dts-workbench-topology {
+    max-width: min(var(--module-navigator-max-width), max(var(--module-navigator-min-width), calc(100cqw - var(--dts-workbench-table-min-width) - var(--dts-workbench-scrollbar-width) - var(--space-3))));
+  }
+}
+
 .dts-workbench-list {
   /* Outer shell frames the dual-axis scrollports so the horizontal bar stays
    * on the visible panel edge instead of under thousands of rows. */
@@ -22514,6 +22475,10 @@ body.xiaoze-popup-drag-active {
 
 .dts-workbench-list__scroll-y::-webkit-scrollbar {
   width: 12px;
+}
+
+.dts-parameter-workbench .dts-workbench-list__scroll-y {
+  width: max(100%, calc(var(--dts-workbench-table-min-width) + var(--dts-workbench-scrollbar-width)));
 }
 
 .dts-workbench-list__scroll-y::-webkit-scrollbar-track {
@@ -22728,15 +22693,20 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-parameter-workbench-table--surface-mvp {
-  min-width: 840px;
-  width: max(100%, 840px);
+  min-width: var(--dts-workbench-table-min-width);
+  width: max(100%, var(--dts-workbench-table-min-width));
 }
 
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head,
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row {
   /* select + 参数名 + 展示描述 + 模块 + 当前值 + 重要性 + 操作 (driver demoted to detail) */
-  grid-template-columns: 36px minmax(120px, .9fr) minmax(160px, 1.2fr) minmax(120px, .9fr) minmax(160px, 1.15fr) 68px 76px;
-  min-width: 840px;
+  grid-template-columns: var(--dts-workbench-table-columns);
+  min-width: var(--dts-workbench-table-min-width);
+}
+
+.dts-parameter-workbench-table--surface-mvp:not(:has(.dts-parameter-workbench-table__select)) .dts-parameter-workbench-table__head,
+.dts-parameter-workbench-table--surface-mvp:not(:has(.dts-parameter-workbench-table__select)) .dts-parameter-workbench-table__row {
+  grid-template-columns: var(--dts-workbench-table-columns-without-selection);
 }
 
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__driver-col {

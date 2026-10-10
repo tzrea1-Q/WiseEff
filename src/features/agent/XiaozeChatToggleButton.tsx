@@ -3,7 +3,7 @@ import { Sparkles, X } from "lucide-react";
 import { writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
 import { XiaozeToggleHint } from "./XiaozeToggleHint";
 
-export function XiaozeChatToggleButton() {
+export function XiaozeChatToggleButton({ userId }: { userId?: string }) {
   const configuration = useCopilotChatConfiguration();
   const isOpen = configuration?.isModalOpen ?? false;
   const setModalOpen = configuration?.setModalOpen;
@@ -15,6 +15,8 @@ export function XiaozeChatToggleButton() {
   return (
     <div className="xiaoze-chat-toggle-anchor" data-xiaoze-launcher-anchor="">
       <XiaozeToggleHint
+        key={userId}
+        userId={userId}
         visible={!isOpen}
         onOpen={() => {
           writeXiaozePopupOpenSession(true);
@@ -32,7 +34,7 @@ export function XiaozeChatToggleButton() {
         aria-label={isOpen ? closeLabel : openLabel}
         aria-describedby="xiaoze-launcher-drag-instructions"
         aria-pressed={isOpen}
-        title="点击打开或关闭小泽；拖动可移动小泽（快捷键 ⌘J / Ctrl+J）"
+        title="点击打开或关闭小泽；拖动可沿底部留白移动小泽（快捷键 ⌘J / Ctrl+J）"
         onClick={() => {
           const next = !isOpen;
           writeXiaozePopupOpenSession(next);
@@ -49,7 +51,7 @@ export function XiaozeChatToggleButton() {
         </span>
       </button>
       <span id="xiaoze-launcher-drag-instructions" className="sr-only">
-        拖动悬浮球可移动小泽；展开后悬浮球会带着窗口一起移动。方向键每次移动 8 像素，按住 Shift 每次移动 32 像素，Home 恢复默认位置。
+        拖动悬浮球可沿底部留白移动小泽；展开后悬浮球会带着窗口一起移动。左右方向键每次移动 8 像素，按住 Shift 每次移动 32 像素，Home 恢复默认位置。
       </span>
     </div>
   );

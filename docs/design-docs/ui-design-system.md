@@ -32,9 +32,14 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 | Table | `src/components/admin/DataTable.tsx` | Standard list shell: pagination, `aria-sort`, keyboard row navigation, filter empty state, `ColumnFilter` integration |
 | Column filter | `src/components/ColumnFilter.tsx` | Spec: [Table Column Multi-Select Filter UX](ux-table-column-filter.md) |
 | Search field | `src/components/common/SearchField.tsx` | One search-input chrome; filtering lives in `src/lib/search/` profiles, not in the input |
+| View switch | `src/components/ui/view-switch.tsx` + `view-switch.css` | Three tokenized styles: `section` navigation (40px / full radius / 14px, selected `--nav-selected`), `tabs` content tabs (32px / md radius / 13px, selected `--accent-soft`), `toggle` radio options (28px / sm radius / 12px, selected `--surface`) |
 | Loading/Empty/Error | `src/components/common/SectionState.tsx` (+ `AppShellSkeleton` for auth bootstrap) | Skeleton + empty + error-with-retry trio; parameter-home re-exports the same components |
 | Local token derivation | `src/features/parameter-home/parameter-home.css` | Derive scoped tokens from global tokens via `color-mix()`; never invent new literals |
 | Icons | `lucide-react` | No emoji glyphs, no `✓`/`↗` text characters as icons |
+
+**View-switch contract (UIA-016, expand):** `/organization` and `/organization/members` use the shared section navigation; the members account/registration workspace uses content tabs. Section arrows/Home/End move focus without navigating; Enter/Space activate. Content tabs use manual activation, roving focus and required item `id`/`panelId` pairs; callers render the active `role="tabpanel"` with that panel ID, `aria-labelledby` pointing to the item ID, and `tabIndex={0}`. Radio options select with arrows or Space. All styles share tokenized focus-visible and disabled states. The consistency project checks every visible switch on the two organization routes against exactly one root-token style signature in light and dark themes. Other legacy variants remain during expansion; the Bridge install stepper is a separate progress pattern, not a view switch.
+
+Inactive tab panels remain mounted and hidden so every `aria-controls` target exists; inactive panel contents may be unmounted.
 
 ## Design Tokens
 
@@ -55,8 +60,10 @@ Semantic roles (light theme; dark theme derives from the same roles):
 | `--text` | Primary text | one near-black |
 | `--text-secondary` | Secondary text | one gray |
 | `--text-muted` | Tertiary/meta text | slate `#536277` (light), `#8b99b3` (dark) |
-| `--accent` | Interactive primary (buttons, links, active nav, selection) | brand blue `#0052cc` family |
+| `--accent` | Brand accent (links and interactive emphasis) | brand blue `#0052cc` family |
+| `--primary` / `--app-primary` | One resting-primary action color; both alias `--accent` | light `#0052cc`, dark `#4c8dff` |
 | `--accent-hover` / `--accent-pressed` | Interaction shades | derived |
+| `--nav-selected` | Selected filled navigation, not an action or pressed state | light `#003d9b`, dark `#4c8dff` |
 | `--accent-soft` | Selected/active backgrounds, badges | derived tint |
 | `--success` / `--warning` / `--danger` / `--info` | Status colors + matching `-soft` tints | one family each |
 | `--ring` | Focus ring | accent-based, one value |
@@ -65,6 +72,7 @@ Rules:
 
 - Raw color literals are allowed **only** inside the token block. Everything else uses `var()` or `color-mix()` over tokens (follow the `parameter-home.css` pattern).
 - The shadcn `--primary`/`--muted`/`--border` oklch keys must alias the semantic tokens above. Two palettes answering the same question is a defect.
+- **Primary-color contract (UIA-017):** every enabled primary action's computed resting background equals the resolved `--primary`, including Local Device Bridge installation and connection actions on node debugging and DTS reload. The CSS `.button.primary` and shared Button default use this same token; Bridge scopes only add layout, never primary colors. Light and dark use the same aliases, including legacy `--app-primary` → `--primary` → `--accent`. Hover and pressed shades are `--accent-hover` and `--accent-pressed`; selected filled navigation uses the separately named `--nav-selected`. A selected navigation pill is not a primary CTA. The quality consistency project checks visible enabled primary actions against the root token at `1440x900` in both themes, so a scoped override cannot redefine the expected color. Native-disabled and `aria-disabled="true"` controls remain measured but use their separate disabled visual state, not the enabled resting-primary assertion.
 - Neutral chrome carries the interface; color appears only for interaction and status. Charts consume a tokenized categorical ramp (`--chart-1..5`) aligned with the accent, not library defaults.
 
 #### Tested Contrast Pairs (UIA-001)
@@ -195,6 +203,7 @@ Hover and focus-visible must remain visually distinguishable (do not merge them 
 ### Inputs and selects
 
 - Min-height 32px, `--radius-sm`, tokenized border, focus ring per above, visible label or `aria-label`, error text linked via `aria-describedby`.
+- PC filter and sort selects, plus pagination page-size selects, opt into `.compact-filter-control` (native) or `SelectTrigger size="filter"` (custom): one 32px border-box height (`--space-8`), border, radius, font and chevron contract. Pagination actions use the existing default 32px `.button` primitive, not its `sm` variant. Mark only these controls with `data-compact-control="filter"`, `"sort"` or `"pagination"` for consistency measurements. Search comboboxes, module navigation, table-header sort buttons, form fields and dialogs keep their own primitives; page-local rules may add layout, not redefine compact geometry or appearance.
 - Native `<select>` is a transitional allowance in existing surfaces; new surfaces use the styled Select primitive once P1 lands. Native date/file inputs keep native pickers but styled triggers.
 
 ### Dialogs
@@ -229,6 +238,8 @@ Recharts surfaces consume tokens: categorical ramp `--chart-1..5`, gridlines `--
 Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, `--chart-3` violet `#7c3aed`, `--chart-4` sky `#0284c7` (the `--info` hue), `--chart-5` slate `#64748b` — all ≥3:1 against `--surface` in light, four of five ≥4.5:1. The dark theme brightens `--chart-2..5` one step (`#22b8cf` / `#a78bfa` / `#38bdf8` / `#94a3b8`) while `--chart-1` follows the dark accent. Consume the ramp through `src/domain/format/chartTheme.ts` (series/status colors, grid stroke, axis ticks, tooltip styles exported as `var()` references) instead of hardcoding values, so charts follow the active theme.
 
 ## Layout and Page Structure
+
+- Xiaoze's launcher and first-run hint occupy a reserved bottom shell gutter outside the main scrollport, never covering visible table scrollports or sticky action areas. Desktop launcher dragging and Left/Right keys move only within that gutter; the hint flips inward at the left edge. Resizing keeps the launcher reachable, with visible keyboard focus; Home restores the lower-right anchor. Hint dismissal persists per user across SPA navigation and reload (page-lifetime fallback when storage is unavailable). Popup interaction, Agent behavior and human approvals are unchanged. The consistency quality project asserts non-intersection on every target route at 1440×900, including the visible first-run hint.
 
 - The TopBar renders the page title and subtitle from `appConfig`; page bodies must not repeat them (no double titles, no competing `h1`).
 - Card nesting is limited to two levels of visible rounded borders; deeper grouping uses spacing and dividers instead of more boxes.

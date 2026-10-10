@@ -53,6 +53,7 @@ const XIAOZE_POPUP_HEADER = {
 
 export type XiaozeProviderProps = {
   children: ReactNode;
+  userId?: string;
   agentUrl?: string;
   enabled?: boolean;
   /** CopilotKit AG-UI inspector; off by default and gated to admin in AppShell. */
@@ -64,13 +65,14 @@ function XiaozeRuntimeTools() {
   return <XiaozeApprovalCard />;
 }
 
-function XiaozeCopilotPopupHost() {
+function XiaozeCopilotPopupHost({ userId }: { userId?: string }) {
   const { activeThreadId } = useXiaozeThreads();
   return (
     <CopilotChatConfigurationProvider threadId={activeThreadId} hasExplicitThreadId isModalDefaultOpen={false}>
       <XiaozePopupOpenPolicy />
       <XiaozeOpenHandoffListener />
       <XiaozeCopilotPopup
+        toggleButton={{ userId }}
         agentId="default"
         throttleMs={16}
         defaultOpen={false}
@@ -96,10 +98,11 @@ export function XiaozeProactiveInsights({ enabled }: { enabled: boolean }) {
   );
 }
 
-type EnabledXiaozeProviderProps = Pick<XiaozeProviderProps, "children" | "agentUrl" | "enableInspector">;
+type EnabledXiaozeProviderProps = Pick<XiaozeProviderProps, "children" | "agentUrl" | "enableInspector" | "userId">;
 
 function EnabledXiaozeProvider({
   children,
+  userId,
   agentUrl,
   enableInspector = false
 }: EnabledXiaozeProviderProps) {
@@ -122,7 +125,7 @@ function EnabledXiaozeProvider({
                   <XiaozeRunStepsCapture />
                   <XiaozeTurnReplyCapture />
                   <XiaozeTurnStateCapture />
-                  <XiaozeCopilotPopupHost />
+                  <XiaozeCopilotPopupHost userId={userId} />
                 </XiaozeTurnStateProvider>
               </XiaozeTurnReplyProvider>
             </XiaozeRunStepsProvider>
@@ -133,13 +136,13 @@ function EnabledXiaozeProvider({
   );
 }
 
-export function XiaozeProvider({ enabled = true, children, agentUrl, enableInspector = false }: XiaozeProviderProps) {
+export function XiaozeProvider({ enabled = true, children, agentUrl, enableInspector = false, userId }: XiaozeProviderProps) {
   if (!enabled) {
     return children;
   }
 
   return (
-    <EnabledXiaozeProvider agentUrl={agentUrl} enableInspector={enableInspector}>
+    <EnabledXiaozeProvider agentUrl={agentUrl} enableInspector={enableInspector} userId={userId}>
       {children}
     </EnabledXiaozeProvider>
   );

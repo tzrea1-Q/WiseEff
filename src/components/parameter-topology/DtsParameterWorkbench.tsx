@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Download,
   FileCode,
   Boxes
 } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { filterItems } from "@/lib/search";
 import { dtsWorkbenchRowSearchProfile } from "@/lib/search/profiles";
 
@@ -201,6 +202,7 @@ export function DtsParameterWorkbench({
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string[]>([]);
   const [resultsMode, setResultsMode] = useState<WorkbenchResultsMode>("parameters");
+  const resultsId = useId();
   const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
   const [uncontrolledSelectedBindingIds, setUncontrolledSelectedBindingIds] = useState<Set<string>>(new Set());
   const selectedBindingIds = controlledSelectedBindingIds ?? uncontrolledSelectedBindingIds;
@@ -691,25 +693,19 @@ export function DtsParameterWorkbench({
           </p>
         ) : null}
         <div className="dts-parameter-workbench__toolbar-actions">
-          <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
-            <button
-              type="button"
-              className={`button subtle${resultsMode === "parameters" ? " is-active" : ""}`}
-              aria-pressed={resultsMode === "parameters"}
-              onClick={() => setResultsMode("parameters")}
-            >
-              <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
-              参数列表
-            </button>
-            <button
-              type="button"
-              className={`button subtle${resultsMode === "dtsSource" ? " is-active" : ""}`}
-              aria-pressed={resultsMode === "dtsSource"}
-              onClick={enterDtsSourceMode}
-            >
-              <FileCode size={15} strokeWidth={1.9} aria-hidden="true" />
-              DTS 源码
-            </button>
+          <div className="dts-parameter-workbench__header-actions">
+            <ViewSwitch
+              variant="tabs"
+              ariaLabel="结果模式"
+              value={resultsMode}
+              onValueChange={(value) => value === "parameters" ? setResultsMode("parameters") : enterDtsSourceMode()}
+              items={[
+                { value: "parameters", label: <><Boxes size={15} strokeWidth={1.9} aria-hidden="true" />参数列表</>,
+                  id: `${resultsId}-parameters-tab`, panelId: `${resultsId}-parameters-panel` },
+                { value: "dtsSource", label: <><FileCode size={15} strokeWidth={1.9} aria-hidden="true" />DTS 源码</>,
+                  id: `${resultsId}-dtsSource-tab`, panelId: `${resultsId}-dtsSource-panel` }
+              ]}
+            />
             {resultsMode === "dtsSource" ? (
               <button
                 type="button"
@@ -751,7 +747,8 @@ export function DtsParameterWorkbench({
         </div>
       ) : null}
 
-      <div className="dts-parameter-workbench__body">
+      <div className="dts-parameter-workbench__body" role="tabpanel" tabIndex={0}
+        id={`${resultsId}-${resultsMode}-panel`} aria-labelledby={`${resultsId}-${resultsMode}-tab`}>
         <div
           className="dts-parameter-workbench__navigator dts-workbench-topology"
           role="region"

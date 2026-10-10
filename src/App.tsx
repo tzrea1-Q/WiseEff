@@ -1259,7 +1259,7 @@ function AppShell({
 
   return runtimeMode === "api" ? (
     <XiaozePageContext.Provider value={xiaozePageContext}>
-      <XiaozeProvider enableInspector={enableXiaozeInspector}>{appShell}</XiaozeProvider>
+      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId}>{appShell}</XiaozeProvider>
     </XiaozePageContext.Provider>
   ) : (
     appShell

@@ -155,19 +155,20 @@ describe("XiaozePopupChrome", () => {
     cleanupHarness();
   });
 
-  it("keeps the launcher's last dragged position when pointer capture is cancelled", async () => {
+  it("keeps the launcher's last horizontal position in the gutter when pointer capture is cancelled", async () => {
     const { anchor, handle, unmount, cleanupHarness } = renderLauncherHarness();
     await waitFor(() => expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("1360px"));
 
     fireEvent.pointerDown(handle, { pointerId: 5, button: 0, isPrimary: true, clientX: 1388, clientY: 848 });
     fireEvent.pointerMove(handle, { pointerId: 5, clientX: 400, clientY: 300 });
     expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("372px");
-    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("272px");
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("820px");
+    expect(anchor.dataset.xiaozeHintSide).toBe("right");
 
     fireEvent.pointerCancel(handle, { pointerId: 5 });
 
     expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("372px");
-    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("272px");
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("820px");
     expect(document.body).not.toHaveClass("xiaoze-launcher-drag-active");
 
     unmount();
