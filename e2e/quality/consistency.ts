@@ -22,7 +22,7 @@ export function collectConsistencyMeasurements() {
     dom: signature(element), role: role(element), height: element.getBoundingClientRect().height,
     compactControl: element.getAttribute("data-compact-control")
   });
-  const viewSwitches = elements([
+  const viewSwitchElements = elements([
     '[role="tab"]', '[role="radiogroup"] [role="radio"]', '[role="group"][aria-label*="视图"] button[aria-pressed]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
     ".view-switch__item", ".parameter-admin-scope-nav__tab", ".parameter-admin-subnav__tab",
@@ -31,7 +31,11 @@ export function collectConsistencyMeasurements() {
     ".review-view-tabs button", ".param-admin-audit-filters .chip",
     ".dts-parameter-workbench__header-actions button[aria-pressed]",
     ".local-device-bridge-wizard__steps li"
-  ].join(",")).map((element) => {
+  ].join(","));
+  const viewSwitches = [...new Set([
+    ...viewSwitchElements,
+    ...document.querySelectorAll(".topbar .view-switch__item, .topbar .parameter-home__view-switcher-item")
+  ])].filter(visible).map((element) => {
     const style = getComputedStyle(element);
     const group = element.closest('nav,[role="tablist"],[role="radiogroup"],.protocol-switch,.review-view-tabs,.local-device-bridge-wizard__steps')
       ?? element.parentElement!;
@@ -176,7 +180,7 @@ const viewSwitchPaths = [
 ];
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints"> = {
   viewSwitches: [...viewSwitchPaths, "/log-admin"],
-  viewSwitchSignatures: ["/organization", "/organization/members"],
+  viewSwitchSignatures: ["/organization", "/organization/members", "/parameter-home", "/audit", "/logs", "/parameters"],
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging"],

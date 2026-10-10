@@ -2281,7 +2281,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
 
     await waitFor(() => expect(parameterFileRepository.listFiles).toHaveBeenCalledWith("aurora"));
     await waitFor(() =>
@@ -2290,7 +2290,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
     expect(screen.queryByRole("tree", { name: "生效 DTS 拓扑" })).not.toBeInTheDocument();
     expect(screen.queryByText(/aurora-board\.dts · v2/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
+    expect(within(screen.getByRole("tabpanel", { name: "DTS 源码" })).getByLabelText("DTS 源码")).toBeInTheDocument();
   });
 
   it("renders format switcher when JSON bindings exist and switches between DTS and JSON workbenches", async () => {

@@ -629,28 +629,6 @@
   align-self: start;
 }
 
-.logs-aux-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: var(--space-2);
-  gap: 6px;
-  border-bottom: 1px solid var(--outline);
-}
-
-.logs-aux-tabs button {
-  padding: var(--space-2);
-  color: var(--app-muted);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-md);
-  font-weight: 700;
-}
-
-.logs-aux-tabs button[aria-selected="true"] {
-  color: var(--app-primary);
-  background: var(--primary-soft);
-}
-
 .logs-aux-panel__body {
   min-height: 320px;
 }

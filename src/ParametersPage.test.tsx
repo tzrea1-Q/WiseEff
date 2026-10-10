@@ -1699,7 +1699,7 @@ describe("ParametersPage API topology workspace", () => {
     expect(within(workspace).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeInTheDocument();
     // Phase-1 default navigator is module-first; project-primary DTS remains available as DTS 源码.
     expect(within(workspace).getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
-    expect(within(workspace).getByRole("button", { name: "DTS 源码" })).toBeInTheDocument();
+    expect(within(workspace).getByRole("tab", { name: "DTS 源码" })).toBeInTheDocument();
     const semanticRow = await within(workspace).findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) });
     expect(within(semanticRow).getByRole("cell", { name: API_SENTINEL_PROPERTY })).toBeInTheDocument();
     expect(within(semanticRow).getByRole("cell", { name: API_SENTINEL_RAW_VALUE })).toBeInTheDocument();
