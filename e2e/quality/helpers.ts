@@ -317,7 +317,7 @@ export async function waitForFontsAndNextPaint(page: Page) {
  * and axe scans must wait for the settled state instead of racing skeletons.
  * Routes without an entry settle through the generic page checks alone.
  */
-export async function settleQualityRoute(page: Page, routePath: string) {
+export async function settleQualityRoute(page: Page, routePath: string, options: { readOnly?: boolean } = {}) {
   const timeout = 20_000;
 
   if (routePath === "/parameter-home") {
@@ -339,7 +339,11 @@ export async function settleQualityRoute(page: Page, routePath: string) {
     // on the install guide; wait for the async release manifest and pairing
     // code so the "not connected" state is fully rendered before asserting.
     await expect(page.getByText("已识别当前环境").first()).toBeVisible({ timeout });
-    await expect(page.getByText("当前配对码").first()).toBeVisible({ timeout });
+    if (options.readOnly) {
+      await expect(page.getByText("正在生成配对码...")).toHaveCount(0, { timeout });
+    } else {
+      await expect(page.getByText("当前配对码").first()).toBeVisible({ timeout });
+    }
     if (routePath === "/dts-reload") {
       // The seeded reload workbench (tree + table + history) loads below the wizard.
       await expect(page.getByText("运行历史").first()).toBeVisible({ timeout });
