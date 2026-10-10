@@ -753,7 +753,7 @@ export function CatalogPage({
             </button>
           ) : null}
         </form>
-        <div className="parameter-catalog__actions" aria-label="目录动作">
+        <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
           {actions.map((action) => (
             <button
               key={action.action}

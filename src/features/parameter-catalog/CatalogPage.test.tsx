@@ -191,6 +191,14 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("exposes directory actions as a named group for read-only users", async () => {
+    renderCatalog({ actor: "user" });
+    const actions = await screen.findByRole("group", { name: "目录动作" });
+    expect(within(actions).getByRole("button", { name: "待处理工作" })).toBeInTheDocument();
+    const { default: axe } = await import("axe-core");
+    expect((await axe.run(actions, { runOnly: ["aria-prohibited-attr"] })).violations).toEqual([]);
+  });
+
   function pagedInventory() {
     const subjects = Array.from({ length: 101 }, (_, index) => ({
       ...registeredSubject,
