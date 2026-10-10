@@ -636,6 +636,12 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 
 The announced `Sunset` is no earlier than two production releases or 90 days after canonical launch, whichever is later. It may move later if an exit gate is not satisfied; it never moves earlier. After retirement the same route returns 410 with `details.reason = "legacy-surface-retired"` and the successor link.
 
+### Canonical v1 parameter detail and history (#1081)
+
+`GET /api/v1/parameters/:parameterId` returns the same canonical compatibility record as the v1 list: `id`, `bindingId`, and `projectParameterBindingId` identify the `pbind_` Binding; Definition, effective revision, current Project value, and source occurrence/file pins are canonical. Unsupported legacy metadata remains explicitly unavailable, including `history: null` on the record. `GET /api/v1/parameters/:parameterId/history` returns canonical Binding change-history entries (old/new Definition revisions and Project value IDs, value state, reason, success audit reference, Catalog Release and timestamp), not legacy value payloads.
+
+Both adapters require an active authorized Organization actor and enforce the resolved Binding's Project scope before reading values or history. A same-Organization cross-project request is `403`; an unknown or cross-Organization canonical identity is `404`. An old ID resolves only through the exact `wiseeff-v1` / `project-parameter-binding` / Project-scoped typed mapping head to a canonical Binding in that same Project. No property, name, flat value, or legacy semantic lookup is attempted. Missing, archived, blocked, ambiguous, or non-Binding mappings return `410 GONE` with the retirement envelope and `Link: </api/v2/catalog>; rel="successor-version"`; mapped old IDs use the same Project guard. Retained legacy Binding/revision rows, history readers, Archive, and mappings are not removed.
+
 ## Consumer transition matrix
 
 The B1 cleanup (#1083) removes the unused legacy Spec editor and its fallback from the parameter-admin page. Catalog is the only definition-management surface, including when its ports are unavailable; historical identity tasks remain read-only. Orphan writer callbacks and their forwarding methods are removed, while bounded reads, shared module presentation and still-rendered mock lifecycle controls remain until their own retirement batch.

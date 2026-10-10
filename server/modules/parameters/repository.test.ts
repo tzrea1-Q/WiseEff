@@ -12,7 +12,7 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { getParameterById, listParameterHistory, listParameters } from "./repository";
+import { listParameterHistory, listParameters } from "./repository";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -200,70 +200,6 @@ describe.skipIf(!databaseAvailable)("parameter repository", () => {
     const rows = await listParameters(db, { organizationId: "org-1", projectId: "aurora", limit: 2 });
 
     expect(rows.map((row) => row.id)).toEqual(["aurora-newest", "aurora-middle"]);
-  });
-
-  it("getParameterById maps source fields and loads history", async () => {
-    await seedDefinitionWithValue({
-      definitionId: "pd-fast",
-      valueId: "aurora-fast-charge-current",
-      projectId: "aurora",
-      name: "fast_charge_current_limit_ma",
-      sourceFileName: "config.json",
-      sourceNodePath: "battery/temp_max",
-      valueVersion: 2
-    });
-    await db.query(
-      `insert into parameter_change_requests (
-         id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
-         base_version, current_value, target_value, status, submitter_user_id
-       ) values ('req-1', 'org-1', 'aurora', 'aurora-fast-charge-current', 'pd-fast', 1, '3200', '3300', 'merged', 'user-1')`
-    );
-    await db.query(
-      `insert into parameter_history_entries (
-         id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
-         version, value, changed_by_user_id, request_id, changed_at
-       ) values ('hist-2', 'org-1', 'aurora', 'pd-fast', 'aurora-fast-charge-current', 2, '3300', 'user-1', 'req-1', '2026-05-25T04:00:00.000Z')`
-    );
-
-    const row = await getParameterById(db, {
-      organizationId: "org-1",
-      parameterId: "aurora-fast-charge-current"
-    });
-
-    expect(row).toMatchObject({
-      id: "aurora-fast-charge-current",
-      projectId: "aurora",
-      name: "fast_charge_current_limit_ma",
-      sourceFileName: "config.json",
-      sourceNodePath: "battery/temp_max",
-      history: [
-        {
-          version: "2",
-          value: "3300",
-          changedAt: "2026-05-25T04:00:00.000Z",
-          changedBy: "Xu Yun",
-          requestId: "req-1"
-        }
-      ]
-    });
-  });
-
-  it("getParameterById returns null for missing and cross-organization ids", async () => {
-    await seedDefinitionWithValue({
-      definitionId: "pd-foreign",
-      valueId: "foreign-parameter",
-      organizationId: "org-2",
-      projectId: "project-foreign",
-      name: "foreign_parameter"
-    });
-
-    await expect(
-      getParameterById(db, { organizationId: "org-1", parameterId: "missing" })
-    ).resolves.toBeNull();
-    // The row exists but belongs to another organization.
-    await expect(
-      getParameterById(db, { organizationId: "org-1", parameterId: "foreign-parameter" })
-    ).resolves.toBeNull();
   });
 
   it("listParameterHistory orders entries by changed time descending and maps fallbacks", async () => {

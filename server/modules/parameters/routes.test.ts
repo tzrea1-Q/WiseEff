@@ -22,8 +22,6 @@ vi.mock("./projectService", () => ({
 }));
 
 vi.mock("./repository", () => ({
-  getParameterById: vi.fn(),
-  listParameterHistory: vi.fn(),
   listParameters: vi.fn()
 }));
 
@@ -366,22 +364,18 @@ describe("parameter routes", () => {
     expect(canonicalBindings.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
   });
 
-  it("GET /api/v1/parameters/:parameterId/history uses route params", async () => {
+  it("GET /api/v1/parameters/:parameterId/history scopes canonical route params and refuses a missing Binding", async () => {
     const db = makeDb();
-    const history = { version: "7", value: "3100", changedAt: "2026-05-25T05:00:00.000Z", changedBy: "Riley Chen" };
-    vi.mocked(repository.listParameterHistory).mockResolvedValue([history]);
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
 
-    const response = await requestJson<{ items: typeof history[] }>(
+    const response = await requestJson(
       makeServer({ db }),
-      "/api/v1/parameters/param-1/history"
+      "/api/v1/parameters/pbind_missing/history"
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ items: [history] });
-    expect(repository.listParameterHistory).toHaveBeenCalledWith(db, {
-      organizationId: "org-1",
-      parameterId: "param-1"
-    });
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({ error: { code: "NOT_FOUND", details: { parameterId: "pbind_missing" } } });
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("organization_id = $1"), ["org-1", "pbind_missing", null]);
   });
 
   it("missing database returns INTERNAL_ERROR", async () => {
@@ -1119,12 +1113,10 @@ describe("parameter routes", () => {
   });
 
   it.each([
-    ["detail", "/api/v1/parameters/retired-other-org", 404],
-    ["history", "/api/v1/parameters/retired-other-org/history", 200]
-  ])("keeps another organization's retired parameter %s scope-hidden", async (_label, path, expectedStatus) => {
+    ["detail", "/api/v1/parameters/retired-other-org"],
+    ["history", "/api/v1/parameters/retired-other-org/history"]
+  ])("keeps another organization's retired parameter %s scope-hidden", async (_label, path) => {
     const db = makeDb();
-    vi.mocked(repository.getParameterById).mockResolvedValue(undefined);
-    vi.mocked(repository.listParameterHistory).mockResolvedValue([]);
     vi.mocked(db.query).mockImplementation(async (_sql, values) => ({
       rows: values?.length === 1 ? [{ id: "other-org-migration-evidence" }] : [],
       rowCount: values?.length === 1 ? 1 : 0
@@ -1132,10 +1124,10 @@ describe("parameter routes", () => {
 
     const response = await requestJson(makeServer({ db }), path);
 
-    expect(response.status).toBe(expectedStatus);
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("organization_id = $2"), [
-      "retired-other-org",
-      "org-1"
-    ]);
+    expect(response.status).toBe(410);
+    expect(response.body).toMatchObject({ error: { code: "GONE", details: { successor: "/api/v2/catalog", retryable: false } } });
+    expect(response.bodyText).not.toContain("other-org-migration-evidence");
+    expect(response.headers.get("link")).toBe('</api/v2/catalog>; rel="successor-version"');
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("project.organization_id = $3"), ["wiseeff-v1", "retired-other-org", "org-1"]);
   });
 });

@@ -588,11 +588,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ProjectInitializationReviewResponse"
   },
   "parameters.list": { summary: "List parameters", tags: ["parameters"], responseBody: "ParameterListResponse" },
-  "parameters.get": { summary: "Get parameter", tags: ["parameters"], responseBody: "ParameterResponse" },
+  "parameters.get": {
+    summary: "Get canonical parameter Binding (legacy IDs require an exact typed mapping)",
+    tags: ["parameters"], responseBody: "ParameterResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "CatalogLegacyGoneResponse" }
+  },
   "parameters.history": {
-    summary: "Get parameter history",
+    summary: "Get canonical Binding and Project value history",
     tags: ["parameters"],
-    responseBody: "ParameterHistoryResponse"
+    responseBody: "ParameterHistoryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "410": "CatalogLegacyGoneResponse" }
   },
   "parameters.saveDraft": {
     summary: "Save parameter draft",
