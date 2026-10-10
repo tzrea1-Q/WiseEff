@@ -37,8 +37,8 @@ test.describe("parameter-home production dashboard", () => {
     await prepareInteractionSurface(page);
     await expect(page.getByText("热榜")).toBeVisible();
     await page.getByRole("radio", { name: /热榜/ }).first().click();
-    await expect(page.getByRole("group", { name: "时间窗口" }).first()).toBeVisible();
-    await expect(page.getByRole("group", { name: "热榜维度" }).first()).toBeVisible();
+    await expect(page.getByRole("radiogroup", { name: "时间窗口" }).first()).toBeVisible();
+    await expect(page.getByRole("radiogroup", { name: "热榜维度" }).first()).toBeVisible();
 
     await page.getByRole("radio", { name: "近 7 天" }).first().click();
     await expect(page.getByRole("radio", { name: "近 7 天" }).first()).toHaveAttribute("aria-checked", "true");
