@@ -135,6 +135,10 @@ describe("LocalDeviceBridgeWizard", () => {
     );
 
     expect(screen.getAllByRole("button", { name: "我已安装，去连接本机" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveClass("button", "primary");
+    for (const action of screen.getAllByRole("button", { name: "我已安装，去连接本机" })) {
+      expect(action).toHaveClass("button", "primary");
+    }
 
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 macOS Bridge（Apple Silicon）" })).toBeInTheDocument();
