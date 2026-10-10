@@ -6,8 +6,46 @@ import { LibrarySelectFilter } from "../components/admin/LibrarySelectFilter";
 import { Select, SelectTrigger, SelectValue } from "../components/ui/select";
 import { declarationsFor, readStylesheet } from "./cssAssertions";
 import { DataTable } from "../components/admin/DataTable";
+import { ViewSwitch } from "../components/ui/view-switch";
+import { AnalysisContextControls } from "../features/parameter-home/components/AnalysisContextControls";
 
 describe("compact control measurement scope", () => {
+  it("measures project scope as a compact filter rather than a view switch", () => {
+    const { container } = render(<main>
+      <AnalysisContextControls window="30d" dimension="project" projectScope={null}
+        projectOptions={[{ value: "aurora", label: "Aurora" }]}
+        onWindowChange={() => {}} onDimensionChange={() => {}} onProjectChange={() => {}} />
+    </main>);
+    for (const element of container.querySelectorAll("*")) {
+      element.getBoundingClientRect = () => new DOMRect(0, 0, 120, element.hasAttribute("data-compact-control") ? 32 : 28);
+      Object.defineProperty(element, "checkVisibility", { value: () => true });
+    }
+    const measurements = collectConsistencyMeasurements();
+    expect(measurements.viewSwitches).toHaveLength(6);
+    expect(measurements.viewSwitches.every((control) => control.role === "radio")).toBe(true);
+    expect(measurements.filterControls).toEqual([expect.objectContaining({ role: "combobox", compactControl: "filter", height: 32 })]);
+    expect(() => requireCompactControlHeights(measurements, "/parameter-home")).not.toThrow();
+    expect(() => requireCompactControlHeights({
+      ...measurements, filterControls: [{ ...measurements.filterControls[0], height: 28 }]
+    }, "/parameter-home")).toThrow();
+  });
+
+  it("measures the home switch in the top bar as well as in-page switches", () => {
+    const items = [{ value: "first", label: "第一项" }, { value: "second", label: "第二项" }];
+    const { container } = render(<>
+      <header className="topbar"><ViewSwitch variant="toggle" ariaLabel="工作台视图" value="first" items={items} onValueChange={() => {}} /></header>
+      <main><ViewSwitch variant="toggle" ariaLabel="概览视角" value="first" items={items} onValueChange={() => {}} /></main>
+    </>);
+    for (const element of container.querySelectorAll("*")) {
+      element.getBoundingClientRect = () => new DOMRect(0, 0, 120, 28);
+      Object.defineProperty(element, "checkVisibility", { value: () => true });
+    }
+    const switches = collectConsistencyMeasurements().viewSwitches;
+    expect(switches).toHaveLength(4);
+    expect(switches.every((control) => control.role === "radio" && control.groupRole === "radiogroup")).toBe(true);
+    expect(switches.filter((control) => control.selected)).toHaveLength(2);
+  });
+
   it("ignores the live run's view switches, ordinary buttons, tree navigation and Xiaoze when validating a full result", () => {
     const { container } = render(<>
       <main>

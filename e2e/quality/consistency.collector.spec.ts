@@ -35,11 +35,12 @@ test("resolves all three root switch signatures and catches scoped geometry or s
   const measurements = await page.evaluate(collectConsistencyMeasurements);
   expect(measurements.viewSwitches).toHaveLength(6);
   expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28]]);
-  expect(() => requireViewSwitchStyles(measurements, "/organization/members")).not.toThrow();
+  expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).not.toThrow();
+  expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role === "radio") }, "/parameter-home")).not.toThrow();
   await page.locator("nav").evaluate((element) => element.classList.add("scoped"));
   const overridden = await page.evaluate(collectConsistencyMeasurements);
   expect(overridden.viewSwitchSignatures[0].height).toBe(40);
-  expect(() => requireViewSwitchStyles(overridden, "/organization/members")).toThrow("matched 0");
+  expect(() => requireViewSwitchStyles({ ...overridden, viewSwitches: overridden.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).toThrow("matched 0");
   await page.locator("nav").evaluate((element) => element.classList.remove("scoped"));
   await page.getByRole("tablist").evaluate((element) => {
     element.removeAttribute("role");
@@ -47,7 +48,7 @@ test("resolves all three root switch signatures and catches scoped geometry or s
   });
   const missingRoles = await page.evaluate(collectConsistencyMeasurements);
   expect(missingRoles.viewSwitches).toHaveLength(6);
-  expect(() => requireViewSwitchStyles(missingRoles, "/organization/members")).toThrow("matched 0");
+  expect(() => requireViewSwitchStyles({ ...missingRoles, viewSwitches: missingRoles.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).toThrow("matched 0");
 });
 
 for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb(76, 141, 255)"]]) {
@@ -191,7 +192,7 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
       [aria-level="2"] .dts-topology-navigator__label { margin-left: 48px; }
     </style>
     <main>
-      <div class="clip"><div class="data-table-scroll"><div role="table"><div role="row"><div role="cell" class="dts-parameter-workbench-table__actions"><button>编辑</button></div></div></div></div></div>
+      <div class="clip"><div class="data-table-scroll"><div role="table"><div role="row"><span data-label="重要性" style="position: absolute; left: 200px; width: 60px">高</span><div role="cell" class="dts-parameter-workbench-table__actions"><button>编辑</button></div></div></div></div></div>
       <div class="controls">
         <button class="button primary">提交</button>
         <select data-compact-control="filter" aria-label="项目筛选"><option>项目</option></select>
@@ -209,7 +210,11 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
   expect(measurements.primaryActions).toEqual([expect.objectContaining({ background: "rgb(10, 20, 30)" })]);
   expect(measurements.rowActions).toEqual([expect.objectContaining({
     cell: expect.objectContaining({ left: 350, right: 430, height: 40 }),
-    row: expect.objectContaining({ left: 20, right: 380, height: 40 })
+    row: expect.objectContaining({ left: 20, right: 380, height: 40 }),
+    clip: { left: 20, right: 320 },
+    scrollLeft: 0,
+    actions: [expect.objectContaining({ rect: expect.objectContaining({ left: 350, height: 32 }) })],
+    statuses: [expect.objectContaining({ rect: expect.objectContaining({ left: 220, right: 280 }) })]
   })]);
   expect(measurements.tableScrollports).toEqual([expect.objectContaining({ rect: { left: 20, top: 30, right: 320, bottom: 90, width: 300, height: 60 } })]);
   expect(measurements.xiaozeLaunchers).toEqual([expect.objectContaining({ rect: expect.objectContaining({ right: 1430, bottom: 890 }) })]);
@@ -221,4 +226,6 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
   expect(measurements.filterControls.map((control) => control.height)).toEqual([32]);
   expect(measurements.sortControls.map((control) => control.height)).toEqual([28]);
   expect(measurements.paginationControls.map((control) => control.height)).toEqual([30]);
+  await page.locator(".data-table-scroll").evaluate((element) => { element.scrollLeft = 40; });
+  expect((await page.evaluate(collectConsistencyMeasurements)).rowActions[0].scrollLeft).toBe(40);
 });

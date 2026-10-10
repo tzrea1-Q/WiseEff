@@ -22,7 +22,7 @@ export function collectConsistencyMeasurements() {
     dom: signature(element), role: role(element), height: element.getBoundingClientRect().height,
     compactControl: element.getAttribute("data-compact-control")
   });
-  const viewSwitches = elements([
+  const viewSwitchElements = elements([
     '[role="tab"]', '[role="radiogroup"] [role="radio"]', '[role="group"][aria-label*="视图"] button[aria-pressed]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
     ".view-switch__item", ".parameter-admin-scope-nav__tab", ".parameter-admin-subnav__tab",
@@ -31,7 +31,11 @@ export function collectConsistencyMeasurements() {
     ".review-view-tabs button", ".param-admin-audit-filters .chip",
     ".dts-parameter-workbench__header-actions button[aria-pressed]",
     ".local-device-bridge-wizard__steps li"
-  ].join(",")).map((element) => {
+  ].join(","));
+  const viewSwitches = [...new Set([
+    ...viewSwitchElements,
+    ...document.querySelectorAll(".topbar .view-switch__item, .topbar .parameter-home__view-switcher-item")
+  ])].filter(visible).map((element) => {
     const style = getComputedStyle(element);
     const group = element.closest('nav,[role="tablist"],[role="radiogroup"],.protocol-switch,.review-view-tabs,.local-device-bridge-wizard__steps')
       ?? element.parentElement!;
@@ -86,7 +90,21 @@ export function collectConsistencyMeasurements() {
     .map((element) => element.closest('td,[role="cell"]') ?? element));
   const rowActions = [...actionCells].flatMap((element) => {
     const row = element.closest('tr,[role="row"]');
-    return row ? [{ dom: signature(element), cell: bounds(element), row: bounds(row) }] : [];
+    if (!row) return [];
+    let left = 0, right = innerWidth, scrollLeft = 0;
+    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+      if (["auto", "scroll", "hidden", "clip"].includes(getComputedStyle(ancestor).overflowX)) {
+        const rect = ancestor.getBoundingClientRect();
+        left = Math.max(left, rect.left + ancestor.clientLeft);
+        right = Math.min(right, rect.left + ancestor.clientLeft + ancestor.clientWidth);
+        scrollLeft = Math.max(scrollLeft, Math.abs(ancestor.scrollLeft));
+      }
+    }
+    return [{
+      dom: signature(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
+      actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
+      statuses: [...row.querySelectorAll('[data-label="重要性"],.parameter-catalog__lifecycle')].filter(visible).map(geometry)
+    }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
   const xiaozeLaunchers = overlays('[data-testid="copilot-chat-toggle"],.xiaoze-chat-toggle');
@@ -142,6 +160,27 @@ export function collectConsistencyMeasurements() {
 export type ConsistencyMeasurements = ReturnType<typeof collectConsistencyMeasurements>;
 export type ConsistencyCategory = keyof ConsistencyMeasurements;
 
+export function requireRowActionVisibility(rows: ConsistencyMeasurements["rowActions"], routePath: string) {
+  if (!rows.length) throw new Error(`${routePath}: missing row actions`);
+  for (const { dom, cell, row, clip, scrollLeft, actions, statuses } of rows) {
+    if (cell.right > row.right + 1) throw new Error(`${routePath}: ${dom} exceeds its row`);
+    if (cell.left < clip.left - 1 || cell.right > clip.right + 1) throw new Error(`${routePath}: ${dom} is clipped`);
+    if (scrollLeft > 1) throw new Error(`${routePath}: requires horizontal scrolling`);
+    if (!actions.length || !statuses.length) throw new Error(`${routePath}: missing action or status measurements`);
+    for (const action of actions) {
+      if (action.rect.left < cell.left - 1 || action.rect.right > cell.right + 1
+        || action.rect.top < cell.top - 1 || action.rect.bottom > cell.bottom + 1) {
+        throw new Error(`${routePath}: ${action.dom} is clipped`);
+      }
+    }
+    for (const status of statuses) {
+      if (status.rect.left < Math.max(row.left, clip.left) - 1 || status.rect.right > Math.min(row.right, clip.right) + 1) {
+        throw new Error(`${routePath}: ${status.dom} is clipped`);
+      }
+    }
+  }
+}
+
 export function requireCompactControlHeights(
   measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls">> | null | undefined,
   routePath: string
@@ -174,13 +213,31 @@ const viewSwitchPaths = [
   "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
   "/parameter-submissions", "/parameters", "/user-permissions"
 ];
-export const viewSwitchStylePaths = [
-  "/organization", "/organization/members", "/debugging-admin", "/debugging-admin/nodes",
-  "/node-debugging", "/dts-reload", "/parameter-admin", "/parameter-admin/specs",
-  "/parameter-admin/specs/identity-mapping", "/parameter-admin/modules", "/parameter-admin/modules/queue",
-  "/parameter-admin/modules/registry", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
-  "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/parameter-review", "/parameter-submissions"
-];
+export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
+  "/organization": ["section"],
+  "/organization/members": ["section", "tabs"],
+  "/parameter-home": ["toggle"],
+  "/audit": ["toggle"],
+  "/logs": ["tabs"],
+  "/parameters": ["tabs"],
+  "/debugging-admin": ["section"],
+  "/debugging-admin/nodes": ["section"],
+  "/node-debugging": ["tabs"],
+  "/dts-reload": ["tabs"],
+  "/parameter-admin": ["section"],
+  "/parameter-admin/specs": ["section"],
+  "/parameter-admin/specs/identity-mapping": ["section"],
+  "/parameter-admin/modules": ["section"],
+  "/parameter-admin/modules/queue": ["section"],
+  "/parameter-admin/modules/registry": ["section"],
+  "/parameter-admin/identity-mapping": ["section"],
+  "/parameter-admin/spec-review": ["section"],
+  "/parameter-admin/projects": ["section"],
+  "/parameter-admin/projects/aurora/review-roles": ["section"],
+  "/parameter-review": ["tabs"],
+  "/parameter-submissions": ["tabs"]
+};
+export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints"> = {
   viewSwitches: [...viewSwitchPaths, "/log-admin"],
   viewSwitchSignatures: viewSwitchStylePaths,

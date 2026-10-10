@@ -18122,27 +18122,6 @@ body.xiaoze-popup-drag-active {
   font-size: var(--text-md);
 }
 
-.param-admin-audit-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.param-admin-audit-filters .chip {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border);
-  background: var(--card);
-  font-size: var(--text-sm);
-}
-
-.param-admin-audit-filters .chip-active {
-  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
-  background: color-mix(in srgb, var(--primary) 8%, var(--card));
-  color: var(--primary);
-}
-
 .param-admin-audit-status {
   margin: 0 var(--space-4) var(--space-2);
   font-size: var(--text-base);
@@ -22062,6 +22041,11 @@ body.xiaoze-popup-drag-active {
  * gains a topology-aware browse surface without changing the binding contract.
  */
 .dts-parameter-workbench {
+  --dts-workbench-table-min-width: 680px;
+  --dts-workbench-scrollbar-width: 12px;
+  --dts-workbench-table-actions-width: calc(3 * 32px + 2 * var(--space-1));
+  --dts-workbench-table-columns: 36px minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) 68px var(--dts-workbench-table-actions-width);
+  --dts-workbench-table-columns-without-selection: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) 68px var(--dts-workbench-table-actions-width);
   --dts-workbench-ink: #152238;
   --dts-workbench-muted: #52657d;
   --dts-workbench-border: #dbe3ef;
@@ -22197,13 +22181,6 @@ body.xiaoze-popup-drag-active {
   gap: 6px;
 }
 
-.dts-parameter-workbench__header-actions .button.subtle.is-active,
-.dts-parameter-workbench__header-actions .button.subtle[aria-pressed="true"] {
-  color: var(--dts-workbench-blue);
-  background: var(--dts-workbench-blue-soft);
-  border-color: #c8dcf7;
-}
-
 .dts-parameter-workbench__toolbar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto;
@@ -22309,6 +22286,12 @@ body.xiaoze-popup-drag-active {
   overflow: hidden;
 }
 
+@media (min-width: 1201px) {
+  .dts-parameter-workbench .dts-workbench-topology {
+    max-width: min(var(--module-navigator-max-width), max(var(--module-navigator-min-width), calc(100cqw - var(--dts-workbench-table-min-width) - var(--dts-workbench-scrollbar-width) - var(--space-3))));
+  }
+}
+
 .dts-workbench-list {
   /* Outer shell frames the dual-axis scrollports so the horizontal bar stays
    * on the visible panel edge instead of under thousands of rows. */
@@ -22349,6 +22332,10 @@ body.xiaoze-popup-drag-active {
 
 .dts-workbench-list__scroll-y::-webkit-scrollbar {
   width: 12px;
+}
+
+.dts-parameter-workbench .dts-workbench-list__scroll-y {
+  width: max(100%, calc(var(--dts-workbench-table-min-width) + var(--dts-workbench-scrollbar-width)));
 }
 
 .dts-workbench-list__scroll-y::-webkit-scrollbar-track {
@@ -22563,15 +22550,20 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-parameter-workbench-table--surface-mvp {
-  min-width: 840px;
-  width: max(100%, 840px);
+  min-width: var(--dts-workbench-table-min-width);
+  width: max(100%, var(--dts-workbench-table-min-width));
 }
 
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head,
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row {
   /* select + 参数名 + 展示描述 + 模块 + 当前值 + 重要性 + 操作 (driver demoted to detail) */
-  grid-template-columns: 36px minmax(120px, .9fr) minmax(160px, 1.2fr) minmax(120px, .9fr) minmax(160px, 1.15fr) 68px 76px;
-  min-width: 840px;
+  grid-template-columns: var(--dts-workbench-table-columns);
+  min-width: var(--dts-workbench-table-min-width);
+}
+
+.dts-parameter-workbench-table--surface-mvp:not(:has(.dts-parameter-workbench-table__select)) .dts-parameter-workbench-table__head,
+.dts-parameter-workbench-table--surface-mvp:not(:has(.dts-parameter-workbench-table__select)) .dts-parameter-workbench-table__row {
+  grid-template-columns: var(--dts-workbench-table-columns-without-selection);
 }
 
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__driver-col {

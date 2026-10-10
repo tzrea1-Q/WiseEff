@@ -146,9 +146,9 @@ describe("ParameterHomePage", () => {
 
   it("shows hotspot dimension controls only on the hotspot page", () => {
     renderPage({ roleId: "admin" });
-    expect(screen.queryByRole("group", { name: "热榜维度" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "热榜维度" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
-    expect(screen.getByRole("group", { name: "热榜维度" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "热榜维度" })).toBeInTheDocument();
   });
 
   it("shows situation skeleton while summary is loading", () => {
@@ -206,23 +206,23 @@ describe("ParameterHomePage", () => {
 
   it("renders a single in-page context control bar", () => {
     renderPage({ roleId: "admin" });
-    expect(screen.getAllByRole("group", { name: "时间窗口" })).toHaveLength(1);
-    expect(screen.queryByRole("group", { name: "热榜维度" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("radiogroup", { name: "时间窗口" })).toHaveLength(1);
+    expect(screen.queryByRole("radiogroup", { name: "热榜维度" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
-    expect(screen.getAllByRole("group", { name: "热榜维度" })).toHaveLength(1);
+    expect(screen.getAllByRole("radiogroup", { name: "热榜维度" })).toHaveLength(1);
   });
 
   it("switches between workbench overview and hotspot pages", () => {
     renderPage({ roleId: "admin" });
 
-    expect(screen.getByRole("group", { name: "工作台视图" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "工作台视图" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "热榜" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
     expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "待办事项" })).not.toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "热榜维度" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "热榜维度" })).toBeInTheDocument();
   });
 
   it("lays out situation overview beside update trend", () => {

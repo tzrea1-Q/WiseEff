@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { requireViewSwitchStyles } from "../e2e/quality/view-switch";
-import { consistencyRoutes } from "../e2e/quality/consistency";
+import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency";
 
 const signatures = [
   { variant: "section", role: "button", groupRole: "navigation", height: 40, radius: "999px 999px 999px 999px", fontSize: "14px", lineHeight: "22px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(0, 61, 155)" },
@@ -14,7 +14,41 @@ function measurement(style = signatures[0], selected = true) {
     background: selected ? style.selectedBackground : style.background };
 }
 
-describe("organization view-switch consistency", () => {
+describe("view-switch consistency", () => {
+  it.each(["/organization", "/organization/members"])("rejects unrelated tiers on %s", (path) => {
+    expect(() => requireViewSwitchStyles({
+      viewSwitches: [measurement(signatures[2])], viewSwitchSignatures: signatures
+    }, path)).toThrow("matched 0");
+  });
+  it.each([
+    ...["/parameter-home", "/audit"].map((path) => [path, "toggle"]),
+    ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions"]
+      .map((path) => [path, "tabs"]),
+    ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
+      "/parameter-admin/specs/identity-mapping", "/parameter-admin/modules", "/parameter-admin/modules/queue",
+      "/parameter-admin/modules/registry", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
+      "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"].map((path) => [path, "section"])
+  ])("enforces the migrated tier on %s: %s", (path, variant) => {
+    expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
+    for (const style of signatures) {
+      const assertStyles = () => requireViewSwitchStyles({
+        viewSwitches: [measurement(style), measurement(style, false)], viewSwitchSignatures: signatures
+      }, path);
+      if (style.variant === variant) expect(assertStyles).not.toThrow();
+      else expect(assertStyles).toThrow("matched 0");
+    }
+  });
+
+  it.each(["atlas", "aurora", "nebula"])("enforces result-mode tabs on the project route %s", (project) => {
+    const path = `/parameters?project=${project}`;
+    expect(() => requireViewSwitchStyles({
+      viewSwitches: [measurement(signatures[1])], viewSwitchSignatures: signatures
+    }, path)).not.toThrow();
+    expect(() => requireViewSwitchStyles({
+      viewSwitches: [measurement(signatures[2])], viewSwitchSignatures: signatures
+    }, path)).toThrow("matched 0");
+  });
+
   it.each(["/node-debugging", "/dts-reload"])("requires local content tabs on %s", (path) => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: [measurement(signatures[1]), measurement(signatures[1], false)], viewSwitchSignatures: signatures
@@ -48,9 +82,19 @@ describe("organization view-switch consistency", () => {
     }, "/node-debugging")).toThrow("matched 0");
   });
 
-  it.each(["/organization", "/organization/members"])("accepts exactly one signature for selected and unselected controls on %s", (path) => {
+  it.each(["/parameter-home", "/audit", "/logs", "/parameters"])("requires migrated switch styles and measurements on %s", (path) => {
     expect(() => requireViewSwitchStyles({
-      viewSwitches: signatures.flatMap((style) => [measurement(style), measurement(style, false)]),
+      viewSwitches: [{ ...measurement(signatures[2]), height: 30 }], viewSwitchSignatures: signatures
+    }, path)).toThrow("must match exactly one view-switch style");
+    expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: signatures }, path))
+      .toThrow("missing consistency measurements: viewSwitches");
+    expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
+  });
+
+  it.each(["/organization", "/organization/members", "/parameter-home", "/audit", "/logs", "/parameters"])("accepts exactly one signature for selected and unselected controls on %s", (path) => {
+    expect(() => requireViewSwitchStyles({
+      viewSwitches: signatures.filter((style) => viewSwitchStyleExpectations[path].some((variant) => variant === style.variant))
+        .flatMap((style) => [measurement(style), measurement(style, false)]),
       viewSwitchSignatures: signatures
     }, path)).not.toThrow();
   });
@@ -79,7 +123,9 @@ describe("organization view-switch consistency", () => {
 
   it("uses resolved theme fills rather than hard-coded light colors", () => {
     const dark = signatures.map((style) => ({ ...style, background: "rgb(15, 23, 42)", selectedBackground: "rgb(76, 141, 255)" }));
-    expect(() => requireViewSwitchStyles({ viewSwitches: dark.map((style) => measurement(style)), viewSwitchSignatures: dark }, "/organization")).not.toThrow();
+    for (const [index, path] of ["/organization", "/logs", "/parameter-home"].entries()) {
+      expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(dark[index])], viewSwitchSignatures: dark }, path)).not.toThrow();
+    }
   });
 
   it.each(["viewSwitches", "viewSwitchSignatures"] as const)("does not silently pass missing %s", (category) => {
@@ -87,7 +133,12 @@ describe("organization view-switch consistency", () => {
       .toThrow(`missing consistency measurements: ${category}`);
   });
 
-  it("leaves legacy switches on other routes working during expansion", () => {
-    expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: [] }, "/parameters")).not.toThrow();
+  it.each(["/parameters", "/parameter-review"])("requires formerly legacy switches after both migrations on %s", (path) => {
+    expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: [] }, path))
+      .toThrow("missing consistency measurements: viewSwitches, viewSwitchSignatures");
+  });
+
+  it("leaves legacy switches on unmigrated routes working during expansion", () => {
+    expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: [] }, "/log-admin")).not.toThrow();
   });
 });

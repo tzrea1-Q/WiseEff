@@ -3,6 +3,7 @@ import { declarationsFor, readStylesheet, rulesFor } from "./test/cssAssertions"
 
 const styles = [
   "src/styles.css",
+  "src/components/ui/view-switch.css",
   "src/features/log-analysis/log-analysis.css",
   "src/features/parameter-home/parameter-home.css",
   "src/components/project-configuration-workbench/configuration-workbench.css"
@@ -85,9 +86,9 @@ describe.each(["light", "dark"])("%s theme contrast pairs", (theme) => {
   });
 
   it("keeps the unselected hotspot toggle readable", () => {
-    const toggle = declarationsFor(styles, ".parameter-home__view-switcher-item");
-    const group = declarationsFor(styles, ".parameter-home__view-switcher");
-    expectReadable(toggle.color, group.background, tokens);
+    const toggle = declarationsFor(styles, ".view-switch__item");
+    const group = declarationsFor(styles, ".view-switch--toggle");
+    expectReadable(toggle.color, toggle.background, { ...tokens, ...group });
   });
 
   it.each(["--bg", "--surface", "--surface-raised", "--surface-sunken", "--surface-low", "--surface-mid", "--surface-high", "--accent-soft"])(

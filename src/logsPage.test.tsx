@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
@@ -13,6 +14,7 @@ vi.mock("@copilotkit/react-core/v2", () => ({
 
 import App from "./App";
 import { initialState } from "./mockData";
+import { LogsPage } from "@/features/log-analysis/LogsPage";
 
 const userState = { ...initialState, activeRoleId: "user" };
 
@@ -38,6 +40,27 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it("moves focus between auxiliary tabs before activation without changing the selected log", async () => {
+    const user = userEvent.setup();
+    const log = initialState.logs[1];
+    window.history.replaceState(null, "", `/logs?logId=${log.id}`);
+    render(<LogsPage state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const tabs = screen.getByRole("tablist", { name: "日志辅助信息" });
+    const history = within(tabs).getByRole("tab", { name: "历史" });
+    const metadata = within(tabs).getByRole("tab", { name: "元数据" });
+    await user.click(history);
+    await user.keyboard("{ArrowRight}");
+    expect(metadata).toHaveFocus();
+    expect(history).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Enter}");
+    const panel = screen.getByRole("tabpanel", { name: "元数据" });
+    expect(metadata).toHaveAttribute("aria-controls", panel.id);
+    expect(within(panel).getByText(log.fileName)).toBeInTheDocument();
+    await user.keyboard("{End}{Enter}");
+    expect(screen.getByRole("tabpanel", { name: "相关" })).toHaveTextContent("没有找到关联日志。");
+    expect(new URLSearchParams(window.location.search).get("logId")).toBe(log.id);
+  });
+
   it("显示标题与上传按钮", () => {
     window.history.replaceState(null, "", "/logs");
 
@@ -100,14 +123,14 @@ describe("LogsPage · Header", () => {
     expect(document.querySelector(".log-timeline__step--current")).toBeInTheDocument();
   });
 
-  it("辅助栏默认显示历史 Tab，切换元数据 Tab 显示文件名和设备", () => {
+  it("辅助栏默认显示历史 Tab，切换元数据 Tab 显示文件名和设备", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
 
     const auxPanel = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(within(auxPanel).getByRole("tab", { name: "历史", selected: true })).toBeInTheDocument();
-    fireEvent.click(within(auxPanel).getByRole("tab", { name: "元数据" }));
+    await userEvent.click(within(auxPanel).getByRole("tab", { name: "元数据" }));
     const metadataPanel = within(auxPanel).getByRole("tabpanel", { name: "元数据" });
     expect(within(metadataPanel).getByText(/charging_thermal_trace/)).toBeInTheDocument();
     expect(within(metadataPanel).getByText("ChargeLab_X01")).toBeInTheDocument();
