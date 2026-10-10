@@ -15,6 +15,24 @@ function measurement(style = signatures[0], selected = true) {
 }
 
 describe("view-switch consistency", () => {
+  it.each(Object.keys(viewSwitchStyleExpectations))("rejects zero switches on expected route %s", (path) => {
+    expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: signatures }, path))
+      .toThrow("missing consistency measurements: viewSwitches");
+  });
+
+  it.each([0, 1])("rejects a missing expected tier even with valid controls from tier %s", (index) => {
+    expect(() => requireViewSwitchStyles({
+      viewSwitches: [measurement(signatures[index])], viewSwitchSignatures: signatures
+    }, "/organization/members")).toThrow(`missing view-switch tiers: ${index === 0 ? "tabs" : "section"}`);
+  });
+
+  it("does not let Bridge progress alone satisfy protocol tab coverage", () => {
+    expect(() => requireViewSwitchStyles({
+      viewSwitches: [{ ...measurement(), dom: "li.active", group: "ol.local-device-bridge-wizard__steps", role: "listitem" }],
+      viewSwitchSignatures: signatures
+    }, "/node-debugging")).toThrow("missing view-switch tiers: tabs");
+  });
+
   it.each(["/organization", "/organization/members"])("rejects unrelated tiers on %s", (path) => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: [measurement(signatures[2])], viewSwitchSignatures: signatures

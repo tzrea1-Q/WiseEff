@@ -21,8 +21,11 @@ describe("view-switch collection", () => {
         <nav><button role="treeitem" aria-selected="true" class="view-switch__item">Tree item</button></nav>
         <div role="tree"><button class="protocol-switch-button" aria-pressed="true">Tree selection</button></div>
         <div class="dts-topology-navigator"><button class="view-switch__item" aria-pressed="true">Topology selection</button></div>
-        <nav><button aria-pressed="true">Unrelated selection</button><a aria-current="page">Unrelated navigation</a></nav>
-        <div role="tablist"><button role="tab" aria-selected="true">Unmarked tab</button></div>
+        <div class="dts-parameter-workbench__navigator"><button class="view-switch__item" aria-selected="true">Navigator selection</button></div>
+        <button class="parameter-catalog__tree-select--group view-switch__item" aria-pressed="true">Catalog class family</button>
+        <nav><button aria-pressed="true">Legacy section button</button><a aria-current="page">Legacy section link</a></nav>
+        <div role="tablist"><button role="tab" aria-selected="true">Semantic tab</button></div>
+        <div role="radiogroup"><button role="radio" aria-checked="true">Semantic radio</button></div>
       </main>
     `);
     vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockReturnValue({
@@ -35,7 +38,8 @@ describe("view-switch collection", () => {
       const measurements = collectConsistencyMeasurements();
       expect(measurements.viewSwitches.map((control) => control.dom).sort()).toEqual([
         "button.view-switch__item", "button.view-switch__item", "button.view-switch__item",
-        "button.protocol-switch-button", "button", "button.view-switch__item"
+        "button.protocol-switch-button", "button", "button.view-switch__item",
+        "button", "a", "button", "button"
       ].sort());
       expect(measurements.viewSwitches.some((control) => control.dom === "button.parameter-catalog__tree-select")).toBe(false);
       expect(measurements.moduleTreeLabels.map((control) => control.dom)).toEqual(["span.parameter-catalog__tree-label"]);

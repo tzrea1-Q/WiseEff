@@ -23,6 +23,8 @@ export function collectConsistencyMeasurements() {
     compactControl: element.getAttribute("data-compact-control")
   });
   const viewSwitchElements = elements([
+    '[role="tablist"] [role="tab"]', '[role="radiogroup"] [role="radio"]',
+    'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
     '[role="group"][aria-label="日志视图切换"] button[aria-pressed]',
     ".view-switch__item", ".parameter-admin-scope-nav__tab", ".parameter-admin-subnav__tab",
     ".protocol-switch-button", ".user-permissions-workspace-tab", ".logs-aux-tabs button",
@@ -35,7 +37,7 @@ export function collectConsistencyMeasurements() {
     ...viewSwitchElements,
     ...document.querySelectorAll(".topbar .view-switch__item, .topbar .parameter-home__view-switcher-item")
   ])].filter((element) => visible(element)
-    && !element.closest('[role="tree"],[role="treeitem"],.parameter-catalog__tree,.parameter-catalog__tree-select,.dts-topology-navigator')
+    && !element.closest('[role="tree"],[role="treeitem"],.parameter-catalog__tree,[class*="parameter-catalog__tree-select"],.dts-topology-navigator,.dts-parameter-workbench__navigator')
   ).map((element) => {
     const style = getComputedStyle(element);
     const group = element.closest('nav,[role="tablist"],[role="radiogroup"],.protocol-switch,.review-view-tabs,.local-device-bridge-wizard__steps')

@@ -4,6 +4,7 @@ export function requireViewSwitchStyles(measurements: Pick<ConsistencyMeasuremen
   const variants = viewSwitchStyleExpectations[path.split("?")[0]];
   if (!variants) return;
   requireConsistencyMeasurements(measurements, ["viewSwitches", "viewSwitchSignatures"], path);
+  const observed = new Set<string>();
   for (const control of measurements.viewSwitches) {
     if (control.role === "listitem" && control.group.includes(".local-device-bridge-wizard__steps")) continue;
     const matches = measurements.viewSwitchSignatures.filter((style) =>
@@ -16,5 +17,8 @@ export function requireViewSwitchStyles(measurements: Pick<ConsistencyMeasuremen
     if (matches.length !== 1) {
       throw new Error(`${path}: ${control.dom} must match exactly one view-switch style (matched ${matches.length})`);
     }
+    observed.add(matches[0].variant);
   }
+  const missing = variants.filter((variant) => !observed.has(variant));
+  if (missing.length) throw new Error(`${path}: missing view-switch tiers: ${missing.join(", ")}`);
 }
