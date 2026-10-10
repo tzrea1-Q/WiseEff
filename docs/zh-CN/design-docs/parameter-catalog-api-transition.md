@@ -638,13 +638,13 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 
 ## 消费者迁移矩阵
 
-B1 清理（#1083）删除参数管理后台未使用的 legacy Spec 编辑器及其 fallback。Catalog 是唯一定义管理界面，缺少其端口时也不回退；历史身份任务保持只读。孤立的写操作回调及其转发方法一并删除，有界读取、共享模块展示和仍在渲染的 mock 生命周期控件则保留至各自的退役批次。
+B1 清理（#1083）删除参数管理后台未使用的 legacy Spec 编辑器及其 fallback。Catalog 是唯一定义管理界面，缺少其端口时也不回退；API 模式的历史身份任务保持只读。B5a（#1087，#1080 的负责人决定 Q3）撤下旧 mock Spec 治理、模块映射/注册身份、组织 overlay 编写、身份/Spec 审核任务处理和旧参数详情，以及它们对应的 handler、port、repository、fixture 和测试闭包。Mock 模式不显示相应控件或明确标为不可用。现有 canonical 等价 Catalog 演示、项目参数值编辑、共享业务分类和结构节点启用保留，不新增 canonical mock 实现。有界 API 读取、历史、拒绝审计及公开 410 契约保持不变。
 
 | 消费者 | 规范依赖 | Legacy 处置与迁移要求 |
 | --- | --- | --- |
 | Parameter definitions page | subjects、definitions、registration/placement、Review Queue、definition timeline | 用单页合同替代 Effective/Governance peer views；URL selection 改用 canonical IDs。 |
 | `ParameterTopologyRepository` HTTP adapter | 现有 project topology/binding routes 与 catalog readers | 将 catalog read/governance 与 project topology 拆成不同端口；删除 `ParameterSpec` create/update/lifecycle methods。 |
-| Mock parameter topology adapter | 与 HTTP 相同 application ports/DTO states | version/reset fixtures；覆盖 ready、unregistered、empty、loading、error、retired、stale-release；不得有 mock-only governance。 |
+| Mock parameter topology adapter | 保留的结构节点/修订端口；现有 canonical Catalog adapter | 撤下旧 mock 功能及其 fixture 闭包，只保留 canonical 等价功能。现有 Catalog fixtures 覆盖 ready、unregistered、empty、loading、error、retired、stale-release；不得有 mock-only governance 或新增 canonical 替代实现。 |
 | Project parameter workbench/value editing | canonical binding ID、`definitionId`、`effectiveRevisionId`、`currentValueId` | 删除 `parameterSpecId` 和 module-as-definition identity，保留产品 workflow。 |
 | DTS ingest/recognition | 内部 observation command、canonical subject matcher、registration policy | unknown/ambiguous occurrence evidence 只能创建 observation/review，不创建 provisional spec。ParameterObservation 必须具有自身完整的 project/logical-node/source-revision occurrence provenance；R6/R8 legacy spec ID 绝不提供该 identity。 |
 | File sync/writeback | canonical binding、pinned definition revision、source target | unresolved ID fail closed，不允许 property-key-only fallback。 |
