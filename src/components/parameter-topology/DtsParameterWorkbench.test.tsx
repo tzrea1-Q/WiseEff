@@ -573,6 +573,22 @@ describe("DtsParameterWorkbench", () => {
     ]);
   });
 
+  it("reserves the table budget before allowing a long desktop module navigator to grow", () => {
+    expect(declarationFor(readStylesheet("src/styles.css"), ".dts-parameter-workbench .dts-workbench-topology", "max-width", {
+      within: "@media (min-width: 1201px)"
+    })).toBe("min(var(--module-navigator-max-width), max(var(--module-navigator-min-width), calc(100cqw - var(--dts-workbench-table-min-width) - var(--dts-workbench-scrollbar-width) - var(--space-3))))");
+  });
+
+  it("reserves the same three-action track in header and rows, with or without draft selection", () => {
+    const styles = readStylesheet("src/styles.css");
+    for (const columns of ["--dts-workbench-table-columns", "--dts-workbench-table-columns-without-selection"]) {
+      expect(declarationFor(styles, ".dts-parameter-workbench", columns))
+        .toMatch(/var\(--dts-workbench-table-actions-width\)$/);
+    }
+    expect(declarationFor(styles, ".dts-parameter-workbench", "--dts-workbench-table-actions-width"))
+      .toBe("calc(3 * 32px + 2 * var(--space-1))");
+  });
+
   it("renders importance as the primary column and only surfaces anomaly governance badges", () => {
     renderWorkbench();
 
