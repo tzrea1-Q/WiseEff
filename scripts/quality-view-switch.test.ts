@@ -15,6 +15,28 @@ function measurement(style = signatures[0], selected = true) {
 }
 
 describe("view-switch consistency", () => {
+  it("enforces styles on all 23 audited pathnames, including the retired account redirect", () => {
+    const auditPaths = [
+      "/audit", "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/logs", "/node-debugging",
+      "/organization", "/organization/members", "/parameter-admin", "/parameter-admin/identity-mapping",
+      "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
+      "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/parameter-admin/spec-review",
+      "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
+      "/parameter-submissions", "/parameters", "/user-permissions"
+    ];
+    expect(Object.keys(viewSwitchStyleExpectations).sort()).toEqual(auditPaths);
+    expect(viewSwitchStyleExpectations["/user-permissions"]).toEqual(["section", "tabs"]);
+    for (const path of auditPaths) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
+      const controls = signatures.filter((style) => viewSwitchStyleExpectations[path].some((variant) => variant === style.variant))
+        .flatMap((style) => [measurement(style), measurement(style, false)]);
+      expect(() => requireViewSwitchStyles({ viewSwitches: controls, viewSwitchSignatures: signatures }, path)).not.toThrow();
+      expect(() => requireViewSwitchStyles({
+        viewSwitches: [...controls, { ...controls[0], height: 43 }], viewSwitchSignatures: signatures
+      }, `${path}?foo=1`)).toThrow("matched 0");
+    }
+  });
+
   it.each(Object.keys(viewSwitchStyleExpectations))("rejects zero switches on expected route %s", (path) => {
     expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: signatures }, path))
       .toThrow("missing consistency measurements: viewSwitches");

@@ -22145,51 +22145,6 @@ body.xiaoze-popup-drag-active {
   margin-top: var(--space-3);
 }
 
-.dts-parameter-workbench__view-switch {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 3px;
-  padding: 3px;
-  background: var(--dts-workbench-surface-soft);
-  border: 1px solid var(--dts-workbench-border);
-  border-radius: 10px;
-}
-
-.dts-parameter-workbench__view-switch button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 40px;
-  padding: 0 13px;
-  color: var(--dts-workbench-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 700;
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.dts-parameter-workbench__view-switch button:hover:not(:disabled) {
-  color: var(--dts-workbench-blue);
-  background: var(--dts-workbench-blue-soft);
-}
-
-.dts-parameter-workbench__view-switch button.is-active,
-.dts-parameter-workbench__view-switch button[aria-pressed="true"] {
-  color: var(--dts-workbench-blue);
-  background: var(--dts-workbench-surface);
-  border-color: var(--dts-workbench-border);
-  box-shadow: 0 2px 8px rgba(15, 38, 75, 0.08);
-}
-
 .dts-parameter-workbench__header-actions {
   display: inline-flex;
   flex: 0 0 auto;
@@ -22252,15 +22207,6 @@ body.xiaoze-popup-drag-active {
 .dts-binding-draft-tray .button,
 .dts-reload-run-tray .button {
   min-height: 36px;
-}
-
-.dts-parameter-workbench__view-switch button:disabled {
-  color: #65758b;
-  background: #edf1f7;
-  border-color: var(--dts-workbench-border, #dbe3ef);
-  box-shadow: none;
-  cursor: not-allowed;
-  opacity: .72;
 }
 
 .dts-parameter-workbench__result-count {
@@ -24052,10 +23998,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
     gap: var(--space-3);
   }
 
-  .dts-parameter-workbench__view-switch {
-    width: fit-content;
-  }
-
   .dts-parameter-workbench__toolbar {
     grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: end;
@@ -24190,15 +24132,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .dts-parameter-workbench__result-count {
     justify-self: start;
-  }
-
-  .dts-parameter-workbench__view-switch {
-    width: 100%;
-  }
-
-  .dts-parameter-workbench__view-switch button {
-    flex: 1 1 0;
-    min-height: 44px;
   }
 
   .dts-binding-draft-tray .submission-assignee-grid select {

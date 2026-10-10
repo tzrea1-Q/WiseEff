@@ -1,14 +1,28 @@
 import { useState } from "react";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ViewSwitch } from "./view-switch";
-import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
+import { declarationsFor, parseCssRules, readStylesheet } from "@/test/cssAssertions";
 
 afterEach(cleanup);
 
 describe("ViewSwitch", () => {
+  it("keeps the audited switch styles in the shared primitive, including responsive rules", () => {
+    const legacySelector = /\.(?:parameter-admin-(?:scope-nav|subnav)__tab|protocol-switch(?:-button)?|user-permissions-workspace-tab|logs-aux-tabs|parameter-home__(?:view-switcher-item|toggle-item)|review-view-tabs|param-admin-audit-filters|dts-parameter-workbench__view-switch|parameter-catalog__sheet-tabs)(?![\w-])/;
+    const overrides = readdirSync("src", { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".css"))
+      .map((entry) => join(entry.parentPath, entry.name))
+      .filter((path) => path !== "src/components/ui/view-switch.css")
+      .flatMap((path) => parseCssRules(readStylesheet(path))
+        .filter((rule) => legacySelector.test(rule.selector) || /\.view-switch(?:__item|--[\w-]+)?(?![\w-])/.test(rule.selector))
+        .map((rule) => `${path}: ${rule.selector}`));
+    expect(overrides).toEqual([]);
+  });
+
   it.each(["section", "tabs", "toggle"] as const)("preserves an option's error explanation for %s", (variant) => {
     render(<ViewSwitch variant={variant} ariaLabel="节点对应确认" value="mapping" onValueChange={() => {}} items={[
       { value: "mapping", label: "节点对应确认", id: "mapping-tab", panelId: "mapping-panel",
