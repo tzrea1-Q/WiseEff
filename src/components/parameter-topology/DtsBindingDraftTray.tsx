@@ -18,6 +18,8 @@ import {
 
 export type { PendingBindingDraft, PendingEnablementDraft, PendingTopologyDraft } from "./draftTrayTypes";
 
+export const mixedDraftOwnerMessage = "节点启用与 canonical 参数值须分开提交，各自保留结构或 canonical 历史、审核与来源归属；请移出另一类草稿后提交。";
+
 export type DtsBindingDraftTrayProps = {
   projectId: string;
   drafts: PendingTopologyDraft[];
@@ -225,7 +227,7 @@ export function DtsBindingDraftTray({
   ).length;
   const useCanonical = canonicalCount > 0 && canonicalCount === submitDrafts.length;
   const mixedOwnerError = canonicalCount > 0 && canonicalCount < submitDrafts.length
-    ? "参数值与节点启用属于不同审核流程，请移出另一类草稿后分开提交。"
+    ? mixedDraftOwnerMessage
     : null;
   const submitBatchSignature = useMemo(
     () => draftBatchSignature(projectId, submitDrafts),
@@ -355,7 +357,9 @@ export function DtsBindingDraftTray({
         <div>
           <h3>本轮已修改</h3>
           <p>
-            {useCanonical
+            {mixedOwnerError
+              ? "节点启用与 canonical 参数值须分开提交。"
+              : useCanonical
               ? `将提交 ${submitDrafts.length} 项参数值草稿；节点启用使用独立审核流程。`
               : selectedBindingIds && hasBindingDrafts
               ? `所见即所提：将提交勾选的 ${submitDrafts.length} / ${drafts.length} 项草稿；同一工作版本的节点启用草稿将随勾选项一并提交（已在条目上标注）。`
@@ -385,6 +389,7 @@ export function DtsBindingDraftTray({
               ? formatBindingValue(draft, draft.rawText)
               : formatEnablementValue(draft.rawText);
           const ridesAlong =
+            !mixedOwnerError &&
             Boolean(selectedBindingIds) &&
             hasBindingDrafts &&
             isEnablementDraft(draft) &&

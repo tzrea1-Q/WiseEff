@@ -1,5 +1,13 @@
 # Node enablement is not a parameter, but rides the parameter draft pipeline
 
+## Supersession — 2026-10-09
+
+[Spec #1080, owner decision Q2](https://github.com/tzrea1-Q/WiseEff/issues/1080) supersedes the mixed-round submission decision below. Node enablement remains a first-class structural concept, not a parameter. A round mixing node-enablement and canonical Project value drafts must be submitted separately: node enablement retains its structural drafts, history, approval and source ownership; canonical values retain their canonical drafts, history, approval and source ownership. Neither owner may submit or publish the other's edits. The UI explains this separation without describing node enablement as "the old pipeline". No coordination layer is introduced. The original rationale and one-unit consequence below are retained as historical decisions, not the current mixed-round contract.
+
+### 中文修订说明 — 2026-10-09
+
+[规格 #1080 的负责人决定 Q2](https://github.com/tzrea1-Q/WiseEff/issues/1080) 取代下文关于混合轮次统一提交的决定。节点启用仍是独立的结构领域概念，不是参数。同一轮同时包含节点启用和 canonical 项目参数值草稿时，必须分开提交：节点启用保留自己的结构草稿、历史、审核和来源归属；参数值保留自己的 canonical 草稿、历史、审核和来源归属。任何一方不得代替另一方提交或发布。界面说明该分离规则，不再称节点启用为「旧流程」，也不增加协调层。下文的原始论据和统一提交结论仅作为历史决定保留，不代表当前混合轮次契约。
+
 The DTS `status` property decides whether a node is available to be probed, so it is a switch that turns hardware on and off rather than a value that tunes hardware. The codebase never made that call, and as a result `status` entered the system through three contradictory doors at once: it matched vendor schemas and became an ordinary spec plus binding on nodes that carry `compatible`; it fell through to the spec review queue on overlay fragments that do not; and the mock runtime hard-coded `spec-sc8562-status` as a parameter whose own description read "Node enablement status". The review-queue door was the expensive one, because `evaluateCandidateSemanticGate` fail-closes on open spec reviews while `editService` kept a second, divergent list of structural keys that omitted `status` — so noise tasks nobody should ever have seen were blocking candidate promotion and migration finalize.
 
 We decided that **node enablement is a first-class domain concept that is not a parameter**: it never has a `ParameterSpec`, never appears in the spec library, and never produces a spec review task. We also decided that **it nevertheless shares the parameter draft pipeline** rather than getting one of its own, by generalizing a draft's subject from "a binding" to "an edit target" that is either a binding or a node's enablement.

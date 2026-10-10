@@ -300,8 +300,9 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(resolveReviewItem).not.toHaveBeenCalled();
   });
 
-  it("keeps the query-opened canonical Review Queue read-only for a non-admin session", async () => {
+  it("explains Organization review authority to a non-admin session without reading the queue", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
+    const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
     const resolveReviewItem = vi.spyOn(ports.governance, "resolveReviewItem");
     renderPage({
       path: "/parameter-admin/specs?review=open",
@@ -314,10 +315,11 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
       catalogOrganizationId: CATALOG_ORGANIZATION_ID
     });
 
-    const dialog = await screen.findByRole("dialog", { name: "待处理工作" });
-    const queue = await within(dialog).findByRole("region", { name: "待审核事项" });
-    expect(await within(queue).findByText("gpio-int")).toBeInTheDocument();
-    expect(within(queue).queryByRole("button", { name: "处理审核" })).not.toBeInTheDocument();
+    expect(await screen.findByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。"))
+      .toBeVisible();
+    expect(screen.queryByRole("dialog", { name: "待处理工作" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "处理审核" })).not.toBeInTheDocument();
+    expect(listReviewItems).not.toHaveBeenCalled();
     expect(resolveReviewItem).not.toHaveBeenCalled();
   });
 
