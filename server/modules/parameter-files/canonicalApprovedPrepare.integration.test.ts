@@ -14,6 +14,7 @@ import { installDriverSourceFixture } from "../../testing/parameterCatalog/drive
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { loadPublishedCatalog, listCatalogBindingRowsForProject, syncPublishedCatalogProjectValues } from "../parameter-bindings/catalogProjectValueSync";
 import { loadCanonicalBindingPins } from "../parameter-bindings/drafts/repository";
+import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
 import { uploadProjectParameterFile } from "./service";
@@ -21,7 +22,7 @@ import { createLocalObjectStore } from "../logs/objectStore";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { commitCanonicalSourceRevision } from "./canonicalSourceCommit";
-import { loadCanonicalSourceSnapshot, loadPinnedDtsProperty, preparePinnedSourceChange } from "./canonicalSource";
+import { loadCanonicalSourceSnapshot, loadPinnedDtsProperty, preparePinnedSourceChange, validatePinnedDtsSourceChange } from "./canonicalSource";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -353,6 +354,135 @@ describe("approved Agent canonical source preparation", () => {
       refusalSink,
     }))).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect((await db.query<{ count: number }>(`select count(*)::int as count from project_parameter_file_candidates where project_id=$1`, [PROJECT])).rows[0]!.count).toBe(before);
+  });
+
+  it("rejects a persisted stale occurrence span without guessing another match", async () => {
+    const content = DTS.replace("\t};", "\t};\n\tdecoy { iin_max = <1000>; };");
+    const configSet = await createConfigSet(db, auth, { projectId: PROJECT, name: "Stale canonical occurrence" });
+    const file = await uploadProjectParameterFile(db, storage, auth, {
+      projectId: PROJECT, fileName: "stale.dts", bytes: Buffer.from(content),
+    });
+    await addConfigSetFile(db, auth, { configSetId: configSet.id, fileId: file.file.id, role: "base", sortOrder: 0 });
+    const revision = await ingestConfigRevision(db, {
+      organizationId: ORG, projectId: PROJECT, configSetId: configSet.id,
+      entryFile: "stale.dts", includeSearchPaths: ["."], overlayOrder: [],
+      members: [{ fileId: file.file.id, fileVersionId: file.version.id, fileName: "stale.dts",
+        role: "base", sortOrder: 0, content }],
+    }, auth);
+    const tampered = await db.query<{ id: string; start_offset: number; end_offset: number }>(
+      `update dts_property_occurrences set start_offset=start_offset+1,end_offset=end_offset+1
+       where config_revision_id=$1 and property_name='iin_max' and node_occurrence_id in
+         (select id from dts_node_occurrences where config_revision_id=$1 and node_path='/charger')
+       returning id,start_offset,end_offset`, [revision.id],
+    );
+    expect(tampered.rowCount).toBe(1);
+    await syncPublishedCatalogProjectValues(getRootPostgresPool(db)!, {
+      organizationId: ORG, projectId: PROJECT, configSetId: configSet.id, configRevisionId: revision.id,
+    });
+    const binding = (await listCatalogBindingRowsForProject(db, auth, { projectId: PROJECT, revisionId: revision.id }))[0]!;
+    expect(binding).toBeDefined();
+    const source = await loadCanonicalSourceSnapshot(db, storage, {
+      organizationId: ORG, projectId: PROJECT, bindingId: binding.id, projectValueId: binding.currentValueId,
+    });
+    expect(source.manifest.locator.propertyOccurrenceId).toBe(tampered.rows[0]!.id);
+    expect(await loadPinnedDtsProperty(db, source.manifest)).toMatchObject({
+      start_offset: tampered.rows[0]!.start_offset, end_offset: tampered.rows[0]!.end_offset,
+    });
+    const before = (await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows;
+    await expect(db.transaction((tx) => preparePinnedSourceChange(tx, storage, auth, {
+      projectId: PROJECT, bindingId: binding.id, expectedValueId: binding.currentValueId,
+      target: { format: "dts", sourceText: "<3000>" }, invocation: createUserInvocation(auth),
+      requestId: "canonical-source-stale-span", refusalSink,
+    }))).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect((await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows).toEqual(before);
+    expect((await db.query("select current_value_id from parameter_catalog.current_project_parameter_bindings where id=$1", [binding.id])).rows)
+      .toEqual([{ current_value_id: binding.currentValueId }]);
+  });
+
+  it.each(["status", "phandle"])("refuses a %s edit outside the canonical property's exact source pin", async (propertyName) => {
+    const source = await loadCanonicalSourceSnapshot(db, storage, {
+      organizationId: ORG, projectId: PROJECT, bindingId: dtsBinding.id, projectValueId: dtsBinding.currentValueId,
+    });
+    const changed = DTS.replace("<1000>;", `<2000>; ${propertyName} = ${propertyName === "status" ? '"disabled"' : "<1>"};`);
+    await expect(validatePinnedDtsSourceChange(db, source.manifest, DTS, changed)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await db.query("select current_value_id from parameter_catalog.current_project_parameter_bindings where id=$1", [dtsBinding.id])).rows)
+      .toEqual([{ current_value_id: dtsBinding.currentValueId }]);
+  });
+
+  it("hides a canonical draft from another tenant and refuses legacy identity without candidates", async () => {
+    const source = await loadCanonicalSourceSnapshot(db, storage, {
+      organizationId: ORG, projectId: PROJECT, bindingId: dtsBinding.id, projectValueId: dtsBinding.currentValueId,
+    });
+    const before = (await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows;
+    const foreign = makeTestAuthContext({ userId: USER, organizationId: "foreign-canonical-draft" });
+    for (const attempt of [{ auth: foreign, bindingId: dtsBinding.id }, { auth, bindingId: randomUUID() }]) {
+      await expect(createCanonicalValueDraft(db, attempt.auth, {
+        projectId: PROJECT, bindingId: attempt.bindingId, baseRevisionId: source.manifest.configRevisionId,
+        targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "2000", value: "2000" }]] },
+        reason: "Exact canonical identity and tenant are required",
+      }, { objectStore: storage, invocation: createUserInvocation(attempt.auth), requestId: "canonical-draft-identity", refusalSink }))
+        .rejects.toMatchObject({ code: "NOT_FOUND" });
+    }
+    expect((await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows).toEqual(before);
+  });
+
+  it("refuses spoofed user provenance before preparing a canonical source candidate", async () => {
+    const before = (await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows;
+    const foreign = makeTestAuthContext({ userId: REVIEWER, organizationId: ORG });
+    await expect(db.transaction((tx) => preparePinnedSourceChange(tx, storage, auth, {
+      projectId: PROJECT, bindingId: dtsBinding.id, expectedValueId: dtsBinding.currentValueId,
+      target: { format: "dts", sourceText: "<2000>" }, invocation: createUserInvocation(foreign),
+      requestId: "canonical-source-spoofed-user", refusalSink,
+    }))).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+    expect((await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows).toEqual(before);
+  });
+
+  it.each(["compatible", "path"])("uses the exact canonical source revision for %s critical refusals", async (matchType) => {
+    const source = await loadCanonicalSourceSnapshot(db, storage, {
+      organizationId: ORG, projectId: PROJECT, bindingId: dtsBinding.id, projectValueId: dtsBinding.currentValueId,
+    });
+    const property = await loadPinnedDtsProperty(db, source.manifest);
+    expect(property.compatible).toBe('"acme,power"');
+    const agent = await seedApprovedAgent(db, dtsBinding, { format: "dts", sourceText: "<4000>" });
+    const capable = { ...auth, permissions: [...auth.permissions, "parameter:edit-critical"] };
+    const ruleId = `exact-compatible-${randomUUID()}`;
+    const pattern = matchType === "compatible" ? "acme,power" : property.node_locator;
+    const newerRevisionId = randomUUID();
+    await db.query(`insert into dts_config_revisions(id,organization_id,project_id,config_set_id,revision_number,status,
+      created_by_user_id,entry_file,include_search_paths,overlay_order,manifest_state)
+      select $1,organization_id,project_id,config_set_id,revision_number+100,'validated',created_by_user_id,
+        entry_file,include_search_paths,overlay_order,manifest_state from dts_config_revisions where id=$2`,
+    [newerRevisionId, source.manifest.configRevisionId]);
+    await db.query(`insert into dts_logical_node_revisions(id,logical_node_id,config_revision_id,node_locator,name,unit_address,
+      compatible,driver_schema_version_id,parent_logical_node_id)
+      select $1,logical_node_id,$2,'/wrong/latest/locator',name,unit_address,'vendor,safe-node',driver_schema_version_id,parent_logical_node_id
+      from dts_logical_node_revisions where config_revision_id=$3 and logical_node_id=$4`,
+    [randomUUID(), newerRevisionId, source.manifest.configRevisionId, source.manifest.logicalNodeId]);
+    await db.query(`insert into dts_sensitive_node_rules(id,organization_id,project_id,match_type,pattern,risk_tier,required_capability,enabled)
+      values ($1,$2,$3,$4,$5,'critical','parameter:edit-critical',true)`, [ruleId, ORG, PROJECT, matchType, pattern]);
+    try {
+      const before = (await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows;
+      await expect(db.transaction((tx) => preparePinnedSourceChange(tx, storage, capable, {
+        projectId: PROJECT, bindingId: dtsBinding.id, expectedValueId: dtsBinding.currentValueId,
+        target: { format: "dts", sourceText: "<4000>" }, invocation: agent.invocation,
+        requestId: `canonical-exact-${matchType}-agent`, refusalSink,
+      }))).rejects.toMatchObject({ code: "FORBIDDEN", details: { initiator: "agent", requireHuman: true } });
+      await expect(db.transaction((tx) => preparePinnedSourceChange(tx, storage, auth, {
+        projectId: PROJECT, bindingId: dtsBinding.id, expectedValueId: dtsBinding.currentValueId,
+        target: { format: "dts", sourceText: "<4000>" }, invocation: createUserInvocation(auth),
+        requestId: `canonical-exact-${matchType}-user`, refusalSink,
+      }))).rejects.toMatchObject({ code: "FORBIDDEN" });
+      expect((await db.query("select count(*)::int as count from project_parameter_file_candidates where project_id=$1", [PROJECT])).rows).toEqual(before);
+      expect((await db.query("select current_value_id from parameter_catalog.current_project_parameter_bindings where id=$1", [dtsBinding.id])).rows)
+        .toEqual([{ current_value_id: dtsBinding.currentValueId }]);
+      expect((await db.query("select actor_type,trace_id,metadata from audit_events where trace_id=$1", [`canonical-exact-${matchType}-agent`])).rows[0])
+        .toMatchObject({ actor_type: "agent", metadata: { matchType, pattern, requireHuman: true,
+          sessionId: agent.invocation.sessionId, toolCallId: agent.invocation.toolCallId, approvalId: agent.invocation.approvalId } });
+    } finally {
+      await db.query("delete from dts_sensitive_node_rules where id=$1", [ruleId]);
+      await db.query("delete from dts_logical_node_revisions where config_revision_id=$1", [newerRevisionId]);
+      await db.query("delete from dts_config_revisions where id=$1", [newerRevisionId]);
+    }
   });
 
   it("keeps critical Agent writes and source commit user-only while User prepare remains valid", async () => {

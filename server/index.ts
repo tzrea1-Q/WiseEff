@@ -232,7 +232,7 @@ async function start() {
   }
 
   if (db) {
-    const identityMode = await resolveParameterIdentityMode(db);
+    const identityMode = await resolveParameterIdentityMode(db, env);
     console.log(`[parameter-identity] mode: ${identityMode}`);
   }
 

@@ -184,28 +184,9 @@ export const bindingCompareEntryDtoSchema = z.object({
   valueState: z.enum(["present", "deleted"]).optional()
 });
 
-export const createBindingDraftBodySchema = z
-  .object({
-    baseRevisionId: nonEmptyString,
-    targetValue: dtsValueSchema.optional(),
-    action: z.enum(["set", "delete"]).optional(),
-    reason: nonEmptyString
-  })
-  .superRefine((value, ctx) => {
-    const action = value.action ?? "set";
-    if (action === "set" && value.targetValue === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "targetValue is required when action is set.",
-        path: ["targetValue"]
-      });
-    }
-  });
-
 export type ProjectBindingDto = z.infer<typeof projectBindingDtoSchema>;
 export type TopologyView = z.infer<typeof topologyViewSchema>;
 export type DtsValueDto = z.infer<typeof dtsValueSchema>;
-export type CreateBindingDraftBody = z.infer<typeof createBindingDraftBodySchema>;
 
 export const createNodeEnablementDraftParamsSchema = z.object({
   projectId: nonEmptyString

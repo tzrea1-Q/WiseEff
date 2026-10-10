@@ -180,7 +180,6 @@ describe("parameter file routes", () => {
         bytes
       },
       { requestId: "test-request" },
-      undefined,
       db
     );
   });

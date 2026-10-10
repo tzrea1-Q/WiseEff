@@ -22,10 +22,9 @@
       "legacy-parameter-spec-identifier": 4
     },
     "server/modules/agent/tools/actionTools.integration.test.ts": {
-      "legacy-catalog-raw-read": 1,
-      "legacy-catalog-sql-write": 14,
+      "legacy-catalog-sql-write": 13,
       "legacy-overlay-catalog-contract": 2,
-      "legacy-parameter-spec-identifier": 8
+      "legacy-parameter-spec-identifier": 2
     },
     "server/modules/debugging/canonicalDebugging.integration.test.ts": {
       "legacy-catalog-raw-read": 1
@@ -405,14 +404,14 @@
       "unresolved-boundary-expression": 2
     },
     "server/modules/parameter-topology/editService.test.ts": {
-      "legacy-catalog-raw-read": 7,
-      "legacy-catalog-sql-write": 8,
-      "legacy-parameter-spec-identifier": 17
+      "legacy-catalog-raw-read": 1,
+      "legacy-catalog-sql-write": 3,
+      "legacy-parameter-spec-identifier": 4
     },
     "server/modules/parameter-topology/editService.ts": {
-      "legacy-catalog-raw-read": 11,
+      "legacy-catalog-raw-read": 5,
       "legacy-catalog-sql-write": 1,
-      "legacy-parameter-spec-identifier": 14
+      "legacy-parameter-spec-identifier": 2
     },
     "server/modules/parameter-topology/identityContinuity.integration.test.ts": {
       "legacy-catalog-sql-write": 3,
@@ -462,7 +461,7 @@
       "legacy-parameter-spec-identifier": 4
     },
     "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts": {
-      "legacy-catalog-raw-read": 21,
+      "legacy-catalog-raw-read": 20,
       "legacy-catalog-sql-write": 25,
       "legacy-parameter-spec-identifier": 29,
       "unresolved-boundary-expression": 2
@@ -498,9 +497,9 @@
     },
     "server/modules/parameter-topology/service.ts": {
       "legacy-catalog-module-import": 2,
-      "legacy-catalog-raw-read": 2,
+      "legacy-catalog-raw-read": 1,
       "legacy-effective-governance-contract": 6,
-      "legacy-parameter-spec-identifier": 7
+      "legacy-parameter-spec-identifier": 4
     },
     "server/modules/parameter-topology/validateConfigRevision.test.ts": {
       "legacy-catalog-raw-read": 1,
