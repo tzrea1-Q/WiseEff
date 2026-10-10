@@ -327,6 +327,12 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     return;
   }
 
+  if (routePath === "/parameter-admin/projects/aurora/review-roles") {
+    await expect(page.getByRole("heading", { name: "aurora 项目审核角色配置", exact: true })).toBeVisible({ timeout });
+    await expect(page.getByRole("heading", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
+    return;
+  }
+
   if (routePath === "/parameter-admin/projects/aurora" || routePath.startsWith("/parameter-admin/projects/aurora/")) {
     // The deep link resolves the seeded config set + file, then renders the
     // source canvas with the seeded aurora DTS baseline.

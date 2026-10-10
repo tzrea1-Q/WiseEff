@@ -20,6 +20,7 @@ test.beforeAll(() => seedQualityRuntime());
 
 for (const route of consistencyRoutes) {
   test(`collects read-only consistency measurements for ${route.path}`, async ({ context, page }, testInfo) => {
+    testInfo.annotations.push({ type: "setup", description: "Bridge pairing-code POSTs use a synthetic response; no server pairing code is issued." });
     const blockedRequests = await installConsistencyReadGuard(context);
     let measurements: ConsistencyMeasurements | null = null;
     try {

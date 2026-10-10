@@ -138,7 +138,7 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
   .map((path) => ({
     path,
     required: [
-      "xiaozeLaunchers", "xiaozeHints",
+      "xiaozeLaunchers",
       ...(Object.keys(applicablePaths) as (keyof typeof applicablePaths)[]).filter((category) => applicablePaths[category].includes(path))
     ] satisfies ConsistencyCategory[]
   }));
@@ -151,7 +151,15 @@ export async function installConsistencyReadGuard(context: BrowserContext) {
       await intercepted.fallback();
       return;
     }
-    blocked.push({ method: request.method(), pathname: new URL(request.url()).pathname });
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "POST" && pathname === "/api/v1/device-bridges/pairing-codes") {
+      await intercepted.fulfill({
+        status: 201,
+        json: { code: "000000", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() }
+      });
+      return;
+    }
+    blocked.push({ method: request.method(), pathname });
     await intercepted.abort("blockedbyclient");
   });
   await context.routeWebSocket(/.*/, (socket) => socket.close());

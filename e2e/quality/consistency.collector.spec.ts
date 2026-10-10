@@ -35,6 +35,30 @@ test("settles read-only Bridge routes without waiting for a POST-created pairing
   await settleQualityRoute(page, "/dts-reload", { readOnly: true });
 });
 
+test("settles project review roles on its loaded governance content, not a DTS file", async ({ page }) => {
+  await page.setContent("<main><h1>aurora 项目审核角色配置</h1><h2>组织成员职责授权</h2></main>");
+  await settleQualityRoute(page, "/parameter-admin/projects/aurora/review-roles", { readOnly: true });
+});
+
+test("stubs Bridge pairing setup without sending a POST to the server", async ({ context, page }) => {
+  const forwarded: string[] = [];
+  await context.route("https://consistency.example/**", async (route) => {
+    forwarded.push(route.request().method());
+    await route.fulfill({ contentType: "text/html", body: "<main>只读</main>" });
+  });
+  const blocked = await installConsistencyReadGuard(context);
+  await page.goto("https://consistency.example/");
+  const response = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/device-bridges/pairing-codes", { method: "POST" });
+    return { status: response.status, body: await response.json() };
+  });
+  expect(response.status).toBe(201);
+  expect(response.body.code).toMatch(/^\d{6}$/);
+  expect(Date.parse(response.body.expiresAt)).toBeGreaterThan(Date.now());
+  expect(forwarded).toEqual(["GET"]);
+  expect(blocked).toEqual([]);
+});
+
 test("includes topbar primary actions and table-header filters", async ({ page }) => {
   await page.setContent(`
     <header><button class="button primary">上传</button></header>

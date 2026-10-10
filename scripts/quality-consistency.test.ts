@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { consistencyRoutes, requireConsistencyMeasurements } from "../e2e/quality/consistency";
+import type { BrowserContext, Route } from "playwright/test";
+import { describe, expect, it, vi } from "vitest";
+import { consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements } from "../e2e/quality/consistency";
 
 describe("consistency measurement coverage", () => {
   it("fails with the route and missing applicable category instead of silently passing", () => {
@@ -36,16 +37,51 @@ describe("consistency measurement coverage", () => {
 
   it("requires each applicable category independently of what the collector finds", () => {
     expect(consistencyRoutes.find((route) => route.path === "/parameters")?.required).toEqual(expect.arrayContaining([
-      "viewSwitches", "rowActions", "tableScrollports", "xiaozeLaunchers", "xiaozeHints", "moduleTreeLabels", "filterControls", "sortControls"
+      "viewSwitches", "rowActions", "tableScrollports", "xiaozeLaunchers", "moduleTreeLabels", "filterControls", "sortControls"
     ]));
     expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/specs")?.required).toEqual(expect.arrayContaining([
       "primaryActions", "paginationControls", "moduleTreeLabels", "rowActions"
     ]));
   });
 
-  it("measures the first-run launcher and hint on every fresh app route", () => {
+  it("requires the launcher but leaves dismissible, route-dependent hints optional", () => {
     for (const route of consistencyRoutes) {
-      expect(route.required, route.path).toEqual(expect.arrayContaining(["xiaozeLaunchers", "xiaozeHints"]));
+      expect(route.required, route.path).toContain("xiaozeLaunchers");
+      expect(route.required, route.path).not.toContain("xiaozeHints");
+    }
+  });
+});
+
+describe("consistency read guard", () => {
+  it.each([
+    ["POST", "/api/v1/device-bridges/pairing-codes", "fulfill"],
+    ["GET", "/api/v1/device-bridges/pairing-codes", "fallback"],
+    ["HEAD", "/api/v1/device-bridges/pairing-codes", "abort"],
+    ["OPTIONS", "/api/v1/device-bridges/pairing-codes", "abort"],
+    ["PUT", "/api/v1/device-bridges/pairing-codes", "abort"],
+    ["PATCH", "/api/v1/device-bridges/pairing-codes", "abort"],
+    ["DELETE", "/api/v1/device-bridges/pairing-codes", "abort"],
+    ["POST", "/api/v1/device-bridges/pairing-codes/extra", "abort"],
+    ["POST", "/api/v1/device-bridges", "abort"]
+  ])("handles %s %s via %s without forwarding writes", async (method, pathname, action) => {
+    const route = vi.fn<(url: string, handler: (intercepted: Route) => Promise<void>) => Promise<void>>();
+    const blocked = await installConsistencyReadGuard({ route, routeWebSocket: vi.fn() } as unknown as BrowserContext);
+    const intercepted = {
+      request: () => ({ method: () => method, url: () => `https://consistency.example${pathname}?token=private` }),
+      fallback: vi.fn(),
+      fulfill: vi.fn(),
+      abort: vi.fn()
+    };
+    await route.mock.calls[0][1](intercepted as unknown as Route);
+    expect(intercepted.fallback).toHaveBeenCalledTimes(action === "fallback" ? 1 : 0);
+    expect(intercepted.fulfill).toHaveBeenCalledTimes(action === "fulfill" ? 1 : 0);
+    expect(intercepted.abort).toHaveBeenCalledTimes(action === "abort" ? 1 : 0);
+    expect(blocked).toEqual(action === "abort" ? [{ method, pathname }] : []);
+    if (action === "fulfill") {
+      const response = intercepted.fulfill.mock.calls[0][0];
+      expect(response.status).toBe(201);
+      expect(response.json.code).toMatch(/^\d{6}$/);
+      expect(Date.parse(response.json.expiresAt)).toBeGreaterThan(Date.now());
     }
   });
 });
