@@ -90,6 +90,9 @@ describe("LogDashboardPage", () => {
     expect(screen.getByRole("article", { name: "平均置信度" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "失败文件" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "吞吐峰值" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "今日状态拆分" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "置信度复核队列" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "文件容量排行" })).toBeInTheDocument();
     expect(screen.getByText("处理节奏")).toBeInTheDocument();
     expect(screen.getByText("完成质量")).toBeInTheDocument();
     expect(screen.getByText("失败影响")).toBeInTheDocument();

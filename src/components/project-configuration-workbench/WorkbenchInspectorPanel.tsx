@@ -348,7 +348,8 @@ export function WorkbenchInspectorPanel({
               preview={sourcePreview} allowed
               onSubmitted={onConflictSubmitted} />
           ) : null}
-        <dl>
+        <div className="configuration-workbench__inspector-details">
+          <dl>
           <div>
             <dt>检查层级</dt>
             <dd>
@@ -379,8 +380,10 @@ export function WorkbenchInspectorPanel({
                 : "尚未上传"}
             </dd>
           </div>
+          </dl>
           {activeCandidate && canvasMode === "candidate" ? (
             <>
+              <dl>
               <div>
                 <dt>候选身份</dt>
                 <dd className="mono">{activeCandidate.id}</dd>
@@ -543,6 +546,7 @@ export function WorkbenchInspectorPanel({
                   </dd>
                 </div>
               ) : null}
+              </dl>
               <div className="configuration-workbench__inspector-actions">
                 {canRecompute ? (
                   <button className="button subtle" type="button" onClick={onRecomputeCandidate}>
@@ -594,7 +598,7 @@ export function WorkbenchInspectorPanel({
             </>
           ) : null}
           {inspectorLevel === "activity" ? (
-            <>
+            <dl>
               <div>
                 <dt>活动时间线</dt>
                 <dd>当前组织与项目范围内的服务器审计投影</dd>
@@ -659,10 +663,11 @@ export function WorkbenchInspectorPanel({
                   </dd>
                 </div>
               ) : null}
-            </>
+            </dl>
           ) : null}
           {inspectorLevel === "config-set" ? (
             <>
+              <dl>
               <div>
                 <dt>配置集</dt>
                 <dd>{selectedConfigSet.name}</dd>
@@ -675,6 +680,7 @@ export function WorkbenchInspectorPanel({
                 <dt>成员数</dt>
                 <dd>{selectedMembers.length}</dd>
               </div>
+              </dl>
               <section className="configuration-workbench__member-ops" aria-label="成员管理">
                 <strong>成员管理</strong>
                 {sourceWorkflowSetLoading ? <p role="status">正在校验配置集来源成员…</p> : null}
@@ -785,6 +791,7 @@ export function WorkbenchInspectorPanel({
           ) : null}
           {inspectorLevel === "file" && selectedMember ? (
             <>
+              <dl>
               <div>
                 <dt>文件格式</dt>
                 <dd>{selectedMember.format}</dd>
@@ -821,6 +828,7 @@ export function WorkbenchInspectorPanel({
                   ) : null}
                 </dd>
               </div>
+              </dl>
               {canAdmin ? (
                 <>
                   <div className="configuration-workbench__inspector-actions">
@@ -867,7 +875,7 @@ export function WorkbenchInspectorPanel({
             </>
           ) : null}
           {inspectorLevel === "node" && selectedStructureNode ? (
-            <>
+            <dl>
               <div>
                 <dt>节点路径</dt>
                 <dd>
@@ -904,10 +912,11 @@ export function WorkbenchInspectorPanel({
                 <dt>读权限</dt>
                 <dd>只读</dd>
               </div>
-            </>
+            </dl>
           ) : null}
           {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
             <>
+              <dl>
               <div>
                 <dt>属性名</dt>
                 <dd>{selectedStructureProperty.name}</dd>
@@ -974,13 +983,14 @@ export function WorkbenchInspectorPanel({
                     : "可编辑"}
                 </dd>
               </div>
+              </dl>
               {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
                 <p className="configuration-workbench__risk-note" role="note">
                   <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
                   <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
                 </p>
               ) : null}
-              <div className="configuration-workbench__typed-editor" aria-label="属性值编辑">
+              <div className="configuration-workbench__typed-editor" role="group" aria-label="属性值编辑">
                 {editorLocked ? (
                   <p className="configuration-workbench__locked" role="note">
                     <Lock size={16} strokeWidth={2} aria-hidden="true" />
@@ -1005,7 +1015,7 @@ export function WorkbenchInspectorPanel({
               </div>
             </>
           ) : null}
-        </dl>
+        </div>
         {inspectorLevel === "file" && selectedMember ? (
           <section className="configuration-workbench__version-history" aria-label="不可变版本历史">
             <strong>不可变版本历史</strong>

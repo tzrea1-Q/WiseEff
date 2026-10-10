@@ -147,7 +147,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                   item.value > 0 ? <i key={item.label} className={item.className} style={{ width: `${Math.max(8, item.percent)}%` }} /> : null
                 ))}
               </div>
-              <div className="topic-segmented-summary" aria-label="今日状态拆分">
+              <div className="topic-segmented-summary" role="group" aria-label="今日状态拆分">
                 {statusSegments.map((item) => (
                   <div key={item.label}>
                     <span>{item.label}</span>
@@ -209,7 +209,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                 <strong>复核队列</strong>
                 <span>{reviewQueue.length} 份样本</span>
               </div>
-              <div className="topic-review-queue" aria-label="置信度复核队列">
+              <div className="topic-review-queue" role="group" aria-label="置信度复核队列">
                 {reviewQueue.map((log) => (
                   <div key={log.id}>
                     <span>{compactLogLabel(log)}</span>
@@ -318,7 +318,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                 <strong>容量排行</strong>
                 <span>Top {Math.min(sortedBySize.length, 3)}</span>
               </div>
-              <div className="topic-capacity-rank" aria-label="文件容量排行">
+              <div className="topic-capacity-rank" role="group" aria-label="文件容量排行">
                 {sortedBySize.slice(0, 3).map((log) => (
                   <div key={log.id}>
                     <span title={compactLogLabel(log)}>{compactLogLabel(log)}</span>
