@@ -648,6 +648,8 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 
 两个适配器均要求有效且获授权的组织用户，在读取值或历史前校验解析出的 Binding 所属项目范围。同组织跨项目请求返回 `403`；未知或跨组织的规范身份返回 `404`。旧 ID 只能通过精确的 `wiseeff-v1` / `project-parameter-binding` / 项目范围 typed mapping head 解析到同项目的规范 Binding，不按属性、名称、flat value 或旧语义读取推断身份。缺失、归档、阻断、歧义或非 Binding 的映射返回退役合同中的 `410 GONE`，并带有 `Link: </api/v2/catalog>; rel="successor-version"`，即使旧身份记录中的项目不可访问也不例外。先判断映射是否精确有效，只有解析出的 Binding 才执行项目范围校验。保留旧 Binding/修订记录、历史读取器、Archive 和映射，不删除这些审计能力。
 
+保留的 vendor seed/运维入口仍是 `scripts/sync-vendor-property-docs.ts`。其操作名为 `ensurePublishedVendorCatalog`：确保已发布的不可变 vendor Catalog，而不是更新可变的旧文档。CLI JSON 返回 `releaseDefinitionCount`，表示该 release 中 Definition 的总数（幂等无变更时也一样），并非更新数量。历史盘点快照保留采集当时使用的名称。
+
 ## 消费者迁移矩阵
 
 B1 清理（#1083）删除参数管理后台未使用的 legacy Spec 编辑器及其 fallback。Catalog 是唯一定义管理界面，缺少其端口时也不回退；API 模式的历史身份任务保持只读。B5a（#1087，#1080 的负责人决定 Q3）撤下旧 mock Spec 治理、模块映射/注册身份、组织 overlay 编写、身份/Spec 审核任务处理和旧参数详情，以及它们对应的 handler、port、repository、fixture 和测试闭包。Mock 模式不显示相应控件或明确标为不可用。现有 canonical 等价 Catalog 演示、项目参数值编辑、共享业务分类和结构节点启用保留，不新增 canonical mock 实现。有界 API 读取、历史、拒绝审计及公开 410 契约保持不变。
