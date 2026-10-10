@@ -10,6 +10,7 @@ import {
   isParameterTopologyValidationError,
   mapParameterTopologyError,
   specDetailFromDto,
+  specReviewTaskFromDto,
   type ProjectBindingDto,
   type ParameterSpecDetailDto
 } from "./parameterTopologyClient";
@@ -161,82 +162,20 @@ describe("createHttpParameterTopologyRepository", () => {
     const repository = createHttpParameterTopologyRepository(
       createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
     );
-    expect(repository).not.toHaveProperty("createParameterSpec");
+    for (const method of [
+      "createParameterSpec",
+      "listSpecs",
+      "getSpec",
+      "activateParameterSpec",
+      "updateParameterSpec",
+      "deprecateParameterSpec",
+      "restoreParameterSpec",
+      "reattributeParameterSpec",
+      "listSpecReviewTasks"
+    ]) {
+      expect(repository).not.toHaveProperty(method);
+    }
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("deprecates and restores specs through lifecycle endpoints", async () => {
-    const fetchMock = fetchQueue(
-      { item: { ...specDetailDto, lifecycle: "deprecated" } },
-      { item: { ...specDetailDto, lifecycle: "active" } }
-    );
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
-    );
-
-    await repository.deprecateParameterSpec("spec-1", { reason: "platform takeover" });
-    await repository.restoreParameterSpec("spec-1", { reason: "resume governance" });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "http://api.test/api/v2/parameter-specs/spec-1/deprecate",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ reason: "platform takeover" })
-      })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://api.test/api/v2/parameter-specs/spec-1/restore",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ reason: "resume governance" })
-      })
-    );
-  });
-
-  it("posts reattribution and preserves 409 collision details", async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (String(url).includes("/reattribute")) {
-        return response(
-          {
-            error: {
-              code: "CONFLICT",
-              message: "A parameter definition already exists for this subject and property key.",
-              details: { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" },
-              requestId: "req-identity"
-            }
-          },
-          409
-        );
-      }
-      return response({ item: specDetailDto });
-    });
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
-    );
-
-    await expect(
-      repository.reattributeParameterSpec("spec-1", {
-        attributionSubjectId: "asub:driver:mt5788",
-        reason: "fix subject"
-      })
-    ).rejects.toSatisfy((error: unknown) => {
-      expect(error).toBeInstanceOf(WiseEffApiError);
-      expect(error).toMatchObject({
-        code: "CONFLICT",
-        details: { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" }
-      });
-      return true;
-    });
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "http://api.test/api/v2/parameter-specs/spec-1/reattribute",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ attributionSubjectId: "asub:driver:mt5788", reason: "fix subject" })
-      })
-    );
   });
 
   it("lists bindings via v2 project bindings and maps DTOs", async () => {
@@ -340,7 +279,7 @@ describe("createHttpParameterTopologyRepository", () => {
       .fn()
       .mockResolvedValueOnce(
         response({
-          items: [{ id: "canonical-review-1", reason: "ambiguous", status: "open" }],
+          items: [catalogReviewItem],
           historicalItems: [
             {
               id: "map-1",
@@ -385,7 +324,7 @@ describe("createHttpParameterTopologyRepository", () => {
       createApiClient({
         baseUrl: "http://api.test",
         fetchImpl: fetchQueue({
-          items: [{ id: "canonical-review-1", reason: "ambiguous", status: "open" }],
+          items: [catalogReviewItem],
           historicalItems
         })
       })
@@ -579,91 +518,6 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(body).not.toHaveProperty("targetValue");
   });
 
-  it("lists and gets parameter specs without path identity or recommendedValue", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        response({
-          items: [
-            {
-              id: "spec-1",
-              sourceKind: "dts",
-              specificationKey: "sc8562/gpio_int",
-              propertyKey: "gpio_int",
-              driverModule: "sc8562",
-              lifecycle: "active",
-              currentVersionId: "spec-ver-1",
-              currentVersion: 1,
-              valueShape: { kind: "cells" },
-              compatiblePatterns: ["vendor,sc8562"]
-            }
-          ]
-        })
-      )
-      .mockResolvedValueOnce(response({ item: specDetailDto }));
-
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
-    );
-
-    const specs = await repository.listSpecs({
-      propertyKey: "gpio_int",
-      attributionSubjectId: "asub:driver-registration:sc8562",
-    });
-    expect(specs[0]).toMatchObject({
-      propertyKey: "gpio_int",
-      driverModule: "sc8562",
-      valueShape: { kind: "cells" },
-      compatiblePatterns: ["vendor,sc8562"]
-    });
-    expect(specs[0]).not.toHaveProperty("path");
-    expect(specs[0]).not.toHaveProperty("recommendedValue");
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("propertyKey=gpio_int");
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
-      "attributionSubjectId=asub%3Adriver-registration%3Asc8562",
-    );
-
-    const detail = await repository.getSpec("spec-1");
-    expect(detail.exampleValue).toEqual(specDetailDto.exampleValue);
-    expect(detail.schemaDefault).toEqual(specDetailDto.schemaDefault);
-    expect(detail.policyTarget).toEqual(specDetailDto.policyTarget);
-    expect(detail).not.toHaveProperty("recommendedValue");
-  });
-
-  it("lists historical parameter spec review tasks", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        response({
-          items: [],
-          historicalItems: [
-            {
-              id: "task-1",
-              status: "open",
-              propertyKey: "gpio_int",
-              driverModule: "vendor,sc8562",
-              evidence: ["ambiguous"],
-              candidates: [{ id: "pspec:a", label: "vendor,sc8562 / gpio_int" }],
-              ambiguous: false,
-              projectCount: 1,
-              createdAt: "2026-07-16T01:00:00.000Z"
-            }
-          ],
-          nextCursor: "cursor-1"
-        })
-      );
-
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
-    );
-
-    const listed = await repository.listSpecReviewTasks({ status: "open", limit: 20 });
-    expect(listed.items[0]).toMatchObject({ id: "task-1", propertyKey: "gpio_int" });
-    expect(listed.nextCursor).toBe("cursor-1");
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/v2/parameter-spec-review-tasks");
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("status=open");
-  });
-
   it("hydrates only this project's structural enablement drafts without canonical identity aliases", async () => {
     const draft = {
       id: "node-draft", projectId: "project with spaces", parameterId: "logical-charger",
@@ -685,10 +539,10 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(hydrated[0]).not.toHaveProperty("currentValueId");
   });
 
-  it("reads only historical spec tasks from a mixed canonical envelope and preserves decision metadata", async () => {
+  it("preserves historical Spec task decision metadata across the shared DTO boundary", () => {
     const historicalTask = {
       id: "historical-spec-task",
-      status: "dismissed",
+      status: "dismissed" as const,
       parameterSpecId: null,
       propertyKey: "gpio_int",
       driverModule: "vendor,sc8562",
@@ -703,49 +557,7 @@ describe("createHttpParameterTopologyRepository", () => {
       needsCanonicalDecision: true,
       successor: "/api/v2/organizations/org-1/parameter-review-items"
     };
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({
-        baseUrl: "http://api.test",
-        fetchImpl: fetchQueue({
-          items: [catalogReviewItem],
-          historicalItems: [historicalTask],
-          nextCursor: "legacy-cursor-1"
-        })
-      })
-    );
-
-    expect(await repository.listSpecReviewTasks()).toEqual({
-      items: [historicalTask],
-      nextCursor: "legacy-cursor-1"
-    });
-  });
-
-  it.each([
-    { name: "empty historical collection", historicalItems: [] },
-    { name: "missing historical collection", historicalItems: undefined }
-  ])("does not crash or reinterpret canonical spec items with $name", async ({ historicalItems }) => {
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({
-        baseUrl: "http://api.test",
-        fetchImpl: fetchQueue({ items: [catalogReviewItem], historicalItems })
-      })
-    );
-
-    await expect(repository.listSpecReviewTasks()).resolves.toEqual({ items: [], nextCursor: null });
-  });
-
-  it("does not inspect canonical spec items that lack legacy candidate arrays", async () => {
-    const repository = createHttpParameterTopologyRepository(
-      createApiClient({
-        baseUrl: "http://api.test",
-        fetchImpl: fetchQueue({
-          items: [{ ...catalogReviewItem, candidates: undefined }],
-          historicalItems: []
-        })
-      })
-    );
-
-    await expect(repository.listSpecReviewTasks()).resolves.toEqual({ items: [], nextCursor: null });
+    expect(specReviewTaskFromDto(historicalTask)).toEqual(historicalTask);
   });
 
   it("preserves WiseEffApiError for stale-revision and structured diagnostics", async () => {

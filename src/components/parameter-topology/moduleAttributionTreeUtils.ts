@@ -172,8 +172,6 @@ export function summarizeDriverCoverage(
   return map;
 }
 
-export type CreateModuleKind = "business" | "driver-group" | "node-type";
-
 /** Curated empty nodes that have not been observed via ingest yet. */
 export function isNotYetObservedModule(module: ParameterModule): boolean {
   return (
@@ -188,81 +186,6 @@ export function isNotYetObservedDriverGroup(module: ParameterModule): boolean {
   return isNotYetObservedModule(module);
 }
 
-export function allowedCreateKindsForParent(
-  parentKind: ParameterModule["kind"] | null | undefined
-): CreateModuleKind[] {
-  if (parentKind == null) return ["business"];
-  if (parentKind === "business") return ["business", "driver-group", "node-type"];
-  if (parentKind === "driver-group") return ["node-type"];
-  if (parentKind === "node-type") return ["node-type"];
-  return [];
-}
-
-export function parentCandidatesForCreateKind(
-  modules: readonly ParameterModule[],
-  kind: CreateModuleKind
-): Array<{ id: string | null; name: string }> {
-  if (kind === "business") {
-    return [
-      { id: null, name: "（根级）" },
-      ...modules
-        .filter((module) => module.kind === "business")
-        .map((module) => ({ id: module.id, name: module.name }))
-    ];
-  }
-  if (kind === "driver-group") {
-    return modules
-      .filter((module) => module.kind === "business")
-      .map((module) => ({ id: module.id, name: module.name }));
-  }
-  if (kind === "node-type") {
-    return modules
-      .filter(
-        (module) =>
-          module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type"
-      )
-      .map((module) => ({ id: module.id, name: module.name }));
-  }
-  return [];
-}
-
-/** Tree nodes for create-dialog parent picker (`ModuleTreeSelect`). */
-export function parentFlatNodesForCreateKind(
-  modules: readonly ParameterModule[],
-  kind: CreateModuleKind
-): FlatModuleNode[] {
-  if (kind === "node-type") {
-    return toAttributionFlatNodes(
-      modules.filter(
-        (module) =>
-          module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type"
-      )
-    );
-  }
-  return toBusinessFlatNodes(modules);
-}
-
-export function isValidCreateParent(
-  modules: readonly ParameterModule[],
-  kind: CreateModuleKind,
-  parentId: string | null
-): boolean {
-  if (kind === "business") {
-    if (parentId === null) return true;
-    return modules.some((module) => module.id === parentId && module.kind === "business");
-  }
-  if (kind === "driver-group") {
-    return Boolean(parentId) && modules.some((module) => module.id === parentId && module.kind === "business");
-  }
-  return (
-    Boolean(parentId) &&
-    modules.some(
-      (module) =>
-        module.id === parentId &&
-        (module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type")
-    )
-  );
-}
 
 /**
  * Keep a module if it matches filters, or if an ancestor/descendant does so the tree
@@ -501,11 +424,6 @@ export function canEditImportance(module: ParameterModule): boolean {
   return module.kind === "business";
 }
 
-/** Manual kind correction among business / node-type (ADR-0010). */
-export function canReclassifyModule(module: ParameterModule): boolean {
-  if (isUnclassifiedRoot(module)) return false;
-  return module.kind === "business" || module.kind === "node-type";
-}
 
 export function deleteActionLabel(module: ParameterModule): string {
   return module.kind === "driver-group" ? "解散驱动组" : "删除模块";

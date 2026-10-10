@@ -243,13 +243,21 @@ export function ParameterAdminNextPage({
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
             />
-            {organizationView === "specs" ? (
+            {organizationView === "specs" && runtimeMode === "api" ? (
               <OrganizationSpecsArea
                 pathname={pathname}
                 search={search}
                 onNavigate={onNavigate}
                 catalogLibrary={catalogLibrary}
               />
+            ) : null}
+            {organizationView === "specs" && runtimeMode === "mock" ? (
+              <>
+                {pathname.endsWith("/identity-mapping") ? (
+                  <p role="status">Mock 模式不提供旧节点对应任务。请使用 API 模式的规范审核队列。</p>
+                ) : null}
+                {catalogLibrary}
+              </>
             ) : null}
             {organizationView === "modules" ? (
               <OrganizationModuleGovernancePanel

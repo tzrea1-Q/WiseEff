@@ -13,52 +13,14 @@ function createRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
   return {
-    listSpecs: vi.fn().mockResolvedValue([
-      {
-        id: "spec-sc8562-gpio-int",
-        organizationId: "org-teaching",
-        sourceKind: "dts",
-        specificationKey: "dts/sc8562/gpio_int",
-        propertyKey: "gpio_int",
-        driverModule: "sc8562",
-        lifecycle: "active",
-        currentVersionId: "specver-1",
-        currentVersion: 1
-      }
-    ]),
-    getSpec: vi.fn().mockResolvedValue({
-      id: "spec-sc8562-gpio-int",
-      organizationId: "org-teaching",
-      sourceKind: "dts",
-      specificationKey: "dts/sc8562/gpio_int",
-      propertyKey: "gpio_int",
-      driverModule: "sc8562",
-      lifecycle: "active",
-      currentVersionId: "specver-1",
-      currentVersion: 1,
-      displayName: "gpio_int",
-      description: null,
-      valueShape: { kind: "cells" },
-      schemaDefault: null,
-      exampleValue: null,
-      schemaNamespace: "vendor,sc8562/bindings",
-      units: null,
-      constraints: null,
-      documentation: null,
-      compatiblePatterns: ["vendor,sc8562"],
-      policyTarget: null
-    }),
-    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-    activateParameterSpec: vi.fn(),
-    updateParameterSpec: vi.fn(),
-    deprecateParameterSpec: vi.fn(),
-    restoreParameterSpec: vi.fn(),
     listBindings: vi.fn().mockResolvedValue([]),
     getTopology: vi.fn(),
     listMappingTasks: vi.fn().mockResolvedValue([]),
     listConfigRevisions: vi.fn().mockResolvedValue([]),
     validateRevision: vi.fn(),
     createBindingDraft: vi.fn(),
+    createNodeEnablementDraft: vi.fn(),
+    listNodeEnablementDrafts: vi.fn().mockResolvedValue([]),
     ...overrides
   };
 }

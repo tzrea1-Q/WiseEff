@@ -1197,12 +1197,9 @@ export function ApiProjectTopologyWorkspace({
           propertyKey
         });
       }
-      if (runtimeMode === "mock" && repository?.getSpec) {
-        return repository.getSpec(definitionId);
-      }
       return Promise.reject(new Error("canonical definition repository unavailable"));
     },
-    [canonicalRepository, repository, runtimeMode]
+    [canonicalRepository]
   );
 
   const loadPrimaryDtsSource = useCallback(async () => {

@@ -3,3 +3,5 @@
 > Chinese: [Chinese](../zh-CN/design-docs/2026-07-21-dts-binding-cross-project-compare-design.md)
 
 Design for comparing a binding across peer projects that share the same `parameter_spec_id` + `module_id`, including draft-from-peer into the local typed-draft round.
+
+Historical reference: the mock `ParameterDetailDialog` was withdrawn by #1087 (#1080 Q3). Its canonical-equivalent comparison successor remains `DtsBindingDetailDialog`; the retired mock detail is not an available entry point.

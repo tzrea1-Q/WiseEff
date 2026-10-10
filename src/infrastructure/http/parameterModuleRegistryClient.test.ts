@@ -10,13 +10,24 @@ const retiredMethods = [
   "updateOrganizationDriverSchema",
   "activateOrganizationDriverSchema",
   "previewOrganizationDriverSchemaDeprecation",
-  "deprecateOrganizationDriverSchema"
+  "deprecateOrganizationDriverSchema",
+  "getDiscoveryHints",
+  "dismissCompatible",
+  "restoreDismissedCompatible",
+  "previewMapping",
+  "createMapping",
+  "deleteMapping",
+  "recomputeBindings",
+  "registerOrClaimDriver",
+  "updateDriverRegistration",
+  "updateDriverRegistrationDefault",
+  "replayDriverPlacement"
 ] as const;
 
 it.each([
   ["HTTP", createHttpParameterModuleRegistryRepository(createApiClient({ baseUrl: "" }))],
   ["mock", createMockParameterModuleRegistryRepository()]
-])("omits retired organization driver-schema methods from the %s public port", (_adapter, repository) => {
+])("omits retired identity and driver-schema methods from the %s public port", (_adapter, repository) => {
   expectTypeOf<Extract<keyof ParameterModuleRegistryRepository, typeof retiredMethods[number]>>()
     .toEqualTypeOf<never>();
   for (const method of retiredMethods) {

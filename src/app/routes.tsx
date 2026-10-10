@@ -55,7 +55,7 @@ import { OrganizationPage } from "@/OrganizationPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
-import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
+import type { ParameterDraftItem } from "@/domain/parameters/types";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/KnowledgeEntryEditorDialog";
 import { buildCatalogHref, CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
@@ -63,7 +63,6 @@ import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
 
 
 export type ParameterPageActions = {
-  getParameter(parameterId: string): Promise<ParameterRecord>;
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;

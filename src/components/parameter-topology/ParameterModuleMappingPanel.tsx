@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, LoaderCircle } from "lucide-react";
 
 import { presentError } from "@/infrastructure/http/presentError";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -13,25 +13,12 @@ import {
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type {
   DriverRegistryEntry,
-  MappingApplyPreview,
-  ParameterModuleRegistryRepository,
-  RegisterOrClaimDriverInput,
-  RecomputeBindingModulesResult
+  ParameterModuleRegistryRepository
 } from "@/application/ports/ParameterModuleRegistryRepository";
-import { ClassifyCompatibleDialog } from "@/components/parameter-topology/ClassifyCompatibleDialog";
 import { ModuleAttributionTree } from "@/components/parameter-topology/ModuleAttributionTree";
-import { RegisterDriverDialog } from "@/components/parameter-topology/RegisterDriverDialog";
-import { RecomputeBindingsResultDialog } from "@/components/parameter-topology/RecomputeBindingsResultDialog";
-import { UnclassifiedCompatibleQueue } from "@/components/parameter-topology/UnclassifiedCompatibleQueue";
 import {
   summarizeDriverCoverage
 } from "@/components/parameter-topology/moduleAttributionTreeUtils";
-import {
-  filterUnmappedCompatibles,
-  toUnmappedCompatibleHint,
-  type UnmappedCompatibleHint
-} from "@/domain/parameter-topology/moduleDiscovery";
-import { normalizeMatchToken } from "@/domain/parameter-topology/modulePlacement";
 import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
   type ParameterModuleRegistry
@@ -40,15 +27,13 @@ import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/ht
 import { CanonicalSubjectPlacementPanel } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 import { CanonicalDriverDiscovery } from "@/components/parameter-admin-next/CanonicalDriverDiscovery";
 
-export type { UnmappedCompatibleHint };
-
 export type ParameterModuleMappingPanelProps = {
   canAdmin?: boolean;
   repository?: ParameterModuleRegistryRepository;
   pathname?: string;
   search?: string;
   onNavigate?: (path: string) => void;
-  /** Canonical subject/placement seam; absent in explicit legacy mock mode. */
+  /** Canonical subject/placement seam; absent in mock mode. */
   canonicalCatalog?: ParameterCatalogRepository;
   canonicalGovernance?: ParameterCatalogGovernanceRepository;
   canonicalOrganizationId?: string;
@@ -58,7 +43,7 @@ export type ParameterModuleMappingPanelProps = {
 };
 
 /**
- * Organization module attribution: tree-first; unclassified queue is a secondary view.
+ * Organization business taxonomy with read-only historical driver attribution.
  */
 export function ParameterModuleMappingPanel({
   canAdmin = false,
@@ -81,46 +66,10 @@ export function ParameterModuleMappingPanel({
   const [driverRegistry, setDriverRegistry] = useState<DriverRegistryEntry[]>([]);
   const [driverRegistryLoading, setDriverRegistryLoading] = useState(false);
   const [driverRegistryError, setDriverRegistryError] = useState<string | null>(null);
-  const [observedCompatibles, setObservedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
-  const [dismissedCompatibles, setDismissedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [recomputing, setRecomputing] = useState(false);
-  const [recomputeNotice, setRecomputeNotice] = useState<string | null>(null);
-  const [recomputeResult, setRecomputeResult] = useState<RecomputeBindingModulesResult | null>(null);
-  const [selectedCompatibles, setSelectedCompatibles] = useState<string[]>([]);
-  const [classifyHints, setClassifyHints] = useState<UnmappedCompatibleHint[] | null>(null);
-  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
-  const [registerDraft, setRegisterDraft] = useState<{
-    displayName: string;
-    compatibles: string[];
-  } | null>(null);
   const [canonicalDiscoveryRefresh, setCanonicalDiscoveryRefresh] = useState(0);
-
-  const refreshDiscoveryHints = async () => {
-    const hints = await client.getDiscoveryHints();
-    setObservedCompatibles(
-      hints.compatibles.map((hint) =>
-        toUnmappedCompatibleHint({
-          compatible: hint.compatible,
-          bindingCount: hint.bindingCount,
-          projectCount: hint.projectCount,
-          suggestedGroupName: hint.suggestedGroupName
-        })
-      )
-    );
-    setDismissedCompatibles(
-      hints.dismissedCompatibles.map((hint) =>
-        toUnmappedCompatibleHint({
-          compatible: hint.compatible,
-          bindingCount: hint.bindingCount,
-          projectCount: hint.projectCount,
-          suggestedGroupName: hint.suggestedGroupName
-        })
-      )
-    );
-  };
 
   const refreshDriverRegistry = useCallback(async (isCancelled: () => boolean = () => false) => {
     setDriverRegistryLoading(true);
@@ -148,40 +97,16 @@ export function ParameterModuleMappingPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([
-      client.getRegistry(),
-      canonicalEnabled ? Promise.resolve(null) : client.getDiscoveryHints()
-    ])
-      .then(([nextRegistry, hints]) => {
+    client.getRegistry()
+      .then((nextRegistry) => {
         if (cancelled) return;
         setRegistry(nextRegistry);
-        setObservedCompatibles(
-          (hints?.compatibles ?? []).map((hint) =>
-            toUnmappedCompatibleHint({
-              compatible: hint.compatible,
-              bindingCount: hint.bindingCount,
-              projectCount: hint.projectCount,
-              suggestedGroupName: hint.suggestedGroupName
-            })
-          )
-        );
-        setDismissedCompatibles(
-          (hints?.dismissedCompatibles ?? []).map((hint) =>
-            toUnmappedCompatibleHint({
-              compatible: hint.compatible,
-              bindingCount: hint.bindingCount,
-              projectCount: hint.projectCount,
-              suggestedGroupName: hint.suggestedGroupName
-            })
-          )
-        );
+
       })
       .catch((loadError) => {
         if (cancelled) return;
         setError(presentError(loadError, "无法加载模块注册表，请稍后重试。"));
         setRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
-        setObservedCompatibles([]);
-        setDismissedCompatibles([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -190,64 +115,18 @@ export function ParameterModuleMappingPanel({
       cancelled = true;
     };
   }, [client, canonicalEnabled]);
-
-  const unmappedCompatibles = useMemo(
-    () => filterUnmappedCompatibles(observedCompatibles, registry.mappings),
-    [observedCompatibles, registry.mappings]
-  );
-  const queueCount = unmappedCompatibles.length;
-  const hasQueue = queueCount > 0 || dismissedCompatibles.length > 0;
-  const legacyQueueVisible = !canonicalEnabled && hasQueue;
   const requestedSubView: ParameterAdminModulesSubView =
     parseParameterAdminModulesSubView(pathname) ?? "tree";
-  const activeSubView: ParameterAdminModulesSubView =
-    requestedSubView === "queue" && !hasQueue ? "tree" : requestedSubView;
   const driverCoverage = useMemo(
     () => summarizeDriverCoverage(driverRegistry),
     [driverRegistry]
   );
-  const driverCoverageDetails = useMemo(() => {
-    const map = new Map<
-      string,
-      Array<{
-        compatible: string;
-        covered: boolean;
-        pattern?: string;
-        source?: string;
-        driverId?: string;
-        scope?: "platform" | "organization";
-        shadowedBy?: Array<{
-          pattern: string;
-          driverId: string;
-          source: string;
-          scope: "platform" | "organization";
-        }>;
-      }>
-    >();
-    for (const entry of driverRegistry) {
-      map.set(
-        entry.moduleId,
-        entry.parseCoverages.map(({ compatible, coverage }) => ({
-          compatible,
-          covered: coverage.covered,
-          pattern: coverage.covered ? coverage.pattern : undefined,
-          source: coverage.covered ? coverage.source : undefined,
-          driverId: coverage.covered ? coverage.driverId : undefined,
-          scope: coverage.covered ? coverage.scope : undefined,
-          shadowedBy: coverage.covered ? coverage.shadowedBy : undefined,
-          promoted: coverage.covered ? coverage.promoted : undefined
-        }))
-      );
-    }
-    return map;
-  }, [driverRegistry]);
   const driverRegistrationByModuleId = useMemo(() => {
     const map = new Map<
       string,
       {
         driverNature: DriverRegistryEntry["driverNature"];
         instanceCardinality: DriverRegistryEntry["instanceCardinality"];
-        defaultBusinessCategoryId: string | null;
         compatibles: string[];
       }
     >();
@@ -255,7 +134,6 @@ export function ParameterModuleMappingPanel({
       map.set(entry.moduleId, {
         driverNature: entry.driverNature ?? null,
         instanceCardinality: entry.instanceCardinality ?? null,
-        defaultBusinessCategoryId: entry.defaultBusinessCategoryId ?? null,
         compatibles: entry.compatibles,
       });
     }
@@ -270,220 +148,11 @@ export function ParameterModuleMappingPanel({
       return;
     }
     if (
-      requestedSubView === "queue" &&
-      !loading &&
-      (canonicalEnabled || !hasQueue)
+      requestedSubView === "queue" && !loading
     ) {
       onNavigate(buildParameterAdminModulesPath("tree", search));
     }
-  }, [canonicalEnabled, hasQueue, loading, onNavigate, pathname, requestedSubView, search]);
-
-  const goToSubView = (subView: ParameterAdminModulesSubView) => {
-    onNavigate?.(buildParameterAdminModulesPath(subView, search));
-  };
-
-  const classifyPreview: MappingApplyPreview | null = useMemo(() => {
-    if (!classifyHints || classifyHints.length === 0) return null;
-    return {
-      affectedBindings: classifyHints.reduce((sum, hint) => sum + hint.bindingCount, 0),
-      byProject: [],
-      fromModules: [],
-      toModuleId: null,
-      emptiedModules: [],
-      conflicts: []
-    };
-  }, [classifyHints]);
-
-  const dismissCompatible = async (compatible: string) => {
-    if (!canAdmin) return;
-    const dismissedHint = unmappedCompatibles.find((hint) => hint.compatible === compatible);
-    setBusy(true);
-    setError(null);
-    try {
-      const hints = await client.dismissCompatible({ compatible });
-      if (dismissedHint) {
-        setDismissedCompatibles((current) => {
-          if (current.some((hint) => hint.compatible === compatible)) return current;
-          return [...current, dismissedHint];
-        });
-      }
-      setObservedCompatibles(
-        hints.compatibles.map((hint) =>
-          toUnmappedCompatibleHint({
-            compatible: hint.compatible,
-            bindingCount: hint.bindingCount,
-            projectCount: hint.projectCount,
-            suggestedGroupName: hint.suggestedGroupName
-          })
-        )
-      );
-      setSelectedCompatibles((current) => current.filter((value) => value !== compatible));
-      setDismissedCompatibles(
-        hints.dismissedCompatibles.map((hint) =>
-          toUnmappedCompatibleHint({
-            compatible: hint.compatible,
-            bindingCount: hint.bindingCount,
-            projectCount: hint.projectCount,
-            suggestedGroupName: hint.suggestedGroupName
-          })
-        )
-      );
-    } catch (dismissError) {
-      setError(presentError(dismissError, "忽略 compatible 失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const restoreDismissedCompatible = async (compatible: string) => {
-    if (!canAdmin) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const hints = await client.restoreDismissedCompatible(compatible);
-      setObservedCompatibles(
-        hints.compatibles.map((hint) =>
-          toUnmappedCompatibleHint({
-            compatible: hint.compatible,
-            bindingCount: hint.bindingCount,
-            projectCount: hint.projectCount,
-            suggestedGroupName: hint.suggestedGroupName
-          })
-        )
-      );
-      setDismissedCompatibles(
-        hints.dismissedCompatibles.map((hint) =>
-          toUnmappedCompatibleHint({
-            compatible: hint.compatible,
-            bindingCount: hint.bindingCount,
-            projectCount: hint.projectCount,
-            suggestedGroupName: hint.suggestedGroupName
-          })
-        )
-      );
-    } catch (restoreError) {
-      setError(presentError(restoreError, "恢复 compatible 失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const classifyCompatibles = async (input: {
-    businessModuleId: string;
-    createBusinessName?: string;
-    groups: Array<{ compatible: string; driverGroupName: string }>;
-  }) => {
-    if (!canAdmin) return;
-    setBusy(true);
-    setError(null);
-    try {
-      let parentId = input.businessModuleId;
-      let nextRegistry = registry;
-      if (input.createBusinessName) {
-        nextRegistry = await client.createModule({
-          name: input.createBusinessName,
-          importance: "medium"
-        });
-        const created = nextRegistry.modules.find(
-          (module) => module.name === input.createBusinessName && module.parentId === null
-        );
-        if (!created) {
-          throw new Error("创建业务分类后未能定位到新模块。");
-        }
-        parentId = created.id;
-      }
-
-      let moved = 0;
-      for (const group of input.groups) {
-        const normalizedCompatible =
-          normalizeMatchToken(group.compatible) ?? group.compatible.trim().toLowerCase();
-        const driverGroupName = group.driverGroupName.trim();
-        nextRegistry = await client.createModule({
-          name: driverGroupName,
-          parentId,
-          kind: "driver-group",
-          origin: "auto",
-          sourceKey: `compatible:${normalizedCompatible}`
-        });
-        const groupModule =
-          nextRegistry.modules.find(
-            (module) =>
-              module.kind === "driver-group" &&
-              module.name === driverGroupName &&
-              module.parentId === parentId
-          ) ??
-          nextRegistry.modules.find(
-            (module) => module.sourceKey === `compatible:${normalizedCompatible}`
-          ) ??
-          nextRegistry.modules.find((module) => module.name === driverGroupName);
-        if (!groupModule) {
-          throw new Error(`创建驱动组「${driverGroupName}」后未能定位到新模块。`);
-        }
-        const mapped = await client.createMapping({
-          moduleId: groupModule.id,
-          matchKind: "compatible",
-          matchValue: normalizedCompatible,
-          priority: 300
-        });
-        nextRegistry = mapped.registry;
-        moved += mapped.apply.affectedBindings;
-      }
-
-      setRegistry(nextRegistry);
-      await refreshDiscoveryHints();
-      setSelectedCompatibles([]);
-      setClassifyHints(null);
-      setRecomputeNotice(`已归类 ${input.groups.length} 个 compatible，移动 ${moved} 个项目参数。`);
-      goToSubView("tree");
-    } catch (classifyError) {
-      setError(presentError(classifyError, "归类 compatible 失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const recomputeBindings = async () => {
-    if (!canAdmin) return;
-    setRecomputing(true);
-    setError(null);
-    setRecomputeResult(null);
-    try {
-      const result = await client.recomputeBindings();
-      setRegistry(await client.getRegistry());
-      await refreshDiscoveryHints();
-      setRecomputeResult(result);
-    } catch (recomputeError) {
-      setError(presentError(recomputeError, "重算模块归属失败，请稍后重试。"));
-    } finally {
-      setRecomputing(false);
-    }
-  };
-
-  const registerDriver = async (input: RegisterOrClaimDriverInput) => {
-    if (!canAdmin) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await client.registerOrClaimDriver(input);
-      setRegistry(await client.getRegistry());
-      await refreshDriverRegistry();
-      await refreshDiscoveryHints();
-      setRegisterDialogOpen(false);
-      setRegisterDraft(null);
-      const verb = result.mode === "claimed" ? "已认领" : "已登记";
-      const affected = result.apply?.affectedBindings ?? 0;
-      setRecomputeNotice(
-        affected > 0
-          ? `${verb}驱动组「${result.item.name}」，已按范围更新 ${affected} 条绑定。`
-          : `${verb}驱动组「${result.item.name}」。`
-      );
-      goToSubView("tree");
-    } catch (registerError) {
-      setError(presentError(registerError, "登记驱动失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
+  }, [loading, onNavigate, pathname, requestedSubView, search]);
 
   const refreshAfterCanonicalChange = async () => {
     setCanonicalDiscoveryRefresh((value) => value + 1);
@@ -518,84 +187,13 @@ export function ParameterModuleMappingPanel({
           <h3>{PARAMETER_ADMIN_UI.moduleMapping}</h3>
           <p>{PARAMETER_ADMIN_UI.moduleMappingBlurb}</p>
         </div>
-        {canAdmin && !canonicalEnabled && activeSubView === "tree" ? (
-          <div className="parameter-module-mapping-panel__actions">
-            <button
-              type="button"
-              className="button subtle"
-              disabled={busy || recomputing}
-              onClick={() => void recomputeBindings()}
-              title="仅用于历史 drift、seed 纠偏或身份连续性后的对齐；日常归类与驱动登记已按范围自动重算。"
-            >
-              <RefreshCw
-                className={recomputing ? "dts-status-icon dts-status-icon--spin" : undefined}
-                size={14}
-                strokeWidth={2}
-                aria-hidden="true"
-              />
-              全量重算
-            </button>
-          </div>
-        ) : null}
+
       </header>
-
-      {legacyQueueVisible ? (
-        <nav
-          className="parameter-module-mapping-panel__subnav"
-          aria-label={PARAMETER_ADMIN_UI.moduleQueueSubnavAria}
-        >
-          <button
-            type="button"
-            className={`parameter-module-mapping-panel__subnav-tab${
-              activeSubView === "tree" ? " is-active" : ""
-            }`}
-            aria-current={activeSubView === "tree" ? "page" : undefined}
-            onClick={() => goToSubView("tree")}
-          >
-            {PARAMETER_ADMIN_UI.moduleTreeSubnav}
-          </button>
-          <button
-            type="button"
-            className={`parameter-module-mapping-panel__subnav-tab${
-              activeSubView === "queue" ? " is-active" : ""
-            }`}
-            aria-current={activeSubView === "queue" ? "page" : undefined}
-            onClick={() => goToSubView("queue")}
-          >
-            {PARAMETER_ADMIN_UI.moduleDiscoveryCompatible}
-            <span className="parameter-module-mapping-panel__subnav-count">
-              {queueCount > 0 ? queueCount : dismissedCompatibles.length}
-            </span>
-          </button>
-        </nav>
-      ) : null}
-
-      {recomputeNotice ? (
-        <p className="parameter-module-mapping-panel__notice" role="status">
-          {recomputeNotice}
-        </p>
-      ) : null}
 
       {error ? (
         <p className="parameter-module-mapping-panel__error" role="alert">
           <AlertCircle size={15} strokeWidth={2} aria-hidden="true" /> {error}
         </p>
-      ) : null}
-
-      {activeSubView === "tree" && legacyQueueVisible ? (
-        <div className="parameter-module-mapping-panel__queue-banner" role="status">
-          <p>
-            <strong>{PARAMETER_ADMIN_UI.moduleQueueBanner}</strong>
-            <span>
-              {queueCount > 0
-                ? `共 ${queueCount} 项待归类。主界面继续维护归属树；点上方「未登记驱动」或右侧按钮去处理。`
-                : `有 ${dismissedCompatibles.length} 项已忽略可恢复。点上方「未登记驱动」打开队列。`}
-            </span>
-          </p>
-          <button type="button" className="button" onClick={() => goToSubView("queue")}>
-            {PARAMETER_ADMIN_UI.moduleQueueBannerAction}
-          </button>
-        </div>
       ) : null}
 
       <div
@@ -641,33 +239,11 @@ export function ParameterModuleMappingPanel({
               </button>
             </div>
           ) : null}
-        {activeSubView === "queue" && !canonicalEnabled ? (
-            <UnclassifiedCompatibleQueue
-              hints={unmappedCompatibles}
-              dismissedHints={dismissedCompatibles}
-              canAdmin={canAdmin}
-              busy={busy}
-              selectedCompatibles={selectedCompatibles}
-              onSelectionChange={setSelectedCompatibles}
-              onClassify={(hints) => setClassifyHints([...hints])}
-              onClaim={(hint) => {
-                setRegisterDraft({
-                  displayName: hint.suggestedGroupName,
-                  compatibles: [hint.compatible],
-                });
-                setRegisterDialogOpen(true);
-              }}
-              onDismiss={(compatible) => void dismissCompatible(compatible)}
-              onRestore={(compatible) => void restoreDismissedCompatible(compatible)}
-            />
-        ) : (
           <ModuleAttributionTree
             modules={registry.modules}
             mappings={registry.mappings}
             driverCoverage={driverCoverage}
-            driverCoverageDetails={driverCoverageDetails}
             driverRegistrationByModuleId={driverRegistrationByModuleId}
-            canonicalModeEnabled={canonicalEnabled}
             canonicalPlacementAvailable={Boolean(
               canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId
             )}
@@ -684,8 +260,6 @@ export function ParameterModuleMappingPanel({
             }
             canAdmin={canAdmin}
             busy={busy}
-            hasUnclassifiedQueue={legacyQueueVisible}
-            onOpenUnclassifiedQueue={() => goToSubView("queue")}
             onUpdateModule={async (moduleId, patch) => {
               setBusy(true);
               setError(null);
@@ -694,58 +268,6 @@ export function ParameterModuleMappingPanel({
               } catch (updateError) {
                 setError(presentError(updateError, "更新模块失败，请稍后重试。"));
                 throw updateError;
-              } finally {
-                setBusy(false);
-              }
-            }}
-            onUpdateDriverRegistration={canonicalEnabled ? undefined : async (moduleId, input) => {
-              setBusy(true);
-              setError(null);
-              try {
-                await client.updateDriverRegistration(moduleId, input);
-                await refreshDriverRegistry();
-                setRegistry(await client.getRegistry());
-              } catch (updateError) {
-                setError(presentError(updateError, "更新驱动登记失败，请稍后重试。"));
-                throw updateError;
-              } finally {
-                setBusy(false);
-              }
-            }}
-            onUpdateDriverRegistrationDefault={canonicalEnabled ? undefined : async (moduleId, defaultBusinessCategoryId) => {
-              setBusy(true);
-              setError(null);
-              try {
-                await client.updateDriverRegistrationDefault(moduleId, {
-                  defaultBusinessCategoryId
-                });
-                const [nextRegistry, nextDrivers] = await Promise.all([
-                  client.getRegistry(),
-                  client.listDriverRegistry()
-                ]);
-                setRegistry(nextRegistry);
-                setDriverRegistry(nextDrivers.items);
-              } catch (updateError) {
-                setError(presentError(updateError, "更新默认业务分类失败，请稍后重试。"));
-              } finally {
-                setBusy(false);
-              }
-            }}
-            onReplayDriverPlacement={canonicalEnabled ? undefined : async (moduleId) => {
-              setBusy(true);
-              setError(null);
-              try {
-                const counts = await client.replayDriverPlacement(moduleId);
-                const [nextRegistry, nextDrivers] = await Promise.all([
-                  client.getRegistry(),
-                  client.listDriverRegistry()
-                ]);
-                setRegistry(nextRegistry);
-                setDriverRegistry(nextDrivers.items);
-                return counts;
-              } catch (replayError) {
-                setError(presentError(replayError, "回放放置失败，请稍后重试。"));
-                return { moved: 0, skippedCurated: 0, skippedMissingDefault: 0 };
               } finally {
                 setBusy(false);
               }
@@ -766,42 +288,9 @@ export function ParameterModuleMappingPanel({
               setError(null);
               try {
                 setRegistry(await client.deleteModule(moduleId));
-                if (!canonicalEnabled) await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (deleteError) {
                 setError(presentError(deleteError, "删除模块失败，请稍后重试。"));
-              } finally {
-                setBusy(false);
-              }
-            }}
-            onRemoveMapping={canonicalEnabled ? undefined : async (mappingId) => {
-              setBusy(true);
-              setError(null);
-              try {
-                const result = await client.deleteMapping(mappingId);
-                setRegistry(result.registry);
-                if (!canonicalEnabled) await refreshDiscoveryHints();
-                await refreshDriverRegistry();
-              } catch (mappingError) {
-                setError(presentError(mappingError, "删除归属失败，请稍后重试。"));
-              } finally {
-                setBusy(false);
-              }
-            }}
-            onAddCompatibleMapping={canonicalEnabled ? undefined : async ({ moduleId, matchValue }) => {
-              setBusy(true);
-              setError(null);
-              try {
-                const result = await client.createMapping({
-                  moduleId,
-                  matchKind: "compatible",
-                  matchValue
-                });
-                setRegistry(result.registry);
-                if (!canonicalEnabled) await refreshDiscoveryHints();
-                await refreshDriverRegistry();
-              } catch (mappingError) {
-                setError(presentError(mappingError, "添加 compatible 规则失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -810,36 +299,17 @@ export function ParameterModuleMappingPanel({
               setBusy(true);
               setError(null);
               try {
-                if (input.kind === "driver-group") {
-                  if (!input.parentId) {
-                    throw new Error("驱动组必须选择业务分类父级。");
-                  }
-                  if (canonicalEnabled) {
-                    throw new Error("API 模式请从规范主体面板登记 Driver，不能使用旧驱动登记入口。");
-                  }
-                  await client.registerOrClaimDriver({
-                    displayName: input.name,
-                    businessCategoryId: input.parentId,
-                    compatibles: input.compatibles ?? [],
-                    notes: input.description
-                  });
-                  setRegistry(await client.getRegistry());
-                  await refreshDriverRegistry();
-                  if (!canonicalEnabled) await refreshDiscoveryHints();
-                } else {
-                  setRegistry(
-                    await client.createModule({
-                      name: input.name,
-                      description: input.description,
-                      scope: input.scope,
-                      importance: input.importance,
-                      parentId: input.parentId,
-                      kind: input.kind ?? "business",
-                      origin: "curated",
-                      sourceKey: input.sourceKey
-                    })
-                  );
-                }
+                setRegistry(
+                  await client.createModule({
+                    name: input.name,
+                    description: input.description,
+                    scope: input.scope,
+                    importance: input.importance,
+                    parentId: input.parentId,
+                    kind: "business",
+                    origin: "curated"
+                  })
+                );
               } catch (createError) {
                 setError(presentError(createError, "创建模块失败，请稍后重试。"));
               } finally {
@@ -847,41 +317,9 @@ export function ParameterModuleMappingPanel({
               }
             }}
           />
-        )}
         </section>
       </div>
 
-      {registerDialogOpen ? (
-        <RegisterDriverDialog
-          modules={registry.modules}
-          busy={busy}
-          initialDisplayName={registerDraft?.displayName ?? ""}
-          initialCompatibles={registerDraft?.compatibles ?? []}
-          onCancel={() => {
-            setRegisterDialogOpen(false);
-            setRegisterDraft(null);
-          }}
-          onConfirm={(input) => void registerDriver(input)}
-        />
-      ) : null}
-
-      {classifyHints ? (
-        <ClassifyCompatibleDialog
-          hints={classifyHints}
-          modules={registry.modules}
-          busy={busy}
-          preview={classifyPreview}
-          onCancel={() => setClassifyHints(null)}
-          onConfirm={(input) => void classifyCompatibles(input)}
-        />
-      ) : null}
-
-      {recomputeResult ? (
-        <RecomputeBindingsResultDialog
-          result={recomputeResult}
-          onClose={() => setRecomputeResult(null)}
-        />
-      ) : null}
     </section>
   );
 }

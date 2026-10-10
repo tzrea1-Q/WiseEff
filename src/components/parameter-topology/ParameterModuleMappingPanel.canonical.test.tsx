@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { EMPTY_PARAMETER_MODULE_REGISTRY } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
-import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { createTestModuleRegistryRepository } from "@/test/harness";
 import { ParameterModuleMappingPanel } from "./ParameterModuleMappingPanel";
 
@@ -23,7 +22,13 @@ describe("canonical module page request boundary", () => {
       }],
       mappings: [], navigationOnly: true
     };
-    const repository = createTestModuleRegistryRepository({
+    const retiredWrites = {
+      updateDriverRegistration: vi.fn(), updateDriverRegistrationDefault: vi.fn(),
+      replayDriverPlacement: vi.fn(), registerOrClaimDriver: vi.fn(),
+      createMapping: vi.fn(), deleteMapping: vi.fn(), dismissCompatible: vi.fn(),
+      restoreDismissedCompatible: vi.fn(), recomputeBindings: vi.fn()
+    };
+    const repository = { ...createTestModuleRegistryRepository({
       getRegistry: vi.fn().mockResolvedValue(registry),
       updateModule: vi.fn().mockResolvedValue(registry),
       listDriverRegistry: vi.fn().mockResolvedValue({ items: moduleKind === "driver-group" ? [{
@@ -33,7 +38,7 @@ describe("canonical module page request boundary", () => {
         driverNature: "physical-device", instanceCardinality: "multiple",
         parseCoverages: [{ compatible: "vendor,device", coverage: { covered: false } }]
       }] : [], total: moduleKind === "driver-group" ? 1 : 0 })
-    });
+    }), ...retiredWrites };
     const listDriverCompatibleDiscovery = vi.fn().mockResolvedValue({
       status: "ready", catalogRelease: { id: "crel_one", digest: "sha256:one" },
       matcherRevision: "matcher_one", nextCursor: null, ignoredReviewItemCount: 0,
@@ -71,11 +76,7 @@ describe("canonical module page request boundary", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "管理规范主体与归属" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(repository.updateModule).not.toHaveBeenCalled();
-    for (const retiredWrite of [repository.updateDriverRegistration,
-      repository.updateDriverRegistrationDefault, repository.replayDriverPlacement,
-      repository.registerOrClaimDriver, repository.createMapping, repository.deleteMapping,
-      repository.dismissCompatible, repository.restoreDismissedCompatible,
-      repository.recomputeBindings]) {
+    for (const retiredWrite of Object.values(retiredWrites)) {
       expect(retiredWrite).not.toHaveBeenCalled();
     }
   });
@@ -84,9 +85,9 @@ describe("canonical module page request boundary", () => {
     const getRegistry = vi.fn().mockResolvedValue(EMPTY_PARAMETER_MODULE_REGISTRY);
     const getDiscoveryHints = vi.fn();
     const listDriverRegistry = vi.fn().mockResolvedValue({ items: [] });
-    const repository = { getRegistry, getDiscoveryHints, listDriverRegistry,
+    const repository = { ...createTestModuleRegistryRepository({ getRegistry, listDriverRegistry }), getDiscoveryHints,
       recomputeBindings: vi.fn(), createMapping: vi.fn(), deleteMapping: vi.fn(),
-      dismissCompatible: vi.fn(), restoreDismissedCompatible: vi.fn() } as unknown as ParameterModuleRegistryRepository;
+      dismissCompatible: vi.fn(), restoreDismissedCompatible: vi.fn() };
     const listDriverCompatibleDiscovery = vi.fn().mockResolvedValue({
       status: "ready", catalogRelease: { id: "crel_one", digest: "sha256:one" },
       matcherRevision: "matcher_one", items: [], nextCursor: null,

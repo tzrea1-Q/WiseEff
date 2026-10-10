@@ -15,10 +15,7 @@ import type {
   ParameterSpecSummary,
   ParameterBindingValue,
   ProjectParameterBinding,
-  SpecQuery,
   SpecReviewTask,
-  SpecReviewTaskListResult,
-  SpecReviewTaskQuery,
   TopologyDiagnostic,
   TopologyTree,
   ValidationRun,
@@ -136,26 +133,6 @@ export type ParameterTopologyMappedError =
 function appendQuery(path: string, params: URLSearchParams) {
   const query = params.toString();
   return query ? `${path}?${query}` : path;
-}
-
-function buildSpecsPath(query: SpecQuery = {}) {
-  const params = new URLSearchParams();
-  if (query.q) params.set("q", query.q);
-  if (query.sourceKind) params.set("sourceKind", query.sourceKind);
-  if (query.lifecycle) params.set("lifecycle", query.lifecycle);
-  if (query.attributionSubjectId)
-    params.set("attributionSubjectId", query.attributionSubjectId);
-  if (query.propertyKey) params.set("propertyKey", query.propertyKey);
-  if (query.view) params.set("view", query.view);
-  return appendQuery("/api/v2/parameter-specs", params);
-}
-
-function buildSpecReviewTasksPath(query: SpecReviewTaskQuery = {}) {
-  const params = new URLSearchParams();
-  if (query.status) params.set("status", query.status);
-  if (query.limit != null) params.set("limit", String(query.limit));
-  if (query.cursor) params.set("cursor", query.cursor);
-  return appendQuery("/api/v2/parameter-spec-review-tasks", params);
 }
 
 function buildBindingsPath(projectId: string, revisionId: string) {
@@ -516,70 +493,6 @@ export function createHttpParameterTopologyRepository(
   apiClient: ApiClient = createDefaultApiClient(),
 ): ParameterTopologyRepository {
   return {
-    async listSpecs(query) {
-      const response = await apiClient.get<
-        ItemsEnvelope<ParameterSpecSummaryDto>
-      >(buildSpecsPath(query));
-      return response.items.map(specSummaryFromDto);
-    },
-    async getSpec(specId, options) {
-      const query = options?.view
-        ? `?view=${encodeURIComponent(options.view)}`
-        : "";
-      const response = await apiClient.get<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}${query}`);
-      return specDetailFromDto(response.item);
-    },
-    async listSpecReviewTasks(query = {}) {
-      const response = await apiClient.get<{
-        historicalItems?: SpecReviewTaskDto[];
-        nextCursor?: string | null;
-      }>(buildSpecReviewTasksPath(query));
-      return {
-        items: (response.historicalItems ?? []).map(specReviewTaskFromDto),
-        nextCursor: response.nextCursor ?? null,
-      } satisfies SpecReviewTaskListResult;
-    },
-    async activateParameterSpec(specId, input) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/activate`,
-        input,
-      );
-      return specDetailFromDto(response.item);
-    },
-    async updateParameterSpec(specId, input) {
-      const response = await apiClient.patch<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}`, input);
-      return specDetailFromDto(response.item);
-    },
-    async deprecateParameterSpec(specId, input) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/deprecate`,
-        input,
-      );
-      return specDetailFromDto(response.item);
-    },
-    async restoreParameterSpec(specId, input) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}/restore`, input);
-      return specDetailFromDto(response.item);
-    },
-    async reattributeParameterSpec(specId, input) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/reattribute`,
-        input,
-      );
-      return specDetailFromDto(response.item);
-    },
     async listBindings(projectId, revisionId) {
       const response = await apiClient.get<ItemsEnvelope<ProjectBindingDto>>(
         buildBindingsPath(projectId, revisionId),

@@ -1,18 +1,7 @@
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type {
-  ActivateParameterSpecInput,
-  DeprecateParameterSpecInput,
-  ParameterTopologyRepository,
-  ReattributeParameterSpecInput,
-  RestoreParameterSpecInput,
-  UpdateParameterSpecInput,
-} from "@/application/ports/ParameterTopologyRepository";
-import type {
-  CreateModuleMappingInput,
   CreateParameterModuleInput,
-  MappingMutationResult,
-  ModuleDiscoveryHints,
   ParameterModuleRegistryRepository,
-  RecomputeBindingModulesResult,
   UpdateParameterModuleInput,
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
@@ -32,11 +21,6 @@ import type { ParameterFileRepository } from "@/application/ports/ParameterFileR
 import type {
   ConfigRevisionSummary,
   IdentityMappingTask,
-  ParameterSpecDetail,
-  ParameterSpecSummary,
-  SpecQuery,
-  SpecReviewTaskListResult,
-  SpecReviewTaskQuery,
   ValidationRun,
 } from "@/domain/parameter-topology/types";
 
@@ -57,37 +41,7 @@ export type ParameterAdminImportActions = {
  * Panels depend on this seam only — never on multiple HTTP/mock clients.
  */
 export type ParameterAdminApplication = {
-  listSpecs(query?: SpecQuery): Promise<ParameterSpecSummary[]>;
-  getSpec(
-    specId: string,
-    options?: { view?: "effective" | "governance" },
-  ): Promise<ParameterSpecDetail>;
-  listSpecReviewTasks(
-    query?: SpecReviewTaskQuery,
-  ): Promise<SpecReviewTaskListResult>;
-  activateParameterSpec(
-    specId: string,
-    input: ActivateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  updateParameterSpec(
-    specId: string,
-    input: UpdateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  deprecateParameterSpec(
-    specId: string,
-    input: DeprecateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  restoreParameterSpec(
-    specId: string,
-    input: RestoreParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  reattributeParameterSpec(
-    specId: string,
-    input: ReattributeParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
-  getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
   createModule(
     input: CreateParameterModuleInput,
   ): Promise<ParameterModuleRegistry>;
@@ -96,13 +50,6 @@ export type ParameterAdminApplication = {
     input: UpdateParameterModuleInput,
   ): Promise<ParameterModuleRegistry>;
   deleteModule(moduleId: string): Promise<ParameterModuleRegistry>;
-  createModuleMapping(
-    input: CreateModuleMappingInput,
-  ): Promise<MappingMutationResult>;
-  deleteModuleMapping(mappingId: string): Promise<MappingMutationResult>;
-  recomputeBindingModules(input?: {
-    projectId?: string;
-  }): Promise<RecomputeBindingModulesResult>;
   asModuleRegistryRepository(): ParameterModuleRegistryRepository;
 
   createImportPreview(
@@ -157,60 +104,16 @@ export function createParameterAdminApplication({
 }: CreateParameterAdminApplicationOptions): ParameterAdminApplication {
   const asModuleRegistryRepository = (): ParameterModuleRegistryRepository => ({
     getRegistry: () => moduleRegistry.getRegistry(),
-    getDiscoveryHints: () => moduleRegistry.getDiscoveryHints(),
-    dismissCompatible: (input) => moduleRegistry.dismissCompatible(input),
-    restoreDismissedCompatible: (compatible) =>
-      moduleRegistry.restoreDismissedCompatible(compatible),
     createModule: (input) => moduleRegistry.createModule(input),
     updateModule: (moduleId, input) =>
       moduleRegistry.updateModule(moduleId, input),
     deleteModule: (moduleId) => moduleRegistry.deleteModule(moduleId),
-    previewMapping: (input) => moduleRegistry.previewMapping(input),
-    createMapping: (input) => moduleRegistry.createMapping(input),
-    deleteMapping: (mappingId) => moduleRegistry.deleteMapping(mappingId),
-    recomputeBindings: (input) => moduleRegistry.recomputeBindings(input),
     listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
-    registerOrClaimDriver: (input) =>
-      moduleRegistry.registerOrClaimDriver(input),
-    updateDriverRegistration: (moduleId, input) =>
-      moduleRegistry.updateDriverRegistration(moduleId, input),
-    updateDriverRegistrationDefault: (moduleId, input) =>
-      moduleRegistry.updateDriverRegistrationDefault(moduleId, input),
-    replayDriverPlacement: (moduleId) =>
-      moduleRegistry.replayDriverPlacement(moduleId),
   });
 
   return {
-    listSpecs(query = {}) {
-      return topology.listSpecs(query);
-    },
-    getSpec(specId, options) {
-      return topology.getSpec(specId, options);
-    },
-    listSpecReviewTasks(query = {}) {
-      return topology.listSpecReviewTasks(query);
-    },
-    activateParameterSpec(specId, input) {
-      return topology.activateParameterSpec(specId, input);
-    },
-    updateParameterSpec(specId, input) {
-      return topology.updateParameterSpec(specId, input);
-    },
-    deprecateParameterSpec(specId, input) {
-      return topology.deprecateParameterSpec(specId, input);
-    },
-    restoreParameterSpec(specId, input) {
-      return topology.restoreParameterSpec(specId, input);
-    },
-    reattributeParameterSpec(specId, input) {
-      return topology.reattributeParameterSpec(specId, input);
-    },
-
     getModuleRegistry() {
       return moduleRegistry.getRegistry();
-    },
-    getModuleDiscoveryHints() {
-      return moduleRegistry.getDiscoveryHints();
     },
     createModule(input) {
       return moduleRegistry.createModule(input);
@@ -220,15 +123,6 @@ export function createParameterAdminApplication({
     },
     deleteModule(moduleId) {
       return moduleRegistry.deleteModule(moduleId);
-    },
-    createModuleMapping(input) {
-      return moduleRegistry.createMapping(input);
-    },
-    deleteModuleMapping(mappingId) {
-      return moduleRegistry.deleteMapping(mappingId);
-    },
-    recomputeBindingModules(input) {
-      return moduleRegistry.recomputeBindings(input);
     },
     asModuleRegistryRepository,
 
