@@ -175,6 +175,7 @@ function renderCatalog(
     <CatalogHarness
       repository={repository}
       actor={options.actor ?? "org-admin"}
+      onOpenPendingWork={vi.fn()}
       sessionPermissions={options.sessionPermissions}
       initialSearch={options.search ?? ""}
       layoutMode={options.layoutMode ?? "desktop"}
