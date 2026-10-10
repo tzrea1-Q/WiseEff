@@ -3,7 +3,34 @@ import { describe, expect, it, vi } from "vitest";
 import { consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights } from "../e2e/quality/consistency";
 
 describe("compact filter, sort and pagination height contract", () => {
-  const control = (dom: string, height: number) => ({ dom, role: null, height });
+  const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: null, height, compactControl });
+
+  it.each([
+    ["viewSwitches", "button.parameter-admin-scope-nav__tab", 43],
+    ["viewSwitches", "button.chip.chip-active", 30],
+    ["viewSwitches", "button.parameter-home__toggle-item", 28],
+    ["primaryActions", "button.button.subtle", 36],
+    ["moduleTreeLabels", "button.parameter-catalog__tree-select", 40],
+    ["xiaozeLaunchers", "button.xiaoze-chat-toggle", undefined]
+  ])("ignores unrelated %s measurement %s in the full route result", (category, dom, height) => {
+    const measurements = { [category]: [{ dom, height }], filterControls: [control("select.compact-filter-control", 32)] };
+    expect(() => requireCompactControlHeights(measurements, "/parameter-admin/specs")).not.toThrow();
+  });
+
+  it("ignores unmarked controls even if they appear in a compact category", () => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("button.button.subtle", 36, null)] }, "/parameters"))
+      .not.toThrow();
+  });
+
+  it.each([undefined, NaN, Infinity])("reports a marked control's missing or invalid height %s as a collection error", (height) => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("select.compact-filter-control", height as number)] }, "/audit"))
+      .toThrow("/audit: compact control collection error: select.compact-filter-control has no finite height measurement");
+  });
+
+  it.each([undefined, null])("reports an absent route result %s as a collection error", (measurements) => {
+    expect(() => requireCompactControlHeights(measurements, "/audit"))
+      .toThrow("/audit: compact control collection error: route measurements are missing");
+  });
 
   it("rejects a filter below the 32px PC minimum with actionable route evidence", () => {
     expect(() => requireCompactControlHeights({ filterControls: [control("select", 28)] }, "/audit"))
@@ -23,7 +50,7 @@ describe("compact filter, sort and pagination height contract", () => {
     }, "/parameter-admin/specs")).not.toThrow();
   });
 
-  it.each([NaN, Infinity, 0, 31.999, 32.001])("rejects invalid measured height %s", (height) => {
+  it.each([0, 31.999, 32.001])("rejects a measured height outside the compact contract: %s", (height) => {
     expect(() => requireCompactControlHeights({ sortControls: [control("select", height)] }, "/parameters"))
       .toThrow("expected 32px");
   });

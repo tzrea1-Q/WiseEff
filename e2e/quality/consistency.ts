@@ -18,7 +18,10 @@ export function collectConsistencyMeasurements() {
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
   };
   const geometry = (element: Element) => ({ dom: signature(element), rect: bounds(element) });
-  const control = (element: Element) => ({ dom: signature(element), role: role(element), height: element.getBoundingClientRect().height });
+  const control = (element: Element) => ({
+    dom: signature(element), role: role(element), height: element.getBoundingClientRect().height,
+    compactControl: element.getAttribute("data-compact-control")
+  });
   const viewSwitches = elements([
     '[role="tab"]', '[role="radiogroup"] [role="radio"]', '[role="group"][aria-label*="视图"] button[aria-pressed]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
@@ -103,11 +106,18 @@ export type ConsistencyMeasurements = ReturnType<typeof collectConsistencyMeasur
 export type ConsistencyCategory = keyof ConsistencyMeasurements;
 
 export function requireCompactControlHeights(
-  measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls">>,
+  measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls">> | null | undefined,
   routePath: string
 ) {
-  for (const controls of Object.values(measurements)) {
-    for (const control of controls) {
+  if (!measurements) {
+    throw new Error(`${routePath}: compact control collection error: route measurements are missing`);
+  }
+  for (const category of ["filterControls", "sortControls", "paginationControls"] as const) {
+    for (const control of measurements[category] ?? []) {
+      if (control.compactControl !== "filter" && control.compactControl !== "sort" && control.compactControl !== "pagination") continue;
+      if (typeof control.height !== "number" || !Number.isFinite(control.height)) {
+        throw new Error(`${routePath}: compact control collection error: ${control.dom} has no finite height measurement`);
+      }
       if (control.height !== 32) {
         throw new Error(`${routePath}: ${control.dom} has height ${control.height}px; expected 32px`);
       }

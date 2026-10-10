@@ -1,13 +1,37 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { collectConsistencyMeasurements } from "../../e2e/quality/consistency";
+import { collectConsistencyMeasurements, requireCompactControlHeights } from "../../e2e/quality/consistency";
 import { LibrarySelectFilter } from "../components/admin/LibrarySelectFilter";
 import { Select, SelectTrigger, SelectValue } from "../components/ui/select";
 import { declarationsFor, readStylesheet } from "./cssAssertions";
 import { DataTable } from "../components/admin/DataTable";
 
 describe("compact control measurement scope", () => {
+  it("ignores the live run's view switches, ordinary buttons, tree navigation and Xiaoze when validating a full result", () => {
+    const { container } = render(<>
+      <main>
+        <button className="parameter-admin-scope-nav__tab" data-measured-height="43">参数</button>
+        <div className="param-admin-audit-filters"><button className="chip chip-active" data-measured-height="30">审计</button></div>
+        <button className="parameter-home__toggle-item" role="radio" data-measured-height="28">工作台</button>
+        <button className="button subtle" data-measured-height="36">查看</button>
+        <button className="parameter-catalog__tree-select" data-measured-height="40">模块</button>
+        <button className="parameters-column-filter__trigger" data-measured-height="24">筛选模块</button>
+        <select className="compact-filter-control" data-compact-control="filter"><option>项目</option></select>
+      </main>
+      <button className="xiaoze-chat-toggle">小泽</button>
+    </>);
+    for (const element of container.querySelectorAll("*")) {
+      element.getBoundingClientRect = () => new DOMRect(0, 0, 120, Number(element.getAttribute("data-measured-height") ?? 32));
+      Object.defineProperty(element, "checkVisibility", { value: () => true });
+    }
+    const measurements = collectConsistencyMeasurements();
+    expect(measurements.viewSwitches.map((control) => control.height)).toEqual([43, 30, 28]);
+    expect(measurements.xiaozeLaunchers).toHaveLength(1);
+    expect(measurements.filterControls).toEqual([expect.objectContaining({ compactControl: "filter", height: 32 })]);
+    expect(() => requireCompactControlHeights(measurements, "/parameter-admin/specs")).not.toThrow();
+  });
+
   it("marks pagination actions without adopting table-header sorts and preserves page changes", async () => {
     render(<DataTable rows={[{ name: "第一项" }, { name: "第二项" }]} rowKey={(row) => row.name}
       columns={[{ key: "name", header: "名称", render: (row) => row.name, sortAccessor: (row) => row.name }]} pageSize={1} />);
@@ -65,7 +89,10 @@ describe("compact control measurement scope", () => {
     expect(measurements.sortControls).toHaveLength(1);
     expect(measurements.paginationControls).toHaveLength(1);
     expect(measurements.filterControls[0].dom).toBe("select");
+    expect(measurements.filterControls[0].compactControl).toBe("filter");
     expect(measurements.sortControls[0].dom).toBe("select");
+    expect(measurements.sortControls[0].compactControl).toBe("sort");
     expect(measurements.paginationControls[0].dom).toBe("button");
+    expect(measurements.paginationControls[0].compactControl).toBe("pagination");
   });
 });

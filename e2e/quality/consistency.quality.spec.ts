@@ -39,8 +39,8 @@ for (const route of consistencyRoutes) {
       await expect(async () => {
         measurements = await page.evaluate(collectConsistencyMeasurements);
         requireConsistencyMeasurements(measurements, route.required, route.path);
-        requireCompactControlHeights(measurements, route.path);
       }).toPass({ timeout: 20_000 });
+      requireCompactControlHeights(measurements, route.path);
     } finally {
       await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {
         contentType: "application/json",
