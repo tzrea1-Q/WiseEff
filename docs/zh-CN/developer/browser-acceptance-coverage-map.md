@@ -133,11 +133,11 @@
 - `PARAM-ADMIN-IA-001`：组织子导航仅「参数定义管理」「模块管理」；定义管理内嵌匹配审核；节点对应嵌套于 specs 且在有任务时出现；旧 `/spec-review`、`/identity-mapping` 重定向并保留 query（单测 `parameterAdminOrganizationPath.test.ts`、`ParameterAdminNextPage.test.tsx`）。
 - `PARAM-ADMIN-AUDIT-RECENT-001`：服务端已审计的 Admin 变更后，项目运营最近条带来自 `listAuditEvents` 的投影，不依赖本地 `PUSH_AUDIT_HINT`（单测 `parameterAdminRecentAudits.test.tsx`、`refreshParameterAdminRecentAudits.test.ts`；playwright-cli 证据见 `work/ui-checks/param-admin-audit-recent/`）。
 - `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索 ingest 后的规格（sc8562/mt5788 两个不同 `gpio_int`），打开详情并决议审核任务（含治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-SPEC-VIEW-001`：`/parameter-admin/specs` 默认打开唯一生效目录；draft/deprecated/被遮蔽/不完整原始行必须显式切到 URL 驱动的「治理历史」，列表和详情共用所选投影（单测 `src/ParameterAdminNextPage.test.tsx`、`src/application/parameters/parameterAdminUrl.test.ts`；playwright-cli 证据 `work/ui-checks/issue-649-populated-upgrade/`）。
-- `PARAM-SPEC-EDIT-001`：Admin 在启用态定义上改单位、约束、示例值与说明，保存后再打开，各值往返；删除约束键即删除，清空单位即清空（组件往返测试 `ParameterSpecDetailDialog.test.tsx`、载荷单测 `ParameterSpecDetail.test.ts`；服务端 `specLifecycle.integration.test.ts`）。
-- `PARAM-SPEC-EDIT-002`：定义编辑器在 1440×900 / 768×1024 / 390×844 下动作可达（含小泽 FAB 时不被挡住）；打开时焦点进入弹窗，关闭后回到触发器（`ModalDialog.test.tsx`；playwright-cli 证据 `work/ui-checks/param-spec-editor-batch4/`）。mock 无 FAB，层叠由刻度 1100 < 1150 < 1200 闭合。
-- `PARAM-SPEC-IDENTITY-001`：管理员在库中纠正一条定义的归属主体，重新打开后声明主体已更新，生命周期与引用数保留，同一属性不会出现第二条定义（组件 `ParameterSpecDetailDialog.test.tsx`；mock/HTTP 接缝；playwright-cli 证据 `work/ui-checks/param-spec-identity/`）。
-- `PARAM-SPEC-IDENTITY-002`：零引用定义上提供改属性键，有引用时带明确原因拒绝；与既有定义（含废弃）冲突时展示阻挡方（`ParameterSpecDetailDialog.test.tsx`、`presentError.test.ts`、`mockParameterTopologyRepository.test.ts`；playwright-cli 证据 `work/ui-checks/param-spec-identity/`）。
+- `PARAM-SPEC-VIEW-001`：依 #1080 Q7 退役旧 Effective/Governance 双视图正向需求；当前目录导航与 URL 身份由 `PCAT-UI-01/02/03/05` 独立覆盖（`src/features/parameter-catalog/CatalogPage.test.tsx`、`src/application/parameter-catalog/urlAnchor.test.ts`、`e2e/acceptance/parameter-catalog.acceptance.spec.ts`）。
+- `PARAM-SPEC-EDIT-001`：依 #1080 Q7 退役旧 Spec 编辑往返需求；规范 Definition 修订/发布不是旧约束或示例值断言的等价替代（`src/features/parameter-catalog-governance/DefinitionEditorBody.test.tsx`、`src/features/parameter-catalog-governance/PublicationDialog.test.tsx`、`server/modules/parameter-catalog-api/legacy/specGovernanceRetirement.integration.test.ts`）。
+- `PARAM-SPEC-EDIT-002`：依 #1080 Q7 退役旧 Spec 编辑器可达性需求；保留的 `src/components/common/ModalDialog.test.tsx` 和 `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` 中的 `PCAT-UI-17` 不证明已删除编辑器的三视口/FAB 契约。
+- `PARAM-SPEC-IDENTITY-001`：依 #1080 Q7 退役旧 Spec 原地归属纠正需求；规范纠错要求身份变化、明确项目清单和原因（`src/features/parameter-catalog-governance/DefinitionEditorBody.test.tsx`、`server/modules/parameter-catalog-migration/guards.integration.test.ts`、`server/modules/parameter-catalog-api/legacy/specGovernanceRetirement.integration.test.ts`）。
+- `PARAM-SPEC-IDENTITY-002`：依 #1080 Q7 退役旧零引用改键/碰撞需求；规范迁移的身份与源出处防护是独立义务（`server/modules/parameter-catalog-migration/guards.integration.test.ts`、`server/modules/parameter-catalog-migration/provenance.integration.test.ts`、`server/modules/parameter-catalog-api/legacy/specGovernanceRetirement.integration.test.ts`）。
 - `PARAM-TOPOLOGY-BROWSE-001`：在融合 DTS 工作台中切换真实源树/生效树，选择嵌套上下文（`amba` → `i2c@FDF5E000` → `sc8562@6E`），搜索两个 `gpio_int` 语义行，并在成熟详情弹窗查看完整路径、raw 值、shape 和 provenance；topology API 必须 200 且含预期节点（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：类型化 drafts 返回 Schema cell-count 诊断、过期 revision 返回 409，并对临时 Config Set 走 fail-closed 编译/工具链校验（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CANONICAL-VALUE-WORKFLOW-001`：canonical 属性编辑／删除草稿经独立软件审核单阶段批准后生效，覆盖撤回／驳回／重提、源与历史持久化及 API 重启身份稳定（`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts`）。这是 2026-09-21 owner 接受的 canonical 工作流回归，不替代旧 topology、编译、身份映射和发布门禁。
@@ -177,6 +177,12 @@
 职责文件固定为：`e2e/acceptance/parameter-catalog.acceptance.spec.ts`（read/detail/timeline/state/responsive）、`e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`（Registration/Placement、Review、Proposal）、`e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`（concurrency、role spoof、legacy、mock parity、fail closed）。15 个 operation 已在 `e2e/acceptance/operationMatrix.ts` 以 `coverage=automated`、完整 assertions、exact owner `specFiles` 登记；`npm run acceptance:operations` 从该 source 生成英文矩阵。OP-08 本地 Catalog lane 证据不是 Hosted、目标机或 OP-09 切流证据。Hosted/target 声明仍须通过 `npm run acceptance:evidence` 的同一 full run/source/runtime 校验。
 
 ### 旧 operation disposition
+
+#### #1080 Q7 正向需求退役
+
+`PARAM-SPEC-VIEW-001`、`PARAM-SPEC-EDIT-001/002`、`PARAM-SPEC-IDENTITY-001/002` 已从当前操作矩阵移除，不再作为未来旧功能暂缓。`requirements.ts` 中既有的 `required=false` 条目及本页对应记录仅保留历史 ID 和处置状态；这些 ID 没有自动化或计划浏览器标记。上述保留/规范测试只负责各自的真实契约，不等价覆盖已删除的旧成功路径。现有规范操作 ID、测试归属、断言种类和检查器策略不变。
+
+Q7 仍要求身份、关键属性、源出处和跨租户负向测试归入规范负责方。已填充的跨租户 Review 证据拒绝矩阵现归入 `server/modules/parameter-catalog-api/governance/reviewClosure.integration.test.ts`：获授权调用者提交跨组织、悬空、不一致或错误关联的证据时，经组装 API 拒绝，审核项保持开放，领域写入不变，并保留可信拒绝审计。保留的 410、拒绝审计和无 DML 套件与规范浏览器正向覆盖相互独立；历史截图不是当前验收证据。
 
 | 旧 ID/表面 | launch disposition |
 | --- | --- |

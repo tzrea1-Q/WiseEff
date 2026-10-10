@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   catalogActorForRole,
+  catalogActionsForSession,
   type CatalogActorKind,
   type CatalogAuthorizedAction,
   type CatalogDomainState
@@ -60,7 +61,7 @@ export function CatalogOrganizationSurface({
   relatedKnowledge
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
-  const reviewQueueAllowed = actor === "org-admin";
+  const reviewQueueAllowed = catalogActionsForSession({ actor, permissions: sessionPermissions }).includes("resolve-review-item");
   const anchor = parseCatalogUrlAnchor(search);
   const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);

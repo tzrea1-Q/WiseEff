@@ -628,6 +628,8 @@ effective spec 列表与精确详情共用前置 read-window adapter；被遮蔽
 
 组织审核队列需要 Organization 管理员权限。仅有 Platform 权限的会话会看到权限说明，不显示队列操作，也不读取队列；从身份映射入口重定向后同样如此。通用的 `parameter:view` 权限不授予组织审核访问权，服务器授权保持不变。
 
+审核决议会将来源引用（包括嵌套的精确修订和 proof 字段）校验为同一组织内的一条来源图。关联证据还须与其不可变 Observation 的来源、release 和 matcher pin 一致。跨组织、悬空或不一致的引用返回 `400`，审核项保持开放，不提交注册、placement、Binding、值、Proposal、决议、幂等行或成功审计。可信拒绝审计仍以追加方式保留。没有来源引用的分类历史证据仍可审核，不补造来源身份。
+
 DTS 审核证据可以证明 `needs_mapping` 修订中的不可变属性，但不会因此获得 Binding 或源写入证明。连续性证据保留前驱与候选的关系及匹配理由，不选择身份；候选有属性时使用精确属性锚点。无属性节点的连续性以修订绑定的 Review Evidence 进入规范 Review Queue：物化前验证持久化候选归属和连续性诊断、完整源成员的归属与字节，以及当前 Catalog pin。不创建属性定位、Parameter Observation、Binding 或源写入证明，也不解决前驱身份选择。源证明无效时仍以 `source-proof-invalid` 拒绝并回滚；仅缺少属性不会丢弃歧义证据。
 
 ```text
@@ -644,7 +646,7 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 
 `GET /api/v1/parameters/:parameterId` 返回与 v1 列表相同的规范兼容记录：`id`、`bindingId` 和 `projectParameterBindingId` 均指向 `pbind_` Binding；Definition、有效修订、当前 Project value 以及源 occurrence/file pin 均使用规范身份。不支持的旧元数据明确标记为不可用，记录中的 `history` 仍为 `null`。`GET /api/v1/parameters/:parameterId/history` 返回规范 Binding 变更历史，包括变更前后的 Definition 修订与 Project value ID、值状态、原因、成功审计引用、Catalog Release 和时间戳，不返回旧模型的值载荷。
 
-两个适配器均要求有效且获授权的组织用户，在读取值或历史前校验解析出的 Binding 所属项目范围。同组织跨项目请求返回 `403`；未知或跨组织的规范身份返回 `404`。旧 ID 只能通过精确的 `wiseeff-v1` / `project-parameter-binding` / 项目范围 typed mapping head 解析到同项目的规范 Binding，不按属性、名称、flat value 或旧语义读取推断身份。缺失、归档、阻断、歧义或非 Binding 的映射返回退役合同中的 `410 GONE`，并带有 `Link: </api/v2/catalog>; rel="successor-version"`；已映射的旧 ID 同样执行项目范围校验。保留旧 Binding/修订记录、历史读取器、Archive 和映射，不删除这些审计能力。
+两个适配器均要求有效且获授权的组织用户，在读取值或历史前校验解析出的 Binding 所属项目范围。同组织跨项目请求返回 `403`；未知或跨组织的规范身份返回 `404`。旧 ID 只能通过精确的 `wiseeff-v1` / `project-parameter-binding` / 项目范围 typed mapping head 解析到同项目的规范 Binding，不按属性、名称、flat value 或旧语义读取推断身份。缺失、归档、阻断、歧义或非 Binding 的映射返回退役合同中的 `410 GONE`，并带有 `Link: </api/v2/catalog>; rel="successor-version"`，即使旧身份记录中的项目不可访问也不例外。先判断映射是否精确有效，只有解析出的 Binding 才执行项目范围校验。保留旧 Binding/修订记录、历史读取器、Archive 和映射，不删除这些审计能力。
 
 ## 消费者迁移矩阵
 
