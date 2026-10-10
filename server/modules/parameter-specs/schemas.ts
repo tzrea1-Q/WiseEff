@@ -398,72 +398,14 @@ export type ParameterSpecSummaryDto = z.infer<
 export type ParameterSpecDetailDto = z.infer<
   typeof parameterSpecDetailDtoSchema
 >;
-export type ParameterSpecCutoverSummaryDto = z.infer<
-  typeof parameterSpecCutoverSummaryDtoSchema
->;
 export type ListParameterSpecsQuery = z.infer<
   typeof listParameterSpecsQuerySchema
->;
-export type ParameterSpecDetailQuery = z.infer<
-  typeof parameterSpecDetailQuerySchema
 >;
 export type ListSpecReviewTasksQuery = z.infer<
   typeof listSpecReviewTasksQuerySchema
 >;
 export type ParameterSpecReviewTaskDto = z.infer<
   typeof parameterSpecReviewTaskDtoSchema
->;
-export type ResolveSpecReviewTaskBody = z.infer<
-  typeof resolveSpecReviewTaskBodySchema
->;
-export type ActivateParameterSpecBody = z.infer<
-  typeof activateParameterSpecBodySchema
->;
-export type CreateParameterSpecBody = z.infer<
-  typeof createParameterSpecBodySchema
->;
-export type UpdateParameterSpecBody = z.infer<
-  typeof updateParameterSpecBodySchema
->;
-export type DeprecateParameterSpecBody = z.infer<
-  typeof deprecateParameterSpecBodySchema
->;
-export type RestoreParameterSpecBody = z.infer<
-  typeof restoreParameterSpecBodySchema
->;
-export type ReattributeParameterSpecBody = z.infer<
-  typeof reattributeParameterSpecBodySchema
->;
-export type RenameParameterSpecPropertyKeyBody = z.infer<
-  typeof renameParameterSpecPropertyKeyBodySchema
->;
-export type PreviewPropertyKeyCutoverBody = z.infer<
-  typeof previewPropertyKeyCutoverBodySchema
->;
-export type StartPropertyKeyCutoverBody = z.infer<
-  typeof startPropertyKeyCutoverBodySchema
->;
-export type PreparePropertyKeyCutoverBody = z.infer<
-  typeof preparePropertyKeyCutoverBodySchema
->;
-export type FinalizePropertyKeyCutoverBody = z.infer<
-  typeof finalizePropertyKeyCutoverBodySchema
->;
-export type PropertyKeyCutoverPreviewDto = z.infer<
-  typeof propertyKeyCutoverPreviewDtoSchema
->;
-export type PropertyKeyCutoverRunDto = z.infer<
-  typeof propertyKeyCutoverRunDtoSchema
->;
-export type PrepareParameterSpecCutoverBody = z.infer<
-  typeof prepareParameterSpecCutoverBodySchema
->;
-export type FinalizeParameterSpecCutoverBody = z.infer<
-  typeof finalizeParameterSpecCutoverBodySchema
->;
-
-export type ResolveSpecReviewTaskResultDto = z.infer<
-  typeof resolveSpecReviewTaskResultSchema
 >;
 
 // Layout fields the value-shape model carries per kind (see DraftValueShape in
@@ -545,10 +487,3 @@ export const promoteDriverSchemaOverlayBodySchema = z.object({
 export const driverSchemaPromotionParamsSchema = z.object({
   promotionId: nonEmptyString,
 });
-
-export type CreateOrganizationDriverSchemaBody = z.infer<
-  typeof createOrganizationDriverSchemaBodySchema
->;
-export type UpdateOrganizationDriverSchemaBody = z.infer<
-  typeof updateOrganizationDriverSchemaBodySchema
->;
