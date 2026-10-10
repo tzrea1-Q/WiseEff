@@ -14,7 +14,8 @@ import { apiRoute } from "../../../e2e/acceptance/helpers/runtime";
 import { lookupParameterFileVersion, numericCellDts, seedIsolatedBinding, seedIsolatedHexChipBindings } from "../../../e2e/acceptance/helpers/semanticBindingFixture";
 import { createWiseEffServer } from "../../app";
 
-import { seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../scripts/seed-m1-parameters";
+import { parsePowerManagementConfig, seedM1Parameters, seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../scripts/seed-m1-parameters";
+import { seedM0Foundation } from "../../../scripts/seed-m0";
 import { loadCommittedDtsSeedFiles } from "../../../scripts/compile-dts-seed";
 import { seedPublishedCatalog } from "../../testing/parameterCatalog/seedPublishedCatalog";
 import { VENDOR_CONSTRAINED_RELEASE_ID } from "../../../scripts/compile-vendor-catalog-release";
@@ -25,7 +26,6 @@ import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { seedCoreGraph } from "../../testing/fixtures";
 import { createEphemeralTestDatabase, withTestClusterRoleCatalogLock, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
@@ -33,7 +33,7 @@ import { registerParameterCatalogApi } from "../parameter-catalog-api/production
 import { catalogDriverCompatibleDiscoveryResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { ensureLocalPostCutoverIdentity } from "../parameter-topology/localPostCutover";
+import { ensureCanonicalCatalogAfterLegacySeed } from "../parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
 import { registerParameterFileRoutes } from "./routes";
 
 const organizationId = "org-chargelab";
@@ -177,26 +177,22 @@ describe("seeded post-cutover DTS upload with a published Catalog", () => {
     db = createPostgresDatabase(database.url);
     storageDirectory = await mkdtemp(join(tmpdir(), "wiseeff-seeded-upload-"));
     objectStore = createLocalObjectStore(storageDirectory);
-    await seedCoreGraph(db, {
-      organization: { id: organizationId, name: "ChargeLab" },
-      users: [{ id: auth.user.id }],
-      projects: [
-        { id: "aurora", name: "Aurora", code: "AUR" },
-        { id: "nebula", name: "Nebula", code: "NEB" }
-      ]
-    });
+    await seedM0Foundation(db);
+    const configPath = join(process.cwd(), "src/config/power-management.json");
+    await seedM1Parameters(db, parsePowerManagementConfig(configPath, readFileSync(configPath, "utf8")));
+    await seedPublishedCatalog(getRootPostgresPool(db)!);
     const projectFiles = (await loadCommittedDtsSeedFiles(process.cwd()))
       .filter((file) => file.projectId === "aurora" || file.projectId === "nebula");
     await seedM1DtsFiles(db, objectStore, projectFiles);
     await seedM1SemanticTopology(db, projectFiles);
+    await ensureCanonicalCatalogAfterLegacySeed(db, auth, {
+      organizationId, seedDigest: "seeded-upload-canonical"
+    });
     await seedM1BindingRevisionHistory(db, objectStore, projectFiles);
-    await ensureLocalPostCutoverIdentity(db);
-    expect(await captureCurrentCatalogPin(getRootPostgresPool(db)!)).toBeNull();
-    await seedPublishedCatalog(getRootPostgresPool(db)!);
-  });
+  }, 120_000);
 
   beforeEach(async () => {
-    expect(await resolveParameterIdentityMode(db)).toBe("semantic");
+    expect(await captureCurrentCatalogPin(getRootPostgresPool(db)!)).toMatchObject({ id: VENDOR_CONSTRAINED_RELEASE_ID });
   });
 
   afterAll(async () => {
@@ -293,15 +289,33 @@ describe("seeded post-cutover DTS upload with a published Catalog", () => {
     });
   });
 
-  it.each(["aurora", "nebula"])("reuploads the seeded %s board and produces Catalog-pinned observations", async (projectId) => {
+  it.each(["aurora", "nebula"])("uploads a copy of the seeded %s board while refusing an unreviewed canonical source overwrite", async (projectId) => {
     const fileName = `${projectId}-board.dts`;
     const source = readFileSync(join(process.cwd(), "src/config/dts-seed", fileName), "utf8");
-    const uploaded = await upload(projectId, fileName, source);
+    const snapshot = async () => (await db.query<{ current_version_id: string; versions: number }>(`select file.current_version_id,
+      (select count(*)::int from project_parameter_file_versions version where version.file_id = file.id) as versions
+      from project_parameter_files file where file.project_id = $1 and file.file_name = $2`, [projectId, fileName])).rows[0]!;
+    const before = await snapshot();
+    const { server } = makeServer();
+    const response = await requestJson<{ error: { details: { reason: string } } }>(server,
+      `/api/v1/projects/${projectId}/parameter-files`, {
+        method: "POST", body: JSON.stringify({ fileName, contentBase64: Buffer.from(source).toString("base64") })
+      });
+    expect(response.status, response.bodyText).toBe(409);
+    expect(response.body.error.details.reason).toBe("canonical-source-transaction-required");
+    expect(await snapshot()).toEqual(before);
+    const configSet = await post(projectId, "config-sets", { name: `t1088-copy-${randomUUID()}` });
+    const copyName = `t1088-copy-${randomUUID()}.dts`;
+    const first = await upload(projectId, copyName, source);
+    await post(projectId, `config-sets/${configSet.item.id}/files`, {
+      fileId: first.item.id, role: "base", sortOrder: 0
+    });
+    const second = await upload(projectId, copyName, source);
     const discovery = await discover(projectId);
     const observations = discovery.items.filter((item) => item.source.status === "current"
-      && item.source.fileVersionId === uploaded.version.id);
+      && item.source.fileVersionId === second.version.id);
     expect(observations.length).toBeGreaterThan(0);
     expect(observations.every((item) => item.observedCatalogReleaseId === VENDOR_CONSTRAINED_RELEASE_ID)).toBe(true);
     expect(observations.some((item) => item.compatibles.some((entry) => entry.candidate.kind === "recognized"))).toBe(true);
-  });
+  }, 120_000);
 });

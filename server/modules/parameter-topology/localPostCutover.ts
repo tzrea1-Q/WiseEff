@@ -5,6 +5,7 @@
 import type { Database, Queryable } from "../../shared/database/client";
 import {
   probeCutoverComplete,
+  probeCanonicalSeedReady,
   resolveParameterIdentityMode
 } from "../parameter-kernel/parameterIdentityMode";
 import {
@@ -58,6 +59,10 @@ export async function maybeEnsureLocalPostCutoverOnApiBoot(
   env: LocalPostCutoverBootEnv = process.env
 ): Promise<LocalPostCutoverResult | { status: "skipped" }> {
   if (!shouldEnsureLocalPostCutoverOnApiBoot(env)) {
+    return { status: "skipped" };
+  }
+  if (await probeCanonicalSeedReady(db)) {
+    await assertLocalDatabaseCleanForPostCutover(db);
     return { status: "skipped" };
   }
   return ensureLocalPostCutoverIdentity(db);
