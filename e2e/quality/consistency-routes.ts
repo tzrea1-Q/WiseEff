@@ -36,7 +36,8 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
-    "/debugging-admin", "/debugging-admin/nodes", "/feedback-admin", "/log-admin", "/dts-reload",
+    // /debugging-admin defaults to the DTS reload settings form, which renders no table.
+    "/debugging-admin/nodes", "/feedback-admin", "/log-admin", "/dts-reload",
     "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"],
   moduleTreeLabels: [...catalogPaths, "/parameters", "/node-debugging", "/dts-reload"],
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
