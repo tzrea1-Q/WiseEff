@@ -616,6 +616,8 @@ The retired organization overlay and Platform promotion surfaces link to the Cat
 
 The shadowed Spec/overlay authoring, materialization, promotion and cutover implementations are removed (#1084), not alternative owners behind the tombstones. The prepended retirement handlers, trusted refusal audit, bounded reads and promotion provenance remain. Shared registry, matcher, ingest and value-shape inference helpers remain wherever retained consumers or operator tooling still use them; removing writers does not retire historical storage or migration fixtures.
 
+The retired-success request, response and body schema closure is removed (#1085). OpenAPI retains every public retirement operation with `CatalogLegacyGoneResponse` and its required successor `Link`, but no required success request body or success response. Retirement happens before body parsing; sending a former write payload never revives the writer. Bounded-read DTOs, promotion history, structural node-enablement schemas, authorization and trusted refusal audit remain unchanged.
+
 Legacy read responses include:
 
 Exact `id`/`specId` filters on the spec collection retain the `{ items, historicalItems }` envelope; only `/:specId` returns an `item` envelope. A release advance during adapter work returns `409 release-drift` and advertises the new current release in `X-WiseEff-Catalog-Release`, rather than the stale captured release.

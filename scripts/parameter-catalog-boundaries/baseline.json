@@ -369,8 +369,7 @@
       "legacy-parameter-spec-identifier": 2
     },
     "server/modules/parameter-specs/schemas.ts": {
-      "legacy-overlay-catalog-contract": 4,
-      "legacy-parameter-spec-identifier": 8
+      "legacy-parameter-spec-identifier": 1
     },
     "server/modules/parameter-specs/service.test.ts": {
       "legacy-parameter-spec-identifier": 1

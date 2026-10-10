@@ -14,6 +14,7 @@ import {
   catalogApiFailureReasons,
   catalogCreateBindingDraftRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
+  catalogSupportedDefinitionContentSchema,
   catalogDefinitionDtoSchema,
   catalogDocumentResponseSchema,
   catalogFailureClientBehaviors,
@@ -40,6 +41,38 @@ import {
 } from "./parameterCatalog";
 
 const openApi = buildOpenApiDocument();
+
+describe("canonical definition authoring after legacy contract removal", () => {
+  const content = {
+    displayName: "Current limit",
+    documentation: "Canonical definition content",
+    valueSchema: { type: "integer" as const, minimum: 0, maximum: 4000 },
+  };
+
+  it.each(["overlay-property", "pinned-schema-property"])("refuses %s coverage claims", (kind) => {
+    expect(catalogSupportedDefinitionContentSchema.safeParse({
+      ...content,
+      coverageClaim: { kind },
+    }).success).toBe(false);
+  });
+
+  it("refuses legacy policy targets instead of silently dropping them", () => {
+    expect(catalogSupportedDefinitionContentSchema.safeParse({
+      ...content,
+      policyTarget: "<&gpio 1 0>",
+    }).success).toBe(false);
+  });
+
+  it("preserves canonical array bounds and nested scalar constraints", () => {
+    const valueSchema = {
+      type: "array" as const,
+      minItems: 2,
+      maxItems: 4,
+      items: { type: "integer" as const, minimum: 0, maximum: 65535 },
+    };
+    expect(catalogSupportedDefinitionContentSchema.parse({ ...content, valueSchema }).valueSchema).toEqual(valueSchema);
+  });
+});
 
 describe("catalog definition usage summary", () => {
   it("distinguishes unavailable policy usage from a known zero", () => {
