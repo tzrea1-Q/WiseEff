@@ -54,7 +54,7 @@
 | `--border-strong` | 强调分隔、聚焦输入 | 一个值 |
 | `--text` | 主文本 | 一个近黑 |
 | `--text-secondary` | 次文本 | 一个灰 |
-| `--text-muted` | 三级/元信息文本 | 一个灰（当前被引用却未定义,必须补上） |
+| `--text-muted` | 三级/元信息文本 | 石板灰：浅色 `#536277`，深色 `#8b99b3` |
 | `--accent` | 交互主色（按钮、链接、活动导航、选中） | 品牌蓝 `#0052cc` 族 |
 | `--accent-hover` / `--accent-pressed` | 交互深浅 | 派生 |
 | `--accent-soft` | 选中/活动背景、徽章 | 派生浅色 |
@@ -66,6 +66,25 @@
 - 颜色字面量**只允许**出现在令牌块内;其余一律 `var()` 或基于令牌的 `color-mix()`（参照 `parameter-home.css` 模式）。
 - shadcn 的 `--primary`/`--muted`/`--border` oklch 键必须成为上述语义令牌的别名;同一问题存在两套答案即缺陷。
 - 中性色承载界面,颜色只为交互与状态服务;图表使用与 accent 对齐的令牌化分类色带（`--chart-1..5`）,不接受图表库默认配色。
+
+#### 经测试的对比度配对（UIA-001）
+
+小字号文本（包括加粗状态芯片，以及对辅助技术隐藏但仍然可见的行号）要求**至少 4.5:1**。以下配对保留现有色相族，定义统一放在 `src/styles.css` 的令牌块中；组件只消费令牌，不自行组合未经验证的前景与背景。
+
+| 前景 | 背景 | 对比度（浅色 / 深色） | 使用场景 |
+| --- | --- | --- | --- |
+| `--text-muted` | `--bg`、`--surface`、`--surface-raised`、`--surface-sunken`、`--surface-low/mid/high`、`--accent-soft` | 最低 4.81 / 4.58 | 元信息、日志趋势备注、调试覆盖徽章、未选中的热榜切换项 |
+| `--success`（`#0d714d` / `#10b981`） | `--success-soft` | 5.06 / 5.26 | 成功状态文本和徽章 |
+| `--warning`（`#965500` / `#f59e0b`） | `--warning-soft` | 4.92 / 6.08 | 警告状态文本和徽章 |
+| `--danger` | `--danger-soft` | 5.00 / 4.99 | 危险状态文本和徽章 |
+| `--info`（`#036b9f` / `#38bdf8`） | `--info-soft` | 4.89 / 5.92 | 信息状态文本和芯片 |
+| `--success` | `color-mix(in srgb, var(--success) 14%, var(--surface))` | 4.91 / 至少 4.5 | “工作配置”芯片 |
+| `--configuration-source-text` | `--configuration-source-surface` | 两个主题均为 13.69 | 深色源码画布和统一差异视图 |
+| `--configuration-source-line-number`（别名指向 `--configuration-source-text-muted`） | `--configuration-source-surface` | 6.66；聚焦行上为 5.25 | 两种源码查看器的行号栏，包括悬停与聚焦行 |
+| `--configuration-source-text-muted/secondary/strong` | `--configuration-source-surface`、`--configuration-source-surface-raised` | 两个主题均至少 4.5 | 源码元信息和标题栏 |
+| `--configuration-source-surface` | `--configuration-source-find`、`--configuration-source-find-active` | 默认 11.16；当前命中 7.96（两个主题相同） | 搜索命中：不透明黄/琥珀色底配显式深色文本 |
+
+配置源码画布在两个主题中均保持深色。独立源码查看器使用 `--surface-sunken` 背景，以及 `--text-secondary` 和 `--text-muted` 文本。`src/contrast.styles.test.ts` 检查实际样式声明，解析令牌派生并先合成半透明行背景，再验证 WCAG 门槛。无障碍质量门禁在 1440×900 下扫描 UIA-001 的全部十个路径，不再排除热榜切换项、工作配置芯片或源码行号。令牌配对测试不能替代真实 API 运行时的无障碍扫描和前后截图。
 
 ### 字体排印
 
