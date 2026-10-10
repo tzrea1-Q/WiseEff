@@ -923,10 +923,10 @@ async function installFrontendDebuggingApiGuard(page: Page) {
 }
 
 async function selectAdbProtocol(page: Page) {
-  const adbButton = page.getByRole("button", { name: "ADB" });
+  const adbButton = page.getByRole("tab", { name: "ADB" });
   await expect(adbButton).toBeVisible({ timeout: 30_000 });
   await adbButton.click();
-  await expect(adbButton).toHaveAttribute("aria-pressed", "true");
+  await expect(adbButton).toHaveAttribute("aria-selected", "true");
 }
 
 async function expectAdbUiReady(page: Page, config: AdbSmokeConfig) {

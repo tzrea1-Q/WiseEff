@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -247,13 +248,29 @@ describe("/node-debugging", () => {
   });
 
   it("passes the selected protocol to API target detection", async () => {
+    const user = userEvent.setup();
     const debuggingActions = createDebuggingActions();
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/已连接：API Gateway Target/);
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    const protocols = screen.getByRole("tablist", { name: "连接协议" });
+    const hdc = within(protocols).getByRole("tab", { name: "HDC" });
+    const adb = within(protocols).getByRole("tab", { name: "ADB" });
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    hdc.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(adb).toHaveFocus();
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Enter}");
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
+    expect(adb).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel", { name: "ADB" });
+    expect(panel).toHaveAttribute("id", adb.getAttribute("aria-controls"));
+    expect(panel).toHaveAttribute("aria-labelledby", adb.id);
+    expect(panel).toHaveAttribute("tabindex", "0");
+    expect(within(panel).getByRole("region", { name: "节点调试参数" })).toBeInTheDocument();
+    expect(document.getElementById(hdc.getAttribute("aria-controls")!)).not.toBeVisible();
   });
 
   it("refreshes runtime parameters for the selected protocol when switching protocols", async () => {
@@ -261,7 +278,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/已连接：API Gateway Target/);
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => expect(debuggingActions.refresh).toHaveBeenCalledWith({ protocol: "adb" }));
   });
@@ -271,7 +288,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
     expect(debuggingActions.detectAndStartSession).toHaveBeenCalledTimes(2);
@@ -315,7 +332,7 @@ describe("/node-debugging", () => {
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalled());
     expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => {
       expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
@@ -366,7 +383,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await waitFor(() => expect(pendingReads.length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => {
       expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
@@ -406,7 +423,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: { ...userState, debugParameters: [hdcOnlyParameter] }, debuggingActions });
 
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     expect(await screen.findByText("未配置该协议节点")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
@@ -427,7 +444,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: { ...userState, debugParameters: [hdcSelectedParameter] }, debuggingActions });
 
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     expect(await screen.findByText("未配置该协议节点")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
@@ -448,7 +465,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith({ protocol: "hdc" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
 
     await act(async () => {
@@ -461,7 +478,7 @@ describe("/node-debugging", () => {
     expect(debuggingActions.readNode).not.toHaveBeenCalled();
   });
 
-  it("keeps protocol switching usable when protocol storage is unavailable", () => {
+  it("keeps protocol switching usable when protocol storage is unavailable", async () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable");
     });
@@ -474,10 +491,10 @@ describe("/node-debugging", () => {
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    expect(screen.getByRole("button", { name: "HDC" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    expect(screen.getByRole("tab", { name: "HDC" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
-    expect(screen.getByRole("button", { name: "ADB" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "ADB" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("检测中...")).toBeInTheDocument();
   });
 
@@ -1181,7 +1198,7 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
     expect(downloadLink).toHaveAttribute(
@@ -1225,7 +1242,7 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     expect(await screen.findByText(/缺少 ADB 调试工具/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /安装调试工具/i })).toBeInTheDocument();
@@ -1313,7 +1330,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/已连接：API Gateway Target/);
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     const picker = await screen.findByRole("region", { name: "设备代理目标选择" });
     const selectTargetButton = within(picker).getByRole("button", { name: "连接 MacBook · serial-123" });
@@ -1371,7 +1388,7 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    fireEvent.click(await screen.findByRole("button", { name: "ADB" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "ADB" }));
 
     const renameInput = await screen.findByDisplayValue("Laptop");
     fireEvent.change(renameInput, { target: { value: "Desk-PC" } });

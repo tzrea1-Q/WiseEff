@@ -1327,7 +1327,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole("tab", { name: "历史审阅" }));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "历史审阅" }), { button: 0, ctrlKey: false });
     const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
     // Prefer selecting the merged row if the queue does not auto-select it
     const row = within(screen.getByRole("table")).getByText(merged.title);
@@ -1380,7 +1380,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole("tab", { name: "历史审阅" }));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "历史审阅" }), { button: 0, ctrlKey: false });
     const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
     const row = within(screen.getByRole("table")).getByText(merged.title);
     fireEvent.click(row.closest("tr") ?? row);
@@ -2875,7 +2875,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(pendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
     expect(within(pendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
 
-    fireEvent.click(historyTab);
+    fireEvent.mouseDown(historyTab, { button: 0, ctrlKey: false });
 
     const historyTable = screen.getByRole("table");
     expect(historyTab).toHaveAttribute("aria-selected", "true");
@@ -2890,7 +2890,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(reviewDetail).queryByRole("button", { name: "推进流程" })).not.toBeInTheDocument();
     expect(within(reviewDetail).queryByRole("button", { name: "打回修改" })).not.toBeInTheDocument();
 
-    fireEvent.click(pendingTab);
+    fireEvent.mouseDown(pendingTab, { button: 0, ctrlKey: false });
 
     expect(pendingTab).toHaveAttribute("aria-selected", "true");
     expect(historyTab).toHaveAttribute("aria-selected", "false");

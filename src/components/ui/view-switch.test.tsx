@@ -9,6 +9,15 @@ import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 afterEach(cleanup);
 
 describe("ViewSwitch", () => {
+  it.each(["section", "tabs", "toggle"] as const)("preserves an option's error explanation for %s", (variant) => {
+    render(<ViewSwitch variant={variant} ariaLabel="节点对应确认" value="mapping" onValueChange={() => {}} items={[
+      { value: "mapping", label: "节点对应确认", id: "mapping-tab", panelId: "mapping-panel",
+        title: "任务计数不可用" }
+    ]} />);
+    const option = screen.getByRole(variant === "section" ? "button" : variant === "tabs" ? "tab" : "radio", { name: "节点对应确认" });
+    expect(option).toHaveAttribute("title", "任务计数不可用");
+  });
+
   it.each([
     ["section", "var(--space-10)", "var(--radius-full)", "var(--text-md)", "var(--leading-md)", "var(--nav-selected)"],
     ["tabs", "var(--space-8)", "var(--radius-md)", "var(--text-base)", "var(--leading-base)", "var(--accent-soft)"],

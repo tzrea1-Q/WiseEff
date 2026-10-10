@@ -35,11 +35,12 @@ test("resolves all three root switch signatures and catches scoped geometry or s
   const measurements = await page.evaluate(collectConsistencyMeasurements);
   expect(measurements.viewSwitches).toHaveLength(6);
   expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28]]);
-  expect(() => requireViewSwitchStyles(measurements, "/organization/members")).not.toThrow();
+  expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).not.toThrow();
+  expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role === "radio") }, "/parameter-home")).not.toThrow();
   await page.locator("nav").evaluate((element) => element.classList.add("scoped"));
   const overridden = await page.evaluate(collectConsistencyMeasurements);
   expect(overridden.viewSwitchSignatures[0].height).toBe(40);
-  expect(() => requireViewSwitchStyles(overridden, "/organization/members")).toThrow("matched 0");
+  expect(() => requireViewSwitchStyles({ ...overridden, viewSwitches: overridden.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).toThrow("matched 0");
   await page.locator("nav").evaluate((element) => element.classList.remove("scoped"));
   await page.getByRole("tablist").evaluate((element) => {
     element.removeAttribute("role");
@@ -47,7 +48,7 @@ test("resolves all three root switch signatures and catches scoped geometry or s
   });
   const missingRoles = await page.evaluate(collectConsistencyMeasurements);
   expect(missingRoles.viewSwitches).toHaveLength(6);
-  expect(() => requireViewSwitchStyles(missingRoles, "/organization/members")).toThrow("matched 0");
+  expect(() => requireViewSwitchStyles({ ...missingRoles, viewSwitches: missingRoles.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).toThrow("matched 0");
 });
 
 for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb(76, 141, 255)"]]) {

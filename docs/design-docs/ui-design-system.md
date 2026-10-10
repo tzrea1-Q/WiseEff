@@ -39,6 +39,8 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 
 **View-switch contract (UIA-016, expand):** `/organization` and `/organization/members` use the shared section navigation; the members account/registration workspace uses content tabs. Section arrows/Home/End move focus without navigating; Enter/Space activate. Content tabs use manual activation, roving focus and required item `id`/`panelId` pairs; callers render the active `role="tabpanel"` with that panel ID, `aria-labelledby` pointing to the item ID, and `tabIndex={0}`. Radio options select with arrows or Space. All styles share tokenized focus-visible and disabled states. The consistency project checks every visible switch on the two organization routes against exactly one root-token style signature in light and dark themes. Other legacy variants remain during expansion; the Bridge install stepper is a separate progress pattern, not a view switch.
 
+Debugging and parameter administration use section navigation, including the nested definition-library/identity-mapping routes. Node debugging and DTS reload use local content tabs for HDC/ADB, associated with the selected protocol’s workbench panel. Canonical value/member-removal review (also used on submissions) and legacy review use content tabs with associated pending/history panels. The consistency style assertion also covers these routes and parameter-admin redirects; it checks all visible switches while leaving Bridge installation progress separate. Existing route/query, protocol-session reset, request selection and disabled-action contracts are unchanged.
+
 Inactive tab panels remain mounted and hidden so every `aria-controls` target exists; inactive panel contents may be unmounted.
 
 ## Design Tokens

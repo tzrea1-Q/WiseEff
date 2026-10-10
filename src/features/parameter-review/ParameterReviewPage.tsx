@@ -1,4 +1,5 @@
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { toggleFilterValue, uniqueFilterValues } from "@/components/tableFilterUtils";
 import { canPerform } from "@/app/permissions";
 import { type PageProps } from "@/app/routes";
@@ -830,30 +831,17 @@ export function ParameterReviewPage({
           </h2>
           <PanelHeader
             title={
-              <div className="review-view-tabs" role="tablist" aria-label="审阅视角">
-                {[
+              <ViewSwitch variant="tabs" ariaLabel="审阅视角" value={reviewMode}
+                onValueChange={(value) => selectReviewMode(value as ParameterReviewMode)} items={[
                   { mode: "pending" as const, label: "待审阅", count: pendingRequests.length + pendingInitializationRows.length },
                   { mode: "history" as const, label: "历史审阅", count: historyRequests.length + historyInitializationRows.length }
-                ].map((item) => (
-                  <button
-                    className={reviewMode === item.mode ? "active" : ""}
-                    type="button"
-                    role="tab"
-                    aria-label={item.label}
-                    aria-selected={reviewMode === item.mode}
-                    aria-controls="review-queue-table"
-                    key={item.mode}
-                    onClick={() => selectReviewMode(item.mode)}
-                  >
-                    {item.label}
-                    <span>{item.count}</span>
-                  </button>
-                ))}
-              </div>
+                ].map((item) => ({ value: item.mode, id: `review-${item.mode}-tab`, panelId: `review-${item.mode}-panel`,
+                  label: <>{item.label}<span aria-hidden="true">{item.count}</span></> }))} />
             }
             meta={reviewMeta}
           />
         </div>
+        <div role="tabpanel" id={`review-${reviewMode}-panel`} aria-labelledby={`review-${reviewMode}-tab`} tabIndex={0}>
         {runtimeMode === "api" && reviewMode === "history" ? (
           <p role="note">此处的旧版审阅记录仅作为只读归档，不能作为当前新版请求继续处理。</p>
         ) : null}
@@ -1089,6 +1077,9 @@ export function ParameterReviewPage({
             onConfirm={() => void runBatchAdvance()}
           />
         </div>
+        </div>
+        <div role="tabpanel" id={`review-${reviewMode === "pending" ? "history" : "pending"}-panel`}
+          aria-labelledby={`review-${reviewMode === "pending" ? "history" : "pending"}-tab`} tabIndex={0} hidden />
       </section>
       <aside className="review-detail" ref={detailRef} tabIndex={-1} aria-labelledby="review-detail-heading">
         <h2 id="review-detail-heading" className="sr-only">

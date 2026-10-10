@@ -535,7 +535,7 @@ describe("DtsReloadPage", () => {
   it("exposes workbench landmarks for protocol, candidates, start bar, and collapsed history", async () => {
     const repository = createRepository();
     renderPage(repository);
-    expect(await screen.findByRole("group", { name: "连接协议" })).toBeInTheDocument();
+    expect(await screen.findByRole("tablist", { name: "连接协议" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "本地设备连接" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "部署目标" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "可调试参数" })).toBeInTheDocument();
@@ -565,7 +565,7 @@ describe("DtsReloadPage", () => {
     await user.click(within(topbarActions).getByRole("button", { name: "重新检测" }));
     await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-1"));
 
-    await user.click(screen.getByRole("button", { name: "ADB" }));
+    await user.click(screen.getByRole("tab", { name: "ADB" }));
     await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 ADB 设备"));
     expect(detectTargets).toHaveBeenLastCalledWith("adb", "bridge-1");
   });
@@ -645,7 +645,23 @@ describe("DtsReloadPage", () => {
     const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement;
     await waitFor(() => expect(topbarActions).toHaveTextContent("已连接：HDC target"));
 
-    await user.click(screen.getByRole("button", { name: "ADB" }));
+    const protocols = screen.getByRole("tablist", { name: "连接协议" });
+    const hdc = within(protocols).getByRole("tab", { name: "HDC" });
+    const adb = within(protocols).getByRole("tab", { name: "ADB" });
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    hdc.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(adb).toHaveFocus();
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    expect(topbarActions).toHaveTextContent("HDC target");
+    await user.keyboard("{Enter}");
+    expect(adb).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel", { name: "ADB" });
+    expect(panel).toHaveAttribute("id", adb.getAttribute("aria-controls"));
+    expect(panel).toHaveAttribute("aria-labelledby", adb.id);
+    expect(panel).toHaveAttribute("tabindex", "0");
+    expect(within(panel).getByRole("region", { name: "模块导航" })).toBeInTheDocument();
+    expect(document.getElementById(hdc.getAttribute("aria-controls")!)).not.toBeVisible();
 
     expect(topbarActions).not.toHaveTextContent("HDC target");
     expect(screen.queryByText("HDC-TARGET")).not.toBeInTheDocument();

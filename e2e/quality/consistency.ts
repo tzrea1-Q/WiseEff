@@ -23,8 +23,9 @@ export function collectConsistencyMeasurements() {
     compactControl: element.getAttribute("data-compact-control")
   });
   const viewSwitchElements = elements([
-    '[role="tab"]', '[role="radiogroup"] [role="radio"]', '[role="group"][aria-label*="视图"] button[aria-pressed]',
+    '[role="tablist"] [role="tab"]', '[role="radiogroup"] [role="radio"]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
+    '[role="group"][aria-label="日志视图切换"] button[aria-pressed]',
     ".view-switch__item", ".parameter-admin-scope-nav__tab", ".parameter-admin-subnav__tab",
     ".protocol-switch-button", ".user-permissions-workspace-tab", ".logs-aux-tabs button",
     ".parameter-home__view-switcher-item", ".parameter-home__toggle-item",
@@ -35,7 +36,9 @@ export function collectConsistencyMeasurements() {
   const viewSwitches = [...new Set([
     ...viewSwitchElements,
     ...document.querySelectorAll(".topbar .view-switch__item, .topbar .parameter-home__view-switcher-item")
-  ])].filter(visible).map((element) => {
+  ])].filter((element) => visible(element)
+    && !element.closest('[role="tree"],[role="treeitem"],.parameter-catalog__tree,[class*="parameter-catalog__tree-select"],.dts-topology-navigator,.dts-parameter-workbench__navigator')
+  ).map((element) => {
     const style = getComputedStyle(element);
     const group = element.closest('nav,[role="tablist"],[role="radiogroup"],.protocol-switch,.review-view-tabs,.local-device-bridge-wizard__steps')
       ?? element.parentElement!;
@@ -243,9 +246,34 @@ const viewSwitchPaths = [
   "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
   "/parameter-submissions", "/parameters", "/user-permissions"
 ];
+export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
+  "/organization": ["section"],
+  "/organization/members": ["section", "tabs"],
+  "/parameter-home": ["toggle"],
+  "/audit": ["toggle"],
+  "/logs": ["tabs"],
+  "/parameters": ["tabs"],
+  "/debugging-admin": ["section"],
+  "/debugging-admin/nodes": ["section"],
+  "/node-debugging": ["tabs"],
+  "/dts-reload": ["tabs"],
+  "/parameter-admin": ["section"],
+  "/parameter-admin/specs": ["section"],
+  "/parameter-admin/specs/identity-mapping": ["section"],
+  "/parameter-admin/modules": ["section"],
+  "/parameter-admin/modules/queue": ["section"],
+  "/parameter-admin/modules/registry": ["section"],
+  "/parameter-admin/identity-mapping": ["section"],
+  "/parameter-admin/spec-review": ["section"],
+  "/parameter-admin/projects": ["section"],
+  "/parameter-admin/projects/aurora/review-roles": ["section"],
+  "/parameter-review": ["tabs"],
+  "/parameter-submissions": ["tabs"]
+};
+export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas"> = {
   viewSwitches: [...viewSwitchPaths, "/log-admin"],
-  viewSwitchSignatures: ["/organization", "/organization/members", "/parameter-home", "/audit", "/logs", "/parameters"],
+  viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging"],
