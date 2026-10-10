@@ -318,6 +318,25 @@ afterEach(() => {
 });
 
 describe("DtsReloadPage", () => {
+  it("explains an unreachable local Bridge with expandable details and a working retry", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(bridgeLauncher, "probeLocalBridgeHealthDetailed")
+      .mockResolvedValueOnce({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })
+      .mockResolvedValue({ health: null, reachability: "offline" });
+    renderPage(createRepository(), { bridges: undefined, probeBridgeHealth: undefined });
+
+    const message = await screen.findByText("无法连接本地 Bridge，请确认本机 Bridge 已启动，然后刷新代理状态重试。");
+    const alert = message.closest('[role="alert"]') as HTMLElement;
+    const detail = within(alert).getByText("Failed to fetch");
+    const disclosure = detail.closest("details") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    await user.click(within(alert).getByText("技术详情"));
+    expect(disclosure.open).toBe(true);
+    await user.click(within(alert).getByRole("button", { name: "刷新代理状态" }));
+    await waitFor(() => expect(message).not.toBeInTheDocument());
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
+
   it("does not query the default project while opening a run deep link", async () => {
     let resolveRun: ((value: DtsReloadRun) => void) | undefined;
     const getRun = vi.fn(

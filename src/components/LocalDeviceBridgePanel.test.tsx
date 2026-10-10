@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocalDeviceBridgePanel } from "./LocalDeviceBridgePanel";
@@ -107,6 +107,28 @@ describe("LocalDeviceBridgePanel install manifest loading", () => {
 
     expect(await screen.findByRole("link", { name: /安装 Bridge/ })).toBeInTheDocument();
   });
+});
+
+it("shows server network copy, not local Bridge advice, when the server list call fails", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  render(
+    <LocalDeviceBridgePanel
+      detecting={false}
+      protocol="hdc"
+      onDetect={vi.fn()}
+      probeHealth={async () => ({ health: null, reachability: "offline" })}
+      listBridges={async () => { throw new TypeError("Failed to fetch"); }}
+      createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })}
+    />
+  );
+
+  const message = await screen.findByText("网络连接失败，请稍后重试。");
+  expect(message).not.toHaveTextContent(/Bridge|桥接/);
+  const alert = message.closest('[role="alert"]') as HTMLElement;
+  const disclosure = within(alert).getByText("Failed to fetch").closest("details") as HTMLDetailsElement;
+  expect(disclosure.open).toBe(false);
+  fireEvent.click(within(alert).getByText("技术详情"));
+  expect(disclosure.open).toBe(true);
 });
 
 it("retains confirmed pairing when listing fails and allows retry", async () => {
