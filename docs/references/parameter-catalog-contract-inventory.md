@@ -221,7 +221,7 @@ Sources:
 tree; only tests import it. Its ability to draft a spec for an unmatched surface
 is legacy/dead implementation, directly contrary to the accepted fail-closed
 recognition rule. It is not a compatibility obligation.
-([provisional seam](../../server/modules/parameter-topology/provisionalSurfaceBinding.ts),
+([provisional seam](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/parameter-topology/provisionalSurfaceBinding.ts),
 [accepted ingest rule](../../server/modules/parameter-topology/ingestService.ts),
 [ADR-0039](../adr/0039-effective-driver-parameter-catalog.md))
 
@@ -247,7 +247,7 @@ Primary sources:
 [file identity](../../server/modules/parameter-files/syncIdentity.ts),
 [writeback](../../server/modules/parameter-files/writebackService.ts),
 [Agent perception](../../server/modules/agent/tools/perceptionTools.ts),
-[log-analysis DB tools](../../server/modules/logs/analyzer/tools/dbToolBackends.ts),
+[log-analysis DB tools](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/logs/analyzer/tools/dbToolBackends.ts),
 [debugging repository](../../server/modules/debugging/repository.ts),
 [DTS reload repository](../../server/modules/dts-reload/repository.ts),
 [DTS reload promotion](../../server/modules/dts-reload/promote.ts),
@@ -284,7 +284,7 @@ above.
   [parameter-files writeback](../../server/modules/parameter-files/writebackService.ts),
   and [project cleanup](../../server/modules/projects/repository.ts);
 - [Agent perception](../../server/modules/agent/tools/perceptionTools.ts),
-  [log-analysis DB tools](../../server/modules/logs/analyzer/tools/dbToolBackends.ts),
+  [log-analysis DB tools](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/logs/analyzer/tools/dbToolBackends.ts),
   [DTS-reload repository](../../server/modules/dts-reload/repository.ts),
   [DTS-reload behavioural verification](../../server/modules/dts-reload/behaviouralVerify.ts),
   and [knowledge](../../server/modules/knowledge/) reference/routes/service/schema
@@ -492,7 +492,7 @@ Any replacement release therefore needs, at minimum:
 
 The observed "latest version" divergences are in
 [`perceptionTools.ts`](../../server/modules/agent/tools/perceptionTools.ts),
-[`dbToolBackends.ts`](../../server/modules/logs/analyzer/tools/dbToolBackends.ts)
+[`dbToolBackends.ts`](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/logs/analyzer/tools/dbToolBackends.ts)
 and [`writeLock.ts`](../../server/modules/parameter-topology/writeLock.ts).
 They conflict with the explicit pin-first policy in
 [`specVersionSelection.ts`](../../server/modules/parameters/specVersionSelection.ts).
