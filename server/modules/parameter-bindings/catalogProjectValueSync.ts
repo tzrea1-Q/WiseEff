@@ -1160,13 +1160,6 @@ export function matchCatalogImportRow(
       identity: source.id
     });
   }
-  const byName = candidates.filter((row) => row.name === source.name);
-  if (byName.length === 1) return byName[0]!;
-  if (byName.length > 1) {
-    throw new ApiError("CONFLICT", "Published parameter name matches more than one project value.", {
-      name: source.name
-    });
-  }
   return null;
 }
 

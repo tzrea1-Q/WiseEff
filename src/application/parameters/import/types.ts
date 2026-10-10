@@ -14,6 +14,7 @@ export type ImportReviewStatus =
   | "unmatched";
 
 export type ParsedImportRow = {
+  id?: string;
   name: string;
   module: string;
   currentValue?: string;

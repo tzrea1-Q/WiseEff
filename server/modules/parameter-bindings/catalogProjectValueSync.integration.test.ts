@@ -517,7 +517,7 @@ describe("published catalog project values", () => {
         sortOrder: 0,
         content: sourceText,
       }],
-    }, auth, { legacyProjection: "skip" });
+    }, auth);
     const observed = (await listObservedProperties(asValueClient(pool), revision.id))
       .filter((row) => row.propertyKey === "iin_max");
     expect(observed).toHaveLength(2);

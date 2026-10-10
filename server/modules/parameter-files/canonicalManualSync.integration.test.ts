@@ -325,7 +325,7 @@ describe("#906 canonical DTS candidate workflow", () => {
       overlayOrder: [],
       members: [{ fileId, fileVersionId: versionId, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: source }]
     };
-    const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, admin);
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
     await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, {
@@ -371,7 +371,7 @@ describe("#906 canonical DTS candidate workflow", () => {
         organizationId: ORG, projectId: DTS_PROJECT, configSetId,
         entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
         members: [{ fileId, fileVersionId: versionId, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: source }]
-      }, admin, { legacyProjection: "skip", sourceCommit: { baseConfigRevisionId: oldPin.configRevisionId } });
+      }, admin, { sourceCommit: { baseConfigRevisionId: oldPin.configRevisionId } });
       const occurrence = (await tx.query<{ property_id: string; node_id: string }>(`select effect.property_occurrence_id as property_id,effect.node_occurrence_id as node_id
         from dts_occurrence_effects effect
         join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id

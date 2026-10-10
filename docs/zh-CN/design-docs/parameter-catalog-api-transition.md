@@ -589,7 +589,7 @@ resolver 只能 lookup，且不拥有分类权。它读取 issue #678 在 `18393
 | Audit target | 保留 immutable legacy target fields，精确时新增 mapped target reference。 | 保留 legacy audit evidence 与 archived/ambiguous disposition，绝不重写历史。 |
 | Knowledge reference | 只有 exact mapping 才重写 definition/revision，并保留 legacy metadata。 | 标记 unresolved，排除出 current definition picker，不静默 retarget。 |
 | Debug/reload reference | cutover 时通过精确 binding/definition map 解析并固定 revision。 | 阻断 operation，交给 operator reconciliation；禁止按 property key 选择。 |
-| Export/import ID | 新 export 只含 canonical IDs 与 schema version；有界 legacy import 每行经过 typed mapping。 | 用稳定 reason 拒绝该行；禁止部分创建结构。 |
+| Export/import ID | 新 export 只含 canonical IDs 与 schema version；普通导入要求精确的当前 canonical Binding/Definition、revision、value 与 source pins。 | 旧 ID 和仅属性名的行被拒绝或标记冲突；运维迁移保持独立，禁止部分创建结构。 |
 | Deep link/bookmark | 只有精确且有权限的 mapping 才 redirect 到 canonical detail。 | ambiguous 显示 conflict；archived 显示 gone；unknown/out-of-scope 显示 not found。 |
 
 Issue #678 是全部 R0-R10 生产 disposition 的唯一 owner。与 ReviewEvidence 或 DefinitionProposal 同时保留的 `Archive` evidence 是 provenance，不是第二个 operational disposition。所有 legacy-ID API 只投影 typed mapping head，不得重新分类 row。archive ledger 是 append-only、typed、带 checksum 的迁移证据，不是公共 catalog resource。删除 legacy tables 或 mapping records 属于之后经验证的 retirement 决策；本 API 决策不授权删除。
@@ -664,7 +664,7 @@ B1 清理（#1083）删除参数管理后台未使用的 legacy Spec 编辑器�
 | DTS reload | canonical binding、value、definition revision、release anchor | prepare/finalize 前验证全部 references；release drift 阻断。 |
 | Knowledge definition picker | active canonical definitions 与显式历史 revision read | exact-map 旧 reference；unresolved legacy reference 不可选择。 |
 | Module/driver registry UI | subject type、registration、placement navigation | 退役 module/Organization-schema 的结构所有权；无关 runtime module 概念保持独立。 |
-| Import/export | versioned canonical IDs 与 typed legacy resolver | 新 export only；legacy import 在任何写入前验证全部 rows。 |
+| Import/export | versioned canonical IDs 与精确的当前 Binding/Definition/revision/value/source pins | 普通 preview 和草稿不再回退到旧 ID 或 property key；保留的迁移工具仅供 Operator 使用。 |
 | Audit/history viewer | canonical target 与保留的 legacy target metadata | 绝不重写历史 actor、target 或 decision evidence。 |
 | External API client/bookmark | canonical routes 或有界 typed resolver | 在公开 window 内迁移；resolver outcome 只投影 issue #678 的 typed mapping head，只有 exact deep link redirect，其余 outcome 显式。 |
 | Operations/migration tooling | operator-only reconciliation API、typed mapping head 与 archive ledger | 不调用公共 raw/governance modes，也不要求 API adapter 重新分类 R6/R8；诊断需要独立 operator authority。 |
@@ -757,6 +757,12 @@ Canonical launch 要求后续 release plan 在同一 candidate revision 上证�
 - “已生效”来自 Receipt 读取，不是 Proposal `accepted`，也不是 job `queued`。
 - 自托管低风险单人发布受策略门禁约束，且仍需要真实的 `catalog:publish` 授权。高风险自审仍然禁止。
 - Registration 仍是独立聚合。后续登记失败不得把已经成功的 Catalog 发布显示成全部回滚。
+
+## Canonical-only ingest 与导入 — 2026-10-09
+
+导入向导在解析、核对和 preview 中保留输入显式提供的 canonical `id`，绝不根据提示性的名称/模块匹配生成身份；只有名称的输入仍由 canonical owner 判定为冲突。
+
+规格 #1080 Q5 / #1089 将普通来源上传改为 canonical-only，不再需要显式 skip 标志。结构解析、确定性节点连续性与模块发现保留；ingest 仅将保留的 schema version 用作连续性证据，不读取 legacy matcher override，也不写 legacy Spec/Binding 投影或旧审核任务。Canonical source pins 与 Observation/Review 证据仍由现有 owner 负责。已由 canonical 拥有的来源仍须通过经审核的 source-commit 流程，不能直接上传激活。导入 preview 要求精确 canonical identity 与当前 source pins；唯一属性名不代表身份。草稿创建及导入 staging/replay 不回退到旧 Binding 或草稿。缺失 pin、多次出现造成的歧义和过期 revision/value pin 均 fail closed，preview 冲突明确说明缺失 canonical identity。Operator comparison/cutover 工具、有界读取、历史、审计与 410 tombstone 不变。
 
 ## 决策完整性
 

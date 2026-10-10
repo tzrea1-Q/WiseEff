@@ -33,6 +33,7 @@ export function toImportSourceItem(row: ReviewedImportRow): ParameterImportSourc
   const values = normalizeValueFields(row.currentValue, row.recommendedValue);
 
   return {
+    ...(row.id?.trim() ? { id: row.id.trim() } : {}),
     name: row.name.trim(),
     module: row.module.trim(),
     risk: row.risk ?? "Medium",

@@ -54,6 +54,9 @@ export function normalizeRow(
   if (sourceLocation) {
     row.sourceLocation = sourceLocation;
   }
+  if (partial.id?.trim()) {
+    row.id = partial.id.trim();
+  }
   if (partial.currentValue !== undefined) {
     row.currentValue = partial.currentValue;
   }

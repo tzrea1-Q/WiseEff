@@ -20,24 +20,14 @@ import type {
 import {
   matchDriver,
   matchProperty,
-  reviewTasksForDecision,
 } from "../parameter-specs/matcher";
 import {
   getParameterSpecRow,
-  listMatcherOverridesForProject,
-  matcherOverrideLookupKey,
-  persistedMatcherOverrideLookupKey,
-  persistOpenReviewTaskDrafts,
-  upsertMatchedDriverSchema,
-  upsertMatchedPropertySpec,
-  upsertOccurrenceSpecDecision,
-  type PersistedMatcherOverride,
 } from "../parameter-specs/repository";
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
 import type {
   MatchableNode,
   SchemaRegistry,
-  SpecReviewTaskDraft,
 } from "../parameter-specs/types";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
 import {
@@ -53,10 +43,8 @@ import {
   listReviewedContinuityDecisions,
   resolveLogicalContinuity,
   countSingletonCardinalityConflicts,
-  upsertBindingRevisionValues,
   type ContinuityAmbiguous,
 } from "./bindingService";
-import { createRecognizedBinding } from "../parameter-specs/effectiveDefinitionService";
 import { normalizeManifestLogicalPath, normalizePersistedManifest } from "./configRevisionManifest";
 import {
   insertConfigRevision,
@@ -85,8 +73,6 @@ export { offsetToLineColumn };
 
 export type ConfigRevisionIngestOptions = {
   sourceCommit?: { baseConfigRevisionId: string };
-  /** Seed rebuild owns canonical publication; retain module discovery without legacy spec/binding writes. */
-  legacyProjection?: "skip";
 };
 
 const schemasRoot = join(
@@ -136,15 +122,6 @@ function parentLocator(locator: string): string | null {
 function locatorDepth(locator: string): number {
   if (locator === "/") return 0;
   return locator.split("/").filter(Boolean).length;
-}
-
-function isPrivilegeDenied(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "42501"
-  );
 }
 
 function topologyRelationFor(locator: string): string {
@@ -370,7 +347,6 @@ async function buildLogicalRevisionsWithContinuity(
     revisionNumber: number;
     registry: SchemaRegistry;
     sourceCommit?: { baseConfigRevisionId: string };
-    legacyProjection?: "skip";
   },
 ): Promise<ContinuityBuildResult> {
   const previousRows = await listPreviousLogicalNodeSnapshots(tx, {
@@ -426,7 +402,7 @@ async function buildLogicalRevisionsWithContinuity(
     const matchable = toMatchableNode(node);
     const driverDecision = matchDriver(matchable, input.registry);
     let driverSchemaVersionId: string | null = null;
-    if (driverDecision.kind === "matched" && input.legacyProjection === "skip") {
+    if (driverDecision.kind === "matched") {
       // Existing versions remain continuity evidence; importing a source must not
       // rewrite the legacy definitions protected by the maintenance baseline.
       const existing = await getParameterSpecRow(tx, {
@@ -435,21 +411,6 @@ async function buildLogicalRevisionsWithContinuity(
         driverSchemaVersionId: driverDecision.value.id,
       });
       driverSchemaVersionId = existing?.driverSchemaVersionId ?? null;
-    } else if (driverDecision.kind === "matched") {
-      await tx.query("savepoint skip_legacy_driver_spec");
-      try {
-        const upserted = await upsertMatchedDriverSchema(
-          tx,
-          driverDecision.value,
-        );
-        driverSchemaVersionId = upserted.driverSchemaVersionId;
-        await tx.query("release savepoint skip_legacy_driver_spec");
-      } catch (error) {
-        await tx.query("rollback to savepoint skip_legacy_driver_spec").catch(() => undefined);
-        if (!isPrivilegeDenied(error)) {
-          throw error;
-        }
-      }
     }
     driverVersionByLocator.set(node.nodeLocator, driverSchemaVersionId);
 
@@ -590,248 +551,28 @@ async function buildLogicalRevisionsWithContinuity(
   };
 }
 
-function buildOverrideIndex(
-  overrides: PersistedMatcherOverride[],
-): Map<string, PersistedMatcherOverride> {
-  const index = new Map<string, PersistedMatcherOverride>();
-  for (const override of overrides) {
-    index.set(persistedMatcherOverrideLookupKey(override), override);
-  }
-  return index;
-}
-
-/**
- * Match properties, apply reusable matcher overrides, create bindings, and queue
- * open review tasks with precise locate evidence. Dismissed overrides skip review
- * recreation and never pretend the property matched.
- */
-async function matchBindAndQueueReviews(
+async function discoverAttributionModules(
   tx: Queryable,
-  input: {
-    organizationId: string;
-    projectId: string;
-    configRevisionId: string;
-    effectiveNodes: Map<string, DtsEffectiveNode>;
-    stableLogicalIdByLocator: Map<string, string>;
-    propertyOccurrenceByKey: Map<string, string>;
-    registry: SchemaRegistry;
-    attribution?: TrustedInvocationDomainAttribution;
-    legacyProjection?: "skip";
-  },
-): Promise<SpecReviewTaskDraft[]> {
-  const overrides = input.legacyProjection === "skip" ? [] : await listMatcherOverridesForProject(tx, {
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-  });
-  const overrideByKey = buildOverrideIndex(overrides);
-  const reviewDrafts: SpecReviewTaskDraft[] = [];
-
+  input: { organizationId: string; effectiveNodes: Map<string, DtsEffectiveNode>; registry: SchemaRegistry },
+): Promise<void> {
   for (const node of input.effectiveNodes.values()) {
     if (node.deleted) continue;
-    const logicalNodeId = input.stableLogicalIdByLocator.get(node.nodeLocator);
-    if (!logicalNodeId) continue;
     const matchable = toMatchableNode(node);
-
     for (const [propertyKey, property] of node.properties) {
-      if (property.deleted) continue;
-      // Structural keys (status, compatible, …) are node enablement / topology
-      // metadata — never specs, bindings, or review tasks (ADR-0003).
-      if (isStructuralPropertyKey(propertyKey)) continue;
-      const propertyOccurrenceId =
-        input.propertyOccurrenceByKey.get(
-          `${node.nodeLocator}\0${propertyKey}`,
-        ) ?? null;
-      const locate = {
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        configRevisionId: input.configRevisionId,
-        propertyOccurrenceId,
-        logicalNodeId,
-      };
-      const override = overrideByKey.get(
-        matcherOverrideLookupKey({
-          compatible: matchable.compatible,
-          nodeLocator: matchable.nodeLocator,
-          propertyKey,
-        }),
-      );
-
-      if (override?.decision === "dismissed") {
-        if (propertyOccurrenceId) {
-          await upsertOccurrenceSpecDecision(tx, {
-            organizationId: input.organizationId,
-            projectId: input.projectId,
-            configRevisionId: input.configRevisionId,
-            propertyOccurrenceId,
-            logicalNodeId,
-            propertyKey,
-            decision: "dismissed",
-            parameterSpecId: null,
-            bindingId: null,
-            reviewTaskId: override.sourceReviewTaskId,
-          });
-        }
-        continue;
-      }
-
-      if (override?.decision === "resolved" && override.parameterSpecId) {
-        const spec = await getParameterSpecRow(tx, {
-          organizationId: input.organizationId,
-          specId: override.parameterSpecId,
-        });
-        if (!spec?.currentVersionId) continue;
-        const overrideModuleId = await resolveAttributionModuleForBinding(tx, {
-          organizationId: input.organizationId,
-          driverModule: spec.driverModule,
-          compatible: matchable.compatible[0] ?? null,
-          instanceName: instanceNameFor(matchable),
-          nodeLocator: matchable.nodeLocator,
-          attributionSubjectId: spec.attributionSubjectId,
-        });
-        const { binding } = await createRecognizedBinding(tx, {
-          organizationId: input.organizationId,
-          projectId: input.projectId,
-          logicalNodeId,
-          parameterSpecId: override.parameterSpecId,
-          parameterSpecVersionId: spec.currentVersionId,
-          moduleId: overrideModuleId,
-        });
-        await upsertBindingRevisionValues(tx, {
-          bindingId: binding.id,
-          configRevisionId: input.configRevisionId,
-          parameterSpecVersionId: spec.currentVersionId,
-          values: {
-            typedValue: property.value ?? {
-              kind: "raw",
-              rawText: property.rawText,
-            },
-            canonicalValue: property.value ?? property.normalizedValue,
-            rawValue: property.rawText,
-            schemaState: "valid",
-          },
-          attribution: input.attribution,
-        });
-        if (propertyOccurrenceId) {
-          await upsertOccurrenceSpecDecision(tx, {
-            organizationId: input.organizationId,
-            projectId: input.projectId,
-            configRevisionId: input.configRevisionId,
-            propertyOccurrenceId,
-            logicalNodeId,
-            propertyKey,
-            decision: "resolved",
-            parameterSpecId: override.parameterSpecId,
-            bindingId: binding.id,
-            reviewTaskId: override.sourceReviewTaskId,
-          });
-        }
-        continue;
-      }
-
+      if (property.deleted || isStructuralPropertyKey(propertyKey)) continue;
       const decision = matchProperty(matchable, propertyKey, input.registry);
-      if (decision.kind === "matched") {
-        // A schema attached to a bus/interconnect scaffolding driver (for
-        // example `interrupt-parent` on `arm,amba-bus`) is topology metadata,
-        // not a product parameter. Keep its occurrence in the immutable DTS
-        // record, but do not create an unclassified binding/module. Unknown
-        // properties still reach review, even when their node name resembles
-        // a scaffolding segment.
-        if (
-          isScaffoldingDriverLabel(
-            driverModuleFromSchemaNamespace(decision.value.schemaNamespace),
-          ) ||
-          isModuleScaffoldingNode({
-            name: matchable.name,
-            compatible: matchable.compatible[0] ?? null,
-            nodePath: matchable.nodeLocator,
-            unitAddress: matchable.unitAddress,
-          })
-        ) {
-          continue;
-        }
-        let matchedSpec: Awaited<ReturnType<typeof upsertMatchedPropertySpec>> | undefined;
-        if (input.legacyProjection !== "skip") {
-          await tx.query("savepoint skip_legacy_property_spec");
-          try {
-            matchedSpec = await upsertMatchedPropertySpec(tx, decision.value);
-            await tx.query("release savepoint skip_legacy_property_spec");
-          } catch (error) {
-            await tx.query("rollback to savepoint skip_legacy_property_spec").catch(() => undefined);
-            if (!isPrivilegeDenied(error)) {
-              throw error;
-            }
-            continue;
-          }
-        }
-        const matchedModuleId = await resolveAttributionModuleForBinding(tx, {
-          organizationId: input.organizationId,
-          driverModule: driverModuleFromSchemaNamespace(
-            decision.value.schemaNamespace,
-          ),
-          compatible: matchable.compatible[0] ?? null,
-          instanceName: instanceNameFor(matchable),
-          nodeLocator: matchable.nodeLocator,
-          attributionSubjectId: matchedSpec?.attributionSubjectId,
-        });
-        if (!matchedSpec) continue;
-        const {
-          parameterSpecId,
-          parameterSpecVersionId,
-        } = matchedSpec;
-        const { binding } = await createRecognizedBinding(tx, {
-          organizationId: input.organizationId,
-          projectId: input.projectId,
-          logicalNodeId,
-          parameterSpecId,
-          parameterSpecVersionId,
-          moduleId: matchedModuleId,
-        });
-        await upsertBindingRevisionValues(tx, {
-          bindingId: binding.id,
-          configRevisionId: input.configRevisionId,
-          parameterSpecVersionId,
-          values: {
-            typedValue: property.value ?? {
-              kind: "raw",
-              rawText: property.rawText,
-            },
-            canonicalValue: property.value ?? property.normalizedValue,
-            rawValue: property.rawText,
-            schemaState: "valid",
-          },
-          attribution: input.attribution,
-        });
-        if (propertyOccurrenceId) {
-          await upsertOccurrenceSpecDecision(tx, {
-            organizationId: input.organizationId,
-            projectId: input.projectId,
-            configRevisionId: input.configRevisionId,
-            propertyOccurrenceId,
-            logicalNodeId,
-            propertyKey,
-            decision: "resolved",
-            parameterSpecId,
-            bindingId: binding.id,
-            reviewTaskId: null,
-          });
-        }
-        continue;
-      }
-
-      // An unmatched property is never recognized from a historical binding.
-      // Continuity may carry logical-node identity, but it cannot prove the
-      // current canonical subject, unique active version, or authoritative
-      // placement. Keep this occurrence as review evidence until the current
-      // registry resolves it through the matched path above.
-      if (input.legacyProjection !== "skip") {
-        reviewDrafts.push(
-          ...reviewTasksForDecision(decision, matchable, propertyKey, locate),
-        );
-      }
+      if (decision.kind !== "matched" || isScaffoldingDriverLabel(driverModuleFromSchemaNamespace(decision.value.schemaNamespace))
+        || isModuleScaffoldingNode({ name: matchable.name, compatible: matchable.compatible[0] ?? null,
+          nodePath: matchable.nodeLocator, unitAddress: matchable.unitAddress })) continue;
+      await resolveAttributionModuleForBinding(tx, {
+        organizationId: input.organizationId,
+        driverModule: driverModuleFromSchemaNamespace(decision.value.schemaNamespace),
+        compatible: matchable.compatible[0] ?? null,
+        instanceName: instanceNameFor(matchable),
+        nodeLocator: matchable.nodeLocator,
+      });
     }
   }
-
-  return reviewDrafts;
 }
 
 /**
@@ -1009,7 +750,6 @@ async function ingestConfigRevisionTx(
     revisionNumber,
     registry,
     sourceCommit: options?.sourceCommit,
-    legacyProjection: options?.legacyProjection,
   });
 
   if (continuity.ambiguous.length) {
@@ -1040,7 +780,6 @@ async function ingestConfigRevisionTx(
     await insertLogicalNodeRevision(tx, revision.id, logicalRevision);
   }
 
-  const propertyOccurrenceByKey = new Map<string, string>();
   let effectOrder = 0;
   for (const node of resolved.effective.nodesByLocator.values()) {
     const logicalRevision = continuity.revisionByLocator.get(node.nodeLocator);
@@ -1054,17 +793,6 @@ async function ingestConfigRevisionTx(
           ? occurrencesByOrigin.get(originKey(entry.origin.fileVersionId, entry.origin, entry.propertyName)) : null;
         const propertyOccurrenceId = occurrence?.propertyOccurrenceId ?? null;
         const nodeOccurrenceId = occurrence?.nodeOccurrenceId ?? null;
-
-        if (
-          propertyOccurrenceId &&
-          (entry.effect === "set" || entry.effect === "override") &&
-          !property.deleted
-        ) {
-          propertyOccurrenceByKey.set(
-            `${node.nodeLocator}\0${entry.propertyName}`,
-            propertyOccurrenceId,
-          );
-        }
 
         await insertOccurrenceEffect(tx, revision.id, {
           id: randomUUID(),
@@ -1080,18 +808,13 @@ async function ingestConfigRevisionTx(
     }
   }
 
-  const reviewDrafts = options?.sourceCommit ? [] : await matchBindAndQueueReviews(tx, {
-    organizationId: manifest.organizationId,
-    projectId: manifest.projectId,
-    configRevisionId: revision.id,
-    effectiveNodes: resolved.effective.nodesByLocator,
-    stableLogicalIdByLocator: continuity.stableLogicalIdByLocator,
-    propertyOccurrenceByKey,
-    registry,
-    attribution: attribution?.domain,
-    legacyProjection: options?.legacyProjection,
-  });
-  await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
+  if (!options?.sourceCommit) {
+    await discoverAttributionModules(tx, {
+      organizationId: manifest.organizationId,
+      effectiveNodes: resolved.effective.nodesByLocator,
+      registry,
+    });
+  }
 
   const singletonConflicts = await countSingletonCardinalityConflicts(tx, {
     organizationId: manifest.organizationId,

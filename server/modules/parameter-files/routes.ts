@@ -366,7 +366,6 @@ export function registerParameterFileRoutes(
         bytes: decodeContentBase64(body.contentBase64)
       },
       { requestId: request.requestId },
-      undefined,
       db
     );
 

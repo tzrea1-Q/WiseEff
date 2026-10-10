@@ -62,7 +62,7 @@ describe("#897 C1 authenticated current DTS discovery", () => {
       entryFile: fileName,includeSearchPaths: [],overlayOrder: [],members: [
         { fileId,fileVersionId,fileName,sourceName:fileName,content,role:"base",sortOrder:0 },
       ] };
-    const revision = await ingestConfigRevision(db,manifest,admin,{ legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db,manifest,admin);
     expect(revision.status).toBe("resolved");
     const row = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string;
       propertyOccurrenceId: string }>(
@@ -189,7 +189,7 @@ describe("#897 C1 authenticated current DTS discovery", () => {
     await db.query("update project_parameter_files set current_version_id=$2 where id=$1",[first.fileId,newVersionId]);
     const nextManifest = structuredClone(first.manifest);
     nextManifest.members[0] = { ...nextManifest.members[0]!,fileVersionId:newVersionId,content:newContent };
-    const nextRevision = await ingestConfigRevision(db,nextManifest,admin,{legacyProjection:"skip"});
+    const nextRevision = await ingestConfigRevision(db,nextManifest,admin);
     expect(nextRevision.status).toBe("resolved");
     const historical = await listDriverCompatibleDiscovery({ db,objectStore:storage,auth:viewer,
       observationId:first.observationId });
