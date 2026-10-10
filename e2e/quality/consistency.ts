@@ -268,7 +268,8 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/parameter-admin/projects": ["section"],
   "/parameter-admin/projects/aurora/review-roles": ["section"],
   "/parameter-review": ["tabs"],
-  "/parameter-submissions": ["tabs"]
+  "/parameter-submissions": ["tabs"],
+  "/user-permissions": ["section", "tabs"]
 };
 export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas"> = {

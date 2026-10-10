@@ -33,15 +33,20 @@
 | 列筛选 | `src/components/ColumnFilter.tsx` | 规格:[表格列多选筛选 UX](ux-table-column-filter.md) |
 | 搜索框 | `src/components/common/SearchField.tsx` | 唯一搜索输入外观；过滤在 `src/lib/search/` 的 Profile 中，不在输入组件里 |
 | 视图切换 | `src/components/ui/view-switch.tsx` + `view-switch.css` | 三种令牌化样式：`section` 章节导航（40px / full 圆角 / 14px，选中 `--nav-selected`）、`tabs` 内容标签页（32px / md 圆角 / 13px，选中 `--accent-soft`）、`toggle` 单选选项（28px / sm 圆角 / 12px，选中 `--surface`） |
+| Bridge 安装步骤条 | `src/components/LocalDeviceBridgeWizard.tsx` + `src/styles.css` 中的 `.local-device-bridge-wizard__steps` | 有序的安装/连接进度，不是标签页或视图切换；独立的令牌化步骤样式是共享切换契约的例外 |
 | 加载/空/错误 | `src/components/common/SectionState.tsx`(认证启动期另有 `AppShellSkeleton`) | 骨架 + 空态 + 可重试错误三件套;parameter-home 转为 re-export 同一组件 |
 | 局部令牌派生 | `src/features/parameter-home/parameter-home.css` | 用 `color-mix()` 从全局令牌派生局部语义色,不发明新字面量 |
 | 图标 | `lucide-react` | 不用 emoji,不用 `✓`/`↗` 等文本字符当图标 |
 
-**视图切换契约（UIA-016，扩展阶段）：**`/organization` 和 `/organization/members` 使用共享章节导航；人员管理的账号库/注册申请工作区使用内容标签页。章节导航的方向键、Home/End 只移动焦点，Enter/空格执行导航。内容标签页采用手动激活和游走焦点，每个选项必须提供 `id`/`panelId`；调用方渲染当前 `role="tabpanel"`，使用对应面板 ID，通过 `aria-labelledby` 关联选项 ID，并设置 `tabIndex={0}`。单选选项使用方向键或空格选择。三种样式共享令牌化的可见键盘焦点及禁用状态。一致性项目在浅色和深色主题下检查两条组织路由的每个可见切换项必须且只能匹配一种根令牌样式签名。扩展阶段保留其他旧变体；Bridge 安装步骤条是独立的进度模式，不属于视图切换。
+**视图切换契约（UIA-016）：**23 条审计路径上的切换项全部使用共享组件；这些界面不再保留局部切换样式或覆盖规则。`/organization` 和 `/organization/members` 使用章节导航；人员管理的账号库/注册申请工作区使用内容标签页。章节导航的方向键、Home/End 只移动焦点，Enter/空格执行导航。内容标签页采用手动激活和游走焦点，每个选项必须提供 `id`/`panelId`；调用方渲染当前 `role="tabpanel"`，使用对应面板 ID，通过 `aria-labelledby` 关联选项 ID，并设置 `tabIndex={0}`。单选选项使用方向键或空格选择。三种样式共享令牌化的可见键盘焦点及禁用状态。一致性项目在 `1440x900`、浅色和深色主题下检查每个可见切换项必须且只能匹配一种根令牌样式签名。`e2e/quality/consistency.ts` 中的 `viewSwitchStyleExpectations` 列出全部 23 条路径及必需层级，包括重定向后必须显示章节导航和账号标签页的 `/user-permissions`。
 
 调试后台和参数后台使用章节导航，包含定义库/节点对应确认的嵌套路由。节点调试和 DTS 重载使用 HDC/ADB 内容标签页，并关联所选协议的工作台面板。新版参数值/成员删除审核（提交页也使用）及旧版审阅使用内容标签页，关联待处理/历史面板。一致性样式断言同时覆盖这些路由及参数后台重定向，检查每个可见切换项，但保留 Bridge 安装进度条作为独立模式。既有路由/查询状态、协议会话重置、请求选择及操作禁用契约保持不变。
 
 非当前标签页的面板保持挂载并隐藏，确保每个 `aria-controls` 都有有效目标；非当前面板的内容可以卸载。
+
+### Local Device Bridge 安装步骤条
+
+节点调试和 DTS 重载中的 Bridge 向导依次展示三个步骤：安装 Bridge、连接本机、插入 USB 设备。它使用标注 `Bridge 连接步骤` 的 `ol` 和表示进度的 `li`；`data-active` 标记当前展示的步骤，`data-done` 标记已完成步骤。只有已可达且非当前的步骤才显示为可回访按钮。未到达步骤不可交互，前置条件检查继续决定进度。这不是 `tablist`、`radiogroup` 或自由视图选择，不关联标签页面板，也不采用标签页的方向键激活规则。`.local-device-bridge-wizard__steps` 保留独立样式；一致性断言仅豁免这些列表项，绝不豁免向导旁的 HDC/ADB 协议标签页。
 
 ## 设计令牌
 

@@ -34,8 +34,7 @@
 .parameter-catalog__anchor,
 .parameter-catalog__toolbar,
 .parameter-catalog__banner,
-.parameter-catalog__pane,
-.parameter-catalog__sheet-tabs {
+.parameter-catalog__pane {
   min-width: 0;
 }
 
@@ -1140,24 +1139,6 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-catalog__fact:last-child {
   border-bottom: none;
   padding-bottom: 0;
-}
-
-.parameter-catalog__sheet-tabs {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-/* The detail dialog tabs read as buttons and show which pane is selected. */
-.parameter-catalog__sheet-tabs [role="tab"] {
-  background: var(--pcat-surface);
-  border-color: var(--border-strong);
-}
-
-.parameter-catalog__sheet-tabs [role="tab"][aria-selected="true"] {
-  color: var(--pcat-accent);
-  background: var(--pcat-accent-soft);
-  border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
 }
 
 .parameter-catalog[data-catalog-layout="desktop"] .parameter-catalog__table-wrap--mobile,
