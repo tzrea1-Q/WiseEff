@@ -81,6 +81,7 @@ import type {
   TrustedGovernanceActorKind,
   TrustedGovernanceScope,
 } from "./governance/types";
+import { matchCatalogGovernanceRoute } from "./governance/handlers";
 import { registerCatalogLegacyRoutes } from "./legacy/routes";
 import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
@@ -419,13 +420,30 @@ const authenticateCatalog =
   };
 
 const authenticateGovernance =
-  (resolveAuth: CatalogApiAuthResolver) =>
+  (resolveAuth: CatalogApiAuthResolver, pool: pg.Pool | undefined) =>
   async (request: CatalogGovernanceRequest) => {
     const auth = await resolveAuth(request as RouteRequest);
     if (!auth.user.isActive) {
       return { ok: false as const, status: 401 as const };
     }
-    return { ok: true as const, scope: governanceScope(auth) };
+    const scope = governanceScope(auth);
+    const matched = matchCatalogGovernanceRoute(request.method, request.path);
+    if (matched && ["catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem"].includes(matched.id)) {
+      if (matched.params.organizationId !== auth.organization.id ||
+        !auth.roles.some((role) => role.roleId === "admin" && role.projectId === null)) {
+        return { ok: false as const, status: 403 as const };
+      }
+      const organizationAdmin = pool && await pool.query<{ authorized: boolean }>(
+        `select exists (select 1 from public.user_role_bindings
+          where user_id = $1 and organization_id = $2 and project_id is null and role_id = 'admin') as authorized`,
+        [auth.user.id, auth.organization.id],
+      );
+      if (!organizationAdmin?.rows[0]?.authorized) {
+        return { ok: false as const, status: 403 as const };
+      }
+      return { ok: true as const, scope: { ...scope, actorKind: "org-admin" as const, canMutateOrganization: true } };
+    }
+    return { ok: true as const, scope };
   };
 
 const publicationScope = (auth: AuthContext): TrustedPublicationScope => ({
@@ -683,7 +701,7 @@ const createGovernancePorts = (
   const queries = pool ? createGovernanceCatalogQueries(pool) : undefined;
 
   return {
-    authenticate: authenticateGovernance(resolveAuth),
+    authenticate: authenticateGovernance(resolveAuth, pool),
     currentRelease: async () => {
       if (!pool) {
         return null;

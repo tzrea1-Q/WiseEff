@@ -49,7 +49,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     return evidenceId;
   };
 
-  const request = async (actor: "admin" | "member" | "other" | "dual" | "platform", method: string, path: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
+  const request = async (actor: "admin" | "member" | "other" | "dual" | "platform" | "project" | "foreign-role", method: string, path: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: { authorization: `Bearer review-closure-${actor}`, "content-type": "application/json", ...init.headers },
@@ -81,11 +81,12 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     if (!installed.ok) throw new Error(JSON.stringify(installed.error));
     pin = { id: compiled.value.release.id, digest: compiled.value.release.digest };
     await pool.query("insert into public.organizations(id,name) values ($1,'Review closure'),($2,'Other')", [ORG, OTHER_ORG]);
-    for (const [actor, org, role] of [["admin", ORG, "admin"], ["member", ORG, "software-user"], ["other", OTHER_ORG, "admin"], ["dual", ORG, "platform-admin"], ["platform", ORG, "platform-admin"]] as const) {
+    for (const [actor, org, role] of [["admin", ORG, "admin"], ["member", ORG, "software-user"], ["other", OTHER_ORG, "admin"], ["dual", ORG, "platform-admin"], ["platform", ORG, "platform-admin"], ["project", ORG, "platform-admin"], ["foreign-role", ORG, "platform-admin"]] as const) {
       await pool.query("insert into public.users(id,organization_id,name,email,title,is_active) values ($1,$2,$1,$3,'Review fixture',true)", [actor, org, `${actor}@review.test`]);
       await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,null,$4)", [`role-${actor}`, actor, org, role]);
     }
     await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-dual-admin','dual',$1,null,'admin')", [ORG]);
+    await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-foreign-admin','foreign-role',$1,null,'admin')", [OTHER_ORG]);
     for (const [owner, organizationId] of [["own", ORG], ["foreign", OTHER_ORG], ["other", ORG]] as const) {
       await pool.query("insert into projects(id,organization_id,name,code) values ($1,$2,$1,$1)", [`${owner}-project`, organizationId]);
       await pool.query("insert into dts_config_set(id,organization_id,project_id,name) values ($1,$2,$3,$1)", [`${owner}-set`, organizationId, `${owner}-project`]);
@@ -111,6 +112,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
         node_occurrence_id,property_occurrence_id,source_order) values ($1,$2,$3,'limit','set',$4,$5,0)`,
       [`${owner}-effect`, `${owner}-revision`, `${owner}-logical-revision`, `${owner}-node`, `${owner}-property`]);
     }
+    await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-project-admin','project',$1,'own-project','admin')", [ORG]);
     await pool.query(`insert into dts_config_revisions(id,organization_id,project_id,config_set_id,revision_number,status)
       values ('own-inconsistent-revision',$1,'own-project','own-set',2,'resolved')`, [ORG]);
     for (const [observationId, owner, catalogReleaseId] of [
@@ -130,11 +132,12 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
       .toEqual([{ current_user: runtime.apiRole, rolsuper: false }]);
     server = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async (authorization): Promise<AuthContext> => {
       const actor = authorization?.replace("Bearer review-closure-", "");
-      if (actor !== "admin" && actor !== "member" && actor !== "other" && actor !== "dual" && actor !== "platform") throw new Error("invalid fixture token");
+      if (actor !== "admin" && actor !== "member" && actor !== "other" && actor !== "dual" && actor !== "platform" && actor !== "project" && actor !== "foreign-role") throw new Error("invalid fixture token");
       const organizationId = actor === "other" ? OTHER_ORG : ORG;
-      const roles: AuthContext["roles"] = actor === "dual"
+      const roles: AuthContext["roles"] = actor === "dual" || actor === "foreign-role"
         ? [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }]
-        : [{ roleId: actor === "platform" ? "platform-admin" : "admin", projectId: null }];
+        : actor === "project" ? [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: "own-project" }]
+          : [{ roleId: actor === "platform" ? "platform-admin" : actor === "member" ? "software-user" : "admin", projectId: null }];
       return { user: { id: actor, organizationId, name: actor, email: `${actor}@review.test`, emailVerified: true, title: "Review fixture", isActive: true }, organization: { id: organizationId, name: organizationId }, roles, permissions: ["parameter:view"] };
     } } } });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -149,15 +152,16 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     await database?.close();
   });
 
-  it.each([["dual", 200], ["platform", 403]] as const)("reads Organization review items as %s with status %s", async (actor, status) => {
+  it.each([["dual", 200], ["platform", 403], ["member", 403], ["other", 403], ["admin", 200], ["project", 403], ["foreign-role", 403]] as const)("reads Organization review items as %s with status %s", async (actor, status) => {
     const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
     const result = await request(actor, "GET", path);
     expect(result.status).toBe(status);
     if (status === 200) expect(result.body.items).toEqual(expect.any(Array));
   });
 
-  it.each<[string, Record<string, ContractJsonValue>, string?]>([
+  it.each<[string, Record<string, ContractJsonValue>, string?, "dual"?]>([
     ["foreign project", { projectId: "foreign-project" }],
+    ["dual-role foreign project", { projectId: "foreign-project" }, undefined, "dual"],
     ["foreign revision", { configRevisionId: "foreign-revision" }],
     ["foreign property occurrence", { propertyOccurrenceId: "foreign-property" }],
     ["foreign logical node", { logicalNodeId: "foreign-logical" }],
@@ -177,7 +181,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     ["linked matcher mismatch", {}, "own-observation"],
     ["contradictory sibling proofs", { sourceRevision: { projectId: "own-project", configRevisionId: "own-revision", logicalNodeId: "own-logical" },
       sourceProof: { configRevisionId: "other-revision", propertyOccurrenceId: "other-property", logicalNodeId: "other-logical" } }],
-  ])("rejects authorized Review resolution with %s evidence without domain writes", async (vector, overrides, observationId) => {
+  ])("rejects authorized Review resolution with %s evidence without domain writes", async (vector, overrides, observationId, actor = "admin") => {
     const flatReferences: Record<string, ContractJsonValue> = vector === "contradictory sibling proofs" ? {} : { projectId: "own-project",
       configRevisionId: "own-revision", propertyOccurrenceId: "own-property", logicalNodeId: "own-logical" };
     const evidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `negative:${randomUUID()}`,
@@ -198,7 +202,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
       (select count(*)::int from parameter_catalog.governance_command_idempotency) as commands,
       (select count(*)::int from audit_events where action <> 'review-resolution-refused') as audits`)).rows[0];
     const before = await counts();
-    const result = await request("admin", "POST", `${path}/${item.id}/resolve`, {
+    const result = await request(actor, "POST", `${path}/${item.id}/resolve`, {
       headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `reject:${randomUUID()}`, "If-Match": `"${item.etag}"` },
       body: { resolution: { type: "mark-out-of-scope" }, reason: "review malformed source evidence" },
     });
@@ -279,7 +283,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     expect(otherQuery.ok && otherQuery.value.ignoredReviewItemCount).toBe(0);
     expect(detail.status).toBe(404);
     expect((await request("member", "GET", path)).status).toBe(403);
-    expect((await request("other", "GET", path)).status).toBe(404);
+    expect((await request("other", "GET", path)).status).toBe(403);
   });
 
   it.each(["direct", "sourceRevision", "sourceProof", "linked", "paired"])("resolves %s evidence with an exact same-tenant source graph", async (shape) => {
@@ -305,5 +309,46 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     expect((await pool.query("select status from parameter_catalog.parameter_review_items where id=$1", [item.id])).rows)
       .toEqual([{ status: "out-of-scope" }]);
     expect((await pool.query("select count(*)::int as count from audit_events where target_id=$1 and action='review-item-resolved'", [item.id])).rows[0]?.count).toBe(1);
+  });
+
+  it.each([["dual", 200], ["platform", 403], ["member", 403], ["other", 403], ["admin", 200], ["project", 403], ["foreign-role", 403]] as const)("reads and resolves a populated Organization review item as %s with status %s", async (actor, status) => {
+    const evidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `authority:${randomUUID()}`,
+      catalogReleaseId: pin.id, matcherRevision: MATCHER, matcherOutput: { status: "unknown" },
+      evidence: { propertyKey: `authority:${actor}`, compatible: "vendor,device" } });
+    const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
+    const queue = await request("admin", "GET", path);
+    expect(queue.status).toBe(200);
+    const item = queue.body.items.find((entry: { observation?: { id: string } }) => entry.observation?.id === evidenceId);
+    expect(item?.status).toBe("open");
+    const detail = await request(actor, "GET", `${path}/${item.id}`);
+    expect.soft(detail.status).toBe(status);
+    if (status === 200) expect.soft(detail.body.item?.id).toBe(item.id);
+    const init = {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `authority:${randomUUID()}`, "If-Match": `"${item.etag}"` },
+      body: { resolution: { type: "mark-out-of-scope" }, reason: "Organization authority review" },
+    };
+    const result = await request(actor, "POST", `${path}/${item.id}/resolve`, init);
+    expect.soft(result.status, JSON.stringify(result.body)).toBe(status);
+    if (status === 200) {
+      expect.soft(result.headers.get("etag")).not.toBe(detail.headers.get("etag"));
+      const retry = await request(actor, "POST", `${path}/${item.id}/resolve`, init);
+      expect.soft(retry.status).toBe(200);
+      expect.soft(retry.body.item).toEqual(result.body.item);
+      expect.soft(retry.headers.get("etag")).toBe(result.headers.get("etag"));
+    }
+    expect.soft((await pool.query("select status,etag_version from parameter_catalog.parameter_review_items where id=$1", [item.id])).rows)
+      .toEqual([{ status: status === 200 ? "out-of-scope" : "open", etag_version: status === 200 ? "2" : "1" }]);
+    expect.soft((await pool.query("select count(*)::int as count from parameter_catalog.parameter_review_resolutions where review_item_id=$1", [item.id])).rows[0]?.count)
+      .toBe(status === 200 ? 1 : 0);
+    expect.soft((await pool.query("select count(*)::int as count from audit_events where target_id=$1 and action='review-item-resolved'", [item.id])).rows[0]?.count)
+      .toBe(status === 200 ? 1 : 0);
+  });
+
+  it.each([["POST", ""], ["POST", "/preg_authority/retire"], ["POST", "/preg_authority/restore"], ["PATCH", "/preg_authority/placement"]] as const)("does not extend dual-role Review authority to %s registration%s", async (method, suffix) => {
+    const result = await request("dual", method, `/api/v2/organizations/${ORG}/subject-registrations${suffix}`, {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `scope:${randomUUID()}`, "If-Match": '"1"' },
+      body: {},
+    });
+    expect(result.status).toBe(403);
   });
 });
