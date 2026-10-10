@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
+import { activeDefinition } from "@/application/parameter-catalog/fixtures";
 import type { DtsReloadRun } from "@/domain/dtsReload/types";
 import type { LogRecord } from "@/domain/prototype/types";
 import { createMockKnowledgeRepository } from "./mockKnowledgeRepository";
@@ -283,30 +284,48 @@ describe("createMockKnowledgeRepository", () => {
       );
     });
 
-    it("adds references idempotently and removes them", async () => {
+    it("adds canonical references idempotently and removes canonical and historical references", async () => {
       const repository = createMockKnowledgeRepository();
       const entry = await repository.createMarkdown({ title: "引用条目", tags: [], contentMarkdown: "x" });
 
-      const withReference = await repository.addParameterReference(entry.id, "spec-mt5788-gpio-int");
-      expect(withReference.parameterReferences.map((reference) => reference.specId)).toEqual(["spec-mt5788-gpio-int"]);
+      const withReference = await repository.addDefinitionReference(entry.id, activeDefinition.id);
+      expect(withReference.parameterReferences).toHaveLength(1);
+      expect(withReference.parameterReferences[0]).toMatchObject({
+        kind: "definition",
+        definitionId: activeDefinition.id,
+        createdByUserId: entry.createdByUserId
+      });
+      expect(withReference.parameterReferences[0]).not.toHaveProperty("specId");
 
-      const again = await repository.addParameterReference(entry.id, "spec-mt5788-gpio-int");
+      const again = await repository.addDefinitionReference(entry.id, activeDefinition.id);
       expect(again.parameterReferences).toHaveLength(1);
 
-      const removed = await repository.removeParameterReference(entry.id, "spec-mt5788-gpio-int");
+      const removed = await repository.removeDefinitionReference(entry.id, activeDefinition.id);
       expect(removed.parameterReferences).toHaveLength(0);
-      await expect(repository.removeParameterReference(entry.id, "spec-mt5788-gpio-int")).rejects.toThrow(/not found/);
+
+      const historical = await repository.removeParameterReference("mock-kb-1", "spec-sc8562-gpio-int");
+      expect(historical.parameterReferences.map((reference) => reference.specId)).toEqual(["spec-deprecated-legacy"]);
+      await expect(repository.removeParameterReference("mock-kb-1", "spec-sc8562-gpio-int")).rejects.toThrow(/not found/);
     });
 
     it("refuses reference edits on archived entries and on other users' entries without manage", async () => {
       const owner = createMockKnowledgeRepository();
       const entry = await owner.createMarkdown({ title: "归档引用", tags: [], contentMarkdown: "x" });
+      await owner.addDefinitionReference(entry.id, activeDefinition.id);
       await owner.publish(entry.id);
       await owner.archive(entry.id);
-      await expect(owner.addParameterReference(entry.id, "spec-mt5788-gpio-int")).rejects.toThrow(/Archived/);
+      await expect(owner.addDefinitionReference(entry.id, activeDefinition.id)).rejects.toThrow(/Archived/);
+      await expect(owner.removeDefinitionReference(entry.id, activeDefinition.id)).rejects.toThrow(/Archived/);
+      await expect(owner.removeParameterReference(entry.id, "spec-mt5788-gpio-int")).rejects.toThrow(/Archived/);
 
       const stranger = createMockKnowledgeRepository({ userId: "someone-else", canManage: false });
-      await expect(stranger.addParameterReference("mock-kb-1", "spec-mt5788-gpio-int")).rejects.toThrow(
+      await expect(stranger.addDefinitionReference("mock-kb-1", activeDefinition.id)).rejects.toThrow(
+        /knowledge:manage/
+      );
+      await expect(stranger.removeDefinitionReference("mock-kb-1", activeDefinition.id)).rejects.toThrow(
+        /knowledge:manage/
+      );
+      await expect(stranger.removeParameterReference("mock-kb-1", "spec-sc8562-gpio-int")).rejects.toThrow(
         /knowledge:manage/
       );
     });

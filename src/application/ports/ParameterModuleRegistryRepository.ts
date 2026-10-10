@@ -177,31 +177,6 @@ export type OrganizationDriverSchemaValueShapeKind =
   | "mixed"
   | "unknown";
 
-/**
- * Overlay properties link ParameterSpecs (definition library).
- * Either attach an existing row, or create one into the library via propertyKey+valueShape.
- */
-export type CreateOrganizationDriverSchemaPropertyInput =
-  | {
-      parameterSpecId: string;
-      propertyKey?: string;
-    }
-  | {
-      propertyKey: string;
-      valueShape: { kind: OrganizationDriverSchemaValueShapeKind };
-      units?: string;
-      constraints?: Record<string, unknown>;
-      documentation?: string;
-      copyFromParameterSpecId?: string;
-    };
-
-export type CreateOrganizationDriverSchemaInput = {
-  compatible: string;
-  displayName: string;
-  notes?: string;
-  properties: CreateOrganizationDriverSchemaPropertyInput[];
-};
-
 export type OrganizationDriverSchema = {
   id: string;
   compatible: string;

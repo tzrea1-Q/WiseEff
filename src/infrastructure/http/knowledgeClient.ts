@@ -360,14 +360,6 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       return entryFromDto(response.item);
     },
 
-    async addParameterReference(entryId, specId) {
-      const response = await apiClient.put<ItemEnvelope<KnowledgeEntryDto>>(
-        `${entryPath(entryId)}/parameter-references/${encodeURIComponent(specId)}`,
-        {}
-      );
-      return entryFromDto(response.item);
-    },
-
     async removeParameterReference(entryId, specId) {
       const response = await apiClient.delete<ItemEnvelope<KnowledgeEntryDto>>(
         `${entryPath(entryId)}/parameter-references/${encodeURIComponent(specId)}`

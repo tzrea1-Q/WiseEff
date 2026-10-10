@@ -374,9 +374,6 @@ function createApiBoundaryRepository(
     listSpecReviewTasks: vi
       .fn<ParameterTopologyRepository["listSpecReviewTasks"]>()
       .mockResolvedValue({ items: [], nextCursor: null }),
-    resolveSpecReviewTask: vi
-      .fn<ParameterTopologyRepository["resolveSpecReviewTask"]>()
-      .mockResolvedValue(undefined),
     listBindings: vi
       .fn<ParameterTopologyRepository["listBindings"]>()
       .mockResolvedValue([API_SENTINEL_BINDING]),
@@ -413,9 +410,6 @@ function createApiBoundaryRepository(
     listMappingTasks: vi
       .fn<ParameterTopologyRepository["listMappingTasks"]>()
       .mockResolvedValue([]),
-    resolveMapping: vi
-      .fn<ParameterTopologyRepository["resolveMapping"]>()
-      .mockResolvedValue(undefined),
     listConfigRevisions: vi
       .fn<ParameterTopologyRepository["listConfigRevisions"]>()
       .mockResolvedValue([]),

@@ -7,14 +7,12 @@ import type {
   NodeEnablementDraftResult,
   ParameterTopologyRepository,
   ReattributeParameterSpecInput,
-  RenameParameterSpecPropertyKeyInput,
   RestoreParameterSpecInput
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
   BindingCompareEntry,
   BindingHistoryEntry,
   ConfigRevisionSummary,
-  IdentityMappingEvidence,
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
@@ -23,7 +21,6 @@ import type {
   TopologyTree,
   ValidationRun
 } from "@/domain/parameter-topology/types";
-import { guardReopenIdentityMapping, guardResolveIdentityMapping } from "@/domain/parameter-topology/identityMappingGuard";
 import { driverFallbackModuleId } from "@/domain/parameter-topology/moduleRegistry";
 import {
   withEffectiveEnablement,
@@ -62,15 +59,6 @@ type Store = {
   configRevisions: Map<string, ConfigRevisionSummary[]>;
 };
 
-function asIdentityMappingEvidence(
-  value: IdentityMappingTask["evidence"]
-): IdentityMappingEvidence {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as IdentityMappingEvidence;
-}
-
 function cloneIdentityMappingTask(task: IdentityMappingTask): IdentityMappingTask {
   return {
     ...task,
@@ -81,10 +69,6 @@ function cloneIdentityMappingTask(task: IdentityMappingTask): IdentityMappingTas
 
 export type MockParameterTopologyRepositoryOptions = {
   mappingTasks?: IdentityMappingTask[];
-  mappingDownstreamUsage?: Record<
-    string,
-    { drafts: number; submissions: number; operations: number }
-  >;
 };
 
 function seedSpecs(): Map<string, SpecFixture> {
@@ -724,7 +708,6 @@ export function createMockParameterTopologyRepository(
   if (options.mappingTasks) {
     store.mappingTasks = options.mappingTasks.map(cloneIdentityMappingTask);
   }
-  const mappingDownstreamUsage = new Map(Object.entries(options.mappingDownstreamUsage ?? {}));
   let draftCounter = 0;
 
   return {
@@ -761,14 +744,6 @@ export function createMockParameterTopologyRepository(
         throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       return cloneDetail(detail);
-    },
-
-    async createParameterSpec(_input) {
-      throw mockApiError("GONE", "Legacy structural writes are retired.", {
-        reason: "legacy-surface-retired",
-        successor: "/api/v2/catalog",
-        retryable: false,
-      });
     },
 
     async activateParameterSpec(specId, input: ActivateParameterSpecInput) {
@@ -909,88 +884,6 @@ export function createMockParameterTopologyRepository(
       return cloneDetail(updated);
     },
 
-    async renameParameterSpecPropertyKey(specId, input: RenameParameterSpecPropertyKeyInput) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      const referenceCount = existing.referenceCount ?? 0;
-      if (referenceCount > 0) {
-        throw mockApiError(
-          "CONFLICT",
-          `Cannot rename property_key while ${referenceCount} project binding(s) reference this definition.`,
-          { parameterSpecId: specId, referenceCount }
-        );
-      }
-      const nextPropertyKey = input.propertyKey.trim();
-      for (const [otherId, other] of store.specs) {
-        if (
-          otherId !== specId &&
-          other.attributionSubjectId === existing.attributionSubjectId &&
-          other.propertyKey === nextPropertyKey
-        ) {
-          throw mockApiError(
-            "CONFLICT",
-            "A parameter definition already exists for this subject and property key.",
-            { parameterSpecId: otherId, lifecycle: other.lifecycle }
-          );
-        }
-      }
-      const updated: SpecFixture = {
-        ...existing,
-        propertyKey: nextPropertyKey,
-        specificationKey: `manual/${nextPropertyKey}`,
-      };
-      store.specs.set(specId, updated);
-      return cloneDetail(updated);
-    },
-
-    async getSpecVersionCutoverImpact(specId) {
-      const existing = store.specs.get(specId);
-      if (!existing?.cutover) {
-        throw mockApiError("CONFLICT", `No open cutover for spec: ${specId}`, { specId });
-      }
-      return existing.cutover;
-    },
-
-    async prepareSpecVersionCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Cutover prepare is unavailable in mock mode (${specId}).`, { specId });
-    },
-
-    async finalizeSpecVersionCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Cutover finalize is unavailable in mock mode (${specId}).`, { specId });
-    },
-
-    async previewPropertyKeyCutover(specId, input: { propertyKey: string }) {
-      const existing = store.specs.get(specId);
-      if (!existing) {
-        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
-      }
-      return {
-        parameterSpecId: specId,
-        fromKey: existing.propertyKey ?? "",
-        toKey: input.propertyKey,
-        referenceCount: existing.referenceCount ?? 0,
-        writesCatalog: false as const,
-        writesSource: false as const,
-        inlineRenameEligible: (existing.referenceCount ?? 0) === 0,
-        startBlockers: [],
-        locations: [],
-      };
-    },
-    async startPropertyKeyCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Property-key cutover start is unavailable in mock mode (${specId}).`, { specId });
-    },
-    async preparePropertyKeyCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Property-key cutover prepare is unavailable in mock mode (${specId}).`, { specId });
-    },
-    async finalizePropertyKeyCutover(specId) {
-      throw mockApiError("FORBIDDEN", `Property-key cutover finalize is unavailable in mock mode (${specId}).`, { specId });
-    },
-    async getPropertyKeyCutover() {
-      return null;
-    },
-
     async listSpecReviewTasks(query = {}) {
       let items = store.reviewTasks.map((task) => ({
         ...task,
@@ -1002,46 +895,6 @@ export function createMockParameterTopologyRepository(
       }
       const limit = query.limit ?? items.length;
       return { items: items.slice(0, limit), nextCursor: null };
-    },
-
-    async resolveSpecReviewTask(taskId, input) {
-      const task = store.reviewTasks.find((item) => item.id === taskId);
-      if (!task) {
-        throw mockApiError("NOT_FOUND", `Spec review task not found: ${taskId}`, { taskId });
-      }
-      task.status = input.decision;
-      task.reason = input.reason;
-      task.resolvedAt = MOCK_NOW;
-      if (input.parameterSpecId) {
-        task.parameterSpecId = input.parameterSpecId;
-      }
-      if (input.createSpec && task.propertyKey) {
-        const newId = `spec-manual-${task.propertyKey}`;
-        store.specs.set(newId, {
-          id: newId,
-          organizationId: DEFAULT_ORG_ID,
-          sourceKind: "manual",
-          specificationKey: `manual/${task.propertyKey}`,
-          propertyKey: task.propertyKey,
-          driverModule: task.driverModule,
-          lifecycle: "draft",
-          currentVersionId: `specver-${newId}-1`,
-          currentVersion: 1,
-          displayName: task.propertyKey,
-          description: input.reason,
-          valueShape: { kind: "strings" },
-          schemaDefault: null,
-          exampleValue: null,
-          schemaNamespace: "manual",
-          units: null,
-          constraints: null,
-          documentation: input.reason,
-          compatiblePatterns: null,
-          policyTarget: null,
-          attributionModules: []
-        });
-        task.parameterSpecId = newId;
-      }
     },
 
     async listBindings(projectId, revisionId) {
@@ -1099,79 +952,6 @@ export function createMockParameterTopologyRepository(
       return store.mappingTasks
         .filter((task) => !projectId || task.projectId === projectId)
         .map(cloneIdentityMappingTask);
-    },
-
-    async resolveMapping(taskId, input) {
-      const task = store.mappingTasks.find((item) => item.id === taskId);
-      const evidence = asIdentityMappingEvidence(task?.evidence);
-      const result = guardResolveIdentityMapping({
-        taskId,
-        status: task?.status,
-        taskKind: task?.taskKind,
-        decision: input.decision,
-        selectedLogicalNodeId: input.selectedLogicalNodeId,
-        priorSelectedLogicalNodeId: evidence.selectedLogicalNodeId,
-        previousLogicalNodeId: task?.previousLogicalNodeId,
-        candidateLogicalNodeIds: task?.candidateLogicalNodeIds
-      });
-      if (!result.ok) throw mockApiError(result.code, result.message, result.details);
-      if (input.decision === "resolved") {
-        const selectedLogicalNodeId = input.selectedLogicalNodeId;
-        if (task!.status === "resolved" && evidence.selectedLogicalNodeId === selectedLogicalNodeId) {
-          return;
-        }
-        if (task!.status === "resolved") {
-          const downstream = mappingDownstreamUsage.get(task!.id) ?? {
-            drafts: 0,
-            submissions: 0,
-            operations: 0
-          };
-          if (downstream.drafts + downstream.submissions + downstream.operations > 0) {
-            throw mockApiError(
-              "CONFLICT",
-              "Completed mapping has downstream workflow/device usage; migrate those references before re-resolving.",
-              {
-                code: "identity-mapping-migration-required",
-                taskId: task!.id,
-                downstream
-              }
-            );
-          }
-        }
-        if (!selectedLogicalNodeId || !task!.candidateLogicalNodeIds.includes(selectedLogicalNodeId)) {
-          throw mockApiError(
-            "VALIDATION_FAILED",
-            "selectedLogicalNodeId must be one of the candidate ids.",
-            {
-              selectedLogicalNodeId,
-              candidates: task!.candidateLogicalNodeIds
-            }
-          );
-        }
-        const selectedCandidate = evidence.candidates?.find(
-          (candidate) => candidate.logicalNodeId === selectedLogicalNodeId
-        );
-        task!.evidence = {
-          ...evidence,
-          selectedLogicalNodeId,
-          selectedNodeLocator: selectedCandidate?.nodeLocator ?? null,
-          selectedName: selectedCandidate?.name ?? null,
-          selectedUnitAddress: selectedCandidate?.unitAddress ?? null,
-          continuityReusable: true
-        };
-      }
-      task!.status = input.decision === "new-identity" ? "new_identity" : input.decision;
-      task!.reason = input.reason;
-      task!.resolvedAt = MOCK_NOW;
-    },
-
-    async reopenMapping(taskId, input) {
-      const task = store.mappingTasks.find((item) => item.id === taskId);
-      const result = guardReopenIdentityMapping({ taskId, status: task?.status });
-      if (!result.ok) throw mockApiError(result.code, result.message, result.details);
-      task!.status = "open";
-      task!.reason = input.reason;
-      task!.resolvedAt = null;
     },
 
     async validateRevision(projectId, revisionId) {
