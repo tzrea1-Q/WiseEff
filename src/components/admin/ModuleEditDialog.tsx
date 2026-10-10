@@ -64,7 +64,7 @@ export function ModuleEditDialog({
   const [importance, setImportance] = useState<ModuleImportance>(module.importance ?? "medium");
   const moduleDetailsReadOnly = module.kind === "driver-group" || module.kind === "node-type";
   const showCanonicalPlacementEntry =
-    (module.kind === "driver-group" || module.kind === "node-type") &&
+    moduleDetailsReadOnly &&
     canAdmin && onManageCanonicalPlacement !== undefined;
 
   useEffect(() => {

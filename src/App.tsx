@@ -331,6 +331,7 @@ function AppShell({
   const [apiAuthError, setApiAuthError] = useState("");
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
+  const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
   const [organizationId, setOrganizationId] = useState(
     () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
   );
@@ -661,6 +662,7 @@ function AppShell({
   const hydrateAuthContext = useCallback((context: AuthContextDto) => {
     const primaryRole = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
     setApiAuthPermissions(context.permissions);
+    setApiAuthRoles(context.roles);
     setOrganizationId(context.organization.id);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
@@ -987,6 +989,7 @@ function AppShell({
     }
     clearLocalAuthToken();
     clearSessionDraftsForLogout();
+    setApiAuthRoles(null);
     setApiAuthStatus("unauthenticated");
     setApiAuthError("");
     dispatch({ type: "ADD_NOTIFICATION", message: "已退出登录" });
@@ -1171,6 +1174,7 @@ function AppShell({
                 onAuthContextRefresh={hydrateAuthContext}
                 organizationId={organizationId}
                 sessionPermissions={apiAuthPermissions}
+                sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
@@ -1214,6 +1218,7 @@ function AppShell({
                 onAuthContextRefresh={hydrateAuthContext}
                 organizationId={organizationId}
                 sessionPermissions={apiAuthPermissions}
+                sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
               {showsApplicationFooter ? (

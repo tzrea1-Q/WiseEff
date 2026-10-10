@@ -1,10 +1,15 @@
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   evaluateOperationMatrix,
+  readOperationSpecFiles,
   renderOperationMatrixMarkdown,
   type AcceptanceOperation
 } from "./check-acceptance-operation-matrix";
 import { acceptanceOperations } from "../e2e/acceptance/operationMatrix";
+import { acceptanceRequirements } from "../e2e/acceptance/requirements";
+import { acceptanceShardOperations } from "./run-browser-acceptance";
 
 const baseOperation: AcceptanceOperation = {
   id: "PARAM-DRAFT-EDIT-001",
@@ -20,6 +25,40 @@ const baseOperation: AcceptanceOperation = {
 };
 
 describe("acceptance operation matrix", () => {
+  it("passes the repository registry against retained spec files and requirement ids", () => {
+    const result = evaluateOperationMatrix({
+      operations: acceptanceOperations,
+      specFiles: readOperationSpecFiles(),
+      knownAcceptanceIds: acceptanceRequirements.map((requirement) => requirement.id)
+    });
+
+    expect(result).toMatchObject({
+      status: "passed",
+      missingAutomatedOperationIds: [],
+      deferredOperationIdsMissingReason: [],
+      operationsMissingAssertions: [],
+      unknownOperationIds: [],
+      unknownAcceptanceIds: [],
+      missingSpecFileRefs: []
+    });
+
+    const retiredIds = [
+      "PARAM-SPEC-VIEW-001",
+      "PARAM-SPEC-EDIT-001",
+      "PARAM-SPEC-EDIT-002",
+      "PARAM-SPEC-IDENTITY-001",
+      "PARAM-SPEC-IDENTITY-002"
+    ];
+    expect(acceptanceOperations.filter((operation) => retiredIds.includes(operation.id))).toEqual([]);
+    expect(
+      acceptanceRequirements
+        .filter((requirement) => retiredIds.includes(requirement.id))
+        .map((requirement) => ({ id: requirement.id, required: requirement.required }))
+    ).toEqual(retiredIds.map((id) => ({ id, required: false })));
+    const markdown = readFileSync("docs/developer/user-operation-coverage-matrix.md", "utf8");
+    for (const id of retiredIds) expect(markdown).not.toContain(`\`${id}\``);
+  });
+
   it("fails when an automated P0 operation has no operation marker", () => {
     const result = evaluateOperationMatrix({
       operations: [baseOperation],
@@ -172,6 +211,10 @@ describe("acceptance operation matrix", () => {
     ];
 
     expect(operations.map((operation) => operation.id)).toEqual(expectedIds);
+    const browserFiles = readOperationSpecFiles().map((specFile) => basename(specFile.file));
+    const browserOperations = acceptanceShardOperations(browserFiles, browserFiles)
+      .filter((operation) => operation.id.startsWith("PCAT-"));
+    expect(browserOperations).toEqual(operations);
     expect(
       operations.map((operation) => ({
         coverage: operation.coverage,

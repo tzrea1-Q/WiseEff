@@ -21,7 +21,6 @@ export async function resolveCanonicalParameter(db: Database, auth: AuthContext,
     );
     if (identities.rows.length !== 1) return null;
     mappedProjectId = identities.rows[0]!.project_id;
-    requireCanViewProject(auth, mappedProjectId);
     const pool = getRootPostgresPool(db);
     if (!pool) throw new ApiError("INTERNAL_ERROR", "Canonical identity resolution requires the root database.");
     const mapping = await lookupProtectedIdentity({ client: pool, identity: {

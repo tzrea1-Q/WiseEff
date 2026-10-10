@@ -385,8 +385,8 @@
       "legacy-catalog-sql-write": 5
     },
     "server/modules/parameter-specs/specReviewTenantEvidence.integration.test.ts": {
-      "legacy-catalog-raw-read": 14,
-      "legacy-catalog-sql-write": 8,
+      "legacy-catalog-raw-read": 12,
+      "legacy-catalog-sql-write": 5,
       "legacy-parameter-spec-identifier": 8,
       "unresolved-boundary-expression": 2
     },

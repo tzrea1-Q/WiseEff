@@ -17,7 +17,7 @@ import { createPostgresDatabase, getRootPostgresPool, type Database, type RootDa
 import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile } from "./dts-power-seed";
 import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
-import { syncVendorPropertyDocs } from "./sync-vendor-property-docs";
+import { ensurePublishedVendorCatalog } from "./sync-vendor-property-docs";
 import { insertAttributionSubjectForNewModule } from "../server/modules/parameter-modules/attributionSubjectRepository";
 import { getAuthContext } from "../server/modules/auth/repository";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
@@ -728,7 +728,7 @@ async function main() {
     ]
   };
   try {
-    await syncVendorPropertyDocs(db);
+    await ensurePublishedVendorCatalog(db);
     await seedM1Parameters(db, config);
     await seedM1DtsFiles(db, createObjectStoreFromEnv(env), projectFiles);
     await seedM1SemanticTopology(db, projectFiles);

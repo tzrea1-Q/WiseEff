@@ -246,6 +246,7 @@ export function CatalogPage({
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
   listReviewItemsRef.current = listReviewItems;
+  const reviewItemsAvailable = Boolean(listReviewItems);
   const repositoryRef = useRef(repository);
   repositoryRef.current = repository;
 
@@ -420,7 +421,7 @@ export function CatalogPage({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, reviewItemsAvailable]);
 
   useEffect(() => {
     if (!snapshot) {

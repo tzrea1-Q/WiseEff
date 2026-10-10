@@ -130,11 +130,7 @@
 - `PARAM-FILE-RESOLVE-001`：Admin 在候选页裁决 file/UI 草稿来源冲突，保留文件值或 UI 草稿值（`e2e/acceptance/b906-canonical-conflict-decision.acceptance.spec.ts`）。
 - `PARAM-FILE-ROLLBACK-001`：Admin 在配置工作台版本历史经确认框把某版本恢复为当前；插入新回滚指针版本且不倒带历史；操作者显示名而非原始用户 ID（单元/服务端 + playwright-cli `work/ui-checks/param-file-rollback/`；阻断 Playwright 等 TD-079）。
 - `PARAM-SPEC-GOVERN-001`：Admin 检索 ingest 后的规格并决议审核任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-SPEC-VIEW-001`：Admin 默认打开生效目录，显式切换到治理历史，URL 保留所选投影，详情使用同一投影；单测与三视口 playwright-cli 证据先行，共享验收 marker 暂缓。
-- `PARAM-SPEC-EDIT-001`：Admin 编辑启用态定义的单位/约束/示例/说明并往返；组件与服务端覆盖先行，共享 CI 验收库 Playwright 标记暂缓（TD-079）。
-- `PARAM-SPEC-EDIT-002`：三视口下编辑器动作可达、焦点进入与归还；`ModalDialog` 单测加 playwright-cli 证据先行。
-- `PARAM-SPEC-IDENTITY-001`：Admin 从库纠正归属主体，再打开时声明主体已更新；生命周期与引用数保留；组件与 mock/HTTP 覆盖先行，共享 CI 验收库 Playwright 标记暂缓（TD-079）。
-- `PARAM-SPEC-IDENTITY-002`：零引用可改属性键，有引用拒绝并说明原因；与既有（含废弃）定义碰撞展示阻挡方；RTL / presentError / mock 与 playwright-cli 证据先行，阻断 Playwright 暂缓（TD-079）。
+- #1080 Q7 已退役 `PARAM-SPEC-VIEW-001`、`PARAM-SPEC-EDIT-001/002`、`PARAM-SPEC-IDENTITY-001/002` 的旧正向操作并从矩阵移除；它们不是暂缓的未来功能。`requirements.ts` 中既有的 `required=false` 条目仅保留历史 ID。保留测试、规范负责方及负向覆盖边界见[覆盖映射的 Q7 处置说明](browser-acceptance-coverage-map.md#1080-q7-正向需求退役)。规范操作及其断言不变，历史截图不作为当前证据。
 - `PARAM-ADMIN-IA-001`：组织子导航两入口、定义管理内嵌审核、节点对应嵌套与旧路由重定向（单测覆盖；Playwright 标记暂缓）。
 - `PARAM-TOPOLOGY-BROWSE-001`：融合工作台中的真实源/生效嵌套树、语义行、详情 shape/provenance 与 topology API 200（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：drafts Schema 诊断、409 与编译失败关闭（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

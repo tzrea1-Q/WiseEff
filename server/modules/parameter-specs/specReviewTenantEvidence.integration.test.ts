@@ -1,23 +1,19 @@
 /**
  * Round 5 P1-2: retained cross-tenant review evidence migration integrity.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
-import { makeTestAuthContext } from "../../testing/authContext";
 import {
   migrationsDir,
   withTempDatabase as withSharedTempDatabase
 } from "../../testing/tempDatabase";
 import type { Database } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
-import { ingestConfigRevision } from "../parameter-topology/ingestService";
-import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { backfillReviewTaskScopeColumns } from "./repository";
 
 const ORG_A = "org-tenant-evidence-a";
@@ -28,35 +24,13 @@ const USER_ID = "user-tenant-evidence";
 const CONFIG_SET_A = "dcs-tenant-evidence-a";
 const CONFIG_SET_B = "dcs-tenant-evidence-b";
 const SPEC_A = "pspec:manual:tenant_mystery";
-const SPEC_A_VERSION = "psv:manual:tenant_mystery:v1";
 const PROPERTY_KEY = "tenant_mystery";
-
-const UNMATCHED_DTS = `/dts-v1/;
-
-/ {
-	amba {
-		compatible = "wiseeff,ghost-device";
-		${PROPERTY_KEY} = <1>;
-	};
-};
-`;
 
 const migration0055 = "0055_parameter_spec_review_task_scope_backfill.sql";
 const migration0057 = "0057_parameter_spec_review_task_scope_reconcile.sql";
 const migration0058 = "0058_parameter_spec_review_task_scope_evidence_only.sql";
 
 const databaseAvailable = await isTestDatabaseAvailable();
-
-function makeAuth(orgId = ORG_A): AuthContext {
-  return makeTestAuthContext({
-    userId: USER_ID,
-    organizationId: orgId,
-    name: "Tenant Evidence Admin",
-    email: "tenant-evidence@example.com",
-    organizationName: "Tenant Evidence Org",
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
-  });
-}
 
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
   // Migration replay suite: migrations are applied selectively via applyMigrations options.
@@ -122,197 +96,6 @@ async function seedGraph(db: InMemoryTestDatabase | Database) {
     `,
     [SPEC_A, ORG_A],
   );
-  await db.query(
-    `
-    insert into parameter_spec_versions (
-      id, parameter_spec_id, version, display_name, description, value_shape,
-      schema_default, example_value, lifecycle
-    ) values ($1, $2, 1, 'tenant_mystery', 'Manual tenant mystery', '{"kind":"cells"}'::jsonb, null, null, 'active')
-    on conflict (id) do nothing
-    `,
-    [SPEC_A_VERSION, SPEC_A],
-  );
-  await db.query(
-    `
-    insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints, documentation)
-    values ($1, $2, $3, 'manual', '{"cells": 1}'::jsonb, 'Tenant mystery spec for resolve tests')
-    on conflict (id) do nothing
-    `,
-    [`dps-${SPEC_A}`, SPEC_A, PROPERTY_KEY],
-  );
-}
-
-async function insertPinnedMember(
-  db: InMemoryTestDatabase | Database,
-  input: {
-    orgId: string;
-    projectId: string;
-    configSetId: string;
-    fileId: string;
-    fileName: string;
-    versionId: string;
-    content: string;
-  },
-) {
-  const checksum = createHash("sha256").update(input.content, "utf8").digest("hex");
-  await db.query(
-    `
-    insert into project_parameter_files (
-      id, organization_id, project_id, file_name, format, enabled,
-      config_set_id, config_set_role, config_set_sort_order
-    ) values ($1, $2, $3, $4, 'dts', true, $5, 'base', 0)
-    on conflict (id) do nothing
-    `,
-    [input.fileId, input.orgId, input.projectId, input.fileName, input.configSetId],
-  );
-  await db.query(
-    `
-    insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
-    ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload', $6)
-    on conflict (id) do nothing
-    `,
-    [
-      input.versionId,
-      input.fileId,
-      `${input.orgId}/${checksum}-${input.fileName}`,
-      checksum,
-      Buffer.byteLength(input.content, "utf8"),
-      USER_ID,
-    ],
-  );
-  await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
-    input.versionId,
-    input.fileId,
-  ]);
-}
-
-function manifest(
-  orgId: string,
-  projectId: string,
-  configSetId: string,
-  versionId: string,
-  fileId: string,
-): ConfigRevisionManifest {
-  return {
-    organizationId: orgId,
-    projectId,
-    configSetId,
-    entryFile: "ghost.dts",
-    includeSearchPaths: ["."],
-    overlayOrder: [],
-    members: [
-      {
-        fileId,
-        fileVersionId: versionId,
-        fileName: "ghost.dts",
-        role: "base",
-        sortOrder: 0,
-        content: UNMATCHED_DTS,
-      },
-    ],
-  };
-}
-
-type TopologyFixture = {
-  revisionId: string;
-  propertyOccurrenceId: string;
-  logicalNodeId: string;
-  nodeLocator: string;
-  compatible: string[];
-  fileVersionId: string;
-};
-
-async function ingestOrgARevision(db: InMemoryTestDatabase): Promise<TopologyFixture> {
-  const fileId = "file-tenant-a";
-  const versionId = "fv-tenant-a-1";
-  await insertPinnedMember(db, {
-    orgId: ORG_A,
-    projectId: PROJECT_A,
-    configSetId: CONFIG_SET_A,
-    fileId,
-    fileName: "ghost.dts",
-    versionId,
-    content: UNMATCHED_DTS,
-  });
-  const revision = await ingestConfigRevision(
-    db,
-    manifest(ORG_A, PROJECT_A, CONFIG_SET_A, versionId, fileId),
-    makeAuth(ORG_A),
-  );
-  const task = await db.query<{
-    source_evidence: Record<string, unknown>;
-  }>(
-    `
-    select source_evidence
-    from parameter_spec_review_tasks
-    where organization_id = $1 and status = 'open'
-    limit 1
-    `,
-    [ORG_A],
-  );
-  const evidence = task.rows[0]!.source_evidence;
-  return {
-    revisionId: revision.id,
-    propertyOccurrenceId: String(evidence.propertyOccurrenceId),
-    logicalNodeId: String(evidence.logicalNodeId),
-    nodeLocator: String(evidence.nodeLocator),
-    compatible: Array.isArray(evidence.compatible) ? evidence.compatible.map(String) : [],
-    fileVersionId: versionId,
-  };
-}
-
-async function ingestOrgBRevision(db: InMemoryTestDatabase): Promise<TopologyFixture> {
-  const fileId = "file-tenant-b";
-  const versionId = "fv-tenant-b-1";
-  await insertPinnedMember(db, {
-    orgId: ORG_B,
-    projectId: PROJECT_B,
-    configSetId: CONFIG_SET_B,
-    fileId,
-    fileName: "ghost-b.dts",
-    versionId,
-    content: UNMATCHED_DTS,
-  });
-  const revision = await ingestConfigRevision(
-    db,
-    manifest(ORG_B, PROJECT_B, CONFIG_SET_B, versionId, fileId),
-    makeAuth(ORG_B),
-  );
-  const task = await db.query<{ source_evidence: Record<string, unknown> }>(
-    `
-    select source_evidence
-    from parameter_spec_review_tasks
-    where organization_id = $1 and status = 'open'
-    limit 1
-    `,
-    [ORG_B],
-  );
-  const evidence = task.rows[0]!.source_evidence;
-  return {
-    revisionId: revision.id,
-    propertyOccurrenceId: String(evidence.propertyOccurrenceId),
-    logicalNodeId: String(evidence.logicalNodeId),
-    nodeLocator: String(evidence.nodeLocator),
-    compatible: Array.isArray(evidence.compatible) ? evidence.compatible.map(String) : [],
-    fileVersionId: versionId,
-  };
-}
-
-async function insertCrossTenantTask(
-  db: InMemoryTestDatabase,
-  evidence: Record<string, unknown>,
-): Promise<string> {
-  const taskId = randomUUID();
-  await db.query(
-    `
-    insert into parameter_spec_review_tasks (
-      id, organization_id, source_evidence, candidate_schemas, project_count, status
-    ) values ($1, $2, $3::jsonb, '[]'::jsonb, 1, 'open')
-    `,
-    [taskId, ORG_A, JSON.stringify(evidence)],
-  );
-  return taskId;
 }
 
 describe.skipIf(!databaseAvailable)("0055/0057 review task scope backfill", () => {

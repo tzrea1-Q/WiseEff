@@ -82,6 +82,7 @@ function renderPage(options: {
   state?: typeof initialState;
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
+  sessionRoles?: import("@/infrastructure/http/authClient").AuthContextDto["roles"] | null;
 } = {}) {
   const path = options.path ?? "/parameter-admin/specs";
   window.history.replaceState(null, "", path);
@@ -117,6 +118,7 @@ function renderPage(options: {
         state={options.state ?? initialState}
         runtime={options.runtime}
         catalogOrganizationId={options.catalogOrganizationId}
+        sessionRoles={options.sessionRoles}
       />
     </ToastProvider>
   );
@@ -197,6 +199,47 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules");
   });
 
+  it("does not fall back to the primary actor before API role hydration", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
+    renderPage({
+      path: "/parameter-admin/specs?review=open",
+      runtimeMode: "api",
+      state: { ...initialState, activeRoleId: "admin" },
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /待处理工作/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+    expect(listReviewItems).not.toHaveBeenCalled();
+  });
+
+  it("passes hydrated dual-role authority to the Organization Review Queue", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
+    renderPage({
+      path: "/parameter-admin/specs?review=open",
+      runtimeMode: "api",
+      state: { ...initialState, activeRoleId: "platform-admin" },
+      sessionRoles: [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }],
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+
+    expect(await screen.findByRole("button", { name: /待处理工作/ })).toBeVisible();
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "处理审核" })).toBeEnabled();
+    expect(listReviewItems).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID);
+  });
+
   it("marks a withdrawn mock identity-task deep link unavailable without loading legacy tasks", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const repository = createRepository();
@@ -267,6 +310,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     renderPage({
       path: "/parameter-admin/specs?projectId=project-teaching&review=open",
       state: { ...initialState, activeRoleId: "admin" },
+      sessionRoles: [{ roleId: "admin", projectId: null }],
       runtimeMode: "api",
       runtime: {
         parameterCatalogRepository: ports.catalog,
@@ -284,13 +328,14 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(resolveReviewItem).not.toHaveBeenCalled();
   });
 
-  it("explains Organization review authority to a non-admin session without reading the queue", async () => {
+  it("hides Organization review work from a non-admin session without the Platform-only explanation", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
     const resolveReviewItem = vi.spyOn(ports.governance, "resolveReviewItem");
     renderPage({
       path: "/parameter-admin/specs?review=open",
       state: { ...initialState, activeRoleId: "hardware-user" },
+      sessionRoles: [{ roleId: "hardware-user", projectId: null }],
       runtimeMode: "api",
       runtime: {
         parameterCatalogRepository: ports.catalog,
@@ -299,8 +344,9 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
       catalogOrganizationId: CATALOG_ORGANIZATION_ID
     });
 
-    expect(await screen.findByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。"))
-      .toBeVisible();
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
+    expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /待处理工作/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "待处理工作" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "处理审核" })).not.toBeInTheDocument();
     expect(listReviewItems).not.toHaveBeenCalled();
@@ -757,6 +803,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       path: "/parameter-admin/specs/identity-mapping?projectId=project-teaching",
       repository,
       state: { ...initialState, activeRoleId: "admin" },
+      sessionRoles: [{ roleId: "admin", projectId: null }],
       runtimeMode: "api",
       runtime: {
         parameterCatalogRepository: ports.catalog,
