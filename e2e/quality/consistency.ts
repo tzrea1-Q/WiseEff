@@ -174,9 +174,16 @@ const viewSwitchPaths = [
   "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
   "/parameter-submissions", "/parameters", "/user-permissions"
 ];
+export const viewSwitchStylePaths = [
+  "/organization", "/organization/members", "/debugging-admin", "/debugging-admin/nodes",
+  "/node-debugging", "/dts-reload", "/parameter-admin", "/parameter-admin/specs",
+  "/parameter-admin/specs/identity-mapping", "/parameter-admin/modules", "/parameter-admin/modules/queue",
+  "/parameter-admin/modules/registry", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
+  "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/parameter-review", "/parameter-submissions"
+];
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints"> = {
   viewSwitches: [...viewSwitchPaths, "/log-admin"],
-  viewSwitchSignatures: ["/organization", "/organization/members"],
+  viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging"],

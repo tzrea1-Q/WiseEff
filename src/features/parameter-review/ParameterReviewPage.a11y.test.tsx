@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 import { TopBarActionsContext } from "@/components/layout";
@@ -23,6 +24,24 @@ function renderReview(state: PrototypeState = hardwareCommitterState()) {
 }
 
 describe("ParameterReviewPage landmarks and keyboard", () => {
+  it("activates history manually and keeps both queue tab panels addressable", async () => {
+    const user = userEvent.setup();
+    renderReview();
+    const tabs = screen.getByRole("tablist", { name: "审阅视角" });
+    const pending = within(tabs).getByRole("tab", { name: "待审阅" });
+    const history = within(tabs).getByRole("tab", { name: "历史审阅" });
+    pending.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(history).toHaveFocus();
+    expect(pending).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Enter}");
+    expect(history).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel", { name: "历史审阅" });
+    expect(panel.id).toBe(history.getAttribute("aria-controls"));
+    expect(within(panel).getByRole("table", { name: "审阅队列" })).toBeVisible();
+    expect(document.getElementById(pending.getAttribute("aria-controls")!)).not.toBeVisible();
+  });
+
   it("exposes queue/detail headings and Chinese status labels without Committer/User leaks", () => {
     renderReview();
 

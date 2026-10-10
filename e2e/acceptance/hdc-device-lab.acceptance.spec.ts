@@ -681,9 +681,9 @@ async function getAuditEvents(request: APIRequestContext, userId: string) {
 
 async function expectHdcUiReady(page: Page, config: HdcSmokeConfig) {
   await page.goto("/node-debugging");
-  const hdcButton = page.getByRole("button", { name: "HDC", exact: true });
+  const hdcButton = page.getByRole("tab", { name: "HDC", exact: true });
   await expect(hdcButton).toBeVisible({ timeout: 30_000 });
-  await expect(hdcButton).toHaveAttribute("aria-pressed", "true");
+  await expect(hdcButton).toHaveAttribute("aria-selected", "true");
   const devicePill = page.locator(".topbar .device-pill").first();
   await expect(devicePill).toBeVisible({ timeout: 30_000 });
   await expect(devicePill).toContainText("已连接", { timeout: 30_000 });

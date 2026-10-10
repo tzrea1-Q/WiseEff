@@ -1,4 +1,5 @@
 import { Settings2, TerminalSquare } from "lucide-react";
+import { ViewSwitch } from "@/components/ui/view-switch";
 
 import {
   DEBUGGING_ADMIN_UI,
@@ -17,25 +18,11 @@ export type DebuggingAdminScopeNavProps = {
  */
 export function DebuggingAdminScopeNav({ active, onNavigate }: DebuggingAdminScopeNavProps) {
   return (
-    <nav className="parameter-admin-scope-nav" aria-label={DEBUGGING_ADMIN_UI.scopeNavAria}>
-      <button
-        type="button"
-        className={`parameter-admin-scope-nav__tab${active === "parameter" ? " is-active" : ""}`}
-        aria-current={active === "parameter" ? "page" : undefined}
-        onClick={() => onNavigate(buildDebuggingAdminPath("parameter"))}
-      >
-        <Settings2 size={16} aria-hidden="true" />
-        {DEBUGGING_ADMIN_UI.parameterScope}
-      </button>
-      <button
-        type="button"
-        className={`parameter-admin-scope-nav__tab${active === "nodes" ? " is-active" : ""}`}
-        aria-current={active === "nodes" ? "page" : undefined}
-        onClick={() => onNavigate(buildDebuggingAdminPath("nodes"))}
-      >
-        <TerminalSquare size={16} aria-hidden="true" />
-        {DEBUGGING_ADMIN_UI.nodesScope}
-      </button>
-    </nav>
+    <ViewSwitch variant="section" ariaLabel={DEBUGGING_ADMIN_UI.scopeNavAria} value={active}
+      onValueChange={(value) => onNavigate(buildDebuggingAdminPath(value as DebuggingAdminArea))}
+      items={[
+        { value: "parameter", label: <><Settings2 size={16} aria-hidden="true" />{DEBUGGING_ADMIN_UI.parameterScope}</> },
+        { value: "nodes", label: <><TerminalSquare size={16} aria-hidden="true" />{DEBUGGING_ADMIN_UI.nodesScope}</> }
+      ]} />
   );
 }

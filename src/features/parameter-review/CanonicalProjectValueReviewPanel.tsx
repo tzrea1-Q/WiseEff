@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import type {
   CatalogBatchValueChangeRequestResponse,
   CatalogSourceConflictDecisionResponse,
@@ -162,6 +163,7 @@ export function CanonicalProjectValueReviewPanel({
   mineOnly = false
 }: CanonicalProjectValueReviewPanelProps) {
   const canonicalRepository = repository;
+  const tabsId = useId();
   const [view, setView] = useState<ReviewView>("pending");
   const [requests, setRequests] = useState<readonly CanonicalRequest[]>([]);
   const [batchRequests, setBatchRequests] = useState<readonly BatchRequest[]>([]);
@@ -589,21 +591,16 @@ export function CanonicalProjectValueReviewPanel({
       <header>
         <h2>{mineOnly ? "我的参数提交" : "软件配置审核"}</h2>
         <p>{mineOnly ? "追踪本人提交的新版参数请求及其固定来源差异。" : "核对提交时固定的源文件差异，批准后同步更新参数值与源文件。"}</p>
-        <div role="tablist" aria-label={mineOnly ? "我的参数提交视角" : "软件配置审核视角"}>
-          <button className="button subtle" type="button" role="tab" disabled={busy} aria-selected={view === "pending"} onClick={() => {
+        <ViewSwitch variant="tabs" ariaLabel={mineOnly ? "我的参数提交视角" : "软件配置审核视角"} value={view}
+          onValueChange={(value) => {
             if (batchSelected) deepLinkRequestRef.current = batchRequest?.id ?? null;
-            setView("pending");
-          }}>
-            待审核
-          </button>
-          <button className="button subtle" type="button" role="tab" disabled={busy} aria-selected={view === "history"} onClick={() => {
-            if (batchSelected) deepLinkRequestRef.current = batchRequest?.id ?? null;
-            setView("history");
-          }}>
-            历史
-          </button>
-        </div>
+            setView(value as ReviewView);
+          }} items={[
+            { value: "pending", label: "待审核", id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel`, disabled: busy },
+            { value: "history", label: "历史", id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: busy }
+          ]} />
       </header>
+      <div role="tabpanel" id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`} tabIndex={0}>
       {error ? <p role="alert">{error}</p> : null}
       {staleRequestId ? (
         <p role="alert">请求「{staleRequestId}」已失效、已归档或不属于当前项目，未自动切换到其他请求。</p>
@@ -868,6 +865,9 @@ export function CanonicalProjectValueReviewPanel({
           ) : null}
         </div>
       ) : null}
+      </div>
+      <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
+        aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} tabIndex={0} hidden />
     </section>
   );
 }

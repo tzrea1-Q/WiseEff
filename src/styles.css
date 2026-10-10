@@ -2494,11 +2494,6 @@ body {
   z-index: 2;
 }
 
-.node-debugging-page .protocol-switch {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
-}
 
 .node-debugging-page .local-device-bridge-panel,
 .dts-reload-page .local-device-bridge-panel,
@@ -7440,35 +7435,8 @@ td small {
   background: var(--amber);
 }
 
-.protocol-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  width: fit-content;
-  padding: 3px;
-  background: #f8fafc;
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-}
 
-.protocol-switch-button {
-  min-width: 56px;
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  color: var(--app-muted);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  font-weight: 700;
-  letter-spacing: 0;
-  cursor: pointer;
-}
 
-.protocol-switch-button.active {
-  color: var(--app-text);
-  background: var(--surface);
-  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
-}
 
 
 /* DTS reload workbench — align with node-debugging shell rhythm */
@@ -8257,10 +8225,6 @@ td small {
 }
 
 
-.protocol-switch-button:focus-visible {
-  outline: 2px solid var(--app-primary);
-  outline-offset: 2px;
-}
 
 .local-device-bridge-panel {
   display: grid;
@@ -14516,74 +14480,13 @@ body.xiaoze-popup-drag-active {
   align-items: start;
 }
 
-.parameter-admin-scope-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
 
-.parameter-admin-scope-nav__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 10px var(--space-4);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--text-md);
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: var(--shadow-soft);
-}
 
-.parameter-admin-scope-nav__tab.is-active {
-  color: var(--primary-foreground);
-  background: var(--nav-selected);
-  border-color: var(--nav-selected);
-}
 
-.parameter-admin-subnav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding-left: 2px;
-}
 
-.parameter-admin-subnav__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px var(--space-3);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--text-base);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
-}
 
-.parameter-admin-subnav__tab:hover {
-  color: var(--app-primary);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  background: #f8fbff;
-}
 
-.parameter-admin-subnav__tab.is-active {
-  color: var(--app-primary);
-  background: #eef5ff;
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-}
 
-.parameter-admin-subnav__tab.is-active:hover {
-  background: #eef5ff;
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-}
 
 .parameter-admin-subnav__count,
 .parameter-admin-specs-subnav__count {
@@ -14611,39 +14514,9 @@ body.xiaoze-popup-drag-active {
   font-weight: 600;
 }
 
-.parameter-admin-specs-subnav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: var(--space-1) 0 var(--space-2);
-  padding-left: 2px;
-}
 
-.parameter-admin-specs-subnav__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px var(--space-3);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--text-base);
-  font-weight: 600;
-  cursor: pointer;
-}
 
-.parameter-admin-specs-subnav__tab:hover {
-  color: var(--app-primary);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  background: #f8fbff;
-}
 
-.parameter-admin-specs-subnav__tab.is-active {
-  color: var(--app-primary);
-  background: #eef5ff;
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-}
 
 .param-admin-review-queue {
   margin-top: var(--space-3);
@@ -21638,9 +21511,10 @@ body.xiaoze-popup-drag-active {
   min-width: 0;
 }
 
-.canonical-project-value-review [role="tablist"] {
-  display: flex;
-  gap: var(--space-2);
+.canonical-project-value-review > [role="tabpanel"]:not([hidden]) {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 .canonical-project-value-review dl,

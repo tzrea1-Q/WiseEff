@@ -5,6 +5,7 @@ import {
   type ParameterAdminSpecsSubView
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { presentError } from "@/infrastructure/http/presentError";
 import { OrganizationIdentityMappingPanel } from "./OrganizationIdentityMappingPanel";
 import { useParameterAdmin } from "./ParameterAdminProvider";
@@ -109,29 +110,12 @@ export function OrganizationSpecsArea({
   return (
     <>
       {showSpecsSubNav ? (
-        <nav className="parameter-admin-specs-subnav" aria-label={PARAMETER_ADMIN_UI.specsSubnavAria}>
-          <button
-            type="button"
-            className={`parameter-admin-specs-subnav__tab${
-              activeSubView === "library" ? " is-active" : ""
-            }`}
-            aria-current={activeSubView === "library" ? "page" : undefined}
-            onClick={() => goToSubView("library")}
-          >
-            {PARAMETER_ADMIN_UI.specsLibrarySubnav}
-          </button>
-          <button
-            type="button"
-            className={`parameter-admin-specs-subnav__tab${
-              activeSubView === "identity-mapping" ? " is-active" : ""
-            }`}
-            aria-current={activeSubView === "identity-mapping" ? "page" : undefined}
-            onClick={() => goToSubView("identity-mapping")}
-            aria-invalid={mappingCounts.status === "error" ? true : undefined}
-            title={
-              mappingCounts.status === "error" ? mappingCounts.message : undefined
-            }
-          >
+        <ViewSwitch variant="section" ariaLabel={PARAMETER_ADMIN_UI.specsSubnavAria} value={activeSubView}
+          onValueChange={(value) => goToSubView(value as ParameterAdminSpecsSubView)}
+          items={[
+            { value: "library", label: PARAMETER_ADMIN_UI.specsLibrarySubnav },
+            { value: "identity-mapping",
+              title: mappingCounts.status === "error" ? mappingCounts.message : undefined, label: <>
             {PARAMETER_ADMIN_UI.identityMapping}
             {mappingCounts.status === "error" ? (
               <span
@@ -145,8 +129,8 @@ export function OrganizationSpecsArea({
             ) : mappingCounts.status === "loading" ? (
               <span className="parameter-admin-specs-subnav__count is-loading">…</span>
             ) : null}
-          </button>
-        </nav>
+              </> }
+          ]} />
       ) : null}
 
       {activeSubView === "identity-mapping" ? (

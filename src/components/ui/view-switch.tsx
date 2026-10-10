@@ -7,6 +7,7 @@ type ViewSwitchItem = {
   value: string;
   label: ReactNode;
   disabled?: boolean;
+  title?: string;
 };
 
 type ViewSwitchProps = {
@@ -24,7 +25,8 @@ export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: 
       <RadioGroup.Root className="view-switch view-switch--toggle" aria-label={ariaLabel}
         value={value} onValueChange={onValueChange}>
         {items.map((item) => (
-          <RadioGroup.Item key={item.value} value={item.value} className="view-switch__item" disabled={item.disabled}>
+          <RadioGroup.Item key={item.value} value={item.value} className="view-switch__item" disabled={item.disabled}
+            title={item.title}>
             {item.label}
           </RadioGroup.Item>
         ))}
@@ -37,7 +39,7 @@ export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: 
         <Tabs.List className="view-switch view-switch--tabs" aria-label={ariaLabel}>
           {items.map((item) => (
             <Tabs.Trigger key={item.value} value={item.value} id={item.id} aria-controls={item.panelId}
-              className="view-switch__item" disabled={item.disabled}>
+              className="view-switch__item" disabled={item.disabled} title={item.title}>
               {item.label}
             </Tabs.Trigger>
           ))}
@@ -53,6 +55,7 @@ export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: 
           type="button"
           className="view-switch__item"
           disabled={item.disabled}
+          title={item.title}
           aria-current={item.value === value ? "page" : undefined}
           onClick={() => onValueChange(item.value)}
           onKeyDown={(event) => {
