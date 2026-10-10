@@ -956,16 +956,6 @@ button.parameter-catalog__tree-toggle:hover {
   font-size: var(--text-sm);
 }
 
-.parameter-catalog__page-size select {
-  height: 28px;
-  padding: 0 var(--space-2);
-  color: var(--pcat-text);
-  background: var(--surface-sunken);
-  border: 1px solid var(--pcat-border);
-  border-radius: var(--radius-sm);
-  font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans);
-}
-
 .parameter-catalog__page-buttons {
   display: inline-flex;
   gap: var(--space-2);

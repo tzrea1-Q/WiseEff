@@ -113,6 +113,8 @@ export function AuditWorkspace({
           <label className="audit-workspace-select-wrap">
             <span>模块</span>
             <select
+              className="compact-filter-control"
+              data-compact-control="filter"
               value={query.appGroup}
               onChange={(event) => onQueryChange?.({ appGroup: event.target.value as AuditQueryState["appGroup"] })}
               aria-label="模块筛选"
@@ -128,6 +130,8 @@ export function AuditWorkspace({
             <label className="audit-workspace-select-wrap">
               <span>项目</span>
               <select
+                className="compact-filter-control"
+                data-compact-control="filter"
                 value={query.projectId ?? ""}
                 onChange={(event) =>
                   onQueryChange?.({ projectId: event.target.value ? event.target.value : undefined })
@@ -146,6 +150,8 @@ export function AuditWorkspace({
           <label className="audit-workspace-select-wrap">
             <span>时间</span>
             <select
+              className="compact-filter-control"
+              data-compact-control="filter"
               value={query.timeWindow}
               onChange={(event) => onQueryChange?.({ timeWindow: event.target.value as AuditQueryState["timeWindow"] })}
               aria-label="时间范围筛选"

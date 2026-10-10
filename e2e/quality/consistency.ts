@@ -18,7 +18,10 @@ export function collectConsistencyMeasurements() {
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
   };
   const geometry = (element: Element) => ({ dom: signature(element), rect: bounds(element) });
-  const control = (element: Element) => ({ dom: signature(element), role: role(element), height: element.getBoundingClientRect().height });
+  const control = (element: Element) => ({
+    dom: signature(element), role: role(element), height: element.getBoundingClientRect().height,
+    compactControl: element.getAttribute("data-compact-control")
+  });
   const viewSwitches = elements([
     '[role="tab"]', '[role="radiogroup"] [role="radio"]', '[role="group"][aria-label*="视图"] button[aria-pressed]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
@@ -40,8 +43,21 @@ export function collectConsistencyMeasurements() {
       selected: element.matches('[aria-selected="true"],[aria-checked="true"],[aria-pressed="true"],[aria-current]:not([aria-current="false"]),[data-state="on"],[data-active="true"],.is-active,.active,.chip-active')
     };
   });
-  const primaryActions = [...document.querySelectorAll('.button.primary,.local-device-bridge-panel__install-cta,button.bg-primary,a.bg-primary,[data-slot="button"].bg-primary')].filter(visible)
-    .map((element) => ({ ...control(element), background: getComputedStyle(element).backgroundColor }));
+  const primaryToken = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
+  const primaryProbe = document.createElement("span");
+  primaryProbe.style.cssText = "position: absolute; visibility: hidden; pointer-events: none";
+  primaryProbe.style.setProperty("background-color", primaryToken, "important");
+  document.body.append(primaryProbe);
+  const primaryColor = primaryToken ? getComputedStyle(primaryProbe).backgroundColor : "";
+  primaryProbe.remove();
+  const primaryActions = [...document.querySelectorAll([
+    ".button.primary", ".button.is-primary", ".local-device-bridge-panel__install-cta",
+    'button.bg-primary', 'a.bg-primary', '[data-slot="button"][data-variant="default"]',
+    ".primary-nav-action", ".auth-submit", ".profile-dialog__button--primary", ".debugging-deploy-button",
+    ".permission-denied-action.primary", ".user-permissions-primary-action", ".user-permissions-modal-action--primary", ".insight-action--primary"
+  ].join(","))].filter(visible)
+    .map((element) => ({ ...control(element), background: getComputedStyle(element).backgroundColor, primaryColor,
+      disabled: element.matches(':disabled,[aria-disabled="true"]') }));
   const actionCells = new Set(elements('.dts-parameter-workbench-table__actions,td[data-label="操作"],[data-catalog-row-action]')
     .map((element) => element.closest('td,[role="cell"]') ?? element));
   const rowActions = [...actionCells].flatMap((element) => {
@@ -104,13 +120,9 @@ export function collectConsistencyMeasurements() {
     }
     return { dom: signature(element), tree: signature(element.closest('[role="tree"],.parameter-catalog__tree') ?? element.parentElement!), depth, left: element.getBoundingClientRect().left };
   });
-  const paginationSelector = '.parameter-catalog__pagination button,.parameter-catalog__pagination select,button[aria-label="上一页"],button[aria-label="下一页"]';
-  const paginationControls = elements(paginationSelector).map(control);
-  const sortSelector = '.library-sort,[aria-label*="排序"],th[aria-sort] > button,.dts-parameter-workbench-table__sort';
-  const sortControls = elements(sortSelector).map(control);
-  const filterControls = elements('select,[role="combobox"],.parameters-column-filter__trigger')
-    .filter((element) => !element.matches(`${paginationSelector},${sortSelector}`) && !element.closest('tbody,[role="cell"],[role="dialog"]'))
-    .map(control);
+  const paginationControls = elements('[data-compact-control="pagination"]').map(control);
+  const sortControls = elements('[data-compact-control="sort"]').map(control);
+  const filterControls = elements('[data-compact-control="filter"]').map(control);
   return {
     viewSwitches, primaryActions, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports,
     moduleTreeLabels, filterControls, sortControls, paginationControls
@@ -141,6 +153,26 @@ export function requireRowActionVisibility(rows: ConsistencyMeasurements["rowAct
   }
 }
 
+export function requireCompactControlHeights(
+  measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls">> | null | undefined,
+  routePath: string
+) {
+  if (!measurements) {
+    throw new Error(`${routePath}: compact control collection error: route measurements are missing`);
+  }
+  for (const category of ["filterControls", "sortControls", "paginationControls"] as const) {
+    for (const control of measurements[category] ?? []) {
+      if (control.compactControl !== "filter" && control.compactControl !== "sort" && control.compactControl !== "pagination") continue;
+      if (typeof control.height !== "number" || !Number.isFinite(control.height)) {
+        throw new Error(`${routePath}: compact control collection error: ${control.dom} has no finite height measurement`);
+      }
+      if (control.height !== 32) {
+        throw new Error(`${routePath}: ${control.dom} has height ${control.height}px; expected 32px`);
+      }
+    }
+  }
+}
+
 const catalogPaths = [
   "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping",
   "/parameter-admin/spec-review", "/parameter-admin/specs/identity-mapping", "/parameters/definitions"
@@ -159,8 +191,8 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging"],
   moduleTreeLabels: [...catalogPaths, "/parameters", "/node-debugging", "/dts-reload"],
-  filterControls: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/log-admin", "/organization/members", "/parameter-home", "/user-permissions"],
-  sortControls: [...catalogPaths, "/parameters", "/debugging-admin/nodes", "/log-admin", "/parameter-admin/projects"],
+  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
+  sortControls: [],
   paginationControls: catalogPaths
 };
 const otherPhaseTwoPaths = [

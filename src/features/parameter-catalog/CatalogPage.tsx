@@ -947,6 +947,8 @@ export function CatalogPage({
               <label className="parameter-catalog__page-size">
                 <span>{catalogPageSizeLabel}</span>
                 <select
+                  className="compact-filter-control"
+                  data-compact-control="pagination"
                   value={pageSize}
                   aria-label={catalogPageSizeLabel}
                   onChange={(event) =>
@@ -963,7 +965,8 @@ export function CatalogPage({
               <div className="parameter-catalog__page-buttons">
                 <button
                   type="button"
-                  className="button subtle sm"
+                  className="button subtle"
+                  data-compact-control="pagination"
                   aria-label={catalogPreviousPageLabel}
                   disabled={cursorTrail.length === 0 || inFlight}
                   onClick={goToPreviousPage}
@@ -972,7 +975,8 @@ export function CatalogPage({
                 </button>
                 <button
                   type="button"
-                  className="button subtle sm"
+                  className="button subtle"
+                  data-compact-control="pagination"
                   aria-label={catalogNextPageLabel}
                   disabled={!snapshot?.definitions.hasMore || inFlight}
                   onClick={goToNextPage}

@@ -55,8 +55,10 @@
 | `--text` | 主文本 | 一个近黑 |
 | `--text-secondary` | 次文本 | 一个灰 |
 | `--text-muted` | 三级/元信息文本 | 石板灰：浅色 `#536277`，深色 `#8b99b3` |
-| `--accent` | 交互主色（按钮、链接、活动导航、选中） | 品牌蓝 `#0052cc` 族 |
+| `--accent` | 品牌强调色（链接、交互强调） | 品牌蓝 `#0052cc` 族 |
+| `--primary` / `--app-primary` | 唯一的主动作静止背景色；均为 `--accent` 的别名 | 浅色 `#0052cc`，深色 `#4c8dff` |
 | `--accent-hover` / `--accent-pressed` | 交互深浅 | 派生 |
+| `--nav-selected` | 实心导航的选中态，不是动作或按下态 | 浅色 `#003d9b`，深色 `#4c8dff` |
 | `--accent-soft` | 选中/活动背景、徽章 | 派生浅色 |
 | `--success` / `--warning` / `--danger` / `--info` | 状态色 + 各自 `-soft` 浅色 | 每类一族 |
 | `--ring` | 焦点环 | 基于 accent,一个值 |
@@ -65,6 +67,7 @@
 
 - 颜色字面量**只允许**出现在令牌块内;其余一律 `var()` 或基于令牌的 `color-mix()`（参照 `parameter-home.css` 模式）。
 - shadcn 的 `--primary`/`--muted`/`--border` oklch 键必须成为上述语义令牌的别名;同一问题存在两套答案即缺陷。
+- **主色契约（UIA-017）：**所有可用主动作静止时的计算背景色必须等于解析后的 `--primary`，包括节点调试和 DTS 重载中的本地设备桥接安装、连接动作。CSS `.button.primary` 与共享 Button 默认变体使用同一令牌；Bridge 作用域只能补充布局，不能重定义主色。浅色和深色主题采用相同的别名映射，包括旧别名 `--app-primary` → `--primary` → `--accent`。悬停和按下态分别使用 `--accent-hover`、`--accent-pressed`；实心导航选中态使用独立命名的 `--nav-selected`。选中导航不是主动作。质量一致性项目在两种主题的 `1440x900` 视口下，将可见且可用的主动作与根令牌进行比较，局部覆盖不能改变预期主色。原生禁用或 `aria-disabled="true"` 的控件仍纳入测量，但使用独立的禁用视觉状态，不参与可用主动作静止背景色断言。
 - 中性色承载界面,颜色只为交互与状态服务;图表使用与 accent 对齐的令牌化分类色带（`--chart-1..5`）,不接受图表库默认配色。
 
 #### 经测试的对比度配对（UIA-001）
@@ -195,6 +198,7 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 ### 输入与选择
 
 - 最小高度 32px、`--radius-sm`、令牌化边框、按上文规则显示焦点环、可见 label 或 `aria-label`、错误文案经 `aria-describedby` 关联。
+- PC 筛选、排序及分页条数选择器显式使用 `.compact-filter-control`（原生）或 `SelectTrigger size="filter"`（自定义），共享唯一的 32px 边框盒高度（`--space-8`）、边框、圆角、字体和箭头契约。分页操作复用默认 32px `.button` 原语，不使用 `sm` 变体。仅为这些控件标记 `data-compact-control="filter"`、`"sort"` 或 `"pagination"` 以供一致性测量。搜索组合框、模块导航、表头排序按钮、表单字段和对话框保留各自的原语；页面局部规则仅添加布局，不重复定义紧凑控件的几何或外观。
 - 原生 `<select>` 仅在存量界面临时允许;P1 落地样式化 Select 原语后,新界面一律使用。原生日期/文件选择器保留原生弹层但触发器需样式化。
 
 ### 弹窗

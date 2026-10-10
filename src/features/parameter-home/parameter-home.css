@@ -402,13 +402,6 @@
 
 .parameter-home__context-select {
   min-width: 9.5rem;
-  background: var(--ph-surface);
-  border-color: var(--ph-border);
-  color: var(--ph-text);
-}
-
-.parameter-home__context-select:hover {
-  background: var(--ph-surface-hover);
 }
 
 .parameter-home__toggle-group {
