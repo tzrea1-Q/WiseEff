@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildOpenApiDocument } from "./openapi";
 import { routeManifest } from "./routeManifest";
 import { schemaRegistry } from "./schemaRegistry";
+import { parameterCatalogLegacyWriteRouteIds } from "./dtoSchemas/parameterCatalog";
 
 type OpenApiMethod = "get" | "post" | "put" | "patch" | "delete";
 
@@ -36,6 +37,21 @@ function toOpenApiMethod(method: string): OpenApiMethod {
 }
 
 describe("M5 OpenAPI contract", () => {
+  it.each(routeManifest.filter((route) =>
+    (parameterCatalogLegacyWriteRouteIds as readonly string[]).includes(route.id),
+  ))("$id documents only the retirement contract, not a success request body", (route) => {
+    const document = buildOpenApiDocument();
+    const path = route.path.replace(/:([^/]+)/g, "{$1}");
+    const operation = document.paths[path]?.[toOpenApiMethod(route.method)];
+    expect(operation?.operationId).toBe(route.id);
+    expect(operation?.responses["410"]).toMatchObject({
+      content: { "application/json": { schema: { $ref: "#/components/schemas/CatalogLegacyGoneResponse" } } },
+      headers: { Link: { required: true } },
+    });
+    expect(Object.keys(operation?.responses ?? {}).filter((status) => status.startsWith("2"))).toEqual([]);
+    expect(operation?.requestBody).toBeUndefined();
+  });
+
   it("R2 Proposal 503 declares replay-unavailable without changing generic errors elsewhere", () => {
     const document = buildOpenApiDocument();
     const response = document.paths["/api/v2/catalog/definition-proposals"]!.post!.responses["503"];

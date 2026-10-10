@@ -74,7 +74,7 @@ history lives in definition detail; and raw migration diagnostics stay internal.
    inputs only in the approved replacement: new organization schema authorship
    and organization definition overrides retire.
    ([registry cache](../../server/modules/parameter-specs/schemaRegistryCache.ts),
-   [overlay service](../../server/modules/parameter-specs/driverSchemaOverlayService.ts),
+   [overlay service](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/parameter-specs/driverSchemaOverlayService.ts),
    [overlay repository](../../server/modules/parameter-specs/driverSchemaOverlayRepository.ts),
    [Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
 3. Matching preserves an explicit tier order: Linux base, then a unique vendor
@@ -203,9 +203,9 @@ governance actions.
 Sources:
 [definition repository](../../server/modules/parameter-specs/repository.ts),
 [governance service](../../server/modules/parameter-specs/service.ts),
-[overlay service](../../server/modules/parameter-specs/driverSchemaOverlayService.ts),
-[review apply](../../server/modules/parameter-specs/reviewApply.ts),
-[property-key cutover](../../server/modules/parameter-specs/propertyKeyCutover.ts),
+[overlay service](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/parameter-specs/driverSchemaOverlayService.ts),
+[review apply](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/parameter-specs/reviewApply.ts),
+[property-key cutover](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/parameter-specs/propertyKeyCutover.ts),
 [reconciliation](../../server/modules/parameter-specs/definitionReconciliation.ts),
 [binding seam](../../server/modules/parameter-specs/effectiveDefinitionService.ts),
 [topology ingest](../../server/modules/parameter-topology/ingestService.ts),
@@ -371,7 +371,7 @@ survive unchanged.
 [HTTP adapter](../../src/infrastructure/http/parameterTopologyClient.ts),
 [mock adapter](../../src/infrastructure/mock/mockParameterTopologyRepository.ts),
 [admin URL](../../src/application/parameters/parameterAdminUrl.ts),
-[governance panel](../../src/components/parameter-admin-next/OrganizationSpecGovernancePanel.tsx),
+[governance panel](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/src/components/parameter-admin-next/OrganizationSpecGovernancePanel.tsx),
 [domain types](../../src/domain/parameter-topology/types.ts))
 
 The compatibility surface is wider than the v2 catalog adapter. The v1
@@ -391,7 +391,7 @@ intentionally retired consumer rather than relying on the route manifest alone.
 The module tree currently also uses observed `attributionModules` for UI
 navigation. That is a consumer presentation rule, not evidence that an observed
 module may define identity or declared placement.
-([module-tree builder](../../src/application/parameters/buildParameterSpecModuleTree.ts),
+([module-tree builder](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/src/application/parameters/buildParameterSpecModuleTree.ts),
 [ADR-0039](../adr/0039-effective-driver-parameter-catalog.md))
 
 ## 6. Stable IDs, audit and trusted execution
