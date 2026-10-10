@@ -334,7 +334,6 @@ async function cloneSourceGroup(
       manifest,
       auth,
       { createdByUserId: auth.user.id, domain: trustedDomainAttribution(context.invocation) },
-      { legacyProjection: "skip" },
     );
     if (revision.status !== "resolved" || !revision.manifestState || revision.manifestState === "needs_review") {
       throw new ApiError("CONFLICT", "Initialization DTS source could not be resolved exactly.");

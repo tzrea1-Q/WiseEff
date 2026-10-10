@@ -123,7 +123,7 @@ async function fixture(format: Format, withOtherDraft = true, thirdSibling = fal
       entryFile: fileName, includeSearchPaths: ["."], overlayOrder: [],
       members: [{ fileId: uploaded.file.id, fileVersionId: uploaded.version.id, fileName,
         sourceName: fileName, role: "base", sortOrder: 0, content: before }] };
-    const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, admin);
     await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
       organizationId: ORG, projectId: PROJECT, configSetId: set.id, configRevisionId: revision.id
     }));

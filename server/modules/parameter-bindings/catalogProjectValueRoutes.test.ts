@@ -232,7 +232,7 @@ describe("catalog published-value import apply route", () => {
       expect.objectContaining({ requestId: "test-request", invocation: expect.anything(), refusalSink: expect.anything() }));
   });
 
-  it("rewrites a catalog import preview inside the audited write", async () => {
+  it("rewrites an exact canonical Binding import preview inside the audited write", async () => {
     const db = makeDb();
     const previewed = {
       id: "batch-preview-1",
@@ -278,6 +278,7 @@ describe("catalog published-value import apply route", () => {
         sourceName: "pasted-import.txt",
         items: [
           {
+            id: "pbind-1",
             name: "iin_max",
             module: "Driver",
             risk: "Low",
@@ -428,7 +429,10 @@ describe("catalog published-value import apply route", () => {
       })
     });
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(201);
+    const item = parameterImportBatchResponseSchema.parse(response.body).item.items[0];
+    expect(item?.classification).toBe("conflict");
+    expect(item?.projectParameterValueId).toBeUndefined();
     expect(Object.keys(parameterService)).not.toContain("applyImportBatch");
   });
 
@@ -527,7 +531,7 @@ describe("catalog published-value import apply route", () => {
     expect(parameterImportBatchResponseSchema.parse(response.body).item.summary).toMatchObject({ added: 0, conflict: 1 });
   });
 
-  it("classifies a unique topology property as updated when catalog candidates are empty", async () => {
+  it("refuses to associate a unique legacy topology property when canonical candidates are empty", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
     vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
@@ -568,9 +572,11 @@ describe("catalog published-value import apply route", () => {
     expect(response.status).toBe(201);
     expect(parameterImportBatchResponseSchema.parse(response.body).item.summary).toMatchObject({
       added: 0,
-      updated: 1,
-      conflict: 0
+      updated: 0,
+      conflict: 1
     });
+    expect(parameterImportBatchResponseSchema.parse(response.body).item.items[0]?.projectParameterValueId).toBeUndefined();
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 });
 

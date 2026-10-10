@@ -110,7 +110,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
         { fileId: dts.file.id, fileVersionId: dts.version.id, fileName: `${name}.dts`, sourceName: `${name}.dts`, role: "base", sortOrder: 0, content: dtsContent },
         { fileId: uploaded.file.id, fileVersionId: uploaded.version.id, fileName: `${name}.json`, sourceName: `${name}.json`, format: "json", role: "misc", sortOrder: 1, content: '{"limit":36}\n' }
       ]
-    }, admin, { legacyProjection: "skip" });
+    }, admin);
     const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!catalog) throw new Error("Published Catalog unavailable.");
     const registered = await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, admin, catalog, {

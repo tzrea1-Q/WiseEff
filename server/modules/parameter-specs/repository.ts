@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
-import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
+import type { DriverSchema, PropertySpec } from "./types";
 import {
   ensureAttributionSubjectForCompatible,
   ensureAttributionSubjectForDriverSchema,
@@ -57,74 +57,6 @@ function toDto(row: ReviewTaskRow): PersistedSpecReviewTask {
     createdAt: dateTimeToIso(row.created_at),
     resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
   };
-}
-
-export async function insertSpecReviewTask(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    draft: SpecReviewTaskDraft;
-  },
-): Promise<PersistedSpecReviewTask> {
-  const id = input.draft.id || randomUUID();
-  const evidence = input.draft.sourceEvidence ?? {};
-  const projectId =
-    input.draft.projectId ??
-    (typeof evidence.projectId === "string" && evidence.projectId.trim()
-      ? evidence.projectId
-      : null);
-  const configRevisionId =
-    input.draft.configRevisionId ??
-    (typeof evidence.configRevisionId === "string" &&
-    evidence.configRevisionId.trim()
-      ? evidence.configRevisionId
-      : null);
-  const propertyOccurrenceId =
-    input.draft.propertyOccurrenceId ??
-    (typeof evidence.propertyOccurrenceId === "string" &&
-    evidence.propertyOccurrenceId.trim()
-      ? evidence.propertyOccurrenceId
-      : null);
-  const blockerScope = input.draft.blockerScope ?? "revision";
-
-  const result = await db.query<ReviewTaskRow>(
-    `
-    insert into parameter_spec_review_tasks (
-      id, organization_id, parameter_spec_id, project_id, config_revision_id,
-      property_occurrence_id, blocker_scope, source_evidence, candidate_schemas,
-      project_count, status
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11)
-    returning *
-    `,
-    [
-      id,
-      input.organizationId,
-      input.draft.parameterSpecId ?? null,
-      projectId,
-      configRevisionId,
-      propertyOccurrenceId,
-      blockerScope,
-      JSON.stringify(evidence),
-      JSON.stringify(input.draft.candidateSchemas),
-      input.draft.projectCount,
-      input.draft.status,
-    ],
-  );
-  return toDto(result.rows[0]);
-}
-
-/** Persist open review-task drafts (unmatched/ambiguous). Binding callers land in Task 7. */
-export async function persistOpenReviewTaskDrafts(
-  db: Queryable,
-  organizationId: string,
-  drafts: SpecReviewTaskDraft[],
-): Promise<PersistedSpecReviewTask[]> {
-  const persisted: PersistedSpecReviewTask[] = [];
-  for (const draft of drafts) {
-    if (draft.status !== "open") continue;
-    persisted.push(await insertSpecReviewTask(db, { organizationId, draft }));
-  }
-  return persisted;
 }
 
 export async function listOpenSpecReviewTasks(
@@ -284,16 +216,6 @@ export function matcherOverrideLookupKey(input: {
   return `${compatibleFingerprint(input.compatible)}\0${nodeLocatorFingerprint(input.nodeLocator)}\0${input.propertyKey}`;
 }
 
-function matcherOverrideIndexKey(override: PersistedMatcherOverride): string {
-  return `${override.compatibleFingerprint}\0${nodeLocatorFingerprint(override.nodeLocator)}\0${override.propertyKey}`;
-}
-
-export function persistedMatcherOverrideLookupKey(
-  override: PersistedMatcherOverride,
-): string {
-  return matcherOverrideIndexKey(override);
-}
-
 export async function listMatcherOverridesForProject(
   db: Queryable,
   input: { organizationId: string; projectId: string },
@@ -341,95 +263,6 @@ export async function assertProjectBelongsToOrganization(
       },
     );
   }
-}
-
-export async function upsertOccurrenceSpecDecision(
-  db: Queryable,
-  input: {
-    id?: string;
-    organizationId: string;
-    projectId: string;
-    configRevisionId: string;
-    propertyOccurrenceId: string;
-    logicalNodeId?: string | null;
-    propertyKey: string;
-    decision: MatcherOverrideDecision;
-    parameterSpecId?: string | null;
-    bindingId?: string | null;
-    reviewTaskId?: string | null;
-  },
-): Promise<void> {
-  await assertProjectBelongsToOrganization(db, {
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-  });
-  const revision = await db.query<{ id: string }>(
-    `
-    select cr.id
-    from dts_config_revisions cr
-    inner join projects p on p.id = cr.project_id and p.organization_id = $1
-    where cr.id = $2
-      and cr.organization_id = $1
-      and cr.project_id = $3
-    limit 1
-    `,
-    [input.organizationId, input.configRevisionId, input.projectId],
-  );
-  if (!revision.rows[0]) {
-    throw new ApiError(
-      "NOT_FOUND",
-      "Config revision could not be verified for this organization.",
-      { configRevisionId: input.configRevisionId },
-    );
-  }
-  const occurrence = await db.query<{ id: string }>(
-    `
-    select po.id
-    from dts_property_occurrences po
-    where po.id = $1
-      and po.config_revision_id = $2
-      and po.property_name = $3
-    limit 1
-    `,
-    [input.propertyOccurrenceId, input.configRevisionId, input.propertyKey],
-  );
-  if (!occurrence.rows[0]) {
-    throw new ApiError(
-      "NOT_FOUND",
-      "Property occurrence could not be verified for this organization.",
-      { propertyOccurrenceId: input.propertyOccurrenceId },
-    );
-  }
-  const id = input.id ?? randomUUID();
-  await db.query(
-    `
-    insert into dts_property_occurrence_spec_decisions (
-      id, organization_id, project_id, config_revision_id, property_occurrence_id,
-      logical_node_id, property_key, decision, parameter_spec_id, binding_id, review_task_id
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    on conflict (property_occurrence_id) do update set
-      logical_node_id = excluded.logical_node_id,
-      property_key = excluded.property_key,
-      decision = excluded.decision,
-      parameter_spec_id = excluded.parameter_spec_id,
-      binding_id = excluded.binding_id,
-      review_task_id = excluded.review_task_id,
-      updated_at = now()
-    `,
-    [
-      id,
-      input.organizationId,
-      input.projectId,
-      input.configRevisionId,
-      input.propertyOccurrenceId,
-      input.logicalNodeId ?? null,
-      input.propertyKey,
-      input.decision,
-      input.parameterSpecId ?? null,
-      input.bindingId ?? null,
-      input.reviewTaskId ?? null,
-    ],
-  );
 }
 
 export async function countOpenSpecReviewTasksForRevision(

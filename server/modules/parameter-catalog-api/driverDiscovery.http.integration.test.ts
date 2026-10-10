@@ -236,7 +236,7 @@ describe("#897 C2 production Driver compatible discovery HTTP", () => {
       entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],members:[
         {fileId,fileVersionId:newVersionId,fileName:"board.dts",sourceName:"board.dts",
           content:newContent,role:"base",sortOrder:0}]};
-    const revision = await ingestConfigRevision(db,manifest,auth,{legacyProjection:"skip"});
+    const revision = await ingestConfigRevision(db,manifest,auth);
     expect(revision.status).toBe("resolved");
     const historical = await get(path(`?observationId=${oldObservation}`));
     expect(historical.body).toMatchObject({status:"ready",items:[{

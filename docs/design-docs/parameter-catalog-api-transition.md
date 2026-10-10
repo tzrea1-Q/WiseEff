@@ -589,7 +589,7 @@ The resolver is lookup-only and classification-free. It reads the current append
 | Audit targets | Keep immutable legacy target fields and add a mapped target reference when exact. | Keep legacy audit evidence with archived/ambiguous disposition; never rewrite history. |
 | Knowledge references | Rewrite to definition/revision only through exact mapping; keep legacy reference metadata. | Mark unresolved and exclude from current definition picker; do not silently retarget. |
 | Debug/reload references | Resolve through exact binding/definition map at cutover and pin the required revision. | Block the operation and surface operator reconciliation; never choose by property key. |
-| Export/import identifiers | New exports contain canonical IDs and schema version. Bounded legacy import resolves every row through typed mapping. | Reject the row with a stable reason; partial structural creation is forbidden. |
+| Export/import identifiers | New exports contain canonical IDs and schema version. Ordinary import requires exact current canonical Binding/Definition, revision, value and source pins. | Old IDs and property-name-only rows are refused or conflict; operator migration remains separate. Partial structural creation is forbidden. |
 | Deep links/bookmarks | Redirect only exact authorized mappings to canonical detail. | Ambiguous shows conflict; archived shows gone; unknown/out-of-scope shows not found. |
 
 The cutover decision in issue #678 is the sole owner of every R0-R10 production disposition. `Archive` evidence alongside ReviewEvidence or DefinitionProposal is provenance, not a second operational disposition. Every legacy-ID API projects the typed mapping head; it cannot reclassify a row. The archive ledger is append-only, typed, checksum-protected migration evidence. It is not a public catalog resource. Deletion of legacy tables or mapping records belongs to the later verified retirement decision; this API decision authorizes none.
@@ -664,7 +664,7 @@ The B1 cleanup (#1083) removes the unused legacy Spec editor and its fallback fr
 | DTS reload | Canonical binding, value, definition revision, and release anchor | Verify all references before prepare/finalize; release drift blocks. |
 | Knowledge definition picker | Active canonical definitions; explicit historical revision reads | Exact-map old references; unresolved legacy references are not selectable. |
 | Module/driver registry UI | Subject type, registration, placement navigation | Retire module/Organization-schema structural ownership; keep unrelated device/module runtime concepts separate. |
-| Imports and exports | Versioned canonical IDs and typed legacy resolver | New export only; bounded legacy import is all-row validated before any write. |
+| Imports and exports | Versioned canonical IDs and exact current Binding/Definition/revision/value/source pins | Ordinary preview and drafts have no old-ID or property-key fallback; retained migration tooling is operator-only. |
 | Audit/history viewers | Canonical target plus retained legacy target metadata | Never rewrite historical actor, target, or decision evidence. |
 | External API clients and bookmarks | Canonical routes or bounded typed resolver | Migrate during published window; resolver outcomes project issue #678's typed mapping head, exact deep links redirect, and other outcomes stay explicit. |
 | Operations and migration tooling | Operator-only reconciliation APIs, typed mapping heads, and archive ledger | Never call public raw/governance modes or ask an API adapter to reclassify R6/R8; diagnostics require separate operator authority. |
@@ -757,6 +757,12 @@ Failure of any gate extends the read adapter. It does not restore legacy writes 
 - “In effect” is a Receipt read, not Proposal `accepted` and not job `queued`.
 - Self-hosted low-risk single-actor publish is policy-gated and still requires a real `catalog:publish` grant. High-risk self-approval stays forbidden.
 - Registration remains a separate aggregate. A later registration failure must not present a successful Catalog publish as rolled back.
+
+## Canonical-only ingest and import — 2026-10-09
+
+The import wizard preserves an explicitly supplied canonical `id` through parsing, review and preview. It never manufactures an identity from its advisory name/module match; a name-only input remains a conflict at the canonical owner.
+
+Spec #1080 Q5 / #1089 makes ordinary source upload canonical-only without an opt-in skip flag. Structural parsing, deterministic node continuity and module discovery remain; ingest reads retained schema versions only as continuity evidence, never legacy matcher overrides. It performs no legacy Spec/Binding projection or legacy review-task writes. Canonical source pins and Observation/Review evidence retain their current owners. Canonical-backed sources still require the approved source-commit workflow rather than ordinary upload activation. Import preview requires an exact canonical identity and current source pins; a unique property name is not identity. Draft creation and import staging/replay never fall back to a legacy Binding or draft. Missing pins, ambiguous occurrences and stale revision/value pins fail closed, and preview conflicts explain the missing canonical identity. Operator comparison/cutover tooling, retained reads, history, audit and 410 tombstones are unchanged.
 
 ## Decision completeness
 

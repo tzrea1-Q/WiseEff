@@ -135,7 +135,7 @@ for (const [format, choice, decision] of [
             entryFile: fileName, includeSearchPaths: ["."], overlayOrder: [],
             members: [{ fileId, fileVersionId: versionId, fileName, sourceName: fileName,
               role: "base", sortOrder: 0, content: dtsSource }] };
-          const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+          const revision = await ingestConfigRevision(db, manifest, admin);
           const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
           if (!catalog) throw new Error("Published Catalog unavailable");
           await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {

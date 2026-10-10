@@ -64,7 +64,7 @@ npm run catalog:lane:env -- cleanup --abandoned
 
 ## Canonical-only 本地种子
 
-`npm run dev:all` 启动 Docker PostgreSQL，执行 migrations 与 M0–M3 seeds，再启动 API 和 API-mode 前端。`db:seed:all` 与 `db:seed:m1` **只通过 canonical owners 初始化参数数据**：M1 使用现有 Catalog installer 的 `seedPublishedCatalog` 安装钉扎的受约束 vendor Catalog，创建 taxonomy/modules，并以 `legacyProjection: "skip"` 导入来源结构修订；随后注册 canonical Subjects，物化 canonical Bindings 和 Project values。不初始化 legacy Spec、Binding、flat Definition 或 PPV 行。Aurora 的 `watchdog_time` 演示历史来自真实 canonical 草稿 → 提交 → 审核 → source commit，不直接插入历史。种子保持幂等，重复运行不应增加重复的 canonical Catalog、Binding、value 或 history 行。
+`npm run dev:all` 启动 Docker PostgreSQL，执行 migrations 与 M0–M3 seeds，再启动 API 和 API-mode 前端。`db:seed:all` 与 `db:seed:m1` **只通过 canonical owners 初始化参数数据**：M1 使用现有 Catalog installer 的 `seedPublishedCatalog` 安装钉扎的受约束 vendor Catalog，创建 taxonomy/modules，并导入 canonical-only 来源结构修订；随后注册 canonical Subjects，物化 canonical Bindings 和 Project values。不初始化 legacy Spec、Binding、flat Definition 或 PPV 行。Aurora 的 `watchdog_time` 演示历史来自真实 canonical 草稿 → 提交 → 审核 → source commit，不直接插入历史。种子保持幂等，重复运行不应增加重复的 canonical Catalog、Binding、value 或 history 行。
 
 空的本地开发库使用有序种子：
 

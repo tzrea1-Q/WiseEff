@@ -319,15 +319,15 @@
       "legacy-catalog-sql-write": 3
     },
     "server/modules/parameter-specs/matcher.test.ts": {
-      "legacy-parameter-spec-identifier": 2
+      "legacy-parameter-spec-identifier": 1
     },
     "server/modules/parameter-specs/matcher.ts": {
       "legacy-parameter-spec-identifier": 6
     },
     "server/modules/parameter-specs/matcherScope.integration.test.ts": {
-      "legacy-catalog-raw-read": 5,
+      "legacy-catalog-raw-read": 4,
       "legacy-catalog-sql-write": 7,
-      "legacy-parameter-spec-identifier": 5
+      "legacy-parameter-spec-identifier": 3
     },
     "server/modules/parameter-specs/parameterSpecHttpAdapter.test.ts": {
       "legacy-catalog-route": 8,
@@ -345,9 +345,9 @@
     },
     "server/modules/parameter-specs/repository.ts": {
       "legacy-catalog-raw-read": 38,
-      "legacy-catalog-sql-write": 12,
+      "legacy-catalog-sql-write": 11,
       "legacy-effective-governance-contract": 3,
-      "legacy-parameter-spec-identifier": 48,
+      "legacy-parameter-spec-identifier": 45,
       "unresolved-boundary-expression": 3
     },
     "server/modules/parameter-specs/routes.ts": {
@@ -419,12 +419,11 @@
     },
     "server/modules/parameter-topology/ingestService.test.ts": {
       "legacy-catalog-raw-read": 9,
-      "legacy-parameter-spec-identifier": 7,
+      "legacy-parameter-spec-identifier": 3,
       "unresolved-boundary-expression": 1
     },
     "server/modules/parameter-topology/ingestService.ts": {
-      "legacy-catalog-module-import": 5,
-      "legacy-parameter-spec-identifier": 15
+      "legacy-catalog-module-import": 4
     },
     "server/modules/parameter-topology/legacyDependencyGuard.test.ts": {
       "legacy-catalog-table-name": 1

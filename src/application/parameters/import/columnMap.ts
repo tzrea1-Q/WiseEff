@@ -15,6 +15,7 @@ export const IMPORT_TEMPLATE_HEADERS = [
 ] as const;
 
 const HEADER_TO_FIELD: Record<string, keyof ParsedImportRow> = {
+  id: "id",
   参数名称: "name",
   模块: "module",
   当前值: "currentValue",

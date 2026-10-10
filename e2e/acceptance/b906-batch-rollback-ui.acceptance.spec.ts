@@ -113,7 +113,7 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft
           entryFile: fileName, includeSearchPaths: ["."], overlayOrder: [],
           members: [{ fileId, fileVersionId: uploaded.version.id, fileName, sourceName: fileName,
             role: "base", sortOrder: 0, content: before.dts }] };
-        const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+        const revision = await ingestConfigRevision(db, manifest, admin);
         await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, {
           organizationId: "org-chargelab", projectId: "aurora", configSetId: setId, configRevisionId: revision.id
         }));

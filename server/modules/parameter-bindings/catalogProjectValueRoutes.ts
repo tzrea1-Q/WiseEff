@@ -31,9 +31,8 @@ import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canoni
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
-import { createBindingDraft, listProjectBindings, requireCanViewProject } from "../parameter-topology/service";
+import { requireCanViewProject } from "../parameter-topology/service";
 import {
-  createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
   dtsValueSchema,
   projectBindingDtoSchema,
@@ -470,30 +469,9 @@ export function registerCatalogProjectValueConsumerRoutes(
       bindingId: params.bindingId
     });
     if (!catalogBinding) {
-      const body = parseWithSchema(createBindingDraftBodySchema, rawBody);
-      const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
-      if (!refusalAuditSink) {
-        throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for typed binding drafts.");
-      }
-      const item = await createBindingDraft(
-        db,
-        auth,
-        {
-          projectId: params.projectId,
-          bindingId: params.bindingId,
-          baseRevisionId: body.baseRevisionId,
-          targetValue: body.targetValue,
-          action: body.action,
-          reason: body.reason
-        },
-        { objectStore: options.objectStore },
-        {
-          invocation: createUserInvocation(auth),
-          requestId: request.requestId,
-          refusalSink: refusalAuditSink
-        }
-      );
-      return { status: 201, body: { item } };
+      throw new ApiError("NOT_FOUND", "An exact canonical Binding identity is required for a source draft.", {
+        projectId: params.projectId, bindingId: params.bindingId, reason: "canonical-binding-required",
+      });
     }
     const body = parseWithSchema(canonicalDraftBodySchema, rawBody);
     if (!canEditParameters(auth, params.projectId)) {
@@ -728,7 +706,6 @@ export function registerCatalogProjectValueConsumerRoutes(
         bytes: decodeContentBase64(body.contentBase64)
       },
       { requestId: request.requestId },
-      undefined,
       db
     );
     await syncLatestPublishedValues(db, auth, params.projectId, { requestId: request.requestId });
@@ -757,6 +734,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createImportBatchBodySchema, request.body);
     if (!canAdminParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter import administration is required.");
+    requireCanViewProject(auth, body.projectId);
     if (!await getProjectById(db,{ organizationId: auth.organization.id,projectId: body.projectId })) throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
     const catalog = await listCatalogBindingsForImport(db, {
       organizationId: auth.organization.id,
@@ -767,30 +745,14 @@ export function registerCatalogProjectValueConsumerRoutes(
     const catalogMatches = body.items.map((source) =>
       matchCatalogImportRow({ id: source.id, name: source.name }, catalog)
     );
-    const topologyBindings = (await listProjectBindings(db, auth, { projectId: body.projectId })).items;
-    const topologyCandidates = topologyBindings.map((binding) => ({
-      id: binding.parameterSpecId,
-      name: binding.propertyKey,
-      description: binding.description ?? "",
-      explanation: "",
-      configFormat: "",
-      module: binding.driverModule ?? "",
-      range: "",
-      unit: "",
-      risk: "Low" as const,
-      projectParameterValueId: binding.id,
-      currentValue: binding.rawValue ?? ""
-    }));
-    // Unbound names stay conflict (never "added"/mint). A unique topology
-    // propertyKey match is an update of existing post-cutover work, not a
-    // legacy definition create (TD-125 / T21-12).
     const rewritten = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
       const items = body.items.map((row, index) => {
-        const match = catalogMatches[index] ?? matchCatalogImportRow({ name: row.name }, topologyCandidates);
+        const match = catalogMatches[index];
         return {
           ...row,
           id: randomUUID(),riskFlag: row.risk === "High",
           classification: match ? (canonicalImportValueUnchanged(match,row.currentValue ?? row.recommendedValue ?? "") ? "unchanged" as const : "updated" as const) : "conflict" as const,
+          ...(!match ? { explanation: "Exact canonical Binding, Definition, revision and current value pins are required; property names are not identities." } : {}),
           ...(match ? { definitionId: match.id,projectParameterValueId: match.projectParameterValueId,
             baseCurrentValueId: match.baseCurrentValueId,baseRevisionId: match.baseRevisionId,configFormat: row.configFormat ?? match.configFormat } : {})
         };

@@ -290,7 +290,7 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
           members: members.map((member, index) => ({ fileId: member.id, fileVersionId: member.versionId,
             fileName: member.name, sourceName: member.name, role: index ? "overlay" : "base",
             sortOrder: index, content: member.content })) };
-        const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+        const revision = await ingestConfigRevision(db, manifest, admin);
         await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog,
           { organizationId: "org-chargelab", projectId: "aurora", configSetId: setId,
             configRevisionId: revision.id }));

@@ -63,7 +63,7 @@ describe("#906 D canonical DTS batch source writer", () => {
     const manifest: ConfigRevisionManifest = { organizationId: ORG, projectId: PROJECT, configSetId: set.id,
       entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
       members: [{ fileId, fileVersionId: baseVersionId, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: source }] };
-    const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, admin);
     const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!catalog) throw new Error("Published Catalog fixture is unavailable");
     await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog,

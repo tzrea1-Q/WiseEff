@@ -630,7 +630,7 @@ export async function seedM1SemanticTopology(
           }
         ]
       };
-      await ingestConfigRevisionInTransaction(tx, manifest, auth, undefined, { legacyProjection: "skip" });
+      await ingestConfigRevisionInTransaction(tx, manifest, auth, undefined);
     }
   });
 

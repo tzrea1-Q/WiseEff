@@ -130,6 +130,7 @@ export type ReviewParameterChangeInput = {
 };
 
 export type ParameterImportSourceItem = {
+  id?: string;
   name: string;
   module: string;
   risk: ParameterRecord["risk"];
