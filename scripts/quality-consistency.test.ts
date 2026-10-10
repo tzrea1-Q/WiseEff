@@ -1,6 +1,34 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { describe, expect, it, vi } from "vitest";
-import { consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights } from "../e2e/quality/consistency";
+import { assertXiaozePlacement, consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights, shouldRequireXiaozeHint } from "../e2e/quality/consistency";
+
+describe("Xiaoze placement contract", () => {
+  it.each([
+    [false, 1440, true],
+    [true, 1440, false],
+    [false, 640, false],
+    [false, 641, true]
+  ])("requires the first-run hint only when CSS allows it (dialog=%s, width=%s)", (hasDialog, viewportWidth, expected) => {
+    expect(shouldRequireXiaozeHint({ hasDialog, viewportWidth })).toBe(expected);
+  });
+
+  const table = { dom: "table-scrollport", rect: { left: 280, top: 100, right: 1416, bottom: 812, width: 1136, height: 712 } };
+  const gutter = { dom: "launcher", rect: { left: 1360, top: 820, right: 1416, bottom: 876, width: 56, height: 56 } };
+  const overlap = { dom: "overlay", rect: { left: 1200, top: 780, right: 1256, bottom: 836, width: 56, height: 56 } };
+
+  it.each(["xiaozeLaunchers", "xiaozeHints"] as const)("rejects %s covering a table or sticky action area", (category) => {
+    for (const protectedCategory of ["tableScrollports", "stickyActionAreas"] as const) {
+      expect(() => assertXiaozePlacement({ xiaozeLaunchers: [gutter], xiaozeHints: [], tableScrollports: [], stickyActionAreas: [], [category]: [overlap], [protectedCategory]: [table] }, "/parameters"))
+        .toThrow("/parameters: overlay overlaps table-scrollport");
+    }
+  });
+
+  it("allows edge contact, a dismissed hint, and overlays in the gutter", () => {
+    const edge = { ...gutter, rect: { ...gutter.rect, top: 812, bottom: 868 } };
+    expect(() => assertXiaozePlacement({ xiaozeLaunchers: [edge], xiaozeHints: [], tableScrollports: [table], stickyActionAreas: [table] }, "/parameters"))
+      .not.toThrow();
+  });
+});
 
 describe("compact filter, sort and pagination height contract", () => {
   const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: null, height, compactControl });

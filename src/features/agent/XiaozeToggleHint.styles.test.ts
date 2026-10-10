@@ -6,6 +6,15 @@ import { ModalDialog, type ModalDialogRenderProps } from "../../components/commo
 import { Sheet, SheetContent, SheetTitle } from "../../components/ui/sheet";
 import { declarationsFor, hasRule, readStylesheet } from "../../test/cssAssertions";
 
+it("reserves a non-scrolling shell gutter and keeps the hint beside a left-docked launcher", () => {
+  const css = readStylesheet("src/styles.css");
+  expect(declarationsFor(css, 'body:has([data-xiaoze-launcher-anchor]) .main-content')["margin-bottom"])
+    .toBe("calc(var(--space-16) + max(var(--space-6), env(safe-area-inset-bottom, 0px)))");
+  const hint = declarationsFor(css, '.xiaoze-chat-toggle-anchor[data-xiaoze-hint-side="right"] .xiaoze-toggle-hint');
+  expect(hint.left).toBe("calc(100% + var(--space-3))");
+  expect(hint.right).toBe("auto");
+});
+
 /**
  * TD-091: the hint is absolutely positioned beside the FAB with pointer-events
  * enabled so users can click through to open chat. When any dialog/sheet is open

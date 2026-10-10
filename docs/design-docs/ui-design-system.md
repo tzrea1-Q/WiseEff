@@ -239,6 +239,8 @@ Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, 
 
 ## Layout and Page Structure
 
+- Xiaoze's launcher and first-run hint occupy a reserved bottom shell gutter outside the main scrollport, never covering visible table scrollports or sticky action areas. Desktop launcher dragging and Left/Right keys move only within that gutter; the hint flips inward at the left edge. Resizing keeps the launcher reachable, with visible keyboard focus; Home restores the lower-right anchor. Hint dismissal persists per user across SPA navigation and reload (page-lifetime fallback when storage is unavailable). Popup interaction, Agent behavior and human approvals are unchanged. The consistency quality project asserts non-intersection on every target route at 1440×900, including the visible first-run hint.
+
 - The TopBar renders the page title and subtitle from `appConfig`; page bodies must not repeat them (no double titles, no competing `h1`).
 - Card nesting is limited to two levels of visible rounded borders; deeper grouping uses spacing and dividers instead of more boxes.
 - Content max nesting and width budgets are part of review: at 1440px viewport no primary workbench table may require horizontal scrolling caused by chrome padding.

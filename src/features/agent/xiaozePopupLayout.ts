@@ -269,6 +269,7 @@ export function applyXiaozePopupLayout(popup: HTMLElement, layout: XiaozePopupLa
 }
 
 export function applyXiaozeLauncherLayout(anchor: HTMLElement, position: XiaozeLauncherPosition) {
+  anchor.dataset.xiaozeHintSide = position.x < currentViewport().width / 2 ? "right" : "left";
   const clamped = clampXiaozeLauncherPosition(position);
   anchor.style.setProperty("--xiaoze-launcher-left", `${clamped.x}px`);
   anchor.style.setProperty("--xiaoze-launcher-top", `${clamped.y}px`);

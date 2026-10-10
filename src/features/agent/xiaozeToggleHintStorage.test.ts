@@ -9,10 +9,11 @@ import {
 
 describe("xiaozeToggleHintStorage", () => {
   beforeEach(() => {
+    localStorage.clear();
     resetXiaozeToggleHintPageState();
   });
 
-  it("tracks dismiss for the current page load only", () => {
+  it("tracks dismissal", () => {
     expect(readXiaozeToggleHintDismissed()).toBe(false);
     dismissXiaozeToggleHint();
     expect(readXiaozeToggleHintDismissed()).toBe(true);
@@ -24,11 +25,11 @@ describe("xiaozeToggleHintStorage", () => {
     expect(readXiaozeToggleHintShown()).toBe(true);
   });
 
-  it("resets shown and dismissed state on a fresh page load", () => {
+  it("resets shown state but preserves dismissal on a fresh page load", () => {
     dismissXiaozeToggleHint();
     markXiaozeToggleHintShown();
     resetXiaozeToggleHintPageState();
-    expect(readXiaozeToggleHintDismissed()).toBe(false);
+    expect(readXiaozeToggleHintDismissed()).toBe(true);
     expect(readXiaozeToggleHintShown()).toBe(false);
   });
 });
