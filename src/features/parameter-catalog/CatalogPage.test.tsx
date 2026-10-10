@@ -199,6 +199,17 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect((await axe.run(actions, { runOnly: ["aria-prohibited-attr"] })).violations).toEqual([]);
   });
 
+  it.each(["desktop", "mobile"] as const)("offers viewing with access guidance in the %s read-only catalog", async (layoutMode) => {
+    renderCatalog({ actor: "user", layoutMode });
+    const user = userEvent.setup();
+    const action = await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(action).toHaveTextContent("查看");
+    await user.click(action);
+    const dialog = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(within(dialog).getAllByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).toHaveLength(1);
+    expect(within(dialog).getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.propertyKey);
+  });
+
   function pagedInventory() {
     const subjects = Array.from({ length: 101 }, (_, index) => ({
       ...registeredSubject,

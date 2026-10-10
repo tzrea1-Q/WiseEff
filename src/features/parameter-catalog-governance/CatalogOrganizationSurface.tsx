@@ -206,6 +206,7 @@ export function CatalogOrganizationSurface({
           organizationId && reviewQueueAllowed ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
         }
         definitionPublishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
+        definitionAuthoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
         onDefinitionCommand={(command, definition) => {
           // Identity correction now lives inside the definition's own 编辑 dialog
           // (renderDefinitionEditor below); the row only offers that one action.
