@@ -59,6 +59,7 @@ import {
   catalogValueShapeLabel
 } from "./catalogPresentation";
 import {
+  catalogAuthoringAccessHint,
   catalogDefinitionsLabel,
   catalogDetailCloseLabel,
   catalogDetailLabel,
@@ -135,6 +136,7 @@ export type CatalogPageProps = {
    * a visible control that the server would refuse is not a security boundary.
    */
   definitionPublishingAllowed?: boolean;
+  definitionAuthoringAllowed?: boolean;
   layoutMode?: CatalogLayoutMode;
   organizationId?: string;
   listReviewItems?: (
@@ -216,6 +218,7 @@ export function CatalogPage({
   renderDefinitionEditor,
   onDefinitionCommand,
   definitionPublishingAllowed = false,
+  definitionAuthoringAllowed = false,
   layoutMode: layoutOverride,
   organizationId,
   listReviewItems
@@ -241,7 +244,8 @@ export function CatalogPage({
   const [unpublished, setUnpublished] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const definitionActionLabel = renderDefinitionEditor ? "编辑" : "查看";
+  const definitionEditable = definitionAuthoringAllowed && Boolean(renderDefinitionEditor);
+  const definitionActionLabel = definitionEditable ? "编辑" : "查看";
   /** Cursors already traversed, so Previous is exact rather than guessed. */
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
@@ -753,45 +757,47 @@ export function CatalogPage({
             </button>
           ) : null}
         </form>
-        <div className="parameter-catalog__actions" aria-label="目录动作">
-          {actions.map((action) => (
-            <button
-              key={action.action}
-              type="button"
-              className="button sm"
-              data-catalog-action={action.action}
-              disabled={!action.enabled}
-              title={action.disabledReason ?? undefined}
-              aria-disabled={!action.enabled}
-              onClick={() =>
-                onAction?.(action.action, {
-                  subjectId: subject?.id ?? anchor.subjectId,
-                  registrationId:
-                    subject?.registration.status && subject.registration.status !== "unregistered"
-                      ? subject.registration.id
-                      : null
-                })
-              }
-            >
-              {action.label}
-            </button>
-          ))}
-          {onOpenPendingWork ? (
-            <button
-              type="button"
-              className="button subtle sm"
-              data-catalog-action="open-pending-work"
-              onClick={onOpenPendingWork}
-            >
-              {catalogPendingWorkLabel}
-              {reviewItemCount > 0 ? (
-                <span className="parameter-catalog__badge" data-tone="warning">
-                  {reviewItemCount}
-                </span>
-              ) : null}
-            </button>
-          ) : null}
-        </div>
+        {actions.length > 0 || onOpenPendingWork ? (
+          <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
+            {actions.map((action) => (
+              <button
+                key={action.action}
+                type="button"
+                className="button sm"
+                data-catalog-action={action.action}
+                disabled={!action.enabled}
+                title={action.disabledReason ?? undefined}
+                aria-disabled={!action.enabled}
+                onClick={() =>
+                  onAction?.(action.action, {
+                    subjectId: subject?.id ?? anchor.subjectId,
+                    registrationId:
+                      subject?.registration.status && subject.registration.status !== "unregistered"
+                        ? subject.registration.id
+                        : null
+                  })
+                }
+              >
+                {action.label}
+              </button>
+            ))}
+            {onOpenPendingWork ? (
+              <button
+                type="button"
+                className="button subtle sm"
+                data-catalog-action="open-pending-work"
+                onClick={onOpenPendingWork}
+              >
+                {catalogPendingWorkLabel}
+                {reviewItemCount > 0 ? (
+                  <span className="parameter-catalog__badge" data-tone="warning">
+                    {reviewItemCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {statusMessage && domainState.kind !== "ready" ? (
@@ -876,7 +882,7 @@ export function CatalogPage({
                       type="button"
                       className="button subtle sm"
                       aria-label={`${definitionActionLabel} ${item.propertyKey}`}
-                      data-catalog-row-action={renderDefinitionEditor ? "edit" : "read"}
+                      data-catalog-row-action={definitionEditable ? "edit" : "read"}
                       onClick={() => selectDefinition(item)}
                     >
                       {definitionActionLabel}
@@ -900,7 +906,7 @@ export function CatalogPage({
                         type="button"
                         className="button subtle sm"
                         aria-label={`${definitionActionLabel} ${row.propertyKey}`}
-                        data-catalog-row-action={renderDefinitionEditor ? "edit" : "read"}
+                        data-catalog-row-action={definitionEditable ? "edit" : "read"}
                         onClick={() => selectDefinition(row)}
                       >
                         {definitionActionLabel}
@@ -1016,6 +1022,9 @@ export function CatalogPage({
               </div>
 
               <div className="confirm-dialog__scroll parameter-catalog__editor-dialog-scroll">
+                {!definitionAuthoringAllowed ? (
+                  <p className="parameter-catalog__muted">{catalogAuthoringAccessHint}</p>
+                ) : null}
                 {renderDefinitionEditor ? (
                   <div data-definition-editor="true">
                     {renderDefinitionEditor(definition, {

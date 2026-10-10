@@ -63,6 +63,7 @@ export type LocalBridgeReachability = "ok" | "offline" | "possibly_blocked";
 export type LocalBridgeProbeResult = {
   health: LocalBridgeHealthState | null;
   reachability: LocalBridgeReachability;
+  error?: unknown;
 };
 
 export function classifyLocalBridgeReachability(pageOrigin: string): LocalBridgeReachability {
@@ -245,10 +246,11 @@ export async function probeLocalBridgeHealthDetailed(
       health: parseLocalBridgeHealthBody(body),
       reachability: "ok"
     };
-  } catch {
+  } catch (error) {
     return {
       health: null,
-      reachability: classifyLocalBridgeReachability(pageOrigin)
+      reachability: classifyLocalBridgeReachability(pageOrigin),
+      error
     };
   }
 }

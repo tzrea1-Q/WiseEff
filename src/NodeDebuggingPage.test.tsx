@@ -220,6 +220,24 @@ afterEach(() => {
 });
 
 describe("/node-debugging", () => {
+  it("explains an unreachable local Bridge and keeps its technical detail expandable", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/health")) throw new TypeError("Failed to fetch");
+      return new Response(JSON.stringify({ items: [], item: { code: "123456", expiresAt: "2099-01-01T00:00:00Z" } }));
+    });
+    renderNodeDebuggingPage({ state: userState, debuggingActions: createDebuggingActions() });
+
+    const message = await screen.findByText("无法连接本地 Bridge，请确认本机 Bridge 已启动，然后刷新代理状态重试。");
+    const alert = message.closest('[role="alert"]') as HTMLElement;
+    expect(within(alert).getByRole("button", { name: "刷新代理状态" })).toBeEnabled();
+    const detail = within(alert).getByText("Failed to fetch");
+    const disclosure = detail.closest("details") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(within(alert).getByText("技术详情"));
+    expect(disclosure.open).toBe(true);
+  });
+
   it("uses API gateway actions to auto-detect and shows the returned target label", async () => {
     const debuggingActions = createDebuggingActions();
     renderNodeDebuggingPage({ state: userState, debuggingActions });

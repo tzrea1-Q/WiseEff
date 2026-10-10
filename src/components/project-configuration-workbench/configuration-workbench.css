@@ -1072,14 +1072,19 @@
   border-right: 1px solid var(--outline);
 }
 
-.configuration-workbench__inspector dl {
+.configuration-workbench__inspector-details {
   display: grid;
   gap: 0;
   margin: 0;
   padding: var(--space-2) var(--space-3);
 }
 
-.configuration-workbench__inspector dl > div:not(.configuration-workbench__typed-editor) {
+.configuration-workbench__inspector-details > dl {
+  margin: 0;
+}
+
+.configuration-workbench__inspector dl > div,
+.configuration-workbench__inspector-details > .configuration-workbench__inspector-actions {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   gap: var(--space-2);

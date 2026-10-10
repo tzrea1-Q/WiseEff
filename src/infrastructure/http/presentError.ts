@@ -98,6 +98,14 @@ export function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError && NETWORK_MESSAGE_PATTERN.test(err.message);
 }
 
+export function presentLocalBridgeError(error: unknown): string {
+  const cause = error instanceof Error && error.cause ? error.cause : error;
+  if (isNetworkError(cause)) {
+    return "无法连接本地 Bridge，请确认本机 Bridge 已启动，然后刷新代理状态重试。";
+  }
+  return presentError(cause, "本地 Bridge 请求失败，请刷新代理状态后重试。");
+}
+
 /**
  * Map a raw message string (e.g. a backend `failureReason` already detached
  * from its Error) to product copy. Chinese messages pass through; known

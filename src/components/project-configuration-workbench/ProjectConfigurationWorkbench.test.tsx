@@ -2034,6 +2034,10 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     const fileInspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(within(fileInspector).getByText("aurora-board.dts")).toBeInTheDocument();
+    expect(within(fileInspector).getByRole("button", { name: "手动同步" }).closest("dl")).toBeNull();
+    expect(within(fileInspector).getByRole("button", { name: "从配置集移除" }).closest("dl")).toBeNull();
+    const { default: axe } = await import("axe-core");
+    expect((await axe.run(fileInspector, { runOnly: ["definition-list", "dlitem"] })).violations).toEqual([]);
 
     cleanup();
     renderWorkbench({
@@ -2041,6 +2045,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     const configInspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(configInspector).toHaveTextContent("default");
+    expect(within(configInspector).getByRole("region", { name: "成员管理" }).closest("dl")).toBeNull();
+    expect((await axe.run(configInspector, { runOnly: ["definition-list", "dlitem"] })).violations).toEqual([]);
     expect(screen.getByRole("button", { name: "检查器" })).toHaveAttribute("aria-expanded", "true");
   });
 
