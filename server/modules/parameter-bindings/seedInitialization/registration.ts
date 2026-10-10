@@ -102,7 +102,8 @@ const availableModuleId = async (
           select 1 from parameter_catalog.subject_placements sp
            where sp.organization_id = pm.organization_id and sp.module_id = pm.id
         )
-      order by case when pm.origin = 'curated' then 0 else 1 end, pm.id
+      order by case when pm.origin = 'curated' then 0 else 1 end,
+               coalesce(pm.source_key, pm.name) collate "C", pm.name collate "C", pm.id
       limit 1`,
     [organizationId, moduleKind]
   );
