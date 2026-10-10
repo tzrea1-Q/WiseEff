@@ -34,6 +34,7 @@ import { listAllCanonicalPages } from "@/components/parameter-admin-next/Canonic
 import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
+import type { AuthContextDto } from "@/infrastructure/http/authClient";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -41,6 +42,7 @@ export type CatalogOrganizationSurfaceProps = {
   actor?: CatalogActorKind;
   roleId?: string;
   sessionPermissions?: readonly string[] | null;
+  sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
   search: string;
   onAnchorChange: (href: string, mode: "push" | "replace") => void;
   organizationId?: string;
@@ -54,6 +56,7 @@ export function CatalogOrganizationSurface({
   actor: actorProp,
   roleId,
   sessionPermissions,
+  sessionRoles,
   search,
   onAnchorChange,
   organizationId,
@@ -61,7 +64,11 @@ export function CatalogOrganizationSurface({
   relatedKnowledge
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
-  const reviewQueueAllowed = catalogActionsForSession({ actor, permissions: sessionPermissions }).includes("resolve-review-item");
+  const reviewActor = sessionRoles === undefined ? actor
+    : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "org-admin" : "user";
+  const reviewQueueAllowed = catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("resolve-review-item");
+  const platformOnly = !reviewQueueAllowed && (sessionRoles === undefined ? actor === "platform-admin"
+    : sessionRoles?.some((role) => role.roleId === "platform-admin"));
   const anchor = parseCatalogUrlAnchor(search);
   const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
@@ -178,7 +185,7 @@ export function CatalogOrganizationSurface({
           <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>
         </section>
       ) : null}
-      {!reviewQueueAllowed && actor === "platform-admin" ? (
+      {platformOnly ? (
         <p className="parameter-catalog__muted">
           组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。
         </p>
@@ -257,7 +264,7 @@ export function CatalogOrganizationSurface({
               <h2 id={titleId}>{catalogPendingWorkLabel}</h2>
               <div id={descriptionId} className="confirm-dialog__scroll">
                 <ReviewQueue
-                  actor={actor}
+                  actor={reviewActor}
                   domainState={domainState}
                   repository={governance}
                   organizationId={organizationId}

@@ -49,7 +49,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     return evidenceId;
   };
 
-  const request = async (actor: "admin" | "member" | "other", method: string, path: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
+  const request = async (actor: "admin" | "member" | "other" | "dual" | "platform", method: string, path: string, init: { headers?: Record<string, string>; body?: unknown } = {}) => {
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: { authorization: `Bearer review-closure-${actor}`, "content-type": "application/json", ...init.headers },
@@ -81,10 +81,11 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     if (!installed.ok) throw new Error(JSON.stringify(installed.error));
     pin = { id: compiled.value.release.id, digest: compiled.value.release.digest };
     await pool.query("insert into public.organizations(id,name) values ($1,'Review closure'),($2,'Other')", [ORG, OTHER_ORG]);
-    for (const [actor, org, role] of [["admin", ORG, "admin"], ["member", ORG, "software-user"], ["other", OTHER_ORG, "admin"]] as const) {
+    for (const [actor, org, role] of [["admin", ORG, "admin"], ["member", ORG, "software-user"], ["other", OTHER_ORG, "admin"], ["dual", ORG, "platform-admin"], ["platform", ORG, "platform-admin"]] as const) {
       await pool.query("insert into public.users(id,organization_id,name,email,title,is_active) values ($1,$2,$1,$3,'Review fixture',true)", [actor, org, `${actor}@review.test`]);
       await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,null,$4)", [`role-${actor}`, actor, org, role]);
     }
+    await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('role-dual-admin','dual',$1,null,'admin')", [ORG]);
     for (const [owner, organizationId] of [["own", ORG], ["foreign", OTHER_ORG], ["other", ORG]] as const) {
       await pool.query("insert into projects(id,organization_id,name,code) values ($1,$2,$1,$1)", [`${owner}-project`, organizationId]);
       await pool.query("insert into dts_config_set(id,organization_id,project_id,name) values ($1,$2,$3,$1)", [`${owner}-set`, organizationId, `${owner}-project`]);
@@ -129,9 +130,12 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
       .toEqual([{ current_user: runtime.apiRole, rolsuper: false }]);
     server = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async (authorization): Promise<AuthContext> => {
       const actor = authorization?.replace("Bearer review-closure-", "");
-      if (actor !== "admin" && actor !== "member" && actor !== "other") throw new Error("invalid fixture token");
+      if (actor !== "admin" && actor !== "member" && actor !== "other" && actor !== "dual" && actor !== "platform") throw new Error("invalid fixture token");
       const organizationId = actor === "other" ? OTHER_ORG : ORG;
-      return { user: { id: actor, organizationId, name: actor, email: `${actor}@review.test`, emailVerified: true, title: "Review fixture", isActive: true }, organization: { id: organizationId, name: organizationId }, roles: [{ roleId: "admin", projectId: null }], permissions: ["parameter:view"] };
+      const roles: AuthContext["roles"] = actor === "dual"
+        ? [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }]
+        : [{ roleId: actor === "platform" ? "platform-admin" : "admin", projectId: null }];
+      return { user: { id: actor, organizationId, name: actor, email: `${actor}@review.test`, emailVerified: true, title: "Review fixture", isActive: true }, organization: { id: organizationId, name: organizationId }, roles, permissions: ["parameter:view"] };
     } } } });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -143,6 +147,13 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     if (roleToken && database) await dropLabRuntimeLogins(database.url, roleToken);
     await root?.close();
     await database?.close();
+  });
+
+  it.each([["dual", 200], ["platform", 403]] as const)("reads Organization review items as %s with status %s", async (actor, status) => {
+    const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
+    const result = await request(actor, "GET", path);
+    expect(result.status).toBe(status);
+    if (status === 200) expect(result.body.items).toEqual(expect.any(Array));
   });
 
   it.each<[string, Record<string, ContractJsonValue>, string?]>([

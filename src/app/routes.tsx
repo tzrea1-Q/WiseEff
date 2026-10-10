@@ -101,6 +101,7 @@ export type PageProps = {
   onAuthContextRefresh?: (context: AuthContextDto) => void;
   organizationId?: string;
   sessionPermissions?: readonly string[] | null;
+  sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
 };
 
 /**
@@ -151,6 +152,7 @@ export function PageRouter({
   onAuthContextRefresh,
   organizationId,
   sessionPermissions,
+  sessionRoles,
   onFeedback,
   onNewProject,
   TopBarProjectId,
@@ -370,6 +372,7 @@ export function PageRouter({
           runtime={runtime}
           catalogOrganizationId={organizationId}
           sessionPermissions={sessionPermissions}
+          sessionRoles={sessionRoles}
         />
       );
     }

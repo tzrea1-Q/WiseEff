@@ -32,6 +32,7 @@ import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-n
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
 import { ProjectsOperationsPanel } from "@/components/parameter-admin-next/ProjectsOperationsPanel";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
+import type { AuthContextDto } from "@/infrastructure/http/authClient";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -71,6 +72,7 @@ export type ParameterAdminNextPageProps = {
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
   sessionPermissions?: readonly string[] | null;
+  sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
 };
 
 /**
@@ -100,7 +102,8 @@ export function ParameterAdminNextPage({
   definitionRelatedKnowledge,
   runtime,
   catalogOrganizationId,
-  sessionPermissions
+  sessionPermissions,
+  sessionRoles
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
     () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
@@ -159,6 +162,7 @@ export function ParameterAdminNextPage({
           roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
         })}
         sessionPermissions={sessionPermissions}
+        sessionRoles={runtimeMode === "api" ? sessionRoles ?? null : sessionRoles}
         search={search}
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
