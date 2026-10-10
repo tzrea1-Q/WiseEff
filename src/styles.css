@@ -104,6 +104,10 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-full: 999px;
+  --view-switch-font-weight: 600;
+  --view-switch-border-width: 1px;
+  --view-switch-focus-width: 2px;
+  --view-switch-disabled-opacity: 0.5;
 
   /* ── Elevation ── */
   --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.04);
@@ -4975,55 +4979,6 @@ td small {
   line-height: 1.2;
 }
 
-.user-permissions-workspace-tabs {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  padding: var(--space-1);
-  background: #eef2f8;
-  border: 1px solid var(--shell-sidebar-border);
-  border-radius: 10px;
-}
-
-.user-permissions-workspace-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 36px;
-  padding: 0 14px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: #475569;
-  font: inherit;
-  font-size: var(--text-base);
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.user-permissions-workspace-tab:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-}
-
-.user-permissions-workspace-tab.active,
-.user-permissions-workspace-tab[aria-selected="true"] {
-  color: var(--text);
-  background: var(--surface);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
-}
-
-.user-permissions-workspace-tab:focus-visible {
-  outline: 2px solid rgba(0, 93, 224, 0.2);
-  outline-offset: 2px;
-}
-
 .user-permissions-workspace-tab-count {
   display: inline-flex;
   align-items: center;
@@ -5635,15 +5590,6 @@ td small {
   .user-permissions-summary .button,
   .user-permissions-toolbar .user-permissions-primary-action {
     width: 100%;
-  }
-
-  .user-permissions-workspace-tabs {
-    width: 100%;
-  }
-
-  .user-permissions-workspace-tab {
-    flex: 1 1 auto;
-    justify-content: center;
   }
 
   .user-permissions-filters {
