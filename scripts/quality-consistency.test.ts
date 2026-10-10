@@ -1,6 +1,50 @@
 import type { BrowserContext, Route } from "playwright/test";
+import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights, shouldRequireXiaozeHint } from "../e2e/quality/consistency";
+import { assertXiaozePlacement, collectConsistencyMeasurements, consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights, shouldRequireXiaozeHint } from "../e2e/quality/consistency";
+
+describe("view-switch collection", () => {
+  it("collects shared and legacy switches, never Catalog tree-select or module navigator selections", () => {
+    const dom = new JSDOM(`
+      <header class="topbar"><button class="view-switch__item">Topbar switch</button></header>
+      <main>
+        <nav><button class="view-switch__item" aria-current="page">Section switch</button></nav>
+        <div role="tablist"><button class="view-switch__item" role="tab" aria-selected="true">Content tab</button></div>
+        <div role="radiogroup"><button class="view-switch__item" role="radio" aria-checked="true">Option toggle</button></div>
+        <button class="protocol-switch-button" aria-pressed="true">Legacy protocol</button>
+        <div role="group" aria-label="日志视图切换"><button aria-pressed="true">Legacy log switch</button></div>
+        <nav><ul class="parameter-catalog__tree"><li>
+          <button class="parameter-catalog__tree-select" aria-pressed="true"><span class="parameter-catalog__tree-label">Module</span></button>
+          <button class="view-switch__item" aria-selected="true">Misclassified navigator item</button>
+        </li></ul></nav>
+        <nav><button class="parameter-catalog__tree-select" aria-pressed="false">Standalone module</button></nav>
+        <nav><button role="treeitem" aria-selected="true" class="view-switch__item">Tree item</button></nav>
+        <div role="tree"><button class="protocol-switch-button" aria-pressed="true">Tree selection</button></div>
+        <div class="dts-topology-navigator"><button class="view-switch__item" aria-pressed="true">Topology selection</button></div>
+        <nav><button aria-pressed="true">Unrelated selection</button><a aria-current="page">Unrelated navigation</a></nav>
+        <div role="tablist"><button role="tab" aria-selected="true">Unmarked tab</button></div>
+      </main>
+    `);
+    vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40, toJSON: () => ({})
+    });
+    dom.window.Element.prototype.checkVisibility = () => true;
+    vi.stubGlobal("document", dom.window.document);
+    vi.stubGlobal("getComputedStyle", dom.window.getComputedStyle.bind(dom.window));
+    try {
+      const measurements = collectConsistencyMeasurements();
+      expect(measurements.viewSwitches.map((control) => control.dom).sort()).toEqual([
+        "button.view-switch__item", "button.view-switch__item", "button.view-switch__item",
+        "button.protocol-switch-button", "button", "button.view-switch__item"
+      ].sort());
+      expect(measurements.viewSwitches.some((control) => control.dom === "button.parameter-catalog__tree-select")).toBe(false);
+      expect(measurements.moduleTreeLabels.map((control) => control.dom)).toEqual(["span.parameter-catalog__tree-label"]);
+    } finally {
+      vi.unstubAllGlobals();
+      dom.window.close();
+    }
+  });
+});
 
 describe("Xiaoze placement contract", () => {
   it.each([
