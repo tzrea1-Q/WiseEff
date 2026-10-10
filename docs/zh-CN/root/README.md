@@ -144,6 +144,8 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 VITE_WISEEFF_RUNTIME_MODE=mock
 ```
 
+Mock 参数功能仅保留现有的 canonical 等价 Catalog 演示、项目参数值编辑、业务模块分类和结构节点启用。旧 Spec 治理、模块映射/注册身份、组织 overlay 编写、身份/Spec 审核任务处理和旧参数详情已撤下（#1087，#1080 的负责人决定 Q3）。对应控件不再显示或明确标为不可用；受支持的规范流程请使用 API 模式。本批不在 mock 模式重新实现 canonical 能力。
+
 生产构建不能把 mock data 当作业务数据源。后端写入必须在服务端执行 authz、validation、transaction 和 audit。
 
 ## 阅读入口

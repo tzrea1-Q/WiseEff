@@ -13,35 +13,6 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     return createMockParameterTopologyRepository();
   }
 
-  it("listSpecs returns semantic ParameterSpecs with version and vendor schema provenance, not path-derived identity", async () => {
-    const repo = createRepo();
-    const specs = await repo.listSpecs({});
-
-    expect(specs.length).toBeGreaterThan(0);
-    const gpio = specs.find((spec) => spec.propertyKey === "gpio_int" && spec.driverModule === "sc8562");
-    expect(gpio).toMatchObject({
-      id: expect.stringMatching(/^spec-/),
-      propertyKey: "gpio_int",
-      driverModule: "sc8562",
-      lifecycle: "active",
-      currentVersionId: expect.any(String),
-      currentVersion: expect.any(Number)
-    });
-    expect(gpio?.id).not.toContain("/");
-    expect(gpio?.specificationKey).toBeTruthy();
-
-    const detail = await repo.getSpec(gpio!.id);
-    expect(detail).toMatchObject({
-      id: gpio!.id,
-      propertyKey: "gpio_int",
-      schemaNamespace: expect.stringMatching(/vendor/),
-      valueShape: expect.anything(),
-      currentVersionId: gpio!.currentVersionId
-    });
-    // Identity is parameterSpecId — never a DTS path as the primary key
-    expect(detail.id).not.toMatch(/^\/|^amba\//);
-  });
-
   it("listBindings returns ProjectParameterBindings keyed by spec version identity", async () => {
     const repo = createRepo();
     const bindings = await repo.listBindings(PROJECT_ID, REVISION_ID);
@@ -73,17 +44,11 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     );
   });
 
-  it("listSpecReviewTasks returns the review queue", async () => {
+  it("listMappingTasks never fabricates legacy identity mapping tasks in mock mode", async () => {
     const repo = createRepo();
-    const open = await repo.listSpecReviewTasks({ status: "open" });
-    expect(open.items.length).toBeGreaterThan(0);
-  });
-
-  it("listMappingTasks returns identity mapping evidence", async () => {
-    const repo = createRepo();
-    const tasks = await repo.listMappingTasks(PROJECT_ID);
-    expect(tasks.length).toBeGreaterThan(0);
-    expect(tasks[0].candidateLogicalNodeIds.length).toBeGreaterThan(0);
+    await expect(repo.listMappingTasks()).resolves.toEqual([]);
+    await expect(repo.listMappingTasks(PROJECT_ID)).resolves.toEqual([]);
+    await expect(repo.listMappingTasks("project-other")).resolves.toEqual([]);
   });
 
   it("validateRevision returns a ValidationRun", async () => {
@@ -137,77 +102,8 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
-  it("updateParameterSpec rejects a semantic field change with successor 409 (ADR-0032)", async () => {
+  it("createBindingDraft mutate through the public port", async () => {
     const repo = createRepo();
-    const error = await repo
-      .updateParameterSpec("spec-sc8562-gpio-int", {
-        documentation: "gpio_int is a three-cell interrupt specifier.",
-        reason: "drop extra constraint keys",
-        constraints: { cells: 1 },
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      details: { code: "semantic-edit-requires-successor", reason: "semantic-edit-requires-successor" }
-    });
-
-    const unchanged = await repo.getSpec("spec-sc8562-gpio-int");
-    expect(unchanged.constraints).toEqual({ cellsPerGroup: 3 });
-    expect(unchanged.currentVersion).toBe(3);
-  });
-
-  it("updateParameterSpec clears displayName when the client sends null (SE-5)", async () => {
-    const repo = createRepo();
-    const updated = await repo.updateParameterSpec("spec-sc8562-gpio-int", {
-      documentation: "gpio_int is a three-cell interrupt specifier.",
-      reason: "clear display name",
-      constraints: { cellsPerGroup: 3 },
-      displayName: null,
-    });
-    expect(updated.displayName).toBeNull();
-
-    const retrieved = await repo.getSpec("spec-sc8562-gpio-int");
-    expect(retrieved.displayName).toBeNull();
-  });
-
-  it("updateParameterSpec keeps displayName when the key is omitted (SE-5)", async () => {
-    const repo = createRepo();
-    const updated = await repo.updateParameterSpec("spec-sc8562-gpio-int", {
-      documentation: "gpio_int is a three-cell interrupt specifier.",
-      reason: "docs only",
-      constraints: { cellsPerGroup: 3 },
-    });
-    expect(updated.displayName).toBe("SC8562 GPIO interrupt");
-  });
-
-  it("activateParameterSpec persists an empty displayName instead of keeping the stored name (SE-5)", async () => {
-    const repo = createRepo();
-    const activated = await repo.activateParameterSpec("spec-draft-mystery", {
-      valueShape: { kind: "strings", maxItems: 1 },
-      constraints: {},
-      documentation: "Activated from mock",
-      reason: "Ready for use",
-      displayName: null,
-    });
-    expect(activated.lifecycle).toBe("active");
-    expect(activated.displayName).toBeNull();
-  });
-
-  it("activateParameterSpec and createBindingDraft mutate through the public port", async () => {
-    const repo = createRepo();
-    const activated = await repo.activateParameterSpec("spec-draft-mystery", {
-      valueShape: { kind: "strings", maxItems: 1 },
-      constraints: {},
-      documentation: "Activated from mock",
-      reason: "Ready for use",
-      displayName: "Mystery property"
-    });
-    expect(activated.lifecycle).toBe("active");
-    expect(activated.currentVersion).toBe(1);
-    expect(activated.documentation).toBe("Activated from mock");
-
     const draft = await repo.createBindingDraft(PROJECT_ID, "binding-sc8562-gpio-int", {
       baseRevisionId: REVISION_ID,
       reason: "Bump gpio",
@@ -222,141 +118,21 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
-  it("deprecateParameterSpec soft-retires and restoreParameterSpec returns to prior activated state", async () => {
+  it("does not expose withdrawn Spec governance or mock minting", () => {
     const repo = createRepo();
-    const deprecated = await repo.deprecateParameterSpec("spec-sc8562-gpio-int", {
-      reason: "superseded locally"
-    });
-    expect(deprecated.lifecycle).toBe("deprecated");
-
-    const restored = await repo.restoreParameterSpec("spec-sc8562-gpio-int", {
-      reason: "still needed"
-    });
-    expect(restored.lifecycle).toBe("active");
+    for (const method of [
+      "createParameterSpec",
+      "listSpecs",
+      "getSpec",
+      "activateParameterSpec",
+      "updateParameterSpec",
+      "deprecateParameterSpec",
+      "restoreParameterSpec",
+      "reattributeParameterSpec",
+      "listSpecReviewTasks"
+    ]) {
+      expect(repo).not.toHaveProperty(method);
+    }
   });
 
-  it("activateParameterSpec on an active spec with tip bindings stages a successor cutover (ADR-0032)", async () => {
-    const repo = createRepo();
-    const activated = await repo.activateParameterSpec("spec-sc8562-gpio-int", {
-      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 4 },
-      constraints: { cellsPerGroup: 4 },
-      documentation: "four-cell successor",
-      reason: "widen specifier"
-    });
-
-    expect(activated.lifecycle).toBe("active");
-    expect(activated.currentVersion).toBe(3);
-    expect(activated.valueShape).toEqual({ kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 });
-    expect(activated.cutover).toMatchObject({
-      status: "preparing",
-      fromVersion: 3,
-      toVersion: 4,
-      fromVersionId: "specver-sc8562-gpio-int-3",
-      impact: { pending: 1, total: 1 }
-    });
-
-    const bindings = await repo.listBindings(PROJECT_ID, REVISION_ID);
-    const tip = bindings.find((binding) => binding.id === "binding-sc8562-gpio-int");
-    expect(tip?.parameterSpecVersionId).toBe("specver-sc8562-gpio-int-3");
-  });
-
-  it("does not expose retired spec minting or mint a mock spec", async () => {
-    const repo = createRepo();
-    expect(repo).not.toHaveProperty("createParameterSpec");
-    await expect(repo.getSpec("pspec:mock:asub:driver:sc8562:successor_prop")).rejects.toMatchObject({
-      code: "NOT_FOUND"
-    });
-  });
-
-  it("activateParameterSpec on an unbound active spec auto-finalizes the successor (ADR-0032)", async () => {
-    const repo = createRepo();
-    const first = await repo.activateParameterSpec("spec-draft-mystery", {
-      valueShape: { kind: "string" },
-      constraints: {},
-      documentation: "draft docs",
-      reason: "first activate"
-    });
-    expect(first.lifecycle).toBe("active");
-    expect(first.currentVersion).toBe(1);
-
-    const successor = await repo.activateParameterSpec("spec-draft-mystery", {
-      valueShape: { kind: "string" },
-      constraints: {},
-      documentation: "successor docs",
-      reason: "mint successor"
-    });
-    expect(successor.lifecycle).toBe("active");
-    expect(successor.currentVersion).toBe(2);
-    expect(successor.documentation).toBe("successor docs");
-    expect(successor.cutover).toBeUndefined();
-  });
-
-  it("activateParameterSpec throws CONFLICT when the spec is deprecated", async () => {
-    const repo = createRepo();
-    const error = await repo
-      .activateParameterSpec("spec-deprecated-legacy", {
-        valueShape: { kind: "string" },
-        constraints: {},
-        documentation: "still retired",
-        reason: "retry activate"
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      message: "Only draft or active parameter specs can be activated.",
-      requestId: "mock",
-      details: { specId: "spec-deprecated-legacy" }
-    });
-  });
-
-  it("reattributeParameterSpec throws CONFLICT when another spec already uses the subject and property key", async () => {
-    const repo = createRepo();
-    await repo.reattributeParameterSpec("spec-sc8562-gpio-int", {
-      attributionSubjectId: "sc8562",
-      reason: "align subject"
-    });
-
-    const error = await repo
-      .reattributeParameterSpec("spec-mt5788-gpio-int", {
-        attributionSubjectId: "sc8562",
-        reason: "duplicate subject"
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      message: "A parameter definition already exists for this subject and property key.",
-      requestId: "mock",
-      details: { parameterSpecId: "spec-sc8562-gpio-int", lifecycle: "active" }
-    });
-  });
-
-  it("reattributeParameterSpec throws CONFLICT when a deprecated definition already owns the triple", async () => {
-    const repo = createRepo();
-    await repo.deprecateParameterSpec("spec-mt5788-gpio-int", {
-      reason: "retire definition"
-    });
-    await repo.reattributeParameterSpec("spec-mt5788-gpio-int", {
-      attributionSubjectId: "asub:nodetype:charger",
-      reason: "park legacy"
-    });
-
-    const error = await repo
-      .reattributeParameterSpec("spec-sc8562-gpio-int", {
-        attributionSubjectId: "asub:nodetype:charger",
-        reason: "collide with deprecated"
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(WiseEffApiError);
-    expect(error).toMatchObject({
-      code: "CONFLICT",
-      message: "A parameter definition already exists for this subject and property key.",
-      requestId: "mock",
-      details: { parameterSpecId: "spec-mt5788-gpio-int", lifecycle: "deprecated" }
-    });
-  });
 });

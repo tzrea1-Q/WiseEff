@@ -15,7 +15,7 @@ import type {
   SubmitParameterChangesInput
 } from "@/application/ports/ParameterRepository";
 import { submitParameterRound, type BuildRuntimeReviewFields } from "@/domain/parameters/commands";
-import type { ChangeRequest, ParameterHistoryEntry, ParameterRecord, ParameterSubmissionRound } from "@/domain/parameters/types";
+import type { ChangeRequest, ParameterRecord, ParameterSubmissionRound } from "@/domain/parameters/types";
 import { requestStatusToBackend } from "@/domain/parameters/submissionWorkflowTrail";
 import { canPerform } from "@/app/permissions";
 import { roleSupportsWorkflowSlot } from "@/domain/users/types";
@@ -447,15 +447,11 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
         missingRoles
       };
     },
-    async getParameter(parameterId: string): Promise<ParameterRecord> {
-      const parameter = readMockState(runtime).parameters.find((row) => row.id === parameterId);
-      if (!parameter) throw mockApiError("NOT_FOUND", `Parameter not found: ${parameterId}`, { parameterId });
-      return cloneParameterRecord(parameter);
+    async getParameter(parameterId: string) {
+      throw mockApiError("GONE", "Parameter detail is unavailable in mock mode.", { parameterId });
     },
-    async listParameterHistory(parameterId: string): Promise<ParameterHistoryEntry[]> {
-      const parameter = readMockState(runtime).parameters.find((row) => row.id === parameterId);
-      if (!parameter) throw mockApiError("NOT_FOUND", `Parameter not found: ${parameterId}`, { parameterId });
-      return parameter.history.map((entry) => ({ ...entry }));
+    async listParameterHistory(parameterId: string) {
+      throw mockApiError("GONE", "Parameter detail history is unavailable in mock mode.", { parameterId });
     },
     async listDrafts(projectId?: string): Promise<ParameterDraftDto[]> {
       return readDrafts(repositoryRuntime)

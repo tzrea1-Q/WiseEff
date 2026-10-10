@@ -3,7 +3,9 @@
 > 日期：2026-07-21  
 > 状态：已实现
 > English: [`docs/design-docs/2026-07-21-dts-binding-cross-project-compare-design.md`](../../design-docs/2026-07-21-dts-binding-cross-project-compare-design.md)  
-> 相关：旧版 [`ParameterDetailDialog`](../../../src/components/ParameterDetailDialog.tsx) + [`singleParameterComparison`](../../../src/domain/parameters/singleParameterComparison.ts)；当前 [`DtsBindingDetailDialog`](../../../src/components/parameter-topology/DtsBindingDetailDialog.tsx)；此前拆分设计将完整对比标为延后
+> 相关：旧版 `ParameterDetailDialog` + [`singleParameterComparison`](../../../src/domain/parameters/singleParameterComparison.ts)；当前 [`DtsBindingDetailDialog`](../../../src/components/parameter-topology/DtsBindingDetailDialog.tsx)；此前拆分设计将完整对比标为延后
+
+历史说明：mock `ParameterDetailDialog` 已按 #1087（#1080 Q3）撤下。其 canonical 等价对比后继仍为 `DtsBindingDetailDialog`，旧 mock 详情不再是可用入口。
 
 ## 1. 背景
 

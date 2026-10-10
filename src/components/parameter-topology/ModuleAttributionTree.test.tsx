@@ -75,7 +75,7 @@ describe("ModuleAttributionTree", () => {
     const onUpdateModule = vi.fn(async (moduleId: string) => {
       if (moduleId === historical.id) throw new Error("legacy-surface-retired");
     });
-    render(<ModuleAttributionTree canAdmin canonicalModeEnabled modules={[business, historical]} mappings={[]}
+    render(<ModuleAttributionTree canAdmin modules={[business, historical]} mappings={[]}
       onUpdateModule={onUpdateModule} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Power 更多操作" }));
     const reorder = screen.getByRole("menuitem", { name: `${direction === "up" ? "上移" : "下移"} Power` });
@@ -85,13 +85,13 @@ describe("ModuleAttributionTree", () => {
     expect(reorder).toHaveAttribute("title", "相邻历史主体为只读，不能交换排序。");
   });
 
-  it.each([[true, "up"], [true, "down"], [false, "up"], [false, "down"]] as const)(
-    "preserves business-business reorder with canonical mode %s in direction %s",
-    async (canonicalModeEnabled, direction) => {
+  it.each(["up", "down"] as const)(
+    "preserves business-business reorder in direction %s",
+    async (direction) => {
       const business = { ...modules[0]!, sortOrder: 0 };
       const peer = { ...business, id: "mod-business-peer", name: "Thermal", sortOrder: 10 };
       const onUpdateModule = vi.fn().mockResolvedValue(undefined);
-      render(<ModuleAttributionTree canAdmin canonicalModeEnabled={canonicalModeEnabled}
+      render(<ModuleAttributionTree canAdmin
         modules={[business, peer]} mappings={[]} onUpdateModule={onUpdateModule}
         onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
       const source = direction === "up" ? peer : business;
@@ -107,7 +107,7 @@ describe("ModuleAttributionTree", () => {
   );
 
   it("keeps taxonomy menus on business categories without offering legacy subject mutations", () => {
-    render(<ModuleAttributionTree canAdmin canonicalModeEnabled modules={modules} mappings={[]}
+    render(<ModuleAttributionTree canAdmin modules={modules} mappings={[]}
       onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Power 更多操作" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "SC8562 更多操作" })).not.toBeInTheDocument();
@@ -116,8 +116,7 @@ describe("ModuleAttributionTree", () => {
   });
 
   it("routes canonical-only driver groups to canonical placement without legacy actions", () => {
-    const onUpdateDriverRegistrationDefault = vi.fn();
-    const onReplayDriverPlacement = vi.fn();
+    const onUpdateModule = vi.fn();
     const onOpenCanonicalPlacement = vi.fn();
     render(
       <ModuleAttributionTree
@@ -131,12 +130,9 @@ describe("ModuleAttributionTree", () => {
             defaultBusinessCategoryId: null
           }]
         ])}
-        canonicalModeEnabled
         canonicalPlacementAvailable
         onOpenCanonicalPlacement={onOpenCanonicalPlacement}
-        onUpdateModule={vi.fn()}
-        onUpdateDriverRegistrationDefault={onUpdateDriverRegistrationDefault}
-        onReplayDriverPlacement={onReplayDriverPlacement}
+        onUpdateModule={onUpdateModule}
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onCreateModule={vi.fn()}
@@ -151,8 +147,7 @@ describe("ModuleAttributionTree", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "管理规范主体与归属" }));
     expect(onOpenCanonicalPlacement).toHaveBeenCalledOnce();
     expect(screen.queryByRole("dialog", { name: "SC8562" })).not.toBeInTheDocument();
-    expect(onUpdateDriverRegistrationDefault).not.toHaveBeenCalled();
-    expect(onReplayDriverPlacement).not.toHaveBeenCalled();
+    expect(onUpdateModule).not.toHaveBeenCalled();
   });
 
   it("shows historical driver provenance read-only while keeping canonical placement available", () => {
@@ -169,12 +164,9 @@ describe("ModuleAttributionTree", () => {
             compatibles: ["vendor,sc8562"]
           }]
         ])}
-        canonicalModeEnabled
         canonicalPlacementAvailable
         onOpenCanonicalPlacement={vi.fn()}
         onUpdateModule={vi.fn()}
-        onUpdateDriverRegistrationDefault={vi.fn()}
-        onReplayDriverPlacement={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onCreateModule={vi.fn()}
@@ -191,7 +183,7 @@ describe("ModuleAttributionTree", () => {
     expect(within(dialog).getByRole("region", { name: "规范主体放置" })).toBeInTheDocument();
   });
 
-  it("keeps legacy placement controls when canonical mode is disabled", () => {
+  it("withdraws legacy placement controls in mock mode", () => {
     render(
       <ModuleAttributionTree
         canAdmin
@@ -205,8 +197,6 @@ describe("ModuleAttributionTree", () => {
           }]
         ])}
         onUpdateModule={vi.fn()}
-        onUpdateDriverRegistrationDefault={vi.fn()}
-        onReplayDriverPlacement={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onCreateModule={vi.fn()}
@@ -215,9 +205,9 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
-    expect(within(dialog).getByRole("region", { name: "业务归属" })).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("默认业务分类")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "从注册回放放置" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("region", { name: "业务归属" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
   });
 
   it("suppresses legacy placement actions if canonical mode is enabled but its panel is unavailable", () => {
@@ -233,10 +223,7 @@ describe("ModuleAttributionTree", () => {
             defaultBusinessCategoryId: null
           }]
         ])}
-        canonicalModeEnabled
         onUpdateModule={vi.fn()}
-        onUpdateDriverRegistrationDefault={vi.fn()}
-        onReplayDriverPlacement={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onCreateModule={vi.fn()}
@@ -251,146 +238,21 @@ describe("ModuleAttributionTree", () => {
     expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
   });
 
-  it("scopes actions by kind and shows compatible rule summary on the driver-group row", () => {
+  it("keeps historical rule summaries without offering driver identity mutations", () => {
+    const onUpdateModule = vi.fn();
     const onDelete = vi.fn();
-    const onRemoveMapping = vi.fn();
-
-    render(
-      <ModuleAttributionTree
-        canAdmin
-        modules={modules}
-        mappings={mappings}
-        onUpdateModule={vi.fn()}
-        onMove={vi.fn()}
-        onDelete={onDelete}
-        onRemoveMapping={onRemoveMapping}
-        onCreateModule={vi.fn()}
-      />
-    );
-
+    render(<ModuleAttributionTree canAdmin modules={modules} mappings={mappings}
+      onUpdateModule={onUpdateModule} onMove={vi.fn()} onDelete={onDelete} onCreateModule={vi.fn()} />);
     const tree = screen.getByRole("tree", { name: "模块归属树" });
-    expect(within(tree).getByText("业务分类")).toBeInTheDocument();
-    expect(within(tree).getByText("驱动组")).toBeInTheDocument();
-    expect(within(tree).queryAllByText(/\d+\s+参数/)).toHaveLength(0);
-    expect(within(tree).queryByText("引用数")).not.toBeInTheDocument();
-    const driverRow = within(tree).getAllByRole("treeitem")[1]!;
-    expect(within(driverRow).getByLabelText("定义数")).toHaveTextContent("3 定义");
-    expect(within(driverRow).getByLabelText("实测处数")).toHaveTextContent("8 实测处");
     expect(within(tree).getByText("· 1 条 compatible")).toBeInTheDocument();
-    expect(within(tree).queryByText("compatible:vendor,sc8562")).not.toBeInTheDocument();
-    expect(
-      within(tree).queryByRole("button", { name: "删除归属 compatible:vendor,sc8562" })
-    ).not.toBeInTheDocument();
-
-    expect(within(tree).getByRole("button", { name: "SC8562 更多操作" })).toBeInTheDocument();
-    expect(within(tree).queryByRole("button", { name: /删除模块 sc8562/ })).not.toBeInTheDocument();
-
-    fireEvent.click(within(tree).getByRole("button", { name: "展开 SC8562 子模块" }));
-    expect(within(tree).getByText("节点类型")).toBeInTheDocument();
-    expect(within(tree).getByRole("button", { name: "修改模块 sc8562" })).toBeInTheDocument();
-    expect(within(tree).getByRole("button", { name: "sc8562 更多操作" })).toBeInTheDocument();
-
-    fireEvent.click(within(tree).getByRole("button", { name: "SC8562 更多操作" }));
-    expect(screen.getByRole("menuitem", { name: "解散驱动组 SC8562" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "移动模块 SC8562" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /添加子模块到 SC8562/ })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 SC8562" }));
-    const moveDialog = screen.getByRole("dialog", { name: "移动「SC8562」" });
-    expect(moveDialog).toBeInTheDocument();
-    expect(within(moveDialog).getByText(/移动「SC8562」/)).toBeInTheDocument();
-    fireEvent.click(within(moveDialog).getByRole("button", { name: "取消" }));
-    expect(screen.queryByRole("dialog", { name: "移动「SC8562」" })).not.toBeInTheDocument();
-
+    expect(within(tree).queryByRole("button", { name: "SC8562 更多操作" })).not.toBeInTheDocument();
     fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
-    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
-    expect(within(editDialog).getByText("compatible 匹配规则")).toBeInTheDocument();
-    expect(within(editDialog).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
-    fireEvent.click(
-      within(editDialog).getByRole("button", { name: "移除规则 compatible:vendor,sc8562" })
-    );
-    const removeConfirm = screen.getByRole("dialog", { name: "移除 compatible 规则" });
-    expect(within(removeConfirm).getByText(/下次归属解析时重新落点/)).toBeInTheDocument();
-    fireEvent.click(within(removeConfirm).getByRole("button", { name: "移除" }));
-    expect(onRemoveMapping).toHaveBeenCalledWith("map-1");
-  });
-
-  it("reorders siblings and keeps forbidden actions visible with reasons", async () => {
-    const onUpdateModule = vi.fn().mockResolvedValue(undefined);
-    const sibling: ParameterModule = {
-      ...modules[1]!,
-      id: "mod-group-2",
-      name: "SC8571",
-      sortOrder: 10
-    };
-
-    render(
-      <ModuleAttributionTree
-        canAdmin
-        modules={[...modules, sibling]}
-        mappings={mappings}
-        onUpdateModule={onUpdateModule}
-        onMove={vi.fn()}
-        onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
-        onCreateModule={vi.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "SC8562 更多操作" }));
-    expect(screen.getByRole("menuitem", { name: "上移 SC8562" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "上移 SC8562" })).toHaveAttribute(
-      "title",
-      "已在同级最前。"
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "下移 SC8562" }));
-    await waitFor(() => {
-      expect(onUpdateModule).toHaveBeenCalledTimes(2);
-    });
-    expect(onUpdateModule).toHaveBeenNthCalledWith(1, "mod-group", { sortOrder: 10 });
-    expect(onUpdateModule).toHaveBeenNthCalledWith(2, "mod-group-2", { sortOrder: 0 });
-
-    fireEvent.click(screen.getByRole("button", { name: "展开 SC8562 子模块" }));
-    fireEvent.click(screen.getByRole("button", { name: "sc8562 更多操作" }));
-    expect(screen.getByRole("menuitem", { name: "删除模块 sc8562" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "删除模块 sc8562" })).toHaveAttribute(
-      "title",
-      "节点类型不可删除，请改挂到其它父级或联系运维。"
-    );
-  });
-
-  it("disbands a driver group only after the impact confirmation is accepted", async () => {
-    const onDelete = vi.fn().mockResolvedValue(undefined);
-
-    render(
-      <ModuleAttributionTree
-        canAdmin
-        modules={modules}
-        mappings={mappings}
-        onUpdateModule={vi.fn()}
-        onMove={vi.fn()}
-        onDelete={onDelete}
-        onRemoveMapping={vi.fn()}
-        onCreateModule={vi.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "SC8562 更多操作" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "解散驱动组 SC8562" }));
-
-    // No mutation before confirmation.
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
+    expect(within(dialog).getByLabelText("模块名称")).toHaveAttribute("readonly");
+    expect(within(dialog).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /移除|添加 compatible/ })).not.toBeInTheDocument();
+    expect(onUpdateModule).not.toHaveBeenCalled();
     expect(onDelete).not.toHaveBeenCalled();
-    const confirmDialog = screen.getByRole("dialog", { name: "解散驱动组「SC8562」" });
-    expect(confirmDialog).toHaveTextContent(/1 条 compatible 匹配规则将一并移除/);
-    expect(confirmDialog).toHaveTextContent(/8 个参数/);
-    expect(confirmDialog).toHaveTextContent(/子模块（1 个）/);
-    expect(confirmDialog).toHaveTextContent(/退回「未分类」/);
-
-    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认解散" }));
-    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("mod-group"));
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "解散驱动组「SC8562」" })).not.toBeInTheDocument();
-    });
   });
 
   it("keeps the delete confirmation open with an inline error when deletion fails", async () => {
@@ -404,7 +266,6 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={vi.fn()}
         onMove={vi.fn()}
         onDelete={onDelete}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -432,7 +293,6 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={onUpdateModule}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -466,7 +326,6 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={onUpdateModule}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -497,7 +356,6 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={onUpdateModule}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -518,8 +376,7 @@ describe("ModuleAttributionTree", () => {
       name: "Power",
       description: "电源业务",
       scope: "组织",
-      importance: "low",
-      kind: "business"
+      importance: "low"
     });
   });
 
@@ -535,13 +392,12 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={onUpdateModule}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={onCreateModule}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "新建模块" }));
-    const createDialog = screen.getByRole("dialog", { name: "新建模块" });
+    const createDialog = screen.getByRole("dialog");
     fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "热管理" }
     });
@@ -567,7 +423,7 @@ describe("ModuleAttributionTree", () => {
     );
     // The dialog closes once the awaited create mutation resolves.
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "新建模块" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
@@ -580,8 +436,7 @@ describe("ModuleAttributionTree", () => {
       name: "Power",
       description: "更新后的电源说明",
       scope: "组织",
-      importance: "high",
-      kind: "business"
+      importance: "high"
     });
   });
 
@@ -594,7 +449,6 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -610,8 +464,7 @@ describe("ModuleAttributionTree", () => {
     expect(within(tree).queryByText("SC8562")).not.toBeInTheDocument();
   });
 
-  it("lets admins view the unclassified root via dialog or queue handoff", () => {
-    const onOpenUnclassifiedQueue = vi.fn();
+  it("lets admins view the unclassified root read-only without a withdrawn queue handoff", () => {
     const unclassified: ParameterModule = {
       id: "mod-unclassified",
       name: "未分类",
@@ -628,7 +481,7 @@ describe("ModuleAttributionTree", () => {
       definitionCount: 6
     };
 
-    const { rerender } = render(
+    render(
       <ModuleAttributionTree
         canAdmin
         modules={[...modules, unclassified]}
@@ -636,7 +489,6 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -650,27 +502,11 @@ describe("ModuleAttributionTree", () => {
     fireEvent.click(within(tree).getByRole("button", { name: "查看 未分类" }));
     const viewDialog = screen.getByRole("dialog", { name: "未分类" });
     expect(viewDialog).toBeInTheDocument();
+    expect(viewDialog).toHaveTextContent("此处仅展示兜底归属，不提供旧 compatible 归类。");
+    expect(within(viewDialog).queryByRole("button", { name: "打开未分类队列" })).not.toBeInTheDocument();
     const closeButtons = within(viewDialog).getAllByRole("button", { name: "关闭" });
     fireEvent.click(closeButtons[closeButtons.length - 1]!);
 
-    rerender(
-      <ModuleAttributionTree
-        canAdmin
-        hasUnclassifiedQueue
-        onOpenUnclassifiedQueue={onOpenUnclassifiedQueue}
-        modules={[...modules, unclassified]}
-        mappings={mappings}
-        onUpdateModule={vi.fn()}
-        onMove={vi.fn()}
-        onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
-        onCreateModule={vi.fn()}
-      />
-    );
-
-    fireEvent.click(within(tree).getByRole("button", { name: "查看 未分类" }));
-    expect(onOpenUnclassifiedQueue).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog", { name: "未分类" })).not.toBeInTheDocument();
   });
 
   it("shows overlay coverage chip when fully covered by organization schema", () => {
@@ -692,7 +528,6 @@ describe("ModuleAttributionTree", () => {
         onUpdateModule={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -745,11 +580,9 @@ describe("ModuleAttributionTree", () => {
           }
         ]}
         driverCoverage={coverage}
-        driverCoverageDetails={details}
         onUpdateModule={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
         onCreateModule={vi.fn()}
       />
     );
@@ -766,52 +599,7 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
     const editDialog = screen.getByRole("dialog", { name: "SC8562" });
-    expect(within(editDialog).getByText("官方解析覆盖")).toBeInTheDocument();
-    expect(within(editDialog).getByText("解析未覆盖")).toBeInTheDocument();
-  });
-
-  it("closes the module editor before handing off to overlay schema authoring", () => {
-    const onAuthorOverlaySchema = vi.fn();
-    const uncovered = new Map([
-      [
-        "mod-group",
-        [
-          {
-            compatible: "vendor,orphan",
-            coverage: { covered: false, pattern: null, driverId: null, source: null }
-          }
-        ]
-      ]
-    ]);
-
-    render(
-      <ModuleAttributionTree
-        canAdmin
-        modules={modules}
-        mappings={[
-          {
-            id: "map-orphan",
-            moduleId: "mod-group",
-            matchKind: "compatible",
-            matchValue: "vendor,orphan",
-            priority: 100
-          }
-        ]}
-        driverCoverageDetails={uncovered}
-        onUpdateModule={vi.fn()}
-        onMove={vi.fn()}
-        onDelete={vi.fn()}
-        onRemoveMapping={vi.fn()}
-        onCreateModule={vi.fn()}
-        onAuthorOverlaySchema={onAuthorOverlaySchema}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
-    expect(screen.getByRole("dialog", { name: "SC8562" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "配置组织级解析" }));
-    expect(onAuthorOverlaySchema).toHaveBeenCalledWith("vendor,orphan");
-    expect(screen.queryByRole("dialog", { name: "SC8562" })).not.toBeInTheDocument();
+    expect(within(editDialog).getByLabelText("模块名称")).toHaveAttribute("readonly");
+    expect(within(editDialog).queryByRole("button", { name: /编写覆盖解析|添加 compatible/ })).not.toBeInTheDocument();
   });
 });

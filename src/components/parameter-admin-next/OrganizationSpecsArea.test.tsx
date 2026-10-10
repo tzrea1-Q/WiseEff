@@ -40,8 +40,6 @@ describe("OrganizationSpecsArea identity-mapping entry", () => {
   it("does not fall back to retired Spec governance when Catalog is unavailable", async () => {
     const topology = {
       listMappingTasks: vi.fn().mockResolvedValue([]),
-      listSpecs: vi.fn().mockResolvedValue([]),
-      listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null })
     };
     render(
       <ToastProvider>
@@ -57,8 +55,8 @@ describe("OrganizationSpecsArea identity-mapping entry", () => {
     );
 
     await waitFor(() => expect(topology.listMappingTasks).toHaveBeenCalled());
-    expect(topology.listSpecs).not.toHaveBeenCalled();
-    expect(topology.listSpecReviewTasks).not.toHaveBeenCalled();
+    expect(topology).not.toHaveProperty("listSpecs");
+    expect(topology).not.toHaveProperty("listSpecReviewTasks");
     expect(screen.queryByRole("button", { name: /新建/ })).not.toBeInTheDocument();
   });
 

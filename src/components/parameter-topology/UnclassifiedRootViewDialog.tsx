@@ -4,19 +4,11 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 
 export type UnclassifiedRootViewDialogProps = {
   parameterCount: number;
-  hasQueue: boolean;
-  onOpenQueue?: () => void;
   onClose: () => void;
 };
 
-/**
- * Read-only explanation for the org「未分类」fallback bucket.
- * Real classification work lives in the compatible queue, not on this system row.
- */
 export function UnclassifiedRootViewDialog({
   parameterCount,
-  hasQueue,
-  onOpenQueue,
   onClose
 }: UnclassifiedRootViewDialogProps) {
   return (
@@ -41,24 +33,12 @@ export function UnclassifiedRootViewDialog({
 
           <div className="param-admin-module-edit-body">
             <p>
-              当前直接挂有 <strong>{parameterCount}</strong> 个参数。其中总线 / 脚手架类节点不会进入归类队列；待归类的
-              compatible 请在「未分类队列」中处理。
+              当前直接挂有 <strong>{parameterCount}</strong> 个参数。此处仅展示兜底归属，不提供旧 compatible 归类。
+              规范主体的登记与放置由规范模块面板管理。
             </p>
           </div>
 
           <div className="dialog-actions">
-            {hasQueue && onOpenQueue ? (
-              <button
-                type="button"
-                className="button primary"
-                onClick={() => {
-                  onOpenQueue();
-                  onClose();
-                }}
-              >
-                打开未分类队列
-              </button>
-            ) : null}
             <button type="button" className="button ghost" onClick={onClose}>
               关闭
             </button>

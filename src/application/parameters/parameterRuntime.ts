@@ -20,7 +20,6 @@ import type {
 } from "@/domain/parameters/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import { archivedParameterLinkNotice } from "@/domain/parameters/archivedLink";
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import { parameterRecordFromBinding } from "@/infrastructure/http/parameterCatalogDtos";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -128,7 +127,6 @@ type ParameterRuntimeDispatchAction =
   | { type: "ADD_NOTIFICATION"; message: string };
 
 export type ParameterRuntimeActions = {
-  getParameter(parameterId: string): Promise<ParameterRecord>;
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
@@ -223,26 +221,6 @@ export function createParameterRuntimeActions({
         return { hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] };
       }
       return requireRepository(repository).listWorkflowAssignees(projectId);
-    },
-    async getParameter(parameterId) {
-      if (runtimeMode !== "api") {
-        throw new Error("Parameter detail loading is only available in api runtime mode.");
-      }
-
-      try {
-        return await requireRepository(repository).getParameter(parameterId);
-      } catch (error) {
-        // An archived old link is a documented outcome, not a runtime failure.
-        // Rethrowing it unchanged keeps the archived classification available to
-        // the surface that renders the notice, and avoids a misleading failure
-        // notification for a record the Catalog deliberately archived.
-        if (archivedParameterLinkNotice(parameterId, error)) {
-          throw error;
-        }
-        const message = formatParameterRuntimeError(error);
-        notifyFailure(dispatch, {}, message);
-        throw new Error(message);
-      }
     },
     async submitChanges(input) {
       if (runtimeMode !== "api") {

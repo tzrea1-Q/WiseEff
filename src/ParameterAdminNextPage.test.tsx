@@ -4,14 +4,8 @@ import type { ParameterPageActions } from "@/app/routes";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
-import type {
-  ParameterSpecDetail,
-  ParameterSpecSummary,
-  SpecReviewTask
-} from "@/domain/parameter-topology/types";
 import { fillPasteImportContent } from "./components/ParameterImportWizard/testHelpers";
 import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mock/mockParameterModuleRegistryRepository";
-import { createMockParameterTopologyRepository } from "@/infrastructure/mock/mockParameterTopologyRepository";
 import { initialState } from "@/mockData";
 import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
 import { createMockCatalogPorts } from "@/application/parameter-catalog";
@@ -26,86 +20,19 @@ afterEach(() => {
   window.history.replaceState(null, "", "/parameter-admin");
 });
 
-const SPEC_PRIMARY_LABEL = "gpio_int";
-
-const SPEC_SUMMARY: ParameterSpecSummary = {
-  id: "spec-sc8562-gpio-int",
-  organizationId: "org-teaching",
-  sourceKind: "dts",
-  specificationKey: "dts/sc8562/gpio_int",
-  propertyKey: "gpio_int",
-  driverModule: "sc8562",
-  lifecycle: "active",
-  currentVersionId: "specver-sc8562-gpio-int-3",
-  currentVersion: 3,
-  valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
-  compatiblePatterns: ["vendor,sc8562"],
-  attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }]
-};
-
-const SPEC_DETAIL: ParameterSpecDetail = {
-  ...SPEC_SUMMARY,
-  displayName: "SC8562 GPIO interrupt",
-  description: "Interrupt GPIO cells",
-  schemaDefault: null,
-  exampleValue: "<&gpio13 29 0>",
-  schemaNamespace: "vendor,sc8562/bindings",
-  units: null,
-  constraints: { cellsPerGroup: 3 },
-  documentation: "gpio_int is a three-cell interrupt specifier.",
-  compatiblePatterns: ["vendor,sc8562"],
-  policyTarget: null
-};
-
-const OPEN_REVIEW_TASK: SpecReviewTask = {
-  id: "review-task-gpio-int",
-  status: "open",
-  parameterSpecId: null,
-  propertyKey: "gpio_int",
-  driverModule: "unknown-ic",
-  evidence: ["compatible unmatched"],
-  candidates: [
-    {
-      id: "spec-sc8562-gpio-int",
-      label: "vendor,sc8562 / gpio_int",
-      propertyKey: "gpio_int",
-      driverModule: "sc8562"
-    }
-  ],
-  ambiguous: true,
-  projectCount: 2,
-  createdAt: "2026-07-14T10:00:00.000Z"
-};
-
 function createRepository(overrides: Partial<ParameterTopologyRepository> = {}) {
-  return createTestParameterTopologyRepository({
-    listSpecs: vi.fn().mockResolvedValue([SPEC_SUMMARY]),
-    getSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
-    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [OPEN_REVIEW_TASK], nextCursor: null }),
-    ...overrides
-  });
+  return createTestParameterTopologyRepository(overrides);
 }
 
 function createModuleRegistry(overrides: Partial<ParameterModuleRegistryRepository> = {}) {
   return withPortSpies(
-    createMockParameterModuleRegistryRepository({
-      mappings: [
-        {
-          id: "map-sc8562",
-          moduleId: "mod-sc8562",
-          matchKind: "compatible",
-          matchValue: "vendor,sc8562",
-          priority: 100
-        }
-      ]
-    }),
+    createMockParameterModuleRegistryRepository(),
     overrides
   );
 }
 
 function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
   return {
-    getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
     discardDrafts: vi.fn().mockResolvedValue(undefined),
@@ -238,6 +165,59 @@ describe("ParameterAdminNextPage · shell", () => {
 });
 
 describe("ParameterAdminNextPage · organization sub-routes", () => {
+  it("withdraws mock identity-task navigation while canonical Catalog remains usable", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const repository = createRepository({
+      listMappingTasks: vi.fn().mockResolvedValue([{
+        id: "withdrawn-mock-task",
+        projectId: "project-teaching",
+        configRevisionId: "revision-teaching-1",
+        previousLogicalNodeId: "previous-node",
+        candidateLogicalNodeIds: ["candidate-node"],
+        status: "open",
+        createdAt: "2026-10-09T00:00:00.000Z"
+      }])
+    });
+    const { onNavigate } = renderPage({
+      path: "/parameter-admin/specs",
+      runtimeMode: "mock",
+      repository,
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /节点对应确认/ })).not.toBeInTheDocument();
+    expect(repository.listMappingTasks).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "模块管理" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules");
+  });
+
+  it("marks a withdrawn mock identity-task deep link unavailable without loading legacy tasks", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const repository = createRepository();
+    renderPage({
+      path: "/parameter-admin/specs/identity-mapping",
+      runtimeMode: "mock",
+      repository,
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+
+    expect(screen.getByText("Mock 模式不提供旧节点对应任务。请使用 API 模式的规范审核队列。"))
+      .toHaveAttribute("role", "status");
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
+    expect(repository.listMappingTasks).not.toHaveBeenCalled();
+  });
+
   it("redirects the organization entry to the specs sub-route while preserving query", () => {
     const { onNavigate } = renderPage({
       path: "/parameter-admin?q=gpio&lifecycle=active&spec=spec-sc8562-gpio-int"
@@ -252,9 +232,9 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     const repository = createRepository();
     renderPage({ repository, path: "/parameter-admin/specs" });
 
-    await waitFor(() => expect(repository.listMappingTasks).toHaveBeenCalled());
-    expect(repository.listSpecs).not.toHaveBeenCalled();
-    expect(repository.listSpecReviewTasks).not.toHaveBeenCalled();
+    expect(repository.listMappingTasks).not.toHaveBeenCalled();
+    expect(repository).not.toHaveProperty("listSpecs");
+    expect(repository).not.toHaveProperty("listSpecReviewTasks");
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "定义匹配审核队列" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "模块归属" })).not.toBeInTheDocument();
@@ -367,7 +347,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const moduleRegistry = createModuleRegistry();
     renderPage({ moduleRegistry, path: "/parameter-admin/modules", runtimeMode: "api" });
     expect(await screen.findByRole("alert")).toHaveTextContent("规范目录发现服务不可用");
-    expect(moduleRegistry.getDiscoveryHints).not.toHaveBeenCalled();
+    expect(moduleRegistry).not.toHaveProperty("getDiscoveryHints");
   });
   it("loads the module registry through the injected module registry port", async () => {
     const moduleRegistry = createModuleRegistry();
@@ -375,7 +355,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
-    expect(within(panel).getByText(/1 条 compatible/)).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "全量重算" })).not.toBeInTheDocument();
     expect(moduleRegistry.getRegistry).toHaveBeenCalled();
   });
 
@@ -386,7 +366,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const panel = await screen.findByRole("region", { name: "模块归属" });
 
     fireEvent.click(within(panel).getByRole("button", { name: "新建模块" }));
-    const createDialog = screen.getByRole("dialog", { name: "新建模块" });
+    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
     fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "电源路径" }
     });
@@ -471,116 +451,36 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
-    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 SC8562" }));
-    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
+    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 充电策略" }));
+    const editDialog = screen.getByRole("dialog", { name: "充电策略" });
     fireEvent.change(within(editDialog).getByLabelText("模块名称"), {
-      target: { value: "SC8562 Updated" }
+      target: { value: "充电策略 Updated" }
     });
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(updateModule).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("dialog", { name: "SC8562" })).toBeInTheDocument();
-    expect(within(screen.getByRole("dialog", { name: "SC8562" })).getByLabelText("模块名称")).toHaveValue(
-      "SC8562 Updated"
+    expect(screen.getByRole("dialog", { name: "充电策略" })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "充电策略" })).getByLabelText("模块名称")).toHaveValue(
+      "充电策略 Updated"
     );
-    expect(within(screen.getByRole("dialog", { name: "SC8562" })).getByRole("alert")).toHaveTextContent(
+    expect(within(screen.getByRole("dialog", { name: "充电策略" })).getByRole("alert")).toHaveTextContent(
       "保存模块失败，请重试。"
     );
 
-    const retryDialog = screen.getByRole("dialog", { name: "SC8562" });
+    const retryDialog = screen.getByRole("dialog", { name: "充电策略" });
     await waitFor(() => expect(within(retryDialog).getByRole("button", { name: "保存" })).toBeEnabled());
     fireEvent.click(within(retryDialog).getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(updateModule).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "SC8562" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "充电策略" })).not.toBeInTheDocument());
   });
 
-  it("keeps the module edit dialog open when driver registration update is rejected", async () => {
-    const moduleRegistry = createModuleRegistry({
-      updateDriverRegistration: vi.fn().mockRejectedValue(new Error("driver registration unavailable"))
-    });
-    renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
-    const panel = await screen.findByRole("region", { name: "模块归属" });
-    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 SC8562" }));
-    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
-    fireEvent.change(within(editDialog).getByLabelText("驱动性质"), {
-      target: { value: "logical-service" }
-    });
-    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
 
-    await waitFor(() => expect(moduleRegistry.updateDriverRegistration).toHaveBeenCalled());
-    expect(screen.getByRole("dialog", { name: "SC8562" })).toBeInTheDocument();
-    expect(within(screen.getByRole("dialog", { name: "SC8562" })).getByRole("alert")).toHaveTextContent(
-      "保存模块失败，请重试。"
-    );
-  });
 
-  it("removes an inline mapping rule from the module tree with audit", async () => {
+
+  it("withdraws the mock discovery sub-nav while keeping business taxonomy", async () => {
     const moduleRegistry = createModuleRegistry();
-    renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
-
-    const panel = await screen.findByRole("region", { name: "模块归属" });
-    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 SC8562" }));
-    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
-    expect(within(editDialog).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
-
-    fireEvent.click(
-      within(editDialog).getByRole("button", { name: "移除规则 compatible:vendor,sc8562" })
-    );
-    const removeConfirm = screen.getByRole("dialog", { name: "移除 compatible 规则" });
-    fireEvent.click(within(removeConfirm).getByRole("button", { name: "移除" }));
-    await waitFor(() => expect(moduleRegistry.deleteMapping).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(within(editDialog).queryByText("compatible:vendor,sc8562")).not.toBeInTheDocument()
-    );
-  });
-
-  it("keeps the module tree primary and opens the unclassified queue via secondary nav", async () => {
-    const moduleRegistry = createModuleRegistry();
-    const { onNavigate } = renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
-
-    const panel = await screen.findByRole("region", { name: "模块归属" });
-    expect(within(panel).queryByRole("region", { name: "未登记驱动" })).not.toBeInTheDocument();
-    expect(await within(panel).findByText("有未登记的驱动")).toBeInTheDocument();
-
-    const moduleSubnav = within(panel).getByRole("navigation", { name: "模块管理子视图" });
-    expect(within(moduleSubnav).getByRole("button", { name: "归属树" })).toHaveAttribute(
-      "aria-current",
-      "page"
-    );
-    expect(within(moduleSubnav).queryByRole("button", { name: "驱动登记" })).not.toBeInTheDocument();
-    expect(within(panel).getByText("· 平台级解析覆盖")).toBeInTheDocument();
-    fireEvent.click(within(moduleSubnav).getByRole("button", { name: /未登记驱动/ }));
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules/queue");
-
-    fireEvent.click(within(panel).getByRole("button", { name: "全量重算" }));
-    await waitFor(() => expect(moduleRegistry.recomputeBindings).toHaveBeenCalled());
-    const resultDialog = await screen.findByRole("dialog", { name: "全量重算结果" });
-    expect(within(resultDialog).getByText("更新的项目参数")).toBeInTheDocument();
-    expect(within(resultDialog).getByText("2")).toBeInTheDocument();
-    fireEvent.click(within(resultDialog).getByRole("button", { name: "知道了" }));
-    expect(screen.queryByRole("dialog", { name: "全量重算结果" })).not.toBeInTheDocument();
-  });
-
-  it("renders the unclassified queue on the modules/queue sub-route", async () => {
-    const moduleRegistry = createModuleRegistry();
-    renderPage({ moduleRegistry, path: "/parameter-admin/modules/queue" });
-
-    const panel = await screen.findByRole("region", { name: "模块归属" });
-    const compatibleQueue = within(panel).getByRole("region", { name: "未登记驱动" });
-    expect(within(compatibleQueue).getByText("vendor,unmapped-ic")).toBeInTheDocument();
-    expect(within(panel).queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
-  });
-
-  it("hides the modules sub-nav when discovery is empty", async () => {
-    const moduleRegistry = createModuleRegistry({
-      getDiscoveryHints: vi.fn(async () => ({
-        compatibles: [],
-        dismissedCompatibles: [],
-        total: 0
-      }))
-    });
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
@@ -597,7 +497,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
 
     fireEvent.click(within(panel).getByRole("button", { name: "新建模块" }));
-    const createDialog = screen.getByRole("dialog", { name: "新建模块" });
+    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
     fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "Mock 模块" }
     });
@@ -775,6 +675,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     const listMappingTasks = vi.fn().mockResolvedValue([OPEN_MAPPING_TASK]);
     renderPage({
       repository: createRepository({ listMappingTasks }),
+      runtimeMode: "api",
       path: "/parameter-admin/specs/identity-mapping"
     });
 
@@ -793,6 +694,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     const repository = createRepository({ listMappingTasks });
     const { onNavigate } = renderPage({
       repository,
+      runtimeMode: "api",
       path: "/parameter-admin/specs/identity-mapping"
     });
 
@@ -812,9 +714,9 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  it("keeps open evidence and dismissed history unchanged through the mock topology port", async () => {
-    const repository = createMockParameterTopologyRepository({
-      mappingTasks: [
+  it("keeps API open evidence and dismissed history unchanged through the fake read port", async () => {
+    const repository = createRepository({
+      listMappingTasks: vi.fn().mockResolvedValue([
         OPEN_MAPPING_TASK,
         {
           ...OPEN_MAPPING_TASK,
@@ -823,11 +725,12 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
           needsCanonicalDecision: true,
           reason: "Recorded historical rejection"
         }
-      ]
+      ])
     });
     const before = await repository.listMappingTasks();
     renderPage({
       repository,
+      runtimeMode: "api",
       path: "/parameter-admin/specs/identity-mapping"
     });
 

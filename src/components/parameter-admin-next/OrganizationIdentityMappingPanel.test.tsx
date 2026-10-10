@@ -8,35 +8,15 @@ import { OrganizationIdentityMappingPanel } from "./OrganizationIdentityMappingP
 import { ParameterAdminProvider } from "./ParameterAdminProvider";
 
 const stubTopology = {
-  listSpecs: vi.fn(),
-  getSpec: vi.fn(),
-  listReviewTasks: vi.fn(),
-  resolveReviewTask: vi.fn(),
   listMappingTasks: vi.fn(),
-  activateParameterSpec: vi.fn(),
-  updateParameterSpec: vi.fn(),
-  deprecateParameterSpec: vi.fn(),
-  restoreParameterSpec: vi.fn(),
-  reattributeParameterSpec: vi.fn(),
 };
 
 const stubModules = {
   getRegistry: vi.fn(),
-  getDiscoveryHints: vi.fn(),
-  dismissCompatible: vi.fn(),
-  restoreDismissedCompatible: vi.fn(),
   createModule: vi.fn(),
   updateModule: vi.fn(),
   deleteModule: vi.fn(),
-  previewMapping: vi.fn(),
-  createMapping: vi.fn(),
-  deleteMapping: vi.fn(),
-  recomputeBindings: vi.fn(),
-  listDriverRegistry: vi.fn(),
-  registerOrClaimDriver: vi.fn(),
-  updateDriverRegistration: vi.fn(),
-  updateDriverRegistrationDefault: vi.fn(),
-  replayDriverPlacement: vi.fn()
+  listDriverRegistry: vi.fn()
 };
 
 describe("OrganizationIdentityMappingPanel", () => {

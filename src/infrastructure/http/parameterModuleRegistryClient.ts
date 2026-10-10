@@ -1,19 +1,7 @@
 import type {
-  CreateModuleMappingInput,
   CreateParameterModuleInput,
   DriverRegistryEntry,
-  MappingApplyPreview,
-  MappingMutationResult,
-  ModuleDiscoveryHints,
   ParameterModuleRegistryRepository,
-  RegisterOrClaimDriverInput,
-  RegisterOrClaimDriverResult,
-  RecomputeBindingModulesResult,
-  ReplayDriverPlacementResult,
-  UpdateDriverRegistrationDefaultInput,
-  UpdateDriverRegistrationDefaultResult,
-  UpdateDriverRegistrationInput,
-  UpdateDriverRegistrationResult,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
@@ -59,12 +47,7 @@ type RegistryDto = {
 };
 
 type RegistryEnvelope = { item: RegistryDto };
-type MappingMutationEnvelope = { item: RegistryDto; apply: MappingApplyPreview };
-type PreviewEnvelope = { item: MappingApplyPreview };
-type DiscoveryEnvelope = { item: ModuleDiscoveryHints };
 type DriverRegistryListResponse = { items: DriverRegistryEntry[]; total: number };
-type RegisterOrClaimDriverResponse = RegisterOrClaimDriverResult;
-type UpdateDriverRegistrationResponse = UpdateDriverRegistrationResult;
 
 const REGISTRY_BASE = "/api/v2/parameter-modules";
 const V1_MODULES = "/api/v1/parameter-modules";
@@ -102,40 +85,9 @@ function registryFromDto(dto: RegistryDto): ParameterModuleRegistry {
   };
 }
 
-function emptyPreview(toModuleId: string | null = null): MappingApplyPreview {
-  return {
-    affectedBindings: 0,
-    byProject: [],
-    fromModules: [],
-    toModuleId,
-    emptiedModules: [],
-    conflicts: []
-  };
-}
-
-function mapDiscoveryHints(item: ModuleDiscoveryHints): ModuleDiscoveryHints {
-  return {
-    compatibles: item.compatibles.map((hint) => ({
-      compatible: hint.compatible,
-      bindingCount: hint.bindingCount,
-      projectCount: hint.projectCount ?? 0,
-      suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
-    })),
-    dismissedCompatibles: (item.dismissedCompatibles ?? []).map((hint) => ({
-      compatible: hint.compatible,
-      bindingCount: hint.bindingCount,
-      projectCount: hint.projectCount ?? 0,
-      suggestedGroupName: hint.suggestedGroupName ?? hint.compatible,
-      reason: hint.reason ?? "",
-      dismissedAt: hint.dismissedAt
-    })),
-    total: item.total ?? item.compatibles.length
-  };
-}
-
 /**
  * Module CRUD goes through v1 `/api/v1/parameter-modules` (shared taxonomy tree).
- * Registry read + mappings CRUD stay on additive v2 endpoints.
+ * Registry and historical driver reads stay on additive v2 endpoints.
  */
 export function createHttpParameterModuleRegistryRepository(
   apiClient: ApiClient = createDefaultApiClient()
@@ -147,26 +99,6 @@ export function createHttpParameterModuleRegistryRepository(
 
   return {
     getRegistry,
-
-    async getDiscoveryHints() {
-      const response = await apiClient.get<DiscoveryEnvelope>(`${REGISTRY_BASE}/discovery-hints`);
-      return mapDiscoveryHints(response.item);
-    },
-
-    async dismissCompatible(input) {
-      const response = await apiClient.post<DiscoveryEnvelope>(
-        `${REGISTRY_BASE}/discovery-hints/dismissals`,
-        input
-      );
-      return mapDiscoveryHints(response.item);
-    },
-
-    async restoreDismissedCompatible(compatible: string) {
-      const response = await apiClient.delete<DiscoveryEnvelope>(
-        `${REGISTRY_BASE}/discovery-hints/dismissals/${encodeURIComponent(compatible)}`
-      );
-      return mapDiscoveryHints(response.item);
-    },
 
     async createModule(input: CreateParameterModuleInput) {
       await apiClient.post(V1_MODULES, {
@@ -207,76 +139,9 @@ export function createHttpParameterModuleRegistryRepository(
       return getRegistry();
     },
 
-    async previewMapping(input: CreateModuleMappingInput) {
-      const response = await apiClient.post<PreviewEnvelope>(
-        `${REGISTRY_BASE}/mappings/preview`,
-        input
-      );
-      return response.item;
-    },
-
-    async createMapping(input: CreateModuleMappingInput): Promise<MappingMutationResult> {
-      const response = await apiClient.post<MappingMutationEnvelope>(
-        `${REGISTRY_BASE}/mappings`,
-        input
-      );
-      return {
-        registry: registryFromDto(response.item),
-        apply: response.apply ?? emptyPreview(input.moduleId)
-      };
-    },
-
-    async deleteMapping(mappingId: string): Promise<MappingMutationResult> {
-      const response = await apiClient.delete<MappingMutationEnvelope>(
-        `${REGISTRY_BASE}/mappings/${encodeURIComponent(mappingId)}`
-      );
-      return {
-        registry: registryFromDto(response.item),
-        apply: response.apply ?? emptyPreview(null)
-      };
-    },
-
-    async recomputeBindings(input?: { projectId?: string; dryRun?: boolean }) {
-      const body: Record<string, unknown> = {};
-      if (input?.projectId) body.projectId = input.projectId;
-      if (input?.dryRun) body.dryRun = true;
-      return apiClient.post<RecomputeBindingModulesResult>(
-        `${REGISTRY_BASE}/recompute-bindings`,
-        body
-      );
-    },
-
     async listDriverRegistry() {
       return apiClient.get<DriverRegistryListResponse>(`${REGISTRY_BASE}/driver-registry`);
     },
-
-    async registerOrClaimDriver(input: RegisterOrClaimDriverInput) {
-      return apiClient.post<RegisterOrClaimDriverResponse>(`${REGISTRY_BASE}/driver-registry`, input);
-    },
-
-    async updateDriverRegistration(moduleId: string, input: UpdateDriverRegistrationInput) {
-      return apiClient.patch<UpdateDriverRegistrationResponse>(
-        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}`,
-        input
-      );
-    },
-
-    async updateDriverRegistrationDefault(
-      moduleId: string,
-      input: UpdateDriverRegistrationDefaultInput
-    ) {
-      return apiClient.patch<UpdateDriverRegistrationDefaultResult>(
-        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}/default-business-category`,
-        input
-      );
-    },
-
-    async replayDriverPlacement(moduleId: string) {
-      return apiClient.post<ReplayDriverPlacementResult>(
-        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}/replay-placement`,
-        {}
-      );
-    }
   };
 }
 

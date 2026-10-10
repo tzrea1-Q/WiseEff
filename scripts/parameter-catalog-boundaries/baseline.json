@@ -706,10 +706,6 @@
     "server/modules/parameters/types.ts": {
       "legacy-parameter-spec-identifier": 1
     },
-    "src/application/ports/ParameterModuleRegistryRepository.ts": {
-      "legacy-overlay-catalog-contract": 4,
-      "legacy-parameter-spec-identifier": 1
-    },
     "src/application/ports/ParameterRepository.ts": {
       "legacy-parameter-spec-identifier": 2
     },
@@ -729,12 +725,12 @@
       "legacy-catalog-route": 1
     },
     "src/infrastructure/http/parameterTopologyClient.test.ts": {
-      "legacy-catalog-route": 5,
+      "legacy-catalog-route": 1,
       "legacy-effective-governance-contract": 3,
-      "legacy-parameter-spec-identifier": 6
+      "legacy-parameter-spec-identifier": 4
     },
     "src/infrastructure/http/parameterTopologyClient.ts": {
-      "legacy-catalog-route": 9,
+      "legacy-catalog-route": 1,
       "legacy-effective-governance-contract": 1,
       "legacy-parameter-spec-identifier": 10
     }

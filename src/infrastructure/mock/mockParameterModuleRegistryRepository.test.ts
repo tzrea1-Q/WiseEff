@@ -2,7 +2,23 @@ import { describe, expect, it } from "vitest";
 import { createMockParameterModuleRegistryRepository } from "./mockParameterModuleRegistryRepository";
 
 describe("createMockParameterModuleRegistryRepository", () => {
-  it("seeds a semantic module tree and driver mapping", async () => {
+  it("refuses identity writes through taxonomy CRUD", async () => {
+    const repo = createMockParameterModuleRegistryRepository();
+    const before = await repo.getRegistry();
+    await expect(repo.createModule({ name: "Driver", kind: "driver-group" }))
+      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+    await expect(repo.updateModule("mod-charging", { kind: "node-type" }))
+      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+    expect(await repo.getRegistry()).toEqual(before);
+    const history = createMockParameterModuleRegistryRepository({
+      modules: [{ ...before.modules[0]!, id: "historical-driver", kind: "driver-group" }]
+    });
+    await expect(history.updateModule("historical-driver", { name: "Changed identity" }))
+      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+    await expect(history.deleteModule("historical-driver"))
+      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+  });
+  it("seeds business taxonomy without identity teaching fixtures", async () => {
     const repo = createMockParameterModuleRegistryRepository();
     const registry = await repo.getRegistry();
 
@@ -12,19 +28,16 @@ describe("createMockParameterModuleRegistryRepository", () => {
         kind: "business",
         origin: "curated",
         effectiveImportance: "high",
-        // Direct 12 + child 电池安全 4 + auto unmapped-ic 2
-        parameterCount: 18,
-        definitionCount: 18
+        parameterCount: 16,
+        definitionCount: 16
       })
     );
-    expect(registry.mappings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ matchKind: "compatible", matchValue: "vendor,sc8562" })
-      ])
-    );
+    expect(registry.mappings).toEqual([]);
+    expect(registry.modules.every((module) => module.kind === "business")).toBe(true);
+    expect(await repo.listDriverRegistry()).toEqual({ items: [], total: 0 });
   });
 
-  it("supports create, rename, move, delete, mapping, preview, dismiss, and recompute", async () => {
+  it("supports business taxonomy create, rename, move and delete", async () => {
     const repo = createMockParameterModuleRegistryRepository();
 
     let registry = await repo.createModule({
@@ -58,70 +71,8 @@ describe("createMockParameterModuleRegistryRepository", () => {
     registry = await repo.updateModule(created!.id, { parentId: "mod-charging" });
     expect(registry.modules.find((module) => module.id === created!.id)?.parentId).toBe("mod-charging");
 
-    const preview = await repo.previewMapping({
-      moduleId: "mod-charging",
-      matchKind: "compatible",
-      matchValue: "vendor,demo"
-    });
-    expect(preview.affectedBindings).toBeGreaterThan(0);
-
-    const createdMapping = await repo.createMapping({
-      moduleId: "mod-charging",
-      matchKind: "compatible",
-      matchValue: "vendor,demo"
-    });
-    const mapping = createdMapping.registry.mappings.find((item) => item.matchValue === "vendor,demo");
-    expect(mapping).toBeTruthy();
-    expect(createdMapping.apply.affectedBindings).toBe(2);
-
-    const deletedMapping = await repo.deleteMapping(mapping!.id);
-    expect(deletedMapping.registry.mappings.some((item) => item.id === mapping!.id)).toBe(false);
-
     registry = await repo.deleteModule(created!.id);
     expect(registry.modules.some((module) => module.id === created!.id)).toBe(false);
 
-    let hints = await repo.getDiscoveryHints();
-    expect(hints.compatibles.some((hint) => hint.compatible === "vendor,unmapped-ic")).toBe(true);
-    hints = await repo.dismissCompatible({ compatible: "vendor,unmapped-ic" });
-    expect(hints.compatibles).toHaveLength(0);
-    hints = await repo.restoreDismissedCompatible("vendor,unmapped-ic");
-    expect(hints.compatibles).toHaveLength(1);
-
-    const recompute = await repo.recomputeBindings();
-    expect(recompute.updated).toBeGreaterThan(0);
-  });
-
-  it("keys driver-registry seed rows to driver-group modules, not the business parent", async () => {
-    const repo = createMockParameterModuleRegistryRepository();
-    const listed = await repo.listDriverRegistry();
-    const sc8562 = listed.items.find((entry) => entry.name === "SC8562");
-    expect(sc8562?.moduleId).toBe("mod-sc8562");
-    expect(sc8562?.origin).toBe("curated");
-    expect(sc8562?.driverNature).toBe("physical-device");
-    expect(sc8562?.instanceCardinality).toBe("multiple");
-    expect(listed.items.some((entry) => entry.moduleId === "mod-charging")).toBe(false);
-  });
-
-  it("replays auto driver-groups onto the registration default and skips curated", async () => {
-    const repo = createMockParameterModuleRegistryRepository();
-    const curated = await repo.replayDriverPlacement("mod-sc8562");
-    expect(curated).toEqual({
-      moduleId: "mod-sc8562",
-      moved: 0,
-      skippedCurated: 1,
-      skippedMissingDefault: 0
-    });
-
-    const auto = await repo.replayDriverPlacement("mod-unmapped-ic");
-    expect(auto).toEqual({
-      moduleId: "mod-unmapped-ic",
-      moved: 1,
-      skippedCurated: 0,
-      skippedMissingDefault: 0
-    });
-    const registry = await repo.getRegistry();
-    expect(registry.modules.find((module) => module.id === "mod-unmapped-ic")?.parentId).toBe(
-      "mod-charging"
-    );
   });
 });
