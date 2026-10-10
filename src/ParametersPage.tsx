@@ -10,7 +10,6 @@ import type { ParameterRecord, PrototypeState } from "@/domain/prototype/types";
 import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
 import { ModalDialog } from "@/components/common/ModalDialog";
-import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
 import { ParameterValueDiff } from "./components/ParameterValueDiff";
 import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { shouldSummarizeComplexParameter } from "./parameterValueKind";
@@ -40,7 +39,6 @@ import { ApiProjectTopologyWorkspace } from "@/components/parameter-topology/Api
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
-import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import { createSearchIndex } from "@/lib/search";
 import { parameterRecordSearchProfile } from "@/lib/search/profiles";
@@ -111,10 +109,6 @@ export function ParametersPage({
   const effectiveCanEdit = canEdit && !initializationLocked;
   const isApiMode = runtimeMode === "api";
   const topologyLayoutMode = useTopologyLayoutMode();
-  const parameterRepository = useMemo(
-    () => (isApiMode ? createHttpParameterRepository() : null),
-    [isApiMode]
-  );
   // Issue #849 B5: the tray reads and removes canonical pending drafts. The legacy
   // `parameter-drafts` surface is never written in semantic identity mode, so reading
   // it meant a persisted canonical draft disappeared from the tray on reload.
@@ -135,11 +129,8 @@ export function ParametersPage({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [viewingParameterId, setViewingParameterId] = useState<string | null>(null);
-  const [viewingParameterDetail, setViewingParameterDetail] = useState<ParameterRecord | null>(null);
   const [archivedLinkNotice, setArchivedLinkNotice] = useState<ArchivedParameterLinkNotice | null>(null);
   const [historicalLinkNotice, setHistoricalLinkNotice] = useState<string | null>(null);
-  const [comparisonTargetProjectId, setComparisonTargetProjectId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [stagingDrafts, setStagingDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const savedParameterIds = useMemo(() => new Set(Object.keys(drafts)), [drafts]);
@@ -274,16 +265,6 @@ export function ParametersPage({
           code: activeInitializationDraft.projectCode
         }
       : runtimeProjects[0]);
-  const viewingParameter = viewingParameterId
-    ? viewingParameterDetail?.id === viewingParameterId
-      ? viewingParameterDetail
-      : projectParameters.find((parameter) => parameter.id === viewingParameterId) ?? null
-    : null;
-  const draftActionDisabledReason = initializationLocked
-    ? "初始化通过前暂不可提交普通参数变更。"
-    : !canEdit
-      ? "需要 User 角色才能编辑、暂存或提交参数变更。"
-      : undefined;
   const pendingSubmissionItems = useMemo(
     () =>
       Array.from(selectedIds)
@@ -482,40 +463,9 @@ export function ParametersPage({
       });
       return () => { cancelled = true; };
     }
-    if (!requestedId) {
-      setArchivedLinkNotice(null);
-      return;
-    }
-    if (activeParameterById.has(requestedId)) {
-      setArchivedLinkNotice(null);
-      return;
-    }
-    const fetchParameter =
-      parameterActions?.getParameter ??
-      (parameterRepository ? (id: string) => parameterRepository.getParameter(id) : undefined);
-    if (!fetchParameter) {
-      return;
-    }
-    let cancelled = false;
-    void fetchParameter(requestedId)
-      .then(() => {
-        // The record exists but belongs to another project; the existing
-        // selection behaviour already covers that case.
-        if (!cancelled) setArchivedLinkNotice(null);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        const notice = archivedParameterLinkNotice(requestedId, error);
-        if (notice) setArchivedLinkNotice(notice);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setArchivedLinkNotice(null);
   }, [
-    activeParameterById,
     contextQuery.parameterId,
-    parameterActions,
-    parameterRepository,
     parameterById,
     canonicalRepository,
     contextQuery.bindingId,
@@ -637,8 +587,6 @@ export function ParametersPage({
     setStagingDrafts((items) =>
       Object.fromEntries(Object.entries(items).filter(([parameterId]) => activeParameterIds.has(parameterId)))
     );
-    setViewingParameterId((id) => (id && !activeParameterIds.has(id) ? null : id));
-    setViewingParameterDetail((parameter) => (parameter && !activeParameterIds.has(parameter.id) ? null : parameter));
   }, [activeParameterIds]);
 
   useEffect(() => {
@@ -676,46 +624,6 @@ export function ParametersPage({
       return next;
     });
     setSheetOpen(true);
-  };
-
-  const handleViewRow = (id: string) => {
-    const parameter = activeParameterById.get(id);
-    if (!parameter) {
-      return;
-    }
-    const defaultTargetProject =
-      runtimeProjects.find((project) => project.id !== parameter.projectId) ??
-      runtimeProjects.find((project) => project.id === parameter.projectId) ??
-      runtimeProjects[0];
-
-    setSelectedId(parameter.id);
-    setFocusedId(parameter.id);
-    setViewingParameterId(parameter.id);
-    setViewingParameterDetail(parameter);
-    setComparisonTargetProjectId(defaultTargetProject?.id ?? parameter.projectId);
-    void parameterActions?.getParameter(parameter.id)
-      .then((detail) => {
-        setViewingParameterDetail((current) => (current?.id === parameter.id ? detail : current));
-      })
-      .catch((error: unknown) => {
-        // A record can still be listed while the Catalog already reports its id
-        // as archived. Surface that instead of leaving the stale list copy in
-        // place with no explanation.
-        const notice = archivedParameterLinkNotice(parameter.id, error);
-        if (notice) {
-          setArchivedLinkNotice(notice);
-          return;
-        }
-        setViewingParameterDetail((current) => (current?.id === parameter.id ? parameter : current));
-      });
-  };
-
-  const addViewingParameterToDraft = (draft?: { targetValue: string; reason: string }) => {
-    if (!viewingParameter) {
-      return;
-    }
-    handleEditRow(viewingParameter.id, draft);
-    setViewingParameterId(null);
   };
 
   const handleSelectedIdsChange = (next: Set<string>) => {
@@ -1095,7 +1003,6 @@ export function ParametersPage({
                   onFocusRow={handleFocusRow}
                   modifiedIds={modifiedIds}
                   onEditRow={handleEditRow}
-                  onViewRow={handleViewRow}
                   stashedIds={stashedIds}
                   canEdit={effectiveCanEdit}
                 />
@@ -1162,7 +1069,6 @@ export function ParametersPage({
               onFocusRow={handleFocusRow}
               modifiedIds={modifiedIds}
               onEditRow={handleEditRow}
-              onViewRow={handleViewRow}
               stashedIds={stashedIds}
               canEdit={effectiveCanEdit}
             />
@@ -1196,28 +1102,6 @@ export function ParametersPage({
           onCancel={() => setConfirmOpen(false)}
           onConfirm={submitRound}
           submitting={submittingRound}
-        />
-      ) : null}
-      {!isApiMode && viewingParameter ? (
-        <ParameterDetailDialog
-          parameter={viewingParameter}
-          parameters={state.parameters}
-          projects={runtimeProjects}
-          currentProjectId={viewingParameter.projectId}
-          targetProjectId={
-            comparisonTargetProjectId ||
-            runtimeProjects.find((project) => project.id !== viewingParameter.projectId)?.id ||
-            viewingParameter.projectId
-          }
-          canEdit={effectiveCanEdit}
-          disabledReason={draftActionDisabledReason}
-          alreadyInDraft={Boolean(drafts[viewingParameter.id] || (sheetOpen && stagingDrafts[viewingParameter.id]))}
-          onTargetProjectChange={setComparisonTargetProjectId}
-          onAddToDraft={addViewingParameterToDraft}
-          onClose={() => {
-            setViewingParameterId(null);
-            setViewingParameterDetail(null);
-          }}
         />
       ) : null}
     </WorkbenchLayout>

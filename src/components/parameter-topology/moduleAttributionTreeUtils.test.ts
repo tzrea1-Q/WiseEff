@@ -4,12 +4,10 @@ import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry
 import {
   aggregateSubtreeAttributionCounts,
   addChildModuleDecision,
-  allowedCreateKindsForParent,
   canAddChildModule,
   canDeleteModule,
   canEditImportance,
   canMoveModule,
-  canReclassifyModule,
   defaultExpandedModuleIds,
   deleteModuleDecision,
   filterModulesForAttribution,
@@ -123,11 +121,6 @@ describe("moduleAttributionTreeUtils", () => {
     ]);
   });
 
-  it("allows reclassify on business and node-type modules", () => {
-    const nodeType = modules[2]!;
-    expect(canReclassifyModule(nodeType)).toBe(true);
-    expect(canReclassifyModule(modules[1]!)).toBe(false);
-  });
 
   it("keeps ancestors when filtering by kind", () => {
     const visible = filterModulesForAttribution(modules, {
@@ -164,15 +157,7 @@ describe("moduleAttributionTreeUtils", () => {
     expect(isNotYetObservedModule(modules[1]!)).toBe(false);
   });
 
-  it("scopes create kinds by parent kind", () => {
-    expect(allowedCreateKindsForParent(null)).toEqual(["business"]);
-    expect(allowedCreateKindsForParent("business")).toEqual([
-      "business",
-      "driver-group",
-      "node-type"
-    ]);
-    expect(allowedCreateKindsForParent("driver-group")).toEqual(["node-type"]);
-    expect(allowedCreateKindsForParent("node-type")).toEqual(["node-type"]);
+  it("keeps historical child-add guards for read-only module rows", () => {
     expect(canAddChildModule(modules[0]!)).toBe(true);
     expect(canAddChildModule(modules[1]!)).toBe(true);
     expect(canAddChildModule(modules[2]!)).toBe(false);

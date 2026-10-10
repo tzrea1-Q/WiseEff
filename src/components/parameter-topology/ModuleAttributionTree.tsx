@@ -9,9 +9,7 @@ import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import { presentError } from "@/infrastructure/http/presentError";
 import type {
   DriverNature,
-  InstanceCardinality,
-  OrganizationDriverSchema,
-  OrganizationDriverSchemaDeprecationImpact
+  InstanceCardinality
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
   ModuleImportance,
@@ -28,7 +26,6 @@ import {
   MODULE_ORIGIN_LABEL,
   buildAttributionTree,
   canEditImportance,
-  canReclassifyModule,
   canViewUnclassifiedRoot,
   defaultExpandedModuleIds,
   isNotYetObservedModule,
@@ -47,28 +44,17 @@ export type ModuleAttributionTreeProps = {
   busy?: boolean;
   /** Parse coverage rollup from listDriverRegistry (moduleId → summary). */
   driverCoverage?: ReadonlyMap<string, DriverCoverageSummary>;
-  /** Per-compatible coverage rows keyed by moduleId (for edit dialog detail). */
-  driverCoverageDetails?: ReadonlyMap<
-    string,
-    readonly { compatible: string; covered: boolean; pattern?: string }[]
-  >;
   driverRegistrationByModuleId?: ReadonlyMap<
     string,
     {
       driverNature: DriverNature | null;
       instanceCardinality: InstanceCardinality | null;
-      defaultBusinessCategoryId: string | null;
       compatibles?: readonly string[];
     }
   >;
-  /** Canonical UI mode keeps historical driver registration read-only. */
-  canonicalModeEnabled?: boolean;
   /** Whether the canonical subject placement panel is available on this page. */
   canonicalPlacementAvailable?: boolean;
   onOpenCanonicalPlacement?: () => void;
-  /** When set, 「查看」on the unclassified root prefers opening the queue. */
-  hasUnclassifiedQueue?: boolean;
-  onOpenUnclassifiedQueue?: () => void;
   onUpdateModule: (
     moduleId: string,
     patch: {
@@ -76,54 +62,19 @@ export type ModuleAttributionTreeProps = {
       description?: string;
       scope?: string;
       importance?: ModuleImportance;
-      kind?: "business" | "node-type";
       sortOrder?: number;
     }
   ) => void | Promise<void>;
-  onUpdateDriverRegistration?: (
-    moduleId: string,
-    input: {
-      driverNature?: DriverNature;
-      instanceCardinality?: InstanceCardinality;
-    }
-  ) => void | Promise<void>;
-  onUpdateDriverRegistrationDefault?: (
-    moduleId: string,
-    defaultBusinessCategoryId: string
-  ) => void | Promise<void>;
-  onReplayDriverPlacement?: (
-    moduleId: string
-  ) => void | Promise<{
-    moved: number;
-    skippedCurated: number;
-    skippedMissingDefault: number;
-  }>;
   onMove: (moduleId: string, parentId: string | null) => void | Promise<void>;
   onDelete: (moduleId: string) => void | Promise<void>;
-  onRemoveMapping?: (mappingId: string) => void | Promise<void>;
-  onAddCompatibleMapping?: (input: {
-    moduleId: string;
-    matchValue: string;
-  }) => void | Promise<void>;
   onCreateModule: (input: {
     name: string;
     description?: string;
     scope?: string;
     importance?: ModuleImportance;
     parentId?: string | null;
-    kind?: "business" | "driver-group" | "node-type";
-    compatibles?: string[];
-    sourceKey?: string | null;
+    kind?: "business";
   }) => void | Promise<void>;
-  onAuthorOverlaySchema?: (compatible: string) => void;
-  organizationDriverSchemas?: readonly OrganizationDriverSchema[];
-  onPreviewOverlayDeprecation?: (
-    schemaId: string
-  ) => Promise<OrganizationDriverSchemaDeprecationImpact>;
-  onDeprecateOverlaySchema?: (
-    schemaId: string,
-    input: { confirmCoverageLoss?: boolean }
-  ) => void | Promise<void>;
 };
 
 const KIND_FILTER_OPTIONS = (Object.keys(MODULE_KIND_LABEL) as Array<ParameterModule["kind"]>).map(
@@ -154,7 +105,6 @@ type RowProps = {
   driverCoverage?: ReadonlyMap<string, DriverCoverageSummary>;
   expandedIds: ReadonlySet<string>;
   canAdmin: boolean;
-  canonicalModeEnabled: boolean;
   busy: boolean;
   onToggle: (id: string) => void;
   onView: (id: string) => void;
@@ -207,7 +157,6 @@ function ModuleAttributionTreeRow({
   driverCoverage,
   expandedIds,
   canAdmin,
-  canonicalModeEnabled,
   busy,
   onToggle,
   onView,
@@ -308,7 +257,7 @@ function ModuleAttributionTreeRow({
             modules={modules}
             busy={busy}
             canAdmin={canAdmin}
-            canonicalModeEnabled={canonicalModeEnabled}
+            canonicalModeEnabled
             onView={canViewUnclassifiedRoot(module) ? () => onView(module.id) : undefined}
             onEdit={() => onEdit(module.id)}
             onAddChild={() => onAddChild(module.id)}
@@ -336,7 +285,6 @@ function ModuleAttributionTreeRow({
               driverCoverage={driverCoverage}
               expandedIds={expandedIds}
               canAdmin={canAdmin}
-              canonicalModeEnabled={canonicalModeEnabled}
               busy={busy}
               onToggle={onToggle}
               onView={onView}
@@ -362,26 +310,13 @@ export function ModuleAttributionTree({
   canAdmin = false,
   busy = false,
   driverCoverage,
-  driverCoverageDetails,
   driverRegistrationByModuleId,
-  canonicalModeEnabled = false,
   canonicalPlacementAvailable = false,
   onOpenCanonicalPlacement,
-  hasUnclassifiedQueue = false,
-  onOpenUnclassifiedQueue,
   onUpdateModule,
-  onUpdateDriverRegistration,
-  onUpdateDriverRegistrationDefault,
-  onReplayDriverPlacement,
   onMove,
   onDelete,
-  onRemoveMapping,
-  onAddCompatibleMapping,
   onCreateModule,
-  onAuthorOverlaySchema,
-  organizationDriverSchemas = [],
-  onPreviewOverlayDeprecation,
-  onDeprecateOverlaySchema
 }: ModuleAttributionTreeProps) {
   const [filters, setFilters] = useState<AttributionFilters>(DEFAULT_ATTRIBUTION_FILTERS);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
@@ -418,29 +353,10 @@ export function ModuleAttributionTree({
     typeof createParentId === "string" ? (modulesById.get(createParentId) ?? null) : null;
   const editingModule = editingModuleId ? (modulesById.get(editingModuleId) ?? null) : null;
   const editShowsImportance = editingModule ? canEditImportance(editingModule) : false;
-  const editShowsKind = !canonicalModeEnabled && editingModule ? canReclassifyModule(editingModule) : false;
   const viewingUnclassified = viewingUnclassifiedId
     ? (modulesById.get(viewingUnclassifiedId) ?? null)
     : null;
   const movingModule = moveModuleId ? (modulesById.get(moveModuleId) ?? null) : null;
-  const editingCompatibleCoverages =
-    editingModule?.kind === "driver-group"
-      ? (driverCoverageDetails?.get(editingModule.id) ?? undefined)
-      : undefined;
-  const editingCompatibleValues = useMemo(() => {
-    if (!editingModule || editingModule.kind !== "driver-group") return new Set<string>();
-    return new Set(
-      mappingsForModule(mappings, editingModule.id)
-        .filter((mapping) => mapping.matchKind === "compatible")
-        .map((mapping) => mapping.matchValue)
-    );
-  }, [editingModule, mappings]);
-  const editingOverlaySchemas = useMemo(() => {
-    if (editingCompatibleValues.size === 0) return [];
-    return organizationDriverSchemas.filter((schema) =>
-      editingCompatibleValues.has(schema.compatible)
-    );
-  }, [editingCompatibleValues, organizationDriverSchemas]);
   const editingDriverRegistration =
     editingModule?.kind === "driver-group"
       ? driverRegistrationByModuleId?.get(editingModule.id)
@@ -456,10 +372,6 @@ export function ModuleAttributionTree({
   };
 
   const handleViewUnclassified = (moduleId: string) => {
-    if (hasUnclassifiedQueue && onOpenUnclassifiedQueue) {
-      onOpenUnclassifiedQueue();
-      return;
-    }
     setViewingUnclassifiedId(moduleId);
   };
 
@@ -482,10 +394,8 @@ export function ModuleAttributionTree({
           description: draft.description,
           scope: draft.scope,
           importance: draft.importance,
-          parentId: draft.parentId !== undefined ? draft.parentId : (createParentId ?? null),
-          kind: draft.kind ?? "business",
-          compatibles: draft.compatibles,
-          sourceKey: draft.sourceKey
+          parentId: createParentId ?? null,
+          kind: "business"
         });
         closeCreateDialog();
       } catch (error) {
@@ -508,20 +418,7 @@ export function ModuleAttributionTree({
           description: patch.description,
           scope: patch.scope,
           ...(patch.importance !== undefined ? { importance: patch.importance } : {}),
-          ...(patch.kind !== undefined ? { kind: patch.kind } : {})
         });
-        if (
-          !canonicalModeEnabled &&
-          onUpdateDriverRegistration &&
-          (patch.driverNature !== undefined || patch.instanceCardinality !== undefined)
-        ) {
-          await onUpdateDriverRegistration(moduleId, {
-            ...(patch.driverNature !== undefined ? { driverNature: patch.driverNature } : {}),
-            ...(patch.instanceCardinality !== undefined
-              ? { instanceCardinality: patch.instanceCardinality }
-              : {})
-          });
-        }
         setEditingModuleId(null);
         setDialogMutationError(null);
       } catch (error) {
@@ -552,7 +449,7 @@ export function ModuleAttributionTree({
   const handleReorder = async (moduleId: string, direction: "up" | "down") => {
     const module = modulesById.get(moduleId);
     if (!module) return;
-    const updates = sortOrderSwapUpdates(module, direction, modules, canonicalModeEnabled);
+    const updates = sortOrderSwapUpdates(module, direction, modules, true);
     if (!updates) return;
     for (const patch of updates) {
       await onUpdateModule(patch.id, { sortOrder: patch.sortOrder });
@@ -674,7 +571,6 @@ export function ModuleAttributionTree({
               driverCoverage={driverCoverage}
               expandedIds={expandedIds}
               canAdmin={canAdmin}
-              canonicalModeEnabled={canonicalModeEnabled}
               busy={busy}
               onToggle={toggleExpanded}
               onView={handleViewUnclassified}
@@ -714,9 +610,6 @@ export function ModuleAttributionTree({
           existingNames={siblingModuleNames(modules, createParentId ?? null)}
           parentName={createParent?.name ?? null}
           showImportance
-          allowKindSelect={!canonicalModeEnabled}
-          modules={modules}
-          initialParentId={createParentId ?? null}
           busy={dialogMutationBusy}
           error={dialogMutationError}
           onCancel={closeCreateDialog}
@@ -729,50 +622,17 @@ export function ModuleAttributionTree({
           existingNames={siblingModuleNames(modules, editingModule.parentId, editingModule.id)}
           module={editingModule}
           showImportance={editShowsImportance}
-          showKind={editShowsKind}
           busy={busy || dialogMutationBusy}
           error={dialogMutationError}
-          compatibleMappings={
-            editingModule.kind === "driver-group"
-              ? mappingsForModule(mappings, editingModule.id).filter(
-                  (mapping) => mapping.matchKind === "compatible"
-                )
-              : undefined
-          }
-          compatibleCoverages={editingCompatibleCoverages}
-          overlaySchemas={editingOverlaySchemas}
-          onPreviewOverlayDeprecation={onPreviewOverlayDeprecation}
-          onDeprecateOverlaySchema={onDeprecateOverlaySchema}
           onCancel={() => {
             setEditingModuleId(null);
             setDialogMutationError(null);
           }}
           onSave={handleSaveEdit}
+          canAdmin={canAdmin}
           driverNature={editingDriverRegistration?.driverNature ?? null}
           instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
-          historicalCompatibles={canonicalModeEnabled ? editingDriverRegistration?.compatibles : undefined}
-          modules={modules}
-          defaultBusinessCategoryId={
-            editingDriverRegistration?.defaultBusinessCategoryId ?? null
-          }
-          onUpdateDefaultBusinessCategory={
-            editingModule.kind === "driver-group" &&
-            onUpdateDriverRegistrationDefault &&
-            !canonicalModeEnabled
-              ? (defaultBusinessCategoryId) =>
-                  void onUpdateDriverRegistrationDefault(
-                    editingModule.id,
-                    defaultBusinessCategoryId
-                  )
-              : undefined
-          }
-          onReplayPlacement={
-            editingModule.kind === "driver-group" &&
-            onReplayDriverPlacement &&
-            !canonicalModeEnabled
-              ? () => onReplayDriverPlacement(editingModule.id)
-              : undefined
-          }
+          historicalCompatibles={editingDriverRegistration?.compatibles}
           onManageCanonicalPlacement={
             (editingModule.kind === "driver-group" || editingModule.kind === "node-type") &&
             canonicalPlacementAvailable &&
@@ -781,27 +641,6 @@ export function ModuleAttributionTree({
                   setEditingModuleId(null);
                   setDialogMutationError(null);
                   onOpenCanonicalPlacement();
-                }
-              : undefined
-          }
-          legacyControlsAreHistorical={canonicalModeEnabled}
-          onRemoveCompatibleMapping={
-            editingModule.kind === "driver-group" && onRemoveMapping
-              ? (mappingId) => void onRemoveMapping(mappingId)
-              : undefined
-          }
-          onAddCompatibleMapping={
-            editingModule.kind === "driver-group" && onAddCompatibleMapping
-              ? (matchValue) =>
-                  void onAddCompatibleMapping({ moduleId: editingModule.id, matchValue })
-              : undefined
-          }
-          canAdmin={canAdmin}
-          onAuthorOverlaySchema={
-            onAuthorOverlaySchema
-              ? (compatible) => {
-                  setEditingModuleId(null);
-                  onAuthorOverlaySchema(compatible);
                 }
               : undefined
           }
@@ -825,8 +664,6 @@ export function ModuleAttributionTree({
       {viewingUnclassified ? (
         <UnclassifiedRootViewDialog
           parameterCount={viewingUnclassified.parameterCount}
-          hasQueue={hasUnclassifiedQueue}
-          onOpenQueue={onOpenUnclassifiedQueue}
           onClose={() => setViewingUnclassifiedId(null)}
         />
       ) : null}

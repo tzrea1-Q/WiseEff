@@ -56,21 +56,24 @@ describe("mock parameter repository", () => {
     expect(rereadRows[0].history[0].value).toBe(originalHistoryValue);
   });
 
-  it("gets a parameter and its history by id", async () => {
+  it("refuses withdrawn detail and history reads while retaining the flat values list", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
     const [listed] = await repository.listParameters();
 
-    const parameter = await repository.getParameter(listed.id);
-    const history = await repository.listParameterHistory(listed.id);
-
-    expect(parameter).toEqual(listed);
-    expect(history).toEqual(listed.history);
+    await expect(repository.getParameter(listed.id)).rejects.toMatchObject({
+      code: "GONE", message: "Parameter detail is unavailable in mock mode.", details: { parameterId: listed.id }
+    });
+    await expect(repository.listParameterHistory(listed.id)).rejects.toMatchObject({
+      code: "GONE", message: "Parameter detail history is unavailable in mock mode.", details: { parameterId: listed.id }
+    });
+    await expect(repository.listParameters()).resolves.toContainEqual(listed);
   });
 
-  it("rejects unknown parameter ids with a clear error", async () => {
+  it("does not fall back to legacy detail or history for unknown ids", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 
-    await expect(repository.getParameter("missing-parameter")).rejects.toThrow("Parameter not found: missing-parameter");
+    await expect(repository.getParameter("missing-parameter")).rejects.toMatchObject({ code: "GONE" });
+    await expect(repository.listParameterHistory("missing-parameter")).rejects.toMatchObject({ code: "GONE" });
   });
 
   it("stores and deletes drafts per project", async () => {

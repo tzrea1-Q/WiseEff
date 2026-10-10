@@ -1,6 +1,5 @@
 import type {
   ModuleImportance,
-  ModuleMatchKind,
   ModuleOrigin,
   ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
@@ -26,52 +25,6 @@ export type UpdateParameterModuleInput = {
   sortOrder?: number;
   importance?: ModuleImportance;
   kind?: "business" | "node-type";
-};
-
-export type CreateModuleMappingInput = {
-  moduleId: string;
-  matchKind: ModuleMatchKind;
-  matchValue: string;
-  priority?: number;
-};
-
-export type MappingApplyPreview = {
-  affectedBindings: number;
-  byProject: Array<{ projectId: string; count: number }>;
-  fromModules: Array<{ moduleId: string; moduleName: string; count: number }>;
-  toModuleId: string | null;
-  emptiedModules: string[];
-  conflicts: string[];
-};
-
-export type MappingMutationResult = {
-  registry: ParameterModuleRegistry;
-  apply: MappingApplyPreview;
-};
-
-export type RecomputeBindingModulesResult = {
-  updated: number;
-  conflicts: string[];
-  dryRun?: boolean;
-  preview?: MappingApplyPreview;
-};
-
-export type ModuleDiscoveryHint = {
-  compatible: string;
-  bindingCount: number;
-  projectCount: number;
-  suggestedGroupName: string;
-};
-
-export type DismissedCompatibleHint = ModuleDiscoveryHint & {
-  reason: string;
-  dismissedAt: string;
-};
-
-export type ModuleDiscoveryHints = {
-  compatibles: ModuleDiscoveryHint[];
-  dismissedCompatibles: DismissedCompatibleHint[];
-  total: number;
 };
 
 export type DriverNature = "physical-device" | "logical-service";
@@ -106,105 +59,10 @@ export type DriverRegistryEntry = {
   parameterCount: number;
   observed: boolean;
   notYetObserved: boolean;
-  /** Read-only registration attributes when linked to a driver subject; editable via updateDriverRegistration. */
+  /** Read-only historical registration attributes when linked to a driver subject. */
   driverNature: DriverNature | null;
   instanceCardinality: InstanceCardinality | null;
   parseCoverages: Array<{ compatible: string; coverage: DriverRegistryParseCoverage }>;
-};
-
-export type RegisterOrClaimDriverInput = {
-  displayName: string;
-  businessCategoryId: string;
-  compatibles: string[];
-  notes?: string;
-};
-
-export type RegisterOrClaimDriverResult = {
-  mode: "registered" | "claimed";
-  item: {
-    id: string;
-    name: string;
-    parentId: string | null;
-    kind: "business" | "driver-group" | "node-type" | "unclassified";
-    origin: ModuleOrigin;
-    description?: string;
-  };
-  apply: MappingApplyPreview;
-};
-
-export type UpdateDriverRegistrationInput = {
-  driverNature?: DriverNature;
-  instanceCardinality?: InstanceCardinality;
-};
-
-export type UpdateDriverRegistrationResult = {
-  moduleId: string;
-  driverNature: DriverNature;
-  instanceCardinality: InstanceCardinality;
-  attributionSubjectId: string;
-};
-
-export type DriverPlacementReplayCounts = {
-  moved: number;
-  skippedCurated: number;
-  skippedMissingDefault: number;
-};
-
-export type UpdateDriverRegistrationDefaultInput = {
-  defaultBusinessCategoryId: string;
-};
-
-export type UpdateDriverRegistrationDefaultResult = {
-  item: {
-    id: string;
-    name: string;
-    parentId: string | null;
-    kind: "business" | "driver-group" | "node-type" | "unclassified";
-    origin: ModuleOrigin;
-  };
-  defaultBusinessCategoryId: string;
-  replay: DriverPlacementReplayCounts;
-};
-
-export type ReplayDriverPlacementResult = DriverPlacementReplayCounts & {
-  moduleId: string;
-};
-
-export type OrganizationDriverSchemaValueShapeKind =
-  | "u32-array"
-  | "string-list"
-  | "bool"
-  | "mixed"
-  | "unknown";
-
-export type OrganizationDriverSchema = {
-  id: string;
-  compatible: string;
-  displayName: string;
-  notes: string;
-  lifecycle: string;
-  version: number;
-  supersededBySchemaId?: string | null;
-  properties: Array<{
-    id: string;
-    parameterSpecId: string;
-    propertyKey: string;
-    valueShape: { kind: OrganizationDriverSchemaValueShapeKind } | Record<string, unknown>;
-    units: string | null;
-    documentation: string;
-  }>;
-};
-
-export type OrganizationDriverSchemaDeprecationImpact = {
-  schemaId: string;
-  compatible: string;
-  coverageLoss: boolean;
-  definitionCount: number;
-  projectCount: number;
-  successorSource:
-    | { scope: "platform"; schemaId: string; displayName: string }
-    | { scope: "pinned"; driverId: string; pattern: string; source: string }
-    | null;
 };
 
 /**
@@ -213,33 +71,8 @@ export type OrganizationDriverSchemaDeprecationImpact = {
  */
 export interface ParameterModuleRegistryRepository {
   getRegistry(): Promise<ParameterModuleRegistry>;
-  getDiscoveryHints(): Promise<ModuleDiscoveryHints>;
-  dismissCompatible(input: { compatible: string; reason?: string }): Promise<ModuleDiscoveryHints>;
-  restoreDismissedCompatible(compatible: string): Promise<ModuleDiscoveryHints>;
   createModule(input: CreateParameterModuleInput): Promise<ParameterModuleRegistry>;
   updateModule(moduleId: string, input: UpdateParameterModuleInput): Promise<ParameterModuleRegistry>;
   deleteModule(moduleId: string): Promise<ParameterModuleRegistry>;
-  previewMapping(input: CreateModuleMappingInput): Promise<MappingApplyPreview>;
-  createMapping(input: CreateModuleMappingInput): Promise<MappingMutationResult>;
-  deleteMapping(mappingId: string): Promise<MappingMutationResult>;
-  /**
-   * Admin remap recompute: rewrite persisted binding `module_id` from current mappings
-   * (phase 2, §5.2). Optionally scoped to one project. Conflicts surface as an API error.
-   * Pass `dryRun: true` for an operations preview without writes.
-   */
-  recomputeBindings(input?: {
-    projectId?: string;
-    dryRun?: boolean;
-  }): Promise<RecomputeBindingModulesResult>;
   listDriverRegistry(): Promise<{ items: DriverRegistryEntry[]; total: number }>;
-  registerOrClaimDriver(input: RegisterOrClaimDriverInput): Promise<RegisterOrClaimDriverResult>;
-  updateDriverRegistration(
-    moduleId: string,
-    input: UpdateDriverRegistrationInput
-  ): Promise<UpdateDriverRegistrationResult>;
-  updateDriverRegistrationDefault(
-    moduleId: string,
-    input: UpdateDriverRegistrationDefaultInput
-  ): Promise<UpdateDriverRegistrationDefaultResult>;
-  replayDriverPlacement(moduleId: string): Promise<ReplayDriverPlacementResult>;
 }

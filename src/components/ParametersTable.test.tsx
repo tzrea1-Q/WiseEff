@@ -231,7 +231,7 @@ describe("ParametersTable", () => {
   });
 
   it("summarizes multiline DTS values in the table instead of expanding the full config", () => {
-    setup({ rows: [complexRow], onViewRow: vi.fn() });
+    setup({ rows: [complexRow] });
 
     const dtsRow = screen.getByText("dts_fast_charge_profile_matrix").closest("tr");
     expect(dtsRow).toBeInTheDocument();
@@ -248,8 +248,7 @@ describe("ParametersTable", () => {
           ...complexRow,
           valueKind: "scalar"
         }
-      ],
-      onViewRow: vi.fn()
+      ]
     });
 
     expect(screen.getByText("复杂配置")).toBeInTheDocument();
@@ -346,40 +345,23 @@ describe("ParametersTable", () => {
     expect(onFocusRow).toHaveBeenCalledWith("p2");
   });
 
-  it("renders a view action", () => {
-    const onViewRow = vi.fn();
-    const { onFocusRow } = setup({ onViewRow });
+  it("does not render withdrawn detail controls while value editing remains available", () => {
+    const onEditRow = vi.fn();
+    const { onFocusRow } = setup({ onEditRow });
 
-    fireEvent.click(screen.getByRole("button", { name: "查看 battery_temp_target_c" }));
-
-    expect(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看 battery_temp_target_c" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看 soc_estimation_smoothing" })).toBeInTheDocument();
-    expect(onViewRow).toHaveBeenCalledTimes(1);
-    expect(onViewRow).toHaveBeenCalledWith("p2");
+    expect(screen.queryByRole("button", { name: /查看 / })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "编辑 battery_temp_target_c" }));
+    expect(onEditRow).toHaveBeenCalledWith("p2");
     expect(onFocusRow).not.toHaveBeenCalled();
   });
 
-  it("does not render inert view actions without a view handler", () => {
-    setup();
+  it("keeps values readable without detail or edit actions in read-only mode", () => {
+    setup({ canEdit: false, onEditRow: vi.fn() });
 
-    expect(screen.queryByRole("button", { name: "查看 fast_charge_current_limit_ma" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "查看 battery_temp_target_c" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "查看 soc_estimation_smoothing" })).not.toBeInTheDocument();
-  });
-
-  it("keeps view actions available in read-only mode without edit actions", () => {
-    const onViewRow = vi.fn();
-    const { onFocusRow } = setup({ canEdit: false, onViewRow, onEditRow: vi.fn() });
-
-    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
-
-    expect(onViewRow).toHaveBeenCalledTimes(1);
-    expect(onViewRow).toHaveBeenCalledWith("p1");
-    expect(onFocusRow).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "编辑 fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看 / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /编辑 / })).not.toBeInTheDocument();
     expect(screen.queryByText("Read only")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /查看 / })).toHaveLength(3);
   });
 
   it("selects only filtered visible modified rows from the header checkbox", () => {

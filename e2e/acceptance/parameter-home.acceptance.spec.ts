@@ -4,6 +4,7 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { dismissXiaozeToggleHint, prepareInteractionSurface } from "./helpers/interactionSurface";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { signInBrowserAsRole } from "./helpers/bearerAuth";
 
 useBrowserDiagnostics(test);
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -98,5 +99,27 @@ test.describe("parameter-home production dashboard", () => {
         ? "/parameter-home rendered dashboard controls at PC 1440x900; the first canonical hotspot was expandable and the leaderboard remained unobstructed by Xiaoze."
         : "/parameter-home rendered dashboard controls and the canonical empty hotspot state at PC 1440x900."
     });
+
+    await signInBrowserAsRole(page, "admin", "/parameter-admin/specs");
+    await expect(page.getByRole("region", { name: "参数定义目录" })).toBeVisible();
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /有效定义|治理历史/ })).toHaveCount(0);
+    const catalogScreenshot = testInfo.outputPath("1087-api-catalog.png");
+    await page.screenshot({ path: catalogScreenshot });
+    await testInfo.attach("1087-api-catalog", { path: catalogScreenshot, contentType: "image/png" });
+    await page.goto("/parameter-admin/modules");
+    await expect(page.getByRole("tree", { name: "模块归属树" })).toBeVisible();
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
+    const modulesScreenshot = testInfo.outputPath("1087-api-modules.png");
+    await page.screenshot({ path: modulesScreenshot });
+    await testInfo.attach("1087-api-modules", { path: modulesScreenshot, contentType: "image/png" });
+    await page.goto("/parameters?project=aurora");
+    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toBeVisible();
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
+    await expect(page.getByRole("table", { name: "DTS 参数列表" }).getByRole("row").nth(1)).toBeVisible();
+    await expect(page.getByRole("region", { name: "检索参数表" })).toHaveCount(0);
+    const parametersScreenshot = testInfo.outputPath("1087-api-parameters.png");
+    await page.screenshot({ path: parametersScreenshot });
+    await testInfo.attach("1087-api-parameters", { path: parametersScreenshot, contentType: "image/png" });
   });
 });

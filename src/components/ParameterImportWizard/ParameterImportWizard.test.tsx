@@ -256,7 +256,6 @@ describe("ParameterImportWizard", () => {
     );
     renderWizard({
       parameterActions: {
-        getParameter: vi.fn(),
         submitChanges: vi.fn(),
         stashChanges: vi.fn(),
         discardDrafts: vi.fn(),
@@ -305,7 +304,6 @@ describe("ParameterImportWizard", () => {
 
     renderWizard({
       parameterActions: {
-        getParameter: vi.fn(),
         submitChanges: vi.fn(),
         stashChanges: vi.fn(),
         discardDrafts: vi.fn(),
@@ -399,7 +397,6 @@ describe("ParameterImportWizard", () => {
     renderWizard(
       {
         parameterActions: {
-          getParameter: vi.fn(),
           submitChanges: vi.fn(),
           stashChanges: vi.fn(),
           discardDrafts: vi.fn(),

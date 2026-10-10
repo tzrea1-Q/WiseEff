@@ -4,6 +4,8 @@
 
 WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backed prototype plus API mode for the M0-M6.2 productized backend surface.
 
+Mock parameter mode keeps existing canonical-equivalent features only (#1087, #1080 Q3). Legacy Spec governance, module mapping/registry identity, organization overlay authoring, identity/spec-review task resolution, and legacy parameter detail are withdrawn; old deep links cannot revive those controls. Catalog demos, business-module taxonomy, project value editing, and structural node enablement remain. Historical legacy UI notes below do not describe available mock features.
+
 **Workflow discovery (ADR-0036).** Sidebar groups and homepage wayfinding (cards, flow tabs, header/footer workflow links, and promotional copy that names a workflow) read `VISIBLE_WORKFLOWS` in `src/domain/workflowDiscovery.ts`. The first allowlist is parameter management and debugging. Log analysis and the knowledge base stay in the page catalog and remain deep-linkable; they are omitted from discovery until added to that list. This is not a permission change and not a `NoEntryPage` retirement.
 
 ## Key Directories

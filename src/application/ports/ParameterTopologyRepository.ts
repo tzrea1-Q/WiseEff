@@ -145,34 +145,6 @@ export type ReattributeParameterSpecInput = {
 };
 
 export interface ParameterTopologyRepository {
-  listSpecs(query: SpecQuery): Promise<ParameterSpecSummary[]>;
-  getSpec(
-    specId: string,
-    options?: { view?: NonNullable<SpecQuery["view"]> },
-  ): Promise<ParameterSpecDetail>;
-  activateParameterSpec(
-    specId: string,
-    input: ActivateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  updateParameterSpec(
-    specId: string,
-    input: UpdateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  deprecateParameterSpec(
-    specId: string,
-    input: DeprecateParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  restoreParameterSpec(
-    specId: string,
-    input: RestoreParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  reattributeParameterSpec(
-    specId: string,
-    input: ReattributeParameterSpecInput,
-  ): Promise<ParameterSpecDetail>;
-  listSpecReviewTasks(
-    query?: SpecReviewTaskQuery,
-  ): Promise<SpecReviewTaskListResult>;
   listBindings(
     projectId: string,
     revisionId: string,

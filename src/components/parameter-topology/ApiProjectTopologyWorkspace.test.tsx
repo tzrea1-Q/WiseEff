@@ -128,28 +128,6 @@ function createRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
   return createTestParameterTopologyRepository({
-    getSpec: vi.fn().mockResolvedValue({
-      id: "spec-sc8562-gpio-int",
-      organizationId: "org-chargelab",
-      sourceKind: "vendor",
-      specificationKey: "sc8562/gpio_int",
-      propertyKey: "gpio_int",
-      driverModule: "sc8562",
-      lifecycle: "active",
-      currentVersionId: "spec-version-1",
-      currentVersion: 1,
-      displayName: "gpio_int",
-      description: "Interrupt GPIO",
-      valueShape: null,
-      schemaDefault: null,
-      exampleValue: null,
-      schemaNamespace: null,
-      units: null,
-      constraints: null,
-      documentation: null,
-      compatiblePatterns: null,
-      policyTarget: null
-    }),
     listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
     getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => {
       if (view === "source") {
@@ -377,7 +355,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     fireEvent.click(await screen.findByRole("tab", { name: /JSON 参数/ }));
     expect(await screen.findByRole("table", { name: "JSON 参数列表" })).toHaveTextContent(sibling.propertyKey);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(repository.getSpec).not.toHaveBeenCalled();
+    expect(repository).not.toHaveProperty("getSpec");
     expect(repository.createBindingDraft).not.toHaveBeenCalled();
     expect(listProtectedProjectBindings).toHaveBeenCalledWith("aurora");
   });
@@ -1566,28 +1544,6 @@ describe("ApiProjectTopologyWorkspace", () => {
       });
     const repository = createRepository({
       createBindingDraft,
-      getSpec: vi.fn().mockImplementation(async (specId: string) => ({
-        id: specId,
-        organizationId: "org-chargelab",
-        sourceKind: "vendor",
-        specificationKey: specId,
-        propertyKey: specId.includes("status") ? "status" : "gpio_int",
-        driverModule: "sc8562",
-        lifecycle: "active",
-        currentVersionId: "spec-version-1",
-        currentVersion: 1,
-        displayName: specId.includes("status") ? "status" : "gpio_int",
-        description: "",
-        valueShape: null,
-        schemaDefault: null,
-        exampleValue: null,
-        schemaNamespace: null,
-        units: null,
-        constraints: null,
-        documentation: null,
-        compatiblePatterns: null,
-        policyTarget: null
-      }))
     });
     const loadTopology = repository.getTopology;
     repository.getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>(async (...args) => {

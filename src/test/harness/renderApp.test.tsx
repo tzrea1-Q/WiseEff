@@ -25,10 +25,14 @@ describe("createTestAppPorts", () => {
   it("assembles App ports from mock adapters", async () => {
     const ports = createTestAppPorts();
     const projects = await ports.parameterRepository.listProjects();
-    const specs = await ports.parameterTopologyRepository.listSpecs({});
+    const revisions = await ports.parameterTopologyRepository.listConfigRevisions(
+      "project-teaching",
+      "config-set-teaching"
+    );
 
     expect(projects.length).toBeGreaterThan(0);
-    expect(specs.some((spec) => spec.propertyKey === "gpio_int")).toBe(true);
+    expect(revisions).toEqual([expect.objectContaining({ id: "revision-teaching-1" })]);
+    expect(ports.parameterTopologyRepository).not.toHaveProperty("listSpecs");
     expect(ports.debuggingGateway.detectTargets).toEqual(expect.any(Function));
     expect(ports.logAnalysisRepository).toBeDefined();
   });

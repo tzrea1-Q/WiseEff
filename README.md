@@ -181,6 +181,8 @@ Use mock mode only for frontend-only demos or when you explicitly want in-memory
 VITE_WISEEFF_RUNTIME_MODE=mock
 ```
 
+Mock parameter features are limited to existing canonical-equivalent Catalog demos, project value editing, business-module taxonomy, and structural node enablement. Legacy Spec governance, module mapping/registry identity, organization overlay authoring, identity/spec-review task resolution, and legacy parameter detail are withdrawn (#1087, owner decision Q3 in #1080). Their controls are absent or explicitly unavailable; use API mode for supported canonical workflows. No canonical replacement is implemented in mock mode.
+
 Production builds must not use mock data as a business data source. Backend writes must enforce authz, validation, transactions, and audit on the server side.
 
 ## Repository Map
