@@ -1,5 +1,6 @@
 import { expect, test } from "playwright/test";
 import {
+  assertXiaozePlacement,
   collectConsistencyMeasurements,
   consistencyRoutes,
   installConsistencyReadGuard,
@@ -9,6 +10,7 @@ import {
 import {
   closeXiaozePopupIfOpen,
   expectUsablePage,
+  focusViaKeyboard,
   seedQualityRuntime,
   settleAppToasts,
   settleQualityRoute,
@@ -35,10 +37,24 @@ for (const route of consistencyRoutes) {
       await settleXiaozePopupClosed(page);
       await settleAppToasts(page);
       await waitForFontsAndNextPaint(page);
+      await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
       await expect(async () => {
         measurements = await page.evaluate(collectConsistencyMeasurements);
         requireConsistencyMeasurements(measurements, route.required, route.path);
+        requireConsistencyMeasurements(measurements, ["xiaozeHints"], route.path);
+        assertXiaozePlacement(measurements, route.path);
       }).toPass({ timeout: 20_000 });
+      const launcher = page.getByTestId("copilot-chat-toggle");
+      const surface = launcher.locator(".xiaoze-chat-toggle__surface");
+      await page.getByRole("button", { name: "不再提示" }).focus();
+      await waitForFontsAndNextPaint(page);
+      const restingShadow = await surface.evaluate((element) => getComputedStyle(element).boxShadow);
+      await focusViaKeyboard(page, launcher);
+      await expect(launcher).toBeFocused();
+      expect(await launcher.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+      await expect.poll(() => surface.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe(restingShadow);
+      await page.keyboard.press("Shift+ArrowUp");
+      assertXiaozePlacement(await page.evaluate(collectConsistencyMeasurements), route.path);
     } finally {
       await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {
         contentType: "application/json",

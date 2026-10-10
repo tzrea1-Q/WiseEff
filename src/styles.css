@@ -12627,6 +12627,11 @@ td small {
 }
 
 /* ── Xiaoze floating toggle ── */
+body:has([data-xiaoze-launcher-anchor]) .main-content {
+  margin-bottom: calc(var(--space-16) + max(var(--space-6), env(safe-area-inset-bottom, 0px)));
+  padding-bottom: var(--space-6);
+}
+
 .xiaoze-chat-toggle-anchor {
   position: fixed;
   right: 1.5rem;
@@ -12832,6 +12837,17 @@ body:has([role="dialog"]) .xiaoze-toggle-hint {
   border-right: 1px solid var(--xiaoze-border-strong);
   border-bottom: 1px solid var(--xiaoze-border-strong);
   transform: rotate(-45deg);
+}
+
+.xiaoze-chat-toggle-anchor[data-xiaoze-hint-side="right"] .xiaoze-toggle-hint {
+  left: calc(100% + var(--space-3));
+  right: auto;
+}
+
+.xiaoze-chat-toggle-anchor[data-xiaoze-hint-side="right"] .xiaoze-toggle-hint::after {
+  left: calc(var(--space-3) / -2);
+  right: auto;
+  transform: rotate(135deg);
 }
 
 .xiaoze-toggle-hint__body {

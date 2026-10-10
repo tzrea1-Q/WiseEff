@@ -60,7 +60,7 @@ export function collectConsistencyMeasurements() {
       }
     }
   }
-  const tableScrollports = [...scrollports].flatMap((element) => {
+  const clippedGeometry = (element: Element) => {
     const rect = bounds(element);
     let left = Math.max(0, rect.left), top = Math.max(0, rect.top);
     let right = Math.min(innerWidth, rect.right), bottom = Math.min(innerHeight, rect.bottom);
@@ -79,7 +79,13 @@ export function collectConsistencyMeasurements() {
     return right > left && bottom > top
       ? [{ dom: signature(element), rect: { left, top, right, bottom, width: right - left, height: bottom - top } }]
       : [];
-  });
+  };
+  const tableScrollports = [...scrollports].flatMap(clippedGeometry);
+  const stickyActionAreas = elements("*").filter((element) =>
+    ["sticky", "fixed"].includes(getComputedStyle(element).position)
+    && (element.matches('td,th,[role="cell"],[role="columnheader"],[data-sticky-action-area]')
+      || element.querySelector('button,a[href],[role="button"]'))
+  ).flatMap(clippedGeometry);
   const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label").map((element) => {
     const treeItem = element.closest('[role="treeitem"]');
     let depth = Number(treeItem?.getAttribute("aria-level")) || 0;
@@ -98,7 +104,7 @@ export function collectConsistencyMeasurements() {
     .filter((element) => !element.matches(`${paginationSelector},${sortSelector}`) && !element.closest('tbody,[role="cell"],[role="dialog"]'))
     .map(control);
   return {
-    viewSwitches, primaryActions, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports,
+    viewSwitches, primaryActions, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
     moduleTreeLabels, filterControls, sortControls, paginationControls
   };
 }
@@ -118,7 +124,7 @@ const viewSwitchPaths = [
   "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
   "/parameter-submissions", "/parameters", "/user-permissions"
 ];
-const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints"> = {
+const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas"> = {
   viewSwitches: [...viewSwitchPaths, "/log-admin"],
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
   rowActions: [...catalogPaths, "/parameters"],
@@ -174,5 +180,19 @@ export function requireConsistencyMeasurements(
   const missing = required.filter((category) => !measurements[category]?.length);
   if (missing.length) {
     throw new Error(`${routePath}: missing consistency measurements: ${missing.join(", ")}`);
+  }
+}
+
+export function assertXiaozePlacement(
+  measurements: Pick<ConsistencyMeasurements, "xiaozeLaunchers" | "xiaozeHints" | "tableScrollports" | "stickyActionAreas">,
+  routePath: string
+) {
+  for (const overlay of [...measurements.xiaozeLaunchers, ...measurements.xiaozeHints]) {
+    for (const area of [...measurements.tableScrollports, ...measurements.stickyActionAreas]) {
+      if (overlay.rect.left < area.rect.right && overlay.rect.right > area.rect.left
+        && overlay.rect.top < area.rect.bottom && overlay.rect.bottom > area.rect.top) {
+        throw new Error(`${routePath}: ${overlay.dom} overlaps ${area.dom}`);
+      }
+    }
   }
 }

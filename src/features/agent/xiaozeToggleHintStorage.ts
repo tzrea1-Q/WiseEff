@@ -1,14 +1,13 @@
 export const XIAOZE_TOGGLE_HINT_DELAY_MS = 1400;
 
-const LEGACY_DISMISSED_LOCAL_KEY = "wiseeff.xiaoze.toggle-hint.dismissed.v1";
+const DISMISSED_LOCAL_KEY = "wiseeff.xiaoze.toggle-hint.dismissed.v1";
 const LEGACY_SHOWN_SESSION_KEY = "wiseeff.xiaoze.toggle-hint.shown.v1";
 
-let hintShownThisPageLoad = false;
-let hintDismissedThisPageLoad = false;
+const hintShownThisPageLoad = new Set<string>();
+const hintDismissedThisPageLoad = new Set<string>();
 
 function clearLegacyToggleHintStorage() {
   try {
-    localStorage.removeItem(LEGACY_DISMISSED_LOCAL_KEY);
     sessionStorage.removeItem(LEGACY_SHOWN_SESSION_KEY);
   } catch {
     // Ignore storage failures.
@@ -17,23 +16,32 @@ function clearLegacyToggleHintStorage() {
 
 clearLegacyToggleHintStorage();
 
-export function readXiaozeToggleHintDismissed(): boolean {
-  return hintDismissedThisPageLoad;
+export function readXiaozeToggleHintDismissed(userId = ""): boolean {
+  try {
+    return hintDismissedThisPageLoad.has(userId) || localStorage.getItem(`${DISMISSED_LOCAL_KEY}:${userId}`) === "true";
+  } catch {
+    return hintDismissedThisPageLoad.has(userId);
+  }
 }
 
-export function dismissXiaozeToggleHint() {
-  hintDismissedThisPageLoad = true;
+export function dismissXiaozeToggleHint(userId = "") {
+  hintDismissedThisPageLoad.add(userId);
+  try {
+    localStorage.setItem(`${DISMISSED_LOCAL_KEY}:${userId}`, "true");
+  } catch {
+    return;
+  }
 }
 
-export function readXiaozeToggleHintShown(): boolean {
-  return hintShownThisPageLoad;
+export function readXiaozeToggleHintShown(userId = ""): boolean {
+  return hintShownThisPageLoad.has(userId);
 }
 
-export function markXiaozeToggleHintShown() {
-  hintShownThisPageLoad = true;
+export function markXiaozeToggleHintShown(userId = "") {
+  hintShownThisPageLoad.add(userId);
 }
 
 export function resetXiaozeToggleHintPageState() {
-  hintShownThisPageLoad = false;
-  hintDismissedThisPageLoad = false;
+  hintShownThisPageLoad.clear();
+  hintDismissedThisPageLoad.clear();
 }

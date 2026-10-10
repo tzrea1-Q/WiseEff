@@ -10,6 +10,7 @@ import {
 
 describe("XiaozeToggleHint", () => {
   beforeEach(() => {
+    localStorage.clear();
     resetXiaozeToggleHintPageState();
     vi.useFakeTimers();
   });
@@ -67,5 +68,30 @@ describe("XiaozeToggleHint", () => {
     });
 
     expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+  });
+
+  it("keeps dismissal across navigation and a fresh page load", () => {
+    const firstVisit = render(<XiaozeToggleHint userId="returning-user" visible onOpen={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS));
+    fireEvent.click(screen.getByLabelText("不再提示"));
+    firstVisit.unmount();
+    const nextVisit = render(<XiaozeToggleHint userId="returning-user" visible onOpen={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS));
+    expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+    nextVisit.unmount();
+    resetXiaozeToggleHintPageState();
+    render(<XiaozeToggleHint userId="returning-user" visible onOpen={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS));
+    expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+  });
+
+  it("does not dismiss the hint for another user", () => {
+    const firstUser = render(<XiaozeToggleHint userId="first-user" visible onOpen={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS));
+    fireEvent.click(screen.getByLabelText("不再提示"));
+    firstUser.unmount();
+    render(<XiaozeToggleHint userId="second-user" visible onOpen={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS));
+    expect(screen.getByTestId("xiaoze-toggle-hint")).toBeInTheDocument();
   });
 });
