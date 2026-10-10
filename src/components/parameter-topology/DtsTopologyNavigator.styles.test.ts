@@ -20,9 +20,12 @@ describe("DtsTopologyNavigator responsive width", () => {
 
   it("reserves the existing touch disclosure width in the label anchor instead of overlapping the label", () => {
     const styles = readStylesheet("src/styles.css");
+    const tokens = declarationsFor(styles, ":root");
     const touchTokens = declarationsFor(styles, ":root", { within: "max-width: 480px" });
 
-    expect(touchTokens["--module-navigator-disclosure-size"]).toBe("44px");
+    expect(touchTokens["--module-navigator-disclosure-size"]).toBe("calc(var(--space-10) + var(--space-1))");
+    expect(tokens["--space-10"]).toBe("40px");
+    expect(tokens["--space-1"]).toBe("4px");
   });
 
   it("grows the desktop navigator to its content while keeping labels on one line", () => {

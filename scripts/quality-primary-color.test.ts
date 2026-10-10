@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { requirePrimaryActionColors } from "../e2e/quality/primary-color";
 
 describe("primary action consistency", () => {
+  it("requires enabled primary measurements on routes outside the historical primary-action list", () => {
+    expect(() => requirePrimaryActionColors({ primaryActions: [], enabledPrimaryActionCount: 1 }, "/parameter-review"))
+      .toThrow("missing consistency measurements: primaryActions");
+  });
   it.each([true, false])("allows the pale bulk-write background only when disabled=%s", (disabled) => {
     const check = () => requirePrimaryActionColors({
       primaryActions: [{ dom: "button.submit-round-button.debugging-deploy-button", role: "button", height: 38,

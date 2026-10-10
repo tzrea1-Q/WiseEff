@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { RadioGroup, Tabs } from "radix-ui";
 
 import "./view-switch.css";
@@ -18,6 +18,33 @@ type ViewSwitchProps = {
   | { variant: "section" | "toggle"; items: ViewSwitchItem[] }
   | { variant: "tabs"; items: (ViewSwitchItem & { id: string; panelId: string })[] }
 );
+
+function handleSectionRovingFocus(event: KeyboardEvent<HTMLButtonElement>) {
+  const parent = event.currentTarget.parentElement;
+  if (!parent) return;
+  const buttons = [...parent.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+  const current = buttons.indexOf(event.currentTarget);
+  if (current < 0) return;
+  let next: number;
+  switch (event.key) {
+    case "Home":
+      next = 0;
+      break;
+    case "End":
+      next = buttons.length - 1;
+      break;
+    case "ArrowRight":
+      next = (current + 1) % buttons.length;
+      break;
+    case "ArrowLeft":
+      next = (current - 1 + buttons.length) % buttons.length;
+      break;
+    default:
+      return;
+  }
+  event.preventDefault();
+  buttons[next]?.focus();
+}
 
 export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: ViewSwitchProps) {
   if (variant === "toggle") {
@@ -58,15 +85,7 @@ export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: 
           title={item.title}
           aria-current={item.value === value ? "page" : undefined}
           onClick={() => onValueChange(item.value)}
-          onKeyDown={(event) => {
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-            const buttons = [...event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
-            const current = buttons.indexOf(event.currentTarget);
-            event.preventDefault();
-            const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
-              : (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
-            buttons[next].focus();
-          }}
+          onKeyDown={handleSectionRovingFocus}
         >
           {item.label}
         </button>

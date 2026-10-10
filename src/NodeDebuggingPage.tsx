@@ -506,7 +506,7 @@ export function NodeDebuggingPage({
               id: `node-debugging-${value}-tab`, panelId: `node-debugging-${value}-panel` }))} />
         </div>
         <div className="workbench-one-col" role="tabpanel" id={`node-debugging-${protocol}-panel`}
-          aria-labelledby={`node-debugging-${protocol}-tab`} tabIndex={0}>
+          aria-labelledby={`node-debugging-${protocol}-tab`}>
         <LocalDeviceBridgePanel
           target={target}
           detecting={detecting}
@@ -769,6 +769,7 @@ export function NodeDebuggingPage({
               </button>
               <button
                 className="submit-round-button debugging-deploy-button"
+                data-primary-action="true"
                 type="button"
                 disabled={!connected || batchTargetRows.length === 0}
                 onClick={() => void session.requestBulkWrite(debuggingActions)}
@@ -817,6 +818,7 @@ export function NodeDebuggingPage({
                   </button>
                   <button
                     className="submit-round-button debugging-deploy-button"
+                    data-primary-action="true"
                     type="button"
                     disabled={!connected || editingRow.runtimeStatus === "执行中"}
                     onClick={() => void session.requestWrite(editingRow.id, debuggingActions)}

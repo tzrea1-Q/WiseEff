@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { useEffect, useId, useRef, useState } from "react";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -176,7 +177,7 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
         { value: "pending", label: "待审核", id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel`, disabled: busy },
         { value: "history", label: "历史", id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: busy }
       ]} />
-    <div role="tabpanel" id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`} tabIndex={0}>
+    <TabPanel role="tabpanel" id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`}>
     <button className="button subtle" type="button" onClick={refresh} disabled={busy}>刷新成员删除结果</button>
     {loading ? <p role="status">正在加载成员删除请求…</p> : null}
     {error ? <p role="alert">{error}</p> : null}
@@ -230,8 +231,8 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
       {selected.status === "pending" && !assignedReviewer && !submitter ? <p role="note">仅指定的另一名项目软件审核人可以审批此请求。</p> : null}
       {blocked ? <p role="note">结果未确认，刷新并核对请求后才能再次操作。</p> : null}
     </article> : null}
-    </div>
+    </TabPanel>
     <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
-      aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} tabIndex={0} hidden />
+      aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden />
   </section>;
 }

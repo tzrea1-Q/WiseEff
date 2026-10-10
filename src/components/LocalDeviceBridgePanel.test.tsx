@@ -109,6 +109,18 @@ describe("LocalDeviceBridgePanel install manifest loading", () => {
   });
 });
 
+it("explains an ordinary offline health probe without raising a panel alert", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const listBridges = vi.fn(async () => []);
+  render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
+    listBridges={listBridges}
+    probeHealth={async () => ({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })}
+    createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
+  await waitFor(() => expect(listBridges).toHaveBeenCalled());
+  expect(screen.getByText("安装 Bridge")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 it("shows server network copy, not local Bridge advice, when the server list call fails", async () => {
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
   render(
@@ -129,6 +141,69 @@ it("shows server network copy, not local Bridge advice, when the server list cal
   expect(disclosure.open).toBe(false);
   fireEvent.click(within(alert).getByText("技术详情"));
   expect(disclosure.open).toBe(true);
+});
+
+it("shows local Bridge advice with technical details after a failed connection attempt", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
+    listBridges={async () => []}
+    probeHealth={async () => ({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })}
+    createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
+  fireEvent.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
+  const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+  await waitFor(() => expect(connect).toBeEnabled());
+  fireEvent.click(connect);
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/本机.*Bridge/);
+  expect(within(alert).getByText("技术详情")).toBeInTheDocument();
+  expect(within(alert).getByText("Failed to fetch")).toBeInTheDocument();
+  fireEvent.click(within(alert).getByRole("button", { name: "刷新代理状态" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "刷新代理状态" })).toBeEnabled());
+  expect(screen.getByRole("alert")).toHaveTextContent("Failed to fetch");
+});
+
+it.each(["silent", "manual"] as const)("clears a recovered local error on a %s health probe", async (mode) => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const interval = vi.spyOn(window, "setInterval");
+  let recovered = false;
+  render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
+    listBridges={async () => []}
+    probeHealth={async () => recovered
+      ? { health: { ok: true, paired: false, connected: false }, reachability: "ok" }
+      : { health: null, reachability: "offline", error: new TypeError("Failed to fetch") }}
+    createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
+  fireEvent.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
+  const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+  await waitFor(() => expect(connect).toBeEnabled());
+  fireEvent.click(connect);
+  await screen.findByRole("alert");
+  recovered = true;
+  if (mode === "silent") {
+    const poll = interval.mock.calls.filter(([, delay]) => delay === 3000).at(-1)?.[0];
+    expect(poll).toBeTypeOf("function");
+    await act(async () => { if (typeof poll === "function") poll(); });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  } else {
+    fireEvent.click(screen.getByRole("button", { name: "刷新代理状态" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  }
+  interval.mockRestore();
+});
+
+it("does not erase a server error when only the local health probe recovers silently", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const interval = vi.spyOn(window, "setInterval");
+  const listBridges = vi.fn().mockRejectedValueOnce(new Error("代理列表暂时不可用")).mockResolvedValue([]);
+  render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
+    listBridges={listBridges}
+    probeHealth={async () => ({ health: null, reachability: "ok" })}
+    createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
+  const message = await screen.findByText("代理列表暂时不可用");
+  const poll = interval.mock.calls.filter(([, delay]) => delay === 3000).at(-1)?.[0];
+  expect(poll).toBeTypeOf("function");
+  await act(async () => { if (typeof poll === "function") poll(); });
+  expect(message).toBeInTheDocument();
+  interval.mockRestore();
 });
 
 it("retains confirmed pairing when listing fails and allows retry", async () => {

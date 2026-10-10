@@ -1,18 +1,10 @@
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import {
-  assertXiaozePlacement,
-  collectConsistencyMeasurements,
-  consistencyRoutes,
-  installConsistencyReadGuard,
-  requireConsistencyMeasurements,
-  requireModuleTreeAlignment,
-  requireRowActionVisibility,
-  requireCompactControlHeights,
-  shouldRequireXiaozeHint,
-  type ConsistencyMeasurements
-} from "./consistency";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, shouldRequireXiaozeHint } from "./consistency-assertions";
+import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
+import { consistencyRoutes } from "./consistency-routes";
+import { installConsistencyReadGuard } from "./consistency";
 import {
   closeXiaozePopupIfOpen,
   expectUsablePage,
@@ -65,7 +57,7 @@ for (const route of routes) {
         }
         await expect(async () => {
           measurements = await page.evaluate(collectConsistencyMeasurements);
-          requireConsistencyMeasurements(measurements, route.required, route.path);
+          requireMeasuredCategories(measurements, route.required, route.path);
           if (moduleNavigationPaths.includes(routePath)) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }
@@ -76,7 +68,7 @@ for (const route of routes) {
           requireViewSwitchStyles(measurements, route.path);
           if (theme === "light") {
             if (requiresHint) {
-              requireConsistencyMeasurements(measurements, ["xiaozeHints"], route.path);
+              requireMeasuredCategories(measurements, ["xiaozeHints"], route.path);
             }
             assertXiaozePlacement(measurements, route.path);
           }

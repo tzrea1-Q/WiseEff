@@ -12,17 +12,17 @@ export function useModuleNodeSelection(isAvailable?: (nodeId: string) => boolean
   }, []);
 
   const updateSelection = useCallback((next: SetStateAction<string | null>) => {
-    setSelectedNodeId((current) => {
-      const selection = typeof next === "function" ? next(current) : next;
-      const url = new URL(window.location.href);
-      if (selection) url.searchParams.set("moduleNode", selection);
-      else url.searchParams.delete("moduleNode");
-      const href = `${url.pathname}${url.search}${url.hash}`;
-      if (href !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
-        window.history.pushState(window.history.state, "", href);
-      }
-      return selection;
-    });
+    const url = new URL(window.location.href);
+    const current = url.searchParams.get("moduleNode") || null;
+    const selection = typeof next === "function" ? next(current) : next;
+    if (selection) url.searchParams.set("moduleNode", selection);
+    else url.searchParams.delete("moduleNode");
+    const href = `${url.pathname}${url.search}${url.hash}`;
+    setSelectedNodeId(selection);
+    if (href !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(window.history.state, "", href);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
   }, []);
 
   const resolution = useRef({ id: selectedNodeId, resolved: false });

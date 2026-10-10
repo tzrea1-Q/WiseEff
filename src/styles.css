@@ -150,6 +150,11 @@
   --module-navigator-min-width: 15rem;
   --module-navigator-max-width: min(32.5rem, 42vw);
   --module-navigator-disclosure-size: 28px;
+  --dts-workbench-table-min-width: 680px;
+  --dts-workbench-scrollbar-width: var(--space-3);
+  --dts-workbench-table-actions-width: calc(3 * var(--space-8) + 2 * var(--space-1));
+  --dts-workbench-table-columns-without-selection: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width);
+  --dts-workbench-table-columns: calc(var(--space-8) + var(--space-1)) var(--dts-workbench-table-columns-without-selection);
 
   /* ── Legacy palette (kept as-is until surfaces migrate; do not extend) ── */
   --surface-low: #f0f3ff;
@@ -22058,11 +22063,6 @@ body.xiaoze-popup-drag-active {
  * gains a topology-aware browse surface without changing the binding contract.
  */
 .dts-parameter-workbench {
-  --dts-workbench-table-min-width: 680px;
-  --dts-workbench-scrollbar-width: 12px;
-  --dts-workbench-table-actions-width: calc(3 * 32px + 2 * var(--space-1));
-  --dts-workbench-table-columns: 36px minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) 68px var(--dts-workbench-table-actions-width);
-  --dts-workbench-table-columns-without-selection: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) 68px var(--dts-workbench-table-actions-width);
   --dts-workbench-ink: #152238;
   --dts-workbench-muted: #52657d;
   --dts-workbench-border: #dbe3ef;
@@ -24123,7 +24123,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 @media (max-width: 480px) {
   :root {
-    --module-navigator-disclosure-size: 44px;
+    --module-navigator-disclosure-size: calc(var(--space-10) + var(--space-1));
   }
 
   .dts-parameter-workbench__toolbar {

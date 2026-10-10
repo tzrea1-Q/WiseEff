@@ -37,11 +37,23 @@ describe("canonical review and submission tabs", () => {
         const panel = document.getElementById(panelId);
         expect(panel).toHaveAttribute("role", "tabpanel");
         expect(panel).toHaveAttribute("aria-labelledby", tab.id);
-        expect(panel).toHaveAttribute("tabindex", "0");
         expect(panelIds.has(panelId)).toBe(false);
         panelIds.add(panelId);
-        if (tab === pending) expect(panel).not.toBeVisible();
-        else expect(panel).toBeVisible();
+        if (tab === pending) {
+          expect(panel).not.toBeVisible();
+          expect(panel).not.toHaveAttribute("tabindex");
+        } else {
+          expect(panel).toBeVisible();
+          history.focus();
+          await user.tab();
+          if (name === "成员删除视角") {
+            expect(panel).not.toHaveAttribute("tabindex");
+            expect(within(panel!).getByRole("button", { name: "刷新成员删除结果" })).toHaveFocus();
+          } else {
+            expect(panel).toHaveAttribute("tabindex", "0");
+            expect(panel).toHaveFocus();
+          }
+        }
       }
     }
   });

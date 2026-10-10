@@ -1,9 +1,11 @@
-import { requireConsistencyMeasurements, viewSwitchStyleExpectations, type ConsistencyMeasurements } from "./consistency";
+import { requireMeasuredCategories } from "./consistency-assertions";
+import { viewSwitchStyleExpectations } from "./consistency-routes";
+import { type ConsistencyMeasurements } from "./consistency-collector";
 
 export function requireViewSwitchStyles(measurements: Pick<ConsistencyMeasurements, "viewSwitches" | "viewSwitchSignatures">, path: string) {
   const variants = viewSwitchStyleExpectations[path.split("?")[0]];
   if (!variants) return;
-  requireConsistencyMeasurements(measurements, ["viewSwitches", "viewSwitchSignatures"], path);
+  requireMeasuredCategories(measurements, ["viewSwitches", "viewSwitchSignatures"], path);
   const observed = new Set<string>();
   for (const control of measurements.viewSwitches) {
     if (control.role === "listitem" && control.group.includes(".local-device-bridge-wizard__steps")) continue;

@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertCircle, Boxes, CheckCircle2, CircleX, Download, Eye, FileCode, History, Pencil } from "lucide-react";
 import type {
@@ -548,7 +549,7 @@ export function JsonBindingPanel({
         </div>
       ) : null}
 
-      <div className="dts-parameter-workbench__body" role="tabpanel" tabIndex={0}
+      <TabPanel className="dts-parameter-workbench__body" role="tabpanel"
         id={`${resultsId}-${resultsMode}-panel`} aria-labelledby={`${resultsId}-${resultsMode}-tab`}>
         {/* Module Navigator */}
         <div
@@ -696,7 +697,7 @@ export function JsonBindingPanel({
             <p className="dts-parameter-workbench__empty" role="status">暂无 JSON 源码。</p>
           )}
         </div>
-      </div>
+      </TabPanel>
 
       {/* 1. Detail Dialog (查看弹窗) */}
       {activeViewBinding ? (

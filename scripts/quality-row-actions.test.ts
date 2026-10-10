@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { requireRowActionVisibility } from "../e2e/quality/consistency";
+import { requireRowActionVisibility } from "../e2e/quality/consistency-assertions";
 
 const rect = (left: number, right: number) => ({ left, right, top: 0, bottom: 40, width: right - left, height: 40 });
 const visibleRow = {
@@ -37,7 +37,7 @@ describe("row action visibility at the standard PC viewport", () => {
 
   it("does not treat an empty table as visibility evidence", () => {
     expect(() => requireRowActionVisibility([], "/parameters"))
-      .toThrow("/parameters: missing row actions");
+      .toThrow("/parameters: missing consistency measurements: rowActions");
   });
 
   it("accepts actions and status inside the initial scrollport with subpixel rounding", () => {

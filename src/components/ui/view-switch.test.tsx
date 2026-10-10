@@ -1,3 +1,4 @@
+import { TabPanel } from "./tab-panel";
 import { useState } from "react";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -97,6 +98,30 @@ describe("ViewSwitch", () => {
     expect(members).toHaveFocus();
   });
 
+  it("keeps focus on the sole enabled section for navigation keys and lets Tab leave the navigation", async () => {
+    const user = userEvent.setup();
+    render(<>
+      <ViewSwitch variant="section" ariaLabel="组织管理范围" value="members" onValueChange={() => {}} items={[
+        { value: "profile", label: "组织管理", disabled: true },
+        { value: "members", label: "人员管理" },
+        { value: "disabled", label: "不可用", disabled: true }
+      ]} />
+      <button type="button">下一步</button>
+    </>);
+    const members = screen.getByRole("button", { name: "人员管理" });
+    await user.tab();
+    expect(members).toHaveFocus();
+    for (const key of ["ArrowLeft", "ArrowRight", "Home", "End", "ArrowUp", "ArrowDown"]) {
+      await user.keyboard(`{${key}}`);
+      expect(members).toHaveFocus();
+      expect(members).toHaveAttribute("aria-current", "page");
+    }
+    await user.tab();
+    expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(members).toHaveFocus();
+  });
+
   it("links content tabs to panels, roves past disabled tabs, and requires activation to change content", async () => {
     function ContentTabs() {
       const [value, setValue] = useState("accounts");
@@ -107,9 +132,9 @@ describe("ViewSwitch", () => {
           { value: "approvals", label: "注册申请", id: "approvals-tab", panelId: "approvals-panel" }
         ]} />
         {["accounts", "disabled", "approvals"].map((panel) => (
-          <div key={panel} role="tabpanel" id={`${panel}-panel`} aria-labelledby={`${panel}-tab`} tabIndex={0} hidden={panel !== value}>
+          <TabPanel key={panel} role="tabpanel" id={`${panel}-panel`} aria-labelledby={`${panel}-tab`} hidden={panel !== value}>
             {panel === "accounts" ? "平台用户" : "待处理申请"}
-          </div>
+          </TabPanel>
         ))}
       </>;
     }

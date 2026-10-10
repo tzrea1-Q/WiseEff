@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { collectConsistencyMeasurements, requireCompactControlHeights } from "../../e2e/quality/consistency";
+import { collectConsistencyMeasurements } from "../../e2e/quality/consistency-collector";
+import { requireCompactControlHeights } from "../../e2e/quality/consistency-assertions";
 import { LibrarySelectFilter } from "../components/admin/LibrarySelectFilter";
 import { Select, SelectTrigger, SelectValue } from "../components/ui/select";
 import { declarationsFor, readStylesheet } from "./cssAssertions";
@@ -51,11 +52,12 @@ describe("compact control measurement scope", () => {
       <main>
         <button className="parameter-admin-scope-nav__tab" data-measured-height="43">参数</button>
         <div className="param-admin-audit-filters"><button className="chip chip-active" data-measured-height="30">审计</button></div>
-        <button className="parameter-home__toggle-item" role="radio" data-measured-height="28">工作台</button>
+        <button className="parameter-home__toggle-item" role="radio" aria-checked="true" data-measured-height="28">工作台</button>
         <button className="button subtle" data-measured-height="36">查看</button>
         <button className="parameter-catalog__tree-select" data-measured-height="40">模块</button>
         <button className="parameters-column-filter__trigger" data-measured-height="24">筛选模块</button>
         <select className="compact-filter-control" data-compact-control="filter"><option>项目</option></select>
+        <button data-compact-control="pagination">下一页</button>
       </main>
       <button className="xiaoze-chat-toggle">小泽</button>
     </>);
@@ -111,8 +113,10 @@ describe("compact control measurement scope", () => {
         <select data-compact-control="filter" aria-label="项目筛选"><option>全部项目</option></select>
         <select data-compact-control="sort" aria-label="排序"><option>名称</option></select>
         <button data-compact-control="pagination" aria-label="下一页">下一页</button>
-        <input role="combobox" aria-label="搜索" />
-        <button role="combobox" className="module-tree-trigger">模块导航</button>
+        <input role="combobox" aria-label="搜索" aria-controls="search-options" aria-expanded="false" />
+        <div role="listbox" id="search-options" hidden />
+        <button role="combobox" className="module-tree-trigger" aria-controls="module-options" aria-expanded="false">模块导航</button>
+        <div role="tree" id="module-options" hidden />
         <select aria-label="普通表单字段"><option>字段值</option></select>
         <table><thead><tr><th aria-sort="none"><button>名称排序</button></th></tr></thead></table>
         <div role="dialog"><select aria-label="对话框字段"><option>字段值</option></select></div>

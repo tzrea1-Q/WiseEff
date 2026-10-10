@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Download,
@@ -747,7 +748,7 @@ export function DtsParameterWorkbench({
         </div>
       ) : null}
 
-      <div className="dts-parameter-workbench__body" role="tabpanel" tabIndex={0}
+      <TabPanel className="dts-parameter-workbench__body" role="tabpanel"
         id={`${resultsId}-${resultsMode}-panel`} aria-labelledby={`${resultsId}-${resultsMode}-tab`}>
         <div
           className="dts-parameter-workbench__navigator dts-workbench-topology"
@@ -846,7 +847,7 @@ export function DtsParameterWorkbench({
             <p className="dts-parameter-workbench__empty" role="status">暂无 DTS 源码。</p>
           )}
         </div>
-      </div>
+      </TabPanel>
       {footerContent ? (
         <div className="dts-parameter-workbench__footer">
           {footerContent}

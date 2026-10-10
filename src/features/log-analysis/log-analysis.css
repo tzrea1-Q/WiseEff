@@ -939,7 +939,7 @@
 
 .topic-line-chart__bar {
   display: grid;
-  grid-template-rows: 18px minmax(48px, 1fr) auto;
+  grid-template-rows: var(--leading-sm) minmax(var(--space-12), 1fr) auto;
   align-items: end;
   justify-items: center;
   min-width: 0;
