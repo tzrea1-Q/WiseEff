@@ -84,6 +84,36 @@ test.describe("M5.11 responsive quality gate", () => {
     seedQualityRuntime();
   });
 
+  test("/log-dashboard has empty quantitative marks and readable trend dates at desktop", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.clock.setFixedTime(new Date("2099-10-10T12:00:00"));
+    const logsLoaded = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/v1/logs" && response.request().method() === "GET" && response.ok()
+    );
+    await page.goto("/log-dashboard");
+    await logsLoaded;
+    await expectUsablePage(page);
+    await settleQualityRoute(page, "/log-dashboard");
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
+
+    const dashboard = page.locator(".log-dashboard-page");
+    await expect(dashboard.getByText("暂无样本，无法判断", { exact: true })).toHaveCount(4);
+    await expect(dashboard.getByText("今日覆盖 0 份日志。", { exact: true })).toBeVisible();
+    await expect(dashboard.getByText(/处理队列稳定|质量表现稳定|无需人工介入|所有日志均进入正常分析流程/)).toHaveCount(0);
+
+    const marks = dashboard.locator(".topic-line-chart__bar i, .topic-stack-bar i, .topic-quality-bands i, .topic-score-meter > span, .topic-capacity-structure > i > span, .topic-capacity-rank i");
+    expect(await marks.evaluateAll((elements) => elements.every((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.width === 0 || bounds.height === 0;
+    }))).toBe(true);
+
+    const dates = dashboard.locator(".topic-line-chart__time");
+    await expect(dates).toHaveCount(7);
+    expect(await dates.evaluateAll((elements) => elements.every((element) =>
+      element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight
+    ))).toBe(true);
+  });
+
   for (const viewport of viewports) {
     for (const route of routes) {
       test(`${route.path} remains usable at ${viewport.name}`, async ({ page }) => {

@@ -191,6 +191,25 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("exposes directory actions as a named group for read-only users", async () => {
+    renderCatalog({ actor: "user" });
+    const actions = await screen.findByRole("group", { name: "目录动作" });
+    expect(within(actions).getByRole("button", { name: "待处理工作" })).toBeInTheDocument();
+    const { default: axe } = await import("axe-core");
+    expect((await axe.run(actions, { runOnly: ["aria-prohibited-attr"] })).violations).toEqual([]);
+  });
+
+  it.each(["desktop", "mobile"] as const)("offers viewing with access guidance in the %s read-only catalog", async (layoutMode) => {
+    renderCatalog({ actor: "user", layoutMode });
+    const user = userEvent.setup();
+    const action = await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(action).toHaveTextContent("查看");
+    await user.click(action);
+    const dialog = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(within(dialog).getAllByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).toHaveLength(1);
+    expect(within(dialog).getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.propertyKey);
+  });
+
   function pagedInventory() {
     const subjects = Array.from({ length: 101 }, (_, index) => ({
       ...registeredSubject,

@@ -22,6 +22,7 @@ export const catalogHistoryOpenLabel = "查看历史";
 export const catalogHistoryCloseLabel = "收起历史";
 export const catalogPendingWorkLabel = "待处理工作";
 export const catalogDetailLabel = "定义详情";
+export const catalogAuthoringAccessHint = "如需编辑参数定义，请联系组织管理员开通参数目录编写权限。";
 export const catalogDetailCloseLabel = "关闭定义详情";
 export const catalogTimelineLabel = "定义时间线";
 export const catalogReleaseLabel = "目录发布";

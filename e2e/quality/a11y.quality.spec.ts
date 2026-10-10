@@ -81,6 +81,45 @@ test.describe("M5.11 accessibility quality gate", () => {
     seedQualityRuntime();
   });
 
+  for (const route of [
+    "/parameter-admin/projects/aurora",
+    "/parameter-admin/projects/aurora/files",
+    "/parameter-admin/projects/aurora/config-sets",
+    "/parameter-admin/projects/aurora/configuration?inspector=file",
+    "/parameter-admin/projects/aurora/configuration?inspector=config-set"
+  ]) {
+    test(`has valid inspector definition lists on ${route}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(route);
+      await settleQualityRoute(page, "/parameter-admin/projects/aurora/configuration");
+      await settleXiaozePopupClosed(page);
+      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
+      if (await inspectorToggle.getAttribute("aria-expanded") !== "true") {
+        await inspectorToggle.click();
+      }
+      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
+      const configSetInspector = route.endsWith("/config-sets") || route.includes("inspector=config-set");
+      await expect(page.getByText(configSetInspector ? "成员管理" : "文件格式", { exact: true }).first()).toBeVisible();
+      const results = await new AxeBuilder({ page }).withRules(["definition-list", "dlitem"]).analyze();
+      expect(results.violations).toEqual([]);
+    });
+  }
+
+  for (const route of ["/log-dashboard", "/parameters/definitions"]) {
+    test(`permits accessible names on groups on ${route}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(route);
+      await settleQualityRoute(page, route);
+      await settleXiaozePopupClosed(page);
+      // The Catalog action group renders only when it has actions, so wait on the definitions table there.
+      await expect(
+        route === "/log-dashboard" ? page.getByRole("group", { name: "今日状态拆分" }) : page.getByRole("table").first()
+      ).toBeVisible();
+      const results = await new AxeBuilder({ page }).withRules(["aria-prohibited-attr"]).analyze();
+      expect(results.violations).toEqual([]);
+    });
+  }
+
   for (const route of coreRoutes) {
     test(`has no WCAG A/AA violations on ${route}`, async ({ page }, testInfo) => {
       await page.goto(route);
