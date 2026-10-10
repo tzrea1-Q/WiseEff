@@ -217,14 +217,16 @@ async function ensureTemplateDatabase(admin: pg.Client, fingerprint: string): Pr
 function currentRunToken(): string {
   // Set by server/testing/globalSetup.ts for vitest runs; the pid fallback covers
   // direct harness use outside the configured suite.
-  return (process.env.WISEEFF_TEST_RUN_TOKEN?.trim() || `p${process.pid}`).replace(
+  const token = (process.env.WISEEFF_TEST_RUN_TOKEN?.trim() || `p${process.pid}`).replace(
     /[^a-z0-9_]/gi,
     ""
   );
+  return /^[pr]\d+$/.test(token) ? BigInt(token.slice(1)).toString(36) : token;
 }
 
 function currentPoolId(): string {
-  return (process.env.VITEST_POOL_ID?.trim() || String(process.pid)).replace(/[^a-z0-9_]/gi, "");
+  const poolId = (process.env.VITEST_POOL_ID?.trim() || String(process.pid)).replace(/[^a-z0-9_]/gi, "");
+  return /^\d+$/.test(poolId) ? BigInt(poolId).toString(36) : poolId;
 }
 
 /**
@@ -305,6 +307,7 @@ export async function teardownTestDatabaseRun(): Promise<void> {
 }
 
 async function cloneTemplateDatabase(name: string): Promise<void> {
+  if (Buffer.byteLength(name) > 63) throw new Error("Test database name exceeds PostgreSQL's 63-byte identifier limit");
   const fingerprint = await migrationsFingerprint();
   const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
   await admin.connect();
@@ -426,7 +429,8 @@ export async function createEphemeralTestDatabase(label: string): Promise<Epheme
   const fingerprint = await migrationsFingerprint();
   const safeLabel = label.replace(/[^a-z0-9]/gi, "").slice(0, 8) || "eph";
   const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
-  const name = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e${safeLabel}`.slice(0, 63 - rand.length - 1) + `_${rand}`;
+  const namePrefix = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e`;
+  const name = `${namePrefix}${safeLabel.slice(0, Math.max(0, 63 - namePrefix.length - rand.length - 1))}_${rand}`;
   await cloneTemplateDatabase(name);
   let dropped = false;
   return {

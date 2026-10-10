@@ -57,11 +57,12 @@ const databaseAvailable = await isTestDatabaseAvailable();
 describe("literal test database namespace isolation", () => {
   it("preserves unique suffixes within PostgreSQL's identifier limit for a maximum-length lane", async () => {
     vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", "t1080ci2_maximum");
+    vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", "r1234567");
     vi.resetModules();
     let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>> | undefined;
     let second: Awaited<ReturnType<typeof createEphemeralTestDatabase>> | undefined;
     try {
-      const { createEphemeralTestDatabase: createMaximumLaneDatabase } = await import("./testDatabase");
+      const { createEphemeralTestDatabase: createMaximumLaneDatabase, teardownTestDatabaseRun } = await import("./testDatabase");
       database = await createMaximumLaneDatabase("longlabel");
       const name = new URL(database.url).pathname.slice(1);
       expect(name.length).toBeLessThanOrEqual(63);
@@ -76,9 +77,40 @@ describe("literal test database namespace isolation", () => {
       } finally {
         await client.end();
       }
+      await teardownTestDatabaseRun();
+      await withAdminClient(async (admin) => {
+        expect((await admin.query("select datname from pg_database where datname = any($1)",
+          [[name, new URL(second!.url).pathname.slice(1)]])).rows).toEqual([]);
+      });
     } finally {
       await second?.drop();
       await database?.drop();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
+  it("keeps maximum-length worker names within PostgreSQL's identifier limit before DDL", async () => {
+    vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", "t1080ci2_maximum");
+    vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", "r1234567");
+    vi.stubEnv("VITEST_POOL_ID", "1234567");
+    vi.resetModules();
+    const original = pg.Client.prototype.query;
+    let workerName: string | undefined;
+    const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, sql: unknown, values?: unknown) {
+      if (typeof sql === "string" && sql.startsWith("create database wiseeff_test_wk_16_t1080ci2_maximum_")) {
+        workerName = sql.split(" ")[2];
+        return Promise.reject(new Error("stop before worker DDL"));
+      }
+      return Reflect.apply(original, this, [sql, values]);
+    } as typeof original);
+    try {
+      const { resolveWorkerDatabaseUrl } = await import("./testDatabase");
+      await expect(resolveWorkerDatabaseUrl()).rejects.toThrow("stop before worker DDL");
+      expect(workerName).toBeDefined();
+      expect(workerName!.length).toBeLessThanOrEqual(63);
+    } finally {
+      spy.mockRestore();
       vi.unstubAllEnvs();
       vi.resetModules();
     }
