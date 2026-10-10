@@ -724,6 +724,8 @@ export function DtsReloadPage({
           <label className="dts-reload-project-select">
             <span>项目</span>
             <select
+              className="compact-filter-control"
+              data-compact-control="filter"
               aria-label="选择项目"
               value={projectId}
               onChange={(event) => session.selectProject(event.target.value)}

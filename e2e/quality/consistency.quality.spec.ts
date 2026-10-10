@@ -5,6 +5,7 @@ import {
   consistencyRoutes,
   installConsistencyReadGuard,
   requireConsistencyMeasurements,
+  requireCompactControlHeights,
   type ConsistencyMeasurements
 } from "./consistency";
 import {
@@ -44,6 +45,7 @@ for (const route of consistencyRoutes) {
           requireConsistencyMeasurements(measurements, route.required, route.path);
           requirePrimaryActionColors(measurements, route.path);
         }).toPass({ timeout: 20_000 });
+        requireCompactControlHeights(measurements, route.path);
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {
           contentType: "application/json",

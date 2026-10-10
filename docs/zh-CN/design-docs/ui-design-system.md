@@ -198,6 +198,7 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 ### 输入与选择
 
 - 最小高度 32px、`--radius-sm`、令牌化边框、按上文规则显示焦点环、可见 label 或 `aria-label`、错误文案经 `aria-describedby` 关联。
+- PC 筛选、排序及分页条数选择器显式使用 `.compact-filter-control`（原生）或 `SelectTrigger size="filter"`（自定义），共享唯一的 32px 边框盒高度（`--space-8`）、边框、圆角、字体和箭头契约。分页操作复用默认 32px `.button` 原语，不使用 `sm` 变体。仅为这些控件标记 `data-compact-control="filter"`、`"sort"` 或 `"pagination"` 以供一致性测量。搜索组合框、模块导航、表头排序按钮、表单字段和对话框保留各自的原语；页面局部规则仅添加布局，不重复定义紧凑控件的几何或外观。
 - 原生 `<select>` 仅在存量界面临时允许;P1 落地样式化 Select 原语后,新界面一律使用。原生日期/文件选择器保留原生弹层但触发器需样式化。
 
 ### 弹窗

@@ -49,7 +49,7 @@ export function AnalysisContextControls({
             onProjectChange(nextValue === ALL_PROJECTS_VALUE ? null : nextValue)
           }
         >
-          <SelectTrigger aria-label="项目范围" size="sm" className="parameter-home__context-select">
+          <SelectTrigger aria-label="项目范围" size="filter" className="parameter-home__context-select">
             <SelectValue placeholder="全部项目" />
           </SelectTrigger>
           <SelectContent>

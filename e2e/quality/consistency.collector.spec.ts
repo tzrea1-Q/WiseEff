@@ -91,14 +91,15 @@ test("stubs Bridge pairing setup without sending a POST to the server", async ({
   expect(blocked).toEqual([]);
 });
 
-test("includes topbar primary actions and table-header filters", async ({ page }) => {
+test("includes topbar primary actions and only marked compact filters", async ({ page }) => {
   await page.setContent(`
     <header><button class="button primary">上传</button></header>
-    <main><div role="table"><div role="rowgroup"><div role="row"><span role="columnheader"><button class="parameters-column-filter__trigger">筛选模块</button></span></div></div></div></main>
+    <main><select data-compact-control="filter" aria-label="项目筛选"><option>项目</option></select><div role="table"><div role="rowgroup"><div role="row"><span role="columnheader"><button class="parameters-column-filter__trigger">筛选模块</button></span></div></div></div></main>
   `);
   const measurements = await page.evaluate(collectConsistencyMeasurements);
   expect(measurements.primaryActions).toHaveLength(1);
   expect(measurements.filterControls).toHaveLength(1);
+  expect(measurements.filterControls[0]).toMatchObject({ dom: "select", compactControl: "filter" });
 });
 
 test("blocks every non-GET request before it reaches the server", async ({ context, page }) => {
@@ -146,10 +147,10 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
       <div class="clip"><div class="data-table-scroll"><div role="table"><div role="row"><div role="cell" class="dts-parameter-workbench-table__actions"><button>编辑</button></div></div></div></div></div>
       <div class="controls">
         <button class="button primary">提交</button>
-        <select aria-label="项目筛选"><option>项目</option></select>
-        <select class="library-sort" aria-label="排序"><option>名称</option></select>
-        <nav class="parameter-catalog__pagination"><button aria-label="下一页">下一页</button></nav>
-        <select hidden><option>隐藏</option></select>
+        <select data-compact-control="filter" aria-label="项目筛选"><option>项目</option></select>
+        <select data-compact-control="sort" class="library-sort" aria-label="排序"><option>名称</option></select>
+        <nav class="parameter-catalog__pagination"><button data-compact-control="pagination" aria-label="下一页">下一页</button></nav>
+        <select data-compact-control="filter" hidden><option>隐藏</option></select>
       </div>
       <div class="tree" role="tree"><div role="treeitem" aria-level="1"><span class="dts-topology-navigator__label">模块</span></div><div role="treeitem" aria-level="2"><span class="dts-topology-navigator__label">参数</span></div></div>
       <ul class="parameter-catalog__tree"><li class="parameter-catalog__tree-node"><span class="parameter-catalog__tree-label">旧模块</span><ul><li class="parameter-catalog__tree-node"><span class="parameter-catalog__tree-label">旧参数</span></li></ul></li></ul>

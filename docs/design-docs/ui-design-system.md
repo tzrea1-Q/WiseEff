@@ -198,6 +198,7 @@ Hover and focus-visible must remain visually distinguishable (do not merge them 
 ### Inputs and selects
 
 - Min-height 32px, `--radius-sm`, tokenized border, focus ring per above, visible label or `aria-label`, error text linked via `aria-describedby`.
+- PC filter and sort selects, plus pagination page-size selects, opt into `.compact-filter-control` (native) or `SelectTrigger size="filter"` (custom): one 32px border-box height (`--space-8`), border, radius, font and chevron contract. Pagination actions use the existing default 32px `.button` primitive, not its `sm` variant. Mark only these controls with `data-compact-control="filter"`, `"sort"` or `"pagination"` for consistency measurements. Search comboboxes, module navigation, table-header sort buttons, form fields and dialogs keep their own primitives; page-local rules may add layout, not redefine compact geometry or appearance.
 - Native `<select>` is a transitional allowance in existing surfaces; new surfaces use the styled Select primitive once P1 lands. Native date/file inputs keep native pickers but styled triggers.
 
 ### Dialogs
