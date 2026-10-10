@@ -37,7 +37,7 @@ import {
   listPortableBridgeReleases,
   pickBridgeReleaseForHost
 } from "../infrastructure/http/bridgeReleaseSelection";
-import { formatDebuggingRuntimeError } from "../application/debugging/debuggingRuntime";
+import { presentError, presentLocalBridgeError } from "../infrastructure/http/presentError";
 
 export type LocalDeviceBridgePanelState = {
   bridges: DeviceBridgeRecord[];
@@ -79,7 +79,7 @@ export function LocalDeviceBridgePanel({
   const [portableReleases, setPortableReleases] = useState<DeviceBridgeReleaseItem[]>([]);
   const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
   const [pairingCodeLoading, setPairingCodeLoading] = useState(false);
-  const [panelError, setPanelError] = useState("");
+  const [panelError, setPanelError] = useState<{ source: "local" | "server"; error: unknown } | null>(null);
   const [connectError, setConnectError] = useState("");
   const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
   const [renamingBridgeId, setRenamingBridgeId] = useState<string | null>(null);
@@ -133,11 +133,19 @@ export function LocalDeviceBridgePanel({
     async (options?: { silent?: boolean }) => {
       if (!options?.silent) {
         setChecking(true);
-        setPanelError("");
+        setPanelError(null);
       }
       try {
         const probe = probeHealth ?? (() => probeLocalBridgeHealthDetailed());
-        const healthProbe = await probe();
+        let healthProbe: LocalBridgeProbeResult;
+        try {
+          healthProbe = await probe();
+        } catch (error) {
+          healthProbe = { health: null, reachability: "offline", error };
+        }
+        if (healthProbe.error != null) {
+          setPanelError({ source: "local", error: healthProbe.error });
+        }
         const nextHealth = healthProbe.health;
         setHealthReachability((current) =>
           current === healthProbe.reachability ? current : healthProbe.reachability
@@ -162,9 +170,9 @@ export function LocalDeviceBridgePanel({
               : await (listBridges ?? (() => listMyBridges()))();
         } catch (error) {
           listingFailed = true;
-          listingError = formatDebuggingRuntimeError(error);
+          listingError = presentError(error, "设备代理列表加载失败，请刷新代理状态后重试。");
           nextBridges = bridgesRef.current;
-          setPanelError(listingError);
+          setPanelError({ source: "server", error });
         }
 
         if (!listingFailed) {
@@ -217,8 +225,8 @@ export function LocalDeviceBridgePanel({
           )
         };
       } catch (error) {
-        setPanelError(formatDebuggingRuntimeError(error));
-        return { connected: false, listingFailed: true, listingError: formatDebuggingRuntimeError(error) };
+        setPanelError({ source: "server", error });
+        return { connected: false, listingFailed: true, listingError: presentError(error, "设备代理状态加载失败，请刷新代理状态后重试。") };
       } finally {
         if (!options?.silent) {
           setChecking(false);
@@ -318,7 +326,7 @@ export function LocalDeviceBridgePanel({
       })
       .catch((error) => {
         if (!cancelled) {
-          setPanelError(formatDebuggingRuntimeError(error));
+          setPanelError({ source: "server", error });
         }
       })
       .finally(() => {
@@ -338,13 +346,13 @@ export function LocalDeviceBridgePanel({
       return;
     }
     setRenamingBridgeId(bridge.id);
-    setPanelError("");
+    setPanelError(null);
     try {
       const updated = await renameBridge(bridge.id, draft);
       setBridges((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setRenameDraftById((current) => ({ ...current, [updated.id]: updated.machineLabel }));
     } catch (error) {
-      setPanelError(formatDebuggingRuntimeError(error));
+      setPanelError({ source: "server", error });
     } finally {
       setRenamingBridgeId(null);
     }
@@ -360,16 +368,21 @@ export function LocalDeviceBridgePanel({
   const confirmRevokeBridge = async (bridge: DeviceBridgeRecord) => {
     setRevokeCandidate(null);
     setRevokingBridgeId(bridge.id);
-    setPanelError("");
+    setPanelError(null);
     try {
       const revoked = await revokeBridge(bridge.id);
       setBridges((current) => current.map((item) => (item.id === revoked.id ? revoked : item)));
     } catch (error) {
-      setPanelError(formatDebuggingRuntimeError(error));
+      setPanelError({ source: "server", error });
     } finally {
       setRevokingBridgeId(null);
     }
   };
+
+  const panelErrorMessage = panelError == null ? "" : panelError.source === "local"
+    ? presentLocalBridgeError(panelError.error)
+    : presentError(panelError.error, "设备代理请求失败，请刷新代理状态后重试。");
+  const panelErrorDetail = panelError?.error instanceof Error ? panelError.error.message : typeof panelError?.error === "string" ? panelError.error : "";
 
   return (
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
@@ -466,9 +479,15 @@ export function LocalDeviceBridgePanel({
           </ul>
         </details>
       ) : null}
-      {panelError ? (
+      {panelError != null ? (
         <div role="alert">
-          <p className="node-row-error">{panelError}</p>
+          <p className="node-row-error">{panelErrorMessage}</p>
+          {panelErrorDetail && panelErrorDetail !== panelErrorMessage ? (
+            <details>
+              <summary>技术详情</summary>
+              <p>{panelErrorDetail}</p>
+            </details>
+          ) : null}
           <button className="button subtle" type="button" disabled={checking} onClick={() => void refreshBridgeState()}>
             刷新代理状态
           </button>
