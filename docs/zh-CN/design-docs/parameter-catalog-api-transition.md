@@ -636,6 +636,12 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 
 公布的 `Sunset` 不得早于 canonical launch 后两个 production releases 或 90 天，取较晚者。任一退出门槛未满足时可延后，不得提前。退役后，同一路由返回 410、`details.reason = "legacy-surface-retired"` 与 successor link。
 
+### v1 参数详情与历史的规范适配器（#1081）
+
+`GET /api/v1/parameters/:parameterId` 返回与 v1 列表相同的规范兼容记录：`id`、`bindingId` 和 `projectParameterBindingId` 均指向 `pbind_` Binding；Definition、有效修订、当前 Project value 以及源 occurrence/file pin 均使用规范身份。不支持的旧元数据明确标记为不可用，记录中的 `history` 仍为 `null`。`GET /api/v1/parameters/:parameterId/history` 返回规范 Binding 变更历史，包括变更前后的 Definition 修订与 Project value ID、值状态、原因、成功审计引用、Catalog Release 和时间戳，不返回旧模型的值载荷。
+
+两个适配器均要求有效且获授权的组织用户，在读取值或历史前校验解析出的 Binding 所属项目范围。同组织跨项目请求返回 `403`；未知或跨组织的规范身份返回 `404`。旧 ID 只能通过精确的 `wiseeff-v1` / `project-parameter-binding` / 项目范围 typed mapping head 解析到同项目的规范 Binding，不按属性、名称、flat value 或旧语义读取推断身份。缺失、归档、阻断、歧义或非 Binding 的映射返回退役合同中的 `410 GONE`，并带有 `Link: </api/v2/catalog>; rel="successor-version"`；已映射的旧 ID 同样执行项目范围校验。保留旧 Binding/修订记录、历史读取器、Archive 和映射，不删除这些审计能力。
+
 ## 消费者迁移矩阵
 
 B1 清理（#1083）删除参数管理后台未使用的 legacy Spec 编辑器及其 fallback。Catalog 是唯一定义管理界面，缺少其端口时也不回退；API 模式的历史身份任务保持只读。B5a（#1087，#1080 的负责人决定 Q3）撤下旧 mock Spec 治理、模块映射/注册身份、组织 overlay 编写、身份/Spec 审核任务处理和旧参数详情，以及它们对应的 handler、port、repository、fixture 和测试闭包。Mock 模式不显示相应控件或明确标为不可用。现有 canonical 等价 Catalog 演示、项目参数值编辑、共享业务分类和结构节点启用保留，不新增 canonical mock 实现。有界 API 读取、历史、拒绝审计及公开 410 契约保持不变。

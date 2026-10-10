@@ -24,7 +24,7 @@ describe("assembled identity task read-window retirement", () => {
   let db: RootDatabase;
   let harness: ReturnType<typeof createRetirementTestHarness>;
   let admin: pg.Client;
-  const databaseName = `t1068_tasks_${process.pid}_${randomUUID().slice(0, 8)}`;
+  const databaseName = `${process.env.WISEEFF_TEST_DATABASE_PREFIX ?? "t1068"}_tasks_${process.pid}_${randomUUID().slice(0, 8)}`;
 
   beforeAll(async () => {
     const url = new URL(process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL!);
