@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { resolveDts, resolveDtsConfigSet } from "../dts";
 import {
@@ -11,7 +11,6 @@ import {
   matchProperty,
   reviewTasksForDecision,
 } from "./matcher";
-import { persistOpenReviewTaskDrafts } from "./repository";
 import { loadSchemaRegistry } from "./schemaLoader";
 import type {
   DriverSchema,
@@ -22,7 +21,6 @@ import type {
   SchemaSource,
   SpecLifecycle,
 } from "./types";
-import type { Queryable } from "../../shared/database/client";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
@@ -528,7 +526,7 @@ describe("cross-tier schema precedence (synthetic registry)", () => {
     });
   });
 
-  it("collectOpenReviewTasks drafts unmatched/ambiguous; persistOpenReviewTaskDrafts inserts rows", async () => {
+  it("collectOpenReviewTasks retains offline unmatched/ambiguous evidence", async () => {
     const linuxA = prop({
       id: "prop:linux:a",
       driverSchemaId: "driver:linux:a",
@@ -587,29 +585,5 @@ describe("cross-tier schema precedence (synthetic registry)", () => {
       ),
     ).toBe(true);
 
-    const inserted: unknown[] = [];
-    const db: Queryable = {
-      query: vi.fn(async (_text, values) => {
-        const row = {
-          id: values?.[0],
-          organization_id: values?.[1],
-          parameter_spec_id: values?.[2],
-          source_evidence: JSON.parse(String(values?.[3])),
-          candidate_schemas: JSON.parse(String(values?.[4])),
-          project_count: values?.[5],
-          status: values?.[6],
-          reviewer_user_id: null,
-          reason: null,
-          created_at: "2026-07-16T00:00:00.000Z",
-          resolved_at: null,
-        };
-        inserted.push(row);
-        return { rows: [row], rowCount: 1 };
-      }),
-    };
-    const persisted = await persistOpenReviewTaskDrafts(db, "org-test", drafts);
-    expect(persisted).toHaveLength(drafts.length);
-    expect(inserted).toHaveLength(drafts.length);
-    expect(db.query).toHaveBeenCalled();
   });
 });

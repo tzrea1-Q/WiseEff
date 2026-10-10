@@ -10,7 +10,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
-import { ingestConfigRevisionInTransaction, type ConfigRevisionIngestOptions } from "../parameter-topology/ingestService";
+import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 import type {
   ConfigRevisionManifest,
@@ -236,7 +236,6 @@ export async function maybeIngestSemanticConfigRevision(
     frozenVersionId: string;
     frozenSource: string;
   },
-  options?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
   producerRoot?: Database,
 ): Promise<void> {
   const membership = await getFileConfigSetMembership(db, {
@@ -332,7 +331,7 @@ export async function maybeIngestSemanticConfigRevision(
     members,
   };
 
-  const revision = await ingestConfigRevisionInTransaction(db, manifest, auth, undefined, options);
+  const revision = await ingestConfigRevisionInTransaction(db, manifest, auth);
   if (producerRoot) {
     await produceDtsReviewEvidenceInTransaction(db,producerRoot,objectStore,auth,revision.id);
   }
@@ -344,7 +343,6 @@ export async function uploadProjectParameterFile(
   auth: AuthContext,
   input: UploadProjectParameterFileInput,
   context: ParameterFileServiceContext = {},
-  ingestOptions?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
   producerRoot?: Database,
 ): Promise<{
   file: ProjectParameterFileDto;
@@ -420,7 +418,7 @@ export async function uploadProjectParameterFile(
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source,
-      }, ingestOptions, producerRoot);
+      }, producerRoot);
     }
     await createParameterFileUploadAudit(
       asAuditTx(tx),

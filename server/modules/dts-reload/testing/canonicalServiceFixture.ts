@@ -416,9 +416,7 @@ export async function createCanonicalServiceFixture(
         },
       ],
     };
-    const revision = await ingestConfigRevision(root, manifest, auth, {
-      legacyProjection: "skip",
-    });
+    const revision = await ingestConfigRevision(root, manifest, auth);
     if (revision.status !== "resolved") {
       throw new Error(
         `service fixture source ingest did not resolve: ${revision.status}`,

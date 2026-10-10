@@ -200,7 +200,7 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
     }
   });
 
-  it("retained same-compatible different-locator overrides stay distinct across re-ingest", async () => {
+  it("retains historical locator overrides without applying them on re-ingest", async () => {
     const fileId = "file-twin-scope";
     const versionId = "fv-twin-scope-1";
     await insertPinnedMember(db!, {
@@ -219,30 +219,20 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
     );
     expect(revision1.status).toBe("resolved");
 
-    const tasks = await db!.query<{
-      id: string;
-      project_id: string | null;
-      config_revision_id: string | null;
-      property_occurrence_id: string | null;
-      blocker_scope: string;
-      source_evidence: Record<string, unknown>;
-    }>(
-      `
-      select id, project_id, config_revision_id, property_occurrence_id, blocker_scope, source_evidence
-      from parameter_spec_review_tasks
-      where organization_id = $1
-        and status = 'open'
-        and source_evidence->>'propertyKey' = $2
-      order by source_evidence->>'nodeLocator' asc
-      `,
-      [ORG_ID, PROPERTY_KEY],
+    const occurrences = await db!.query<{ id: string; node_locator: string }>(
+      `select property.id,node.node_path as node_locator from dts_property_occurrences property
+       join dts_node_occurrences node on node.id=property.node_occurrence_id
+       where property.config_revision_id=$1 and property.property_name=$2 order by node.node_path`,
+      [revision1.id, PROPERTY_KEY],
     );
-    expect(tasks.rows).toHaveLength(2);
-    for (const row of tasks.rows) {
-      expect(row.project_id).toBe(PROJECT_A);
-      expect(row.config_revision_id).toBe(revision1.id);
-      expect(row.property_occurrence_id).toBeTruthy();
-      expect(row.blocker_scope).toBe("revision");
+    expect(occurrences.rows).toHaveLength(2);
+    const tasks = { rows: occurrences.rows.map((row) => ({ id: randomUUID(), source_evidence: { nodeLocator: row.node_locator } })) };
+    for (const [index, occurrence] of occurrences.rows.entries()) {
+      await db!.query(
+        `insert into parameter_spec_review_tasks(id,organization_id,project_id,config_revision_id,property_occurrence_id,blocker_scope,source_evidence,candidate_schemas,project_count,status,parameter_spec_id,reviewer_user_id,resolved_at)
+         values ($1,$2,$3,$4,$5,'revision',$6::jsonb,'[]'::jsonb,1,'resolved',$7,$8,now())`,
+        [tasks.rows[index]!.id, ORG_ID, PROJECT_A, revision1.id, occurrence.id, JSON.stringify({ nodeLocator: occurrence.node_locator, propertyKey: PROPERTY_KEY }), [SPEC_A, SPEC_B][index], USER_ID],
+      );
     }
 
     const [taskA, taskB] = tasks.rows;
@@ -259,11 +249,6 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
         ) values ($1,$2,$3,$4,$5,$6,$7,'resolved',$8,$9,'Historical matcher fixture',$10)`,
         [randomUUID(), ORG_ID, PROJECT_A, compatibleFingerprint(["wiseeff,twin-device"]), locator,
           nodeLocatorFingerprint(locator), PROPERTY_KEY, specId, task.id, USER_ID],
-      );
-      await db!.query(
-        `update parameter_spec_review_tasks set status = 'resolved', parameter_spec_id = $2,
-          reviewer_user_id = $3, resolved_at = now() where id = $1`,
-        [task.id, specId, USER_ID],
       );
     }
 
@@ -321,12 +306,7 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
       `,
       [revision2.id],
     );
-    expect(bindings.rows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ node_locator: locatorA, parameter_spec_id: SPEC_A }),
-        expect.objectContaining({ node_locator: locatorB, parameter_spec_id: SPEC_B }),
-      ]),
-    );
+    expect(bindings.rows).toEqual([]);
 
     const openMysteryOnRevision2 = await db!.query<{ count: string }>(
       `

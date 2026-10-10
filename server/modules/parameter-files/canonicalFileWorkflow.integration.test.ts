@@ -1001,7 +1001,7 @@ describe("#906 canonical DTS candidate workflow", () => {
       overlayOrder: [],
       members: [{ fileId, fileVersionId: versionId, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: source }]
     };
-    const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, admin);
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
     if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
     await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, {

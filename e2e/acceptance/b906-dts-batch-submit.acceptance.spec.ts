@@ -78,7 +78,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
           configSetId: setId, entryFile: fileName, includeSearchPaths: ["."], overlayOrder: [],
           members: [{ fileId: file.item.id, fileVersionId: file.version.id, fileName,
             sourceName: fileName, role: "base", sortOrder: 0, content: source }] };
-        const revision = await ingestConfigRevision(db, manifest, admin, { legacyProjection: "skip" });
+        const revision = await ingestConfigRevision(db, manifest, admin);
         await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog,
           { organizationId: "org-chargelab", projectId: "aurora", configSetId: setId, configRevisionId: revision.id }));
         const candidate = await request.post(api("/api/v1/projects/aurora/parameter-file-candidates"), {

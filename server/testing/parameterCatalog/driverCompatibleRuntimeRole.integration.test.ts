@@ -60,7 +60,7 @@ describe("#897 discovery on the application SQL LOGIN", () => {
     const revision = await ingestConfigRevision(db,{ organizationId: ORG,projectId: PROJECT,
       configSetId: SET,entryFile: "board.dts",includeSearchPaths: [],overlayOrder: [],
       members: [{ fileId: FILE,fileVersionId: VERSION,fileName: "board.dts",sourceName: "board.dts",
-        content,role: "base",sortOrder: 0 }] },admin,{ legacyProjection: "skip" });
+        content,role: "base",sortOrder: 0 }] },admin);
     expect(revision.status).toBe("resolved");
     const effect = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string;
       propertyOccurrenceId: string }>(

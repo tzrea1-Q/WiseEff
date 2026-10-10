@@ -140,7 +140,7 @@ describe("canonical DTS initialization source", () => {
         { fileId: included.file.id, fileVersionId: included.version.id, fileName: "base.dtsi", sourceName: "base.dtsi", role: "include", sortOrder: 1, content: INCLUDED },
       ],
     };
-    const revision = await ingestConfigRevision(db, manifest, auth, { legacyProjection: "skip" });
+    const revision = await ingestConfigRevision(db, manifest, auth);
     expect(revision.status).toBe("resolved");
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
