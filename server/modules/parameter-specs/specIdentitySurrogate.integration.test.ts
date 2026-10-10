@@ -8,7 +8,6 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import { upsertProvisionalSurfacePropertySpec } from "../parameter-topology/provisionalSurfaceBinding";
 import { findParameterSpecByIdentity } from "./repository";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
-import { createOrgManualParameterSpec } from "./reviewApply";
 
 const ORG_ID = "org-identity-surrogate";
 const SUBJECT_ID = "asub:driver-registration:identity-surrogate-subject";
@@ -277,22 +276,5 @@ describe.skipIf(!databaseAvailable)("parameter spec identity surrogate lookup (A
         effectiveDocumentation: "surrogate version row",
       },
     ]);
-  });
-
-  it("createOrgManualParameterSpec reuses a surrogate identity row", async () => {
-    await seedSurrogateDefinition(db!);
-    const result = await createOrgManualParameterSpec(db!, {
-      organizationId: ORG_ID,
-      propertyKey: PROPERTY_KEY,
-      attributionSubjectId: SUBJECT_ID,
-      sourceReviewTaskId: "task-identity-1",
-      propertyOccurrenceId: "occ-identity-1",
-      configRevisionId: "rev-identity-1",
-      reviewerUserId: "user-identity-1",
-      occurrenceAstJson: { type: "integer", value: 3 },
-      occurrenceRawText: "<3>",
-    });
-    expect(result.created).toBe(false);
-    expect(result.parameterSpecId).toBe(SURROGATE_SPEC_ID);
   });
 });

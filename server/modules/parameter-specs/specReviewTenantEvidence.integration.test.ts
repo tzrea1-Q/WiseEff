@@ -1,14 +1,14 @@
 /**
- * Round 5 P1-2: cross-tenant review evidence integrity (resolve + 0055 backfill).
+ * Round 5 P1-2: retained cross-tenant review evidence migration integrity.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
-import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import {
   migrationsDir,
@@ -16,11 +16,9 @@ import {
 } from "../../testing/tempDatabase";
 import type { Database } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
-import { ApiError } from "../../shared/http/errors";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import { backfillReviewTaskScopeColumns } from "./repository";
-import { resolveSpecReviewTask } from "./service";
 
 const ORG_A = "org-tenant-evidence-a";
 const ORG_B = "org-tenant-evidence-b";
@@ -316,172 +314,6 @@ async function insertCrossTenantTask(
   );
   return taskId;
 }
-
-async function pollutionCounts(db: InMemoryTestDatabase) {
-  const [bindings, overrides, decisions, audits] = await Promise.all([
-    db.query<{ count: string }>(`select count(*)::text as count from project_parameter_bindings`),
-    db.query<{ count: string }>(
-      `select count(*)::text as count from parameter_spec_matcher_overrides`,
-    ),
-    db.query<{ count: string }>(
-      `select count(*)::text as count from dts_property_occurrence_spec_decisions`,
-    ),
-    db.query<{ count: string }>(
-      `select count(*)::text as count from audit_events where action like 'spec-review-%'`,
-    ),
-  ]);
-  return {
-    bindings: Number(bindings.rows[0]?.count ?? 0),
-    overrides: Number(overrides.rows[0]?.count ?? 0),
-    decisions: Number(decisions.rows[0]?.count ?? 0),
-    audits: Number(audits.rows[0]?.count ?? 0),
-  };
-}
-
-describe.skipIf(!databaseAvailable)("spec review tenant evidence integration", () => {
-  let db: InMemoryTestDatabase | null = null;
-  let orgA: TopologyFixture;
-  let orgB: TopologyFixture;
-
-  beforeEach(async () => {
-    db = await createInMemoryTestDatabase();
-    await seedGraph(db);
-    orgA = await ingestOrgARevision(db);
-    orgB = await ingestOrgBRevision(db);
-  });
-
-  afterEach(async () => {
-    if (db) {
-      await db.rollback();
-      db = null;
-    }
-  });
-
-  async function expectResolveBlocked(taskId: string) {
-    const before = await pollutionCounts(db!);
-    await expect(
-      resolveSpecReviewTask(db!, makeAuth(ORG_A), {
-        taskId,
-        decision: "resolved",
-        parameterSpecId: SPEC_A,
-        reason: "cross tenant attempt",
-      }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 } satisfies Partial<ApiError>);
-
-    const task = await db!.query<{ status: string }>(
-      `select status from parameter_spec_review_tasks where id = $1`,
-      [taskId],
-    );
-    expect(task.rows[0]?.status).toBe("open");
-
-    const after = await pollutionCounts(db!);
-    expect(after).toEqual(before);
-  }
-
-  function baseEvidence(overrides: Partial<Record<string, string>> = {}) {
-    return {
-      organizationId: ORG_A,
-      projectId: PROJECT_A,
-      configRevisionId: orgA.revisionId,
-      propertyOccurrenceId: orgA.propertyOccurrenceId,
-      logicalNodeId: orgA.logicalNodeId,
-      propertyKey: PROPERTY_KEY,
-      nodeLocator: orgA.nodeLocator,
-      compatible: orgA.compatible,
-      ...overrides,
-    };
-  }
-
-  it("rejects org A task resolving with org B project", async () => {
-    const taskId = await insertCrossTenantTask(db!, baseEvidence({ projectId: PROJECT_B }));
-    await expectResolveBlocked(taskId);
-  });
-
-  it("rejects org A task resolving with org B revision", async () => {
-    const taskId = await insertCrossTenantTask(
-      db!,
-      baseEvidence({ configRevisionId: orgB.revisionId }),
-    );
-    await expectResolveBlocked(taskId);
-  });
-
-  it("rejects org A task resolving with org B property occurrence", async () => {
-    const taskId = await insertCrossTenantTask(
-      db!,
-      baseEvidence({ propertyOccurrenceId: orgB.propertyOccurrenceId }),
-    );
-    await expectResolveBlocked(taskId);
-  });
-
-  it("rejects org A task resolving with org B logical node", async () => {
-    const taskId = await insertCrossTenantTask(
-      db!,
-      baseEvidence({ logicalNodeId: orgB.logicalNodeId }),
-    );
-    await expectResolveBlocked(taskId);
-  });
-
-  it("rejects inconsistent occurrence/revision combo within org A", async () => {
-    const secondRevisionId = randomUUID();
-    await db!.query(
-      `
-      insert into dts_config_revisions (
-        id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id
-      ) values ($1, $2, $3, $4, 99, 'resolved', $5)
-      `,
-      [secondRevisionId, ORG_A, PROJECT_A, CONFIG_SET_A, USER_ID],
-    );
-    const taskId = await insertCrossTenantTask(
-      db!,
-      baseEvidence({ configRevisionId: secondRevisionId }),
-    );
-    await expectResolveBlocked(taskId);
-  });
-
-  it("rejects dangling evidence ids without polluting bindings/overrides/decisions/audit", async () => {
-    const taskId = await insertCrossTenantTask(
-      db!,
-      baseEvidence({
-        configRevisionId: randomUUID(),
-        propertyOccurrenceId: randomUUID(),
-        logicalNodeId: randomUUID(),
-      }),
-    );
-    await expectResolveBlocked(taskId);
-  });
-
-  it("does not reuse bindings across organizations for the same project/logical-node/spec key", async () => {
-    const orgBBindingBefore = await db!.query<{ count: string }>(
-      `select count(*)::text as count from project_parameter_bindings where organization_id = $1`,
-      [ORG_B],
-    );
-    expect(Number(orgBBindingBefore.rows[0]?.count)).toBe(0);
-
-    const openTask = await db!.query<{ id: string }>(
-      `
-      select id from parameter_spec_review_tasks
-      where organization_id = $1
-        and status = 'open'
-        and source_evidence->>'propertyKey' = $2
-      limit 1
-      `,
-      [ORG_A, PROPERTY_KEY],
-    );
-    await resolveSpecReviewTask(db!, makeAuth(ORG_A), {
-      taskId: openTask.rows[0]!.id,
-      decision: "resolved",
-      parameterSpecId: SPEC_A,
-      reason: "valid resolve",
-    });
-
-    const orgABindings = await db!.query<{ organization_id: string }>(
-      `select organization_id from project_parameter_bindings where parameter_spec_id = $1`,
-      [SPEC_A],
-    );
-    expect(orgABindings.rows.every((row) => row.organization_id === ORG_A)).toBe(true);
-    expect(Number(orgBBindingBefore.rows[0]?.count)).toBe(0);
-  });
-});
 
 describe.skipIf(!databaseAvailable)("0055/0057 review task scope backfill", () => {
   it(

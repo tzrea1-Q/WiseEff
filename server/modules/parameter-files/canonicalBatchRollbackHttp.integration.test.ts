@@ -226,6 +226,26 @@ describe("#906 canonical manual sync HTTP preparation", () => {
       route(f, auth), `${reviewPath(submitted.id)}/review`, { method: "POST",
         body: JSON.stringify({ decision, batchProofDigest: submitted.batchProofDigest }) });
 
+  it.each(["json", "dts"] as const)("refuses %s missing exact second target instead of matching its property name", async (format) => {
+    const f = await fixture(format, false);
+    const initial = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });
+    const initialObjects = await objects(f.directory);
+    const bytes = Buffer.from(format === "json"
+      ? f.before.replace('"other"', '"replacement"')
+      : f.before.replace("backup: device@1", "replacement: device@2"));
+    const denied = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db: f.db, objectStore: f.storage }), path(f), {
+        method: "POST", headers: { "X-WiseEff-User": ADMIN, "X-Request-Id": `1084-${format}-missing-target` },
+        body: JSON.stringify(body(f, bytes)),
+      });
+    expect(denied.status, JSON.stringify(denied.body)).toBe(409);
+    expect(denied.body.error.code).toBe("CONFLICT");
+    expect(initial.bindings).toHaveLength(2);
+    expect(initial.values.length).toBeGreaterThan(0);
+    expect(await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT })).toEqual(initial);
+    expect(await objects(f.directory)).toEqual(initialObjects);
+  }, 120_000);
+
   it.each(["json", "dts"] as const)("keeps governed %s U→P and unmarked same-byte L from weaker replay", async (format) => {
     const f = await fixture(format, false, true);
     const bytes = Buffer.from(format === "json" ? f.after.replace('50', '51') : f.after.replace('<50>', '<51>'));

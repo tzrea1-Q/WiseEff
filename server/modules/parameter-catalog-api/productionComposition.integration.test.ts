@@ -23,7 +23,9 @@ import {
   A_RELEASE_ID,
   SUBJECT_ID,
   X_DEFINITION_ID,
+  X_REVISION_1,
   X_REVISION_2,
+  Y_REVISION_1,
   installPublishedCatalogChain,
 } from "../catalog-kernel/runtime/catalogChain.fixture";
 import { createEvidenceIngest } from "../parameter-governance/evidence";
@@ -112,6 +114,17 @@ describe("OP-06 production Catalog composition", () => {
       headers: response.headers,
       body: text ? (JSON.parse(text) as unknown) : undefined,
     };
+  };
+
+  const catalogStructure = async () => {
+    const pool = getRootPostgresPool(root);
+    if (!pool) throw new Error("missing pool");
+    return (await pool.query(`select
+      (select jsonb_agg(subject order by id) from parameter_catalog.catalog_subjects subject) as subjects,
+      (select jsonb_agg(definition order by id) from parameter_catalog.parameter_definitions definition) as definitions,
+      (select jsonb_agg(revision order by id) from parameter_catalog.definition_revisions revision) as revisions,
+      (select jsonb_agg(head order by release_id, definition_id) from parameter_catalog.catalog_release_definition_heads head) as heads,
+      (select jsonb_agg(state) from parameter_catalog.catalog_state state) as state`)).rows;
   };
 
   beforeAll(async () => {
@@ -443,6 +456,129 @@ describe("OP-06 production Catalog composition", () => {
       `select count(*)::text as heads from parameter_catalog.catalog_release_definition_heads`,
     );
     expect(after.rows[0]?.heads).toBe(before.rows[0]?.heads);
+  });
+
+  it.each([
+    ["missing revision", { definitionId: X_DEFINITION_ID }],
+    ["missing definition", { definitionRevisionId: X_REVISION_2 }],
+    ["stale revision", { definitionId: X_DEFINITION_ID, definitionRevisionId: X_REVISION_1 }],
+    ["foreign definition revision", { definitionId: X_DEFINITION_ID, definitionRevisionId: Y_REVISION_1 }],
+    ["unknown definition", { definitionId: "pdef_missing", definitionRevisionId: X_REVISION_2 }],
+    ["unknown revision", { definitionId: X_DEFINITION_ID, definitionRevisionId: "drev_missing" }],
+  ] as const)("refuses a proposal with %s without staging governance or Catalog rows", async (_kind, base) => {
+    const before = await catalogStructure();
+    const proposals = await json("GET", "/api/v2/catalog/definition-proposals");
+    expect(proposals.status).toBe(200);
+    const denied = await json("POST", "/api/v2/catalog/definition-proposals", {
+      headers: {
+        [CATALOG_RELEASE_HEADER]: currentReleaseId,
+        [CATALOG_IDEMPOTENCY_HEADER]: `invalid-base:${randomUUID()}`,
+      },
+      body: {
+        base: { catalogReleaseId: currentReleaseId, ...base },
+        requestedChange: { kind: "revise-definition" },
+        reason: "Exact canonical definition and release head are required",
+      },
+    });
+    expect(denied.status, JSON.stringify(denied.body)).toBe(400);
+    expect((await json("GET", "/api/v2/catalog/definition-proposals")).body).toEqual(proposals.body);
+    expect(await catalogStructure()).toEqual(before);
+  });
+
+  it.each([
+    { kind: "create-definition", subjectId: SUBJECT_ID, propertyKey: "compatible" },
+    { kind: "revise-definition", subjectId: "csub_unpublished", propertyKey: "renamed_iin_max" },
+  ])("keeps $kind identity and structural edits proposal-only through acceptance", async (requestedChange) => {
+    const before = await catalogStructure();
+    const created = await json("POST", "/api/v2/catalog/definition-proposals", {
+      headers: {
+        [CATALOG_RELEASE_HEADER]: currentReleaseId,
+        [CATALOG_IDEMPOTENCY_HEADER]: `identity-proposal:${randomUUID()}`,
+      },
+      body: {
+        base: {
+          catalogReleaseId: currentReleaseId,
+          definitionId: X_DEFINITION_ID,
+          definitionRevisionId: X_REVISION_2,
+        },
+        requestedChange,
+        reason: "A proposal is not a Catalog publication or identity correction",
+      },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const draft = catalogProposalResponseSchema.parse(created.body);
+    expect(draft.item.requestedChange).toEqual(requestedChange);
+    expect(await catalogStructure()).toEqual(before);
+    const submitted = await json("POST", `/api/v2/catalog/definition-proposals/${draft.item.id}/submit`, {
+      headers: {
+        [CATALOG_RELEASE_HEADER]: currentReleaseId,
+        [CATALOG_IDEMPOTENCY_HEADER]: `identity-submit:${randomUUID()}`,
+        [CATALOG_IF_MATCH_HEADER]: created.headers.get("etag") ?? "",
+      },
+      body: { reason: "Independent publication must validate this proposal" },
+    });
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(200);
+    expect(await catalogStructure()).toEqual(before);
+    const accepted = await json("POST", `/api/v2/catalog/definition-proposals/${draft.item.id}/accept`, {
+      token: "token-platform-a",
+      headers: {
+        [CATALOG_RELEASE_HEADER]: currentReleaseId,
+        [CATALOG_IDEMPOTENCY_HEADER]: `identity-accept:${randomUUID()}`,
+        [CATALOG_IF_MATCH_HEADER]: submitted.headers.get("etag") ?? "",
+      },
+      body: { repositoryReference: "repo://wiseeff-catalog/identity-review.yaml" },
+    });
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+    expect(catalogProposalResponseSchema.parse(accepted.body).item).toMatchObject({
+      id: draft.item.id, status: "accepted", requestedChange,
+      publicationIntentRef: expect.any(String),
+    });
+    expect(await catalogStructure()).toEqual(before);
+  });
+
+  it("hides another tenant's proposal and refuses organization-admin Catalog acceptance", async () => {
+    const created = await json("POST", "/api/v2/catalog/definition-proposals", {
+      headers: {
+        [CATALOG_RELEASE_HEADER]: currentReleaseId,
+        [CATALOG_IDEMPOTENCY_HEADER]: `tenant-proposal:${randomUUID()}`,
+      },
+      body: {
+        base: {
+          catalogReleaseId: currentReleaseId,
+          definitionId: X_DEFINITION_ID,
+          definitionRevisionId: X_REVISION_2,
+        },
+        requestedChange: { kind: "revise-definition" },
+        reason: "Tenant-scoped proposal",
+      },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const draft = catalogProposalResponseSchema.parse(created.body);
+    const path = `/api/v2/catalog/definition-proposals/${draft.item.id}`;
+    const owned = catalogProposalResponseSchema.parse((await json("GET", path)).body).item;
+    const before = await catalogStructure();
+    expect((await json("GET", path, { token: "token-admin-b" })).status).toBe(404);
+    expect(catalogProposalListResponseSchema.parse((await json("GET", "/api/v2/catalog/definition-proposals", {
+      token: "token-admin-b",
+    })).body).items.some((item) => item.id === draft.item.id)).toBe(false);
+    for (const [action, token, status] of [
+      ["submit", "token-admin-b", 404],
+      ["accept", "token-admin-a", 403],
+    ] as const) {
+      const denied = await json("POST", `${path}/${action}`, {
+        token,
+        headers: {
+          [CATALOG_RELEASE_HEADER]: currentReleaseId,
+          [CATALOG_IDEMPOTENCY_HEADER]: `tenant-${action}:${randomUUID()}`,
+          [CATALOG_IF_MATCH_HEADER]: created.headers.get("etag") ?? "",
+        },
+        body: action === "submit" ? { reason: "Wrong tenant" }
+          : { repositoryReference: "repo://wiseeff-catalog/forbidden.yaml" },
+      });
+      expect(denied.status, JSON.stringify(denied.body)).toBe(status);
+      expect(catalogProposalResponseSchema.parse((await json("GET", path)).body).item).toEqual(owned);
+      expect(await catalogStructure()).toEqual(before);
+    }
   });
 
   it("hides cross-organization writes and refuses Agent governance writes", async () => {
