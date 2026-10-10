@@ -905,7 +905,7 @@
 
 .topic-trend-note {
   margin: 6px 0 0;
-  color: #8a94a6;
+  color: var(--text-muted);
   font-size: 11.5px;
   line-height: 1.4;
 }
@@ -961,7 +961,7 @@
 
 .topic-line-chart__bar {
   display: grid;
-  grid-template-rows: 18px minmax(48px, 1fr) 16px;
+  grid-template-rows: 18px minmax(48px, 1fr) auto;
   align-items: end;
   justify-items: center;
   min-width: 0;
@@ -986,15 +986,16 @@
 }
 
 .topic-line-chart__time {
+  grid-row: 3;
   align-self: end;
   max-width: 100%;
-  overflow: hidden;
   color: var(--text-muted);
   font-size: var(--text-xs);
   font-weight: 700;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .topic-segmented-summary {

@@ -52,6 +52,27 @@ afterEach(() => {
 });
 
 describe("LogDashboardPage", () => {
+  it.each([
+    { name: "no logs", logs: [], archivedLogIds: [] },
+    { name: "only archived logs", logs: [completedApiLog], archivedLogIds: [completedApiLog.id] },
+    { name: "only historical logs", logs: [{ ...completedApiLog, updatedAtIso: "2026-05-20T02:00:00.000Z" }], archivedLogIds: [] }
+  ])("does not infer healthy verdicts from $name", ({ logs, archivedLogIds }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+
+    render(<App initialAppState={{ ...userState, logs, archivedLogIds }} />);
+
+    for (const name of ["今日分析", "平均置信度", "失败文件", "吞吐峰值"]) {
+      expect(within(screen.getByRole("article", { name })).getAllByText("暂无样本，无法判断").length).toBeGreaterThan(0);
+    }
+    for (const verdict of ["处理队列稳定", "质量表现稳定", "无需人工介入", "所有日志均进入正常分析流程。", "当前队列正常", "解析流程未发现阻断项"]) {
+      expect(screen.queryByText(verdict)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText(/今日覆盖 [1-9]/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "今日分析" })).getByText("今日覆盖 0 份日志。")).toBeInTheDocument();
+  });
+
   it("renders a senior UX dashboard with four decision-oriented modules", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-14T12:00:00+08:00"));
@@ -69,6 +90,9 @@ describe("LogDashboardPage", () => {
     expect(screen.getByRole("article", { name: "平均置信度" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "失败文件" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "吞吐峰值" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "今日状态拆分" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "置信度复核队列" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "文件容量排行" })).toBeInTheDocument();
     expect(screen.getByText("处理节奏")).toBeInTheDocument();
     expect(screen.getByText("完成质量")).toBeInTheDocument();
     expect(screen.getByText("失败影响")).toBeInTheDocument();
@@ -122,6 +146,10 @@ describe("LogDashboardPage", () => {
     );
 
     expect(screen.getByText("处理队列稳定")).toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "今日分析" })).getByText(/今日覆盖 1 份日志/)).toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "平均置信度" })).getByText("质量表现稳定")).toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "失败文件" })).getByText("所有日志均进入正常分析流程。")).toBeInTheDocument();
+    expect(screen.queryByText("暂无样本，无法判断")).not.toBeInTheDocument();
     expect(screen.queryByText(/条失败待处理/)).not.toBeInTheDocument();
   });
 

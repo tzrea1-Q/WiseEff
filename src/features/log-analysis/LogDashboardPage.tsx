@@ -23,11 +23,12 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
   const failedLogs = todayLogs.filter((log) => log.status === "Failed");
   const lowConfidenceLogs = todayLogs.filter((log) => log.status !== "Failed" && log.confidence > 0 && log.confidence < 90);
   const confidenceLogs = todayLogs.filter((log) => log.status !== "Failed" && log.confidence > 0);
-  const totalCount = Math.max(todayLogs.length, 1);
+  const totalCount = todayLogs.length;
+  const noSampleVerdict = "暂无样本，无法判断";
   const statusSegments = [
-    { label: "完成", value: completeCount, percent: Math.round((completeCount / totalCount) * 100), className: "is-complete" },
-    { label: "处理中", value: processingCount, percent: Math.round((processingCount / totalCount) * 100), className: "is-processing" },
-    { label: "失败", value: failedLogs.length, percent: Math.round((failedLogs.length / totalCount) * 100), className: "is-failed" }
+    { label: "完成", value: completeCount, percent: Math.round((completeCount / Math.max(totalCount, 1)) * 100), className: "is-complete" },
+    { label: "处理中", value: processingCount, percent: Math.round((processingCount / Math.max(totalCount, 1)) * 100), className: "is-processing" },
+    { label: "失败", value: failedLogs.length, percent: Math.round((failedLogs.length / Math.max(totalCount, 1)) * 100), className: "is-failed" }
   ];
   const qualityBands = [
     { label: "高置信", value: confidenceLogs.filter((log) => log.confidence >= 90).length, className: "is-strong" },
@@ -54,23 +55,25 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
     (log) => log.status === "Processing" && Date.now() - Date.parse(log.updatedAtIso) > 10 * 60_000
   );
   const queueJudgement =
-    failedLogs.length > 0
-      ? {
-          tone: "risk" as const,
-          headline: `${failedLogs.length} 条失败待处理`,
-          detail: `今日覆盖 ${totalCount} 份日志，其中 ${failedLogs.length} 份解析失败，请优先处理失败记录。`
-        }
-      : stalledProcessingLogs.length > 0
+    totalCount === 0
+      ? { tone: "empty" as const, headline: noSampleVerdict, detail: "今日覆盖 0 份日志。" }
+      : failedLogs.length > 0
         ? {
             tone: "risk" as const,
-            headline: `${stalledProcessingLogs.length} 条分析滞留`,
-            detail: `今日覆盖 ${totalCount} 份日志，${stalledProcessingLogs.length} 份分析超过 10 分钟未完成。`
+            headline: `${failedLogs.length} 条失败待处理`,
+            detail: `今日覆盖 ${totalCount} 份日志，其中 ${failedLogs.length} 份解析失败，请优先处理失败记录。`
           }
-        : {
-            tone: "ok" as const,
-            headline: "处理队列稳定",
-            detail: `今日覆盖 ${totalCount} 份日志，最新样本 ${compactLogLabel(latestLog)} 已进入看板监控。`
-          };
+        : stalledProcessingLogs.length > 0
+          ? {
+              tone: "risk" as const,
+              headline: `${stalledProcessingLogs.length} 条分析滞留`,
+              detail: `今日覆盖 ${totalCount} 份日志，${stalledProcessingLogs.length} 份分析超过 10 分钟未完成。`
+            }
+          : {
+              tone: "ok" as const,
+              headline: "处理队列稳定",
+              detail: `今日覆盖 ${totalCount} 份日志，最新样本 ${compactLogLabel(latestLog)} 已进入看板监控。`
+            };
   const topActions = Array.from(
     new Set(
       [...failedLogs, ...lowConfidenceLogs, ...sortedByUpdate]
@@ -105,8 +108,8 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
             </div>
           </div>
 
-          <div className={`topic-decision-panel${queueJudgement.tone === "risk" ? " is-risk" : ""}`}>
-            {queueJudgement.tone === "risk" ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+          <div className={`topic-decision-panel${queueJudgement.tone === "risk" ? " is-risk" : queueJudgement.tone === "empty" ? " is-capacity" : ""}`}>
+            {queueJudgement.tone === "risk" ? <AlertTriangle size={18} /> : queueJudgement.tone === "empty" ? <Info size={18} /> : <CheckCircle2 size={18} />}
             <div>
               <span>关键判断</span>
               <strong>{queueJudgement.headline}</strong>
@@ -124,7 +127,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                 {metrics.todayCount.sparkline.map((value, index) => (
                   <span className="topic-line-chart__bar" key={`${value}-${index}`}>
                     <strong className="topic-line-chart__value">{value}</strong>
-                    <i style={{ height: `${Math.max(8, value * 10)}px` }} />
+                    {value > 0 ? <i style={{ height: `${Math.max(8, value * 10)}px` }} /> : null}
                     <small className="topic-line-chart__time">{trendDateLabels[index] ?? ""}</small>
                   </span>
                 ))}
@@ -141,10 +144,10 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
               </div>
               <div className="topic-stack-bar" aria-hidden="true">
                 {statusSegments.map((item) => (
-                  <i key={item.label} className={item.className} style={{ width: `${Math.max(8, item.percent)}%` }} />
+                  item.value > 0 ? <i key={item.label} className={item.className} style={{ width: `${Math.max(8, item.percent)}%` }} /> : null
                 ))}
               </div>
-              <div className="topic-segmented-summary" aria-label="今日状态拆分">
+              <div className="topic-segmented-summary" role="group" aria-label="今日状态拆分">
                 {statusSegments.map((item) => (
                   <div key={item.label}>
                     <span>{item.label}</span>
@@ -169,12 +172,12 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
             </div>
           </div>
 
-          <div className="topic-decision-panel is-quality">
+          <div className={`topic-decision-panel ${totalCount === 0 ? "is-capacity" : "is-quality"}`}>
             <Info size={18} />
             <div>
               <span>关键判断</span>
-              <strong>{lowConfidenceLogs.length > 0 ? "存在复核样本" : "质量表现稳定"}</strong>
-              <p>平均置信度 {metrics.avgConfidence.value}%，最低样本 {qualityFloor}%，较昨日 {metrics.avgConfidence.trendPct >= 0 ? "+" : ""}{metrics.avgConfidence.trendPct} pts。</p>
+              <strong>{totalCount === 0 ? noSampleVerdict : lowConfidenceLogs.length > 0 ? "存在复核样本" : "质量表现稳定"}</strong>
+              <p>{totalCount === 0 ? "今日暂无质量样本。" : <>平均置信度 {metrics.avgConfidence.value}%，最低样本 {qualityFloor}%，较昨日 {metrics.avgConfidence.trendPct >= 0 ? "+" : ""}{metrics.avgConfidence.trendPct} pts。</>}</p>
             </div>
           </div>
 
@@ -193,7 +196,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                   {qualityBands.map((band) => (
                     <div key={band.label}>
                       <span>{band.label}</span>
-                      <i className={band.className} style={{ width: `${Math.max(8, (band.value / Math.max(confidenceLogs.length, 1)) * 100)}%` }} />
+                      <i className={band.className} style={{ width: `${band.value > 0 ? Math.max(8, (band.value / confidenceLogs.length) * 100) : 0}%` }} />
                       <strong>{band.value}</strong>
                     </div>
                   ))}
@@ -206,7 +209,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                 <strong>复核队列</strong>
                 <span>{reviewQueue.length} 份样本</span>
               </div>
-              <div className="topic-review-queue" aria-label="置信度复核队列">
+              <div className="topic-review-queue" role="group" aria-label="置信度复核队列">
                 {reviewQueue.map((log) => (
                   <div key={log.id}>
                     <span>{compactLogLabel(log)}</span>
@@ -232,12 +235,12 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
             </div>
           </div>
 
-          <div className="topic-decision-panel is-risk">
-            <AlertTriangle size={18} />
+          <div className={`topic-decision-panel ${totalCount === 0 ? "is-capacity" : "is-risk"}`}>
+            {totalCount === 0 ? <Info size={18} /> : <AlertTriangle size={18} />}
             <div>
               <span>关键判断</span>
-              <strong>{failedLogs.length > 0 ? "需要人工介入" : "无需人工介入"}</strong>
-              <p>{failedLogs[0]?.failureReason ?? "所有日志均进入正常分析流程。"}</p>
+              <strong>{totalCount === 0 ? noSampleVerdict : failedLogs.length > 0 ? "需要人工介入" : "无需人工介入"}</strong>
+              <p>{totalCount === 0 ? "今日暂无处理样本。" : failedLogs[0]?.failureReason ?? "所有日志均进入正常分析流程。"}</p>
             </div>
           </div>
 
@@ -249,8 +252,8 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
               </div>
               <div className="topic-failure-record">
                 <span>{compactLogLabel(failedLogs[0])}</span>
-                <strong>{failedLogs[0]?.stage ? STAGE_LABELS[failedLogs[0].stage] : "当前队列正常"}</strong>
-                <p>{failedLogs[0]?.source ?? "解析流程未发现阻断项"}</p>
+                <strong>{failedLogs[0]?.stage ? STAGE_LABELS[failedLogs[0].stage] : totalCount === 0 ? noSampleVerdict : "当前队列正常"}</strong>
+                <p>{failedLogs[0]?.source ?? (totalCount === 0 ? "今日暂无处理样本。" : "解析流程未发现阻断项")}</p>
               </div>
             </section>
 
@@ -287,8 +290,8 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
             <FileText size={18} />
             <div>
               <span>关键判断</span>
-              <strong>峰值占比 {peakShare}%</strong>
-              <p>今日总解析容量 {formatSize(totalFileSize)}，峰值样本来自 {compactLogLabel(peakLog)}。</p>
+              <strong>{totalCount === 0 ? noSampleVerdict : `峰值占比 ${peakShare}%`}</strong>
+              <p>{totalCount === 0 ? "今日暂无容量样本。" : <>今日总解析容量 {formatSize(totalFileSize)}，峰值样本来自 {compactLogLabel(peakLog)}。</>}</p>
             </div>
           </div>
 
@@ -304,7 +307,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                   <strong>{peakShare}%</strong>
                 </div>
                 <i>
-                  <span style={{ width: `${Math.max(8, peakShare)}%` }} />
+                  {peakShare > 0 ? <span style={{ width: `${Math.max(8, peakShare)}%` }} /> : null}
                 </i>
                 <p>{formatSize(metrics.throughputPeak.sizeMB)} / {formatSize(totalFileSize)}</p>
               </div>
@@ -315,12 +318,12 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                 <strong>容量排行</strong>
                 <span>Top {Math.min(sortedBySize.length, 3)}</span>
               </div>
-              <div className="topic-capacity-rank" aria-label="文件容量排行">
+              <div className="topic-capacity-rank" role="group" aria-label="文件容量排行">
                 {sortedBySize.slice(0, 3).map((log) => (
                   <div key={log.id}>
                     <span title={compactLogLabel(log)}>{compactLogLabel(log)}</span>
                     <strong>{formatSize(log.fileSizeMB)}</strong>
-                    <i style={{ width: `${Math.max(10, (log.fileSizeMB / Math.max(metrics.throughputPeak.sizeMB, 1)) * 100)}%` }} />
+                    {log.fileSizeMB > 0 ? <i style={{ width: `${Math.max(10, (log.fileSizeMB / Math.max(metrics.throughputPeak.sizeMB, 1)) * 100)}%` }} /> : null}
                   </div>
                 ))}
               </div>

@@ -54,7 +54,7 @@ Semantic roles (light theme; dark theme derives from the same roles):
 | `--border-strong` | Emphasized dividers, focused inputs | one value |
 | `--text` | Primary text | one near-black |
 | `--text-secondary` | Secondary text | one gray |
-| `--text-muted` | Tertiary/meta text | one gray (currently referenced but undefined — must be defined) |
+| `--text-muted` | Tertiary/meta text | slate `#536277` (light), `#8b99b3` (dark) |
 | `--accent` | Interactive primary (buttons, links, active nav, selection) | brand blue `#0052cc` family |
 | `--accent-hover` / `--accent-pressed` | Interaction shades | derived |
 | `--accent-soft` | Selected/active backgrounds, badges | derived tint |
@@ -66,6 +66,25 @@ Rules:
 - Raw color literals are allowed **only** inside the token block. Everything else uses `var()` or `color-mix()` over tokens (follow the `parameter-home.css` pattern).
 - The shadcn `--primary`/`--muted`/`--border` oklch keys must alias the semantic tokens above. Two palettes answering the same question is a defect.
 - Neutral chrome carries the interface; color appears only for interaction and status. Charts consume a tokenized categorical ramp (`--chart-1..5`) aligned with the accent, not library defaults.
+
+#### Tested Contrast Pairs (UIA-001)
+
+Small text, including bold chips and visible line numbers hidden from assistive technology, requires **at least 4.5:1**. These pairs preserve the existing hue families. Their definitions live in the `src/styles.css` token blocks; component styles consume them rather than inventing foreground/background combinations.
+
+| Foreground | Background | Contrast (light / dark) | Consumers |
+| --- | --- | --- | --- |
+| `--text-muted` | `--bg`, `--surface`, `--surface-raised`, `--surface-sunken`, `--surface-low/mid/high`, `--accent-soft` | minimum 4.81 / 4.58 | Metadata, log trend note, debug coverage badge, unselected hotspot toggle |
+| `--success` (`#0d714d` / `#10b981`) | `--success-soft` | 5.06 / 5.26 | Success status text and badges |
+| `--warning` (`#965500` / `#f59e0b`) | `--warning-soft` | 4.92 / 6.08 | Warning status text and badges |
+| `--danger` | `--danger-soft` | 5.00 / 4.99 | Danger status text and badges |
+| `--info` (`#036b9f` / `#38bdf8`) | `--info-soft` | 4.89 / 5.92 | Informational status text and chips |
+| `--success` | `color-mix(in srgb, var(--success) 14%, var(--surface))` | 4.91 / at least 4.5 | “工作配置” chip |
+| `--configuration-source-text` | `--configuration-source-surface` | 13.69 in both themes | Dark source canvas and unified diff |
+| `--configuration-source-line-number` (aliases `--configuration-source-text-muted`) | `--configuration-source-surface` | 6.66; 5.25 on focused rows | Both source-viewer gutters, including hovered and focused rows |
+| `--configuration-source-text-muted/secondary/strong` | `--configuration-source-surface`, `--configuration-source-surface-raised` | at least 4.5 in both themes | Source metadata and header |
+| `--configuration-source-surface` | `--configuration-source-find`, `--configuration-source-find-active` | 11.16 default; 7.96 active, in both themes | Search matches: explicit dark ink on opaque yellow/amber fills |
+
+The configuration source canvas stays dark in both themes. Standalone source viewers use `--text-secondary` and `--text-muted` on `--surface-sunken`. `src/contrast.styles.test.ts` checks the actual stylesheet declarations, resolving token derivations and compositing translucent row backgrounds before applying the WCAG threshold. The accessibility quality gate scans all ten UIA-001 pathnames at 1440×900 without the hotspot, working-chip, or line-number exclusions. Token-pair tests do not replace the live API-runtime accessibility scan or before/after screenshots.
 
 ### Typography
 
