@@ -109,9 +109,25 @@ test("collects visible view-switch signatures without enforcing a design", async
 });
 
 test("settles read-only Bridge routes without waiting for a POST-created pairing code", async ({ page }) => {
-  await page.setContent("<main><p>已识别当前环境</p><p>Fast charge current</p><p>运行历史</p></main>");
+  await page.setContent(`<main><p>已识别当前环境</p><p>运行历史</p>
+    <section aria-label="节点调试参数"><table><tbody><tr>
+      <td data-label="参数名称"><strong>Fast charge current</strong></td>
+    </tr></tbody></table></section></main>`);
   await settleQualityRoute(page, "/node-debugging", { readOnly: true });
   await settleQualityRoute(page, "/dts-reload", { readOnly: true });
+});
+
+test("settles a module-filtered debug table without requiring another module's row", async ({ page }) => {
+  await page.setContent(`<main><p>已识别当前环境</p>
+    <div role="tree" aria-label="调试节点模块树">
+      <div role="treeitem" aria-selected="true">Battery Health 1 个节点</div>
+    </div>
+    <section aria-label="节点调试参数" style="margin-top: 1200px"><table><tbody><tr>
+      <td data-label="参数名称"><strong>Cycle count</strong></td>
+    </tr></tbody></table></section></main>`);
+  await expect(page.getByText("Fast charge current")).toHaveCount(0);
+  await settleQualityRoute(page, "/node-debugging", { readOnly: true });
+  await expect(page.getByRole("treeitem")).toHaveAttribute("aria-selected", "true");
 });
 
 test("settles project review roles on its loaded governance content, not a DTS file", async ({ page }) => {

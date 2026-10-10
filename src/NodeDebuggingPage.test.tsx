@@ -1617,7 +1617,7 @@ describe("/node-debugging", () => {
       };
     });
 
-    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+    const first = renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
     const navigator = screen.getByRole("region", { name: "模块导航" });
@@ -1633,9 +1633,58 @@ describe("/node-debugging", () => {
     expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
     expect(findRowByText("battery.impedance_mohm")).toBeInTheDocument();
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
 
-    fireEvent.click(chargingPolicy);
+    first.unmount();
+    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const restored = within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
+    expect(restored).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
+    fireEvent.click(restored);
     expect(findRowByText("battery.thermal_foldback_pct")).toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+  });
+
+  it("restores Battery Health on reload and restores Fast charge current on reselect", async () => {
+    const debugParameters = [
+      { ...userState.debugParameters[0], id: "dbg-cycle-count", name: "Cycle count", module: "Battery Health",
+        moduleId: "debug-battery-health", modulePath: ["Battery Health"] },
+      { ...userState.debugParameters[1], id: "dbg-fast-charge-current", name: "Fast charge current", module: "Battery Charging",
+        moduleId: "debug-battery-charging", modulePath: ["Battery Charging"] }
+    ];
+    const appState = { ...userState, debugParameters };
+    const first = renderApp({ initialAppState: appState, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Fast charge current")).toBeInTheDocument();
+
+    const health = within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Battery Health.*1 个节点/ });
+    fireEvent.click(health);
+    expect(health).toHaveAttribute("aria-selected", "true");
+    expect(within(table).getByText("Cycle count")).toBeInTheDocument();
+    expect(within(table).queryByText("Fast charge current")).not.toBeInTheDocument();
+    const selectedId = new URL(window.location.href).searchParams.get("moduleNode");
+    expect(selectedId).toBeTruthy();
+
+    first.unmount();
+    renderApp({ initialAppState: appState, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const restored = within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Battery Health.*1 个节点/ });
+    const restoredTable = screen.getByRole("table");
+    expect(restored).toHaveAttribute("aria-selected", "true");
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBe(selectedId);
+    expect(within(restoredTable).getByText("Cycle count")).toBeInTheDocument();
+    expect(within(restoredTable).queryByText("Fast charge current")).not.toBeInTheDocument();
+
+    fireEvent.click(restored);
+    expect(restored).toHaveAttribute("aria-selected", "false");
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(within(restoredTable).getByText("Cycle count")).toBeInTheDocument();
+    expect(within(restoredTable).getByText("Fast charge current")).toBeInTheDocument();
   });
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {

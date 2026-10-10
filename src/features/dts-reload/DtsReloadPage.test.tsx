@@ -314,10 +314,29 @@ afterEach(() => {
   url.searchParams.delete("uiPreview");
   url.searchParams.delete("bindingIds");
   url.searchParams.delete("project");
+  url.searchParams.delete("moduleNode");
   window.history.replaceState({}, "", `${url.pathname}${url.search}`);
 });
 
 describe("DtsReloadPage", () => {
+  it("restores a selected module after candidates reload and clears it on reselect", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository();
+    const first = renderPage(repository);
+    await screen.findByRole("button", { name: /编辑 Watchdog/ });
+    const module = within(screen.getByRole("tree", { name: "业务模块树" })).getByRole("treeitem", { name: /charger/ });
+    await user.click(module);
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
+    first.unmount();
+    renderPage(repository);
+    await screen.findByRole("button", { name: /编辑 Watchdog/ });
+    const restored = within(screen.getByRole("tree", { name: "业务模块树" })).getByRole("treeitem", { name: /charger/ });
+    expect(restored).toHaveAttribute("aria-selected", "true");
+    await user.click(restored);
+    expect(restored).toHaveAttribute("aria-selected", "false");
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+  });
+
   it("explains an unreachable local Bridge with expandable details and a working retry", async () => {
     const user = userEvent.setup();
     vi.spyOn(bridgeLauncher, "probeLocalBridgeHealthDetailed")

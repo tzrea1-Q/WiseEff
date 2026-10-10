@@ -19,6 +19,7 @@ import {
 } from "@/components/LocalDeviceBridgePanel";
 import { useTopBarActions } from "@/components/layout";
 import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
+import { useModuleNodeSelection } from "@/hooks/useModuleNodeSelection";
 import { DtsReloadCandidateEditDialog } from "@/features/dts-reload/DtsReloadCandidateEditDialog";
 import { DtsReloadCandidateTable } from "@/features/dts-reload/DtsReloadCandidateTable";
 import {
@@ -198,7 +199,6 @@ export function DtsReloadPage({
   );
   const [nameQuery, setNameQuery] = useState("");
   const [moduleColumnFilter, setModuleColumnFilter] = useState<string[]>([]);
-  const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const [reachableTargets, setReachableTargets] = useState<DtsReloadReachableTarget[]>([]);
   const [detectingTargets, setDetectingTargets] = useState(false);
@@ -265,17 +265,12 @@ export function DtsReloadPage({
     [handoffFilteredCandidates, moduleRegistry.modules]
   );
 
+  const [selectedModuleNodeId, setSelectedModuleNodeId] = useModuleNodeSelection((nodeId) => Boolean(findWorkbenchTreeNode(moduleTree, nodeId)));
   const selectedModuleNode = useMemo(
     () =>
       selectedModuleNodeId ? findWorkbenchTreeNode(moduleTree, selectedModuleNodeId) : null,
     [moduleTree, selectedModuleNodeId]
   );
-
-  useEffect(() => {
-    if (selectedModuleNodeId && !selectedModuleNode) {
-      setSelectedModuleNodeId(null);
-    }
-  }, [selectedModuleNodeId, selectedModuleNode]);
 
   const selectedModuleBindingIds = useMemo(
     () => (selectedModuleNode ? collectSubtreeBindingIds(selectedModuleNode) : null),

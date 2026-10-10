@@ -368,8 +368,8 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
       // The seeded reload workbench (tree + table + history) loads below the wizard.
       await expect(page.getByText("运行历史").first()).toBeVisible({ timeout });
     } else {
-      // A seeded catalog row proves the debug parameter table finished loading.
-      await expect(page.getByText("Fast charge current").first()).toBeVisible({ timeout });
+      const table = page.getByRole("region", { name: "节点调试参数", exact: true }).getByRole("table");
+      await expect(table.locator('tbody td[data-label="参数名称"] strong').first()).toBeVisible({ timeout });
     }
     return;
   }

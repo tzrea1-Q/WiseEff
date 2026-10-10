@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   EffectiveTopologyNode,
@@ -248,7 +248,29 @@ function selectModuleDevice(moduleLabel: RegExp, deviceLabel: RegExp) {
   return screen.getByRole("treeitem", { name: deviceLabel });
 }
 
+beforeEach(() => window.history.replaceState(null, "", "/parameters"));
+afterEach(() => window.history.replaceState(null, "", "/"));
+
 describe("DtsParameterWorkbench", () => {
+  it("keeps a URL-selected module through loading and restores its subtree after reload", () => {
+    window.history.replaceState(null, "", "/parameters?moduleNode=module%3Adriver%3Asc8562");
+    const view = renderWorkbench({
+      sourceRows: sourceRows.filter((row) => row.driverModule !== "sc8562"),
+      effectiveRows: effectiveRows.filter((row) => row.driverModule !== "sc8562")
+    });
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBe("module:driver:sc8562");
+    view.rerender(<DtsParameterWorkbench {...view.props} sourceRows={sourceRows} effectiveRows={effectiveRows} />);
+    expect(screen.getByRole("treeitem", { name: /未分类 · sc8562/ })).toHaveAttribute("aria-selected", "true");
+    expect(visibleBindingRows()).toHaveLength(2);
+    view.unmount();
+    renderWorkbench();
+    const selected = screen.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    expect(selected).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(selected);
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+  });
+
   it("exposes scoped mature-workbench regions for topology, list and current edits", () => {
     renderWorkbench({
       currentEdits: <div data-testid="current-edits-slot">当前已修改</div>

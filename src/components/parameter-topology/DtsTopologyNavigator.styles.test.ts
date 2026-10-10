@@ -2,6 +2,29 @@ import { describe, expect, it } from "vitest";
 import { declarationsFor, readStylesheet } from "../../test/cssAssertions";
 
 describe("DtsTopologyNavigator responsive width", () => {
+  it("keeps the disclosure column fixed instead of distributing spare space before labels", () => {
+    const styles = readStylesheet("src/styles.css");
+    const tokens = declarationsFor(styles, ":root");
+    const row = declarationsFor(styles, ".dts-topology-navigator__item");
+
+    expect(tokens["--module-navigator-disclosure-size"]).toBe("28px");
+    expect(row["grid-template-columns"].startsWith("var(--module-navigator-disclosure-size) max-content ")).toBe(true);
+  });
+
+  it("retains the metadata track's intrinsic width so long labels scroll instead of hiding counts", () => {
+    const styles = readStylesheet("src/styles.css");
+    const row = declarationsFor(styles, ".dts-topology-navigator__item");
+
+    expect(row["grid-template-columns"]).toBe("var(--module-navigator-disclosure-size) max-content auto");
+  });
+
+  it("reserves the existing touch disclosure width in the label anchor instead of overlapping the label", () => {
+    const styles = readStylesheet("src/styles.css");
+    const touchTokens = declarationsFor(styles, ":root", { within: "max-width: 480px" });
+
+    expect(touchTokens["--module-navigator-disclosure-size"]).toBe("44px");
+  });
+
   it("grows the desktop navigator to its content while keeping labels on one line", () => {
     const styles = readStylesheet("src/styles.css");
     const tokens = declarationsFor(styles, ":root");

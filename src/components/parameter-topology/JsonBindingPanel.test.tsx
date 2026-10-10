@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import { JsonBindingPanel } from "./JsonBindingPanel";
+
+beforeEach(() => window.history.replaceState(null, "", "/parameters"));
+afterEach(() => window.history.replaceState(null, "", "/"));
 
 const jsonBinding: ProjectParameterBinding = {
   id: "binding-json-1",
@@ -147,6 +150,21 @@ describe("JsonBindingPanel", () => {
 
     // Requirement 3: table rows must NOT contain export/download options
     expect(within(table).queryByRole("button", { name: /导出|下载/ })).not.toBeInTheDocument();
+  });
+
+  it("persists JSON module selection across reload and clears it with keyboard reselect", () => {
+    const props = { bindings: [jsonBinding, secondBinding], moduleRegistry };
+    const first = render(<JsonBindingPanel {...props} />);
+    fireEvent.click(screen.getByRole("treeitem", { name: /充电管理/ }));
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBe("module:module-charging");
+    first.unmount();
+    render(<JsonBindingPanel {...props} />);
+    const selected = screen.getByRole("treeitem", { name: /充电管理/ });
+    expect(selected).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(selected, { key: "Enter" });
+    expect(selected).toHaveAttribute("aria-selected", "false");
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(screen.getByText("battery-limits")).toBeInTheDocument();
   });
 
   it("filters parameters when a module tree node is selected in module navigation", () => {
