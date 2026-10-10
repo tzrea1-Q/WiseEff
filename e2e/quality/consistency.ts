@@ -86,7 +86,21 @@ export function collectConsistencyMeasurements() {
     .map((element) => element.closest('td,[role="cell"]') ?? element));
   const rowActions = [...actionCells].flatMap((element) => {
     const row = element.closest('tr,[role="row"]');
-    return row ? [{ dom: signature(element), cell: bounds(element), row: bounds(row) }] : [];
+    if (!row) return [];
+    let left = 0, right = innerWidth, scrollLeft = 0;
+    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+      if (["auto", "scroll", "hidden", "clip"].includes(getComputedStyle(ancestor).overflowX)) {
+        const rect = ancestor.getBoundingClientRect();
+        left = Math.max(left, rect.left + ancestor.clientLeft);
+        right = Math.min(right, rect.left + ancestor.clientLeft + ancestor.clientWidth);
+        scrollLeft = Math.max(scrollLeft, Math.abs(ancestor.scrollLeft));
+      }
+    }
+    return [{
+      dom: signature(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
+      actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
+      statuses: [...row.querySelectorAll('[data-label="重要性"],.parameter-catalog__lifecycle')].filter(visible).map(geometry)
+    }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
   const xiaozeLaunchers = overlays('[data-testid="copilot-chat-toggle"],.xiaoze-chat-toggle');
@@ -141,6 +155,27 @@ export function collectConsistencyMeasurements() {
 
 export type ConsistencyMeasurements = ReturnType<typeof collectConsistencyMeasurements>;
 export type ConsistencyCategory = keyof ConsistencyMeasurements;
+
+export function requireRowActionVisibility(rows: ConsistencyMeasurements["rowActions"], routePath: string) {
+  if (!rows.length) throw new Error(`${routePath}: missing row actions`);
+  for (const { dom, cell, row, clip, scrollLeft, actions, statuses } of rows) {
+    if (cell.right > row.right + 1) throw new Error(`${routePath}: ${dom} exceeds its row`);
+    if (cell.left < clip.left - 1 || cell.right > clip.right + 1) throw new Error(`${routePath}: ${dom} is clipped`);
+    if (scrollLeft > 1) throw new Error(`${routePath}: requires horizontal scrolling`);
+    if (!actions.length || !statuses.length) throw new Error(`${routePath}: missing action or status measurements`);
+    for (const action of actions) {
+      if (action.rect.left < cell.left - 1 || action.rect.right > cell.right + 1
+        || action.rect.top < cell.top - 1 || action.rect.bottom > cell.bottom + 1) {
+        throw new Error(`${routePath}: ${action.dom} is clipped`);
+      }
+    }
+    for (const status of statuses) {
+      if (status.rect.left < Math.max(row.left, clip.left) - 1 || status.rect.right > Math.min(row.right, clip.right) + 1) {
+        throw new Error(`${routePath}: ${status.dom} is clipped`);
+      }
+    }
+  }
+}
 
 export function requireCompactControlHeights(
   measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls">> | null | undefined,

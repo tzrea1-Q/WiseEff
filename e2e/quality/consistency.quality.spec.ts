@@ -6,6 +6,7 @@ import {
   consistencyRoutes,
   installConsistencyReadGuard,
   requireConsistencyMeasurements,
+  requireRowActionVisibility,
   requireCompactControlHeights,
   type ConsistencyMeasurements
 } from "./consistency";
@@ -21,7 +22,13 @@ import {
 
 test.beforeAll(() => seedQualityRuntime());
 
-for (const route of consistencyRoutes) {
+const parameterRoute = consistencyRoutes.find((route) => route.path === "/parameters")!;
+const routes = [
+  ...consistencyRoutes,
+  ...["atlas", "aurora", "nebula"].map((project) => ({ ...parameterRoute, path: `/parameters?project=${project}` }))
+];
+
+for (const route of routes) {
   for (const theme of ["light", "dark"] as const) {
     test(`asserts read-only UI consistency for ${route.path} (${theme})`, async ({ context, page }, testInfo) => {
       testInfo.annotations.push({ type: "setup", description: "Bridge pairing-code POSTs use a synthetic response; no server pairing code is issued." });
@@ -34,7 +41,7 @@ for (const route of consistencyRoutes) {
         ]);
         expect(authResponse.ok(), "consistency measurements require the real API runtime").toBe(true);
         await expectUsablePage(page);
-        await settleQualityRoute(page, route.path, { readOnly: true });
+        await settleQualityRoute(page, route.path.split("?")[0], { readOnly: true });
         await closeXiaozePopupIfOpen(page);
         await settleXiaozePopupClosed(page);
         await settleAppToasts(page);
@@ -45,9 +52,19 @@ for (const route of consistencyRoutes) {
           measurements = await page.evaluate(collectConsistencyMeasurements);
           requireConsistencyMeasurements(measurements, route.required, route.path);
           requirePrimaryActionColors(measurements, route.path);
+          if (route.required.includes("rowActions")) {
+            requireRowActionVisibility(measurements.rowActions, route.path);
+          }
           requireOrganizationViewSwitchStyles(measurements, route.path);
         }).toPass({ timeout: 20_000 });
         requireCompactControlHeights(measurements, route.path);
+        if (route.required.includes("rowActions")) {
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+            `${route.path}: the page must not scroll horizontally`).toBeLessThanOrEqual(1);
+          await testInfo.attach(`row-actions${route.path.replaceAll("/", "-")}-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+        }
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {
           contentType: "application/json",
