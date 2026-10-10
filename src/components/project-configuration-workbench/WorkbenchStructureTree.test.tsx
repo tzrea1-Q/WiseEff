@@ -22,6 +22,7 @@ describe("WorkbenchStructureTree", () => {
     const empty = screen.getByRole("treeitem", { name: "没有可展示的结构节点。" });
     expect(screen.getByRole("group", { name: "空文件节点树" })).toContainElement(empty);
     expect(empty).toHaveAttribute("aria-disabled", "true");
+    expect(empty).toHaveAttribute("aria-selected", "false");
     expect(empty).toHaveAttribute("aria-live", "polite");
     expect(empty).toHaveTextContent("没有可展示的结构节点。");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();

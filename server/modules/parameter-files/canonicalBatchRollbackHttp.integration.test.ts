@@ -14,7 +14,7 @@ import { createLocalObjectStore } from "../logs/objectStore";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { parseDtsValue } from "../dts";
-import { parameterIdentityMode, resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { parameterIdentityMode, probeCanonicalSeedReady, resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { installConfigurationSourceFixture, captureConfigurationSourceState, countLegacyProjectBindings } from "../../testing/parameterCatalog/configurationSource";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog,
@@ -24,6 +24,7 @@ import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadProjectValueById } from "../parameter-bindings/values/repositories";
 import { submitCanonicalBatchValueChange, approveCanonicalBatchValueChange } from "../parameter-bindings/drafts/batchChangeService";
 import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
+import { upsertEnablementDraft } from "../parameter-drafts/repository";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { uploadProjectParameterFile } from "./service";
@@ -291,6 +292,50 @@ describe("#1080 canonical DTS source commit structural continuity", () => {
       expect(bindings.body.items.every((binding) => /^pbind_[0-9a-f]{64}$/.test(binding.id)
         && typeof binding.sourceNodePath === "string" && binding.sourceNodePath.length > 0)).toBe(true);
       expect(await resolveParameterIdentityMode(f.db)).toBe("semantic");
+    } finally {
+      setParameterIdentityMode(previousMode);
+    }
+  });
+
+  it.each(["flat-definition", "unbound-draft"] as const)("refuses canonical seed identity with retained %s rows", async (kind) => {
+    const f = await fixture("dts", false, true);
+    const previousMode = parameterIdentityMode();
+    try {
+      if (kind === "flat-definition") {
+        await f.db.query(`insert into parameter_definitions
+          (id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk)
+          values ('retained-flat-definition', $1, 'Retained history', '', '', 'dts', 'Charging', '', '', 'low')`, [ORG]);
+      } else {
+        await f.db.query(`insert into parameter_drafts
+          (id, organization_id, project_id, user_id, target_value, reason, initiator_type)
+          values ('retained-unbound-draft', $1, $2, $3, '<36>', 'Unfinished identity migration', 'user')`, [ORG, PROJECT, ADMIN]);
+      }
+      expect(await probeCanonicalSeedReady(f.db)).toBe(true);
+      setParameterIdentityMode("legacy");
+      await expect(resolveParameterIdentityMode(f.db)).rejects.toThrow(/legacy flat identity|unbound workflow rows/);
+      expect(parameterIdentityMode()).toBe("legacy");
+    } finally {
+      setParameterIdentityMode(previousMode);
+    }
+  });
+
+  it("keeps canonical seed identity after an owner-created node-enablement draft", async () => {
+    const f = await fixture("dts", false, true);
+    const previousMode = parameterIdentityMode();
+    try {
+      const node = (await f.db.query<{ id: string }>(
+        "select id from dts_logical_nodes where organization_id = $1 and project_id = $2 order by id limit 1", [ORG, PROJECT]
+      )).rows[0];
+      expect(node).toBeTruthy();
+      const draft = await upsertEnablementDraft(f.db, {
+        id: "canonical-enablement-draft", organizationId: ORG, projectId: PROJECT,
+        logicalNodeId: node!.id, userId: ADMIN, targetValue: '"disabled"', reason: "Keep node enablement across restart"
+      });
+      expect((await f.db.query(
+        "select edit_subject_kind, logical_node_id, project_parameter_binding_id from parameter_drafts where id = $1", [draft.id]
+      )).rows).toEqual([{ edit_subject_kind: "node-enablement", logical_node_id: node!.id, project_parameter_binding_id: null }]);
+      expect(await probeCanonicalSeedReady(f.db)).toBe(true);
+      await expect(resolveParameterIdentityMode(f.db)).resolves.toBe("semantic");
     } finally {
       setParameterIdentityMode(previousMode);
     }

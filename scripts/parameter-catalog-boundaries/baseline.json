@@ -8,8 +8,7 @@
       "legacy-catalog-table-name": 1
     },
     "e2e/acceptance/knowledge.acceptance.spec.ts": {
-      "legacy-catalog-route": 2,
-      "legacy-catalog-sql-write": 3
+      "legacy-catalog-route": 2
     },
     "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts": {
       "legacy-catalog-raw-read": 1,
@@ -140,6 +139,9 @@
     },
     "server/modules/parameter-files/candidateRepository.ts": {
       "unresolved-boundary-expression": 1
+    },
+    "server/modules/parameter-files/canonicalBatchRollbackHttp.integration.test.ts": {
+      "legacy-catalog-sql-write": 1
     },
     "server/modules/parameter-files/canonicalFileWorkflow.integration.test.ts": {
       "canonical-catalog-raw-access": 5,

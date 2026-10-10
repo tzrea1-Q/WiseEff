@@ -135,13 +135,6 @@ async function cleanupKnowledgeAcceptanceRows() {
       await client.query("delete from knowledge_entries where id = any($1::uuid[])", [entryIds]);
     }
 
-    // KB-XREF fixtures: seeded parameter definitions (reference rows cascade
-    // with their entries above, so only the catalog rows remain).
-    await client.query(`delete from knowledge_parameter_references where parameter_spec_id like 'pspec:kb-xref-%'`);
-    await client.query(`delete from parameter_spec_versions where parameter_spec_id like 'pspec:kb-xref-%'`);
-    await client.query(`delete from parameter_specs where id like 'pspec:kb-xref-%'`);
-    await client.query(`delete from attribution_subjects where id like 'asub:kb-xref-%'`);
-
     // Distillation-source fixtures: seeded completed log analyses (KB-DISTILL/KB-ADMIN).
     const logs = await client.query<{ id: string }>(`select id from log_records where file_name like 'kb-acceptance-distill-%'`);
     const logIds = logs.rows.map((row) => row.id);

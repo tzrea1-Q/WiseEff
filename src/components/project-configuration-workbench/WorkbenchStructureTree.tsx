@@ -185,7 +185,7 @@ export function WorkbenchStructureTree({
   if (roots.length === 0) {
     return (
       <div role="group" aria-label={ariaLabel} className="dts-topology-navigator__empty">
-        <div role="treeitem" aria-disabled="true" aria-live="polite">
+        <div role="treeitem" aria-disabled="true" aria-selected="false" aria-live="polite">
           没有可展示的结构节点。
         </div>
       </div>

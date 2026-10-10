@@ -91,15 +91,15 @@ export async function assertLocalDatabaseCleanForPostCutover(db: Queryable): Pro
   );
   const historyNullBinding = await countRows(
     db,
-    `select count(*)::text as c from parameter_history_entries where project_parameter_binding_id is null`
+    `select count(*)::text as c from parameter_history_entries where project_parameter_binding_id is null and logical_node_id is null`
   );
   const draftNullBinding = await countRows(
     db,
-    `select count(*)::text as c from parameter_drafts where project_parameter_binding_id is null`
+    `select count(*)::text as c from parameter_drafts where project_parameter_binding_id is null and edit_subject_kind = 'binding'`
   );
   const changeRequestNullBinding = await countRows(
     db,
-    `select count(*)::text as c from parameter_change_requests where project_parameter_binding_id is null`
+    `select count(*)::text as c from parameter_change_requests where project_parameter_binding_id is null and edit_subject_kind = 'binding'`
   );
 
   if (
