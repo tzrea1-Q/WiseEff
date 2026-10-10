@@ -22,25 +22,16 @@ const coreRoutes = [
   "/parameter-admin/projects/aurora/configuration",
   "/dts-reload",
   "/feedback-admin",
-  "/node-debugging"
+  "/node-debugging",
+  "/debugging-admin/nodes",
+  "/log-admin",
+  "/log-dashboard",
+  "/parameter-admin/projects/aurora",
+  "/parameter-admin/projects/aurora/config-sets",
+  "/parameter-admin/projects/aurora/conflicts",
+  "/parameter-admin/projects/aurora/files",
+  "/parameter-admin/projects/aurora/structure"
 ] as const;
-
-/**
- * Known color-contrast findings registered by the FA-25 route expansion.
- * Fixing them means retuning color tokens in styles.css, which belongs to the
- * parallel P3 motion/theme wave — excluded here (never whole surfaces, only
- * the exact offending selectors) so the rest of each page stays gated.
- */
-const routeScanExcludes: Partial<Record<(typeof coreRoutes)[number], string[]>> = {
-  // Off-state workbench/hotspots page toggle text fails 4.5:1.
-  "/parameter-home": [".parameter-home__view-switcher-item--hotspots"],
-  "/parameter-admin/projects/aurora/configuration": [
-    // "工作配置" status chip fails 4.5:1 against its tinted background.
-    ".configuration-workbench__working",
-    // Decorative line numbers on the dark source canvas fail 4.5:1.
-    ".project-primary-dts-viewer__line-number"
-  ]
-};
 
 async function scan(page: Page, testInfo: TestInfo, label: string, excludeSelectors: string[] = []) {
   await page.waitForFunction(
@@ -77,6 +68,8 @@ async function scan(page: Page, testInfo: TestInfo, label: string, excludeSelect
 }
 
 test.describe("M5.11 accessibility quality gate", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
   test.beforeAll(() => {
     seedQualityRuntime();
   });
@@ -127,7 +120,7 @@ test.describe("M5.11 accessibility quality gate", () => {
       await settleQualityRoute(page, route);
       await settleXiaozePopupClosed(page);
 
-      await scan(page, testInfo, route.replace(/[/?=]+/g, "-") || "home", routeScanExcludes[route] ?? []);
+      await scan(page, testInfo, route.replace(/[/?=]+/g, "-") || "home");
     });
   }
 

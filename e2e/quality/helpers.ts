@@ -327,10 +327,24 @@ export async function settleQualityRoute(page: Page, routePath: string) {
     return;
   }
 
-  if (routePath === "/parameter-admin/projects/aurora/configuration") {
+  if (routePath === "/parameter-admin/projects/aurora" || routePath.startsWith("/parameter-admin/projects/aurora/")) {
     // The deep link resolves the seeded config set + file, then renders the
     // source canvas with the seeded aurora DTS baseline.
     await expect(page.getByText("aurora-board.dts").first()).toBeVisible({ timeout });
+    return;
+  }
+
+  if (routePath === "/log-admin" || routePath === "/log-dashboard" || routePath === "/debugging-admin/nodes") {
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout });
+    await expect(page.locator(".api-runtime-error-banner")).toHaveCount(0, { timeout });
+    if (routePath === "/log-admin") {
+      // The default time window may exclude the seeded logs, so settle on either a seeded row or the loaded empty row.
+      const records = page.getByRole("table", { name: "日志分析记录" });
+      await expect(records.getByText("charging-foldback.log").or(records.getByText("当前时间窗口内暂无日志")).first()).toBeVisible({ timeout });
+    } else if (routePath === "/debugging-admin/nodes") {
+      await expect(page.locator(".debug-admin-coverage-badge").first()).toBeVisible({ timeout });
+    }
+    await waitForFontsAndNextPaint(page);
     return;
   }
 
