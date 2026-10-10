@@ -88,6 +88,8 @@ npm run db:seed:m3
 - `db:seed:m2`：日志分析演示数据。
 - `db:seed:m3`：模拟器调试设备与目录。
 
+同一 commit 的全新数据库应生成一致的 canonical 模块计数、Subject registrations/placements、Binding 到模块的归属与当前值，quality visual seed 后也应一致。种子 placement 保留 curated 模块优先级，并按稳定的 source key（没有时使用名称）选择空闲模块，不按随机 UUID 排序；不会移动已有 registration。真实 PostgreSQL 回归命令为 `npm run test:server -- server/scripts/seed-all.determinism.integration.test.ts`，需要设置 `DATABASE_URL` 与 `TEST_DATABASE_URL`。比较使用自然键，不比较新生成的行 ID 或审计时间戳。
+
 **全新 canonical 种子不需要语义身份 cutover。** M1 不运行旧语义身份迁移，也不调用 `ensureLocalPostCutoverIdentity`。API 启动时，干净且所有来源 pin 完整的 canonical 安装会跳过 legacy finalize；该状态下启动不会调用旧迁移。
 
 启动时的身份模式解析也会识别这个 canonical 状态，无需旧 cutover 标记：旧 Spec 和 Binding 必须为空，canonical Binding 必须存在，每个当前值的来源 pin 必须指向文件的活跃版本。这个 fallback 复用现有净库 guard；若仍有 flat Definition/PPV 行、history 行同时缺少 Binding 与逻辑节点身份，或 Binding 类型的 draft/change-request 行缺少 Binding，则拒绝启动，不代替 operator cutover。节点启用行保留独立逻辑节点身份，不要求 Binding。Canonical 单项和批量来源提交会在同一事务内为新 DTS 版本建立结构索引，因此演示历史写入后仍可导航结构并读取 Binding 的来源位置。
