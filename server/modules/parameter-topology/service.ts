@@ -29,9 +29,7 @@ import {
 } from "./bindingService";
 import { normalizeBindingSchemaState } from "./schemaState";
 import {
-  createBindingDraft as createBindingDraftEdit,
   createNodeEnablementDraft as createNodeEnablementDraftEdit,
-  type BindingDraftResult,
   type NodeEnablementDraftResult
 } from "./editService";
 import { type CreateBindingDraftDeps } from "./overlayWriteback";
@@ -61,7 +59,6 @@ import {
   type ConfigRevisionMemberRow
 } from "./repository";
 import type {
-  CreateBindingDraftBody,
   CreateNodeEnablementDraftBody,
   DtsValueDto,
   ProjectBindingDto,
@@ -1291,99 +1288,7 @@ export async function validateConfigRevision(
   };
 }
 
-export type CreateBindingDraftServiceResult = {
-  draftId: string;
-  parameterId: string;
-  candidateRevisionId: string;
-  workingCandidateRevisionId: string;
-  rebasedDraftIds: string[];
-  rawText: string;
-  action: "set" | "delete";
-  parameterSpecId: string;
-  projectParameterBindingId: string;
-  writeTarget: BindingDraftResult["writeTarget"];
-  overlayFileId: string;
-  overlayFileName: string;
-};
 
-/**
- * Org-isolated typed binding draft API: precise Config Set writeback + fail-closed validate.
- */
-export async function createBindingDraft(
-  db: Database,
-  auth: AuthContext,
-  input: {
-    projectId: string;
-    bindingId: string;
-  } & CreateBindingDraftBody,
-  deps: CreateBindingDraftDeps = {},
-  context: TrustedSensitiveNodeWriteContext
-): Promise<CreateBindingDraftServiceResult> {
-  requireCanEdit(auth);
-
-  const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId
-  });
-  if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
-      projectId: input.projectId
-    });
-  }
-
-  const bindingProject = await db.query<{ project_id: string }>(
-    `
-    select project_id
-    from project_parameter_bindings
-    where id = $1 and organization_id = $2
-    limit 1
-    `,
-    [input.bindingId, auth.organization.id]
-  );
-  if (!bindingProject.rows[0] || bindingProject.rows[0].project_id !== input.projectId) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
-      projectId: input.projectId,
-      bindingId: input.bindingId
-    });
-  }
-
-  // The edit helper creates the immutable candidate file blob before it reaches
-  // its audited draft/rebase step. Keep every database write (file version,
-  // candidate revision, binding carry-forward, draft and success audit) inside
-  // one outer transaction so an audit failure cannot leave committed domain
-  // rows behind. The blob write does not participate in the database
-  // transaction and may remain as an unreachable orphan on rollback.
-  const draft = await db.transaction((tx) =>
-    createBindingDraftEdit(
-      tx,
-      auth,
-      {
-        bindingId: input.bindingId,
-        baseRevisionId: input.baseRevisionId,
-        targetValue: input.targetValue,
-        action: input.action,
-        reason: input.reason
-      },
-      deps,
-      context
-    )
-  );
-
-  return {
-    draftId: draft.draftId,
-    parameterId: draft.parameterId,
-    candidateRevisionId: draft.candidateRevisionId,
-    workingCandidateRevisionId: draft.workingCandidateRevisionId,
-    rebasedDraftIds: draft.rebasedDraftIds,
-    rawText: draft.rawText,
-    action: draft.action,
-    parameterSpecId: draft.parameterSpecId,
-    projectParameterBindingId: draft.projectParameterBindingId,
-    writeTarget: draft.writeTarget,
-    overlayFileId: draft.overlayFileId,
-    overlayFileName: draft.overlayFileName
-  };
-}
 
 export type CreateNodeEnablementDraftServiceResult = NodeEnablementDraftResult;
 

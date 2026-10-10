@@ -34,7 +34,7 @@ const DATABASE_DISCONNECT_POLL_MS = 25;
 const DATABASE_PREFIX = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
 if (!/^[a-z][a-z0-9_]{0,15}$/.test(DATABASE_PREFIX)) throw new Error("Invalid test database prefix");
 const TEMPLATE_PREFIX = `${DATABASE_PREFIX}_test_tpl_`;
-const WORKER_PREFIX = `${DATABASE_PREFIX}_test_wk_`;
+const WORKER_PREFIX = `wiseeff_test_wk_${DATABASE_PREFIX.length}_${DATABASE_PREFIX}_`;
 
 export function testDatabasePrefixPattern(prefix: string): string {
   return `${prefix.replace(/[\\%_]/g, "\\$&")}%`;
@@ -426,7 +426,7 @@ export async function createEphemeralTestDatabase(label: string): Promise<Epheme
   const fingerprint = await migrationsFingerprint();
   const safeLabel = label.replace(/[^a-z0-9]/gi, "").slice(0, 8) || "eph";
   const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
-  const name = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e${safeLabel}_${rand}`;
+  const name = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e${safeLabel}`.slice(0, 63 - rand.length - 1) + `_${rand}`;
   await cloneTemplateDatabase(name);
   let dropped = false;
   return {

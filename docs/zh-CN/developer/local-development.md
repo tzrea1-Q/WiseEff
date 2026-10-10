@@ -49,6 +49,8 @@ npm run parameter-identities:check
 
 操作流程见 [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md)。
 
+隔离 server 测试时，将 `DATABASE_URL`、`TEST_DATABASE_URL` 与 `WISEEFF_TEST_DATABASE_PREFIX` 配到专用 lane。模板库使用 `<lane>_test_tpl_*`，一次性 worker 库使用 `wiseeff_test_wk_<lane-length>_<lane>_*`，保留按字面值隔离的命名空间，同时满足未改动的 ephemeral-publication 策略。一次性库名在 PostgreSQL 的 63-byte 标识符上限内保留唯一后缀。Managed-instance fixtures 仍为 non-ephemeral，必须提供原有 adoption proof。
+
 ### Catalog launch lane（Wayfinder #668）
 
 默认 compose 应用库 `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff` 不能作为 catalog 证据。剩余 catalog launch Issues 必须为每个 Issue 准备隔离的 pgvector 库，并在 Hosted 前通过本地门禁：
@@ -90,7 +92,7 @@ npm run db:seed:m3
 
 **全新 canonical 种子不需要语义身份 cutover。** M1 不运行旧语义身份迁移，也不调用 `ensureLocalPostCutoverIdentity`。API 启动时，干净且所有来源 pin 完整的 canonical 安装会跳过 legacy finalize；该状态下启动不会调用旧迁移。
 
-启动时的身份模式解析也会识别这个 canonical 状态，无需旧 cutover 标记：旧 Spec 和 Binding 必须为空，canonical Binding 必须存在，每个当前值的来源 pin 必须指向文件的活跃版本。这个 fallback 复用现有净库 guard；若仍有 flat Definition/PPV 行、history 行同时缺少 Binding 与逻辑节点身份，或 Binding 类型的 draft/change-request 行缺少 Binding，则拒绝启动，不代替 operator cutover。节点启用行保留独立逻辑节点身份，不要求 Binding。Canonical 单项和批量来源提交会在同一事务内为新 DTS 版本建立结构索引，因此演示历史写入后仍可导航结构并读取 Binding 的来源位置。
+在 development 和 test 环境，启动时的身份模式解析也会识别这个 canonical 状态，无需旧 cutover 标记：旧 Spec 和 Binding 必须为空，canonical Binding 必须存在，每个当前值的来源 pin 必须指向文件的活跃版本。这个只读 fallback 容忍 canonical 表或行缺失，并复用现有净库 guard；若仍有 flat Definition/PPV 行、history 行同时缺少 Binding 与逻辑节点身份，或 Binding 类型的 draft/change-request 行缺少 Binding，则拒绝启动。Production 下 API 和 log-worker 启动只使用原有 cutover 标记或 flat 表已退役的探测；全新 canonical 库和混合库不会经由这个本地 fallback 切换模式。它不代替 operator cutover。节点启用行保留独立逻辑节点身份，不要求 Binding。Canonical 单项和批量来源提交会在同一事务内为新 DTS 版本建立结构索引，因此演示历史写入后仍可导航结构并读取 Binding 的来源位置。
 
 `npm run dev:api`（以及 `dev:all` 拉起的 API）为 legacy cohorts 保留 development 下 listen 前的**幂等本地 post-cutover 启动 guard**，旧 operator helpers 仍可使用；本地 finalize 钩子在 production 永不运行，test 仅显式开启时运行，但只读净库检查也用于 canonical 种子身份解析。`WISEEFF_LOCAL_POST_CUTOVER=0` 关闭该启动钩子。已弃用的 `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` 仅为现有 legacy operator 工作流保留 API 启动兼容 opt-out；**M1 忽略它，不再有 legacy flat 种子选项**。跳过启动钩子不等于完成 legacy cutover，也不会使被阻断的 typed 提交变为有效。
 

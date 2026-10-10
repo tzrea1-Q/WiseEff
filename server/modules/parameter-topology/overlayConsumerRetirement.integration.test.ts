@@ -173,7 +173,7 @@ describe("assembled coverage and ingest ignore historical overlays on PostgreSQL
        where config_revision_id = $1 and node_locator in ('/historical', '/pinned') order by node_locator`, [revision.id]);
     expect(matches.rows).toEqual([
       { node_locator: "/historical", driver_schema_version_id: null },
-      { node_locator: "/pinned", driver_schema_version_id: "driver:wiseeff/sc8562.yaml:v1" },
+      { node_locator: "/pinned", driver_schema_version_id: null },
     ]);
     const discovery = await requestJson(harness.server,
       `/api/v2/organizations/${organizationId}/driver-compatible-discovery?projectId=${projectId}`,

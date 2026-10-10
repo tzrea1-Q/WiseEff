@@ -61,7 +61,8 @@ export async function probeLegacyTablesRetired(db: Queryable): Promise<boolean> 
 }
 
 export async function probeCanonicalSeedReady(db: Queryable): Promise<boolean> {
-  const result = await db.query<{ ready: boolean }>(`select
+  try {
+    const result = await db.query<{ ready: boolean }>(`select
     not exists (select 1 from public.parameter_specs) and
     not exists (select 1 from public.project_parameter_bindings) and
     exists (select 1 from parameter_catalog.current_project_parameter_bindings) and
@@ -72,16 +73,23 @@ export async function probeCanonicalSeedReady(db: Queryable): Promise<boolean> {
       left join public.project_parameter_files file on file.id = pin.file_id
       where pin.id is null or file.current_version_id is distinct from pin.file_version_id
     ) as ready`);
-  return result.rows[0]?.ready === true;
+    return result.rows[0]?.ready === true;
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") return false;
+    throw error;
+  }
 }
 
 /**
  * Probe the database once and pin the mode for this process. Returns the
  * resolved mode so callers can log it.
  */
-export async function resolveParameterIdentityMode(db: Queryable): Promise<ParameterIdentityMode> {
+export async function resolveParameterIdentityMode(
+  db: Queryable,
+  env: { NODE_ENV?: string } = { NODE_ENV: process.env.NODE_ENV }
+): Promise<ParameterIdentityMode> {
   let semantic = (await probeCutoverComplete(db)) || (await probeLegacyTablesRetired(db));
-  if (!semantic && await probeCanonicalSeedReady(db)) {
+  if (!semantic && env.NODE_ENV !== "production" && await probeCanonicalSeedReady(db)) {
     const { assertLocalDatabaseCleanForPostCutover } = await import("../parameter-topology/localPostCutover");
     await assertLocalDatabaseCleanForPostCutover(db);
     semantic = true;
