@@ -40,8 +40,20 @@ export function collectConsistencyMeasurements() {
       selected: element.matches('[aria-selected="true"],[aria-checked="true"],[aria-pressed="true"],[aria-current]:not([aria-current="false"]),[data-state="on"],[data-active="true"],.is-active,.active,.chip-active')
     };
   });
-  const primaryActions = [...document.querySelectorAll('.button.primary,.local-device-bridge-panel__install-cta,button.bg-primary,a.bg-primary,[data-slot="button"].bg-primary')].filter(visible)
-    .map((element) => ({ ...control(element), background: getComputedStyle(element).backgroundColor }));
+  const primaryToken = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
+  const primaryProbe = document.createElement("span");
+  primaryProbe.style.cssText = "position: absolute; visibility: hidden; pointer-events: none";
+  primaryProbe.style.setProperty("background-color", primaryToken, "important");
+  document.body.append(primaryProbe);
+  const primaryColor = primaryToken ? getComputedStyle(primaryProbe).backgroundColor : "";
+  primaryProbe.remove();
+  const primaryActions = [...document.querySelectorAll([
+    ".button.primary", ".button.is-primary", ".local-device-bridge-panel__install-cta",
+    'button.bg-primary', 'a.bg-primary', '[data-slot="button"][data-variant="default"]',
+    ".primary-nav-action", ".auth-submit", ".profile-dialog__button--primary", ".debugging-deploy-button",
+    ".permission-denied-action.primary", ".user-permissions-primary-action", ".user-permissions-modal-action--primary", ".insight-action--primary"
+  ].join(","))].filter(visible)
+    .map((element) => ({ ...control(element), background: getComputedStyle(element).backgroundColor, primaryColor }));
   const actionCells = new Set(elements('.dts-parameter-workbench-table__actions,td[data-label="操作"],[data-catalog-row-action]')
     .map((element) => element.closest('td,[role="cell"]') ?? element));
   const rowActions = [...actionCells].flatMap((element) => {

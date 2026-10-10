@@ -55,8 +55,10 @@ Semantic roles (light theme; dark theme derives from the same roles):
 | `--text` | Primary text | one near-black |
 | `--text-secondary` | Secondary text | one gray |
 | `--text-muted` | Tertiary/meta text | slate `#536277` (light), `#8b99b3` (dark) |
-| `--accent` | Interactive primary (buttons, links, active nav, selection) | brand blue `#0052cc` family |
+| `--accent` | Brand accent (links and interactive emphasis) | brand blue `#0052cc` family |
+| `--primary` / `--app-primary` | One resting-primary action color; both alias `--accent` | light `#0052cc`, dark `#4c8dff` |
 | `--accent-hover` / `--accent-pressed` | Interaction shades | derived |
+| `--nav-selected` | Selected filled navigation, not an action or pressed state | light `#003d9b`, dark `#4c8dff` |
 | `--accent-soft` | Selected/active backgrounds, badges | derived tint |
 | `--success` / `--warning` / `--danger` / `--info` | Status colors + matching `-soft` tints | one family each |
 | `--ring` | Focus ring | accent-based, one value |
@@ -65,6 +67,7 @@ Rules:
 
 - Raw color literals are allowed **only** inside the token block. Everything else uses `var()` or `color-mix()` over tokens (follow the `parameter-home.css` pattern).
 - The shadcn `--primary`/`--muted`/`--border` oklch keys must alias the semantic tokens above. Two palettes answering the same question is a defect.
+- **Primary-color contract (UIA-017):** every primary action's computed resting background equals the resolved `--primary`, including Local Device Bridge installation and connection actions on node debugging and DTS reload. The CSS `.button.primary` and shared Button default use this same token; Bridge scopes only add layout, never primary colors. Light and dark use the same aliases, including legacy `--app-primary` → `--primary` → `--accent`. Hover and pressed shades are `--accent-hover` and `--accent-pressed`; selected filled navigation uses the separately named `--nav-selected`. A selected navigation pill is not a primary CTA. The quality consistency project checks visible primary actions against the root token at `1440x900` in both themes, so a scoped override cannot redefine the expected color.
 - Neutral chrome carries the interface; color appears only for interaction and status. Charts consume a tokenized categorical ramp (`--chart-1..5`) aligned with the accent, not library defaults.
 
 #### Tested Contrast Pairs (UIA-001)

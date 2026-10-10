@@ -1,6 +1,35 @@
 import { expect, test } from "playwright/test";
 import { collectConsistencyMeasurements, installConsistencyReadGuard } from "./consistency";
+import { requirePrimaryActionColors } from "./primary-color";
 import { settleQualityRoute } from "./helpers";
+
+for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb(76, 141, 255)"]]) {
+  test(`resolves the root primary color without hiding scoped overrides (${theme})`, async ({ page }) => {
+    await page.setContent(`
+      <style>
+        :root { --primary: ${primaryColor}; }
+        button, a { display: inline-block; height: 32px; }
+        .primary, .is-primary, [data-variant="default"] { background: var(--primary); }
+        .scoped { --primary: rgb(0, 61, 155); }
+      </style>
+      <main>
+        <button class="button primary" disabled>提交</button>
+        <a class="button primary local-device-bridge-panel__install-cta" href="#">安装</a>
+        <button data-slot="button" data-variant="default">检索</button>
+        <button class="button is-primary">应用</button>
+        <nav><button aria-current="page">选中导航</button></nav>
+        <div hidden><button class="button primary">隐藏</button></div>
+      </main>
+    `);
+    const measurements = await page.evaluate(collectConsistencyMeasurements);
+    expect(measurements.primaryActions).toHaveLength(4);
+    expect(measurements.primaryActions.map((action) => action.primaryColor)).toEqual(Array(4).fill(primaryColor));
+    expect(() => requirePrimaryActionColors(measurements, "/fixture")).not.toThrow();
+    await page.locator("main").evaluate((element) => element.classList.add("scoped"));
+    const overridden = await page.evaluate(collectConsistencyMeasurements);
+    expect(() => requirePrimaryActionColors(overridden, "/fixture")).toThrow("must equal primary");
+  });
+}
 
 test("collects visible view-switch signatures without enforcing a design", async ({ page }) => {
   await page.setContent(`
