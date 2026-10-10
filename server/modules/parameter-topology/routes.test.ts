@@ -20,12 +20,8 @@ vi.mock("../parameter-specs/service", () => ({
 vi.mock("./service", () => ({
   getTopology: vi.fn(),
   listConfigRevisions: vi.fn(),
-  listProjectBindings: vi.fn(),
   listIdentityMappingTasks: vi.fn(),
-  resolveIdentityMappingTask: vi.fn(),
-  reopenIdentityMappingTask: vi.fn(),
   validateConfigRevision: vi.fn(),
-  createBindingDraft: vi.fn(),
   createNodeEnablementDraft: vi.fn()
 }));
 
@@ -78,21 +74,6 @@ function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
   registerParameterTopologyRoutes(router, deps);
   return createHttpServer(router);
 }
-
-const bindingDto = {
-  id: "binding-1",
-  parameterSpecId: "spec-1",
-  parameterSpecVersionId: "spec-ver-1",
-  propertyKey: "gpio_int",
-  driverModule: "sc8562",
-  logicalNodeId: "logical-1",
-  instanceName: "sc8562@6E",
-  locator: "/amba/i2c@FDF5E000/sc8562@6E",
-  effectiveValue: { kind: "cells" as const, bits: 32 as const, groups: [[{ kind: "integer" as const, raw: "0", value: "0" }]] },
-  rawValue: "<0>",
-  schemaState: "valid" as const,
-  policyState: "pass" as const
-};
 
 describe("parameter semantic v2 routes", () => {
   beforeEach(() => {
@@ -272,41 +253,6 @@ describe("parameter semantic v2 routes", () => {
     expect(topologyService.listConfigRevisions).not.toHaveBeenCalled();
   });
 
-  it("GET /api/v2/projects/:projectId/parameter-bindings returns semantic binding DTOs", async () => {
-    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({ items: [bindingDto] });
-
-    const response = await requestJson<{ items: Array<Record<string, unknown>> }>(
-      makeServer({ db: makeDb() }),
-      "/api/v2/projects/project-1/parameter-bindings"
-    );
-
-    expect(response.status).toBe(200);
-    expect(response.body?.items[0]).toMatchObject({
-      id: "binding-1",
-      propertyKey: "gpio_int",
-      driverModule: "sc8562",
-      instanceName: "sc8562@6E",
-      locator: "/amba/i2c@FDF5E000/sc8562@6E"
-    });
-    expect(response.body?.items[0]).not.toHaveProperty("path");
-    expect(response.body?.items[0]).not.toHaveProperty("recommendedValue");
-  });
-
-  it("GET /api/v2/projects/:projectId/parameter-bindings returns 404 for cross-org projectId", async () => {
-    const { ApiError } = await import("../../shared/http/errors");
-    vi.mocked(topologyService.listProjectBindings).mockRejectedValue(
-      new ApiError("NOT_FOUND", "Project was not found for this organization.", {
-        projectId: "cross-org-project"
-      })
-    );
-
-    const response = await requestJson(
-      makeServer({ db: makeDb() }),
-      "/api/v2/projects/cross-org-project/parameter-bindings"
-    );
-    expect(response.status).toBe(404);
-  });
-
   it("GET /api/v2/identity-mapping-tasks lets viewers list open tasks", async () => {
     vi.mocked(topologyService.listIdentityMappingTasks).mockResolvedValue({
       items: [
@@ -325,24 +271,21 @@ describe("parameter semantic v2 routes", () => {
   });
 
   it("POST /api/v2/identity-mapping-tasks/:taskId/resolve is retired for viewers", async () => {
-    const response = await requestJson(makeServer({ db: makeDb(), auth: makeAuth() }), "/api/v2/identity-mapping-tasks/map-1/resolve", {
+    const db = makeDb();
+    const response = await requestJson(makeServer({ db, auth: makeAuth() }), "/api/v2/identity-mapping-tasks/map-1/resolve", {
       method: "POST",
       body: JSON.stringify({ decision: "resolved", selectedLogicalNodeId: "ln-a", reason: "Same board instance" })
     });
     expect(response.status).toBe(410);
     expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
-    expect(topologyService.resolveIdentityMappingTask).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 
   it("POST /api/v2/identity-mapping-tasks/:taskId/resolve is retired for admins", async () => {
-    vi.mocked(topologyService.resolveIdentityMappingTask).mockResolvedValue({
-      id: "map-1",
-      status: "resolved",
-      selectedLogicalNodeId: "ln-a"
-    });
-
+    const db = makeDb();
     const response = await requestJson(
-      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      makeServer({ db, auth: makeAdminAuth() }),
       "/api/v2/identity-mapping-tasks/map-1/resolve",
       {
         method: "POST",
@@ -352,17 +295,14 @@ describe("parameter semantic v2 routes", () => {
 
     expect(response.status).toBe(410);
     expect(response.headers.get("link")).toBe('</parameter-admin/specs?review=open>; rel="successor-version"');
-    expect(topologyService.resolveIdentityMappingTask).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 
   it("POST /api/v2/identity-mapping-tasks/:taskId/reopen preserves completed history", async () => {
-    vi.mocked(topologyService.reopenIdentityMappingTask).mockResolvedValue({
-      id: "map-1",
-      status: "open"
-    });
-
+    const db = makeDb();
     const response = await requestJson(
-      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      makeServer({ db, auth: makeAdminAuth() }),
       "/api/v2/identity-mapping-tasks/map-1/reopen",
       {
         method: "POST",
@@ -372,7 +312,8 @@ describe("parameter semantic v2 routes", () => {
 
     expect(response.status).toBe(410);
     expect(response.body.error.details).toMatchObject({ reason: "legacy-surface-retired", successor: "/parameter-admin/specs?review=open" });
-    expect(topologyService.reopenIdentityMappingTask).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 
   it("POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate requires admin", async () => {
@@ -402,75 +343,6 @@ describe("parameter semantic v2 routes", () => {
       expect.objectContaining({ projectId: "project-1", revisionId: "rev-1" }),
       expect.objectContaining({ requestId: "test-request" }),
       expect.objectContaining({ objectStore: undefined })
-    );
-  });
-
-  it("POST /api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts forbids viewers without edit", async () => {
-    const response = await requestJson(
-      makeServer({ db: makeDb(), auth: makeAuth() }),
-      "/api/v2/projects/project-1/parameter-bindings/binding-1/drafts",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          baseRevisionId: "rev-1",
-          targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "3000", value: "3000" }]] },
-          reason: "Raise limit"
-        })
-      }
-    );
-    expect(response.status).toBe(403);
-    expect(topologyService.createBindingDraft).not.toHaveBeenCalled();
-  });
-
-  it("POST /api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts creates typed draft for editors", async () => {
-    vi.mocked(topologyService.createBindingDraft).mockResolvedValue({
-      draftId: "draft-1",
-      parameterId: "binding-1",
-      candidateRevisionId: "rev-candidate",
-      rawText: "<3000>",
-      parameterSpecId: "spec-1",
-      projectParameterBindingId: "binding-1",
-      writeTarget: { role: "overlay", propertyKey: "iin_max", targetRef: "charging_core" },
-      overlayFileId: "file-overlay",
-      overlayFileName: "overlay.dts"
-    });
-
-    const response = await requestJson(
-      makeServer({ db: makeDb(), auth: makeEditorAuth() }),
-      "/api/v2/projects/project-1/parameter-bindings/binding-1/drafts",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          baseRevisionId: "rev-1",
-          targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "3000", value: "3000" }]] },
-          reason: "Raise limit"
-        })
-      }
-    );
-
-    expect(response.status).toBe(201);
-    expect(response.body?.item).toMatchObject({
-      draftId: "draft-1",
-      parameterId: "binding-1",
-      candidateRevisionId: "rev-candidate",
-      projectParameterBindingId: "binding-1",
-      rawText: "<3000>"
-    });
-    expect(topologyService.createBindingDraft).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ permissions: expect.arrayContaining(["parameter:edit"]) }),
-      expect.objectContaining({
-        projectId: "project-1",
-        bindingId: "binding-1",
-        baseRevisionId: "rev-1",
-        reason: "Raise limit"
-      }),
-      expect.objectContaining({ objectStore: undefined }),
-      expect.objectContaining({
-        invocation: expect.objectContaining({ initiator: "user" }),
-        requestId: expect.any(String),
-        refusalSink: testRefusalAuditSink
-      })
     );
   });
 

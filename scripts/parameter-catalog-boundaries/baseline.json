@@ -119,9 +119,6 @@
     "server/modules/knowledge/routes.ts": {
       "legacy-catalog-route": 3
     },
-    "server/modules/logs/analyzer/tools/dbToolBackends.ts": {
-      "legacy-catalog-raw-read": 7
-    },
     "server/modules/logs/canonicalRelatedParameter.repro.integration.test.ts": {
       "canonical-catalog-raw-access": 2,
       "legacy-catalog-raw-read": 3
@@ -213,18 +210,13 @@
       "legacy-catalog-sql-write": 4
     },
     "server/modules/parameter-modules/driverPlacement.test.ts": {
-      "legacy-catalog-raw-read": 4,
-      "legacy-catalog-sql-write": 2
+      "legacy-catalog-raw-read": 2,
+      "legacy-catalog-sql-write": 1
     },
     "server/modules/parameter-modules/driverPlacement.ts": {
-      "legacy-catalog-raw-read": 12,
-      "legacy-catalog-sql-write": 6,
-      "unresolved-boundary-expression": 2
-    },
-    "server/modules/parameter-modules/driverRegistration.test.ts": {
-      "legacy-catalog-raw-read": 12,
-      "legacy-catalog-sql-write": 7,
-      "legacy-parameter-spec-identifier": 4
+      "legacy-catalog-raw-read": 11,
+      "legacy-catalog-sql-write": 3,
+      "unresolved-boundary-expression": 1
     },
     "server/modules/parameter-modules/driverRegistrationPlacement.ts": {
       "legacy-catalog-raw-read": 18,
@@ -249,8 +241,8 @@
       "unresolved-boundary-expression": 1
     },
     "server/modules/parameter-modules/repository.ts": {
-      "legacy-catalog-raw-read": 23,
-      "legacy-catalog-sql-write": 9,
+      "legacy-catalog-raw-read": 18,
+      "legacy-catalog-sql-write": 4,
       "legacy-parameter-spec-identifier": 6
     },
     "server/modules/parameter-modules/resolveAttributionSubject.ts": {
@@ -269,16 +261,15 @@
       "legacy-catalog-route": 3
     },
     "server/modules/parameter-modules/service.test.ts": {
-      "legacy-catalog-raw-read": 22,
-      "legacy-catalog-sql-write": 6,
-      "legacy-catalog-table-name": 2,
+      "legacy-catalog-raw-read": 17,
+      "legacy-catalog-sql-write": 3,
+      "legacy-catalog-table-name": 1,
       "legacy-parameter-spec-identifier": 5
     },
     "server/modules/parameter-modules/service.ts": {
       "legacy-catalog-module-import": 2,
-      "legacy-catalog-raw-read": 8,
-      "legacy-catalog-sql-write": 1,
-      "legacy-parameter-spec-identifier": 4
+      "legacy-catalog-raw-read": 4,
+      "legacy-parameter-spec-identifier": 2
     },
     "server/modules/parameter-specs/definitionReconciliation.integration.test.ts": {
       "legacy-catalog-raw-read": 11,
@@ -385,9 +376,9 @@
       "legacy-parameter-spec-identifier": 36
     },
     "server/modules/parameter-specs/specIdentitySurrogate.integration.test.ts": {
-      "legacy-catalog-raw-read": 9,
+      "legacy-catalog-raw-read": 6,
       "legacy-catalog-sql-write": 7,
-      "legacy-parameter-spec-identifier": 10
+      "legacy-parameter-spec-identifier": 8
     },
     "server/modules/parameter-specs/specLifecycle.integration.test.ts": {
       "legacy-catalog-route": 3,
@@ -402,18 +393,15 @@
     "server/modules/parameter-specs/types.ts": {
       "legacy-parameter-spec-identifier": 2
     },
-    "server/modules/parameter-topology/bindingCompare.integration.test.ts": {
-      "legacy-catalog-sql-write": 9
-    },
     "server/modules/parameter-topology/bindingService.test.ts": {
       "legacy-catalog-raw-read": 1,
       "legacy-catalog-sql-write": 2,
       "legacy-parameter-spec-identifier": 12
     },
     "server/modules/parameter-topology/bindingService.ts": {
-      "legacy-catalog-raw-read": 25,
-      "legacy-catalog-sql-write": 3,
-      "legacy-parameter-spec-identifier": 28,
+      "legacy-catalog-raw-read": 17,
+      "legacy-catalog-sql-write": 2,
+      "legacy-parameter-spec-identifier": 22,
       "unresolved-boundary-expression": 2
     },
     "server/modules/parameter-topology/editService.test.ts": {
@@ -480,24 +468,14 @@
       "legacy-parameter-spec-identifier": 29,
       "unresolved-boundary-expression": 2
     },
-    "server/modules/parameter-topology/provisionalSurfaceBinding.ts": {
-      "legacy-catalog-module-import": 4,
-      "legacy-catalog-sql-write": 3,
-      "legacy-parameter-spec-identifier": 15
-    },
     "server/modules/parameter-topology/repository.ts": {
       "unresolved-boundary-expression": 1
-    },
-    "server/modules/parameter-topology/resolveIdentityMapping.test.ts": {
-      "legacy-catalog-raw-read": 8,
-      "legacy-catalog-sql-write": 3,
-      "legacy-parameter-spec-identifier": 4
     },
     "server/modules/parameter-topology/routes.test.ts": {
       "legacy-catalog-module-import": 2,
       "legacy-catalog-route": 19,
       "legacy-effective-governance-contract": 3,
-      "legacy-parameter-spec-identifier": 5
+      "legacy-parameter-spec-identifier": 2
     },
     "server/modules/parameter-topology/routes.ts": {
       "legacy-catalog-route": 3,
@@ -537,9 +515,6 @@
       "legacy-catalog-raw-read": 4,
       "legacy-catalog-sql-write": 4
     },
-    "server/modules/parameters/dashboard/legacyDashboardAdapter.ts": {
-      "unresolved-boundary-expression": 7
-    },
     "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts": {
       "legacy-catalog-sql-write": 10
     },
@@ -561,19 +536,6 @@
     "server/modules/parameters/governanceWritebackProvenance.integration.test.ts": {
       "legacy-catalog-raw-read": 2,
       "legacy-catalog-sql-write": 1
-    },
-    "server/modules/parameters/importBatch.postCutover.integration.test.ts": {
-      "legacy-catalog-raw-read": 2,
-      "legacy-parameter-spec-identifier": 4
-    },
-    "server/modules/parameters/importBatchRepository.test.ts": {
-      "legacy-catalog-raw-read": 2,
-      "legacy-catalog-sql-write": 1
-    },
-    "server/modules/parameters/importBatchRepository.ts": {
-      "legacy-catalog-raw-read": 12,
-      "legacy-catalog-sql-write": 1,
-      "unresolved-boundary-expression": 3
     },
     "server/modules/parameters/initializationHttp.integration.test.ts": {
       "legacy-catalog-raw-read": 2
@@ -676,7 +638,6 @@
       "legacy-catalog-sql-write": 3
     },
     "server/modules/parameters/service.test.ts": {
-      "legacy-catalog-raw-read": 2,
       "legacy-catalog-sql-write": 1,
       "legacy-parameter-spec-identifier": 7
     },

@@ -42,8 +42,6 @@ vi.mock("../parameter-bindings/catalogProjectValueSync", async (importOriginal) 
 }));
 
 vi.mock("./service", () => ({
-  applyImportBatch: vi.fn(),
-  createImportPreview: vi.fn(),
   createParameterModuleForAuth: vi.fn(),
   deleteDraft: vi.fn(),
   deleteParameterModuleForAuth: vi.fn(),
@@ -691,41 +689,6 @@ describe("parameter routes", () => {
     );
   });
 
-  it("apply import route passes request id for audit correlation", async () => {
-    const db = makeDb();
-    const appliedBatch = {
-      id: "batch-1",
-      projectId: "aurora",
-      status: "applied" as const,
-      sourceName: "admin-upload.csv",
-      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
-      items: [],
-      createdAt: "2026-05-25T05:00:00.000Z",
-      appliedAt: "2026-05-25T05:15:00.000Z"
-    };
-    vi.mocked(service.applyImportBatch).mockResolvedValue(appliedBatch);
-
-    const response = await requestJson<{ item: typeof appliedBatch }>(
-      makeServer({ db }),
-      "/api/v1/parameter-import-batches/batch-1/apply",
-      {
-        method: "POST",
-        body: JSON.stringify({ selectedItemIds: ["item-1"] })
-      }
-    );
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ item: appliedBatch });
-    expect(service.applyImportBatch).toHaveBeenCalledWith(
-      db,
-      makeAuth(),
-      {
-        batchId: "batch-1",
-        selectedItemIds: ["item-1"]
-      },
-      { requestId: "test-request" }
-    );
-  });
 
   it("POST /api/v1/parameter-import/parse-dts returns parsed rows for admin", async () => {
     const db = makeDb();

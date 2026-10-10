@@ -107,38 +107,6 @@ export const listIdentityMappingTasksQuerySchema = z.object({
   status: z.enum(["open", "resolved", "dismissed", "new_identity"]).optional()
 });
 
-export const identityMappingTaskParamsSchema = z.object({
-  taskId: nonEmptyString
-});
-
-export const resolveIdentityMappingTaskBodySchema = z
-  .object({
-    decision: z.enum(["resolved", "dismissed", "new-identity"]),
-    selectedLogicalNodeId: nonEmptyString.optional(),
-    reason: nonEmptyString,
-    confirmAllCandidates: z.boolean().optional()
-  })
-  .superRefine((value, ctx) => {
-    if (value.decision === "resolved" && !value.selectedLogicalNodeId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "selectedLogicalNodeId is required when resolving a mapping task.",
-        path: ["selectedLogicalNodeId"]
-      });
-    }
-    if (value.decision === "new-identity" && value.selectedLogicalNodeId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "selectedLogicalNodeId must be omitted when confirming new identities.",
-        path: ["selectedLogicalNodeId"]
-      });
-    }
-  });
-
-export const reopenIdentityMappingTaskBodySchema = z.object({
-  reason: nonEmptyString
-});
-
 export const validateConfigRevisionParamsSchema = z.object({
   projectId: nonEmptyString,
   revisionId: nonEmptyString
@@ -236,8 +204,6 @@ export const createBindingDraftBodySchema = z
 
 export type ProjectBindingDto = z.infer<typeof projectBindingDtoSchema>;
 export type TopologyView = z.infer<typeof topologyViewSchema>;
-export type ResolveIdentityMappingTaskBody = z.infer<typeof resolveIdentityMappingTaskBodySchema>;
-export type ReopenIdentityMappingTaskBody = z.infer<typeof reopenIdentityMappingTaskBodySchema>;
 export type DtsValueDto = z.infer<typeof dtsValueSchema>;
 export type CreateBindingDraftBody = z.infer<typeof createBindingDraftBodySchema>;
 

@@ -36,7 +36,7 @@ import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
-import { createImportPreview } from "../parameters/service";
+import { insertImportBatch } from "../parameters/importBatchRepository";
 import {
   asValueClient,
   loadPublishedCatalog,
@@ -754,28 +754,16 @@ describe("published catalog project values", () => {
     expect(audits.rows[0]?.c).toBe("0");
   }, 60_000);
 
-  it("rolls a catalog import-preview rewrite back with the outer transaction", async () => {
+  it("rolls import preview provenance back with the outer transaction", async () => {
     await expect(
       withAuditedWrite(root, auth, { requestId: "req-min-upg-preview-rollback" }, async (tx) => {
-        const item = await createImportPreview(
-          tx,
-          auth,
-          {
-            projectId: PROJECT,
-            sourceName: "pasted-import.txt",
-            items: [
-              {
-                name: "iin_max",
-                module: "Driver",
-                risk: "Low",
-                unit: "A",
-                range: "0-10",
-                currentValue: "3000"
-              }
-            ]
-          },
-          { requestId: "req-min-upg-preview-rollback" }
-        );
+        const item = await insertImportBatch(tx, {
+          id: randomUUID(), organizationId: ORG, projectId: PROJECT, createdByUserId: USER,
+          sourceName: "pasted-import.txt",
+          summary: { added: 0, updated: 0, unchanged: 0, conflict: 1, highRisk: 0 },
+          items: [{ id: randomUUID(), name: "iin_max", module: "Driver", risk: "Low", unit: "A",
+            range: "0-10", currentValue: "3000", classification: "conflict", riskFlag: false }]
+        });
         await tx.query(
           `update parameter_import_batches set summary = $2::jsonb where id = $1`,
           [item.id, JSON.stringify({ added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 })]

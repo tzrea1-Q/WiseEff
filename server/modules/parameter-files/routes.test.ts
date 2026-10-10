@@ -8,6 +8,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerParameterFileRoutes } from "./routes";
+import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import * as service from "./service";
 import * as candidateService from "./candidateService";
 import * as configSetService from "./configSetService";
@@ -89,6 +90,11 @@ function makeObjectStore(): ObjectStore {
 
 function makeServer(options: { db?: Database; objectStore?: ObjectStore; auth?: AuthContext } = {}) {
   const router = createRouter();
+  registerCatalogProjectValueConsumerRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStore,
+    getCurrentAuthContext: () => options.auth ?? makeAuth()
+  });
   registerParameterFileRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,

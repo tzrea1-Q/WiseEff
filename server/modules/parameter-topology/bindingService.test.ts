@@ -6,7 +6,6 @@ import {
   bindingKey,
   createOrReuseBinding,
   listProjectBindingRows,
-  persistAmbiguousIdentityMapping,
   resolveLogicalContinuity,
   upsertBindingRevisionValues,
   type ProjectPropertyBindingKey,
@@ -113,50 +112,6 @@ describe("resolveLogicalContinuity", () => {
       blocksRevision: true,
       revisionStatus: "needs_mapping",
     });
-  });
-});
-
-describe("persistAmbiguousIdentityMapping", () => {
-  it("refuses retired identity task production without task or revision writes", async () => {
-    const previous = previousSc8562();
-    const candidates = [
-      candidate({
-        logicalNodeId: "logical-candidate-a",
-        nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
-      }),
-      candidate({
-        logicalNodeId: "logical-candidate-b",
-        nodeLocator: "/amba/i2c@FDF5E000/sc8562_dup@6E",
-        name: "sc8562_dup",
-      }),
-    ];
-    const continuity = resolveLogicalContinuity(previous, candidates);
-    expect(continuity.kind).toBe("ambiguous");
-
-    const db: Queryable = {
-      query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
-    };
-
-    if (continuity.kind !== "ambiguous") {
-      throw new Error("expected ambiguous continuity");
-    }
-
-    await expect(persistAmbiguousIdentityMapping(db, {
-      organizationId: "org-1",
-      projectId: "project-1",
-      configRevisionId: "rev-2",
-      previous,
-      continuity,
-      reason: "two equivalent SC8562 candidates",
-    })).rejects.toMatchObject({
-      code: "GONE",
-      details: {
-        reason: "legacy-surface-retired",
-        successor: "/api/v2/organizations/org-1/parameter-review-items",
-        retryable: false,
-      },
-    });
-    expect(db.query).not.toHaveBeenCalled();
   });
 });
 

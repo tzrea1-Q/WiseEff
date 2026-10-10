@@ -138,36 +138,6 @@ export async function notifyParameterReviewAdvanced(
   });
 }
 
-export async function notifyParameterImportCompleted(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    projectId: string;
-    projectName?: string;
-    batchId: string;
-    recipientUserId: string;
-    added: number;
-    updated: number;
-  }
-) {
-  const projectLabel = input.projectName?.trim() || input.projectId;
-  await notifyUsers(db, {
-    organizationId: input.organizationId,
-    recipientUserIds: [input.recipientUserId],
-    category: "parameter.import.completed",
-    title: `参数导入完成 · ${projectLabel}`,
-    body: `导入批次已应用：新增 ${input.added} 项，更新 ${input.updated} 项。`,
-    severity: "success",
-    actionUrl: parameterAdminUrl(input.projectId),
-    sourceKind: "parameter-import-batch",
-    sourceId: input.batchId,
-    metadata: {
-      projectId: input.projectId,
-      added: input.added,
-      updated: input.updated
-    }
-  });
-}
 
 export async function notifyParameterMergeCompleted(
   db: Queryable,

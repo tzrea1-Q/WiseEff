@@ -1,20 +1,8 @@
 /**
- * D-AG-04 / TD-046: registration default business category placement helpers.
- * Curated driver-groups stay frozen; auto driver-groups reparent without
- * promoting origin to curated.
+ * D-AG-04 / TD-046: retained registration default placement reads and bootstrap.
  */
 
 import type { Queryable } from "../../shared/database/client";
-import {
-  getParameterModuleById,
-  reparentAutoParameterModule,
-} from "../parameters/parameterModuleRepository";
-
-export type DriverPlacementReplayCounts = {
-  moved: number;
-  skippedCurated: number;
-  skippedMissingDefault: number;
-};
 
 export async function getDriverRegistrationDefaultBusinessCategoryId(
   db: Queryable,
@@ -94,86 +82,6 @@ export async function getDriverRegistrationDefaultBusinessCategoryId(
     [input.attributionSubjectId],
   );
   return result.rows[0]?.default_business_category_module_id ?? null;
-}
-
-export async function setDriverRegistrationDefaultBusinessCategoryId(
-  db: Queryable,
-  input: {
-    attributionSubjectId: string;
-    defaultBusinessCategoryModuleId: string | null;
-    organizationId?: string;
-  },
-): Promise<void> {
-  const subject = await db.query<{
-    subject_kind: string;
-    organization_id: string | null;
-  }>(
-    `select subject_kind, organization_id from attribution_subjects where id = $1 limit 1`,
-    [input.attributionSubjectId],
-  );
-  const subjectRow = subject.rows[0];
-  if (
-    !subjectRow ||
-    subjectRow.subject_kind !== "driver-registration" ||
-    (input.organizationId
-      ? subjectRow.organization_id !== null &&
-        subjectRow.organization_id !== input.organizationId
-      : subjectRow.organization_id !== null)
-  ) {
-    throw new Error(
-      `Invalid driver registration subject ${input.attributionSubjectId}.`,
-    );
-  }
-  const placement = await db.query(
-    input.organizationId
-      ? `
-        update driver_registration_placements
-        set default_business_category_module_id = $3,
-            updated_at = now()
-        where attribution_subject_id = $1 and organization_id = $2
-        returning default_business_category_module_id
-        `
-      : `
-        update driver_registration_placements
-        set default_business_category_module_id = $2,
-            updated_at = now()
-        where attribution_subject_id = $1
-        returning default_business_category_module_id
-        `,
-    input.organizationId
-      ? [
-          input.attributionSubjectId,
-          input.organizationId,
-          input.defaultBusinessCategoryModuleId,
-        ]
-      : [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
-  );
-  if (input.organizationId && !placement.rows[0]) {
-    throw new Error(
-      `Missing organization driver placement for ${input.organizationId}/${input.attributionSubjectId}.`,
-    );
-  }
-  if (!input.organizationId) {
-    const registration = await db.query(
-      `
-      update driver_registrations
-      set default_business_category_module_id = $2
-      where attribution_subject_id = $1
-      returning default_business_category_module_id
-      `,
-      [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
-    );
-    if (
-      !registration.rows[0] &&
-      registration.rowCount === 0 &&
-      !placement.rows[0] &&
-      placement.rowCount === 0
-    ) {
-      throw new Error(
-        `Missing driver registration ${input.attributionSubjectId}.`,
-      );
-    }
-  }
 }
 
 /**
@@ -280,77 +188,4 @@ export async function findAttributionSubjectIdBySourceKey(
     [input.organizationId, input.sourceKey],
   );
   return result.rows[0]?.id ?? null;
-}
-
-/**
- * Reparent the auto driver-group for a subject under the registration default.
- * Curated modules are never moved. Auto node-type children stay under the
- * driver-group (path rewrite cascades from reparent).
- */
-export async function replayAutoDriverGroupToRegistrationDefault(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    moduleId: string;
-  },
-): Promise<DriverPlacementReplayCounts> {
-  const counts: DriverPlacementReplayCounts = {
-    moved: 0,
-    skippedCurated: 0,
-    skippedMissingDefault: 0,
-  };
-
-  const module = await getParameterModuleById(db, {
-    organizationId: input.organizationId,
-    moduleId: input.moduleId,
-  });
-  if (
-    !module ||
-    module.kind !== "driver-group" ||
-    !module.attributionSubjectId
-  ) {
-    counts.skippedMissingDefault += 1;
-    return counts;
-  }
-
-  if (module.origin !== "auto") {
-    counts.skippedCurated += 1;
-    return counts;
-  }
-
-  const defaultId = await getDriverRegistrationDefaultBusinessCategoryId(db, {
-    attributionSubjectId: module.attributionSubjectId,
-    organizationId: input.organizationId,
-  });
-  if (!defaultId) {
-    counts.skippedMissingDefault += 1;
-    return counts;
-  }
-
-  const parent = await getParameterModuleById(db, {
-    organizationId: input.organizationId,
-    moduleId: defaultId,
-  });
-  if (!parent || parent.kind !== "business") {
-    counts.skippedMissingDefault += 1;
-    return counts;
-  }
-
-  const result = await reparentAutoParameterModule(db, {
-    organizationId: input.organizationId,
-    moduleId: module.id,
-    parentId: defaultId,
-  });
-
-  if (result.status === "moved") {
-    counts.moved += 1;
-  } else if (result.status === "skipped" && result.reason === "curated") {
-    counts.skippedCurated += 1;
-  } else if (result.status === "skipped" && result.reason === "noop") {
-    // already under default — not a failure
-  } else if (result.status === "skipped" && result.reason === "missing") {
-    counts.skippedMissingDefault += 1;
-  }
-
-  return counts;
 }

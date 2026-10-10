@@ -39,8 +39,6 @@ import {
   listProjects
 } from "../projects/repository";
 import {
-  applyImportBatch,
-  createImportPreview,
   createParameterModuleForAuth,
   deleteDraft,
   deleteParameterModuleForAuth,
@@ -59,8 +57,6 @@ import {
   withdrawSubmissionRound
 } from "./service";
 import {
-  applyImportBatchBodySchema,
-  createImportBatchBodySchema,
   createParameterModuleBodySchema,
   createProjectBodySchema,
   listParametersQuerySchema,
@@ -100,9 +96,6 @@ const paramsWithRequestIdSchema = z.object({
   requestId: z.string().min(1)
 });
 
-const paramsWithBatchIdSchema = z.object({
-  batchId: z.string().min(1)
-});
 
 const listDraftsQuerySchema = z.object({
   projectId: z.string().min(1).optional()
@@ -687,24 +680,6 @@ export function registerParameterRoutes(
     return { status: 200, body: { item } };
   });
 
-  router.post("/api/v1/parameter-import-batches", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(createImportBatchBodySchema, request.body);
-    const item = await createImportPreview(db, auth, body, { requestId: request.requestId });
-
-    return { status: 201, body: { item } };
-  });
-
-  router.post("/api/v1/parameter-import-batches/:batchId/apply", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(paramsWithBatchIdSchema, request.params);
-    const body = parseWithSchema(applyImportBatchBodySchema, withRouteField(request.body, "batchId", params.batchId));
-    const item = await applyImportBatch(db, auth, body, { requestId: request.requestId });
-
-    return { status: 200, body: { item } };
-  });
 
   router.post("/api/v1/parameter-import/parse-dts", async (request) => {
     const auth = await options.getCurrentAuthContext(request);

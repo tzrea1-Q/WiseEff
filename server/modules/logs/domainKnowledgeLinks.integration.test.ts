@@ -5,7 +5,7 @@ import type { AuthContext, BackendPermission } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { searchPublishedKnowledgeForLogAnalysis } from "../knowledge/logDomainRetrieval";
-import { createDbLogAnalysisToolBackends } from "./analyzer/tools/dbToolBackends";
+import { createWorkerLogAnalysisToolBackends } from "./analyzer/tools/workerToolBackends";
 import {
   createLogDomainRecord,
   listLogDomainKnowledgeLinkRecords,
@@ -183,7 +183,7 @@ describe.skipIf(!databaseAvailable)("log domain knowledge links (integration)", 
       { requestId: "req-links-retrieval" }
     );
 
-    const backends = createDbLogAnalysisToolBackends({ db, organizationId: ORG_ID, logDomainId: domainId });
+    const backends = createWorkerLogAnalysisToolBackends({ db, organizationId: ORG_ID, logDomainId: domainId });
     const linked = await backends.searchDomainKnowledge!("thermal foldback");
     expect(linked.scope).toBe("domain-linked");
     expect(linked.items.map((item) => item.entryId)).toEqual([publishedEntryId]);
