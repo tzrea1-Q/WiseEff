@@ -1,6 +1,6 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements } from "../e2e/quality/consistency";
+import { assertXiaozePlacement, consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights } from "../e2e/quality/consistency";
 
 describe("Xiaoze placement contract", () => {
   const table = { dom: "table-scrollport", rect: { left: 280, top: 100, right: 1416, bottom: 812, width: 1136, height: 712 } };
@@ -18,6 +18,64 @@ describe("Xiaoze placement contract", () => {
     const edge = { ...gutter, rect: { ...gutter.rect, top: 812, bottom: 868 } };
     expect(() => assertXiaozePlacement({ xiaozeLaunchers: [edge], xiaozeHints: [], tableScrollports: [table], stickyActionAreas: [table] }, "/parameters"))
       .not.toThrow();
+  });
+});
+
+describe("compact filter, sort and pagination height contract", () => {
+  const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: null, height, compactControl });
+
+  it.each([
+    ["viewSwitches", "button.parameter-admin-scope-nav__tab", 43],
+    ["viewSwitches", "button.chip.chip-active", 30],
+    ["viewSwitches", "button.parameter-home__toggle-item", 28],
+    ["primaryActions", "button.button.subtle", 36],
+    ["moduleTreeLabels", "button.parameter-catalog__tree-select", 40],
+    ["xiaozeLaunchers", "button.xiaoze-chat-toggle", undefined]
+  ])("ignores unrelated %s measurement %s in the full route result", (category, dom, height) => {
+    const measurements = { [category]: [{ dom, height }], filterControls: [control("select.compact-filter-control", 32)] };
+    expect(() => requireCompactControlHeights(measurements, "/parameter-admin/specs")).not.toThrow();
+  });
+
+  it("ignores unmarked controls even if they appear in a compact category", () => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("button.button.subtle", 36, null)] }, "/parameters"))
+      .not.toThrow();
+  });
+
+  it.each([undefined, NaN, Infinity])("reports a marked control's missing or invalid height %s as a collection error", (height) => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("select.compact-filter-control", height as number)] }, "/audit"))
+      .toThrow("/audit: compact control collection error: select.compact-filter-control has no finite height measurement");
+  });
+
+  it.each([undefined, null])("reports an absent route result %s as a collection error", (measurements) => {
+    expect(() => requireCompactControlHeights(measurements, "/audit"))
+      .toThrow("/audit: compact control collection error: route measurements are missing");
+  });
+
+  it("rejects a filter below the 32px PC minimum with actionable route evidence", () => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("select", 28)] }, "/audit"))
+      .toThrow("/audit: select has height 28px; expected 32px");
+  });
+
+  it.each(["filterControls", "sortControls", "paginationControls"] as const)("rejects inconsistent %s even when above the minimum", (category) => {
+    expect(() => requireCompactControlHeights({ [category]: [control("button", 38)] }, "/parameter-admin/specs"))
+      .toThrow("/parameter-admin/specs: button has height 38px; expected 32px");
+  });
+
+  it("accepts native and custom peers across all three jobs at 32px", () => {
+    expect(() => requireCompactControlHeights({
+      filterControls: [control("select", 32), control("button", 32)],
+      sortControls: [control("select.library-sort", 32)],
+      paginationControls: [control("button", 32), control("select", 32)]
+    }, "/parameter-admin/specs")).not.toThrow();
+  });
+
+  it.each([0, 31.999, 32.001])("rejects a measured height outside the compact contract: %s", (height) => {
+    expect(() => requireCompactControlHeights({ sortControls: [control("select", height)] }, "/parameters"))
+      .toThrow("expected 32px");
+  });
+
+  it("leaves absent categories to the independent required-coverage guard", () => {
+    expect(() => requireCompactControlHeights({}, "/knowledge")).not.toThrow();
   });
 });
 
@@ -56,11 +114,14 @@ describe("consistency measurement coverage", () => {
 
   it("requires each applicable category independently of what the collector finds", () => {
     expect(consistencyRoutes.find((route) => route.path === "/parameters")?.required).toEqual(expect.arrayContaining([
-      "viewSwitches", "rowActions", "tableScrollports", "xiaozeLaunchers", "moduleTreeLabels", "filterControls", "sortControls"
+      "viewSwitches", "rowActions", "tableScrollports", "xiaozeLaunchers", "moduleTreeLabels"
     ]));
     expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/specs")?.required).toEqual(expect.arrayContaining([
       "primaryActions", "paginationControls", "moduleTreeLabels", "rowActions"
     ]));
+    expect(consistencyRoutes.find((route) => route.path === "/debugging-admin/nodes")?.required).toContain("filterControls");
+    expect(consistencyRoutes.find((route) => route.path === "/parameters")?.required).not.toContain("filterControls");
+    expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/specs")?.required).not.toContain("sortControls");
   });
 
   it("requires the launcher but leaves dismissible, route-dependent hints optional", () => {

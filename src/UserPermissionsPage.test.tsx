@@ -630,9 +630,18 @@ describe("UserPermissionsPage", () => {
       expect(screen.getByText(/当前有.*条注册角色申请待处理/)).toBeInTheDocument();
     });
 
-    await openApprovalsWorkspace();
+    const accounts = screen.getByRole("tab", { name: /账号库/ });
+    const approvals = screen.getByRole("tab", { name: /注册申请/ });
+    expect(document.getElementById(approvals.getAttribute("aria-controls")!)).toHaveAttribute("hidden");
+    accounts.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(approvals).toHaveFocus();
+    expect(accounts).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{Enter}");
 
-    expect(screen.getByRole("tab", { name: /注册申请/ })).toHaveAttribute("aria-selected", "true");
+    expect(approvals).toHaveAttribute("aria-selected", "true");
+    expect(document.getElementById(accounts.getAttribute("aria-controls")!)).toHaveAttribute("hidden");
+    expect(approvals).toHaveAttribute("aria-controls", screen.getByRole("tabpanel", { name: /注册申请/ }).id);
     expect(screen.getByRole("tabpanel", { name: /注册申请/ })).toBeInTheDocument();
     expect(screen.queryByRole("search", { name: "用户筛选" })).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
@@ -744,8 +753,8 @@ describe("UserPermissionsPage", () => {
     expect(baseButtonStyles.background).toBe("var(--surface)");
     expect(baseButtonStyles.border).toBe("1px solid var(--border)");
     expect(baseButtonStyles["border-radius"]).toBe("var(--radius-md)");
-    expect(primaryButtonStyles.background).toBe("var(--accent)");
-    expect(primaryButtonStyles["border-color"]).toBe("var(--accent)");
+    expect(primaryButtonStyles.background).toBe("var(--primary)");
+    expect(primaryButtonStyles["border-color"]).toBe("var(--primary)");
   });
 
   it("keeps the member deletion button compact inside its table cell", () => {

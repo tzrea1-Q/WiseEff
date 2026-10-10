@@ -10,6 +10,7 @@ import { userAccountSearchProfile } from "@/lib/search/profiles";
 import { DataTable, type Column } from "@/components/admin";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import {
   toggleFilterValue,
   uniqueFilterValues,
@@ -288,6 +289,7 @@ export function UserPermissionsPage({
   const [decidingRequestId, setDecidingRequestId] = useState("");
   const [activeRoleHint, setActiveRoleHint] = useState<RoleHintState | null>(null);
   const [workspace, setWorkspace] = useState<UserPermissionsWorkspace>("accounts");
+  const inactiveWorkspace = workspace === "accounts" ? "approvals" : "accounts";
   const [pendingGovernance, setPendingGovernance] = useState<PendingGovernanceAction | null>(null);
   const [governancePending, setGovernancePending] = useState(false);
   const [governanceError, setGovernanceError] = useState<string | null>(null);
@@ -744,33 +746,21 @@ export function UserPermissionsPage({
     <section className="user-permissions-page" aria-label="用户权限">
       <div className="user-permissions-toolbar">
         {approvalWorkflowEnabled ? (
-          <div className="user-permissions-workspace-tabs" role="tablist" aria-label="用户权限工作区">
-            <button
-              type="button"
-              role="tab"
-              id="user-permissions-workspace-accounts"
-              aria-selected={workspace === "accounts"}
-              aria-controls="user-permissions-workspace-accounts-panel"
-              className={workspace === "accounts" ? "user-permissions-workspace-tab active" : "user-permissions-workspace-tab"}
-              onClick={() => setWorkspace("accounts")}
-            >
-              账号库
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="user-permissions-workspace-approvals"
-              aria-selected={workspace === "approvals"}
-              aria-controls="user-permissions-workspace-approvals-panel"
-              className={workspace === "approvals" ? "user-permissions-workspace-tab active" : "user-permissions-workspace-tab"}
-              onClick={() => setWorkspace("approvals")}
-            >
-              <span>注册申请</span>
-              {pendingApprovalCount > 0 ? (
-                <span className="user-permissions-workspace-tab-count">{pendingApprovalCount}</span>
-              ) : null}
-            </button>
-          </div>
+          <ViewSwitch
+            variant="tabs"
+            ariaLabel="用户权限工作区"
+            value={workspace}
+            onValueChange={(value) => setWorkspace(value as UserPermissionsWorkspace)}
+            items={[
+              { value: "accounts", label: "账号库", id: "user-permissions-workspace-accounts", panelId: "user-permissions-workspace-accounts-panel" },
+              {
+                value: "approvals",
+                label: <><span>注册申请</span>{pendingApprovalCount > 0 ? <span className="user-permissions-workspace-tab-count">{pendingApprovalCount}</span> : null}</>,
+                id: "user-permissions-workspace-approvals",
+                panelId: "user-permissions-workspace-approvals-panel"
+              }
+            ]}
+          />
         ) : (
           <div className="user-permissions-workspace-heading">
             <span className="eyebrow">用户治理</span>
@@ -801,7 +791,7 @@ export function UserPermissionsPage({
             </label>
             <label className="user-permissions-filter-field">
               <span className="user-permissions-filter-label">角色</span>
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
+              <select className="compact-filter-control" data-compact-control="filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
                 <option value="all">全部角色</option>
                 {platformRoles.map((role) => (
                   <option key={role.id} value={role.id}>
@@ -812,7 +802,7 @@ export function UserPermissionsPage({
             </label>
             <label className="user-permissions-filter-field">
               <span className="user-permissions-filter-label">状态</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+              <select className="compact-filter-control" data-compact-control="filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
                 {statusOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -824,7 +814,8 @@ export function UserPermissionsPage({
 
           <div
             className="user-permissions-grid"
-            role="tabpanel"
+            role={approvalWorkflowEnabled ? "tabpanel" : undefined}
+            tabIndex={approvalWorkflowEnabled ? 0 : undefined}
             id="user-permissions-workspace-accounts-panel"
             aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
           >
@@ -854,6 +845,7 @@ export function UserPermissionsPage({
         <section
           className="user-permissions-approval-queue"
           role="tabpanel"
+          tabIndex={0}
           id="user-permissions-workspace-approvals-panel"
           aria-labelledby="user-permissions-workspace-approvals"
           aria-label="注册角色申请"
@@ -908,6 +900,12 @@ export function UserPermissionsPage({
           )}
         </section>
       )}
+
+      {approvalWorkflowEnabled ? (
+        <div hidden role="tabpanel"
+          id={`user-permissions-workspace-${inactiveWorkspace}-panel`}
+          aria-labelledby={`user-permissions-workspace-${inactiveWorkspace}`} />
+      ) : null}
 
       <ConfirmDialog
         open={pendingGovernance !== null}

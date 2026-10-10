@@ -138,7 +138,7 @@ function LocalBridgeUpgradeNotice({
       </p>
       {onOpenInstall ? (
         <div className="local-device-bridge-panel__upgrade-actions">
-          <button type="button" className="button local-device-bridge-panel__install-cta" onClick={onOpenInstall}>
+          <button type="button" className="button primary local-device-bridge-panel__install-cta" onClick={onOpenInstall}>
             <Download size={14} aria-hidden="true" />
             下载安装包
           </button>
@@ -508,7 +508,7 @@ export function LocalDeviceBridgeWizard({
             className={
               viewStep === 3
                 ? "button subtle"
-                : "button local-device-bridge-panel__install-cta"
+                : "button primary local-device-bridge-panel__install-cta"
             }
             type="button"
             disabled={checking || detecting || connecting || (viewStep === 2 && pairingCodeRequiredForConnect && pairingCodeLoading)}
@@ -559,7 +559,7 @@ export function LocalDeviceBridgeWizard({
                       <div className="local-device-bridge-panel__host-pick">
                         <span className="local-device-bridge-panel__host-badge">本机推荐</span>
                         <a
-                          className="button local-device-bridge-panel__install-cta"
+                          className="button primary local-device-bridge-panel__install-cta"
                           href={resolveDeviceBridgeDownloadUrl(hostInstaller.downloadUrl)}
                         >
                           <Download size={14} aria-hidden="true" />
@@ -650,7 +650,7 @@ export function LocalDeviceBridgeWizard({
                 ) : null}
                 <button
                   type="button"
-                  className="button local-device-bridge-panel__install-cta local-device-bridge-panel__already-installed-cta"
+                  className="button primary local-device-bridge-panel__install-cta local-device-bridge-panel__already-installed-cta"
                   onClick={() => {
                     setAllowStep2WhileMissing(true);
                     setViewStep(2);

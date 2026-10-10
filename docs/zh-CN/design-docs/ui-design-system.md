@@ -32,9 +32,14 @@
 | 表格 | `src/components/admin/DataTable.tsx` | 标准列表外壳:分页、`aria-sort`、键盘行导航、筛选空态、集成 `ColumnFilter` |
 | 列筛选 | `src/components/ColumnFilter.tsx` | 规格:[表格列多选筛选 UX](ux-table-column-filter.md) |
 | 搜索框 | `src/components/common/SearchField.tsx` | 唯一搜索输入外观；过滤在 `src/lib/search/` 的 Profile 中，不在输入组件里 |
+| 视图切换 | `src/components/ui/view-switch.tsx` + `view-switch.css` | 三种令牌化样式：`section` 章节导航（40px / full 圆角 / 14px，选中 `--nav-selected`）、`tabs` 内容标签页（32px / md 圆角 / 13px，选中 `--accent-soft`）、`toggle` 单选选项（28px / sm 圆角 / 12px，选中 `--surface`） |
 | 加载/空/错误 | `src/components/common/SectionState.tsx`(认证启动期另有 `AppShellSkeleton`) | 骨架 + 空态 + 可重试错误三件套;parameter-home 转为 re-export 同一组件 |
 | 局部令牌派生 | `src/features/parameter-home/parameter-home.css` | 用 `color-mix()` 从全局令牌派生局部语义色,不发明新字面量 |
 | 图标 | `lucide-react` | 不用 emoji,不用 `✓`/`↗` 等文本字符当图标 |
+
+**视图切换契约（UIA-016，扩展阶段）：**`/organization` 和 `/organization/members` 使用共享章节导航；人员管理的账号库/注册申请工作区使用内容标签页。章节导航的方向键、Home/End 只移动焦点，Enter/空格执行导航。内容标签页采用手动激活和游走焦点，每个选项必须提供 `id`/`panelId`；调用方渲染当前 `role="tabpanel"`，使用对应面板 ID，通过 `aria-labelledby` 关联选项 ID，并设置 `tabIndex={0}`。单选选项使用方向键或空格选择。三种样式共享令牌化的可见键盘焦点及禁用状态。一致性项目在浅色和深色主题下检查两条组织路由的每个可见切换项必须且只能匹配一种根令牌样式签名。扩展阶段保留其他旧变体；Bridge 安装步骤条是独立的进度模式，不属于视图切换。
+
+非当前标签页的面板保持挂载并隐藏，确保每个 `aria-controls` 都有有效目标；非当前面板的内容可以卸载。
 
 ## 设计令牌
 
@@ -55,8 +60,10 @@
 | `--text` | 主文本 | 一个近黑 |
 | `--text-secondary` | 次文本 | 一个灰 |
 | `--text-muted` | 三级/元信息文本 | 石板灰：浅色 `#536277`，深色 `#8b99b3` |
-| `--accent` | 交互主色（按钮、链接、活动导航、选中） | 品牌蓝 `#0052cc` 族 |
+| `--accent` | 品牌强调色（链接、交互强调） | 品牌蓝 `#0052cc` 族 |
+| `--primary` / `--app-primary` | 唯一的主动作静止背景色；均为 `--accent` 的别名 | 浅色 `#0052cc`，深色 `#4c8dff` |
 | `--accent-hover` / `--accent-pressed` | 交互深浅 | 派生 |
+| `--nav-selected` | 实心导航的选中态，不是动作或按下态 | 浅色 `#003d9b`，深色 `#4c8dff` |
 | `--accent-soft` | 选中/活动背景、徽章 | 派生浅色 |
 | `--success` / `--warning` / `--danger` / `--info` | 状态色 + 各自 `-soft` 浅色 | 每类一族 |
 | `--ring` | 焦点环 | 基于 accent,一个值 |
@@ -65,6 +72,7 @@
 
 - 颜色字面量**只允许**出现在令牌块内;其余一律 `var()` 或基于令牌的 `color-mix()`（参照 `parameter-home.css` 模式）。
 - shadcn 的 `--primary`/`--muted`/`--border` oklch 键必须成为上述语义令牌的别名;同一问题存在两套答案即缺陷。
+- **主色契约（UIA-017）：**所有可用主动作静止时的计算背景色必须等于解析后的 `--primary`，包括节点调试和 DTS 重载中的本地设备桥接安装、连接动作。CSS `.button.primary` 与共享 Button 默认变体使用同一令牌；Bridge 作用域只能补充布局，不能重定义主色。浅色和深色主题采用相同的别名映射，包括旧别名 `--app-primary` → `--primary` → `--accent`。悬停和按下态分别使用 `--accent-hover`、`--accent-pressed`；实心导航选中态使用独立命名的 `--nav-selected`。选中导航不是主动作。质量一致性项目在两种主题的 `1440x900` 视口下，将可见且可用的主动作与根令牌进行比较，局部覆盖不能改变预期主色。原生禁用或 `aria-disabled="true"` 的控件仍纳入测量，但使用独立的禁用视觉状态，不参与可用主动作静止背景色断言。
 - 中性色承载界面,颜色只为交互与状态服务;图表使用与 accent 对齐的令牌化分类色带（`--chart-1..5`）,不接受图表库默认配色。
 
 #### 经测试的对比度配对（UIA-001）
@@ -195,6 +203,7 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 ### 输入与选择
 
 - 最小高度 32px、`--radius-sm`、令牌化边框、按上文规则显示焦点环、可见 label 或 `aria-label`、错误文案经 `aria-describedby` 关联。
+- PC 筛选、排序及分页条数选择器显式使用 `.compact-filter-control`（原生）或 `SelectTrigger size="filter"`（自定义），共享唯一的 32px 边框盒高度（`--space-8`）、边框、圆角、字体和箭头契约。分页操作复用默认 32px `.button` 原语，不使用 `sm` 变体。仅为这些控件标记 `data-compact-control="filter"`、`"sort"` 或 `"pagination"` 以供一致性测量。搜索组合框、模块导航、表头排序按钮、表单字段和对话框保留各自的原语；页面局部规则仅添加布局，不重复定义紧凑控件的几何或外观。
 - 原生 `<select>` 仅在存量界面临时允许;P1 落地样式化 Select 原语后,新界面一律使用。原生日期/文件选择器保留原生弹层但触发器需样式化。
 
 ### 弹窗
