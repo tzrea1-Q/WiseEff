@@ -333,32 +333,33 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "parameters.createModule": {
-    summary: "Create parameter module",
+    summary: "Create parameter module (shared business-category CRUD supported; structural writes return 410)",
     tags: ["parameters"],
     requestBody: "CreateParameterModuleRequest",
     responseBody: "ParameterModuleResponse",
     successStatus: 201,
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "CatalogLegacyGoneResponse" }
   },
   "parameters.updateModule": {
-    summary: "Update parameter module",
+    summary: "Update parameter module (shared business-category CRUD supported; structural writes return 410)",
     tags: ["parameters"],
     requestBody: "UpdateParameterModuleRequest",
     responseBody: "ParameterModuleResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "CatalogLegacyGoneResponse" }
   },
   "parameters.moveModule": {
-    summary: "Move parameter module to a new parent",
+    summary: "Move parameter module to a new parent (shared business-category CRUD supported; structural writes return 410)",
     tags: ["parameters"],
     requestBody: "MoveParameterModuleRequest",
     responseBody: "ParameterModuleResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "CatalogLegacyGoneResponse" }
   },
   "parameters.deleteModule": {
-    summary: "Delete parameter module",
+    summary: "Delete parameter module (shared business-category CRUD supported; structural writes return 410)",
     tags: ["parameters"],
     responseBody: "DeleteResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    successStatus: 204,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "CatalogLegacyGoneResponse" }
   },
 
   "parameterModules.getRegistry": {
