@@ -10,10 +10,12 @@ for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb
         :root { --primary: ${primaryColor}; }
         button, a { display: inline-block; height: 32px; }
         .primary, .is-primary, [data-variant="default"] { background: var(--primary); }
+        :disabled, [aria-disabled="true"] { background: rgb(233, 238, 251); }
         .scoped { --primary: rgb(0, 61, 155); }
       </style>
       <main>
         <button class="button primary" disabled>提交</button>
+        <button class="button primary" aria-disabled="true">不可用</button>
         <a class="button primary local-device-bridge-panel__install-cta" href="#">安装</a>
         <button data-slot="button" data-variant="default">检索</button>
         <button class="button is-primary">应用</button>
@@ -22,8 +24,9 @@ for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb
       </main>
     `);
     const measurements = await page.evaluate(collectConsistencyMeasurements);
-    expect(measurements.primaryActions).toHaveLength(4);
-    expect(measurements.primaryActions.map((action) => action.primaryColor)).toEqual(Array(4).fill(primaryColor));
+    expect(measurements.primaryActions).toHaveLength(5);
+    expect(measurements.primaryActions.map((action) => action.primaryColor)).toEqual(Array(5).fill(primaryColor));
+    expect(measurements.primaryActions.map((action) => action.disabled)).toEqual([true, true, false, false, false]);
     expect(() => requirePrimaryActionColors(measurements, "/fixture")).not.toThrow();
     await page.locator("main").evaluate((element) => element.classList.add("scoped"));
     const overridden = await page.evaluate(collectConsistencyMeasurements);

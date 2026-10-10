@@ -53,7 +53,8 @@ export function collectConsistencyMeasurements() {
     ".primary-nav-action", ".auth-submit", ".profile-dialog__button--primary", ".debugging-deploy-button",
     ".permission-denied-action.primary", ".user-permissions-primary-action", ".user-permissions-modal-action--primary", ".insight-action--primary"
   ].join(","))].filter(visible)
-    .map((element) => ({ ...control(element), background: getComputedStyle(element).backgroundColor, primaryColor }));
+    .map((element) => ({ ...control(element), background: getComputedStyle(element).backgroundColor, primaryColor,
+      disabled: element.matches(':disabled,[aria-disabled="true"]') }));
   const actionCells = new Set(elements('.dts-parameter-workbench-table__actions,td[data-label="操作"],[data-catalog-row-action]')
     .map((element) => element.closest('td,[role="cell"]') ?? element));
   const rowActions = [...actionCells].flatMap((element) => {
