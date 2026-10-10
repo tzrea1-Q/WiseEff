@@ -34,6 +34,7 @@ describe("AnalysisContextControls", () => {
       />
     );
     expect(screen.getByRole("combobox", { name: "项目范围" })).toHaveTextContent("全部项目");
+    expect(screen.getByRole("combobox", { name: "项目范围" })).toHaveAttribute("data-compact-control", "filter");
   });
 
   it("renders hotspot dimensions in project-module-parameter order", () => {

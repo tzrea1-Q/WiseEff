@@ -4,6 +4,7 @@ import {
   consistencyRoutes,
   installConsistencyReadGuard,
   requireConsistencyMeasurements,
+  requireCompactControlHeights,
   type ConsistencyMeasurements
 } from "./consistency";
 import {
@@ -38,6 +39,7 @@ for (const route of consistencyRoutes) {
       await expect(async () => {
         measurements = await page.evaluate(collectConsistencyMeasurements);
         requireConsistencyMeasurements(measurements, route.required, route.path);
+        requireCompactControlHeights(measurements, route.path);
       }).toPass({ timeout: 20_000 });
     } finally {
       await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {

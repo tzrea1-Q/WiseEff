@@ -801,7 +801,7 @@ export function UserPermissionsPage({
             </label>
             <label className="user-permissions-filter-field">
               <span className="user-permissions-filter-label">角色</span>
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
+              <select className="compact-filter-control" data-compact-control="filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
                 <option value="all">全部角色</option>
                 {platformRoles.map((role) => (
                   <option key={role.id} value={role.id}>
@@ -812,7 +812,7 @@ export function UserPermissionsPage({
             </label>
             <label className="user-permissions-filter-field">
               <span className="user-permissions-filter-label">状态</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+              <select className="compact-filter-control" data-compact-control="filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
                 {statusOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

@@ -90,13 +90,9 @@ export function collectConsistencyMeasurements() {
     }
     return { dom: signature(element), tree: signature(element.closest('[role="tree"],.parameter-catalog__tree') ?? element.parentElement!), depth, left: element.getBoundingClientRect().left };
   });
-  const paginationSelector = '.parameter-catalog__pagination button,.parameter-catalog__pagination select,button[aria-label="上一页"],button[aria-label="下一页"]';
-  const paginationControls = elements(paginationSelector).map(control);
-  const sortSelector = '.library-sort,[aria-label*="排序"],th[aria-sort] > button,.dts-parameter-workbench-table__sort';
-  const sortControls = elements(sortSelector).map(control);
-  const filterControls = elements('select,[role="combobox"],.parameters-column-filter__trigger')
-    .filter((element) => !element.matches(`${paginationSelector},${sortSelector}`) && !element.closest('tbody,[role="cell"],[role="dialog"]'))
-    .map(control);
+  const paginationControls = elements('[data-compact-control="pagination"]').map(control);
+  const sortControls = elements('[data-compact-control="sort"]').map(control);
+  const filterControls = elements('[data-compact-control="filter"]').map(control);
   return {
     viewSwitches, primaryActions, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports,
     moduleTreeLabels, filterControls, sortControls, paginationControls
@@ -105,6 +101,19 @@ export function collectConsistencyMeasurements() {
 
 export type ConsistencyMeasurements = ReturnType<typeof collectConsistencyMeasurements>;
 export type ConsistencyCategory = keyof ConsistencyMeasurements;
+
+export function requireCompactControlHeights(
+  measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls">>,
+  routePath: string
+) {
+  for (const controls of Object.values(measurements)) {
+    for (const control of controls) {
+      if (control.height !== 32) {
+        throw new Error(`${routePath}: ${control.dom} has height ${control.height}px; expected 32px`);
+      }
+    }
+  }
+}
 
 const catalogPaths = [
   "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping",
@@ -124,8 +133,8 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging"],
   moduleTreeLabels: [...catalogPaths, "/parameters", "/node-debugging", "/dts-reload"],
-  filterControls: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/log-admin", "/organization/members", "/parameter-home", "/user-permissions"],
-  sortControls: [...catalogPaths, "/parameters", "/debugging-admin/nodes", "/log-admin", "/parameter-admin/projects"],
+  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
+  sortControls: [],
   paginationControls: catalogPaths
 };
 const otherPhaseTwoPaths = [

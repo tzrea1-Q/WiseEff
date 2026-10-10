@@ -361,6 +361,48 @@
   }
 }
 
+.compact-filter-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: var(--space-8);
+  min-height: var(--space-8);
+  padding: 0 var(--space-2);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.compact-filter-control:is(select, [data-slot="select-trigger"]) {
+  appearance: none;
+  padding-right: var(--space-6);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right var(--space-3) center, right var(--space-2) center;
+  background-size: var(--space-1) var(--space-1);
+  background-repeat: no-repeat;
+}
+
+.compact-filter-control:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.compact-filter-control:active:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.compact-filter-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 /*
  * ── Button base contract ──────────────────────────────────────────────────
  * The single source of `.button` geometry, surface, and interaction states
@@ -5225,8 +5267,7 @@ td small {
   text-transform: uppercase;
 }
 
-.user-permissions-filters input,
-.user-permissions-filters select {
+.user-permissions-filters input {
   width: 100%;
   min-width: 0;
   min-height: 38px;
@@ -5239,11 +5280,15 @@ td small {
   font-size: var(--text-base);
 }
 
-.user-permissions-filters input:focus-visible,
-.user-permissions-filters select:focus-visible {
+.user-permissions-filters input:focus-visible {
   border-color: var(--app-primary);
   outline: 2px solid color-mix(in srgb, var(--accent) 16%, transparent);
   outline-offset: 1px;
+}
+
+.user-permissions-filter-field .compact-filter-control {
+  width: 100%;
+  min-width: 0;
 }
 
 .user-permissions-approval-queue {
@@ -7503,11 +7548,6 @@ td small {
 
 .dts-reload-page .dts-reload-project-select select {
   min-width: 200px;
-  min-height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  background: var(--surface);
 }
 
 .dts-reload-residue-banner {
@@ -18492,11 +18532,6 @@ body.xiaoze-popup-drag-active {
 
 .audit-workspace-select-wrap select {
   min-width: 140px;
-  height: 34px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0 10px;
-  background: var(--card);
 }
 
 .audit-workspace-trace-banner {
@@ -19032,7 +19067,6 @@ body.xiaoze-popup-drag-active {
 }
 
 .param-admin-shell .dropdown-trigger,
-.library-sort,
 .chip,
 .clear-filters {
   min-height: 30px;
@@ -19044,10 +19078,6 @@ body.xiaoze-popup-drag-active {
   cursor: pointer;
   font: inherit;
   font-size: var(--text-sm);
-}
-
-.library-sort {
-  border-radius: var(--radius-md);
 }
 
 .clear-filters {

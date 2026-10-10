@@ -1,6 +1,37 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { describe, expect, it, vi } from "vitest";
-import { consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements } from "../e2e/quality/consistency";
+import { consistencyRoutes, installConsistencyReadGuard, requireConsistencyMeasurements, requireCompactControlHeights } from "../e2e/quality/consistency";
+
+describe("compact filter, sort and pagination height contract", () => {
+  const control = (dom: string, height: number) => ({ dom, role: null, height });
+
+  it("rejects a filter below the 32px PC minimum with actionable route evidence", () => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("select", 28)] }, "/audit"))
+      .toThrow("/audit: select has height 28px; expected 32px");
+  });
+
+  it.each(["filterControls", "sortControls", "paginationControls"] as const)("rejects inconsistent %s even when above the minimum", (category) => {
+    expect(() => requireCompactControlHeights({ [category]: [control("button", 38)] }, "/parameter-admin/specs"))
+      .toThrow("/parameter-admin/specs: button has height 38px; expected 32px");
+  });
+
+  it("accepts native and custom peers across all three jobs at 32px", () => {
+    expect(() => requireCompactControlHeights({
+      filterControls: [control("select", 32), control("button", 32)],
+      sortControls: [control("select.library-sort", 32)],
+      paginationControls: [control("button", 32), control("select", 32)]
+    }, "/parameter-admin/specs")).not.toThrow();
+  });
+
+  it.each([NaN, Infinity, 0, 31.999, 32.001])("rejects invalid measured height %s", (height) => {
+    expect(() => requireCompactControlHeights({ sortControls: [control("select", height)] }, "/parameters"))
+      .toThrow("expected 32px");
+  });
+
+  it("leaves absent categories to the independent required-coverage guard", () => {
+    expect(() => requireCompactControlHeights({}, "/knowledge")).not.toThrow();
+  });
+});
 
 describe("consistency measurement coverage", () => {
   it("fails with the route and missing applicable category instead of silently passing", () => {
@@ -37,11 +68,14 @@ describe("consistency measurement coverage", () => {
 
   it("requires each applicable category independently of what the collector finds", () => {
     expect(consistencyRoutes.find((route) => route.path === "/parameters")?.required).toEqual(expect.arrayContaining([
-      "viewSwitches", "rowActions", "tableScrollports", "xiaozeLaunchers", "moduleTreeLabels", "filterControls", "sortControls"
+      "viewSwitches", "rowActions", "tableScrollports", "xiaozeLaunchers", "moduleTreeLabels"
     ]));
     expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/specs")?.required).toEqual(expect.arrayContaining([
       "primaryActions", "paginationControls", "moduleTreeLabels", "rowActions"
     ]));
+    expect(consistencyRoutes.find((route) => route.path === "/debugging-admin/nodes")?.required).toContain("filterControls");
+    expect(consistencyRoutes.find((route) => route.path === "/parameters")?.required).not.toContain("filterControls");
+    expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/specs")?.required).not.toContain("sortControls");
   });
 
   it("requires the launcher but leaves dismissible, route-dependent hints optional", () => {
