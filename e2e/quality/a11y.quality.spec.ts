@@ -111,7 +111,10 @@ test.describe("M5.11 accessibility quality gate", () => {
       await page.goto(route);
       await settleQualityRoute(page, route);
       await settleXiaozePopupClosed(page);
-      await expect(page.getByRole("group", { name: route === "/log-dashboard" ? "今日状态拆分" : "目录动作" })).toBeVisible();
+      // The Catalog action group renders only when it has actions, so wait on the definitions table there.
+      await expect(
+        route === "/log-dashboard" ? page.getByRole("group", { name: "今日状态拆分" }) : page.getByRole("table").first()
+      ).toBeVisible();
       const results = await new AxeBuilder({ page }).withRules(["aria-prohibited-attr"]).analyze();
       expect(results.violations).toEqual([]);
     });
