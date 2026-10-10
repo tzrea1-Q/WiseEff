@@ -753,8 +753,8 @@ describe("UserPermissionsPage", () => {
     expect(baseButtonStyles.background).toBe("var(--surface)");
     expect(baseButtonStyles.border).toBe("1px solid var(--border)");
     expect(baseButtonStyles["border-radius"]).toBe("var(--radius-md)");
-    expect(primaryButtonStyles.background).toBe("var(--accent)");
-    expect(primaryButtonStyles["border-color"]).toBe("var(--accent)");
+    expect(primaryButtonStyles.background).toBe("var(--primary)");
+    expect(primaryButtonStyles["border-color"]).toBe("var(--primary)");
   });
 
   it("keeps the member deletion button compact inside its table cell", () => {

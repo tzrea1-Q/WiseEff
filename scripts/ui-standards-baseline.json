@@ -37,7 +37,7 @@
       }
     },
     "raw-shadow": {
-      "count": 141,
+      "count": 140,
       "note": "Stock outside var(--shadow-1..3)/var(--ring); migrate to elevation tokens.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 5,
@@ -45,11 +45,11 @@
         "src/features/parameter-home/parameter-home.css": 10,
         "src/features/parameter-review/parameter-review.css": 4,
         "src/linear-template/linear-template.css": 8,
-        "src/styles.css": 111
+        "src/styles.css": 110
       }
     },
     "raw-spacing": {
-      "count": 1233,
+      "count": 1231,
       "note": "Off-grid spacing stock after wave 3 exact --space-* burn; ratchet down as rem/em/off-grid px are migrated.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 73,
@@ -58,7 +58,7 @@
         "src/features/parameter-home/parameter-home.css": 68,
         "src/features/parameter-review/parameter-review.css": 48,
         "src/linear-template/linear-template.css": 25,
-        "src/styles.css": 952
+        "src/styles.css": 950
       }
     },
     "raw-radius": {

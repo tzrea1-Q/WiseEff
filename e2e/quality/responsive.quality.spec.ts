@@ -97,9 +97,10 @@ test.describe("M5.11 responsive quality gate", () => {
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
 
     const dashboard = page.locator(".log-dashboard-page");
-    await expect(dashboard.getByText("暂无样本，无法判断", { exact: true })).toHaveCount(4);
+    // Four panel verdicts plus the failure-record card.
+    await expect(dashboard.getByText("暂无样本，无法判断", { exact: true })).toHaveCount(5);
     await expect(dashboard.getByText("今日覆盖 0 份日志。", { exact: true })).toBeVisible();
-    await expect(dashboard.getByText(/处理队列稳定|质量表现稳定|无需人工介入|所有日志均进入正常分析流程/)).toHaveCount(0);
+    await expect(dashboard.getByText(/处理队列稳定|质量表现稳定|无需人工介入|所有日志均进入正常分析流程|当前队列正常/)).toHaveCount(0);
 
     const marks = dashboard.locator(".topic-line-chart__bar i, .topic-stack-bar i, .topic-quality-bands i, .topic-score-meter > span, .topic-capacity-structure > i > span, .topic-capacity-rank i");
     expect(await marks.evaluateAll((elements) => elements.every((element) => {

@@ -354,18 +354,20 @@ export function DataTable<TData>({
             <button
               type="button"
               aria-label="上一页"
+              data-compact-control="pagination"
               disabled={currentPage === 1}
               onClick={() => setPage((value) => Math.max(1, value - 1))}
-              className="inline-flex size-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted disabled:opacity-40"
+              className="button subtle"
             >
               <ChevronLeft className="size-3.5" />
             </button>
             <button
               type="button"
               aria-label="下一页"
+              data-compact-control="pagination"
               disabled={currentPage >= totalPages}
               onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-              className="inline-flex size-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted disabled:opacity-40"
+              className="button subtle"
             >
               <ChevronRight className="size-3.5" />
             </button>
