@@ -11,14 +11,17 @@ properties:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
-    documentation: 子节点地址字段占用的 cell 数量。
+    documentation: 指定子节点地址字段占用的设备树单元数量。
+    displayName: 地址单元数
   "#size-cells":
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
-    documentation: 子节点尺寸字段占用的 cell 数量。
+    documentation: 指定子节点长度字段占用的设备树单元数量。
+    displayName: 长度单元数
   hold-time:
     valueShape: u32-array
     exampleValue: <0x220022>
     constraints: {}
-    documentation: i2c 的 DTS 属性「hold time」（hold-time），用于驱动读取的设备树配置。
+    documentation: 配置 I²C 总线的信号保持时间参数。
+    displayName: I²C 保持时间

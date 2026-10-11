@@ -14,4 +14,5 @@ properties:
     exampleValue: <2500>
     constraints: {}
     units: mV
-    documentation: 电池电压相关参数「vbat_drop_vol_mv」，单位通常为毫伏。
+    documentation: 设置电池电压压降保护的触发电压，单位为毫伏。
+    displayName: 电池压降保护电压

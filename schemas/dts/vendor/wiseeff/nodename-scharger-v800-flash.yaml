@@ -11,4 +11,5 @@ properties:
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
-    documentation: scharger_v800_flash 的 DTS 属性「vendor,led type」（vendor,led-type），用于驱动读取的设备树配置。
+    documentation: 指定闪光灯 LED 的类型标识。
+    displayName: LED 类型

@@ -14,12 +14,10 @@ properties:
   fast-charge-profile-matrix:
     valueShape: nested-string-array
     constraints: {}
-    documentation: >-
-      Demo nested string matrix for the DTS compatibility seed. Row and column
-      counts are observations, not schema bounds.
+    documentation: 配置快充配置的字符串矩阵。
+    displayName: 快充配置矩阵
   battery-thermal-derate-curve:
     valueShape: nested-u32-array
     constraints: {}
-    documentation: >-
-      Demo nested integer cell matrix for the DTS compatibility seed. Row and
-      column counts are observations, not schema bounds.
+    documentation: 配置电池热降额曲线的整数矩阵。
+    displayName: 电池热降额曲线

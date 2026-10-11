@@ -11,4 +11,5 @@ properties:
     valueShape: string-list
     exampleValue: "\"1\", \"1\", \"2500\", \"4700\", \"120\", \"3\", \"0\""
     constraints: {}
-    documentation: huawei,btb_check 的 DTS 属性「vol check para」（vol_check_para），用于驱动读取的设备树配置。
+    documentation: 配置连接器电压检测的控制参数。
+    displayName: 电压检测参数

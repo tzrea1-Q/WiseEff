@@ -19,7 +19,10 @@ import {
   VENDOR_SUCCESSOR_RELEASE_ID,
   VENDOR_CONSTRAINED_AGGREGATE_DIGEST,
   VENDOR_CONSTRAINED_RELEASE_ID,
-  compileConstrainedVendorCatalogSuccessor
+  VENDOR_LOCALIZED_AGGREGATE_DIGEST,
+  VENDOR_LOCALIZED_RELEASE_ID,
+  compileConstrainedVendorCatalogSuccessor,
+  compileLocalizedVendorCatalogSuccessor
 } from "./compile-vendor-catalog-release";
 import { firstReleaseBundle } from "../server/testing/parameterCatalog/cutoverPopulatedFixture";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
@@ -124,9 +127,26 @@ export async function seedQualityCanonicalBindings(db: Database) {
     pointer = await readCurrentCatalogPointer(pool);
   }
 
-  if (!(pointer.kind === "installed"
+  const isConstrained = pointer.kind === "installed"
     && pointer.current.id === CatalogReleaseId(VENDOR_CONSTRAINED_RELEASE_ID)
-    && pointer.current.digest === CatalogReleaseDigest(VENDOR_CONSTRAINED_AGGREGATE_DIGEST))) {
+    && pointer.current.digest === CatalogReleaseDigest(VENDOR_CONSTRAINED_AGGREGATE_DIGEST);
+  if (isConstrained) {
+    const vendor = compileLocalizedVendorCatalogSuccessor(qualityFixtureRepoRoot);
+    const advanced = await installPublishedRelease(pool, {
+      mode: "advance",
+      source: jsonCatalogReleaseSource(vendor.bundle),
+      expectedTargetDigest: CatalogReleaseDigest(VENDOR_LOCALIZED_AGGREGATE_DIGEST),
+      expectedCurrent: vendor.predecessor
+    });
+    if (!advanced.ok) {
+      throw new Error(`Quality localized vendor Catalog fixture failed: ${JSON.stringify(advanced)}`);
+    }
+    pointer = await readCurrentCatalogPointer(pool);
+  }
+
+  if (!(pointer.kind === "installed"
+    && pointer.current.id === CatalogReleaseId(VENDOR_LOCALIZED_RELEASE_ID)
+    && pointer.current.digest === CatalogReleaseDigest(VENDOR_LOCALIZED_AGGREGATE_DIGEST))) {
     const current = pointer.kind === "installed"
       ? `${pointer.current.id}/${pointer.current.digest}`
       : pointer.kind;
@@ -152,7 +172,7 @@ export async function seedQualityCanonicalBindings(db: Database) {
     existingProjects.rows.map((row) => [row.project_id, Number(row.count)]),
   );
   if (["atlas", "aurora", "nebula"].every((projectId) => (existingCounts[projectId] ?? 0) > 0)) {
-    return { catalogReleaseId: VENDOR_CONSTRAINED_RELEASE_ID, written: existingCounts, skipped: [] };
+    return { catalogReleaseId: VENDOR_LOCALIZED_RELEASE_ID, written: existingCounts, skipped: [] };
   }
 
   const result = await ensureCanonicalCatalogAfterLegacySeed(db, qualityFixtureAuth, {

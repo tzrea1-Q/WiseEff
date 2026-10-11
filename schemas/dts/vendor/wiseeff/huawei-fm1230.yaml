@@ -11,26 +11,31 @@ properties:
     valueShape: phandle-list
     exampleValue: <&huawei_batt_identify>
     constraints: {}
-    documentation: huawei,fm1230 的 DTS 属性「battct id gpio supply」（battct_id_gpio-supply），用于驱动读取的设备树配置。
+    documentation: 指定电池识别 GPIO 使用的供电节点。
+    displayName: 电池识别 GPIO 电源
   ic_index:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
-    documentation: 芯片角色或标识参数「ic_index」。
+    documentation: 指定电池认证芯片的索引编号。
+    displayName: 芯片索引
   onewire-gpio:
     valueShape: mixed
     exampleValue: <&gpio2 14 0>
     constraints: {}
-    documentation: huawei,fm1230 的 DTS 属性「onewire gpio」（onewire-gpio），用于驱动读取的设备树配置。
+    documentation: 指定单总线通信使用的 GPIO 引脚。
+    displayName: 单总线 GPIO
   ow_read_end_delay:
     valueShape: u32-array
     exampleValue: <100>
     constraints: {}
     units: ms
-    documentation: huawei,fm1230 的 DTS 属性「ow read end delay」（ow_read_end_delay），用于驱动读取的设备树配置。
+    documentation: 配置单总线读取结束后的等待时长。
+    displayName: 单总线读取结束延时
   ow_reset_start_delay:
     valueShape: u32-array
     exampleValue: <300>
     constraints: {}
     units: ms
-    documentation: huawei,fm1230 的 DTS 属性「ow reset start delay」（ow_reset_start_delay），用于驱动读取的设备树配置。
+    documentation: 配置单总线开始复位时的等待时长。
+    displayName: 单总线复位起始延时

@@ -11,24 +11,29 @@ properties:
     valueShape: string-list
     exampleValue: "\"default\", \"10\", \"45\", \"0x01\", \"volt_para00\",\n\t\t\"default\", \"10\", \"15\", \"0x02\", \"volt_para01\""
     constraints: {}
-    documentation: huawei,wireless_sc 的 DTS 属性「bat para」（bat_para），用于驱动读取的设备树配置。
+    documentation: 配置电池类型及温度区间与充电参数表的映射。
+    displayName: 电池充电参数映射
   init_para:
     valueShape: string-list
     exampleValue: "\"0x2\", \"SC_2\", \"0\", \"1\", \"3300\", \"4500\", \"9000\", \"450\", \"300\", \"100\", \"300\", \"10000\", \"9000\", \"2\",\n\t\t\"0x4\", \"SC_4\", \"2\", \"1\", \"3200\", \"4500\", \"15000\", \"500\", \"300\", \"100\", \"300\", \"20000\", \"15000\", \"4\""
     constraints: {}
-    documentation: huawei,wireless_sc 的 DTS 属性「init para」（init_para），用于驱动读取的设备树配置。
+    documentation: 配置无线直充各模式的初始化参数。
+    displayName: 初始化参数表
   init_para_col:
     valueShape: u32-array
     exampleValue: <14>
     constraints: {}
-    documentation: huawei,wireless_sc 的 DTS 属性「init para col」（init_para_col），用于驱动读取的设备树配置。
+    documentation: 指定初始化参数表每组参数的列数。
+    displayName: 初始化参数列数
   volt_para00:
     valueShape: string-list
     exampleValue: "\"4555\", \"1802\", \"386\""
     constraints: {}
-    documentation: huawei,wireless_sc 的 DTS 属性「volt para00」（volt_para00），用于驱动读取的设备树配置。
+    documentation: 配置第 0 组电池电压区间对应的充电控制参数。
+    displayName: 电压参数表 0
   volt_para01:
     valueShape: string-list
     exampleValue: "\"4050\", \"4046\", \"3237\",\n\t\t\"4555\", \"809\", \"600\""
     constraints: {}
-    documentation: huawei,wireless_sc 的 DTS 属性「volt para01」（volt_para01），用于驱动读取的设备树配置。
+    documentation: 配置第 1 组电池电压区间对应的充电控制参数。
+    displayName: 电压参数表 1

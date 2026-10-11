@@ -1,7 +1,7 @@
 {
   "linuxDtSchemaRevision": "v6.12-pinned-stub",
   "dtschemaVersion": "2026.6",
-  "vendorContentHash": "6d9dcfc73e178e2d186db149e1bbfc782e8626303862811ebb14dbb9d26188e0",
+  "vendorContentHash": "6e354515c378fcd045399db59b4086b3552b92d4e46db60a147aeae672fa1dca",
   "importedAt": "2026-07-16T00:00:00.000Z",
   "schemaPaths": [
     "vendor/wiseeff/arm-amba-bus.yaml",
