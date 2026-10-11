@@ -111,7 +111,7 @@ test("collects visible view-switch signatures without enforcing a design", async
 });
 
 test("settles read-only Bridge routes without waiting for a POST-created pairing code", async ({ page }) => {
-  await page.setContent(`<main><p>已识别当前环境</p><p>运行历史</p>
+  await page.setContent(`<main><div class="local-device-bridge-panel__readiness" aria-busy="false">本地 Bridge 未运行</div><p>运行历史</p>
     <section aria-label="节点调试参数"><table><tbody><tr>
       <td data-label="参数名称"><strong>Fast charge current</strong></td>
     </tr></tbody></table></section></main>`);
@@ -120,7 +120,7 @@ test("settles read-only Bridge routes without waiting for a POST-created pairing
 });
 
 test("settles a module-filtered debug table without requiring another module's row", async ({ page }) => {
-  await page.setContent(`<main><p>已识别当前环境</p>
+  await page.setContent(`<main><div class="local-device-bridge-panel__readiness" aria-busy="false">本地 Bridge 未运行</div>
     <div role="tree" aria-label="调试节点模块树">
       <div role="treeitem" aria-selected="true">Battery Health 1 个节点</div>
     </div>

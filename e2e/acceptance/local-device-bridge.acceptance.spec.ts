@@ -195,9 +195,18 @@ test.describe("local device bridge conditional acceptance", () => {
     const apiSummaries: OperationEvidenceApiSummary[] = [];
     await page.goto("/node-debugging");
     await expect(page.locator("body")).toBeVisible();
-    await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
-    await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
-    await expect(page.getByText("便携压缩包（zip / tar.gz）")).toBeVisible();
+    await expect(page.locator(".local-device-bridge-panel__readiness[aria-busy='false'], .local-device-bridge-panel__connected").first()).toBeVisible();
+    const installGuide = page.getByRole("button", { name: "安装指南", exact: true });
+    if (await installGuide.isVisible()) {
+      await installGuide.click();
+      await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
+      await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
+      await expect(page.getByText("便携压缩包（zip / tar.gz）")).toBeVisible();
+      await page.keyboard.press("Escape");
+    } else {
+      await expect(page.locator(".local-device-bridge-panel__connected")).toBeVisible();
+      await expect(page.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
+    }
 
     const manifestResponse = await request.get(apiRoute("/api/v1/device-bridges/releases"), { headers: smokeHeaders() });
     expect(manifestResponse.ok()).toBe(true);
@@ -352,9 +361,18 @@ test.describe("local device bridge conditional acceptance", () => {
 
     await page.goto("/node-debugging");
     await expect(page.locator("body")).toBeVisible();
-    await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
-    await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
-    await expect(page.getByText("便携压缩包（zip / tar.gz）")).toBeVisible();
+    await expect(page.locator(".local-device-bridge-panel__readiness[aria-busy='false'], .local-device-bridge-panel__connected").first()).toBeVisible();
+    const installGuide = page.getByRole("button", { name: "安装指南", exact: true });
+    if (await installGuide.isVisible()) {
+      await installGuide.click();
+      await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
+      await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
+      await expect(page.getByText("便携压缩包（zip / tar.gz）")).toBeVisible();
+      await page.keyboard.press("Escape");
+    } else {
+      await expect(page.locator(".local-device-bridge-panel__connected")).toBeVisible();
+      await expect(page.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
+    }
 
     const detectResponse = await postJson<{ items: DebugTargetDto[] }>(
       request,

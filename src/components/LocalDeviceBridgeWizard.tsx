@@ -26,6 +26,9 @@ import type { DeviceBridgePairingCode, DeviceBridgeRecord, DeviceBridgeReleaseIt
 import { BRIDGE_UPGRADE_NOTICE_TITLE, bridgePanelStatusHint, canConnectBridgeWithoutPairingCode, describeLocalBridgeUpgradeMessage, isBridgeOnlinePanelStatus, needsLocalBridgeLaunch, needsPairingCodeForBridgeConnect, resolveInstalledBridgeClientVersion, resolvePairingCodeForBridgeConnect, shouldClearStaleBridgeConnectError, shouldPromptLocalBridgeUpgrade, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
 import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
 import { LocalDeviceBridgeToolsPanel } from "./LocalDeviceBridgeToolsPanel";
+import { ModalDialog } from "./common/ModalDialog";
+import { presentLocalBridgeError } from "../infrastructure/http/presentError";
+import { formatAbsolute } from "../domain/format/formatDateTime";
 
 export type { BridgePanelStatus } from "./bridgePanelStatus";
 
@@ -61,6 +64,7 @@ type LocalDeviceBridgeWizardProps = {
   pairingStale?: boolean;
   pairingAuthFailure?: boolean;
   hasRegisteredBridge?: boolean;
+  bridgeListLoaded?: boolean;
   healthReachability?: LocalBridgeReachability;
   protocol: DebugConnectionProtocol;
   health: LocalBridgeHealthState | null;
@@ -74,6 +78,7 @@ type LocalDeviceBridgeWizardProps = {
   checking: boolean;
   detecting: boolean;
   connectError: string;
+  localError?: { message: string; detail: string } | null;
   onConnectError: (message: string) => void;
   onRefresh: (options?: { connectionAttempt?: boolean }) => Promise<{
     connected: boolean;
@@ -168,7 +173,7 @@ function WizardStepItem({
   return (
     <li data-active={active} data-done={done && !active}>
       {reachable && !active ? (
-        <button type="button" className="local-device-bridge-wizard__step-button" onClick={() => onSelect(step)}>
+        <button type="button" className="local-device-bridge-wizard__step-button" aria-label={`查看${label}步骤`} onClick={() => onSelect(step)}>
           {label}
         </button>
       ) : (
@@ -183,6 +188,7 @@ export function LocalDeviceBridgeWizard({
   pairingStale = false,
   pairingAuthFailure = false,
   hasRegisteredBridge = false,
+  bridgeListLoaded = true,
   healthReachability = "offline",
   protocol,
   health,
@@ -196,6 +202,7 @@ export function LocalDeviceBridgeWizard({
   checking,
   detecting,
   connectError,
+  localError,
   onConnectError,
   onRefresh,
   onDetect,
@@ -204,7 +211,8 @@ export function LocalDeviceBridgeWizard({
 }: LocalDeviceBridgeWizardProps) {
   const [connecting, setConnecting] = useState(false);
   const [allowStep2WhileMissing, setAllowStep2WhileMissing] = useState(false);
-  const [showUpgradeInstall, setShowUpgradeInstall] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [inlineGuideDismissed, setInlineGuideDismissed] = useState(false);
   const naturalStep = deriveNaturalWizardStep(panelStatus);
   const [viewStep, setViewStep] = useState<WizardViewStep>(naturalStep);
   const previousNaturalStep = useRef(naturalStep);
@@ -221,7 +229,7 @@ export function LocalDeviceBridgeWizard({
   );
 
   useEffect(() => {
-    if (showUpgradeInstall && viewStep === 1) return;
+    if (guideOpen && viewStep === 1) return;
     if (panelStatus === "missing_bridge") {
       if (!allowStep2WhileMissing) {
         setViewStep(1);
@@ -236,7 +244,7 @@ export function LocalDeviceBridgeWizard({
       setViewStep(naturalStep);
     }
     previousNaturalStep.current = naturalStep;
-  }, [naturalStep, panelStatus, allowStep2WhileMissing, viewStep, showUpgradeInstall]);
+  }, [naturalStep, panelStatus, allowStep2WhileMissing, viewStep, guideOpen]);
 
   useEffect(() => {
     if (shouldClearStaleBridgeConnectError({ connectError, health, panelStatus })) {
@@ -255,15 +263,6 @@ export function LocalDeviceBridgeWizard({
   };
 
   const handleConnect = useCallback(async () => {
-    if (viewStep === 3 || panelStatus === "bridges_with_targets") {
-      onDetect();
-      return;
-    }
-
-    if (viewStep !== 2) {
-      return;
-    }
-
     const needsPairingCode = needsPairingCodeForBridgeConnect({
       panelStatus,
       pairingStale,
@@ -336,6 +335,8 @@ export function LocalDeviceBridgeWizard({
           })
         );
       }
+    } catch (error) {
+      onConnectError(error instanceof Error ? error.message : String(error));
     } finally {
       setConnecting(false);
     }
@@ -348,8 +349,7 @@ export function LocalDeviceBridgeWizard({
     pairingStale,
     panelStatus,
     health,
-    hasRegisteredBridge,
-    viewStep
+    hasRegisteredBridge
   ]);
 
   // Only a connect flow that actually consumes a pairing code should be blocked
@@ -361,24 +361,9 @@ export function LocalDeviceBridgeWizard({
     pairingAuthFailure
   });
 
-  const primaryLabel =
-    viewStep === 1
-      ? "我已安装，去连接本机"
-      : viewStep === 2
-        ? pairingStale || pairingAuthFailure || panelStatus === "not_paired"
-          ? "重新配对"
-          : panelStatus === "not_connected"
-            ? "重新连接"
-            : needsLocalBridgeLaunch(panelStatus)
-              ? "启动并连接本机"
-              : "连接本机"
-        : panelStatus === "tools_missing"
-          ? "安装调试工具"
-          : "重新检测设备";
-
   const statusHint =
     viewStep === 1 && naturalStep > 1
-      ? "可下载安装包升级或重装 Bridge，完成后点击步骤 2 继续连接。"
+      ? "可下载安装包升级或重装 Bridge，完成后点击「连接本机」。"
       : bridgePanelStatusHint(panelStatus, protocol, {
           pairingStale,
           authFailure: pairingAuthFailure,
@@ -394,7 +379,6 @@ export function LocalDeviceBridgeWizard({
     (item) => !hostInstaller || item.downloadUrl !== hostInstaller.downloadUrl
   );
   const otherPortables = portableReleases.filter((item) => !hostPortable || item.downloadUrl !== hostPortable.downloadUrl);
-  const showPrimaryAction = true;
   const hasReleaseCatalog = Boolean(hostRelease || installerAlternates.length > 0 || portableReleases.length > 0);
   const promptUpgrade = shouldPromptLocalBridgeUpgrade({
     health,
@@ -404,8 +388,10 @@ export function LocalDeviceBridgeWizard({
   });
   const installedClientVersion = resolveInstalledBridgeClientVersion({ health, bridges });
   const openInstallStep = () => {
-    setShowUpgradeInstall(true);
+    setInlineGuideDismissed(true);
+    setGuideOpen(true);
     setViewStep(1);
+    if (!hasInstallCatalog) void onLoadInstallReleases?.();
   };
   const upgradeNotice =
     promptUpgrade && recommendedVersion ? (
@@ -416,61 +402,27 @@ export function LocalDeviceBridgeWizard({
       />
     ) : null;
 
-  if (panelStatus === "bridges_with_targets" && !showUpgradeInstall) {
+  const connectedChip = (
+    <span className="local-device-bridge-panel__connected" role="status" title={statusHint}>
+      <span className="local-device-bridge-panel__status-dot" aria-hidden="true" />
+      已连接 · {bridges.find((bridge) => bridge.id === health?.bridgeId)?.machineLabel || "本机"}
+    </span>
+  );
+
+  if ((panelStatus === "bridges_with_targets" || panelStatus === "online_no_device") && !guideOpen) {
     return (
       <div className="local-device-bridge-panel__ready">
-        <div className="local-device-bridge-panel__head">
-          <div>
-            <strong>本地设备桥接</strong>
-            <small>{statusHint}</small>
-          </div>
-          <button
-            className="button subtle"
-            type="button"
-            disabled={checking || detecting || connecting}
-            onClick={() => onDetect()}
-          >
-            <Link2 size={14} aria-hidden="true" />
-            {detecting ? "检测中..." : "重新检测设备"}
-          </button>
-        </div>
+        {connectedChip}
         {upgradeNotice}
       </div>
     );
   }
 
-  if (panelStatus === "online_no_device" && !showUpgradeInstall) {
-    return (
-      <div className="local-device-bridge-panel__ready">
-        <div className="local-device-bridge-panel__head">
-          <div>
-            <strong>本地设备桥接</strong>
-            <small>{statusHint}</small>
-          </div>
-          <button
-            className="button subtle"
-            type="button"
-            disabled={checking || detecting || connecting}
-            onClick={() => onDetect()}
-          >
-            <Link2 size={14} aria-hidden="true" />
-            {detecting ? "检测中..." : "重新检测设备"}
-          </button>
-        </div>
-        {upgradeNotice}
-      </div>
-    );
-  }
-
-  if (panelStatus === "tools_missing") {
+  if (panelStatus === "tools_missing" && !guideOpen) {
     return (
       <>
-        <div className="local-device-bridge-panel__head">
-          <div>
-            <strong>本地设备桥接</strong>
-            <small>{statusHint}</small>
-          </div>
-        </div>
+        {connectedChip}
+        <p className="local-device-bridge-panel__install-desc">{statusHint}</p>
         <div className="local-device-bridge-panel__body">
           {upgradeNotice}
           {connectError ? <p className="local-device-bridge-panel__error">{connectError}</p> : null}
@@ -490,42 +442,13 @@ export function LocalDeviceBridgeWizard({
     );
   }
 
-  return (
+  const guide = (
     <>
       <ol className="local-device-bridge-wizard__steps" aria-label="Bridge 连接步骤">
         <WizardStepItem step={1} label="安装 Bridge" viewStep={viewStep} naturalStep={naturalStep} onSelect={goToStep} />
         <WizardStepItem step={2} label="连接本机" viewStep={viewStep} naturalStep={naturalStep} onSelect={goToStep} />
         <WizardStepItem step={3} label="插入 USB 设备" viewStep={viewStep} naturalStep={naturalStep} onSelect={goToStep} />
       </ol>
-
-      <div className="local-device-bridge-panel__head">
-        <div>
-          <strong>本地设备桥接</strong>
-          <small>{statusHint}</small>
-        </div>
-        {showPrimaryAction ? (
-          <button
-            className={
-              viewStep === 3
-                ? "button subtle"
-                : "button primary local-device-bridge-panel__install-cta"
-            }
-            type="button"
-            disabled={checking || detecting || connecting || (viewStep === 2 && pairingCodeRequiredForConnect && pairingCodeLoading)}
-            onClick={() => {
-              if (viewStep === 1) {
-                setAllowStep2WhileMissing(true);
-                setViewStep(2);
-                return;
-              }
-              handleConnect();
-            }}
-          >
-            <Link2 size={14} aria-hidden="true" />
-            {checking || connecting ? "连接中..." : primaryLabel}
-          </button>
-        ) : null}
-      </div>
 
       <div className="local-device-bridge-panel__body">
         {upgradeNotice}
@@ -552,7 +475,7 @@ export function LocalDeviceBridgeWizard({
                   <article className="local-device-bridge-panel__install-option">
                     <h4 className="local-device-bridge-panel__install-title">图形安装包（推荐）</h4>
                     <p className="local-device-bridge-panel__install-desc">
-                      运行安装程序即可完成 Bridge 安装，自动注册连接协议、后台服务与托盘/菜单栏。安装后回到本页，在步骤 2 点击「连接本机」。
+                      运行安装程序即可完成 Bridge 安装，自动注册连接协议、后台服务与托盘/菜单栏。安装后点击「连接本机」。
                     </p>
 
                     {hostInstaller ? (
@@ -636,39 +559,7 @@ export function LocalDeviceBridgeWizard({
               </p>
             )}
 
-            {needsLocalBridgeLaunch(panelStatus) ? (
-              <p className="local-device-bridge-panel__already-installed">
-                {pairingCodeLoading ? (
-                  <span className="local-device-bridge-panel__install-desc">正在生成配对码...</span>
-                ) : pairingCode ? (
-                  <span className="local-device-bridge-panel__install-desc">
-                    当前配对码：<strong>{pairingCode.code}</strong>
-                    <span className="local-device-bridge-panel__pairing-validity">
-                      （约 30 分钟内有效，用于终端兜底命令）
-                    </span>
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  className="button primary local-device-bridge-panel__install-cta local-device-bridge-panel__already-installed-cta"
-                  onClick={() => {
-                    setAllowStep2WhileMissing(true);
-                    setViewStep(2);
-                  }}
-                >
-                  {panelStatus === "missing_bridge"
-                    ? "我已安装，去连接本机"
-                    : "Bridge 未运行？点此自动启动并连接"}
-                </button>
-              </p>
-            ) : null}
           </>
-        ) : null}
-
-        {viewStep !== 1 && connectError ? <p className="local-device-bridge-panel__error">{connectError}</p> : null}
-
-        {viewStep !== 1 && !connectError && health?.pairingError ? (
-          <p className="local-device-bridge-panel__error" role="alert">{health.pairingError}</p>
         ) : null}
 
         {viewStep === 2 &&
@@ -680,11 +571,6 @@ export function LocalDeviceBridgeWizard({
           needsLocalLaunch: needsLocalBridgeLaunch(panelStatus)
         }) ? (
           <div className="local-device-bridge-panel__install-desc" role="status">
-            {pairingCode ? (
-              <p>
-                配对码：<strong>{pairingCode.code}</strong>
-              </p>
-            ) : null}
             <p>
               若网页未能自动打开 Bridge，请在 Bridge 安装目录打开终端并执行：
             </p>
@@ -714,7 +600,82 @@ export function LocalDeviceBridgeWizard({
             ) : null}
           </div>
         ) : null}
+        {pairingCodeLoading ? (
+          <p className="local-device-bridge-panel__install-desc" role="status">正在生成配对码...</p>
+        ) : pairingCode ? (
+          <div className="local-device-bridge-panel__pairing-code">
+            <span>配对码 · 有效至 <time dateTime={pairingCode.expiresAt}>{formatAbsolute(pairingCode.expiresAt)}</time></span>
+            <CopyableCommand command={pairingCode.code} label="配对码" />
+          </div>
+        ) : null}
       </div>
+    </>
+  );
+
+  const showInlineGuide = bridgeListLoaded && !inlineGuideDismissed && !guideOpen &&
+    !isBridgeOnlinePanelStatus(panelStatus) && !bridges.some((bridge) => !bridge.revokedAt);
+  const closeGuide = () => {
+    setGuideOpen(false);
+  };
+  const connectionError = localError?.message || (connectError ? presentLocalBridgeError(connectError) : health?.pairingError);
+  const technicalDetail = localError?.detail || connectError;
+  const connectButton = (
+    <button type="button" className="button primary"
+      disabled={checking || detecting || connecting || (pairingCodeRequiredForConnect && pairingCodeLoading)}
+      onClick={() => {
+        setInlineGuideDismissed(true);
+        closeGuide();
+        setAllowStep2WhileMissing(true);
+        setViewStep(2);
+        void handleConnect();
+      }}><Link2 size={14} aria-hidden="true" />连接本机</button>
+  );
+
+  return (
+    <>
+      <div className="local-device-bridge-panel__readiness" aria-busy={checking || connecting}>
+        {isBridgeOnlinePanelStatus(panelStatus) ? connectedChip : (
+          <span role="status" className="local-device-bridge-panel__readiness-status" title={statusHint}>
+            <span className="local-device-bridge-panel__status-dot" aria-hidden="true" />
+            {checking || connecting ? "正在连接…" : "本地 Bridge 未运行"}
+          </span>
+        )}
+        {!guideOpen && !isBridgeOnlinePanelStatus(panelStatus) ? connectButton : null}
+        <button type="button" className="button subtle" onClick={openInstallStep}>安装指南</button>
+        {pairingStale || pairingAuthFailure || panelStatus === "bridge_blocked" ? (
+          <p className="local-device-bridge-panel__readiness-hint">{statusHint}</p>
+        ) : null}
+        {connectionError ? (
+          <div className="local-device-bridge-panel__error" role="alert">
+            <p>{connectionError}</p>
+            {technicalDetail && technicalDetail !== connectionError ? (
+              <details><summary>技术详情</summary><p>{technicalDetail}</p></details>
+            ) : null}
+            {localError ? <button type="button" className="button subtle" disabled={checking}
+              onClick={() => void onRefresh()}>刷新代理状态</button> : null}
+          </div>
+        ) : null}
+      </div>
+      {!showInlineGuide && !guideOpen ? upgradeNotice : null}
+      {showInlineGuide ? (
+        <section className="local-device-bridge-panel__guide" aria-label="安装与连接本地 Bridge">
+          <button type="button" className="button subtle" onClick={() => setInlineGuideDismissed(true)}>收起安装指南</button>
+          {guide}
+        </section>
+      ) : null}
+      <ModalDialog open={guideOpen} onDismiss={closeGuide} className="local-device-bridge-panel__guide-drawer"
+        backdropClassName="local-device-bridge-panel__guide-backdrop">
+        {({ titleId }) => (
+          <>
+            <div className="local-device-bridge-panel__head">
+              <h2 id={titleId}>安装与连接本地 Bridge</h2>
+              <button type="button" className="button subtle" onClick={closeGuide}>关闭安装指南</button>
+            </div>
+            {guide}
+            {!isBridgeOnlinePanelStatus(panelStatus) ? connectButton : null}
+          </>
+        )}
+      </ModalDialog>
     </>
   );
 }

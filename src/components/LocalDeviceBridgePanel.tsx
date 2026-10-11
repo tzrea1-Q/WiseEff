@@ -5,7 +5,6 @@ import { LocalDeviceBridgeWizard } from "./LocalDeviceBridgeWizard";
 import {
   deriveBridgePanelStatus,
   countActiveBridgesForPlatform,
-  isBridgeOnlinePanelStatus,
   isLocalBridgeAuthFailure,
   isLocalBridgePairingStale,
   isLocalBridgeTokenExpired,
@@ -74,6 +73,7 @@ export function LocalDeviceBridgePanel({
   const [health, setHealth] = useState<LocalBridgeHealthState | null>(null);
   const [healthReachability, setHealthReachability] = useState<LocalBridgeReachability>("offline");
   const [bridges, setBridges] = useState<DeviceBridgeRecord[]>(bridgesOverride ?? []);
+  const [bridgeListLoaded, setBridgeListLoaded] = useState(bridgesOverride != null);
   const [hostRelease, setHostRelease] = useState<DeviceBridgeReleaseItem | null>(null);
   const [installerAlternates, setInstallerAlternates] = useState<DeviceBridgeReleaseItem[]>([]);
   const [portableReleases, setPortableReleases] = useState<DeviceBridgeReleaseItem[]>([]);
@@ -90,6 +90,7 @@ export function LocalDeviceBridgePanel({
   const installReleasesLoadedRef = useRef(false);
   const lastEmittedBridgeStateRef = useRef<LocalDeviceBridgePanelState | null>(null);
   const bridgesRef = useRef<DeviceBridgeRecord[]>(bridgesOverride ?? []);
+  const localProbeFailedRef = useRef(false);
 
   const loadInstallReleases = useCallback(async () => {
     setReleasesLoading(true);
@@ -144,10 +145,15 @@ export function LocalDeviceBridgePanel({
           healthProbe = { health: null, reachability: "offline", error };
         }
         if (healthProbe.error != null) {
+          if (options?.connectionAttempt) localProbeFailedRef.current = true;
           setPanelError((current) => options?.connectionAttempt || current?.source === "local"
             ? { source: "local", error: healthProbe.error }
             : current);
         } else if (healthProbe.reachability === "ok" && healthProbe.error == null) {
+          if (localProbeFailedRef.current) {
+            localProbeFailedRef.current = false;
+            setConnectError("");
+          }
           setPanelError((current) => current?.source === "local" ? null : current);
         }
         const nextHealth = healthProbe.health;
@@ -180,6 +186,7 @@ export function LocalDeviceBridgePanel({
         }
 
         if (!listingFailed) {
+          setBridgeListLoaded(true);
           setBridges((current) =>
             current.length === nextBridges.length &&
             current.every((bridge, index) => {
@@ -247,6 +254,7 @@ export function LocalDeviceBridgePanel({
   useEffect(() => {
     if (bridgesOverride !== undefined && bridgesOverride !== null) {
       setBridges(bridgesOverride);
+      setBridgeListLoaded(true);
       setRenameDraftById(Object.fromEntries(bridgesOverride.map((bridge) => [bridge.id, bridge.machineLabel])));
     }
   }, [bridgesOverride]);
@@ -395,6 +403,7 @@ export function LocalDeviceBridgePanel({
         pairingStale={pairingStale}
         pairingAuthFailure={pairingAuthFailure}
         hasRegisteredBridge={registeredBridgeCountForHost > 0}
+        bridgeListLoaded={bridgeListLoaded}
         healthReachability={healthReachability}
         protocol={protocol}
         health={health}
@@ -408,6 +417,7 @@ export function LocalDeviceBridgePanel({
         checking={checking}
         detecting={detecting}
         connectError={connectError}
+        localError={panelError?.source === "local" ? { message: panelErrorMessage, detail: panelErrorDetail } : null}
         onConnectError={setConnectError}
         onRefresh={async (options) => {
           const snapshot = await refreshBridgeState(options);
@@ -424,7 +434,7 @@ export function LocalDeviceBridgePanel({
         onLoadInstallReleases={loadInstallReleases}
       />
       {bridges.length > 0 ? (
-        <details className="local-device-bridge-panel__management" open={!isBridgeOnlinePanelStatus(panelStatus)}>
+        <details className="local-device-bridge-panel__management">
           <summary>管理设备代理</summary>
           <ul className="local-device-bridge-panel__bridge-list" aria-label="我的设备代理列表">
             {bridges.map((bridge) => {
@@ -483,7 +493,7 @@ export function LocalDeviceBridgePanel({
           </ul>
         </details>
       ) : null}
-      {panelError != null ? (
+      {panelError?.source === "server" ? (
         <div role="alert">
           <p className="node-row-error">{panelErrorMessage}</p>
           {panelErrorDetail && panelErrorDetail !== panelErrorMessage ? (
