@@ -89,6 +89,39 @@ export function shouldRequireXiaozeHint({ hasDialog, viewportWidth }: { hasDialo
   return !hasDialog && viewportWidth > 640;
 }
 
+export function requireNavigatorWorkbenchGeometry(workbenches: ConsistencyMeasurements["navigatorWorkbenches"], routePath: string) {
+  requireMeasuredCategories({ navigatorWorkbenches: workbenches }, ["navigatorWorkbenches"], routePath);
+  for (const workbench of workbenches) {
+    const { root, navigator, task, toolbar, primaryAction, firstRow, firstRowClip, contract, viewport } = workbench;
+    if (!navigator || !task || !toolbar || !primaryAction || !firstRow || !firstRowClip) {
+      throw new Error(`${routePath}: missing navigator-workbench region, primary action or first row`);
+    }
+    if (![root, navigator, task, toolbar, primaryAction, firstRow, firstRowClip, contract, viewport]
+      .flatMap((measurement) => Object.values(measurement)).every(Number.isFinite)
+      || !Number.isFinite(workbench.pageOverflow) || !Number.isInteger(workbench.noticeCount)
+      || Object.values(contract).some((value) => value <= 0)) {
+      throw new Error(`${routePath}: invalid navigator-workbench measurement or layout token`);
+    }
+    const width = workbench.collapsed ? contract.collapsedWidth : contract.navigatorWidth;
+    const aligned = (actual: number, expected: number) => Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) <= 1;
+    if (!aligned(navigator.left, root.left) || !aligned(navigator.width, width)
+      || !aligned(task.left, root.left + width + contract.gap)) {
+      throw new Error(`${routePath}: navigator-workbench pane geometry differs from the token contract`);
+    }
+    if (toolbar.bottom > task.top + 1 || !aligned(primaryAction.right, toolbar.right - contract.toolbarPadding - 1)
+      || primaryAction.top < toolbar.top || primaryAction.bottom > toolbar.bottom || primaryAction.left < toolbar.left) {
+      throw new Error(`${routePath}: navigator-workbench toolbar or primary action is misplaced`);
+    }
+    if (workbench.noticeCount > 1) throw new Error(`${routePath}: navigator-workbench has more than one notice`);
+    if (workbench.pageOverflow > 1) throw new Error(`${routePath}: navigator-workbench causes page horizontal scrolling`);
+    if (firstRow.top < Math.max(0, task.top) || firstRow.bottom > Math.min(task.bottom, viewport.height) + 1
+      || firstRow.left < Math.max(0, task.left) || firstRow.right > Math.min(task.right, viewport.width) + 1
+      || !aligned(firstRowClip.width, firstRow.width) || !aligned(firstRowClip.height, firstRow.height)) {
+      throw new Error(`${routePath}: navigator-workbench first data row is outside the initial viewport or clipped`);
+    }
+  }
+}
+
 export function assertXiaozePlacement(
   measurements: Pick<ConsistencyMeasurements, "xiaozeLaunchers" | "xiaozeHints" | "tableScrollports" | "stickyActionAreas">
     & Partial<Pick<ConsistencyMeasurements, "visibleTableCount">>,

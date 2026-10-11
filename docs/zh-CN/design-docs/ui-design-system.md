@@ -247,6 +247,16 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 ## 布局与页面结构
 
+### 导航工作台
+
+`src/components/layout/` 中的 `NavigatorWorkbench` 负责固定顺序：工具栏（主动作位于最右端）、可选的紧凑上下文、至多一个通知槽，然后是有名称的导航、任务及可选检查器区域。页面只填充槽，不重定义网格、面板宽度或滚动预算。`/parameters` 的 DTS 与 JSON 均使用此模板；模拟模式的平面参数表及其他路由在各自迁移前保留原有布局。
+
+布局常量仅在 `src/styles.css` 根令牌块定义一次：`--navigator-workbench-navigator-width`（现有模块最小宽度 15rem）、`--navigator-workbench-navigator-cap`（现有模块宽度上限）、`--navigator-workbench-collapsed-width`（40px）、`--navigator-workbench-inspector-width`（20rem）、`--navigator-workbench-gap` 与 `--navigator-workbench-toolbar-padding`（12px），以及 `--navigator-workbench-pane-height` / `--navigator-workbench-scroll-rail-height`。在 1440×900 下，导航从模板左边界开始，任务区左边界为一个有上限的导航宽度加一个间距。标签保持单行，在导航内部滚动，不撑宽页面。模板负责任务区滚动容器，加载、空状态及可重试错误使用 `SectionState`；搜索无匹配时仍保留表头与筛选入口。
+
+折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化，存储不可用时本次挂载仍可操作。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`）。切换按钮标明受控内容及展开状态。DOM 与键盘顺序遵循槽顺序，格式切换后焦点回到当前格式标签。
+
+质量一致性项目在浅色、深色主题的 1440×900 视口下检查展开与折叠几何（±1px）、工具栏与动作位置、单一通知、首行可见、页面横向溢出，以及现有行操作和模块树契约。截图附件是 Catalog 迁移前的审阅门槛；不得在本地重生成 Linux 视觉基线。
+
 - 小泽入口与首次提示放在主滚动区之外的底部预留留白中，不得遮挡可见表格滚动区或吸附操作区。桌面拖动及左右方向键只沿该留白移动；入口移到左侧时提示朝内翻转。调整窗口后入口仍可达，键盘聚焦有可见反馈；Home 恢复右下角入口。关闭提示后，按用户保存偏好，SPA 导航及刷新均保持关闭（存储不可用时退回当前页面生命周期）。弹窗交互、Agent 行为及人工审批保持不变。一致性质量项目在 1440×900 下对全部目标路由断言不相交，包括首次提示可见状态。
 
 - TopBar 从 `appConfig` 渲染页面标题与副标题;页面主体不得重复(不许双标题、不许并列 `h1`)。

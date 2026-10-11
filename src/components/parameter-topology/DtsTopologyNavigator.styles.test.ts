@@ -88,27 +88,15 @@ describe("DtsTopologyNavigator responsive width", () => {
     expect(results.height).toBe("100%");
   });
 
-  it("uses the shared workbench width for parameter editing and administration", () => {
-    const styles = readStylesheet("src/styles.css");
-    const workbench = declarationsFor(styles, ".dts-parameter-workbench");
-    const body = declarationsFor(
-      styles,
-      ".dts-parameter-workbench > .dts-parameter-workbench__body",
-      { within: "dts-workbench (min-width: 960px)" }
-    );
-    const topology = declarationsFor(
-      styles,
-      ".dts-parameter-workbench > .dts-parameter-workbench__body > .dts-workbench-topology",
-      { within: "dts-workbench (min-width: 960px)" }
-    );
-
-    expect(workbench["container-type"]).toBe("inline-size");
-    expect(workbench["container-name"]).toBe("dts-workbench");
-    expect(body["grid-template-columns"]).toBe("auto minmax(0, 1fr)");
-    expect(topology.position).toBe("sticky");
-    expect(topology.width).toBe("max-content");
-    expect(topology["min-width"]).toBe("var(--module-navigator-min-width)");
-    expect(topology["max-width"]).toBe("var(--module-navigator-max-width)");
+  it("uses a tokenized bounded navigator and internal label scrolling for parameter editing", () => {
+    const styles = readStylesheet("src/components/layout/navigator-workbench.css");
+    const tokens = declarationsFor(readStylesheet("src/styles.css"), ":root");
+    expect(tokens["--navigator-workbench-navigator-width"]).toBe("var(--module-navigator-min-width)");
+    expect(tokens["--navigator-workbench-navigator-cap"]).toBe("var(--module-navigator-max-width)");
+    expect(declarationsFor(styles, ".navigator-workbench__body")["grid-template-columns"])
+      .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
+    expect(declarationsFor(styles, ".navigator-workbench__navigation").overflow).toBe("auto");
+    expect(declarationsFor(styles, ".navigator-workbench__navigation .dts-topology-navigator").width).toBe("max-content");
   });
 
   it("does not stretch collapsed roots on the node debugging page", () => {

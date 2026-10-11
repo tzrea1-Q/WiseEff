@@ -924,11 +924,8 @@ export function ParametersPage({
     [activeProject?.code, effectiveCanEdit, filteredParameters, isApiMode, onNavigate, resolvedProjectId]
   );
 
-  return (
-    <WorkbenchLayout
-      title="项目参数用户工作台"
-    >
-      <div className="parameters-page-layout">
+  const workbenchNotice = initializationLocked || archivedLinkNotice || historicalLinkNotice ? (
+    <>
         {initializationLocked ? (
           <div className="permission-inline-note" role="status">
             <strong>初始化待审阅</strong>
@@ -966,9 +963,16 @@ export function ParametersPage({
             <code>{contextQuery.parameterId}</code>
           </div>
         ) : null}
+    </>
+  ) : null;
+
+  return (
+    <WorkbenchLayout title="项目参数用户工作台">
+      <div className="parameters-page-layout">
         {isApiMode ? (
           <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
+            notice={workbenchNotice}
             requestedBindingId={contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
             canEdit={effectiveCanEdit}
             layoutMode={topologyLayoutMode}
@@ -985,6 +989,7 @@ export function ParametersPage({
           />
         ) : (
           <>
+          {workbenchNotice}
           <div className="workbench-one-col parameters-workbench-main">
           <section className="workbench-main">
             {modifiedParameters.length > 0 ? (

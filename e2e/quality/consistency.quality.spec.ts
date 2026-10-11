@@ -1,7 +1,7 @@
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, shouldRequireXiaozeHint } from "./consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, shouldRequireXiaozeHint } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
@@ -66,6 +66,9 @@ for (const route of routes) {
             requireRowActionVisibility(measurements.rowActions, route.path);
           }
           requireViewSwitchStyles(measurements, route.path);
+          if (route.required.includes("navigatorWorkbenches")) {
+            requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, route.path);
+          }
           if (theme === "light") {
             if (requiresHint) {
               requireMeasuredCategories(measurements, ["xiaozeHints"], route.path);
@@ -74,6 +77,21 @@ for (const route of routes) {
           }
         }).toPass({ timeout: 20_000 });
         requireCompactControlHeights(measurements, route.path);
+        if (route.required.includes("navigatorWorkbenches")) {
+          await testInfo.attach(`navigator-workbench-expanded-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
+          await waitForFontsAndNextPaint(page);
+          const collapsed = await page.evaluate(collectConsistencyMeasurements);
+          requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
+          requireRowActionVisibility(collapsed.rowActions, route.path);
+          await testInfo.attach(`navigator-workbench-collapsed-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          await page.getByRole("button", { name: "展开模块导航", exact: true }).click();
+          await waitForFontsAndNextPaint(page);
+        }
         if (route.required.includes("rowActions")) {
           expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
             `${route.path}: the page must not scroll horizontally`).toBeLessThanOrEqual(1);
@@ -125,6 +143,25 @@ for (const route of routes) {
             await expect(node).toHaveAttribute(selectedAttribute, "true");
             requireModuleTreeAlignment((await page.evaluate(collectConsistencyMeasurements)).moduleTreeLabels, route.path);
             expect(new URL(page.url()).searchParams.get(queryKey)).toBe(selectedId);
+            if (routePath === "/parameters") {
+              const url = page.url();
+              await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
+              await expect(node).toBeHidden();
+              expect(page.url()).toBe(url);
+              await waitForFontsAndNextPaint(page);
+              await page.reload();
+              await expectUsablePage(page);
+              await settleQualityRoute(page, routePath, { readOnly: true });
+              await closeXiaozePopupIfOpen(page);
+              await settleXiaozePopupClosed(page);
+              await settleAppToasts(page);
+              await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+              await expect(page.getByRole("button", { name: "展开模块导航", exact: true })).toBeVisible();
+              expect(new URL(page.url()).searchParams.get(queryKey)).toBe(selectedId);
+              await page.getByRole("button", { name: "展开模块导航", exact: true }).click();
+              await expect(node).toHaveAttribute(selectedAttribute, "true");
+              await waitForFontsAndNextPaint(page);
+            }
             await node.click();
             await expect(node).toHaveAttribute(selectedAttribute, "false");
             await expect.poll(() => new URL(page.url()).searchParams.get(queryKey)).toBeNull();
