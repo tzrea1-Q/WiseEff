@@ -18,6 +18,82 @@ import {
 
 test.beforeAll(() => seedQualityRuntime());
 
+for (const path of ["/node-debugging", "/dts-reload"]) {
+  for (const readiness of ["returning", "first-time", "connected"] as const) {
+    test(`Bridge readiness on ${path}: ${readiness}`, async ({ context, page }, testInfo) => {
+      testInfo.annotations.push({ type: "setup", description: "Read-only UI fixtures replace Bridge listing, local health and target detection; the workbench and identity use the real API. This does not prove hardware pairing or device writes." });
+      const blockedRequests = await installConsistencyReadGuard(context);
+      await context.route("**/api/v1/device-bridges/mine", async (request) => request.fulfill({ json: {
+        items: readiness === "first-time" ? [] : [{
+          id: "quality-readiness-bridge", machineLabel: "质量检查工作站", platform: "linux", arch: "amd64",
+          clientVersion: "999.0.0", capabilities: {}, createdAt: "2026-10-11T00:00:00Z", lastSeenAt: null, revokedAt: null
+        }]
+      } }));
+      await context.route("**/local-bridge/health", async (request) => {
+        if (readiness !== "connected") return request.abort("connectionrefused");
+        await request.fulfill({ json: {
+          ok: true, paired: true, connected: true, bridgeId: "quality-readiness-bridge",
+          clientVersion: "999.0.0", updatedAt: "2026-10-11T00:00:00Z",
+          tools: { adb: { available: true }, hdc: { available: true } }
+        } });
+      });
+      await context.route("**/api/v1/debugging/targets/detect", async (request) => request.fulfill({ json: { items: [] } }));
+      const [identity] = await Promise.all([
+        page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/me"),
+        page.goto(path)
+      ]);
+      expect(identity.ok()).toBe(true);
+      await expectUsablePage(page);
+      await settleQualityRoute(page, path, { readOnly: true });
+      await settleAppToasts(page);
+      await settleXiaozePopupClosed(page);
+      const panel = page.getByRole("region", { name: "本地设备连接", exact: true });
+      if (readiness === "connected") {
+        await expect(panel.getByText("已连接 · 质量检查工作站", { exact: true })).toBeVisible();
+        await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(0);
+        await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
+      } else {
+        await expect(panel.getByText("本地 Bridge 未运行", { exact: true })).toBeVisible();
+        await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(1);
+        if (readiness === "returning") {
+          await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
+          const bar = await panel.locator(".local-device-bridge-panel__readiness").boundingBox();
+          expect(bar).not.toBeNull();
+          expect(bar!.height).toBeLessThanOrEqual(40);
+          const firstRow = page.locator(path === "/node-debugging" ? '.debug-table tbody tr:has(td[data-label="参数名称"])' : '.dts-parameter-workbench-table__row').first();
+          await expect(firstRow).toBeVisible();
+          const row = await firstRow.boundingBox();
+          expect(row).not.toBeNull();
+          expect(row!.y).toBeGreaterThanOrEqual(0);
+          expect(row!.y + row!.height).toBeLessThanOrEqual(900);
+        } else {
+          await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toBeVisible();
+        }
+      }
+      await testInfo.attach(`bridge-${readiness}${path.replaceAll("/", "-")}`, {
+        contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+      });
+      if (readiness !== "connected") {
+        const trigger = panel.getByRole("button", { name: "安装指南", exact: true });
+        await trigger.click();
+        const drawer = page.getByRole("dialog", { name: "安装与连接本地 Bridge" });
+        await expect(drawer).toBeVisible();
+        await expect(drawer.getByRole("list", { name: "Bridge 连接步骤" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(1);
+        await page.keyboard.press("Shift+Tab");
+        await expect(drawer.getByRole("button", { name: "连接本机", exact: true })).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(drawer.getByRole("button", { name: "关闭安装指南" })).toBeFocused();
+        await page.keyboard.press("Escape");
+        await expect(drawer).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
+      }
+      expect(blockedRequests).toEqual([]);
+    });
+  }
+}
+
 const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", "/parameter-admin/specs"];
 
 const parameterRoute = consistencyRoutes.find((route) => route.path === "/parameters")!;

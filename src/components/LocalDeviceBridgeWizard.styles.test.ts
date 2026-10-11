@@ -3,29 +3,41 @@ import { describe, expect, it } from "vitest";
 import { declarationsFor, readStylesheet } from "../test/cssAssertions";
 
 describe("LocalDeviceBridgeWizard responsive pairing layout", () => {
-  it("keeps pairing copy and the launch action in a flexible row", () => {
+  it("keeps readiness compact and the guide at the right edge without hiding the workbench", () => {
     const styles = readStylesheet("src/styles.css");
-    const row = declarationsFor(styles, ".local-device-bridge-panel__already-installed");
-    const copy = declarationsFor(styles, ".local-device-bridge-panel__already-installed > .local-device-bridge-panel__install-desc");
-    const action = declarationsFor(styles, ".local-device-bridge-panel__already-installed-cta");
+    const bar = declarationsFor(styles, ".local-device-bridge-panel__readiness");
+    const drawer = declarationsFor(styles, ".local-device-bridge-panel__guide-drawer");
+    const backdrop = declarationsFor(styles, ".modal-backdrop.local-device-bridge-panel__guide-backdrop");
+    expect(bar.display).toBe("flex");
+    expect(bar["align-items"]).toBe("center");
+    expect(backdrop["justify-content"]).toBe("flex-end");
+    expect(backdrop.background).toBe("transparent");
+    expect(drawer["max-height"]).toBe("100dvh");
+    expect(drawer["overflow-y"]).toBe("auto");
+    expect(drawer.width).toBe("min(var(--bridge-guide-width), 100vw)");
+  });
+  it("keeps readiness copy and the launch action in a flexible row", () => {
+    const styles = readStylesheet("src/styles.css");
+    const row = declarationsFor(styles, ".local-device-bridge-panel__readiness");
+    const copy = declarationsFor(styles, ".local-device-bridge-panel__readiness-status");
+    const action = declarationsFor(styles, ".local-device-bridge-panel__readiness > .button");
 
     expect(row.display).toBe("flex");
     expect(row["flex-wrap"]).toBe("wrap");
-    expect(row.margin).toBe("0");
-    expect(copy.flex).toBe("1 1 18rem");
+    expect(copy.flex).toBe("1");
     expect(copy["min-width"]).toBe("0");
     expect(action["white-space"]).toBe("normal");
   });
 
   it("stacks the copy and action on narrow screens", () => {
     const styles = readStylesheet("src/styles.css");
-    const row = declarationsFor(styles, ".local-device-bridge-panel__already-installed", {
+    const row = declarationsFor(styles, ".local-device-bridge-panel__readiness", {
       within: "max-width: 480px"
     });
-    const copy = declarationsFor(styles, ".local-device-bridge-panel__already-installed > .local-device-bridge-panel__install-desc", {
+    const copy = declarationsFor(styles, ".local-device-bridge-panel__readiness-status", {
       within: "max-width: 480px"
     });
-    const action = declarationsFor(styles, ".local-device-bridge-panel__already-installed-cta", {
+    const action = declarationsFor(styles, ".local-device-bridge-panel__readiness > .button", {
       within: "max-width: 480px"
     });
 

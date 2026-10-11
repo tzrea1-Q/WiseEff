@@ -274,9 +274,8 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
 
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {
     // Bridge install guide: the API mints a fresh random 6-digit pairing code
-    // on every page load; the surrounding copy is static, so only the <strong>
-    // digits need masking.
-    masks.push(page.locator(".local-device-bridge-panel__already-installed strong"));
+    // on every page load; mask its digits and expiry, not the guide or controls.
+    masks.push(page.locator(".local-device-bridge-panel__pairing-code code, .local-device-bridge-panel__pairing-code time"));
   }
 
   if (routePath === "/logs") {
@@ -355,15 +354,10 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
   }
 
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {
-    // No local bridge listens on 127.0.0.1:18787 in CI, so the wizard settles
-    // on the install guide; wait for the async release manifest and pairing
-    // code so the "not connected" state is fully rendered before asserting.
-    await expect(page.getByText("已识别当前环境").first()).toBeVisible({ timeout });
-    if (options.readOnly) {
-      await expect(page.getByText("正在生成配对码...")).toHaveCount(0, { timeout });
-    } else {
-      await expect(page.getByText("当前配对码").first()).toBeVisible({ timeout });
-    }
+    // Wait for readiness to settle without assuming every user needs setup.
+    // Returning users and connected users have no inline installer content.
+    await expect(page.locator(".local-device-bridge-panel__readiness[aria-busy='false'], .local-device-bridge-panel__connected").first()).toBeVisible({ timeout });
+    await expect(page.getByText("正在生成配对码...")).toHaveCount(0, { timeout });
     if (routePath === "/dts-reload") {
       // The seeded reload workbench (tree + table + history) loads below the wizard.
       await expect(page.getByText("运行历史").first()).toBeVisible({ timeout });
