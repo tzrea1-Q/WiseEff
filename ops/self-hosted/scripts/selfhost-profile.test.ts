@@ -14,6 +14,53 @@ import {
 const secrets = { postgresPassword: "postgres_lab_secret", minioPassword: "minio_lab_secret" };
 
 describe("self-host profile renderer", () => {
+  it.each([
+    ["bootstrap", "postgres://wiseeff:postgres_lab_secret@postgres:5432/wiseeff", "passed"],
+    ["runtime login", "postgres://wiseeff_api:independent_secret@postgres:5432/wiseeff", "passed"],
+    ["interpolation", "postgres://wiseeff:${POSTGRES_PASSWORD}@postgres:5432/wiseeff", "failed"],
+    ["wrong bootstrap password", "postgres://wiseeff:wrong@postgres:5432/wiseeff?probe=postgres_lab_secret", "failed"]
+  ])("checks ACME DATABASE_URL for %s", (_name, databaseUrl, status) => {
+    const env = parseEnvText(renderSelfHostEnv(normalizeAnswers({
+      profile: "acme",
+      siteHost: "wiseeff.example.com",
+      tlsEmail: "ops@example.com",
+      adminPassword: "ReplaceWithAStrongPassword"
+    }), secrets));
+    env.DATABASE_URL = databaseUrl;
+    expect(evaluateSelfHostEnv(env).status).toBe(status);
+  });
+
+  it.each([
+    ["bootstrap query password override", "postgres://wiseeff:postgres_lab_secret@postgres/wiseeff?password=wrong", "failed"],
+    ["runtime query user override", "postgres://wiseeff_api:independent_secret@postgres/wiseeff?user=other", "failed"],
+    ["hostname substring", "postgres://wiseeff:wrong@postgres_lab_secret:5432/wiseeff", "failed"],
+    ["password substring", "postgres://wiseeff:prefix_postgres_lab_secret_suffix@postgres/wiseeff", "failed"],
+    ["malformed URL", "postgres_lab_secret", "failed"],
+    ["wrong protocol", "https://wiseeff:postgres_lab_secret@postgres/wiseeff", "failed"],
+    ["missing hostname", "postgres:///wiseeff?probe=postgres_lab_secret", "failed"],
+    ["invalid port", "postgres://wiseeff:postgres_lab_secret@postgres:99999/wiseeff", "failed"],
+    ["invalid encoding", "postgres://wiseeff_api:bad%XX@postgres/wiseeff", "failed"],
+    ["unrecognized role", "postgres://other:postgres_lab_secret@postgres/wiseeff", "failed"],
+    ["worker role", "postgres://wiseeff_worker:postgres_lab_secret@postgres/wiseeff", "failed"],
+    ["empty runtime password", "postgres://wiseeff_api@postgres/wiseeff?probe=postgres_lab_secret", "failed"],
+    ["same password bytes for runtime role", "postgres://wiseeff_api:postgres_lab_secret@postgres/wiseeff", "passed"],
+    ["interpolated query", "postgres://wiseeff:postgres_lab_secret@postgres/wiseeff?probe=${VALUE}", "failed"],
+    ["encoded interpolation", "postgres://wiseeff_api:%24%7BPASSWORD%7D@postgres/wiseeff", "failed"],
+    ["decoded bootstrap credential", "postgresql://wiseeff:%70ostgres_lab_secret@postgres/wiseeff", "passed"],
+    ["encoded runtime credential and IPv6", "postgresql://%77iseeff_api:runtime%3A%40%2F%25@[::1]:5432/wiseeff", "passed"]
+  ])("checks %s in both profiles", (_name, databaseUrl, status) => {
+    for (const profile of ["acme", "ip-lab"] as const) {
+      const env = parseEnvText(renderSelfHostEnv(normalizeAnswers({
+        profile,
+        siteHost: "wiseeff.example.com",
+        tlsEmail: "ops@example.com",
+        adminPassword: "ReplaceWithAStrongPassword"
+      }), secrets));
+      env.DATABASE_URL = databaseUrl;
+      expect(evaluateSelfHostEnv(env).status).toBe(status);
+    }
+  });
+
   it("renders IP lab Quick answers that pass the existing lab preflight", () => {
     const text = renderSelfHostEnv(
       normalizeAnswers({
@@ -98,7 +145,7 @@ describe("self-host profile renderer", () => {
     env.DATABASE_URL = "postgres://wiseeff:${POSTGRES_PASSWORD}@postgres:5432/wiseeff";
     expect(evaluateSelfHostEnv(env).status).toBe("failed");
     expect(evaluateSelfHostEnv(env).issues.map((issue) => issue.message)).toContain(
-      "DATABASE_URL must embed the expanded POSTGRES_PASSWORD."
+      "DATABASE_URL must be a valid PostgreSQL URL with expanded credentials: wiseeff requires the exact POSTGRES_PASSWORD; wiseeff_api requires a nonempty password."
     );
   });
 

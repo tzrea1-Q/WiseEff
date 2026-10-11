@@ -32,8 +32,12 @@ describe("reconcile-parameter-definitions CLI", () => {
       reportIdOrDigest: "vreport_1",
     });
     expect(parseReconcileCliCommand(["--verify", "--catalog-only", "--run-id", "digest-1"])).toEqual({
-      kind: "verify",
+      kind: "catalog",
       reportIdOrDigest: "digest-1",
+    });
+    expect(parseReconcileCliCommand(["--verify", "--catalog-only"])).toEqual({
+      kind: "catalog",
+      reportIdOrDigest: undefined,
     });
   });
 
@@ -75,5 +79,15 @@ describe("reconcile-parameter-definitions CLI", () => {
       "--verify cannot be combined with --dry-run or --apply.",
     );
     expect(() => parseReconcileCliCommand(["--catalog-only"])).toThrow("--catalog-only requires --verify.");
+    expect(() => parseReconcileCliCommand(["--verify", "--catalog-only", "--legacy-type", "parameter-spec", "--legacy-id", "spec-1"])).toThrow(
+      "--catalog-only cannot be combined with legacy lookup.",
+    );
+  });
+
+  it.each(["--report-id", "--run-id"])("rejects a missing explicitly required %s in catalog-only mode", (flag) => {
+    for (const value of [undefined, "", "--legacy-type"]) {
+      const args = ["--verify", "--catalog-only", flag, ...(value === undefined ? [] : [value])];
+      expect(() => parseReconcileCliCommand(args)).toThrow(`${flag} requires a value.`);
+    }
   });
 });

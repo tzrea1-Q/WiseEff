@@ -1,7 +1,8 @@
 import "dotenv/config";
 
 import { loadServerEnv } from "../server/config/env";
-import { createPostgresDatabase } from "../server/shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool } from "../server/shared/database/client";
+import { loadPublishedCatalog } from "../server/modules/parameter-bindings/catalogProjectValueSync";
 import {
   catalogLegacyGoneResult,
   LEGACY_WRITE_GONE_MESSAGE,
@@ -30,13 +31,28 @@ export async function runReconcileParameterDefinitions(
   if (!loaded.DATABASE_URL) throw new Error("DATABASE_URL is required for definition reconciliation.");
   const db = createPostgresDatabase(loaded.DATABASE_URL);
   try {
-    if (command.kind === "verify") {
+    if (command.kind === "catalog") {
+      const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+      if (!catalog) {
+        return {
+          exitCode: 1,
+          body: { status: "query-failure", code: "CURRENT_CATALOG_UNAVAILABLE", detail: "Current Catalog is absent or invalid." },
+        };
+      }
+      if (!command.reportIdOrDigest) {
+        return {
+          exitCode: 0,
+          body: { status: "value", value: { kind: "present", releaseId: catalog.release.id, digest: catalog.release.digest, version: catalog.release.version } },
+        };
+      }
+    }
+    if (command.kind === "verify" || command.kind === "catalog") {
       const observation = await readTypedVerificationReport({
         database: db,
-        reportIdOrDigest: command.reportIdOrDigest,
+        reportIdOrDigest: command.reportIdOrDigest ?? "missing",
       });
       return {
-        exitCode: observation.status === "query-failure" ? 1 : 0,
+        exitCode: observation.status === "value" && observation.value.kind === "present" ? 0 : 1,
         body: observation,
       };
     }
@@ -69,6 +85,7 @@ export async function runReconcileParameterDefinitions(
 
 export type ReconcileCliCommand =
   | { readonly kind: "inspect"; readonly runId?: string; readonly planDigest?: string; readonly phase?: string }
+  | { readonly kind: "catalog"; readonly reportIdOrDigest?: string }
   | { readonly kind: "verify"; readonly reportIdOrDigest: string }
   | {
       readonly kind: "legacy";
@@ -94,11 +111,22 @@ export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliC
   if (catalogOnly && !verify) {
     throw new Error("--catalog-only requires --verify.");
   }
+  if (verify) {
+    for (const flag of ["--report-id", "--run-id"]) {
+      const value = readOption(args, flag)?.trim();
+      if (args.includes(flag) && (!value || value.startsWith("--"))) {
+        throw new Error(`${flag} requires a value.`);
+      }
+    }
+  }
   if (apply) {
     return { kind: "apply-gone" };
   }
   const legacyType = readOption(args, "--legacy-type")?.trim();
   const legacyId = readOption(args, "--legacy-id")?.trim();
+  if (catalogOnly && (legacyType || legacyId)) {
+    throw new Error("--catalog-only cannot be combined with legacy lookup.");
+  }
   if (legacyType || legacyId) {
     if (!legacyType || !legacyId) {
       throw new Error("Legacy operator lookup requires both --legacy-type and --legacy-id.");
@@ -112,8 +140,10 @@ export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliC
   }
   if (verify) {
     const reportIdOrDigest =
-      readOption(args, "--report-id")?.trim() || readOption(args, "--run-id")?.trim() || "missing";
-    return { kind: "verify", reportIdOrDigest };
+      readOption(args, "--report-id")?.trim() || readOption(args, "--run-id")?.trim();
+    return catalogOnly
+      ? { kind: "catalog", reportIdOrDigest }
+      : { kind: "verify", reportIdOrDigest: reportIdOrDigest || "missing" };
   }
   return {
     kind: "inspect",

@@ -123,6 +123,10 @@ This removes the Docker Hub dependency for `node:22.21.1-alpine`; it does not ma
 
 ## Data-plane readiness and recovery verification
 
+For an ordinary populated upgrade, the candidate API runs `npm run parameter-definitions:check -- --catalog-only` with its configured `DATABASE_URL` (including the least-privilege `wiseeff_api` LOGIN). This read-only gate requires a current Catalog pointer and loads its release through the canonical reader/kernel. Valid published `crel_seed_*` and vendor releases are accepted; success identifies the verified Release ID, digest, and version. An absent or invalid current Catalog exits non-zero. The controller uses the exit code, records `candidate-parameter-catalog` on failure, and follows recovery rather than restoring traffic to an unverified candidate. The explicit `new-empty` data-mode initialization remains a separate gate.
+
+Catalog-only mode needs no historical verification report by default. An explicitly supplied `--report-id` or `--run-id` is also required to resolve to a present report; absent reports fail. Ordinary `parameter-definitions:check` report verification now also fails on absence instead of treating `{ kind: "absent", reason: "missing" }` as success. Other reconciliation modes are unchanged.
+
 After `apply` recreates `postgres`, `redis`, `minio`, and `minio-init`, the controller applies service-specific readiness semantics:
 
 - PostgreSQL is ready only when Docker reports `healthy`.
