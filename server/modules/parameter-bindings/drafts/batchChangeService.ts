@@ -81,6 +81,8 @@ export type CanonicalBatchChangeRequestDto = {
   configSetId: string;
   appliedAt: string | null;
   appliedAuditRef: string | null;
+  createdAt: string;
+  updatedAt: string;
   targets: Array<{
     ordinal: number;
     draftId: string | null;
@@ -260,6 +262,7 @@ type BatchRow = {
   batch_source_proof_token: string; batch_cohort_proof_token: string;
   batch_file_id: string; batch_base_version_id: string; batch_config_set_id: string;
   applied_at: string | null; applied_audit_ref: string | null;
+  created_at: string | Date; updated_at: string | Date;
 };
 
 async function loadBatchRequest(db: Database, organizationId: string, projectId: string, requestId: string): Promise<CanonicalBatchChangeRequestDto | null> {
@@ -352,6 +355,8 @@ async function loadBatchRequest(db: Database, organizationId: string, projectId:
     configSetId: request.batch_config_set_id,
     appliedAt: request.applied_at,
     appliedAuditRef: request.applied_audit_ref,
+    createdAt: request.created_at instanceof Date ? request.created_at.toISOString() : request.created_at,
+    updatedAt: request.updated_at instanceof Date ? request.updated_at.toISOString() : request.updated_at,
     targets: targets.rows.map((target) => ({
       ordinal: target.ordinal,
       // The draft FK may become NULL on deletion; the frozen ID and proof keep

@@ -253,9 +253,13 @@ test.describe("canonical value workflow on real sources", () => {
       expect((await bindings(request))[0].currentValueId).toBe(expectedValueId);
       return item.id as string;
     };
-    const openReview = async (role: "software-user" | "software-committer") => {
+    const openReview = async (role: "software-user" | "software-committer", requestId?: string) => {
       await signInBrowserAsRole(page, role, `${runtime.frontendUrl}/parameter-review?project=${projectId}`);
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
+      if (requestId) {
+        await page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${requestId}"]`)
+          .getByRole("button", { name: "查看 Local canonical source review 提交详情", exact: true }).click();
+      }
       return page.getByRole("region", { name: "软件配置审核" });
     };
     await openParameters();
@@ -274,7 +278,7 @@ test.describe("canonical value workflow on real sources", () => {
     expect(draftsResponse.ok(), await draftsResponse.text()).toBe(true);
     expect((await draftsResponse.json()).items).toEqual([]);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
-    let review = await openReview("software-user");
+    let review = await openReview("software-user", withdrawnId);
     await expect(review.getByRole("button", { name: "批准软件配置" })).toHaveCount(0);
     const withdrawn = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/withdraw"));
     await review.getByRole("button", { name: "撤回我的提交" }).click();
@@ -287,9 +291,11 @@ test.describe("canonical value workflow on real sources", () => {
       expect((await listed.json()).items).toContainEqual(expect.objectContaining({ id: requestId, status, submitterUserId: acceptanceCast.liuMin.userId }));
       await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=${requestId}`);
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
+      await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
       await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
       await expect(page.getByLabel("固定源变更前")).toBeVisible();
       await page.reload();
+      await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
       await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
       await expect(page.getByLabel("固定源变更前")).toBeVisible();
       await page.screenshot({ path: info.outputPath(`tracking-${status}.png`), animations: "disabled" });
@@ -297,9 +303,13 @@ test.describe("canonical value workflow on real sources", () => {
     await assertTracking(withdrawnId, "withdrawn");
     await openParameters();
     const rejectedId = await submit();
-    review = await openReview("software-committer");
+    review = await openReview("software-committer", rejectedId);
     const rejected = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/review"));
     await review.getByRole("button", { name: "驳回", exact: true }).click();
+    const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+    await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+    await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("Local canonical source review needs supplemental evidence");
+    await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
     expect((await rejected).ok()).toBe(true);
     await assertTracking(rejectedId, "rejected");
     await openParameters();
@@ -318,7 +328,7 @@ test.describe("canonical value workflow on real sources", () => {
       headers: authHeadersForUser("tracking-scoped-user", "tracking-scoped@example.test", "Tracking scoped")
     });
     expect(outsideScope.status()).toBe(403);
-    review = await openReview("software-committer");
+    review = await openReview("software-committer", approvedId);
     await expect(review.getByLabel("固定源变更后")).toContainText("1200");
     await page.screenshot({ path: info.outputPath("canonical-software-review.png"), animations: "disabled" });
     const approved = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/review"));
@@ -327,16 +337,19 @@ test.describe("canonical value workflow on real sources", () => {
     expect(response.ok(), await response.text()).toBe(true);
     expect((await response.json()).item.status).toBe("approved");
     await assertTracking(approvedId, "approved");
-    const rejectedRow = page.getByRole("table", { name: "我的参数提交请求" }).getByRole("row").filter({ hasText: "已驳回" });
-    const selectRejected = rejectedRow.getByRole("button", { name: "查看请求", exact: true });
+    const rejectedRow = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${rejectedId}"]`);
+    await expect(rejectedRow).toContainText("已驳回");
+    const selectRejected = rejectedRow.getByRole("button", { name: "查看 Local canonical source review 提交详情", exact: true });
     await selectRejected.focus();
     await selectRejected.press("Enter");
-    await expect(page).toHaveURL(new RegExp(`request=${rejectedId}$`));
-    await expect(page.getByText(rejectedId, { exact: true })).toBeVisible();
-    await expect(page.getByLabel("固定源变更前")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`request=${rejectedId}(?:&|$)`));
     await expect(selectRejected).toBeFocused();
+    await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
+    await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
+    await expect(page.getByLabel("固定源变更前")).toBeVisible();
     await page.reload();
-    await expect(page.getByText(rejectedId, { exact: true })).toBeVisible();
+    await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
+    await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=missing-request`);
     await expect(page.getByRole("alert").filter({ hasText: /失效|不存在|不可用|无权/ })).toBeVisible();
     await expect(page.getByLabel("固定源变更前")).toHaveCount(0);
@@ -387,12 +400,12 @@ test.describe("canonical value workflow on real sources", () => {
       files: [expect.objectContaining({ name: "charger.dts", content: source.replace("<1000>", "<1200>") })]
     });
     await openReview("software-committer");
-    await page.getByRole("region", { name: "软件配置审核" }).getByRole("tab", { name: "历史", exact: true }).click();
-    await expect(page.getByRole("table", { name: "软件配置审核请求" })).toContainText("已批准");
+    await page.getByRole("tablist", { name: "审阅视角" }).getByRole("tab", { name: "已处理", exact: true }).click();
+    await expect(page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${approvedId}"]`)).toContainText("已批准");
     await openParameters();
     await createDraft("delete");
     const deletionRequestId = await submit(approvedBinding.currentValueId);
-    review = await openReview("software-committer");
+    review = await openReview("software-committer", deletionRequestId);
     await expect(review.getByLabel("固定源变更后")).toContainText("/delete-property/ iin_max");
     await page.screenshot({ path: info.outputPath("canonical-delete-review.png"), animations: "disabled" });
     const deletionApproved = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/${deletionRequestId}/review`));
@@ -423,8 +436,8 @@ test.describe("canonical value workflow on real sources", () => {
     await openParameters();
     await expect(page.locator(`[data-binding-id="${bindingId}"]`)).toHaveCount(0);
     await openReview("software-committer");
-    await page.getByRole("region", { name: "软件配置审核" }).getByRole("tab", { name: "历史", exact: true }).click();
-    await expect(page.getByRole("table", { name: "软件配置审核请求" })).toContainText("已批准");
+    await page.getByRole("tablist", { name: "审阅视角" }).getByRole("tab", { name: "已处理", exact: true }).click();
+    await expect(page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${deletionRequestId}"]`)).toContainText("已批准");
     await recordOperationEvidence({
       operationId: "PARAM-CANONICAL-VALUE-WORKFLOW-001",
       title: "Canonical single-stage edit and delete preserve source history across restart",
@@ -442,7 +455,7 @@ test.describe("canonical value workflow on real sources", () => {
     await page.getByRole("combobox", { name: "项目", exact: true }).click();
     await page.getByRole("option", { name: /Aurora disposable/ }).click();
     await expect(page).toHaveURL(/parameter-review\?project=aurora$/);
-    await expect(page.getByRole("region", { name: "软件配置审核" })).toContainText("当前没有待审核源文件请求");
+    await expect(page.getByText("暂无待审核请求", { exact: true })).toBeVisible();
   });
 });
 

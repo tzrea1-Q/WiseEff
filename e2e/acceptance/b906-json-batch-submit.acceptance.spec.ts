@@ -151,11 +151,12 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       expect(unauthorized.status()).toBe(404);
       expect(otherReviewerReject.status()).toBe(404);
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
-      const queue = page.getByRole("table", { name: "软件配置审核请求" });
+      const queue = page.getByRole("table", { name: "审阅队列", exact: true });
       await expect(queue.getByRole("row").filter({ hasText: "浏览器批量批准" })).toBeVisible();
-      await queue.getByRole("row").filter({ hasText: "浏览器批量批准" }).getByRole("button", { name: "查看批量请求" }).click();
+      await queue.locator(`[data-review-row-id="${approved.id}"]`).getByRole("button", { name: "查看 浏览器批量批准 提交详情", exact: true }).click();
       const detail = page.getByRole("article", { name: "批量源文件请求详情" });
-      await expect(detail.getByText(approved.batchProofDigest)).toBeVisible();
+      await detail.getByText("溯源信息", { exact: true }).click();
+      await expect(detail.locator("details").getByText(approved.batchProofDigest, { exact: true }).first()).toBeVisible();
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"
@@ -175,10 +176,14 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       const rejectedFixture = await setup("rejected");
       const rejected = await submitFromPage(rejectedFixture, "浏览器批量驳回");
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
-      await queue.getByRole("row").filter({ hasText: "浏览器批量驳回" }).getByRole("button", { name: "查看批量请求" }).click();
+      await queue.locator(`[data-review-row-id="${rejected.id}"]`).getByRole("button", { name: "查看 浏览器批量驳回 提交详情", exact: true }).click();
       const rejectResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${rejected.id}/review`));
       await detail.getByRole("button", { name: "驳回全部 2 项" }).click();
+      const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+      await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+      await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("JSON 批量变更需要补充依据");
+      await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
       expect((await rejectResponse).status()).toBe(200);
       await expect(detail).toContainText("已驳回");
       const terminalConflicts = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${rejectedFixture.candidateId}/source-conflicts`),

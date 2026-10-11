@@ -1,7 +1,7 @@
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, shouldRequireXiaozeHint } from "./consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
@@ -136,6 +136,9 @@ for (const route of routes) {
         await expect(async () => {
           measurements = await page.evaluate(collectConsistencyMeasurements);
           requireMeasuredCategories(measurements, route.required, route.path);
+          if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
+            requireReviewInboxStructure(measurements, route.path);
+          }
           if (moduleNavigationPaths.includes(routePath)) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }

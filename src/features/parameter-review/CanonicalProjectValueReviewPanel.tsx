@@ -1,6 +1,9 @@
 import { TabPanel } from "@/components/ui/tab-panel";
 import { useEffect, useId, useRef, useState } from "react";
 import { ViewSwitch } from "@/components/ui/view-switch";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
+import { ReviewProvenance } from "./ReviewProvenance";
 import type {
   CatalogBatchValueChangeRequestResponse,
   CatalogSourceConflictDecisionResponse,
@@ -29,6 +32,10 @@ type CanonicalProjectValueReviewPanelProps = {
   onSelectRequest?: (requestId: string | null) => void;
   /** Personal tracking view asks the server for the authenticated user's rows. */
   mineOnly?: boolean;
+  detailOnly?: boolean;
+  externalView?: "pending" | "history";
+  onRequestsChanged?: () => void;
+  users?: Array<{ id: string; name: string }>;
 };
 
 type ReviewView = "pending" | "history";
@@ -161,11 +168,15 @@ export function CanonicalProjectValueReviewPanel({
   currentUserId,
   initialRequestId,
   onSelectRequest,
-  mineOnly = false
+  mineOnly = false,
+  detailOnly = false,
+  externalView,
+  onRequestsChanged,
+  users = []
 }: CanonicalProjectValueReviewPanelProps) {
   const canonicalRepository = repository;
   const tabsId = useId();
-  const [view, setView] = useState<ReviewView>("pending");
+  const [view, setView] = useState<ReviewView>(externalView ?? "pending");
   const [requests, setRequests] = useState<readonly CanonicalRequest[]>([]);
   const [batchRequests, setBatchRequests] = useState<readonly BatchRequest[]>([]);
   const [batchRequest, setBatchRequest] = useState<BatchRequest | null>(null);
@@ -175,6 +186,8 @@ export function CanonicalProjectValueReviewPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rejectRequestId, setRejectRequestId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sourceDiff, setSourceDiff] = useState<SourceDiff | null>(null);
   const [sourceDiffState, setSourceDiffState] = useState<SourceDiffState>("idle");
@@ -184,12 +197,22 @@ export function CanonicalProjectValueReviewPanel({
   const [conflictDecisionError, setConflictDecisionError] = useState<string | null>(null);
   const [staleRequestId, setStaleRequestId] = useState<string | null>(null);
   const deepLinkRequestRef = useRef<string | null>(initialRequestId ?? null);
+  const mountedRef = useRef(false);
   const scopeRef = useRef({ projectId, currentUserId });
   scopeRef.current = { projectId, currentUserId };
-  const isCurrentScope = () => scopeRef.current.projectId === projectId && scopeRef.current.currentUserId === currentUserId;
+  const isCurrentScope = () => mountedRef.current && scopeRef.current.projectId === projectId && scopeRef.current.currentUserId === currentUserId;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const userName = (id: string | null | undefined) => users.find((user) => user.id === id)?.name ?? id ?? "未指派";
   const selected = batchSelected ? null : requests.find((request) => request.id === selectedId) ?? null;
   const selectedRequestId = selected?.id ?? null;
   const effectiveSelectedId = batchSelected ? batchRequest?.id ?? null : selected?.id ?? null;
+  useEffect(() => {
+    setRejectRequestId(null);
+    setRejectReason("");
+  }, [effectiveSelectedId, projectId, currentUserId, view]);
   const canReviewSelected = Boolean(
     !mineOnly && canReview && currentUserId && selected && selected.submitterUserId !== currentUserId
       && (conflictDecisionState === "ordinary" || (conflictDecisionState === "ready"
@@ -199,6 +222,13 @@ export function CanonicalProjectValueReviewPanel({
   useEffect(() => {
     setBusy(false);
   }, [projectId, currentUserId]);
+
+  useEffect(() => {
+    if (externalView) {
+      deepLinkRequestRef.current = initialRequestId ?? null;
+      setView(externalView);
+    }
+  }, [externalView, initialRequestId]);
 
   useEffect(() => {
     deepLinkRequestRef.current = initialRequestId ?? null;
@@ -221,7 +251,7 @@ export function CanonicalProjectValueReviewPanel({
     setSourceDiff(null);
     setSourceDiffError(null);
     setSourceDiffState("idle");
-    const deepLinkRequestId = deepLinkRequestRef.current;
+    const deepLinkRequestId = deepLinkRequestRef.current ?? (detailOnly ? initialRequestId ?? null : null);
     const query = {
       ...(deepLinkRequestId || view !== "pending" ? {} : { status: "pending" as const }),
       ...(mineOnly ? { mine: true } : {})
@@ -327,7 +357,7 @@ export function CanonicalProjectValueReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [batchRefresh, canReview, canonicalRepository, currentUserId, initialRequestId, mineOnly, projectId, view]);
+  }, [batchRefresh, canReview, canonicalRepository, currentUserId, detailOnly, initialRequestId, mineOnly, projectId, view]);
 
   useEffect(() => {
     if (!batchSelected || !batchRequest || batchDetailLoadedId === batchRequest.id) return;
@@ -430,7 +460,8 @@ export function CanonicalProjectValueReviewPanel({
         catalogReleaseId, idempotencyKey: idempotencyKey()
       });
       if (!isCurrentScope()) return;
-      if (conflictDecisionState === "ready") {
+      onRequestsChanged?.();
+      if (conflictDecisionState === "ready" || detailOnly) {
         deepLinkRequestRef.current = selected.id;
         onSelectRequest?.(selected.id);
         setView("history");
@@ -448,9 +479,10 @@ export function CanonicalProjectValueReviewPanel({
       if (isCurrentScope()) setBusy(false);
     }
   };
-  const reviewSelected = async (decision: "approve" | "reject") => {
+  const reviewSelected = async (decision: "approve" | "reject", note = "") => {
     if (!selected || busy || view !== "pending" || !canReviewSelected || !reviewProjectValueChangeRequest) return;
     if (decision === "approve" && !sourceDiffReadyForSelected) return;
+    if (decision === "reject" && !note.trim()) return;
     setBusy(true);
     setError(null);
     try {
@@ -461,11 +493,13 @@ export function CanonicalProjectValueReviewPanel({
       await reviewProjectValueChangeRequest(
         projectId,
         selected.id,
-        { decision },
+        { decision, ...(decision === "reject" ? { note: note.trim() } : {}) },
         { catalogReleaseId, idempotencyKey: idempotencyKey() }
       );
       if (!isCurrentScope()) return;
-      if (conflictDecisionState === "ready") {
+      setRejectRequestId(null);
+      onRequestsChanged?.();
+      if (conflictDecisionState === "ready" || detailOnly) {
         deepLinkRequestRef.current = selected.id;
         onSelectRequest?.(selected.id);
         setView("history");
@@ -504,9 +538,10 @@ export function CanonicalProjectValueReviewPanel({
     && batchDiff && matchesFrozenBatch(batchRequest, batchDiff));
   const canReviewBatch = Boolean(!mineOnly && canReview && currentUserId && batchRequest
     && batchRequest.submitterUserId !== currentUserId && batchRequest.assignedToUserId === currentUserId);
-  const reviewBatch = async (decision: "approve" | "reject") => {
+  const reviewBatch = async (decision: "approve" | "reject", note = "") => {
     if (!batchRequest || (decision === "approve" && !batchProofReady) || !canReviewBatch || busy || batchRequest.status !== "pending"
       || !reviewProjectValueChangeRequest || !canonicalRepository.getProjectValueBatchChangeRequest) return;
+    if (decision === "reject" && !note.trim()) return;
     setBusy(true);
     setError(null);
     const requestId = batchRequest.id;
@@ -516,14 +551,15 @@ export function CanonicalProjectValueReviewPanel({
       const catalogReleaseId = catalog.item?.catalogReleaseId;
       if (!catalogReleaseId) throw new Error("当前 catalog release 不可用，已阻止审核。");
       await reviewProjectValueChangeRequest(projectId, requestId,
-        { decision, batchProofDigest: batchRequest.batchProofDigest,
+        { decision, ...(decision === "reject" ? { note: note.trim() } : {}), batchProofDigest: batchRequest.batchProofDigest,
           ...(batchRequest.draftImpactDigest ? { draftImpactDigest: batchRequest.draftImpactDigest } : {}),
           ...(batchRequest.decisionProofDigest ? { decisionProofDigest: batchRequest.decisionProofDigest } : {}) },
         { catalogReleaseId, idempotencyKey: idempotencyKey() });
       if (!isCurrentScope()) return;
       const refreshed = (await canonicalRepository.getProjectValueBatchChangeRequest(projectId, requestId)).item;
       if (!isCurrentScope()) return;
-      if (refreshed.status !== (decision === "approve" ? "approved" : "rejected")
+      if (refreshed.id !== requestId || refreshed.projectId !== projectId
+        || refreshed.status !== (decision === "approve" ? "approved" : "rejected")
         || refreshed.batchProofDigest !== batchRequest.batchProofDigest
         || refreshed.targets.length !== batchRequest.targets.length
         || refreshed.targets.some((target, index) => target.ordinal !== index
@@ -533,6 +569,8 @@ export function CanonicalProjectValueReviewPanel({
         throw new Error("批量审核结果不完整，已停止展示成功状态。");
       }
       setBatchRequest(refreshed);
+      setRejectRequestId(null);
+      onRequestsChanged?.();
       deepLinkRequestRef.current = requestId;
       setView("history");
     } catch (reviewError) {
@@ -545,6 +583,7 @@ export function CanonicalProjectValueReviewPanel({
       try {
         const latest = (await canonicalRepository.getProjectValueBatchChangeRequest(projectId, requestId)).item;
         if (!isCurrentScope()) return;
+        if (latest.id !== requestId || latest.projectId !== projectId) return;
         setBatchRequest(latest);
         if (latest.status !== "pending") {
           deepLinkRequestRef.current = requestId;
@@ -576,6 +615,7 @@ export function CanonicalProjectValueReviewPanel({
         throw new Error("批量撤回结果不完整，请刷新状态核对。");
       }
       setBatchRequest(response.item);
+      onRequestsChanged?.();
       deepLinkRequestRef.current = requestId;
       setView("history");
     } catch (withdrawError) {
@@ -589,7 +629,7 @@ export function CanonicalProjectValueReviewPanel({
 
   return (
     <section className="canonical-project-value-review" aria-label={mineOnly ? "我的参数提交" : "软件配置审核"}>
-      <header>
+      {!detailOnly ? <header>
         <h2>{mineOnly ? "我的参数提交" : "软件配置审核"}</h2>
         <p>{mineOnly ? "追踪本人提交的新版参数请求及其固定来源差异。" : "核对提交时固定的源文件差异，批准后同步更新参数值与源文件。"}</p>
         <ViewSwitch variant="tabs" ariaLabel={mineOnly ? "我的参数提交视角" : "软件配置审核视角"} value={view}
@@ -600,17 +640,17 @@ export function CanonicalProjectValueReviewPanel({
             { value: "pending", label: "待审核", id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel`, disabled: busy },
             { value: "history", label: "历史", id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: busy }
           ]} />
-      </header>
-      <TabPanel role="tabpanel" id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`}>
+      </header> : null}
+      <TabPanel role={detailOnly ? undefined : "tabpanel"} id={detailOnly ? undefined : `${tabsId}-${view}-panel`} aria-labelledby={detailOnly ? undefined : `${tabsId}-${view}-tab`}>
       {error ? <p role="alert">{error}</p> : null}
       {staleRequestId ? (
         <p role="alert">请求「{staleRequestId}」已失效、已归档或不属于当前项目，未自动切换到其他请求。</p>
       ) : null}
       {loading ? <p role="status">正在加载源文件审核请求…</p> : null}
-      {!loading && !error && !staleRequestId && requests.length === 0 && batchRequests.length === 0 && !batchRequest ? <p role="status">当前没有{mineOnly ? "你的" : view === "pending" ? "待审核" : "历史"}源文件请求。</p> : null}
+      {!detailOnly && !loading && !error && !staleRequestId && requests.length === 0 && batchRequests.length === 0 && !batchRequest ? <p role="status">当前没有{mineOnly ? "你的" : view === "pending" ? "待审核" : "历史"}源文件请求。</p> : null}
       {requests.length > 0 || batchRequests.length > 0 || batchRequest ? (
         <div className="canonical-project-value-review__content">
-          <div className="table-wrap">
+          {!detailOnly ? <div className="table-wrap">
             <table aria-label={mineOnly ? "我的参数提交请求" : "软件配置审核请求"}>
               <thead>
                 <tr><th>绑定</th><th>格式</th><th>动作</th><th>状态</th><th>原因</th></tr>
@@ -656,27 +696,53 @@ export function CanonicalProjectValueReviewPanel({
                 ))}
               </tbody>
             </table>
-          </div>
+          </div> : null}
           {selected ? (
             <article aria-label="源文件请求详情">
-              <h3>源文件变更详情</h3>
-              <dl>
-                <div><dt>参数记录</dt><dd><code>{selected.bindingId}</code></dd></div>
-                <div><dt>请求 ID</dt><dd><code>{selected.id}</code></dd></div>
-                <div><dt>来源快照</dt><dd><code>{selected.sourcePinId ?? "—"}</code></dd></div>
-                <div><dt>候选文件</dt><dd><code>{selected.candidateId ?? "—"}</code></dd></div>
-                <div><dt>变更动作</dt><dd>{selected.action === "delete" && selected.status === "pending"
-                  ? "删除属性（批准后生效）" : canonicalRequestActionLabel(selected)}</dd></div>
-                <div><dt>修改原因</dt><dd>{selected.reason}</dd></div>
-                <div><dt>提交人 ID</dt><dd><code>{selected.submitterUserId ?? "—"}</code></dd></div>
-                <div><dt>指定审核人 ID</dt><dd><code>{selected.assignedToUserId ?? "—"}</code></dd></div>
-                <div><dt>{selected.status === "withdrawn" ? "撤回操作人 ID" : "实际审核人 ID"}</dt><dd><code>{selected.reviewerUserId ?? "—"}</code></dd></div>
-                <div><dt>提交时间</dt><dd><time dateTime={selected.createdAt}>{selected.createdAt}</time></dd></div>
-                <div><dt>状态更新时间</dt><dd><time dateTime={selected.updatedAt}>{selected.updatedAt}</time></dd></div>
-                <div><dt>审核结果</dt><dd>{selected.reviewerNote ?? canonicalStatusLabels[selected.status]}</dd></div>
-                <div><dt>应用结果</dt><dd>{selected.applyOutcome === "committed" ? "已应用" : selected.applyOutcome === "replayed" ? "已应用（幂等重放）" : "—"}</dd></div>
-              </dl>
-              <pre aria-label="固定源目标内容">{canonicalRequestSourceText(selected)}</pre>
+              <header>
+                <p>软件配置 · {selected.sourceFormat.toUpperCase()}</p><h3>{selected.reason}</h3>
+                <span className="status-chip">{canonicalStatusLabels[selected.status]}</span>
+                <p><span>{userName(selected.submitterUserId)}</span> → <span>{userName(selected.assignedToUserId)}</span></p>
+                <time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time>
+                {selected.reviewerUserId ? <p>实际审核人：{userName(selected.reviewerUserId)}</p> : null}
+                {selected.reviewerNote ? <p>{selected.reviewerNote}</p> : null}
+              </header>
+              <section aria-label="变更摘要"><h4>变更摘要</h4>
+                <p>{singleDiff?.sourceName ?? selected.sourceFormat.toUpperCase()}：<span>{selected.action === "delete" && selected.status === "pending"
+                  ? "删除属性（批准后生效）" : canonicalRequestActionLabel(selected)}</span></p>
+                <pre aria-label="固定源目标内容">{canonicalRequestSourceText(selected)}</pre>
+              </section>
+              <section aria-label="前后对比"><h4>前后对比</h4>
+              <p role="note">以下差异固定于提交时，不随当前文件变化。</p>
+              {sourceDiffState === "loading" ? <p role="status">正在加载固定源差异…</p> : null}
+              {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}
+              {singleDiff ? (
+                <section aria-label="固定源差异" className="canonical-project-value-review__diff">
+
+                  <div>
+                    <p>变更前</p>
+                    <pre
+                      tabIndex={0}
+                      aria-label="固定源变更前"
+                      className="canonical-project-value-review__diff-text"
+                    >{singleDiff.before}</pre>
+                  </div>
+                  <div>
+                    <p>变更后</p>
+                    <pre
+                      tabIndex={0}
+                      aria-label="固定源变更后"
+                      className="canonical-project-value-review__diff-text"
+                    >{singleDiff.after}</pre>
+                  </div>
+                </section>
+              ) : null}
+              </section>
+              <section aria-label="影响范围"><h4>影响范围</h4>
+                <p>{singleDiff?.sourceName ?? "固定来源"} · 受影响绑定 {singleDiff?.bindings.length ?? "待核对"} 项</p>
+                {singleDiff ? <ol aria-label="受影响绑定">{singleDiff.bindings.map((binding, index) =>
+                  <li key={binding.bindingId}>Binding {index + 1} · {JSON.stringify(binding.locator)}</li>)}</ol> : null}
+                <p>应用结果：{selected.applyOutcome === "committed" ? "已应用" : selected.applyOutcome === "replayed" ? "已应用（幂等重放）" : "—"}</p>
               {conflictDecisionState === "loading" ? <p role="status">正在核对冲突决策详情…</p> : null}
               {conflictDecisionError ? <p role="alert">{conflictDecisionError}</p> : null}
               {conflictDecisionState !== "ordinary" ? <button type="button" className="button subtle"
@@ -686,15 +752,8 @@ export function CanonicalProjectValueReviewPanel({
                 }}>刷新冲突请求与来源</button> : null}
               {conflictDecisionState === "ready" && conflictDecision ? (
                 <section aria-label="冻结的单项来源冲突决策">
-                  <h4>单项来源冲突决策</h4>
-                  <dl>
-                    <div><dt>选择</dt><dd>{conflictDecision.choice === "file" ? "文件值" : "界面草稿值"}</dd></div>
-                    <div><dt>选中 Binding</dt><dd><code>{conflictDecision.selectedBindingId}</code></dd></div>
-                    <div><dt>选中草稿</dt><dd><code>{conflictDecision.selectedDraftId}</code></dd></div>
-                    <div><dt>原候选</dt><dd><code>{conflictDecision.sourceCandidateId}</code></dd></div>
-                    <div><dt>决策证明</dt><dd><code>{conflictDecision.decisionProofDigest}</code></dd></div>
-                    <div><dt>来源格式</dt><dd>{conflictDecision.sourceDiff.format.toUpperCase()}</dd></div>
-                  </dl>
+                  <h5>单项来源冲突决策</h5>
+                  <p><span>{conflictDecision.choice === "file" ? "文件值" : "界面草稿值"}</span> · {conflictDecision.sourceDiff.format.toUpperCase()}</p>
                   {matchesFrozenConflict(selected, sourceDiff, conflictDecision) ? <>
                     <p>经验证的冻结来源差异</p>
                     <pre tabIndex={0} aria-label="冲突来源变更前">{conflictDecision.sourceDiff.before}</pre>
@@ -702,37 +761,8 @@ export function CanonicalProjectValueReviewPanel({
                   </> : <p role="alert">冲突详情、目标、顺序或证明与请求来源不符，已阻止批准。</p>}
                 </section>
               ) : null}
-              <p role="note">以下差异固定于提交时，不随当前文件变化。</p>
-              {sourceDiffState === "loading" ? <p role="status">正在加载固定源差异…</p> : null}
-              {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}
-              {singleDiff ? (
-                <section aria-label="固定源差异" className="canonical-project-value-review__diff">
-                  <dl>
-                    <div><dt>源文件</dt><dd><code>{singleDiff.sourceName}</code></dd></div>
-                    <div><dt>格式</dt><dd>{singleDiff.format.toUpperCase()}</dd></div>
-                    <div><dt>受影响绑定</dt><dd>{singleDiff.bindings.length}</dd></div>
-                    <div><dt>原文件校验摘要</dt><dd><code>{singleDiff.baseDigest}</code></dd></div>
-                    <div><dt>候选校验摘要</dt><dd><code>{singleDiff.proposedDigest}</code></dd></div>
-                    <div><dt>差异校验摘要</dt><dd><code>{singleDiff.diffDigest}</code></dd></div>
-                  </dl>
-                  <div>
-                    <h4>变更前</h4>
-                    <pre
-                      tabIndex={0}
-                      aria-label="固定源变更前"
-                      className="canonical-project-value-review__diff-text"
-                    >{singleDiff.before}</pre>
-                  </div>
-                  <div>
-                    <h4>变更后</h4>
-                    <pre
-                      tabIndex={0}
-                      aria-label="固定源变更后"
-                      className="canonical-project-value-review__diff-text"
-                    >{singleDiff.after}</pre>
-                  </div>
-                </section>
-              ) : null}
+              </section>
+              <footer className="dialog-actions">
               {view === "pending" && selected.status === "pending" && canReviewSelected ? (
                 <div>
                   <button
@@ -743,7 +773,7 @@ export function CanonicalProjectValueReviewPanel({
                   >
                     批准软件配置
                   </button>{" "}
-                  <button type="button" className="button subtle" disabled={busy} onClick={() => void reviewSelected("reject")}>
+                  <button type="button" className="button subtle" disabled={busy} onClick={() => setRejectRequestId(selected.id)}>
                     驳回
                   </button>
                 </div>
@@ -758,27 +788,31 @@ export function CanonicalProjectValueReviewPanel({
                     撤回我的提交
                   </button>
                 ) : null}
+              </footer>
+              <ReviewProvenance key={selected.id} entries={[
+                { label: "请求 ID", value: selected.id },
+                ...Object.entries(selected).filter(([key]) => !["id", "reason", "status", "reviewerNote", "targetValue", "sourceTarget"].includes(key))
+                  .map(([label, value]) => ({ label, value })),
+                { label: "固定来源元数据", value: singleDiff && Object.fromEntries(Object.entries(singleDiff).filter(([key]) => !["before", "after"].includes(key))) },
+                { label: "冲突决策证明", value: conflictDecision }
+              ]} />
             </article>
           ) : null}
           {batchSelected && batchRequest ? (
             <article aria-label="批量源文件请求详情">
-              <h3>批量来源变更</h3>
-              <dl>
-                <div><dt>请求 ID</dt><dd><code>{batchRequest.id}</code></dd></div>
-                <div><dt>状态</dt><dd>{canonicalStatusLabels[batchRequest.status]}</dd></div>
-                <div><dt>候选文件</dt><dd><code>{batchRequest.candidateId}</code></dd></div>
-                {batchRequest.uploadCandidateId ? <div><dt>原上传候选</dt><dd><code>{batchRequest.uploadCandidateId}</code></dd></div> : null}
-                <div><dt>基线文件版本</dt><dd><code>{batchRequest.baseVersionId}</code></dd></div>
-                <div><dt>配置集</dt><dd><code>{batchRequest.configSetId}</code></dd></div>
-                <div><dt>批量证明摘要</dt><dd><code>{batchRequest.batchProofDigest}</code></dd></div>
-                {batchRequest.draftImpactDigest ? <div><dt>草稿影响摘要</dt><dd><code>{batchRequest.draftImpactDigest}</code></dd></div> : null}
-                {batchRequest.decisionProofDigest ? <div><dt>组合决策摘要</dt><dd><code>{batchRequest.decisionProofDigest}</code></dd></div> : null}
-                {batchDiff ? <div><dt>来源格式</dt><dd>{batchDiff.format.toUpperCase()}</dd></div> : null}
-                <div><dt>修改原因</dt><dd>{batchRequest.reason}</dd></div>
-                <div><dt>提交人 ID</dt><dd><code>{batchRequest.submitterUserId ?? "—"}</code></dd></div>
-                <div><dt>指定审核人 ID</dt><dd><code>{batchRequest.assignedToUserId ?? "—"}</code></dd></div>
-                <div><dt>实际审核人 ID</dt><dd><code>{batchRequest.reviewerUserId ?? "—"}</code></dd></div>
-              </dl>
+              <header>
+                <p>软件配置 · 批量来源变更 · <span>{batchDiff?.format.toUpperCase()}</span></p><h3>{batchRequest.reason}</h3>
+                <span className="status-chip">{canonicalStatusLabels[batchRequest.status]}</span>
+                <p><span>{userName(batchRequest.submitterUserId)}</span> → <span>{userName(batchRequest.assignedToUserId)}</span></p>
+                {batchRequest.createdAt ? <time dateTime={batchRequest.createdAt ?? ""} title={formatAbsolute(batchRequest.createdAt ?? "")}>
+                  {formatRelativeOrAbsolute(batchRequest.createdAt ?? "")}
+                </time> : <span>提交时间未记录</span>}
+                {batchRequest.reviewerUserId ? <p>实际审核人：{userName(batchRequest.reviewerUserId)}</p> : null}
+                {batchRequest.reviewerNote ? <p>{batchRequest.reviewerNote}</p> : null}
+              </header>
+              <section aria-label="变更摘要"><h4>变更摘要</h4>
+                <p>将 {batchDiff?.sourceName ?? "固定来源"} 的 {batchRequest.targets.length} 项变更作为一次事务提交，核对完整 {batchRequest.cohortCount} 项 Binding 来源。</p>
+              </section>
               {sourceDiffState === "loading" ? <p role="status">正在加载全部目标的固定源差异…</p> : null}
               {mineOnly ? <p role="note">这里显示本人提交时冻结的目标与源差异；审核仍由被指派审核人处理。</p> : null}
               {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}
@@ -789,24 +823,29 @@ export function CanonicalProjectValueReviewPanel({
               {sourceDiffState === "ready" && !batchProofReady ? (
                 <p role="alert">批量请求与来源差异的目标、顺序或证明不一致，已阻止批准。</p>
               ) : null}
+              <section aria-label="前后对比"><h4>前后对比</h4>
+                <p role="note">以下差异固定于提交时，不随当前文件变化。</p>
+              {batchProofReady && batchDiff ? (
+                <section aria-label="批量固定源差异" className="canonical-project-value-review__diff">
+
+                  <div><p>变更前</p><pre tabIndex={0} aria-label="批量固定源变更前" className="canonical-project-value-review__diff-text">{batchDiff.before}</pre></div>
+                  {batchDiff.uploadAfter ? <div><p>原上传候选</p><pre tabIndex={0} aria-label="批量原上传来源" className="canonical-project-value-review__diff-text">{batchDiff.uploadAfter}</pre></div> : null}
+                  <div><p>变更后</p><pre tabIndex={0} aria-label="批量固定源变更后" className="canonical-project-value-review__diff-text">{batchDiff.after}</pre></div>
+                </section>
+              ) : null}
+              </section>
+              <section aria-label="影响范围"><h4>影响范围</h4>
               <ol aria-label="批量审核目标">
                 {batchRequest.targets.map((target, index) => {
                   const source = batchProofReady ? batchDiff!.targets[index] : null;
                   return (
                     <li key={`${target.ordinal}:${target.bindingId}`}>
-                      <h4>目标 {index + 1}：{target.action === "delete" ? "删除" : "设置"}</h4>
+                      <h5>目标 {index + 1}：{target.action === "delete" ? "删除" : "设置"}</h5>
                       <dl>
-                        <div><dt>绑定</dt><dd><code>{target.bindingId}</code></dd></div>
-                        <div><dt>定义</dt><dd><code>{target.definitionId}</code></dd></div>
-                        <div><dt>基线值</dt><dd><code>{target.baseCurrentValueId}</code></dd></div>
-                        <div><dt>基线修订</dt><dd><code>{target.configRevisionId}</code></dd></div>
-                        <div><dt>来源 pin</dt><dd><code>{target.sourcePinId}</code></dd></div>
-                        <div><dt>来源引用</dt><dd><code>{target.sourceRef}</code></dd></div>
                         <div><dt>最终选择</dt><dd>{target.decision === "draft" ? "界面草稿值" : target.decision === "file" ? "文件值" : "未验证的草稿"}</dd></div>
-                        {target.draftId ? <div><dt>选中草稿</dt><dd><code>{target.draftId}</code>（作者 <code>{batchRequest.draftImpact?.find((entry) =>
-                          entry.bindingId === target.bindingId)?.drafts.find((draft) => draft.draftId === target.draftId)?.authorUserId ?? "未知"}</code>）</dd></div> : null}
+                        {target.draftId ? <div><dt>选中草稿</dt><dd>作者 <span>{userName(batchRequest.draftImpact?.find((entry) =>
+                          entry.bindingId === target.bindingId)?.drafts.find((draft) => draft.draftId === target.draftId)?.authorUserId)}</span></dd></div> : null}
                         <div><dt>目标</dt><dd>{target.action === "delete" ? "删除（无替换值）" : <pre>{target.targetText}</pre>}</dd></div>
-                        {target.appliedValueId ? <div><dt>已应用值</dt><dd><code>{target.appliedValueId}</code></dd></div> : null}
                       </dl>
                       {source ? (
                         <div>
@@ -819,11 +858,11 @@ export function CanonicalProjectValueReviewPanel({
                 })}
               </ol>
               {batchRequest.draftImpact ? <section aria-label="完整草稿影响">
-                <h4>完整 cohort 与草稿预计效果</h4>
+                <h5>完整 cohort 与草稿预计效果</h5>
                 <ol>{batchRequest.draftImpact.map((entry) => <li key={entry.bindingId}>
-                  <strong>{entry.role === "sibling" ? "兄弟 Binding · 结构性 re-pin" : "变更目标"}</strong> <code>{entry.bindingId}</code> · {entry.decision}
+                  <strong>{entry.role === "sibling" ? "兄弟 Binding · 结构性 re-pin" : "变更目标"}</strong> · {entry.decision}
                   {entry.drafts.length ? <ul>{entry.drafts.map((draft) => <li key={draft.draftId}>
-                    草稿 <code>{draft.draftId}</code> · 作者 <code>{draft.authorUserId ?? "未知"}</code>
+                    草稿 · 作者 <span>{userName(draft.authorUserId)}</span>
                     {entry.selectedDraftId === draft.draftId ? " · 本次选中" : " · 未选中，保留并预计过期"}
                     {draft.currentlyStale ? "（当前已过期）" : ""}
                     <div>动作：{draft.action === "delete" ? "删除" : "设置"}；原因：{draft.reason}；预计效果：保留并过期</div>
@@ -831,25 +870,15 @@ export function CanonicalProjectValueReviewPanel({
                   </li>)}</ul> : " · 无竞争草稿"}
                 </li>)}</ol>
               </section> : null}
-              {batchProofReady && batchDiff ? (
-                <section aria-label="批量固定源差异" className="canonical-project-value-review__diff">
-                  <dl>
-                    <div><dt>源文件</dt><dd><code>{batchDiff.sourceName}</code></dd></div>
-                    <div><dt>原文件校验摘要</dt><dd><code>{batchDiff.baseDigest}</code></dd></div>
-                    <div><dt>候选校验摘要</dt><dd><code>{batchDiff.proposedDigest}</code></dd></div>
-                  </dl>
-                  <div><h4>变更前</h4><pre tabIndex={0} aria-label="批量固定源变更前" className="canonical-project-value-review__diff-text">{batchDiff.before}</pre></div>
-                  {batchDiff.uploadAfter ? <div><h4>原上传候选</h4><pre tabIndex={0} aria-label="批量原上传来源" className="canonical-project-value-review__diff-text">{batchDiff.uploadAfter}</pre></div> : null}
-                  <div><h4>变更后</h4><pre tabIndex={0} aria-label="批量固定源变更后" className="canonical-project-value-review__diff-text">{batchDiff.after}</pre></div>
-                </section>
-              ) : null}
+              </section>
+              <footer className="dialog-actions">
               {batchRequest.status === "pending" && canReviewBatch ? (
                 <div>
                   <p role="note">批准时服务端会重新核对当前来源，并将全部目标作为一次事务提交。</p>
                   <button type="button" className="button primary" disabled={busy || !batchProofReady}
                     onClick={() => void reviewBatch("approve")}>批准全部 {batchRequest.targets.length} 项</button>{" "}
                   <button type="button" className="button subtle" disabled={busy}
-                    onClick={() => void reviewBatch("reject")}>驳回全部 {batchRequest.targets.length} 项</button>
+                    onClick={() => setRejectRequestId(batchRequest.id)}>驳回全部 {batchRequest.targets.length} 项</button>
                 </div>
               ) : batchRequest.status === "pending" ? (
                 <p role="note">{batchRequest.submitterUserId === currentUserId
@@ -862,13 +891,27 @@ export function CanonicalProjectValueReviewPanel({
                     撤回我的批量提交
                   </button>
                 ) : null}
+              </footer>
+              <ReviewProvenance key={batchRequest.id} entries={[
+                { label: "请求 ID", value: batchRequest.id }, { label: "批量证明摘要", value: batchRequest.batchProofDigest },
+                ...Object.entries(batchRequest).filter(([key]) => !["id", "reason", "status", "reviewerNote", "batchProofDigest"].includes(key))
+                  .map(([label, value]) => ({ label, value })),
+                { label: "来源元数据", value: batchDiff && Object.fromEntries(Object.entries(batchDiff).filter(([key]) => !["before", "after", "uploadAfter"].includes(key))) }
+              ]} />
             </article>
           ) : null}
         </div>
       ) : null}
       </TabPanel>
-      <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
-        aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden />
+      <ConfirmDialog open={Boolean(rejectRequestId && rejectRequestId === effectiveSelectedId)}
+        title="驳回请求" description="请说明驳回原因，方便提交人补充依据或调整变更。"
+        confirmLabel="确认驳回" pending={busy} confirmDisabled={!rejectReason.trim()}
+        error={error} onCancel={() => { setRejectRequestId(null); setRejectReason(""); }}
+        extra={<label>驳回原因<textarea required rows={4} value={rejectReason} disabled={busy}
+          onChange={(event) => setRejectReason(event.target.value)} /></label>}
+        onConfirm={() => { void (batchSelected ? reviewBatch("reject", rejectReason) : reviewSelected("reject", rejectReason)); }} />
+      {!detailOnly ? <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
+        aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden /> : null}
     </section>
   );
 }

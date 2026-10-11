@@ -60,7 +60,7 @@ describe("ParameterReviewPage deep link", () => {
         dispatch={vi.fn()} onNavigate={() => {}} search={`?project=aurora&request=${legacy.id}`}
         runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
-    await waitFor(() => expect(screen.getByRole("tab", { name: "历史审阅" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true"));
     expect(listChangeRequests).toHaveBeenCalledWith({ projectId: "aurora" });
     expect(listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora" });
     expect(document.querySelector("tr.selected-row")?.textContent).toContain(legacy.title);
@@ -89,7 +89,7 @@ describe("ParameterReviewPage deep link", () => {
         dispatch={vi.fn()} onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
     const panel = await screen.findByRole("region", { name: "软件配置审核" });
-    await within(panel).findByText("Scoped review", { selector: "td" });
+    await within(panel).findByRole("heading", { name: "Scoped review" });
     await waitFor(() => expect(within(panel).queryByRole("button", { name: "批准软件配置" }) !== null).toBe(allowed));
   });
 
@@ -103,9 +103,9 @@ describe("ParameterReviewPage deep link", () => {
       <ParameterReviewPage state={{ ...initialState, changeRequests: [] }} dispatch={vi.fn()}
         onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
-    await waitFor(() => expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { status: "pending" }));
-    expect(screen.getByRole("region", { name: "软件配置审核" })).toBeVisible();
-    expect(screen.getByRole("tab", { name: "历史" })).toBeEnabled();
+    await waitFor(() => expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", undefined));
+    expect(screen.getByRole("table", { name: "审阅队列" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "已处理" })).toBeEnabled();
   });
 
   it("restores the selected request from ?request= and keeps the URL shareable", async () => {
@@ -129,7 +129,7 @@ describe("ParameterReviewPage deep link", () => {
     const selectedRow = document.querySelector("tr.selected-row");
     expect(selectedRow?.textContent ?? "").toContain(target!.title);
     await waitFor(() => {
-      expect(new URLSearchParams(window.location.search).get("request")).toBe(target!.id);
+      expect(new URLSearchParams(window.location.search).get("legacyRequest")).toBe(target!.id);
     });
   });
 
@@ -164,10 +164,10 @@ describe("ParameterReviewPage deep link", () => {
       </TopBarActionsContext.Provider>
     );
 
-    const panel = await screen.findByRole("region", { name: "软件配置审核" });
-    await waitFor(() => expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { status: "pending" }));
+    const panel = await screen.findByRole("complementary", { name: "审阅详情" });
+    await waitFor(() => expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", undefined));
     expect(within(panel).queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "历史审阅" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
     expect(document.querySelector("tr.selected-row")?.textContent ?? "").toContain(legacy.title);
     await waitFor(() => {
       const params = new URLSearchParams(window.location.search);
