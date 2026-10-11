@@ -77,6 +77,18 @@
   color: var(--view-switch-selected-text);
 }
 
+/* Option toggles sit in a sunken group: rest options stay flat, the selected one is raised with an accent label. */
+.view-switch--toggle .view-switch__item {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.view-switch--toggle .view-switch__item[aria-checked="true"] {
+  border-color: var(--view-switch-selected-fill);
+  color: var(--accent);
+  box-shadow: var(--shadow-1);
+}
+
 .view-switch__item:focus-visible {
   outline: var(--view-switch-focus-width) solid var(--accent);
   outline-offset: var(--view-switch-focus-width);
