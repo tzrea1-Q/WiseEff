@@ -304,6 +304,7 @@ export function ProjectConfigurationWorkbench({
   const {
     session: canvasHistorySession,
     historySource,
+    historySourceAvailable,
     compareSource,
     modeSourceLoading,
     modeSourceError,
@@ -486,7 +487,7 @@ export function ProjectConfigurationWorkbench({
   }, [treeOpen, inspectorOpen, narrowViewport, selectedConfigSet?.id]);
 
   useEffect(() => {
-    if (!selectedMember || !inspectorOpen) {
+    if (!selectedMember || (!inspectorOpen && canvasMode !== "unified-diff" && canvasMode !== "side-by-side")) {
       setFileVersions([]);
       setVersionsError("");
       setVersionsLoading(false);
@@ -516,7 +517,7 @@ export function ProjectConfigurationWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [fileRepository, inspectorOpen, project.id, selectedMember, versionsReloadToken]);
+  }, [canvasMode, fileRepository, inspectorOpen, project.id, selectedMember, versionsReloadToken]);
 
   useEffect(() => {
     if (filesLoading) {
@@ -1468,14 +1469,14 @@ export function ProjectConfigurationWorkbench({
   ]);
 
   const unifiedDiffText = useMemo(() => {
-    if (canvasMode !== "unified-diff" || !historySource) return "";
+    if (canvasMode !== "unified-diff" || !historySourceAvailable) return "";
     return buildUnifiedDiff(
-      compareSource || source,
+      compareSource,
       historySource,
       "working",
       historyVersionId ?? "history"
     );
-  }, [canvasMode, compareSource, historySource, historyVersionId, source]);
+  }, [canvasMode, compareSource, historySource, historySourceAvailable, historyVersionId]);
 
   return (
     <section className="configuration-workbench" aria-label="项目配置工作台">
@@ -1594,6 +1595,11 @@ export function ProjectConfigurationWorkbench({
             candidateId={candidateId}
             activeCandidate={activeCandidate}
             fileVersions={fileVersions}
+            onSelectVersion={() => {
+              setInspectorLevelOverride("file");
+              setInspectorOpen(true);
+            }}
+            onUploadCandidate={canAdmin && !uploadingCandidate ? () => candidateFileInputRef.current?.click() : undefined}
             onEnterCanvasMode={enterCanvasMode}
             onExitSpecialCanvasMode={exitSpecialCanvasMode}
             candidateError={candidateError}
@@ -1605,6 +1611,7 @@ export function ProjectConfigurationWorkbench({
             onClearModeSourceError={() => canvasHistorySession.clearModeSource()}
             source={source}
             historySource={historySource}
+            historySourceAvailable={historySourceAvailable}
             candidateSource={candidateSource}
             candidateLoading={candidateLoading}
             compareSource={compareSource}

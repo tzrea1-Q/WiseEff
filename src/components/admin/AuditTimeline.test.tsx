@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AuditEventView } from "@/domain/audit/types";
 import { AuditTimeline } from "./AuditTimeline";
+import { AuditRelatedTimeline } from "./AuditRelatedTimeline";
 
 const events: AuditEventView[] = [
   {
@@ -68,6 +69,26 @@ const events: AuditEventView[] = [
 ];
 
 describe("AuditTimeline", () => {
+  it("presents related trace events with Chinese labels and raw codes too", () => {
+    render(<AuditRelatedTimeline events={[
+      { ...events[0], kind: "validation.gate", action: "run" },
+      { ...events[1], action: "future-action" }
+    ]} />);
+    expect(screen.getByText("校验门禁检查")).toBeInTheDocument();
+    expect(screen.getByText("validation.gate", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getAllByText("future-action")).toHaveLength(2);
+  });
+  it("shows the Chinese event title with both diagnostic codes beneath it", () => {
+    render(<AuditTimeline events={[{ ...events[0], kind: "validation.gate", action: "run" }]} />);
+    expect(screen.getByText("校验门禁检查")).toBeInTheDocument();
+    expect(screen.getByText("validation.gate", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByText("run", { selector: "code" })).toBeInTheDocument();
+  });
+
+  it("keeps an unknown action visible as the title and diagnostic code", () => {
+    render(<AuditTimeline events={[{ ...events[0], action: "future-action" }]} />);
+    expect(screen.getAllByText("future-action")).toHaveLength(2);
+  });
   it("renders heading with total count", () => {
     render(<AuditTimeline events={events} />);
 

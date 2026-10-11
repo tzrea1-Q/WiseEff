@@ -3265,7 +3265,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByText("日志处理失败")).toBeInTheDocument();
     expect(screen.getByText("二进制格式不支持。请导出 .log / .txt / .csv / .json 文本日志。")).toBeInTheDocument();
-    expect(screen.getByText("关联处置：请重新上传 .log、.txt、.csv 或 .json 文本日志。")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "日志分析证据链" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "分析结果" })).not.toBeInTheDocument();
   });
 
   it("shows a log analysis evidence chain instead of suggested actions", () => {

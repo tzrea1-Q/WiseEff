@@ -62,7 +62,9 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 通知反馈（`state.notifications`，由 `ADD_NOTIFICATION` 推入）经由唯一渲染器上屏：`AppToastLayer`（`src/components/common/AppToastLayer.tsx`）是挂在 AppShell 的无 DOM 桥（**两种运行时都挂载**），把队列每一条倾倒进设计系统 `ToastProvider`（`useToast`），按词法推断 tone（失败词汇 → `danger`/`role="alert"`，完成词汇 → `success`，其余 `info`），并立即经 `DISMISS_NOTIFICATION` 消费队列。展示由 `ToastCard` 负责：约 4 秒自动消退、悬停暂停、在 `.toast-viewport`（`--z-toast` 层，位于弹窗与小泽聊天之上）栈叠，以及带 aria-label 的手动关闭按钮（关闭提示）。命令式 `useToast()` 与 reducer 通知从此共用一条视觉管线。这取代了此前 `LogsPage` 内仅 mock 模式渲染的 toast——那种写法让 API 模式所有成功/失败提示都不可见。详情选中支持深链：`/parameter-review?request=<id>` 恢复选中的审阅行并经 `history.replaceState` 保持地址栏同步；`/logs?logId=<id>`（「复制链接」的目标）在 API 数据水合后恢复选中日志，且不会被最新上传自动选中覆盖。变更审阅（`/parameter-review` 待审阅视图）支持检视阶段的批量通过：存在可操作行时出现复选框列（初始化审阅与合入阶段除外——合入需逐条填写合入链接），工具栏出现「批量通过」按钮，聚合确认对话框说明影响范围，执行按请求串行（`reviewChange` 传 `notifyOnFailure: false`），成功与失败各汇总为一条 toast；失败行保持勾选便于重试。同一页经 `formatWorkflowDisplayText` 把流程状态（含列表头筛选标签）显示为产品中文（如 `硬件Committer检视` → `硬件MDE检视`），并提供下方记录的无修饰键队列快捷键。经运行时通知透出的服务端失败统一走 `toUserErrorMessage`（`src/infrastructure/http/userErrorMessage.ts`）：按 `WiseEffApiError.code`（及已知 `details.reason`）映射中文话术并附短请求编号后缀；未知错误码保留服务端原文但仍可报障，fetch 层网络失败给连接话术。
 
-审计中心（`/audit`）的筛选下推到 `GET /api/v1/audit-events`：文本搜索（`q`，服务端匹配操作/类型/对象/操作人）、时间窗（今天 / 近 7 天 / 近 30 天，经 `from`），加上既有的模块分组/项目/严重度/trace 筛选与游标分页。「导出 CSV」按当前筛选分页拉取全量（上限 2000 行）导出 UTF-8-BOM、中文表头的 CSV，模块/类型/操作/严重度均为中文标签，并保留原始类型标识列供机器筛选。mock 模式下相同筛选在客户端执行。
+审计中心（`/audit`）的筛选下推到 `GET /api/v1/audit-events`：文本搜索（`q`，服务端匹配操作/类型/对象/操作人）、时间窗（今天 / 近 7 天 / 近 30 天，经 `from`），加上既有的模块分组/项目/严重度/trace 筛选与游标分页。「导出 CSV」按当前筛选分页拉取全量（上限 2000 行）导出 UTF-8-BOM、中文表头的 CSV，模块/类型/操作/严重度均为中文标签，并分别保留原始类型、操作标识列供机器筛选。事件行和关联 Trace 事件通过共享格式器显示中文标签，下方以等宽字体显示技术标识；未知标识保留原文。mock 模式下相同筛选在客户端执行。
+
+Catalog 定义行在等宽属性键旁保留已发布的显示名；中文名称属于 Catalog 发布内容，由 #1114 跟踪，前端不自行翻译。目录接管期间，`/parameter-admin` 显示普通用户可理解的状态与「了解详情」折叠区，只有平台管理员和操作员能在其中看到操作员手册的 inspect/adopt 指引。服务端编写与发布权限门禁保持不变。
 
 本地账号注册没有组织下拉；新账号加入评估组织（有种子时是 ChargeLab）。自助注册角色下拉使用：`guest`、`hardware-user`、`software-user`、`hardware-committer`、`software-committer`。`admin` 与 `platform-admin` 只能通过组织管理分配，且后者仅已持有 `platform-admin` 的调用方可以授予或撤销；不能在注册页自助选择。
 

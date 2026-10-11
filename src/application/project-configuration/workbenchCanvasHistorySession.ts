@@ -1,4 +1,5 @@
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 export type CanvasHistoryRepository = Pick<ParameterFileRepository, "downloadVersion">;
 
@@ -19,6 +20,7 @@ export type WorkingCanvasSnapshot = {
 
 export type WorkbenchCanvasHistorySnapshot = {
   historySource: string;
+  historySourceAvailable: boolean;
   compareSource: string;
   modeSourceLoading: boolean;
   modeSourceError: string;
@@ -49,6 +51,7 @@ export type WorkbenchCanvasHistorySession = WorkbenchCanvasHistorySnapshot & {
 function emptySnapshot(): WorkbenchCanvasHistorySnapshot {
   return {
     historySource: "",
+    historySourceAvailable: false,
     compareSource: "",
     modeSourceLoading: false,
     modeSourceError: "",
@@ -59,6 +62,7 @@ function emptySnapshot(): WorkbenchCanvasHistorySnapshot {
 export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySession {
   const listeners = new Set<() => void>();
   let historySource = "";
+  let historySourceAvailable = false;
   let compareSource = "";
   let modeSourceLoading = false;
   let modeSourceError = "";
@@ -69,6 +73,7 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
   const emit = () => {
     snapshot = {
       historySource,
+      historySourceAvailable,
       compareSource,
       modeSourceLoading,
       modeSourceError,
@@ -84,6 +89,9 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
   const api: WorkbenchCanvasHistorySession = {
     get historySource() {
       return historySource;
+    },
+    get historySourceAvailable() {
+      return historySourceAvailable;
     },
     get compareSource() {
       return compareSource;
@@ -110,6 +118,7 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
     },
     clearModeSource() {
       historySource = "";
+      historySourceAvailable = false;
       compareSource = "";
       modeSourceError = "";
       modeSourceLoading = false;
@@ -127,6 +136,7 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
       if (canvasMode === "working" || canvasMode === "candidate") {
         loadGeneration += 1;
         historySource = "";
+        historySourceAvailable = false;
         compareSource = "";
         modeSourceError = "";
         modeSourceLoading = false;
@@ -136,6 +146,7 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
       if (!fileId || !versionId) {
         loadGeneration += 1;
         historySource = "";
+        historySourceAvailable = false;
         compareSource = "";
         modeSourceError = "";
         modeSourceLoading = false;
@@ -143,14 +154,18 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
         return;
       }
       const generation = ++loadGeneration;
+      let counterpartLoaded = false;
       modeSourceLoading = true;
+      historySourceAvailable = false;
       modeSourceError = "";
       scheduleEmit();
       try {
         const result = await repo.downloadVersion(projectId, fileId, versionId);
         if (generation !== loadGeneration) return;
         const text = new TextDecoder().decode(result.bytes);
+        counterpartLoaded = true;
         historySource = text;
+        historySourceAvailable = true;
         if (canvasMode === "unified-diff" || canvasMode === "side-by-side") {
           if (currentVersionId) {
             const working = await repo.downloadVersion(projectId, fileId, currentVersionId);
@@ -165,8 +180,11 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
       } catch (error: unknown) {
         if (generation !== loadGeneration) return;
         historySource = "";
+        historySourceAvailable = false;
         compareSource = "";
-        modeSourceError = error instanceof Error ? error.message : "历史源码加载失败。";
+        modeSourceError = !counterpartLoaded && error instanceof WiseEffApiError && (error.code === "NOT_FOUND" || error.code === "GONE")
+          ? ""
+          : error instanceof Error ? error.message : "历史源码加载失败。";
       } finally {
         if (generation === loadGeneration) {
           modeSourceLoading = false;

@@ -345,6 +345,13 @@ describe("LogsPage api upload wiring", () => {
     // The raw English failureReason maps to product copy in the error alert.
     expect(document.body).toHaveTextContent("暂不支持该日志格式");
     expect(document.body).not.toHaveTextContent("Unsupported file extension");
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    expect(within(history).getByRole("button", { name: /thermal\.bin/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(".log / .txt / .csv / .json");
+    expect(screen.queryByRole("region", { name: "分析结果" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新上传" }));
+    expect(screen.getByRole("dialog", { name: "上传日志" })).toBeInTheDocument();
+    expect(repository.rerunLog).not.toHaveBeenCalled();
   });
 
   it("disables the upload action while the runtime upload is pending", async () => {
