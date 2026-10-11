@@ -59,12 +59,16 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
   legacyRows, renderLegacyDetail, onLegacySelect, onOpenLegacy, renderRowSelection, renderRowTitle, selectAll, queueActions,
   onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds }: Props) {
   const [query, setQuery] = useState(search);
-  const [canonicalProjection, setCanonicalProjection] = useState<{
-    projectId: string; userId: string; rows: ReviewInboxRow[];
-  } | null>(null);
-  const [loading, setLoading] = useState(Boolean(repository));
-  const [error, setError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const loadScope = useMemo(() => ({ repository, projectId, mineOnly, canReview, userId: state.currentUserId,
+    projects: state.configDraft.projects, users: state.users, parameters: state.parameters, refresh
+  }), [repository, projectId, mineOnly, canReview, state.currentUserId, state.configDraft.projects, state.users, state.parameters, refresh]);
+  const [canonicalProjection, setCanonicalProjection] = useState<{
+    scope: typeof loadScope; rows: ReviewInboxRow[]; error: string | null;
+  } | null>(null);
+  const currentProjection = canonicalProjection?.scope === loadScope ? canonicalProjection : null;
+  const loading = Boolean(repository && projectId && !currentProjection);
+  const error = currentProjection?.error ?? null;
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const tabsId = useId();
   const queueRef = useRef<HTMLElement>(null);
@@ -89,11 +93,9 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
   }, []);
 
   useEffect(() => {
-    if (!repository || !projectId) { setCanonicalProjection(null); setLoading(false); return; }
+    const { repository, projectId, mineOnly, canReview, projects, users, parameters } = loadScope;
+    if (!repository || !projectId) return;
     let cancelled = false;
-    setCanonicalProjection(null);
-    setLoading(true);
-    setError(null);
     const scope = mineOnly ? { mine: true } : undefined;
     void Promise.all([
       repository.listProjectValueChangeRequests?.(projectId, scope).then((response) => response.items) ?? [],
@@ -101,24 +103,24 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
       repository.listMemberRemovalRequests?.(projectId, scope).then((response) => response.items) ?? []
     ]).then(([values, batches, members]) => {
       if (cancelled) return;
-      const project = state.configDraft.projects.find((item) => item.id === projectId)?.name ?? projectId;
-      const userName = (id: string | null) => state.users.find((user) => user.id === id)?.name ?? id ?? "已注销用户";
-      setCanonicalProjection({ projectId, userId: state.currentUserId, rows: [
+      const project = projects.find((item) => item.id === projectId)?.name ?? projectId;
+      const userName = (id: string | null) => users.find((user) => user.id === id)?.name ?? id ?? "已注销用户";
+      setCanonicalProjection({ scope: loadScope, error: null, rows: [
         ...[...values, ...batches].map((request): ReviewInboxRow => ({ id: request.id, kind: "value", projectId, project,
-          module: state.parameters.find((parameter) => parameter.id === `pbind:${"bindingId" in request ? request.bindingId : ""}`)?.module ?? "软件配置",
+          module: parameters.find((parameter) => parameter.id === `pbind:${"bindingId" in request ? request.bindingId : ""}`)?.module ?? "软件配置",
           title: request.reason, submitter: userName(request.submitterUserId), createdAt: request.createdAt ?? "",
           status: canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" })),
         ...members.map((request): ReviewInboxRow => ({ id: request.id, kind: "member", projectId, project,
           module: "JSON 成员删除", title: request.reason, submitter: userName(request.submitterUserId),
           createdAt: request.createdAt, status: canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" }))
       ] });
-    }).catch((failure) => { if (!cancelled) setError(presentError(failure, "审核队列加载失败，请重试。")); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    }).catch((failure) => {
+      if (!cancelled) setCanonicalProjection({ scope: loadScope, rows: [], error: presentError(failure, "审核队列加载失败，请重试。") });
+    });
     return () => { cancelled = true; };
-  }, [repository, projectId, mineOnly, canReview, state.currentUserId, state.configDraft.projects, state.users, state.parameters, refresh]);
+  }, [loadScope]);
 
-  const canonicalRows = canonicalProjection?.projectId === projectId && canonicalProjection.userId === state.currentUserId
-    ? canonicalProjection.rows : [];
+  const canonicalRows = currentProjection?.rows ?? [];
   const allRows = [...canonicalRows, ...legacyRows];
   const scopedRows = allRows.filter((row) => row.view === view);
   const moduleRegistry = buildPowerManagementModuleTree(state.configDraft.parameterModules, scopedRows.map((row) => row.module));
@@ -130,16 +132,19 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
   }), moduleRegistry);
   const selectedModules = collectTreeFilterSelectedDescendantIds(moduleNodes, filters.module ?? []);
   const linked = requestedId ? allRows.find((row) => row.id === requestedId && (!requestedKind || row.kind === requestedKind)) : undefined;
+  const linkedId = linked?.id;
+  const linkedView = linked?.view;
+  const linkedKind = linked?.kind;
   useEffect(() => {
-    if (linked && (linked.view !== view || (type !== "all" && type !== linked.kind)
-      || (linked.kind === "legacy" && params.get("request") === linked.id))) {
+    if (linkedId && linkedView && (linkedView !== view || (type !== "all" && type !== linkedKind)
+      || (linkedKind === "legacy" && params.get("request") === linkedId))) {
       const next = new URLSearchParams(query);
-      next.set("view", linked.view);
-      if (type !== "all" && type !== linked.kind) next.set("type", "all");
-      if (linked.kind === "legacy") { next.delete("request"); next.set("legacyRequest", linked.id); }
+      next.set("view", linkedView);
+      if (type !== "all" && type !== linkedKind) next.set("type", "all");
+      if (linkedKind === "legacy") { next.delete("request"); next.set("legacyRequest", linkedId); }
       writeQuery(next, true);
     }
-  }, [linked?.id, linked?.view, linked?.kind, view, type, params, query, writeQuery]);
+  }, [linkedId, linkedView, linkedKind, view, type, params, query, writeQuery]);
   const visibleRows = scopedRows.filter((row) => (type === "all" || row.kind === type)
     && Object.entries(filters).every(([field, values]) => !values.length || (field === "module"
       ? selectedModules.has(moduleIdsByName.get(row.module) ?? legacyModuleIdFromName(row.module))
@@ -151,14 +156,17 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
   const contextModule = params.get("module");
   const selected = requestedId ? visibleRows.find((row) => row.id === requestedId && (!requestedKind || row.kind === requestedKind))
     : visibleRows.find((row) => (!contextProject || row.projectId === contextProject) && (!contextModule || row.module === contextModule)) ?? visibleRows[0];
+  const selectedId = selected?.id;
+  const selectedKind = selected?.kind;
+  const selectedView = selected?.view;
   useEffect(() => {
-    if (!selected || requestedId || loading || legacyLoading) return;
+    if (!selectedId || !selectedView || requestedId || loading || legacyLoading) return;
     const next = new URLSearchParams(query);
-    next.set(selected.kind === "legacy" ? "legacyRequest" : "request", selected.id);
-    next.set("view", selected.view);
+    next.set(selectedKind === "legacy" ? "legacyRequest" : "request", selectedId);
+    next.set("view", selectedView);
     next.set("type", type);
     writeQuery(next, true);
-  }, [selected?.id, selected?.kind, selected?.view, requestedId, loading, legacyLoading, query, type, writeQuery]);
+  }, [selectedId, selectedKind, selectedView, requestedId, loading, legacyLoading, query, type, writeQuery]);
   const visibleLegacyKey = visibleRows.filter((row) => row.kind === "legacy").map((row) => row.id).join("\n");
   useEffect(() => { onVisibleLegacyIds?.(visibleLegacyKey ? visibleLegacyKey.split("\n") : []); }, [visibleLegacyKey, onVisibleLegacyIds]);
   useEffect(() => {

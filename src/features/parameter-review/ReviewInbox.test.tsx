@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialState } from "@/mockData";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -125,5 +125,25 @@ describe("unified review inbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await screen.findByText("暂无待审核请求");
     expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides the previous canonical queue while a replacement repository is loading", async () => {
+    const request = { id: "value-1", bindingId: "binding", reason: "校准电压", submitterUserId: "author",
+      createdAt: "2026-10-10T02:00:00Z", status: "pending" };
+    let finish!: (response: { items: typeof request[] }) => void;
+    const repository = { listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }) } as unknown as ParameterCatalogRepository;
+    const replacement = { listProjectValueChangeRequests: vi.fn().mockReturnValue(
+      new Promise<{ items: typeof request[] }>((resolve) => { finish = resolve; })) } as unknown as ParameterCatalogRepository;
+    const mounted = render(<ReviewInbox projectId="aurora" state={initialState} search="" repository={repository}
+      legacyRows={[]} renderLegacyDetail={() => null} />);
+    await screen.findByRole("heading", { name: "软件详情 value-1" });
+    mounted.rerender(<ReviewInbox projectId="aurora" state={initialState} search="" repository={replacement}
+      legacyRows={[]} renderLegacyDetail={() => null} />);
+    expect(screen.queryByRole("heading", { name: "软件详情 value-1" })).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无待审核请求")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await act(async () => { finish({ items: [{ ...request, reason: "更新电压" }] }); });
+    expect(screen.getByRole("heading", { name: "软件详情 value-1" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "审阅队列" })).toHaveTextContent("更新电压");
   });
 });

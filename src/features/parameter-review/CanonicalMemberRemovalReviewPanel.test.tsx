@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -38,6 +39,24 @@ function repository() {
 }
 
 describe("canonical JSON member removal review", () => {
+  it("lets keyboard users enter both frozen member comparisons without duplicate pre tab stops", async () => {
+    const user = userEvent.setup();
+    render(<CanonicalMemberRemovalReviewPanel projectId="project-1"
+      repository={repository()} detailOnly initialRequestId={pending.id} />);
+    const before = await screen.findByRole("tabpanel", { name: "冻结成员变更前" });
+    const after = screen.getByRole("tabpanel", { name: "冻结成员变更后" });
+    expect(before).toHaveTextContent("removed.json");
+    expect(after).not.toHaveTextContent("removed.json");
+    expect(after).toHaveTextContent("survivor.json");
+    expect(before.querySelector("pre")).not.toHaveAttribute("tabindex");
+    expect(after.querySelector("pre")).not.toHaveAttribute("tabindex");
+    screen.getByRole("button", { name: "刷新成员删除结果" }).focus();
+    await user.tab();
+    expect(before).toHaveFocus();
+    await user.tab();
+    expect(after).toHaveFocus();
+  });
+
   it.each(["withdraw", "reject"] as const)("ignores an unmounted request's deferred %s completion after selecting another request", async (decision) => {
     let finishAction!: () => void;
     let completed = false;
@@ -139,7 +158,8 @@ describe("canonical JSON member removal review", () => {
     expect(screen.queryByRole("heading", { name: "JSON 成员删除审核" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("tabpanel").map((panel) => panel.getAttribute("aria-label")))
+      .toEqual(["冻结成员变更前", "冻结成员变更后"]);
     const rejected = { ...pending, status: "rejected" as const };
     vi.mocked(repo.getMemberRemovalRequest!).mockResolvedValue({ item: rejected });
     vi.mocked(repo.listMemberRemovalRequests!).mockResolvedValue({ items: [rejected] });

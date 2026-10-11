@@ -245,8 +245,8 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
       {!valid ? <p role="alert">冻结成员、Binding 来源或证明摘要不完整，已阻止审核。</p> : null}
       <section aria-label="前后对比"><h4>前后对比</h4>
         <p role="note">以下成员配置固定于提交时，不随当前文件变化。</p>
-        <p>变更前</p><pre tabIndex={0} aria-label="冻结成员变更前">{JSON.stringify(selected.frozenProof.members.map(({ sourceName, format, role, sortOrder, sizeBytes }) => ({ sourceName, format, role, sortOrder, sizeBytes })), null, 2)}</pre>
-        <p>变更后</p><pre tabIndex={0} aria-label="冻结成员变更后">{JSON.stringify(selected.frozenProof.members.filter((member) => member.fileId !== selected.fileId).map(({ sourceName, format, role, sortOrder, sizeBytes }) => ({ sourceName, format, role, sortOrder, sizeBytes })), null, 2)}</pre>
+        <p>变更前</p><TabPanel aria-label="冻结成员变更前"><pre>{JSON.stringify(selected.frozenProof.members.map(({ sourceName, format, role, sortOrder, sizeBytes }) => ({ sourceName, format, role, sortOrder, sizeBytes })), null, 2)}</pre></TabPanel>
+        <p>变更后</p><TabPanel aria-label="冻结成员变更后"><pre>{JSON.stringify(selected.frozenProof.members.filter((member) => member.fileId !== selected.fileId).map(({ sourceName, format, role, sortOrder, sizeBytes }) => ({ sourceName, format, role, sortOrder, sizeBytes })), null, 2)}</pre></TabPanel>
       </section>
       <section aria-label="影响范围"><h4>影响范围</h4>
       <p>有序成员（{selected.frozenProof.members.length}）</p>
