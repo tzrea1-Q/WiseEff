@@ -399,6 +399,13 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout });
     await waitForFontsAndNextPaint(page);
     await expect.poll(async () => failureAlert.isVisible(), { timeout: 5_000 }).toBe(true);
+    await expect(failureAlert).toContainText("在 日志解析 阶段失败");
+    await expect(failureAlert).toContainText(".log / .txt / .csv / .json");
+    await expect(failureAlert.getByText("unsupported.bin", { exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "分析流程" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "分析结果" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "原始日志" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "日志分析证据链" })).toHaveCount(0);
   }
 }
 

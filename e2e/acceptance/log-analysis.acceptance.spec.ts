@@ -611,6 +611,18 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await expect(failureAlert).toContainText("暂不支持该日志格式");
     await expect(failureAlert).not.toContainText("Unsupported log format");
     await expect(failureAlert.getByRole("button", { name: "重新上传" })).toBeVisible();
+    await expect(failureAlert).toContainText("在 日志解析 阶段失败");
+    await expect(failureAlert).toContainText(".log / .txt / .csv / .json");
+    await expect(failureAlert.getByText(unsupportedFileName, { exact: true })).toBeVisible();
+    await expect(unsupportedHistoryItem).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("list", { name: "分析流程" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "分析结果" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "原始日志" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "日志分析证据链" })).toHaveCount(0);
+    await failureAlert.getByRole("button", { name: "重新上传" }).click();
+    const recoveryDialog = page.getByRole("dialog", { name: "上传日志" });
+    await expect(recoveryDialog).toBeVisible();
+    await recoveryDialog.getByRole("button", { name: "取消", exact: true }).click();
 
     await recordOperationEvidence({
       operationId: "LOG-HAPPY-001",
