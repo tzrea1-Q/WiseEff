@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { initialParameterAdminState } from "@/application/parameters/parameterAdminState";
@@ -22,6 +23,21 @@ const stubModules = {
 describe("OrganizationIdentityMappingPanel", () => {
   beforeEach(() => {
     stubTopology.listMappingTasks.mockReset();
+  });
+
+  it("announces loading and lets the user retry a failed evidence read into the shared empty state", async () => {
+    const user = userEvent.setup();
+    stubTopology.listMappingTasks.mockRejectedValueOnce(new Error("transport failed")).mockResolvedValue([]);
+    render(<ParameterAdminProvider topology={stubTopology as never} moduleRegistry={stubModules as never}>
+      <OrganizationIdentityMappingPanel />
+    </ParameterAdminProvider>);
+    expect(screen.getByRole("status", { name: PARAMETER_ADMIN_UI.identityMappingLoading })).toBeVisible();
+    const alert = await screen.findByRole("alert");
+    expect(alert).not.toHaveTextContent("transport failed");
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByText(PARAMETER_ADMIN_UI.identityMappingEmpty)).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("新的未知或歧义证据请前往规范审核队列查看。")).toBeVisible();
   });
 
   it("keeps unresolved historical evidence and resolved history read-only without name inference", async () => {

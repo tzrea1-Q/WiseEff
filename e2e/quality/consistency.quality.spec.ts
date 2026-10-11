@@ -33,6 +33,7 @@ for (const route of routes) {
       testInfo.annotations.push({ type: "setup", description: "Bridge pairing-code POSTs use a synthetic response; no server pairing code is issued." });
       const blockedRequests = await installConsistencyReadGuard(context);
       let measurements: ConsistencyMeasurements | null = null;
+      let required = route.required;
       try {
         const routePath = route.path.split("?")[0];
         const [authResponse] = await Promise.all([
@@ -48,17 +49,48 @@ for (const route of routes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await waitForFontsAndNextPaint(page);
+        const pendingWork = page.getByRole("dialog", { name: "待处理工作", exact: true });
+        if (route.path.includes("?review=open") || await pendingWork.isVisible()) {
+          await expect(pendingWork).toBeVisible();
+          await expect(pendingWork.locator(".section-skeleton")).toHaveCount(0);
+          await expect(pendingWork.getByRole("alert")).toHaveCount(0);
+          expect(shouldRequireXiaozeHint(await page.evaluate(() => ({
+            hasDialog: document.body.matches(':has([role="dialog"])'), viewportWidth: window.innerWidth
+          })))).toBe(false);
+          await expect(page.getByTestId("xiaoze-toggle-hint")).toBeHidden();
+          const modalMeasurements = await page.evaluate(collectConsistencyMeasurements);
+          assertXiaozePlacement(modalMeasurements, route.path);
+          await testInfo.attach(`pending-work-${theme}`, {
+            contentType: "application/json", body: JSON.stringify(modalMeasurements, null, 2)
+          });
+          await testInfo.attach(`pending-work-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          await pendingWork.getByRole("button", { name: "关闭", exact: true }).click();
+          await expect(pendingWork).toBeHidden();
+          await waitForFontsAndNextPaint(page);
+        }
         const pageState = await page.evaluate(() => ({
           hasDialog: document.body.matches(':has([role="dialog"])'),
           viewportWidth: window.innerWidth
         }));
         const requiresHint = shouldRequireXiaozeHint(pageState);
+        const historicalIdentity = page.getByRole("region", { name: "节点对应确认", exact: true });
+        const hasHistoricalIdentity = await historicalIdentity.isVisible();
+        if (hasHistoricalIdentity) {
+          await expect(historicalIdentity.getByRole("link", { name: "打开规范审核队列" }))
+            .toHaveAttribute("href", "/parameter-admin/specs?review=open");
+          await expect(historicalIdentity.locator("button, input, select, textarea")).toHaveCount(0);
+        }
+        required = hasHistoricalIdentity
+          ? route.required.filter((category) => category !== "rowActions" && category !== "paginationControls")
+          : route.required;
         if (theme === "light" && requiresHint) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
         }
         await expect(async () => {
           measurements = await page.evaluate(collectConsistencyMeasurements);
-          requireMeasuredCategories(measurements, route.required, route.path);
+          requireMeasuredCategories(measurements, required, route.path);
           if (route.required.includes("navigatorWorkbenches") || moduleNavigationPaths.includes(routePath)) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }
@@ -77,7 +109,7 @@ for (const route of routes) {
             assertXiaozePlacement(measurements, route.path);
           }
         }).toPass({ timeout: 20_000 });
-        requireCompactControlHeights(measurements, route.path);
+        requireCompactControlHeights(measurements, route.path, required);
         if (routePath === "/parameters" && theme === "dark") {
           const contrast = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
           await testInfo.attach("parameters-dark-color-contrast", {
@@ -126,7 +158,7 @@ for (const route of routes) {
         }
         if (moduleNavigationPaths.includes(routePath)) {
           await test.step("module selection survives reload and clears on reselect without label drift", async () => {
-            const catalog = route.path === "/parameter-admin/specs";
+            const catalog = routePath === "/parameter-admin/specs";
             const node = page.locator(catalog
               ? '.parameter-catalog__tree-select[data-catalog-node-kind="module"]'
               : '.dts-topology-navigator__item[role="treeitem"]').first();
@@ -146,6 +178,10 @@ for (const route of routes) {
             await settleXiaozePopupClosed(page);
             await settleAppToasts(page);
             await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+            if (await pendingWork.isVisible()) {
+              await pendingWork.getByRole("button", { name: "关闭", exact: true }).click();
+              await expect(pendingWork).toBeHidden();
+            }
             await page.mouse.move(0, 0);
             await waitForFontsAndNextPaint(page);
             await expect(node).toHaveAttribute(selectedAttribute, "true");
@@ -185,7 +221,7 @@ for (const route of routes) {
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {
           contentType: "application/json",
-          body: JSON.stringify({ path: route.path, theme, viewport: page.viewportSize(), required: route.required, measurements, blockedRequests }, null, 2)
+          body: JSON.stringify({ path: route.path, theme, viewport: page.viewportSize(), required, measurements, blockedRequests }, null, 2)
         });
       }
     });

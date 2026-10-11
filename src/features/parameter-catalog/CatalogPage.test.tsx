@@ -191,6 +191,23 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("keeps governance evidence in the task region while collapsing only the module navigator", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    render(<CatalogPage repository={ports.catalog} actor="org-admin" search=""
+      taskContent={<section aria-label="节点对应确认">只读历史证据</section>} />);
+    const task = screen.getByRole("region", { name: "目录列表" });
+    expect(within(task).getByRole("region", { name: "节点对应确认" })).toHaveTextContent("只读历史证据");
+    expect(within(task).queryByRole("table", { name: "参数定义列表" })).not.toBeInTheDocument();
+    const navigator = screen.getByRole("region", { name: "模块导航" });
+    const module = await within(navigator).findByRole("button", { name: /southchip,sc8562/ });
+    await user.click(within(navigator).getByRole("button", { name: "收起模块导航" }));
+    expect(module).not.toBeVisible();
+    expect(within(task).getByText("只读历史证据")).toBeVisible();
+    await user.click(within(navigator).getByRole("button", { name: "展开模块导航" }));
+    expect(module).toBeVisible();
+  });
+
   it("orders workbench actions, release context, navigation and definitions for keyboard users", async () => {
     renderCatalog();
     await screen.findByRole("table", { name: "参数定义列表" });

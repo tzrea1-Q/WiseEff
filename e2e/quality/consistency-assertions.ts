@@ -46,7 +46,8 @@ export function requireRowActionVisibility(rows: ConsistencyMeasurements["rowAct
 
 export function requireCompactControlHeights(
   measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls" | "unmarkedCompactControls">> | null | undefined,
-  routePath: string
+  routePath: string,
+  requiredCategories?: readonly ConsistencyCategory[]
 ) {
   if (!measurements) {
     throw new Error(`${routePath}: compact control collection error: route measurements are missing`);
@@ -62,7 +63,7 @@ export function requireCompactControlHeights(
       }
     }
   }
-  const required = consistencyRoutes.find((route) => route.path === routePath.split("?")[0])?.required
+  const required = (requiredCategories ?? consistencyRoutes.find((route) => route.path === routePath.split("?")[0])?.required)
     .filter((category) => category === "filterControls" || category === "sortControls" || category === "paginationControls") ?? [];
   if (required.length && measurements.unmarkedCompactControls?.length) {
     throw new Error(`${routePath}: unmarked compact control: ${measurements.unmarkedCompactControls[0].dom}`);

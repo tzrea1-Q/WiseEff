@@ -97,6 +97,7 @@ type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
 export type CatalogPageProps = {
   pageKey?: string;
   notice?: ReactNode;
+  taskContent?: ReactNode;
   repository: ParameterCatalogRepository;
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
@@ -211,6 +212,7 @@ function pickCollection(
 export function CatalogPage({
   pageKey = "catalog-definitions",
   notice,
+  taskContent,
   repository,
   actor,
   sessionPermissions,
@@ -845,7 +847,7 @@ export function CatalogPage({
         </> : null}
       >
 
-        {inFlight && !snapshot ? (
+        {taskContent ?? (inFlight && !snapshot ? (
           <SectionSkeleton label={catalogLoadingLabel} />
         ) : domainState.kind === "error" && !snapshot ? (
           <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
@@ -995,7 +997,7 @@ export function CatalogPage({
               </div>
             </nav>
           </div>
-        )}
+        ))}
       </NavigatorWorkbench>
 
       {definition && editorOpen ? (

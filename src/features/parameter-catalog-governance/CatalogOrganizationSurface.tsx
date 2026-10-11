@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import {
   catalogActorForRole,
@@ -48,6 +48,7 @@ export type CatalogOrganizationSurfaceProps = {
   organizationId?: string;
   currentPersonId: string;
   relatedKnowledge?: SpecRelatedKnowledgeSource;
+  taskContent?: ReactNode;
 };
 
 export function CatalogOrganizationSurface({
@@ -61,7 +62,8 @@ export function CatalogOrganizationSurface({
   onAnchorChange,
   organizationId,
   currentPersonId,
-  relatedKnowledge
+  relatedKnowledge,
+  taskContent
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
   const reviewActor = sessionRoles === undefined ? actor
@@ -172,6 +174,7 @@ export function CatalogOrganizationSurface({
     <div className="parameter-catalog-organization">
       <CatalogPage
         key={surfaceEpoch}
+        taskContent={taskContent}
         notice={publicationSurfaceLoad === "error" || surfaceStatus || platformOnly ? <>
           {publicationSurfaceLoad === "error" ? (
             <section className="parameter-catalog__banner" data-tone="danger" aria-label={publicationSurfaceCopy.title}>
