@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ import { initialState } from "./mockData";
 import type { PrototypeState } from "./mockData";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
+import * as bridgeLauncher from "./infrastructure/http/bridgeConnectLauncher";
 import { createTestDebuggingGateway, renderApp } from "./test/harness";
 
 /**
@@ -220,6 +222,31 @@ afterEach(() => {
 });
 
 describe("/node-debugging", () => {
+  it("explains an unreachable local Bridge and keeps its technical detail expandable", async () => {
+    vi.spyOn(bridgeLauncher, "connectLocalBridge").mockResolvedValue({ reachable: true, ok: true, accepted: true });
+    vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockResolvedValue(null);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/health")) throw new TypeError("Failed to fetch");
+      return new Response(JSON.stringify({ items: [], code: "123456", expiresAt: "2099-01-01T00:00:00Z" }));
+    });
+    renderNodeDebuggingPage({ state: userState, debuggingActions: createDebuggingActions() });
+
+    fireEvent.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
+    const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+
+    const message = await screen.findByText("无法连接本地 Bridge，请确认本机 Bridge 已启动，然后刷新代理状态重试。");
+    const alert = message.closest('[role="alert"]') as HTMLElement;
+    expect(within(alert).getByRole("button", { name: "刷新代理状态" })).toBeEnabled();
+    const detail = within(alert).getByText("Failed to fetch");
+    const disclosure = detail.closest("details") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(within(alert).getByText("技术详情"));
+    expect(disclosure.open).toBe(true);
+  });
+
   it("uses API gateway actions to auto-detect and shows the returned target label", async () => {
     const debuggingActions = createDebuggingActions();
     renderNodeDebuggingPage({ state: userState, debuggingActions });
@@ -229,13 +256,33 @@ describe("/node-debugging", () => {
   });
 
   it("passes the selected protocol to API target detection", async () => {
+    const user = userEvent.setup();
     const debuggingActions = createDebuggingActions();
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/已连接：API Gateway Target/);
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    const protocols = screen.getByRole("tablist", { name: "连接协议" });
+    const hdc = within(protocols).getByRole("tab", { name: "HDC" });
+    const adb = within(protocols).getByRole("tab", { name: "ADB" });
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    hdc.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(adb).toHaveFocus();
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Enter}");
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
+    expect(adb).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel", { name: "ADB" });
+    expect(panel).toHaveAttribute("id", adb.getAttribute("aria-controls"));
+    expect(panel).toHaveAttribute("aria-labelledby", adb.id);
+    expect(panel).not.toHaveAttribute("tabindex");
+    adb.focus();
+    await user.tab();
+    expect(panel).toContainElement(document.activeElement as HTMLElement);
+    expect(panel).not.toHaveFocus();
+    expect(within(panel).getByRole("region", { name: "节点调试参数" })).toBeInTheDocument();
+    expect(document.getElementById(hdc.getAttribute("aria-controls")!)).not.toBeVisible();
   });
 
   it("refreshes runtime parameters for the selected protocol when switching protocols", async () => {
@@ -243,7 +290,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/已连接：API Gateway Target/);
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => expect(debuggingActions.refresh).toHaveBeenCalledWith({ protocol: "adb" }));
   });
@@ -253,7 +300,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
     expect(debuggingActions.detectAndStartSession).toHaveBeenCalledTimes(2);
@@ -297,7 +344,7 @@ describe("/node-debugging", () => {
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalled());
     expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => {
       expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
@@ -348,7 +395,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await waitFor(() => expect(pendingReads.length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => {
       expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
@@ -388,7 +435,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: { ...userState, debugParameters: [hdcOnlyParameter] }, debuggingActions });
 
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     expect(await screen.findByText("未配置该协议节点")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
@@ -409,7 +456,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: { ...userState, debugParameters: [hdcSelectedParameter] }, debuggingActions });
 
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     expect(await screen.findByText("未配置该协议节点")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
@@ -430,7 +477,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith({ protocol: "hdc" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
 
     await act(async () => {
@@ -443,7 +490,7 @@ describe("/node-debugging", () => {
     expect(debuggingActions.readNode).not.toHaveBeenCalled();
   });
 
-  it("keeps protocol switching usable when protocol storage is unavailable", () => {
+  it("keeps protocol switching usable when protocol storage is unavailable", async () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable");
     });
@@ -456,10 +503,10 @@ describe("/node-debugging", () => {
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    expect(screen.getByRole("button", { name: "HDC" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    expect(screen.getByRole("tab", { name: "HDC" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
-    expect(screen.getByRole("button", { name: "ADB" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "ADB" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("检测中...")).toBeInTheDocument();
   });
 
@@ -1163,7 +1210,7 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
     expect(downloadLink).toHaveAttribute(
@@ -1207,7 +1254,7 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     expect(await screen.findByText(/缺少 ADB 调试工具/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /安装调试工具/i })).toBeInTheDocument();
@@ -1295,7 +1342,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/已连接：API Gateway Target/);
-    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     const picker = await screen.findByRole("region", { name: "设备代理目标选择" });
     const selectTargetButton = within(picker).getByRole("button", { name: "连接 MacBook · serial-123" });
@@ -1353,7 +1400,7 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    fireEvent.click(await screen.findByRole("button", { name: "ADB" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "ADB" }));
 
     const renameInput = await screen.findByDisplayValue("Laptop");
     fireEvent.change(renameInput, { target: { value: "Desk-PC" } });
@@ -1599,7 +1646,7 @@ describe("/node-debugging", () => {
       };
     });
 
-    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+    const first = renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
     const navigator = screen.getByRole("region", { name: "模块导航" });
@@ -1615,9 +1662,58 @@ describe("/node-debugging", () => {
     expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
     expect(findRowByText("battery.impedance_mohm")).toBeInTheDocument();
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
 
-    fireEvent.click(chargingPolicy);
+    first.unmount();
+    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const restored = within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
+    expect(restored).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
+    fireEvent.click(restored);
     expect(findRowByText("battery.thermal_foldback_pct")).toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+  });
+
+  it("restores Battery Health on reload and restores Fast charge current on reselect", async () => {
+    const debugParameters = [
+      { ...userState.debugParameters[0], id: "dbg-cycle-count", name: "Cycle count", module: "Battery Health",
+        moduleId: "debug-battery-health", modulePath: ["Battery Health"] },
+      { ...userState.debugParameters[1], id: "dbg-fast-charge-current", name: "Fast charge current", module: "Battery Charging",
+        moduleId: "debug-battery-charging", modulePath: ["Battery Charging"] }
+    ];
+    const appState = { ...userState, debugParameters };
+    const first = renderApp({ initialAppState: appState, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Fast charge current")).toBeInTheDocument();
+
+    const health = within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Battery Health.*1 个节点/ });
+    fireEvent.click(health);
+    expect(health).toHaveAttribute("aria-selected", "true");
+    expect(within(table).getByText("Cycle count")).toBeInTheDocument();
+    expect(within(table).queryByText("Fast charge current")).not.toBeInTheDocument();
+    const selectedId = new URL(window.location.href).searchParams.get("moduleNode");
+    expect(selectedId).toBeTruthy();
+
+    first.unmount();
+    renderApp({ initialAppState: appState, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const restored = within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Battery Health.*1 个节点/ });
+    const restoredTable = screen.getByRole("table");
+    expect(restored).toHaveAttribute("aria-selected", "true");
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBe(selectedId);
+    expect(within(restoredTable).getByText("Cycle count")).toBeInTheDocument();
+    expect(within(restoredTable).queryByText("Fast charge current")).not.toBeInTheDocument();
+
+    fireEvent.click(restored);
+    expect(restored).toHaveAttribute("aria-selected", "false");
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(within(restoredTable).getByText("Cycle count")).toBeInTheDocument();
+    expect(within(restoredTable).getByText("Fast charge current")).toBeInTheDocument();
   });
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {

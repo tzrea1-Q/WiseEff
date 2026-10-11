@@ -191,6 +191,25 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("exposes directory actions as a named group for read-only users", async () => {
+    renderCatalog({ actor: "user" });
+    const actions = await screen.findByRole("group", { name: "目录动作" });
+    expect(within(actions).getByRole("button", { name: "待处理工作" })).toBeInTheDocument();
+    const { default: axe } = await import("axe-core");
+    expect((await axe.run(actions, { runOnly: ["aria-prohibited-attr"] })).violations).toEqual([]);
+  });
+
+  it.each(["desktop", "mobile"] as const)("offers viewing with access guidance in the %s read-only catalog", async (layoutMode) => {
+    renderCatalog({ actor: "user", layoutMode });
+    const user = userEvent.setup();
+    const action = await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(action).toHaveTextContent("查看");
+    await user.click(action);
+    const dialog = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(within(dialog).getAllByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).toHaveLength(1);
+    expect(within(dialog).getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.propertyKey);
+  });
+
   function pagedInventory() {
     const subjects = Array.from({ length: 101 }, (_, index) => ({
       ...registeredSubject,
@@ -236,6 +255,29 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     };
     return { repository, listSubjects, listDefinitions, first, second, last };
   }
+
+  it("restores the module scope from its URL and clears it when the active module is reselected", async () => {
+    const user = userEvent.setup();
+    const inventory = pagedInventory();
+    const onHref = vi.fn();
+    const first = renderCatalog({ repository: inventory.repository, onHref });
+    await user.click(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ }));
+    await waitFor(() => expect(screen.getByText("已选模块子树 · 101 个主体")).toBeVisible());
+    await user.click(screen.getByRole("button", { name: "选择主体 inventory-subject-0" }));
+    await user.click(screen.getByRole("button", { name: /^Inventory module 0\s*101$/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Inventory module 0\s*101$/ })).toHaveAttribute("aria-pressed", "true"));
+    const href = onHref.mock.calls.at(-1)![0] as string;
+    expect(new URL(href, "http://localhost").searchParams.get("moduleNodeId")).toBe("module_inventory_0");
+    first.unmount();
+
+    renderCatalog({ repository: inventory.repository, search: href.slice(href.indexOf("?")), onHref });
+    const selected = await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ });
+    expect(selected).toHaveAttribute("aria-pressed", "true");
+    await user.click(selected);
+    await waitFor(() => expect(selected).toHaveAttribute("aria-pressed", "false"));
+    expect(screen.queryByText("已选模块子树 · 101 个主体")).not.toBeInTheDocument();
+    expect(new URL(onHref.mock.calls.at(-1)![0], "http://localhost").searchParams.has("moduleNodeId")).toBe(false);
+  });
 
   it("loads all 101 subjects before publishing the navigator and scopes the second-page definition", async () => {
     const user = userEvent.setup();

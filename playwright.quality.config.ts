@@ -62,6 +62,17 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } }
     },
     {
+      name: "consistency",
+      testMatch: /consistency\.(quality|collector)\.spec\.ts/,
+      dependencies: ["runtime-warmup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
+        serviceWorkers: "block",
+        reducedMotion: "reduce"
+      }
+    },
+    {
       name: "responsive",
       testMatch: /responsive\.quality\.spec\.ts/,
       dependencies: ["runtime-warmup"],

@@ -1,9 +1,11 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogRelatedParameterPin } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
@@ -1421,22 +1423,14 @@ function LogsAuxPanel({
 
   return (
     <aside className="logs-aux-panel" aria-label="历史日志记录">
-      <div className="logs-aux-tabs" role="tablist" aria-label="日志辅助信息">
-        {tabs.map(([id, label]) => (
-          <button
-            aria-controls={`logs-aux-${id}`}
-            aria-selected={auxTab === id}
-            id={`logs-aux-tab-${id}`}
-            key={id}
-            role="tab"
-            type="button"
-            onClick={() => onTabChange(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div aria-labelledby={`logs-aux-tab-${auxTab}`} className="logs-aux-panel__body" id={`logs-aux-${auxTab}`} role="tabpanel">
+      <ViewSwitch
+        variant="tabs"
+        ariaLabel="日志辅助信息"
+        value={auxTab}
+        onValueChange={(value) => onTabChange(value as LogsAuxTab)}
+        items={tabs.map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))}
+      />
+      <TabPanel aria-labelledby={`logs-aux-tab-${auxTab}`} className="logs-aux-panel__body" id={`logs-aux-${auxTab}`} role="tabpanel">
         {auxTab === "history" ? (
           <div className="history-panel">
             {logs.map((log) => (
@@ -1470,7 +1464,7 @@ function LogsAuxPanel({
           </dl>
         ) : null}
         {auxTab === "related" ? <EmptyState text="没有找到关联日志。" /> : null}
-      </div>
+      </TabPanel>
     </aside>
   );
 }

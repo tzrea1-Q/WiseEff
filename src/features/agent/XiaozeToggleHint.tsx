@@ -9,34 +9,35 @@ import {
 } from "./xiaozeToggleHintStorage";
 
 type XiaozeToggleHintProps = {
+  userId?: string;
   visible: boolean;
   onOpen: () => void;
 };
 
-export function XiaozeToggleHint({ visible, onOpen }: XiaozeToggleHintProps) {
-  const [dismissed, setDismissed] = useState(() => readXiaozeToggleHintDismissed());
+export function XiaozeToggleHint({ userId, visible, onOpen }: XiaozeToggleHintProps) {
+  const [dismissed, setDismissed] = useState(() => readXiaozeToggleHintDismissed(userId));
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
-    if (!visible || dismissed || readXiaozeToggleHintShown()) {
+    if (!visible || dismissed || readXiaozeToggleHintShown(userId)) {
       setRevealed(false);
       return;
     }
 
     const timer = window.setTimeout(() => {
-      markXiaozeToggleHintShown();
+      markXiaozeToggleHintShown(userId);
       setRevealed(true);
     }, XIAOZE_TOGGLE_HINT_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [dismissed, visible]);
+  }, [dismissed, userId, visible]);
 
   if (!visible || dismissed || !revealed) {
     return null;
   }
 
   const handleDismiss = () => {
-    dismissXiaozeToggleHint();
+    dismissXiaozeToggleHint(userId);
     setDismissed(true);
   };
 

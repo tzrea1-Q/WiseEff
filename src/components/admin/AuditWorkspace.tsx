@@ -6,7 +6,7 @@ import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLa
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
 import { useAuditEvents, useAuditTraceEvents } from "@/hooks/useAuditEvents";
 import type { AuditEvent } from "@/domain/prototype/types";
-import { cn } from "@/lib/utils";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { SearchField } from "@/components/common/SearchField";
 
 export type AuditWorkspaceProps = {
@@ -113,6 +113,8 @@ export function AuditWorkspace({
           <label className="audit-workspace-select-wrap">
             <span>模块</span>
             <select
+              className="compact-filter-control"
+              data-compact-control="filter"
               value={query.appGroup}
               onChange={(event) => onQueryChange?.({ appGroup: event.target.value as AuditQueryState["appGroup"] })}
               aria-label="模块筛选"
@@ -128,6 +130,8 @@ export function AuditWorkspace({
             <label className="audit-workspace-select-wrap">
               <span>项目</span>
               <select
+                className="compact-filter-control"
+                data-compact-control="filter"
                 value={query.projectId ?? ""}
                 onChange={(event) =>
                   onQueryChange?.({ projectId: event.target.value ? event.target.value : undefined })
@@ -146,6 +150,8 @@ export function AuditWorkspace({
           <label className="audit-workspace-select-wrap">
             <span>时间</span>
             <select
+              className="compact-filter-control"
+              data-compact-control="filter"
               value={query.timeWindow}
               onChange={(event) => onQueryChange?.({ timeWindow: event.target.value as AuditQueryState["timeWindow"] })}
               aria-label="时间范围筛选"
@@ -156,26 +162,16 @@ export function AuditWorkspace({
               <option value="30d">近 30 天</option>
             </select>
           </label>
-          <div className="param-admin-audit-filters" role="group" aria-label="严重度筛选">
-            {(
-              [
-                ["all", "全部"],
-                ["High", "高"],
-                ["Medium", "中"],
-                ["Low", "低"]
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={cn("chip", query.severity === value && "chip-active")}
-                aria-pressed={query.severity === value}
-                onClick={() => onQueryChange?.({ severity: value })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <ViewSwitch
+            variant="toggle"
+            ariaLabel="严重度筛选"
+            value={query.severity}
+            onValueChange={(severity) => onQueryChange?.({ severity: severity as AuditQueryState["severity"] })}
+            items={[
+              { value: "all", label: "全部" }, { value: "High", label: "高" },
+              { value: "Medium", label: "中" }, { value: "Low", label: "低" }
+            ]}
+          />
           <button
             type="button"
             className="button subtle audit-workspace-export"

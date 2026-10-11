@@ -575,6 +575,7 @@ export function RunResultSection({
               <button
                 type="button"
                 className="submit-round-button debugging-deploy-button"
+                data-primary-action="true"
                 disabled={!deployReady || deploying}
                 onClick={onDeploy}
               >

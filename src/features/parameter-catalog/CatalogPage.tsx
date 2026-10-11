@@ -59,6 +59,7 @@ import {
   catalogValueShapeLabel
 } from "./catalogPresentation";
 import {
+  catalogAuthoringAccessHint,
   catalogDefinitionsLabel,
   catalogDetailCloseLabel,
   catalogDetailLabel,
@@ -135,6 +136,7 @@ export type CatalogPageProps = {
    * a visible control that the server would refuse is not a security boundary.
    */
   definitionPublishingAllowed?: boolean;
+  definitionAuthoringAllowed?: boolean;
   layoutMode?: CatalogLayoutMode;
   organizationId?: string;
   listReviewItems?: (
@@ -216,6 +218,7 @@ export function CatalogPage({
   renderDefinitionEditor,
   onDefinitionCommand,
   definitionPublishingAllowed = false,
+  definitionAuthoringAllowed = false,
   layoutMode: layoutOverride,
   organizationId,
   listReviewItems
@@ -241,7 +244,8 @@ export function CatalogPage({
   const [unpublished, setUnpublished] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const definitionActionLabel = renderDefinitionEditor ? "编辑" : "查看";
+  const definitionEditable = definitionAuthoringAllowed && Boolean(renderDefinitionEditor);
+  const definitionActionLabel = definitionEditable ? "编辑" : "查看";
   /** Cursors already traversed, so Previous is exact rather than guessed. */
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
@@ -540,7 +544,7 @@ export function CatalogPage({
       selectSubject(node.subjectId);
       return;
     }
-    selectModuleNode(node.id);
+    selectModuleNode(node.id === anchor.moduleNodeId && !anchor.subjectId ? null : node.id);
   };
 
   const selectSubject = (subjectId: string) => {
@@ -652,6 +656,7 @@ export function CatalogPage({
     {
       key: "lifecycle",
       header: "生命周期",
+      className: "parameter-catalog__lifecycle",
       render: (row) => (
         <span className="parameter-catalog__badge" data-tone={row.lifecycle === "active" ? undefined : "retired"}>
           {catalogLifecycleLabel(row.lifecycle)}
@@ -753,45 +758,47 @@ export function CatalogPage({
             </button>
           ) : null}
         </form>
-        <div className="parameter-catalog__actions" aria-label="目录动作">
-          {actions.map((action) => (
-            <button
-              key={action.action}
-              type="button"
-              className="button sm"
-              data-catalog-action={action.action}
-              disabled={!action.enabled}
-              title={action.disabledReason ?? undefined}
-              aria-disabled={!action.enabled}
-              onClick={() =>
-                onAction?.(action.action, {
-                  subjectId: subject?.id ?? anchor.subjectId,
-                  registrationId:
-                    subject?.registration.status && subject.registration.status !== "unregistered"
-                      ? subject.registration.id
-                      : null
-                })
-              }
-            >
-              {action.label}
-            </button>
-          ))}
-          {onOpenPendingWork ? (
-            <button
-              type="button"
-              className="button subtle sm"
-              data-catalog-action="open-pending-work"
-              onClick={onOpenPendingWork}
-            >
-              {catalogPendingWorkLabel}
-              {reviewItemCount > 0 ? (
-                <span className="parameter-catalog__badge" data-tone="warning">
-                  {reviewItemCount}
-                </span>
-              ) : null}
-            </button>
-          ) : null}
-        </div>
+        {actions.length > 0 || onOpenPendingWork ? (
+          <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
+            {actions.map((action) => (
+              <button
+                key={action.action}
+                type="button"
+                className="button sm"
+                data-catalog-action={action.action}
+                disabled={!action.enabled}
+                title={action.disabledReason ?? undefined}
+                aria-disabled={!action.enabled}
+                onClick={() =>
+                  onAction?.(action.action, {
+                    subjectId: subject?.id ?? anchor.subjectId,
+                    registrationId:
+                      subject?.registration.status && subject.registration.status !== "unregistered"
+                        ? subject.registration.id
+                        : null
+                  })
+                }
+              >
+                {action.label}
+              </button>
+            ))}
+            {onOpenPendingWork ? (
+              <button
+                type="button"
+                className="button subtle sm"
+                data-catalog-action="open-pending-work"
+                onClick={onOpenPendingWork}
+              >
+                {catalogPendingWorkLabel}
+                {reviewItemCount > 0 ? (
+                  <span className="parameter-catalog__badge" data-tone="warning">
+                    {reviewItemCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {statusMessage && domainState.kind !== "ready" ? (
@@ -876,7 +883,7 @@ export function CatalogPage({
                       type="button"
                       className="button subtle sm"
                       aria-label={`${definitionActionLabel} ${item.propertyKey}`}
-                      data-catalog-row-action={renderDefinitionEditor ? "edit" : "read"}
+                      data-catalog-row-action={definitionEditable ? "edit" : "read"}
                       onClick={() => selectDefinition(item)}
                     >
                       {definitionActionLabel}
@@ -890,6 +897,7 @@ export function CatalogPage({
                   rows={visibleDefinitions}
                   rowKey={(row) => row.id}
                   columns={columns}
+                  tableClassName="parameter-catalog__table"
                   selectedRowKey={definition?.id}
                   onRowClick={selectDefinition}
                   aria-label={catalogDefinitionsLabel}
@@ -900,7 +908,7 @@ export function CatalogPage({
                         type="button"
                         className="button subtle sm"
                         aria-label={`${definitionActionLabel} ${row.propertyKey}`}
-                        data-catalog-row-action={renderDefinitionEditor ? "edit" : "read"}
+                        data-catalog-row-action={definitionEditable ? "edit" : "read"}
                         onClick={() => selectDefinition(row)}
                       >
                         {definitionActionLabel}
@@ -939,6 +947,8 @@ export function CatalogPage({
               <label className="parameter-catalog__page-size">
                 <span>{catalogPageSizeLabel}</span>
                 <select
+                  className="compact-filter-control"
+                  data-compact-control="pagination"
                   value={pageSize}
                   aria-label={catalogPageSizeLabel}
                   onChange={(event) =>
@@ -955,7 +965,8 @@ export function CatalogPage({
               <div className="parameter-catalog__page-buttons">
                 <button
                   type="button"
-                  className="button subtle sm"
+                  className="button subtle"
+                  data-compact-control="pagination"
                   aria-label={catalogPreviousPageLabel}
                   disabled={cursorTrail.length === 0 || inFlight}
                   onClick={goToPreviousPage}
@@ -964,7 +975,8 @@ export function CatalogPage({
                 </button>
                 <button
                   type="button"
-                  className="button subtle sm"
+                  className="button subtle"
+                  data-compact-control="pagination"
                   aria-label={catalogNextPageLabel}
                   disabled={!snapshot?.definitions.hasMore || inFlight}
                   onClick={goToNextPage}
@@ -1016,6 +1028,9 @@ export function CatalogPage({
               </div>
 
               <div className="confirm-dialog__scroll parameter-catalog__editor-dialog-scroll">
+                {!definitionAuthoringAllowed ? (
+                  <p className="parameter-catalog__muted">{catalogAuthoringAccessHint}</p>
+                ) : null}
                 {renderDefinitionEditor ? (
                   <div data-definition-editor="true">
                     {renderDefinitionEditor(definition, {

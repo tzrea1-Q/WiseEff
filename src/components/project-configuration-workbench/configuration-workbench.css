@@ -690,15 +690,6 @@
 }
 
 .configuration-workbench__source {
-  --configuration-source-surface: #131c2b;
-  --configuration-source-surface-raised: #192537;
-  --configuration-source-outline: #2a3a51;
-  --configuration-source-text: #dce7f7;
-  --configuration-source-text-strong: #f2f6fc;
-  --configuration-source-text-muted: #91a3bd;
-  --configuration-source-text-secondary: #b9cae2;
-  --configuration-source-line-number: #60738e;
-
   position: relative;
   z-index: 0;
   display: flex;
@@ -824,8 +815,8 @@
 }
 
 .configuration-workbench__source .project-primary-dts-viewer__line.is-focused {
-  background: rgba(125, 164, 216, 0.14);
-  border-left-color: #7da4d8;
+  background: color-mix(in srgb, var(--configuration-source-highlight) 14%, transparent);
+  border-left-color: var(--configuration-source-highlight);
 }
 
 .configuration-workbench__source .project-primary-dts-viewer__line-text {
@@ -846,7 +837,7 @@
 }
 
 .configuration-workbench__code-line:hover {
-  background: rgba(125, 164, 216, 0.08);
+  background: color-mix(in srgb, var(--configuration-source-highlight) 8%, transparent);
 }
 
 .configuration-workbench__line-number {
@@ -1059,12 +1050,12 @@
   margin: 0;
   padding: var(--space-3) 14px;
   overflow: auto;
-  color: var(--configuration-source-text, var(--text));
+  color: var(--configuration-source-text);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: 1.45;
   white-space: pre;
-  background: var(--surface);
+  background: var(--configuration-source-surface);
 }
 
 .configuration-workbench__side-by-side {
@@ -1081,14 +1072,19 @@
   border-right: 1px solid var(--outline);
 }
 
-.configuration-workbench__inspector dl {
+.configuration-workbench__inspector-details {
   display: grid;
   gap: 0;
   margin: 0;
   padding: var(--space-2) var(--space-3);
 }
 
-.configuration-workbench__inspector dl > div:not(.configuration-workbench__typed-editor) {
+.configuration-workbench__inspector-details > dl {
+  margin: 0;
+}
+
+.configuration-workbench__inspector dl > div,
+.configuration-workbench__inspector-details > .configuration-workbench__inspector-actions {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   gap: var(--space-2);

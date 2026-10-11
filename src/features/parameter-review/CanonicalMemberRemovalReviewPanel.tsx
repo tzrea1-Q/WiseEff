@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { TabPanel } from "@/components/ui/tab-panel";
+import { useEffect, useId, useRef, useState } from "react";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogMemberRemovalRequestResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -48,6 +50,7 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
   onSelectRequest?: (id: string) => void;
 }) {
   const [view, setView] = useState<View>("pending");
+  const tabsId = useId();
   const [items, setItems] = useState<MemberRequest[]>([]);
   const [selected, setSelected] = useState<MemberRequest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -169,12 +172,12 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
   return <section className="canonical-project-value-review" aria-label={mineOnly ? "我的 JSON 成员删除" : "JSON 成员删除审核"}>
     <header><h2>{mineOnly ? "我的 JSON 成员删除" : "JSON 成员删除审核"}</h2>
       <p>逐项核对服务端冻结的成员与存活 Binding 来源；批准由服务端作为一次事务提交。</p></header>
-    <div role="tablist" aria-label="成员删除视角">
-      <button className="button subtle" type="button" role="tab" aria-selected={view === "pending"} disabled={busy}
-        onClick={() => setView("pending")}>待审核</button>
-      <button className="button subtle" type="button" role="tab" aria-selected={view === "history"} disabled={busy}
-        onClick={() => setView("history")}>历史</button>
-    </div>
+    <ViewSwitch variant="tabs" ariaLabel="成员删除视角" value={view} onValueChange={(value) => setView(value as View)}
+      items={[
+        { value: "pending", label: "待审核", id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel`, disabled: busy },
+        { value: "history", label: "历史", id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: busy }
+      ]} />
+    <TabPanel role="tabpanel" id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`}>
     <button className="button subtle" type="button" onClick={refresh} disabled={busy}>刷新成员删除结果</button>
     {loading ? <p role="status">正在加载成员删除请求…</p> : null}
     {error ? <p role="alert">{error}</p> : null}
@@ -228,5 +231,8 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
       {selected.status === "pending" && !assignedReviewer && !submitter ? <p role="note">仅指定的另一名项目软件审核人可以审批此请求。</p> : null}
       {blocked ? <p role="note">结果未确认，刷新并核对请求后才能再次操作。</p> : null}
     </article> : null}
+    </TabPanel>
+    <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
+      aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden />
   </section>;
 }

@@ -317,7 +317,7 @@ export async function waitForFontsAndNextPaint(page: Page) {
  * and axe scans must wait for the settled state instead of racing skeletons.
  * Routes without an entry settle through the generic page checks alone.
  */
-export async function settleQualityRoute(page: Page, routePath: string) {
+export async function settleQualityRoute(page: Page, routePath: string, options: { readOnly?: boolean } = {}) {
   const timeout = 20_000;
 
   if (routePath === "/parameter-home") {
@@ -327,10 +327,30 @@ export async function settleQualityRoute(page: Page, routePath: string) {
     return;
   }
 
-  if (routePath === "/parameter-admin/projects/aurora/configuration") {
+  if (routePath === "/parameter-admin/projects/aurora/review-roles") {
+    await expect(page.getByRole("heading", { name: "aurora 项目审核角色配置", exact: true })).toBeVisible({ timeout });
+    await expect(page.getByRole("heading", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
+    return;
+  }
+
+  if (routePath === "/parameter-admin/projects/aurora" || routePath.startsWith("/parameter-admin/projects/aurora/")) {
     // The deep link resolves the seeded config set + file, then renders the
     // source canvas with the seeded aurora DTS baseline.
     await expect(page.getByText("aurora-board.dts").first()).toBeVisible({ timeout });
+    return;
+  }
+
+  if (routePath === "/log-admin" || routePath === "/log-dashboard" || routePath === "/debugging-admin/nodes") {
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout });
+    await expect(page.locator(".api-runtime-error-banner")).toHaveCount(0, { timeout });
+    if (routePath === "/log-admin") {
+      // The default time window may exclude the seeded logs, so settle on either a seeded row or the loaded empty row.
+      const records = page.getByRole("table", { name: "日志分析记录" });
+      await expect(records.getByText("charging-foldback.log").or(records.getByText("当前时间窗口内暂无日志")).first()).toBeVisible({ timeout });
+    } else if (routePath === "/debugging-admin/nodes") {
+      await expect(page.locator(".debug-admin-coverage-badge").first()).toBeVisible({ timeout });
+    }
+    await waitForFontsAndNextPaint(page);
     return;
   }
 
@@ -339,13 +359,17 @@ export async function settleQualityRoute(page: Page, routePath: string) {
     // on the install guide; wait for the async release manifest and pairing
     // code so the "not connected" state is fully rendered before asserting.
     await expect(page.getByText("已识别当前环境").first()).toBeVisible({ timeout });
-    await expect(page.getByText("当前配对码").first()).toBeVisible({ timeout });
+    if (options.readOnly) {
+      await expect(page.getByText("正在生成配对码...")).toHaveCount(0, { timeout });
+    } else {
+      await expect(page.getByText("当前配对码").first()).toBeVisible({ timeout });
+    }
     if (routePath === "/dts-reload") {
       // The seeded reload workbench (tree + table + history) loads below the wizard.
       await expect(page.getByText("运行历史").first()).toBeVisible({ timeout });
     } else {
-      // A seeded catalog row proves the debug parameter table finished loading.
-      await expect(page.getByText("Fast charge current").first()).toBeVisible({ timeout });
+      const table = page.getByRole("region", { name: "节点调试参数", exact: true }).getByRole("table");
+      await expect(table.locator('tbody td[data-label="参数名称"] strong').first()).toBeVisible({ timeout });
     }
     return;
   }

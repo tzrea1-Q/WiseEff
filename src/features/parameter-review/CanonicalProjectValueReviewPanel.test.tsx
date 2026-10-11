@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -90,7 +91,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
     expect(repository.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("button", { name: "撤回我的提交" })).not.toBeInTheDocument());
     expect(onSelectRequest).toHaveBeenLastCalledWith(null);
-    fireEvent.click(screen.getByRole("tab", { name: "历史" }));
+    await userEvent.click(screen.getByRole("tab", { name: "历史" }));
     await waitFor(() => expect(repository.listProjectValueChangeRequests).toHaveBeenLastCalledWith("project-1", undefined));
   });
 
@@ -160,7 +161,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
 
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="reviewer-1" onSelectRequest={onSelectRequest} />);
     const panel = await screen.findByRole("region", { name: "软件配置审核" });
-    expect(within(panel).getAllByText("JSON").length).toBeGreaterThan(0);
+    expect((await within(panel).findAllByText("JSON")).length).toBeGreaterThan(0);
     expect(within(panel).getByLabelText("固定源目标内容")).toHaveTextContent("cells");
     expect(await within(panel).findByLabelText("固定源变更前")).toHaveTextContent("enabled");
     expect(await within(panel).findByLabelText("固定源变更后")).toHaveTextContent("enabled");

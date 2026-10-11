@@ -40,7 +40,7 @@ test.describe("Xiaoze modeless popup layout", () => {
     const closedLauncherMoved = await launcher.boundingBox();
     expect(closedLauncherMoved).not.toBeNull();
     expect(closedLauncherMoved!.x).toBeLessThanOrEqual(24);
-    expect(closedLauncherMoved!.y).toBeLessThanOrEqual(24);
+    expect(closedLauncherMoved!.y).toBeCloseTo(closedLauncherBefore.y, 0);
     const closedCenter = {
       x: closedLauncherMoved!.x + closedLauncherMoved!.width / 2,
       y: closedLauncherMoved!.y + closedLauncherMoved!.height / 2
@@ -85,7 +85,7 @@ test.describe("Xiaoze modeless popup layout", () => {
     expect(coupledPopupAfter).not.toBeNull();
     expect(coupledLauncherAfter).not.toBeNull();
     expect(coupledLauncherAfter!.x).toBeGreaterThanOrEqual(1360);
-    expect(coupledLauncherAfter!.y).toBeGreaterThanOrEqual(820);
+    expect(coupledLauncherAfter!.y).toBeCloseTo(820, 0);
     expect(coupledPopupAfter!.x).toBeGreaterThan(coupledPopupBefore.x + 500);
     expect(coupledPopupAfter!.x).toBeGreaterThanOrEqual(16);
     expect(coupledPopupAfter!.y).toBeGreaterThanOrEqual(16);
@@ -192,7 +192,7 @@ test.describe("Xiaoze modeless popup layout", () => {
     const tabletLauncherAfterCancel = await launcher.boundingBox();
     expect(tabletLauncherAfterCancel).not.toBeNull();
     expect(tabletLauncherAfterCancel!.x).toBeLessThan(500);
-    expect(tabletLauncherAfterCancel!.y).toBeLessThan(600);
+    expect(tabletLauncherAfterCancel!.y).toBeCloseTo(tabletLauncherBeforeCancel.y, 0);
 
     const tabletHandleBox = await dragHandle.boundingBox();
     if (!tabletHandleBox) {
@@ -233,7 +233,7 @@ test.describe("Xiaoze modeless popup layout", () => {
       page,
       testInfo,
       notes:
-        "Desktop launcher moved without toggling while closed; after opening, launcher drag moved the launcher and popup by the same delta without closing; effective launcher movement survived a tablet touch-cancel release; header drag, resize, and reload restoration remained intact; the business page remained operable and its modal covered Xiaoze; SPA navigation retained the popup; keyboard reset restored default layout; tablet touch input stayed viewport-clamped; and mobile retained full-screen modal semantics without overwriting desktop layout."
+        "Desktop launcher moved horizontally within the bottom gutter without toggling while closed; after opening, launcher drag reattached the popup without closing; effective horizontal launcher movement survived a tablet touch-cancel release without leaving the gutter; header drag, resize, and reload restoration remained intact; the business page remained operable and its modal covered Xiaoze; SPA navigation retained the popup; keyboard reset restored default layout; tablet touch input stayed viewport-clamped; and mobile retained full-screen modal semantics without overwriting desktop layout."
     });
   });
 });
