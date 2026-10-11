@@ -150,7 +150,7 @@
   --module-navigator-min-width: 15rem;
   --module-navigator-max-width: min(32.5rem, 42vw);
   --module-navigator-disclosure-size: 28px;
-  --navigator-workbench-navigator-width: var(--module-navigator-min-width);
+  --navigator-workbench-navigator-width: 18rem;
   --navigator-workbench-navigator-cap: var(--module-navigator-max-width);
   --navigator-workbench-collapsed-width: var(--space-10);
   --navigator-workbench-inspector-width: 20rem;

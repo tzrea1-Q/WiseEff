@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
@@ -77,6 +78,13 @@ for (const route of routes) {
           }
         }).toPass({ timeout: 20_000 });
         requireCompactControlHeights(measurements, route.path);
+        if (routePath === "/parameters" && theme === "dark") {
+          const contrast = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
+          await testInfo.attach("parameters-dark-color-contrast", {
+            contentType: "application/json", body: Buffer.from(JSON.stringify(contrast.violations, null, 2))
+          });
+          expect(contrast.violations, "dark parameter workbench must meet WCAG AA text contrast").toEqual([]);
+        }
         if (route.required.includes("navigatorWorkbenches")) {
           await testInfo.attach(`navigator-workbench-expanded-${theme}`, {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })

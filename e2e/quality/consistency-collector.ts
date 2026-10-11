@@ -191,6 +191,23 @@ export function collectConsistencyMeasurements() {
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count")].filter(visible).map((count) => {
+        const navigation = count.closest(".navigator-workbench__navigation")!;
+        const navigationRect = bounds(navigation);
+        const countRect = bounds(count);
+        const clip = {
+          left: Math.max(0, navigationRect.left + navigation.clientLeft, countRect.left),
+          right: Math.min(innerWidth, navigationRect.left + navigation.clientLeft + navigation.clientWidth, countRect.right)
+        };
+        const range = document.createRange();
+        range.selectNodeContents(count);
+        const textRect = range.getBoundingClientRect();
+        return {
+          text: count.textContent, clip,
+          textRect: { left: textRect.left, right: textRect.right, width: textRect.width },
+          clientWidth: count.clientWidth, scrollWidth: count.scrollWidth
+        };
+      }),
       firstRow: firstRow ? bounds(firstRow) : null,
       firstRowClip: firstRow ? clippedGeometry(firstRow)[0]?.rect ?? null : null,
       viewport: { width: innerWidth, height: innerHeight },

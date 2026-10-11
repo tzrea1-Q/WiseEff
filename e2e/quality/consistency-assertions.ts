@@ -114,6 +114,17 @@ export function requireNavigatorWorkbenchGeometry(workbenches: ConsistencyMeasur
     }
     if (workbench.noticeCount > 1) throw new Error(`${routePath}: navigator-workbench has more than one notice`);
     if (workbench.pageOverflow > 1) throw new Error(`${routePath}: navigator-workbench causes page horizontal scrolling`);
+    if (!workbench.collapsed) {
+      if (!workbench.navigatorCounts.length) throw new Error(`${routePath}: missing navigator-workbench count measurements`);
+      for (const count of workbench.navigatorCounts) {
+        if (![count.textRect.left, count.textRect.right, count.textRect.width, count.clip.left, count.clip.right,
+          count.clientWidth, count.scrollWidth].every(Number.isFinite) || count.textRect.width <= 0
+          || count.scrollWidth > count.clientWidth + 1 || count.textRect.left < count.clip.left - 1
+          || count.textRect.right > count.clip.right + 1) {
+          throw new Error(`${routePath}: navigator-workbench count text is clipped: ${count.text}`);
+        }
+      }
+    }
     if (firstRow.top < Math.max(0, task.top) || firstRow.bottom > Math.min(task.bottom, viewport.height) + 1
       || firstRow.left < Math.max(0, task.left) || firstRow.right > Math.min(task.right, viewport.width) + 1
       || !aligned(firstRowClip.width, firstRow.width) || !aligned(firstRowClip.height, firstRow.height)) {

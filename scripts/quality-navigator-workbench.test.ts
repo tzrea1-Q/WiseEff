@@ -12,6 +12,7 @@ const measurement = () => ({
   toolbar: rect(280, 88, 1136, 68),
   primaryAction: rect(1283, 108, 120, 36),
   noticeCount: 1,
+  navigatorCounts: [{ text: "12 个参数", textRect: rect(460, 210, 44, 13), clip: rect(460, 210, 44, 13), clientWidth: 44, scrollWidth: 44 }],
   firstRow: rect(533, 210, 882, 40),
   firstRowClip: rect(533, 210, 882, 40),
   viewport: { width: 1440, height: 900 },
@@ -20,6 +21,25 @@ const measurement = () => ({
 });
 
 describe("navigator-workbench geometry", () => {
+  it("rejects count text clipped by its own box or the navigator edge", () => {
+    const count = measurement().navigatorCounts[0];
+    for (const navigatorCounts of [
+      [],
+      [{ ...count, clip: rect(460, 210, 35, 13) }],
+      [{ ...count, clip: rect(460, 210, 0, 13) }],
+      [{ ...count, scrollWidth: 50 }],
+      [{ ...count, textRect: rect(456, 210, 48, 13) }],
+      [{ ...count, clientWidth: Number.NaN }]
+    ]) {
+      expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), navigatorCounts }], "/parameters"))
+        .toThrow(/navigator.*count/);
+    }
+    expect(() => requireNavigatorWorkbenchGeometry([{
+      ...measurement(), collapsed: true, navigatorCounts: [],
+      navigator: rect(280, 168, 40, 600), task: rect(332, 168, 1084, 600)
+    }], "/parameters")).not.toThrow();
+  });
+
   it("accepts the expanded and collapsed contract, including a one-pixel tolerance", () => {
     expect(() => requireNavigatorWorkbenchGeometry([measurement()], "/parameters")).not.toThrow();
     const collapsed = { ...measurement(), collapsed: true,

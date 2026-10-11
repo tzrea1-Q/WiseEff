@@ -88,15 +88,25 @@ describe("DtsTopologyNavigator responsive width", () => {
     expect(results.height).toBe("100%");
   });
 
-  it("uses a tokenized bounded navigator and internal label scrolling for parameter editing", () => {
+  it("fits parameter counts in the bounded navigator and ellipsizes only long labels", () => {
     const styles = readStylesheet("src/components/layout/navigator-workbench.css");
     const tokens = declarationsFor(readStylesheet("src/styles.css"), ":root");
-    expect(tokens["--navigator-workbench-navigator-width"]).toBe("var(--module-navigator-min-width)");
+    expect(tokens["--navigator-workbench-navigator-width"]).toBe("18rem");
     expect(tokens["--navigator-workbench-navigator-cap"]).toBe("var(--module-navigator-max-width)");
     expect(declarationsFor(styles, ".navigator-workbench__body")["grid-template-columns"])
       .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
     expect(declarationsFor(styles, ".navigator-workbench__navigation").overflow).toBe("auto");
-    expect(declarationsFor(styles, ".navigator-workbench__navigation .dts-topology-navigator").width).toBe("max-content");
+    expect(declarationsFor(styles, ".navigator-workbench__navigation .dts-topology-navigator").width).toBe("100%");
+    expect(declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__item")["grid-template-columns"])
+      .toBe("var(--module-navigator-disclosure-size) minmax(0, 1fr) max-content");
+    const label = declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__label");
+    expect(label["white-space"]).toBe("nowrap");
+    expect(label.overflow).toBe("hidden");
+    expect(label["text-overflow"]).toBe("ellipsis");
+    const metadata = declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__meta");
+    expect(metadata["min-width"]).toBe("max-content");
+    expect(metadata["max-width"]).toBe("none");
+    expect(declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__count").overflow).toBe("visible");
   });
 
   it("does not stretch collapsed roots on the node debugging page", () => {

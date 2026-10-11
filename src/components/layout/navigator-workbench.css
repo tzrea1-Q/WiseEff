@@ -1,7 +1,22 @@
 .navigator-workbench {
+  --dts-workbench-ink: var(--text);
+  --dts-workbench-muted: var(--text-muted);
+  --dts-workbench-border: var(--border);
+  --dts-workbench-border-strong: var(--border-strong);
+  --dts-workbench-surface: var(--surface);
+  --dts-workbench-surface-soft: var(--surface-sunken);
+  --dts-workbench-blue: var(--accent);
+  --dts-workbench-blue-soft: var(--accent-soft);
+  --dts-workbench-green: var(--success);
+  --dts-workbench-green-soft: var(--success-soft);
+  --dts-workbench-amber: var(--warning);
+  --dts-workbench-amber-soft: var(--warning-soft);
+  --dts-workbench-red: var(--danger);
+  --dts-workbench-red-soft: var(--danger-soft);
   display: grid;
   gap: var(--navigator-workbench-gap);
   min-width: 0;
+  color: var(--text);
 }
 
 .navigator-workbench__toolbar {
@@ -118,10 +133,84 @@
 }
 
 .navigator-workbench__navigation .dts-topology-navigator {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
   max-height: none;
   overflow: visible;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.navigator-workbench .dts-topology-navigator__item {
+  grid-template-columns: var(--module-navigator-disclosure-size) minmax(0, 1fr) max-content;
+}
+
+.navigator-workbench .dts-topology-navigator__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navigator-workbench .dts-topology-navigator__meta {
+  min-width: max-content;
+  max-width: none;
+}
+
+.navigator-workbench .dts-topology-navigator__count {
+  overflow: visible;
+}
+
+.navigator-workbench .dts-topology-navigator__count,
+.navigator-workbench .dts-topology-navigator__disclosure,
+.navigator-workbench .dts-parameter-workbench-table__head,
+.navigator-workbench .dts-parameter-workbench-table__provenance {
+  color: var(--text-muted);
+}
+
+.navigator-workbench .dts-topology-navigator__group {
+  border-color: var(--border);
+}
+
+.navigator-workbench .dts-topology-navigator__item:hover,
+.navigator-workbench .dts-topology-navigator__item[aria-selected="true"],
+.navigator-workbench button.dts-topology-navigator__disclosure:hover,
+.navigator-workbench button.dts-topology-navigator__disclosure:focus-visible {
+  background: var(--accent-soft);
+  border-color: var(--border-strong);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__row {
+  border-color: var(--border);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__row:hover {
+  background: var(--surface-raised);
+  box-shadow: inset 3px 0 0 var(--border-strong);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__row.is-selected {
+  background: var(--accent-soft);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__row.is-draft {
+  background: var(--surface-raised);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__row code,
+.navigator-workbench .dts-parameter-workbench-table__identity code {
+  color: var(--text-secondary);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__property > code {
+  color: var(--text);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__draft-badge {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.navigator-workbench .dts-parameter-workbench-table__enablement-notice {
+  color: var(--warning);
 }
 
 @media (max-width: 1200px) {

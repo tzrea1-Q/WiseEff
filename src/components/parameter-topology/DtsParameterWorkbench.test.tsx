@@ -634,7 +634,7 @@ describe("DtsParameterWorkbench", () => {
 
   it("reserves the table budget with a bounded shared navigator independent of long module names", () => {
     const tokens = declarationsFor(readStylesheet("src/styles.css"), ":root");
-    expect(tokens["--navigator-workbench-navigator-width"]).toBe("var(--module-navigator-min-width)");
+    expect(tokens["--navigator-workbench-navigator-width"]).toBe("18rem");
     expect(declarationFor(readStylesheet("src/components/layout/navigator-workbench.css"), ".navigator-workbench__body", "grid-template-columns"))
       .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
   });
