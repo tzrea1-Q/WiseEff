@@ -232,8 +232,7 @@ describe("/node-debugging", () => {
     });
     renderNodeDebuggingPage({ state: userState, debuggingActions: createDebuggingActions() });
 
-    fireEvent.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
-    const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+    const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.click(connect);
 
@@ -1300,7 +1299,7 @@ describe("/node-debugging", () => {
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    expect(await screen.findByRole("button", { name: "重新检测设备" })).toBeInTheDocument();
+    expect(await screen.findByText(/已连接 ·/)).toBeInTheDocument();
     expect(screen.getByText("管理设备代理")).toBeInTheDocument();
   });
 

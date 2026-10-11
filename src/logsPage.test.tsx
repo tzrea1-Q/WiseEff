@@ -83,6 +83,9 @@ describe("LogsPage · Header", () => {
     expect(screen.queryByText("置信度")).not.toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "分析置信度" })).toHaveAttribute("aria-valuenow", "88");
     expect(screen.getByRole("button", { name: /生成参数修改请求/ })).toBeEnabled();
+    expect(screen.getByRole("list", { name: "分析流程" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "原始日志" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "日志分析证据链" })).toBeInTheDocument();
   });
 
   it("Processing 日志主按钮禁用", () => {
@@ -104,15 +107,27 @@ describe("LogsPage · Header", () => {
     expect(screen.getByRole("button", { name: /重新上传/ })).toBeInTheDocument();
   });
 
-  it("Failed 日志时间线：失败步红色标记且后续步骤灰化", async () => {
+  it("Failed 日志只显示失败摘要和文件信息，不渲染空分析面板", () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));
 
-    expect(document.querySelector(".log-timeline__step--failed")).toBeInTheDocument();
-    expect(document.querySelectorAll(".log-timeline__step--aborted")).toHaveLength(3);
+    const summary = screen.getByRole("alert");
+    const failedLog = initialState.logs.find((log) => log.status === "Failed")!;
+    expect(summary).toHaveTextContent("日志处理失败");
+    expect(summary).toHaveTextContent("在 日志解析 阶段失败");
+    expect(within(summary).getByText(failedLog.fileName)).toBeInTheDocument();
+    expect(summary).toHaveTextContent(`${failedLog.fileSizeMB} MB`);
+    expect(summary).toHaveTextContent(failedLog.capturedAt);
+    expect(summary).toHaveTextContent(failedLog.submittedBy);
+    expect(summary).toHaveTextContent(".log / .txt / .csv / .json");
+    expect(screen.queryByRole("list", { name: "分析流程" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "分析结果" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "原始日志" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "日志分析证据链" })).not.toBeInTheDocument();
+    expect(within(history).getByRole("button", { name: /thermal_snapshot/ })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("Processing 日志时间线当前步有 current 标记", () => {
@@ -121,6 +136,40 @@ describe("LogsPage · Header", () => {
     render(<App initialAppState={userState} />);
 
     expect(document.querySelector(".log-timeline__step--current")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "分析结果" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "原始日志" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "日志分析证据链" })).toBeInTheDocument();
+  });
+
+  it("最新日志失败时保留选择，显示实际失败阶段而不切换到旧报告", () => {
+    const failedLog = {
+      ...initialState.logs.find((log) => log.status === "Failed")!,
+      fileName: "analysis.log",
+      stage: "rootcause" as const,
+      failureReason: "Log analysis failed before a report was generated."
+    };
+    const completedLog = initialState.logs.find((log) => log.status === "Complete")!;
+    window.history.replaceState(null, "", "/logs");
+    render(<LogsPage state={{ ...userState, logs: [failedLog, completedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+
+    const summary = screen.getByRole("alert");
+    expect(summary).toHaveTextContent("在 根因推断 阶段失败");
+    expect(summary).toHaveTextContent("分析未完成，未生成报告，请重试或重新上传。");
+    expect(summary).not.toHaveTextContent(".log / .txt / .csv / .json");
+    expect(summary).not.toHaveTextContent("Log analysis failed");
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    expect(within(history).getByRole("button", { name: /analysis\.log/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(history).getByRole("button", { name: /usb_pd_negotiation/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("格式失败的原因只提到一种格式时仍列出全部支持格式", () => {
+    const failedLog = {
+      ...initialState.logs.find((log) => log.status === "Failed")!,
+      failureReason: "请导出 .log 文本日志。"
+    };
+    render(<LogsPage state={{ ...userState, logs: [failedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(".log / .txt / .csv / .json");
   });
 
   it("辅助栏默认显示历史 Tab，切换元数据 Tab 显示文件名和设备", async () => {

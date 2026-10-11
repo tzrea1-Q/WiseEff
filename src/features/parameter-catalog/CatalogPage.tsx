@@ -614,7 +614,7 @@ export function CatalogPage({
     {
       key: "propertyKey",
       header: "属性键",
-      render: (row) => row.propertyKey,
+      render: (row) => <code>{row.propertyKey}</code>,
       sortAccessor: (row) => row.propertyKey
     },
     {
@@ -873,7 +873,8 @@ export function CatalogPage({
                       aria-pressed={item.id === definition?.id}
                       onClick={() => selectDefinition(item)}
                     >
-                      <span className="parameter-catalog__subject-name">{item.propertyKey}</span>
+                      <code className="parameter-catalog__subject-name">{item.propertyKey}</code>
+                      <span>{item.currentRevision.displayName || "—"}</span>
                       <span className="parameter-catalog__subject-meta">
                         {item.subject.canonicalName} · {catalogLifecycleLabel(item.lifecycle)}
                       </span>

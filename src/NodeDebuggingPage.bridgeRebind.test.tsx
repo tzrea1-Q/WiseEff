@@ -96,7 +96,7 @@ describe("NodeDebuggingPage local bridge rebind", () => {
 
     render(<Harness />);
 
-    const repairButton = await screen.findByRole("button", { name: "重新配对" });
+    const repairButton = await screen.findByRole("button", { name: "连接本机" });
     expect(screen.getByText(FOREIGN_ACCOUNT_REBIND_HINT)).toBeInTheDocument();
     expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
     await waitFor(() => expect(repairButton).toBeEnabled());
