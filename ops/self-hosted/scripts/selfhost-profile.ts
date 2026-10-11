@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import {
   caddyfileForTlsMode,
   evaluateIpLabCaddyfile,
@@ -17,6 +18,8 @@ import {
   type SelfHostTlsMode
 } from "./selfhost-answers";
 import { resolveXiaozeLlmConfig } from "../../../server/config/xiaozeLlmConfig";
+
+const { databaseUrlError } = createRequire(import.meta.url)("./database-url.cjs");
 
 export const acmeDeployProfile = "acme";
 export const acmeCaddyfile = "Caddyfile.example";
@@ -281,10 +284,11 @@ function evaluateAcmeEnv(env: Record<string, string | undefined>): IpLabPrefligh
     });
   }
   const databaseUrl = requireValue("DATABASE_URL");
-  if (databaseUrl?.includes("${")) {
-    issues.push({ level: "error", message: "DATABASE_URL must embed the expanded POSTGRES_PASSWORD." });
-  } else if (postgresPassword && databaseUrl && !databaseUrl.includes(postgresPassword)) {
-    issues.push({ level: "error", message: "DATABASE_URL must embed the expanded POSTGRES_PASSWORD." });
+  if (databaseUrl) {
+    const message = databaseUrlError(databaseUrl, postgresPassword);
+    if (message) {
+      issues.push({ level: "error", message });
+    }
   }
 
   requireValue("WISEEFF_LAB_ADMIN_USERNAME");

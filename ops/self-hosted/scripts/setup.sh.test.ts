@@ -4,17 +4,113 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseEnvText } from "./ip-lab-profile";
+import { normalizeAnswers } from "./selfhost-answers";
+import { renderSelfHostEnv } from "./selfhost-profile";
 
 const script = "ops/self-hosted/scripts/setup.sh";
+const fallbackCommand = `
+  function command() {
+    if [[ "\${TEST_NO_HOST_NODE:-}" == 1 && "\${1:-}" == -v && "\${2:-}" == node ]]; then return 1; fi
+    builtin command "$@"
+  }
+  function [() {
+    if [[ "\${1:-}" == -x && "\${2:-}" == */node_modules/.bin/tsx ]]; then return 1; fi
+    builtin [ "$@"
+  }
+  export -f [ command
+  bash "$@"
+`;
 
-function runSetup(args: string[], env: NodeJS.ProcessEnv = {}) {
-  return spawnSync("bash", [script, ...args], {
+function runSetup(args: string[], env: NodeJS.ProcessEnv = {}, shell = "bash") {
+  return spawnSync(shell, [script, ...args], {
     encoding: "utf8",
     env: { ...process.env, ...env }
   });
 }
 
 describe("setup.sh", () => {
+  describe.each(["bash", "tsx", "doctor fallback", "bash without Node", "doctor without Node", "bash without Node using base image"])("%s preflight", (mode) => {
+    it.each([
+      ["bootstrap query password override", "postgres://wiseeff:postgres_lab_secret@postgres/wiseeff?password=wrong", 1],
+      ["runtime query user override", "postgres://wiseeff_api:independent_secret@postgres/wiseeff?user=other", 1],
+      ["bootstrap", "postgres://wiseeff:postgres_lab_secret@postgres:5432/wiseeff", 0],
+      ["runtime login", "postgres://wiseeff_api:independent_secret@postgres:5432/wiseeff", 0],
+      ["interpolation", "postgres://wiseeff:${POSTGRES_PASSWORD}@postgres:5432/wiseeff", 1],
+      ["wrong bootstrap password", "postgres://wiseeff:wrong@postgres:5432/wiseeff?probe=postgres_lab_secret", 1],
+      ["hostname substring", "postgres://wiseeff:wrong@postgres_lab_secret:5432/wiseeff", 1],
+      ["password substring", "postgres://wiseeff:prefix_postgres_lab_secret_suffix@postgres/wiseeff", 1],
+      ["malformed URL", "postgres_lab_secret", 1],
+      ["wrong protocol", "https://wiseeff:postgres_lab_secret@postgres/wiseeff", 1],
+      ["missing hostname", "postgres:///wiseeff?probe=postgres_lab_secret", 1],
+      ["invalid port", "postgres://wiseeff:postgres_lab_secret@postgres:99999/wiseeff", 1],
+      ["invalid encoding", "postgres://wiseeff_api:bad%XX@postgres/wiseeff", 1],
+      ["unrecognized role", "postgres://other:postgres_lab_secret@postgres/wiseeff", 1],
+      ["worker role", "postgres://wiseeff_worker:postgres_lab_secret@postgres/wiseeff", 1],
+      ["empty runtime password", "postgres://wiseeff_api@postgres/wiseeff?probe=postgres_lab_secret", 1],
+      ["same password bytes for runtime role", "postgres://wiseeff_api:postgres_lab_secret@postgres/wiseeff", 0],
+      ["interpolated query", "postgres://wiseeff:postgres_lab_secret@postgres/wiseeff?probe=${VALUE}", 1],
+      ["encoded interpolation", "postgres://wiseeff_api:%24%7BPASSWORD%7D@postgres/wiseeff", 1],
+      ["decoded bootstrap credential", "postgresql://wiseeff:%70ostgres_lab_secret@postgres/wiseeff", 0],
+      ["encoded runtime credential and IPv6", "postgresql://%77iseeff_api:runtime%3A%40%2F%25@[::1]:5432/wiseeff", 0]
+    ])("checks DATABASE_URL for %s", (_name, databaseUrl, status) => {
+      const fixture = preflightFixture(databaseUrl);
+      if (mode.includes("base image")) {
+        fixture.env.TEST_LOCAL_IMAGE = "base";
+      }
+      const result = mode.startsWith("doctor") || mode.includes("without Node")
+        ? spawnSync("/bin/bash", ["-c", fallbackCommand, "preflight-fallback", ...(mode.startsWith("doctor")
+            ? ["ops/self-hosted/scripts/doctor.sh", "--env-file", fixture.envFile]
+            : [script, "--non-interactive", "preflight", "--env-file", fixture.envFile])], {
+            encoding: "utf8", env: { ...fixture.env, TEST_NO_HOST_NODE: mode.includes("without Node") ? "1" : "0" }
+          })
+        : runSetup(["--non-interactive", "preflight", "--env-file", fixture.envFile], {
+            ...fixture.env, WISEEFF_SETUP_RENDER: mode
+          });
+      expect(result.status, result.stderr).toBe(status);
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain(databaseUrl);
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain("independent_secret");
+      if (mode.includes("without Node")) {
+        const calls = readFileSync(fixture.dockerLog, "utf8");
+        expect(calls).toContain("run-parser run --rm --pull never");
+        expect(calls).toContain(mode.includes("base image") ? "local-base-image" : "local-app-image");
+      }
+    });
+  });
+
+  it("prepares the verified bundle before the first build on a cold Docker-only host", () => {
+    const fixture = preflightFixture("postgres://wiseeff_api:postgres_lab_secret@postgres/wiseeff");
+    const result = spawnSync("/bin/bash", ["-c", fallbackCommand, "cold-setup", script,
+      "--non-interactive", "all", "--skip-provision", "--env-file", fixture.envFile], {
+      encoding: "utf8",
+      env: { ...fixture.env, TEST_NO_HOST_NODE: "1", TEST_LOCAL_IMAGE: "cold" }
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const calls = readFileSync(fixture.dockerLog, "utf8");
+    expect(calls).toContain("bundle-load");
+    expect(calls).toContain("bundle-tag");
+    expect(calls).toContain("up -d --build postgres redis minio minio-init");
+    expect(calls.indexOf("bundle-load")).toBeLessThan(calls.indexOf("up -d --build"));
+  });
+
+  it("starts and migrates without --build under Bash 3.2 nounset", () => {
+    const fixture = preflightFixture("postgres://wiseeff:postgres_lab_secret@postgres:5432/wiseeff");
+    const result = runSetup(["--non-interactive", "up", "--skip-build", "--env-file", fixture.envFile], fixture.env, "/bin/bash");
+    expect(result.stderr).not.toContain("unbound variable");
+    expect(result.status, result.stderr).toBe(0);
+    const calls = readFileSync(fixture.dockerLog, "utf8");
+    expect(calls).toContain("up -d postgres redis minio minio-init");
+    expect(calls).toContain("run --rm --no-deps -e DATABASE_URL api npm run db:migrate");
+    expect(calls).toContain("up -d api worker publication-manager web proxy");
+    expect(calls).not.toContain("--build");
+  });
+
+  it("retains --build for the normal startup path", () => {
+    const fixture = preflightFixture("postgres://wiseeff_api:independent_secret@postgres:5432/wiseeff");
+    const result = runSetup(["--non-interactive", "up", "--env-file", fixture.envFile], fixture.env, "/bin/bash");
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(fixture.dockerLog, "utf8")).toContain("up -d --build postgres redis minio minio-init");
+  });
+
   it("documents the private build-network contract", () => {
     const result = runSetup(["--help"]);
 
@@ -205,3 +301,69 @@ describe("setup.sh", () => {
     expect(readFileSync(managerEnv, "utf8")).toContain("existing private file");
   });
 });
+
+function preflightFixture(databaseUrl: string) {
+  const directory = mkdtempSync(join(tmpdir(), "wiseeff-setup-url-"));
+  const envFile = join(directory, "runtime.env");
+  const dockerLog = join(directory, "docker.log");
+  const text = renderSelfHostEnv(normalizeAnswers({
+    profile: "ip-lab", siteHost: "203.0.113.10", adminPassword: "ReplaceWithAStrongPassword"
+  }), { postgresPassword: "postgres_lab_secret", minioPassword: "minio_lab_secret" });
+  writeFileSync(envFile, text.replace(/^DATABASE_URL=.*$/m, `DATABASE_URL=${databaseUrl}`), { mode: 0o600 });
+  writeFileSync(join(directory, "docker"), `#!/bin/bash
+if [ "$1" = image ] && [ "\${2:-}" = inspect ]; then
+  if [[ "\${5:-}" == node:22.21.1-alpine* ]]; then
+    if [ "$TEST_LOCAL_IMAGE" = cold ] && [ ! -f "$TEST_BUNDLE_STATE" ]; then exit 1; fi
+    if [ "\${4:-}" = '{{.Id}}|{{.Os}}/{{.Architecture}}' ]; then
+      echo "$TEST_BASE_IMAGE_ID|linux/amd64"
+    else
+      echo local-base-image
+    fi
+    exit 0
+  fi
+  if [ "$TEST_LOCAL_IMAGE" = base ] || [ "$TEST_LOCAL_IMAGE" = cold ]; then exit 1; fi
+  echo local-app-image
+  exit 0
+fi
+if [ "$1" = version ]; then echo linux/amd64; exit 0; fi
+if [ "$1" = load ]; then
+  touch "$TEST_BUNDLE_STATE"
+  printf 'bundle-load\\n' >> "$TEST_DOCKER_LOG"
+  exit 0
+fi
+if [ "$1" = tag ]; then printf 'bundle-tag\\n' >> "$TEST_DOCKER_LOG"; exit 0; fi
+if [ "$1" = run ]; then
+  printf 'run-parser' >> "$TEST_DOCKER_LOG"
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = -e ]; then
+      printf '\\n' >> "$TEST_DOCKER_LOG"
+      exec "${process.execPath}" -e "$2"
+    fi
+    printf ' %s' "$1" >> "$TEST_DOCKER_LOG"
+    shift
+  done
+  exit 2
+fi
+if [ "$1" = compose ] && [ "\${2:-}" = version ]; then echo 'Docker Compose version v2.39.0'; exit 0; fi
+if [ "$1" = ps ]; then exit 0; fi
+printf '%s\\n' "$*" >> "$TEST_DOCKER_LOG"
+`, { mode: 0o700 });
+  writeFileSync(join(directory, "curl"), "#!/bin/bash\nexit 0\n", { mode: 0o700 });
+  return {
+    envFile, dockerLog,
+    env: {
+      ...process.env,
+      PATH: `${directory}:${process.env.PATH}`,
+      WISEEFF_SETUP_RENDER: "bash",
+      WISEEFF_BUILD_NETWORK_FILE: join(directory, "missing-build-network.env"),
+      WISEEFF_OPERATION_LOCK_DIR: join(directory, "lock"),
+      TEST_DOCKER_LOG: dockerLog,
+      TEST_LOCAL_IMAGE: "app",
+      TEST_BUNDLE_STATE: join(directory, "bundle-loaded"),
+      TEST_BASE_IMAGE_ID: parseEnvText(readFileSync("ops/self-hosted/images/base-image-bundle.env", "utf8")).WISEEFF_BASE_IMAGE_CONFIG_ID,
+      WISEEFF_PUBLICATION_MANAGER_ENV_FILE: join(directory, ".env.publication-manager"),
+      HTTP_PROXY: "", HTTPS_PROXY: "", ALL_PROXY: "", NO_PROXY: "",
+      http_proxy: "", https_proxy: "", all_proxy: "", no_proxy: ""
+    }
+  };
+}
