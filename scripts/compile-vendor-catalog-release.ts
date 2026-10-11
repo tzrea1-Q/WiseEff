@@ -451,7 +451,21 @@ export const compileConstrainedVendorCatalogSuccessor = (repoRoot = process.cwd(
   return { bundle, compiled: compiled.value, predecessor: previous.compiled.release, previous, excluded: previous.excluded };
 };
 
+// Compiling the localized successor reads and compiles every vendor schema (about 2s). The result depends only on
+// committed files, so seed and test helpers that call it per database reuse one compile per process; callers get a
+// structured clone so none of them can mutate the cached copy.
+const localizedSuccessorCache = new Map<string, ReturnType<typeof compileLocalizedVendorCatalogSuccessorUncached>>();
+
 export const compileLocalizedVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
+  let compiled = localizedSuccessorCache.get(repoRoot);
+  if (!compiled) {
+    compiled = compileLocalizedVendorCatalogSuccessorUncached(repoRoot);
+    localizedSuccessorCache.set(repoRoot, compiled);
+  }
+  return structuredClone(compiled);
+};
+
+const compileLocalizedVendorCatalogSuccessorUncached = (repoRoot: string) => {
   const previous = compileConstrainedVendorCatalogSuccessor(repoRoot);
   const mappedDefinitions = new Map(vendorDocuments(path.join(repoRoot, "schemas/dts"), true)
     .filter((document) => document.kind === "definition")
