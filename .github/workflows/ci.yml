@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 90
     env:
       # TEMPORARY BRANCH ONLY: coordinator must replace this full target SHA before dispatch.
-      TARGET_SHA: REPLACE_WITH_TARGET_SHA
+      TARGET_SHA: 212a25b9c9145c63af233a97a52e335c4813827f
       REHEARSAL_EVIDENCE_DIR: /tmp/upgrade-rehearsal-evidence
     steps:
       - uses: actions/checkout@v4
