@@ -216,6 +216,23 @@ const EXPECTED_COMPATIBILITY: readonly ExpectedCompatItem[] = [
 const uuid = () => Math.random().toString(36).slice(2);
 
 describe("seed reconciliation manifest", () => {
+  it("pins the localized vendor bytes and documentation used by rebuild preflight", () => {
+    const reviewed = JSON.parse(readFileSync(path.join(rootDir, SEED_RECONCILIATION_MANIFEST_PATH), "utf8")) as typeof manifest;
+    for (const source of reviewed.sources.filter((entry) => entry.role === "vendor-input")) {
+      const bytes = readFileSync(path.join(rootDir, source.path), "utf8");
+      const digest = createHash("sha256").update(bytes, "utf8").digest("hex");
+      expect(source.sha256, source.path).toBe(digest);
+      expect(source.bytes, source.path).toBe(Buffer.byteLength(bytes, "utf8"));
+      const document = parseYaml(bytes) as { properties: Record<string, { displayName: string; documentation: string }> };
+      for (const input of reviewed.inputs.filter((entry) => entry.sourcePath === source.path)) {
+        const property = document.properties[input.propertyKey]!;
+        expect(property.displayName, input.sourceLocator).toMatch(/[\u3400-\u9fff]/u);
+        expect(input.sourceDigest, input.sourceLocator).toBe(digest);
+        expect(input.content.documentation, input.sourceLocator).toBe(property.documentation);
+      }
+    }
+  });
+
   it("records exactly 127 inputs: 115 vendor + 12 compatibility, 119 current + 8 deferred", () => {
     expect(manifest.inputs).toHaveLength(127);
     expect(manifest.inputs.filter((entry) => entry.family === "vendor")).toHaveLength(115);

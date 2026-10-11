@@ -11,4 +11,5 @@ properties:
     valueShape: u32-array
     exampleValue: <12345>
     constraints: {}
-    documentation: / 的 DTS 属性「board id」（board_id），用于驱动读取的设备树配置。
+    documentation: 指定当前板卡的标识编号。
+    displayName: 板卡标识

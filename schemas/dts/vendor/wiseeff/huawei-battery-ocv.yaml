@@ -11,4 +11,5 @@ properties:
     valueShape: string-list
     exampleValue: "\"-1\", \"3100\",\n\t\t\"0\", \"3200\",\n\t\t\"1\", \"3250\""
     constraints: {}
-    documentation: 开路电压（OCV）相关参数「ocv_table」。
+    documentation: 配置电池状态与开路电压的对应表。
+    displayName: 开路电压表

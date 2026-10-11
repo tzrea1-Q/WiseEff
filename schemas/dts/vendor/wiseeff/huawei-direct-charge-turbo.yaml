@@ -11,9 +11,11 @@ properties:
     valueShape: string-list
     exampleValue: "\"2\", \"0\", \"time_para01\", \"0X1\",\n\t\t\"4\", \"0\", \"time_para02\", \"0X0\""
     constraints: {}
-    documentation: huawei,direct_charge_turbo 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。
+    documentation: 配置充电模式与对应时间参数组的映射。
+    displayName: 时间参数组映射
   time_para01:
     valueShape: string-list
     exampleValue: "\"640\", \"7200\",\n\t\t\"0\", \"12500\""
     constraints: {}
-    documentation: huawei,direct_charge_turbo 的 DTS 属性「time para01」（time_para01），用于驱动读取的设备树配置。
+    documentation: 配置第 1 组充电时长与控制参数的对应表。
+    displayName: 时间参数表 1

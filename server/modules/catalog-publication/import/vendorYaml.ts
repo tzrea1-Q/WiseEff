@@ -23,6 +23,7 @@ export const POWER_MANAGEMENT_BASENAME = "power-management.json";
 const EXCLUDED = new Set<string>(EXCLUDED_SCHEMA_BASENAMES);
 
 export type VendorPropertyYaml = {
+  readonly displayName?: string;
   readonly valueShape?: string | { readonly kind?: string };
   readonly units?: string;
   readonly documentation?: string;

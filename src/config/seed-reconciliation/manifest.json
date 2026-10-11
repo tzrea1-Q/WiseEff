@@ -39,146 +39,146 @@
     {
       "path": "schemas/dts/catalog.json",
       "role": "vendor-manifest",
-      "sha256": "94ec1ea0fb037b74dcdc1d13b37301e4fc73c854c477af87be25dc315943b8db",
+      "sha256": "9023ce27f4884eb13951a6bb4b188513e3ff1a02d094ba16deb132ef6fb885e9",
       "bytes": 2599
     },
     {
       "path": "schemas/dts/vendor/wiseeff/arm-amba-bus.yaml",
       "role": "vendor-input",
-      "sha256": "a6325d4e8a258a0049c475d5598153c290a39f85256440936f6970e001c1b3e1",
-      "bytes": 968
+      "sha256": "9b1f0282a16c6712e4c21c3a20bad0d0f802b7f3ab9c0326a068bbce1c9ad7b9",
+      "bytes": 1165
     },
     {
       "path": "schemas/dts/vendor/wiseeff/arm-gic-v3.yaml",
       "role": "vendor-input",
-      "sha256": "a129990ad2890b0d19f19d61efbd09649e3a52f0c0e0f1608ed168eee9dea9ec",
-      "bytes": 648
+      "sha256": "144d31edfdf05e16bd0bc3b1776d8d6690a818fcc8c252d5aac848074a95a762",
+      "bytes": 747
     },
     {
       "path": "schemas/dts/vendor/wiseeff/hisilicon-gpio.yaml",
       "role": "vendor-input",
-      "sha256": "3532bbf66bc7b56cca7bc9e22efcd6a1e754a92b43e4e7ccd39ee441968f6bc9",
-      "bytes": 657
+      "sha256": "031cd4814d7a69c778cd9cc71389c499c6676cf24753062927112ef82890effa",
+      "bytes": 755
     },
     {
       "path": "schemas/dts/vendor/wiseeff/hisilicon-hisi-bci-battery.yaml",
       "role": "vendor-input",
-      "sha256": "1ee2ee320e99f04a39e7c7bad881dc48069c65eaed3a69072a61803600ccf8a6",
-      "bytes": 958
+      "sha256": "53c70149d59c3990430f86428017ad31462debf3e9e79bfa25254e8ee8ee634c",
+      "bytes": 1012
     },
     {
       "path": "schemas/dts/vendor/wiseeff/hisilicon-hisi-vbat-drop-protect-v2.yaml",
       "role": "vendor-input",
-      "sha256": "5ff3fe63158face9319714e73bfc936ec79b22ec75b71c367d9736cc9e0c1551",
-      "bytes": 490
+      "sha256": "6d39870eecbec1ff7ba0934fc92bcbd53950955d4d3fdf0c678786e855d6b002",
+      "bytes": 525
     },
     {
       "path": "schemas/dts/vendor/wiseeff/hisilicon-hisi-vbat-drop-protect.yaml",
       "role": "vendor-input",
-      "sha256": "f3edf689334fa24eeaabae3d4bde0e3308f9f101f95b77af81740e4974a431a6",
-      "bytes": 451
+      "sha256": "71dcba30df1aa597333e625c9d18352d7086fb64161a378b3b2f1d114eb9d14f",
+      "bytes": 486
     },
     {
       "path": "schemas/dts/vendor/wiseeff/hisilicon-spmi.yaml",
       "role": "vendor-input",
-      "sha256": "f62a132e2ddcbed3b3280b5796fab0d06fec209d2b1bbb3b3310cd6bb7ca3c28",
-      "bytes": 407
+      "sha256": "fb141e6adbef25589ddd82bc768f223460aee291b4bd45f7062fdd0bfea3790f",
+      "bytes": 419
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-batt-identify.yaml",
       "role": "vendor-input",
-      "sha256": "c9b65f0223f00404368a52e3d99f344ed40f1a1242483e707a73bc13546a9380",
-      "bytes": 639
+      "sha256": "ae34dca2e67e3b8a5acfc7e6e17d6f656feebf28cd5afc60110622e066419bc0",
+      "bytes": 607
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-batt-info.yaml",
       "role": "vendor-input",
-      "sha256": "9b25a38e1a65038f416fd9d6d415c24aa37d517586b16e8d8c573ce5db61b34a",
-      "bytes": 405
+      "sha256": "b1b0acd4cd56c6e1bb751536aa85ba2976b7adf327b325c636bbdf0e58f000c1",
+      "bytes": 372
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-battery-cccv.yaml",
       "role": "vendor-input",
-      "sha256": "ddcbcc98d4da2b814d6f4533ae17226f077abd8cb3db1e8c87f21fcb19c063b8",
-      "bytes": 436
+      "sha256": "9910ce1a94a4b7a4407ff8d7a8d6171d8564edce6cfad7802116c3a30dd71fca",
+      "bytes": 452
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-battery-charge-balance.yaml",
       "role": "vendor-input",
-      "sha256": "865ba06f94768e700c75b5e17f24e56da08258109707852f63d8336246a7260f",
-      "bytes": 513
+      "sha256": "016ab6bbaa4dc0658c5e3fa64979610ddd253d90dd9d45dc99bde4b84fdce2d6",
+      "bytes": 490
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-battery-ocv.yaml",
       "role": "vendor-input",
-      "sha256": "750b8a05140ea47059a8e30d93cd566d57b2fdc17df04c06372a871a84596a70",
-      "bytes": 410
+      "sha256": "658b0d32c09bfaa83a6e4731d63d1563adc7f04403797ffd6ece2635268b91cb",
+      "bytes": 440
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-battery-temp-fitting.yaml",
       "role": "vendor-input",
-      "sha256": "8c50577962735b8e501d7f83327a3bb43af4a93662a2404c4246b61ab3c1619a",
-      "bytes": 1208
+      "sha256": "d157795904bfcf01dbcea6c308d9506af957f511df261fdc1ea6d0070b1fc2cb",
+      "bytes": 1126
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-boost-5v.yaml",
       "role": "vendor-input",
-      "sha256": "07f43e39621d4e8b5e23e288458f5478108cba18b74610c622071736ef061e4e",
+      "sha256": "db7492a88f37ee740900a687b48a96c7c3816d774bc80d6dd9bb18380235d37e",
       "bytes": 374
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-btb-check.yaml",
       "role": "vendor-input",
-      "sha256": "c04854c4b1492ce7b8d4aba78bd720159856d3e437133bdb81e406b616a673a4",
-      "bytes": 464
+      "sha256": "3753576fb145ad42751ace66f97e18d9d0ef109f17c285c42f7954d8ea2eaabd",
+      "bytes": 432
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-bypass-bst-hl7603.yaml",
       "role": "vendor-input",
-      "sha256": "4a237c51605bd7146273068592b83270f42880422ae6b29830464ff3c14ad845",
-      "bytes": 1266
+      "sha256": "0c0a63a00e05937d50588969abc0aec1dcb1b6d5bd7b48c65729311bbd8500eb",
+      "bytes": 1412
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-charge-mode-test.yaml",
       "role": "vendor-input",
-      "sha256": "21caca4e05a40d8105d7e4d29847baed4dab08f4b3b365aedf70288d56f2ad88",
-      "bytes": 534
+      "sha256": "25bf649112d3b77061851021235a303027a1a4c84404e6b959d0b7ffdac93687",
+      "bytes": 517
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-charger.yaml",
       "role": "vendor-input",
-      "sha256": "a642887522abce05d83f14243ec2ff359865cda9a89f0be03e37b9b56f1e1cd9",
-      "bytes": 1104
+      "sha256": "3e0a9f5e0a31e6d95a7b8e90b229147f8e100962894caabd4fc20889da709a63",
+      "bytes": 990
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-charging-core.yaml",
       "role": "vendor-input",
-      "sha256": "57c10173db4bbdfd79dc3f5077dad6d757dbfd76d43b2acf6282d032b38b683a",
-      "bytes": 1305
+      "sha256": "9d63e57a840138494c04ab37681f99b3ea9a35a04942aefe6ddf56c4bd66c803",
+      "bytes": 1254
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-direct-charge-comp.yaml",
       "role": "vendor-input",
-      "sha256": "6342ba73814431ce8bdc18d847fd41a62f900d9b7801f42b7494a94727cf54a1",
-      "bytes": 487
+      "sha256": "c0632676d7169780f40c8fcd0e209ebc20141d18775c0bebab105b9a37fb7525",
+      "bytes": 515
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-direct-charge-ic.yaml",
       "role": "vendor-input",
-      "sha256": "f1c1f7e137a87ffc5d1fe2128c2c300ca2e21600acbb078d9fecdd5f1caa1075",
-      "bytes": 744
+      "sha256": "bcc8fd5822e586832a38bcd3d3bd413ecdaae15b3a574ea02e481ef6f1c6f6b6",
+      "bytes": 766
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-direct-charge-turbo.yaml",
       "role": "vendor-input",
-      "sha256": "a166d69a46d939d7b8ff7d24ea577ddc533cee20b618644835d03dd44eeaede7",
-      "bytes": 806
+      "sha256": "397d1747595ea1bc25ce35832eb41a3093d74ec9cb6776b1be35aea0a1921310",
+      "bytes": 749
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
       "role": "vendor-input",
-      "sha256": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
-      "bytes": 1988
+      "sha256": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
+      "bytes": 1879
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-fm1230-swi.yaml",
@@ -189,14 +189,14 @@
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-fm1230.yaml",
       "role": "vendor-input",
-      "sha256": "53668c62f2fc4d81bfffde4c962c394459618c3c94cf38ac5cd886b4ff84e72c",
-      "bytes": 1288
+      "sha256": "63b3a0bab2d1259a2b80ce70630132d51f9819ff6243fe62d4de33b23ae37ee4",
+      "bytes": 1201
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-multi-btb-temp.yaml",
       "role": "vendor-input",
-      "sha256": "15038170898f52c3005d42fc54780b759ec1a4a33fa504272aa7b2c9b11f8987",
-      "bytes": 514
+      "sha256": "4de98b60dd05813d185acb30b93a456bd7818a4daab89c0d8cc9e6a8f7ba9fad",
+      "bytes": 499
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-soh-core.yaml",
@@ -207,68 +207,68 @@
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-t91407.yaml",
       "role": "vendor-input",
-      "sha256": "66d8ce02638adb883e8466010f19b437f6e5a737c9d3c1df5a0b06352cc4d7dc",
-      "bytes": 848
+      "sha256": "2af28f862047279b2c9bfad905c5122f2162c713bf5b57addb0e8889198dd60b",
+      "bytes": 797
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-wireless-charger.yaml",
       "role": "vendor-input",
-      "sha256": "bfeb63ffa4df58141718c3c3c0f3be167619c482456cc7d1959b55ef755e7370",
-      "bytes": 1764
+      "sha256": "ebd65f26a714d763e2ac619e1ff206393cee033c57d6f9403fd5708498a34e78",
+      "bytes": 1731
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-wireless-sc.yaml",
       "role": "vendor-input",
-      "sha256": "c037cea068a39d09261f02331d297be8eb4a59ae3ba6aabba7a1d65096709341",
-      "bytes": 1715
+      "sha256": "5b137618e152fc17c1e4fa5bfbf9fb87ea15bd94890ab72011669df297145cbc",
+      "bytes": 1648
     },
     {
       "path": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
       "role": "vendor-input",
-      "sha256": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
-      "bytes": 2803
+      "sha256": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
+      "bytes": 2790
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-batt-l-v800.yaml",
       "role": "vendor-input",
-      "sha256": "914bfd645041bf7346aee28bd9899e4e50ad81d45a7e3f13bc5917d653790cf6",
-      "bytes": 1145
+      "sha256": "a42d2f23a1e8cef089ed2c011ec7391a9e65183432bdd98299af995f5775b183",
+      "bytes": 1119
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-batt.yaml",
       "role": "vendor-input",
-      "sha256": "5424765979db1447e2a86ae4c7279411b0bf8aeec5b0838a7b2d9764be6382fe",
-      "bytes": 1114
+      "sha256": "ce896f18a258a08ad8fa0230c6f9bf2d286b2a8dc68d0226a36ea4dbd8734fad",
+      "bytes": 1095
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-battery-checker.yaml",
       "role": "vendor-input",
-      "sha256": "83bcea16bb1ca2591cce3f8e2192b27fffec3a8a3424855eee31795bc29c2a18",
-      "bytes": 635
+      "sha256": "38f0450ac78ae6a72b698c441f0af74cba1127a1b9f87ec6f59ee3d28081e2af",
+      "bytes": 584
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-battery0.yaml",
       "role": "vendor-input",
-      "sha256": "f906306a04489d44676a8bedf948a70656560860ba3dcd3ae673456cfbedce6d",
-      "bytes": 922
+      "sha256": "c9deaf9fe82c2bfd9d4ccd42657917a1b56ff177f2297a3fa02b69580bfc6449",
+      "bytes": 1031
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-battery1.yaml",
       "role": "vendor-input",
-      "sha256": "62f8470f2cb55135c96704df24bfcbc51a53a8b7a394825830994976df6d0cda",
-      "bytes": 770
+      "sha256": "b7ef94439a82d466d1d042fc1f5d60f5f69548654d2a6ccf8eefa648b51f6d19",
+      "bytes": 834
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-cccv-para0.yaml",
       "role": "vendor-input",
-      "sha256": "bf7969bed14782c4ab7ca05f37224e3740a3ec4d84ab93d2fda7409fd9d4130d",
-      "bytes": 1034
+      "sha256": "317aa3bb3dcd105808d5c90f23f594fff0df5b07c148bd2042989bc22db9f256",
+      "bytes": 1098
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-charging-core.yaml",
       "role": "vendor-input",
-      "sha256": "4de7675c48357423839d4127589ff8f044f3dd93bb589bf686b62ae89c7b7ef7",
-      "bytes": 901
+      "sha256": "c1c5ea736014c035f830d1926890ee2183bdea27ee9f07da471da45f1a64854b",
+      "bytes": 792
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-hi6xxx-coul.yaml",
@@ -279,32 +279,32 @@
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-i2c.yaml",
       "role": "vendor-input",
-      "sha256": "96383c098936c343f7b674fe4756221e2908ae607ab372bee5d5d59e00eec23a",
-      "bytes": 654
+      "sha256": "8094cbb6bbe3f63340f0767090f09a18976b4010eb391f412a006030d398d189",
+      "bytes": 743
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-middle-cpu.yaml",
       "role": "vendor-input",
-      "sha256": "0e30ca14cfe4374b76ae71262d1a2e8518b9d24061161f8b134f8f21cf448ede",
-      "bytes": 749
+      "sha256": "d686a3bf7af315198af99ab12a76f55d8d516dcac0f64f3170a383d86dc8c0b0",
+      "bytes": 719
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-pmic.yaml",
       "role": "vendor-input",
-      "sha256": "c481bae57b45533ed2bb9f5123109f091a196a2bdd9b6c818b599499e5d1aa63",
-      "bytes": 460
+      "sha256": "fc7b5c58e8c6735a6f2ee2ba76a789ac342a5ce1eda0ce6a47c70972958479df",
+      "bytes": 556
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-root.yaml",
       "role": "vendor-input",
-      "sha256": "171c3d480cb39343855335dc5a4c4f578b18c485b23cc2ddf9892fe018186100",
-      "bytes": 338
+      "sha256": "9f061fd25d483bda64fd952f95db81502418699b4d1445e6f5bc7b1ddd916d39",
+      "bytes": 318
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-buck.yaml",
       "role": "vendor-input",
-      "sha256": "41badb2f9971b11b9c20657c9dcbb7bd425796ce09b5066d5f213916ec05183d",
-      "bytes": 1137
+      "sha256": "4edbf5030dee6e93ebaff9759af6bf692413c5ebfc05173741341c235a3e7fbc",
+      "bytes": 1063
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-coul.yaml",
@@ -315,20 +315,20 @@
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-flash.yaml",
       "role": "vendor-input",
-      "sha256": "80ce6feabcccbc16ff216cb7fdf1705dacf187c40470bd9610c07be4646525c2",
-      "bytes": 442
+      "sha256": "9ef589b5d3d6ba9661f00302b1d630a34b9b8e671dea142c73b4b71f19356b53",
+      "bytes": 390
     },
     {
       "path": "schemas/dts/vendor/wiseeff/nodename-scharger-v800.yaml",
       "role": "vendor-input",
-      "sha256": "bd1c10cdcba9f9106e474f40873ebe06dc35a302900bea8f944679c201f6e7cb",
+      "sha256": "e41aaeebe697bc4de72eb3a7153967ab72a881e123219dcd5ecc98fd2d4dccde",
       "bytes": 388
     },
     {
       "path": "schemas/dts/vendor/wiseeff/sc8562.yaml",
       "role": "vendor-input",
-      "sha256": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
-      "bytes": 2289
+      "sha256": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
+      "bytes": 2278
     },
     {
       "path": "src/config/dts-seed/atlas-board.dts",
@@ -431,7 +431,7 @@
   },
   "vendorSelection": {
     "catalogPath": "schemas/dts/catalog.json",
-    "catalogDigest": "94ec1ea0fb037b74dcdc1d13b37301e4fc73c854c477af87be25dc315943b8db",
+    "catalogDigest": "9023ce27f4884eb13951a6bb4b188513e3ff1a02d094ba16deb132ef6fb885e9",
     "schemaPathsListed": 50,
     "inputFiles": 48,
     "excludedBasenames": [
@@ -440,8 +440,8 @@
       "test-ambiguous-b.yaml"
     ],
     "excludedReason": "EXCLUDED_SCHEMA_BASENAMES in server/modules/catalog-publication/import/vendorYaml.ts; selection is schemaPaths-driven, not a directory walk",
-    "vendorContentHash": "6d9dcfc73e178e2d186db149e1bbfc782e8626303862811ebb14dbb9d26188e0",
-    "observedDirectoryHash": "6d9dcfc73e178e2d186db149e1bbfc782e8626303862811ebb14dbb9d26188e0",
+    "vendorContentHash": "6e354515c378fcd045399db59b4086b3552b92d4e46db60a147aeae672fa1dca",
+    "observedDirectoryHash": "6e354515c378fcd045399db59b4086b3552b92d4e46db60a147aeae672fa1dca",
     "hashPinned": true
   },
   "inputs": [
@@ -1330,7 +1330,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-amba-bus.yaml",
-      "sourceDigest": "a6325d4e8a258a0049c475d5598153c290a39f85256440936f6970e001c1b3e1",
+      "sourceDigest": "9b1f0282a16c6712e4c21c3a20bad0d0f802b7f3ab9c0326a068bbce1c9ad7b9",
       "sourceLocator": "vendor/wiseeff/arm-amba-bus.yaml#interrupt-parent",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1348,7 +1348,7 @@
       "content": {
         "valueShape": "phandle-list",
         "units": null,
-        "documentation": "指向中断控制器的 phandle。",
+        "documentation": "指定处理本节点中断的中断控制器。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1366,7 +1366,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-hisi-bci-battery.yaml",
-      "sourceDigest": "1ee2ee320e99f04a39e7c7bad881dc48069c65eaed3a69072a61803600ccf8a6",
+      "sourceDigest": "53c70149d59c3990430f86428017ad31462debf3e9e79bfa25254e8ee8ee634c",
       "sourceLocator": "vendor/wiseeff/hisilicon-hisi-bci-battery.yaml#battery_board_type",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1384,7 +1384,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电池相关参数「battery_board_type」，用于容量、标识或采样策略。",
+        "documentation": "指定电池所在电路板的类型标识。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1402,7 +1402,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-hisi-bci-battery.yaml",
-      "sourceDigest": "1ee2ee320e99f04a39e7c7bad881dc48069c65eaed3a69072a61803600ccf8a6",
+      "sourceDigest": "53c70149d59c3990430f86428017ad31462debf3e9e79bfa25254e8ee8ee634c",
       "sourceLocator": "vendor/wiseeff/hisilicon-hisi-bci-battery.yaml#battery_design_fcc",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1420,7 +1420,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电池相关参数「battery_design_fcc」，用于容量、标识或采样策略。",
+        "documentation": "设置电池的设计满充容量。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1438,7 +1438,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-hisi-bci-battery.yaml",
-      "sourceDigest": "1ee2ee320e99f04a39e7c7bad881dc48069c65eaed3a69072a61803600ccf8a6",
+      "sourceDigest": "53c70149d59c3990430f86428017ad31462debf3e9e79bfa25254e8ee8ee634c",
       "sourceLocator": "vendor/wiseeff/hisilicon-hisi-bci-battery.yaml#vth_correct_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1456,7 +1456,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "阈值/校正参数「vth_correct_para」。",
+        "documentation": "配置电压阈值的校正参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1474,7 +1474,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-hisi-bci-battery.yaml",
-      "sourceDigest": "1ee2ee320e99f04a39e7c7bad881dc48069c65eaed3a69072a61803600ccf8a6",
+      "sourceDigest": "53c70149d59c3990430f86428017ad31462debf3e9e79bfa25254e8ee8ee634c",
       "sourceLocator": "vendor/wiseeff/hisilicon-hisi-bci-battery.yaml#vth_correct_para_low_temp",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1492,7 +1492,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "阈值/校正参数「vth_correct_para_low_temp」。",
+        "documentation": "配置低温条件下电压阈值的校正参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1510,7 +1510,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-hisi-vbat-drop-protect-v2.yaml",
-      "sourceDigest": "5ff3fe63158face9319714e73bfc936ec79b22ec75b71c367d9736cc9e0c1551",
+      "sourceDigest": "6d39870eecbec1ff7ba0934fc92bcbd53950955d4d3fdf0c678786e855d6b002",
       "sourceLocator": "vendor/wiseeff/hisilicon-hisi-vbat-drop-protect-v2.yaml#vbat_drop_vol_mv",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1528,7 +1528,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": "mV",
-        "documentation": "电池电压相关参数「vbat_drop_vol_mv」，单位通常为毫伏。",
+        "documentation": "设置电池电压压降保护的触发电压，单位为毫伏。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1546,7 +1546,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-hisi-vbat-drop-protect.yaml",
-      "sourceDigest": "f3edf689334fa24eeaabae3d4bde0e3308f9f101f95b77af81740e4974a431a6",
+      "sourceDigest": "71dcba30df1aa597333e625c9d18352d7086fb64161a378b3b2f1d114eb9d14f",
       "sourceLocator": "vendor/wiseeff/hisilicon-hisi-vbat-drop-protect.yaml#vbat_drop_vol_mv",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1564,7 +1564,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": "mV",
-        "documentation": "电池电压相关参数「vbat_drop_vol_mv」，单位通常为毫伏。",
+        "documentation": "设置电池电压压降保护的触发电压，单位为毫伏。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1582,7 +1582,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-batt-identify.yaml",
-      "sourceDigest": "c9b65f0223f00404368a52e3d99f344ed40f1a1242483e707a73bc13546a9380",
+      "sourceDigest": "ae34dca2e67e3b8a5acfc7e6e17d6f656feebf28cd5afc60110622e066419bc0",
       "sourceLocator": "vendor/wiseeff/huawei-batt-identify.yaml#gpios",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1600,7 +1600,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "huawei,batt_identify 的 DTS 属性「gpios」（gpios），用于驱动读取的设备树配置。",
+        "documentation": "指定设备使用的 GPIO 控制器、引脚及标志。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1618,7 +1618,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-batt-identify.yaml",
-      "sourceDigest": "c9b65f0223f00404368a52e3d99f344ed40f1a1242483e707a73bc13546a9380",
+      "sourceDigest": "ae34dca2e67e3b8a5acfc7e6e17d6f656feebf28cd5afc60110622e066419bc0",
       "sourceLocator": "vendor/wiseeff/huawei-batt-identify.yaml#id_voltage_gpiov",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1636,7 +1636,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,batt_identify 的 DTS 属性「id voltage gpiov」（id_voltage_gpiov），用于驱动读取的设备树配置。",
+        "documentation": "配置电池识别电压对应的 GPIO 电平组合。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1654,7 +1654,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-batt-info.yaml",
-      "sourceDigest": "9b25a38e1a65038f416fd9d6d415c24aa37d517586b16e8d8c573ce5db61b34a",
+      "sourceDigest": "b1b0acd4cd56c6e1bb751536aa85ba2976b7adf327b325c636bbdf0e58f000c1",
       "sourceLocator": "vendor/wiseeff/huawei-batt-info.yaml#sn-check-type",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1672,7 +1672,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,batt_info 的 DTS 属性「sn check type」（sn-check-type），用于驱动读取的设备树配置。",
+        "documentation": "指定电池序列号的校验方式。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1690,7 +1690,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-battery-cccv.yaml",
-      "sourceDigest": "ddcbcc98d4da2b814d6f4533ae17226f077abd8cb3db1e8c87f21fcb19c063b8",
+      "sourceDigest": "9910ce1a94a4b7a4407ff8d7a8d6171d8564edce6cfad7802116c3a30dd71fca",
       "sourceLocator": "vendor/wiseeff/huawei-battery-cccv.yaml#battery_tbl",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1708,7 +1708,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "电池相关参数「battery_tbl」，用于容量、标识或采样策略。",
+        "documentation": "配置电池类型与对应 CCCV 参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1726,7 +1726,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-battery-charge-balance.yaml",
-      "sourceDigest": "865ba06f94768e700c75b5e17f24e56da08258109707852f63d8336246a7260f",
+      "sourceDigest": "016ab6bbaa4dc0658c5e3fa64979610ddd253d90dd9d45dc99bde4b84fdce2d6",
       "sourceLocator": "vendor/wiseeff/huawei-battery-charge-balance.yaml#unbalance_th",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1744,7 +1744,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,battery_charge_balance 的 DTS 属性「unbalance th」（unbalance_th），用于驱动读取的设备树配置。",
+        "documentation": "配置双电池充电均衡控制的不均衡判定阈值。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1762,7 +1762,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-battery-ocv.yaml",
-      "sourceDigest": "750b8a05140ea47059a8e30d93cd566d57b2fdc17df04c06372a871a84596a70",
+      "sourceDigest": "658b0d32c09bfaa83a6e4731d63d1563adc7f04403797ffd6ece2635268b91cb",
       "sourceLocator": "vendor/wiseeff/huawei-battery-ocv.yaml#ocv_table",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1780,7 +1780,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "开路电压（OCV）相关参数「ocv_table」。",
+        "documentation": "配置电池状态与开路电压的对应表。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1798,7 +1798,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-battery-temp-fitting.yaml",
-      "sourceDigest": "8c50577962735b8e501d7f83327a3bb43af4a93662a2404c4246b61ab3c1619a",
+      "sourceDigest": "d157795904bfcf01dbcea6c308d9506af957f511df261fdc1ea6d0070b1fc2cb",
       "sourceLocator": "vendor/wiseeff/huawei-battery-temp-fitting.yaml#btf_temp_lth",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1816,7 +1816,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,battery_temp_fitting 的 DTS 属性「btf temp lth」（btf_temp_lth），用于驱动读取的设备树配置。",
+        "documentation": "设置电池温度拟合的温度下限。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1834,7 +1834,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-battery-temp-fitting.yaml",
-      "sourceDigest": "8c50577962735b8e501d7f83327a3bb43af4a93662a2404c4246b61ab3c1619a",
+      "sourceDigest": "d157795904bfcf01dbcea6c308d9506af957f511df261fdc1ea6d0070b1fc2cb",
       "sourceLocator": "vendor/wiseeff/huawei-battery-temp-fitting.yaml#fitting_mode",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1852,7 +1852,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,battery_temp_fitting 的 DTS 属性「fitting mode」（fitting_mode），用于驱动读取的设备树配置。",
+        "documentation": "选择电池温度拟合的计算模式。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1870,7 +1870,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-battery-temp-fitting.yaml",
-      "sourceDigest": "8c50577962735b8e501d7f83327a3bb43af4a93662a2404c4246b61ab3c1619a",
+      "sourceDigest": "d157795904bfcf01dbcea6c308d9506af957f511df261fdc1ea6d0070b1fc2cb",
       "sourceLocator": "vendor/wiseeff/huawei-battery-temp-fitting.yaml#replace_sensor",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1888,7 +1888,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,battery_temp_fitting 的 DTS 属性「replace sensor」（replace_sensor），用于驱动读取的设备树配置。",
+        "documentation": "指定温度拟合使用的替代传感器名称。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1906,7 +1906,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-battery-temp-fitting.yaml",
-      "sourceDigest": "8c50577962735b8e501d7f83327a3bb43af4a93662a2404c4246b61ab3c1619a",
+      "sourceDigest": "d157795904bfcf01dbcea6c308d9506af957f511df261fdc1ea6d0070b1fc2cb",
       "sourceLocator": "vendor/wiseeff/huawei-battery-temp-fitting.yaml#temp_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1924,7 +1924,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "温度相关参数「temp_para」，用于保护或拟合。",
+        "documentation": "配置电池温度拟合使用的温度区间及拟合参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1942,7 +1942,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-boost-5v.yaml",
-      "sourceDigest": "07f43e39621d4e8b5e23e288458f5478108cba18b74610c622071736ef061e4e",
+      "sourceDigest": "db7492a88f37ee740900a687b48a96c7c3816d774bc80d6dd9bb18380235d37e",
       "sourceLocator": "vendor/wiseeff/huawei-boost-5v.yaml#gpio_5v_boost",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1960,7 +1960,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "GPIO 相关配置项「gpio_5v_boost」，描述引脚、极性或中断线。",
+        "documentation": "指定控制 5V 升压电源的 GPIO 引脚。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -1978,7 +1978,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-btb-check.yaml",
-      "sourceDigest": "c04854c4b1492ce7b8d4aba78bd720159856d3e437133bdb81e406b616a673a4",
+      "sourceDigest": "3753576fb145ad42751ace66f97e18d9d0ef109f17c285c42f7954d8ea2eaabd",
       "sourceLocator": "vendor/wiseeff/huawei-btb-check.yaml#vol_check_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -1996,7 +1996,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,btb_check 的 DTS 属性「vol check para」（vol_check_para），用于驱动读取的设备树配置。",
+        "documentation": "配置连接器电压检测的控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2014,7 +2014,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-bypass-bst-hl7603.yaml",
-      "sourceDigest": "4a237c51605bd7146273068592b83270f42880422ae6b29830464ff3c14ad845",
+      "sourceDigest": "0c0a63a00e05937d50588969abc0aec1dcb1b6d5bd7b48c65729311bbd8500eb",
       "sourceLocator": "vendor/wiseeff/huawei-bypass-bst-hl7603.yaml#const_vout",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2032,7 +2032,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "恒定输出/限值参数「const_vout」。",
+        "documentation": "设置升压电路的恒定输出电压。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2050,7 +2050,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-bypass-bst-hl7603.yaml",
-      "sourceDigest": "4a237c51605bd7146273068592b83270f42880422ae6b29830464ff3c14ad845",
+      "sourceDigest": "0c0a63a00e05937d50588969abc0aec1dcb1b6d5bd7b48c65729311bbd8500eb",
       "sourceLocator": "vendor/wiseeff/huawei-bypass-bst-hl7603.yaml#gpio_enable",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2068,7 +2068,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "GPIO 相关配置项「gpio_enable」，描述引脚、极性或中断线。",
+        "documentation": "指定控制设备使能的 GPIO 引脚。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2086,7 +2086,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-bypass-bst-hl7603.yaml",
-      "sourceDigest": "4a237c51605bd7146273068592b83270f42880422ae6b29830464ff3c14ad845",
+      "sourceDigest": "0c0a63a00e05937d50588969abc0aec1dcb1b6d5bd7b48c65729311bbd8500eb",
       "sourceLocator": "vendor/wiseeff/huawei-bypass-bst-hl7603.yaml#ic_role",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2104,7 +2104,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "芯片角色或标识参数「ic_role」。",
+        "documentation": "指定芯片在充电电路中的角色标识。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2122,7 +2122,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-bypass-bst-hl7603.yaml",
-      "sourceDigest": "4a237c51605bd7146273068592b83270f42880422ae6b29830464ff3c14ad845",
+      "sourceDigest": "0c0a63a00e05937d50588969abc0aec1dcb1b6d5bd7b48c65729311bbd8500eb",
       "sourceLocator": "vendor/wiseeff/huawei-bypass-bst-hl7603.yaml#shutdown_cfg",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2140,7 +2140,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "关机/关断相关配置「shutdown_cfg」。",
+        "documentation": "配置设备关断时使用的控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2158,7 +2158,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charge-mode-test.yaml",
-      "sourceDigest": "21caca4e05a40d8105d7e4d29847baed4dab08f4b3b365aedf70288d56f2ad88",
+      "sourceDigest": "25bf649112d3b77061851021235a303027a1a4c84404e6b959d0b7ffdac93687",
       "sourceLocator": "vendor/wiseeff/huawei-charge-mode-test.yaml#test_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2176,7 +2176,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,charge_mode_test 的 DTS 属性「test para」（test_para），用于驱动读取的设备树配置。",
+        "documentation": "配置充电协议及模式测试使用的参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2194,7 +2194,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charger.yaml",
-      "sourceDigest": "a642887522abce05d83f14243ec2ff359865cda9a89f0be03e37b9b56f1e1cd9",
+      "sourceDigest": "3e0a9f5e0a31e6d95a7b8e90b229147f8e100962894caabd4fc20889da709a63",
       "sourceLocator": "vendor/wiseeff/huawei-charger.yaml#charge_done_sleep_enabled",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2212,7 +2212,7 @@
       "content": {
         "valueShape": "bool",
         "units": null,
-        "documentation": "充电策略参数「charge_done_sleep_enabled」，影响充电电流/电压或模式切换。",
+        "documentation": "启用充电完成后的休眠行为。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2230,7 +2230,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charger.yaml",
-      "sourceDigest": "a642887522abce05d83f14243ec2ff359865cda9a89f0be03e37b9b56f1e1cd9",
+      "sourceDigest": "3e0a9f5e0a31e6d95a7b8e90b229147f8e100962894caabd4fc20889da709a63",
       "sourceLocator": "vendor/wiseeff/huawei-charger.yaml#recharge_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2248,7 +2248,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,charger 的 DTS 属性「recharge para」（recharge_para），用于驱动读取的设备树配置。",
+        "documentation": "配置充电完成后触发再充电的控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2266,7 +2266,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charger.yaml",
-      "sourceDigest": "a642887522abce05d83f14243ec2ff359865cda9a89f0be03e37b9b56f1e1cd9",
+      "sourceDigest": "3e0a9f5e0a31e6d95a7b8e90b229147f8e100962894caabd4fc20889da709a63",
       "sourceLocator": "vendor/wiseeff/huawei-charger.yaml#support_new_pd_process",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2284,7 +2284,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,charger 的 DTS 属性「support new pd process」（support_new_pd_process），用于驱动读取的设备树配置。",
+        "documentation": "指定是否支持新的 PD 充电处理流程。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2302,7 +2302,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charger.yaml",
-      "sourceDigest": "a642887522abce05d83f14243ec2ff359865cda9a89f0be03e37b9b56f1e1cd9",
+      "sourceDigest": "3e0a9f5e0a31e6d95a7b8e90b229147f8e100962894caabd4fc20889da709a63",
       "sourceLocator": "vendor/wiseeff/huawei-charger.yaml#weak_source_sleep_enabled",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2320,7 +2320,7 @@
       "content": {
         "valueShape": "bool",
         "units": null,
-        "documentation": "huawei,charger 的 DTS 属性「weak source sleep enabled」（weak_source_sleep_enabled），用于驱动读取的设备树配置。",
+        "documentation": "启用输入电源供电能力不足时的休眠行为。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2338,7 +2338,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charging-core.yaml",
-      "sourceDigest": "57c10173db4bbdfd79dc3f5077dad6d757dbfd76d43b2acf6282d032b38b683a",
+      "sourceDigest": "9d63e57a840138494c04ab37681f99b3ea9a35a04942aefe6ddf56c4bd66c803",
       "sourceLocator": "vendor/wiseeff/huawei-charging-core.yaml#ichg_max",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2356,7 +2356,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,charging_core 的 DTS 属性「ichg max」（ichg_max），用于驱动读取的设备树配置。",
+        "documentation": "设置允许的最大充电电流，单位为毫安。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2374,7 +2374,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charging-core.yaml",
-      "sourceDigest": "57c10173db4bbdfd79dc3f5077dad6d757dbfd76d43b2acf6282d032b38b683a",
+      "sourceDigest": "9d63e57a840138494c04ab37681f99b3ea9a35a04942aefe6ddf56c4bd66c803",
       "sourceLocator": "vendor/wiseeff/huawei-charging-core.yaml#iin_max",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2392,7 +2392,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,charging_core 的 DTS 属性「iin max」（iin_max），用于驱动读取的设备树配置。",
+        "documentation": "设置允许的最大输入电流，单位为毫安。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2410,7 +2410,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charging-core.yaml",
-      "sourceDigest": "57c10173db4bbdfd79dc3f5077dad6d757dbfd76d43b2acf6282d032b38b683a",
+      "sourceDigest": "9d63e57a840138494c04ab37681f99b3ea9a35a04942aefe6ddf56c4bd66c803",
       "sourceLocator": "vendor/wiseeff/huawei-charging-core.yaml#iterm_table",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2428,7 +2428,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,charging_core 的 DTS 属性「iterm table」（iterm_table），用于驱动读取的设备树配置。",
+        "documentation": "配置不同温度区间对应的充电截止电流。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2446,7 +2446,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-charging-core.yaml",
-      "sourceDigest": "57c10173db4bbdfd79dc3f5077dad6d757dbfd76d43b2acf6282d032b38b683a",
+      "sourceDigest": "9d63e57a840138494c04ab37681f99b3ea9a35a04942aefe6ddf56c4bd66c803",
       "sourceLocator": "vendor/wiseeff/huawei-charging-core.yaml#jeita_table",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2464,7 +2464,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,charging_core 的 DTS 属性「jeita table」（jeita_table），用于驱动读取的设备树配置。",
+        "documentation": "配置 JEITA 温度区间对应的充电电流、电压及控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2482,7 +2482,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charge-comp.yaml",
-      "sourceDigest": "6342ba73814431ce8bdc18d847fd41a62f900d9b7801f42b7494a94727cf54a1",
+      "sourceDigest": "c0632676d7169780f40c8fcd0e209ebc20141d18775c0bebab105b9a37fb7525",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charge-comp.yaml#vbat_comp_ic_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2500,7 +2500,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "电池电压相关参数「vbat_comp_ic_para」，单位通常为毫伏。",
+        "documentation": "配置不同充电芯片对应的电池电压补偿参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2518,7 +2518,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charge-ic.yaml",
-      "sourceDigest": "f1c1f7e137a87ffc5d1fe2128c2c300ca2e21600acbb078d9fecdd5f1caa1075",
+      "sourceDigest": "bcc8fd5822e586832a38bcd3d3bd413ecdaae15b3a574ea02e481ef6f1c6f6b6",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charge-ic.yaml#ic_para1",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2536,7 +2536,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "芯片角色或标识参数「ic_para1」。",
+        "documentation": "配置直充芯片的第 1 组控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2554,7 +2554,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charge-ic.yaml",
-      "sourceDigest": "f1c1f7e137a87ffc5d1fe2128c2c300ca2e21600acbb078d9fecdd5f1caa1075",
+      "sourceDigest": "bcc8fd5822e586832a38bcd3d3bd413ecdaae15b3a574ea02e481ef6f1c6f6b6",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charge-ic.yaml#mode_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2572,7 +2572,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charge_ic 的 DTS 属性「mode para」（mode_para），用于驱动读取的设备树配置。",
+        "documentation": "配置直充模式与对应芯片参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2590,7 +2590,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charge-turbo.yaml",
-      "sourceDigest": "a166d69a46d939d7b8ff7d24ea577ddc533cee20b618644835d03dd44eeaede7",
+      "sourceDigest": "397d1747595ea1bc25ce35832eb41a3093d74ec9cb6776b1be35aea0a1921310",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charge-turbo.yaml#time_para01",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2608,7 +2608,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charge_turbo 的 DTS 属性「time para01」（time_para01），用于驱动读取的设备树配置。",
+        "documentation": "配置第 1 组充电时长与控制参数的对应表。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2626,7 +2626,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charge-turbo.yaml",
-      "sourceDigest": "a166d69a46d939d7b8ff7d24ea577ddc533cee20b618644835d03dd44eeaede7",
+      "sourceDigest": "397d1747595ea1bc25ce35832eb41a3093d74ec9cb6776b1be35aea0a1921310",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charge-turbo.yaml#time_para_group",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2644,7 +2644,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charge_turbo 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。",
+        "documentation": "配置充电模式与对应时间参数组的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2662,7 +2662,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
-      "sourceDigest": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
+      "sourceDigest": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charger.yaml#bat_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2680,7 +2680,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charger 的 DTS 属性「bat para」（bat_para），用于驱动读取的设备树配置。",
+        "documentation": "配置电池类型及温度区间与充电参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2698,7 +2698,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
-      "sourceDigest": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
+      "sourceDigest": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charger.yaml#resist_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2716,7 +2716,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charger 的 DTS 属性「resist para」（resist_para），用于驱动读取的设备树配置。",
+        "documentation": "配置不同电阻区间对应的直充控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2734,7 +2734,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
-      "sourceDigest": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
+      "sourceDigest": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charger.yaml#stage_need_to_jump",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2752,7 +2752,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charger 的 DTS 属性「stage need to jump」（stage_need_to_jump），用于驱动读取的设备树配置。",
+        "documentation": "指定直充流程中需要跳过的阶段。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2770,7 +2770,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
-      "sourceDigest": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
+      "sourceDigest": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charger.yaml#temp_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2788,7 +2788,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "温度相关参数「temp_para」，用于保护或拟合。",
+        "documentation": "配置不同温度区间对应的充电控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2806,7 +2806,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
-      "sourceDigest": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
+      "sourceDigest": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charger.yaml#use_5A",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2824,7 +2824,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,direct_charger 的 DTS 属性「use 5A」（use_5A），用于驱动读取的设备树配置。",
+        "documentation": "指定是否启用 5A 充电支持。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2842,7 +2842,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
-      "sourceDigest": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
+      "sourceDigest": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charger.yaml#volt_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2860,7 +2860,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charger 的 DTS 属性「volt para」（volt_para），用于驱动读取的设备树配置。",
+        "documentation": "配置电池电压区间对应的充电控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2878,7 +2878,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-direct-charger.yaml",
-      "sourceDigest": "c5604e935ab02f3ff0f099a279522241a58a2225d78362e928e8eccbb4548751",
+      "sourceDigest": "434b446e915de1b11275fa26db99fcc55ab16d6c07028347dedc7998b2912ef8",
       "sourceLocator": "vendor/wiseeff/huawei-direct-charger.yaml#volt_para1",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2896,7 +2896,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,direct_charger 的 DTS 属性「volt para1」（volt_para1），用于驱动读取的设备树配置。",
+        "documentation": "配置第 1 组电池电压区间对应的充电控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2914,7 +2914,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-fm1230.yaml",
-      "sourceDigest": "53668c62f2fc4d81bfffde4c962c394459618c3c94cf38ac5cd886b4ff84e72c",
+      "sourceDigest": "63b3a0bab2d1259a2b80ce70630132d51f9819ff6243fe62d4de33b23ae37ee4",
       "sourceLocator": "vendor/wiseeff/huawei-fm1230.yaml#battct_id_gpio-supply",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2932,7 +2932,7 @@
       "content": {
         "valueShape": "phandle-list",
         "units": null,
-        "documentation": "huawei,fm1230 的 DTS 属性「battct id gpio supply」（battct_id_gpio-supply），用于驱动读取的设备树配置。",
+        "documentation": "指定电池识别 GPIO 使用的供电节点。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2950,7 +2950,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-fm1230.yaml",
-      "sourceDigest": "53668c62f2fc4d81bfffde4c962c394459618c3c94cf38ac5cd886b4ff84e72c",
+      "sourceDigest": "63b3a0bab2d1259a2b80ce70630132d51f9819ff6243fe62d4de33b23ae37ee4",
       "sourceLocator": "vendor/wiseeff/huawei-fm1230.yaml#ic_index",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -2968,7 +2968,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "芯片角色或标识参数「ic_index」。",
+        "documentation": "指定电池认证芯片的索引编号。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -2986,7 +2986,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-fm1230.yaml",
-      "sourceDigest": "53668c62f2fc4d81bfffde4c962c394459618c3c94cf38ac5cd886b4ff84e72c",
+      "sourceDigest": "63b3a0bab2d1259a2b80ce70630132d51f9819ff6243fe62d4de33b23ae37ee4",
       "sourceLocator": "vendor/wiseeff/huawei-fm1230.yaml#onewire-gpio",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3004,7 +3004,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "huawei,fm1230 的 DTS 属性「onewire gpio」（onewire-gpio），用于驱动读取的设备树配置。",
+        "documentation": "指定单总线通信使用的 GPIO 引脚。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3022,7 +3022,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-fm1230.yaml",
-      "sourceDigest": "53668c62f2fc4d81bfffde4c962c394459618c3c94cf38ac5cd886b4ff84e72c",
+      "sourceDigest": "63b3a0bab2d1259a2b80ce70630132d51f9819ff6243fe62d4de33b23ae37ee4",
       "sourceLocator": "vendor/wiseeff/huawei-fm1230.yaml#ow_read_end_delay",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3040,7 +3040,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": "ms",
-        "documentation": "huawei,fm1230 的 DTS 属性「ow read end delay」（ow_read_end_delay），用于驱动读取的设备树配置。",
+        "documentation": "配置单总线读取结束后的等待时长。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3058,7 +3058,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-fm1230.yaml",
-      "sourceDigest": "53668c62f2fc4d81bfffde4c962c394459618c3c94cf38ac5cd886b4ff84e72c",
+      "sourceDigest": "63b3a0bab2d1259a2b80ce70630132d51f9819ff6243fe62d4de33b23ae37ee4",
       "sourceLocator": "vendor/wiseeff/huawei-fm1230.yaml#ow_reset_start_delay",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3076,7 +3076,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": "ms",
-        "documentation": "huawei,fm1230 的 DTS 属性「ow reset start delay」（ow_reset_start_delay），用于驱动读取的设备树配置。",
+        "documentation": "配置单总线开始复位时的等待时长。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3094,7 +3094,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-multi-btb-temp.yaml",
-      "sourceDigest": "15038170898f52c3005d42fc54780b759ec1a4a33fa504272aa7b2c9b11f8987",
+      "sourceDigest": "4de98b60dd05813d185acb30b93a456bd7818a4daab89c0d8cc9e6a8f7ba9fad",
       "sourceLocator": "vendor/wiseeff/huawei-multi-btb-temp.yaml#sensor-names",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3112,7 +3112,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,multi_btb_temp 的 DTS 属性「sensor names」（sensor-names），用于驱动读取的设备树配置。",
+        "documentation": "配置温度传感器名称与对应补偿参数的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3130,7 +3130,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-t91407.yaml",
-      "sourceDigest": "66d8ce02638adb883e8466010f19b437f6e5a737c9d3c1df5a0b06352cc4d7dc",
+      "sourceDigest": "2af28f862047279b2c9bfad905c5122f2162c713bf5b57addb0e8889198dd60b",
       "sourceLocator": "vendor/wiseeff/huawei-t91407.yaml#battct_id_gpio-supply",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3148,7 +3148,7 @@
       "content": {
         "valueShape": "phandle-list",
         "units": null,
-        "documentation": "huawei,t91407 的 DTS 属性「battct id gpio supply」（battct_id_gpio-supply），用于驱动读取的设备树配置。",
+        "documentation": "指定电池识别 GPIO 使用的供电节点。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3166,7 +3166,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-t91407.yaml",
-      "sourceDigest": "66d8ce02638adb883e8466010f19b437f6e5a737c9d3c1df5a0b06352cc4d7dc",
+      "sourceDigest": "2af28f862047279b2c9bfad905c5122f2162c713bf5b57addb0e8889198dd60b",
       "sourceLocator": "vendor/wiseeff/huawei-t91407.yaml#onewire-gpio",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3184,7 +3184,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "huawei,t91407 的 DTS 属性「onewire gpio」（onewire-gpio），用于驱动读取的设备树配置。",
+        "documentation": "指定单总线通信使用的 GPIO 引脚。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3202,7 +3202,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-charger.yaml",
-      "sourceDigest": "bfeb63ffa4df58141718c3c3c0f3be167619c482456cc7d1959b55ef755e7370",
+      "sourceDigest": "ebd65f26a714d763e2ac619e1ff206393cee033c57d6f9403fd5708498a34e78",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-charger.yaml#pmax",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3220,7 +3220,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,wireless_charger 的 DTS 属性「pmax」（pmax），用于驱动读取的设备树配置。",
+        "documentation": "设置无线充电允许的最大功率。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3238,7 +3238,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-charger.yaml",
-      "sourceDigest": "bfeb63ffa4df58141718c3c3c0f3be167619c482456cc7d1959b55ef755e7370",
+      "sourceDigest": "ebd65f26a714d763e2ac619e1ff206393cee033c57d6f9403fd5708498a34e78",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-charger.yaml#rx_mode_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3256,7 +3256,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,wireless_charger 的 DTS 属性「rx mode para」（rx_mode_para），用于驱动读取的设备树配置。",
+        "documentation": "配置各无线充电接收模式的电压、电流及控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3274,7 +3274,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-charger.yaml",
-      "sourceDigest": "bfeb63ffa4df58141718c3c3c0f3be167619c482456cc7d1959b55ef755e7370",
+      "sourceDigest": "ebd65f26a714d763e2ac619e1ff206393cee033c57d6f9403fd5708498a34e78",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-charger.yaml#rx_mode_type_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3292,7 +3292,7 @@
       "content": {
         "valueShape": "bytes",
         "units": null,
-        "documentation": "huawei,wireless_charger 的 DTS 属性「rx mode type para」（rx_mode_type_para），用于驱动读取的设备树配置。",
+        "documentation": "配置无线充电接收模式的类型参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3310,7 +3310,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-charger.yaml",
-      "sourceDigest": "bfeb63ffa4df58141718c3c3c0f3be167619c482456cc7d1959b55ef755e7370",
+      "sourceDigest": "ebd65f26a714d763e2ac619e1ff206393cee033c57d6f9403fd5708498a34e78",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-charger.yaml#sc_err_tx",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3346,7 +3346,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-charger.yaml",
-      "sourceDigest": "bfeb63ffa4df58141718c3c3c0f3be167619c482456cc7d1959b55ef755e7370",
+      "sourceDigest": "ebd65f26a714d763e2ac619e1ff206393cee033c57d6f9403fd5708498a34e78",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-charger.yaml#trx_plim",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3364,7 +3364,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,wireless_charger 的 DTS 属性「trx plim」（trx_plim），用于驱动读取的设备树配置。",
+        "documentation": "配置无线充电收发过程的功率限制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3382,7 +3382,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-sc.yaml",
-      "sourceDigest": "c037cea068a39d09261f02331d297be8eb4a59ae3ba6aabba7a1d65096709341",
+      "sourceDigest": "5b137618e152fc17c1e4fa5bfbf9fb87ea15bd94890ab72011669df297145cbc",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-sc.yaml#bat_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3400,7 +3400,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,wireless_sc 的 DTS 属性「bat para」（bat_para），用于驱动读取的设备树配置。",
+        "documentation": "配置电池类型及温度区间与充电参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3418,7 +3418,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-sc.yaml",
-      "sourceDigest": "c037cea068a39d09261f02331d297be8eb4a59ae3ba6aabba7a1d65096709341",
+      "sourceDigest": "5b137618e152fc17c1e4fa5bfbf9fb87ea15bd94890ab72011669df297145cbc",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-sc.yaml#init_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3436,7 +3436,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,wireless_sc 的 DTS 属性「init para」（init_para），用于驱动读取的设备树配置。",
+        "documentation": "配置无线直充各模式的初始化参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3454,7 +3454,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-sc.yaml",
-      "sourceDigest": "c037cea068a39d09261f02331d297be8eb4a59ae3ba6aabba7a1d65096709341",
+      "sourceDigest": "5b137618e152fc17c1e4fa5bfbf9fb87ea15bd94890ab72011669df297145cbc",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-sc.yaml#init_para_col",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3472,7 +3472,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "huawei,wireless_sc 的 DTS 属性「init para col」（init_para_col），用于驱动读取的设备树配置。",
+        "documentation": "指定初始化参数表每组参数的列数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3490,7 +3490,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-sc.yaml",
-      "sourceDigest": "c037cea068a39d09261f02331d297be8eb4a59ae3ba6aabba7a1d65096709341",
+      "sourceDigest": "5b137618e152fc17c1e4fa5bfbf9fb87ea15bd94890ab72011669df297145cbc",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-sc.yaml#volt_para00",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3508,7 +3508,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,wireless_sc 的 DTS 属性「volt para00」（volt_para00），用于驱动读取的设备树配置。",
+        "documentation": "配置第 0 组电池电压区间对应的充电控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3526,7 +3526,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-wireless-sc.yaml",
-      "sourceDigest": "c037cea068a39d09261f02331d297be8eb4a59ae3ba6aabba7a1d65096709341",
+      "sourceDigest": "5b137618e152fc17c1e4fa5bfbf9fb87ea15bd94890ab72011669df297145cbc",
       "sourceLocator": "vendor/wiseeff/huawei-wireless-sc.yaml#volt_para01",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3544,7 +3544,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "huawei,wireless_sc 的 DTS 属性「volt para01」（volt_para01），用于驱动读取的设备树配置。",
+        "documentation": "配置第 1 组电池电压区间对应的充电控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3562,7 +3562,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#gpio_en",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3580,7 +3580,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "GPIO 相关配置项「gpio_en」，描述引脚、极性或中断线。",
+        "documentation": "指定控制设备使能的 GPIO 引脚。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3598,7 +3598,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#gpio_int",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3616,7 +3616,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "MT5788 interrupt GPIO phandle-array (pin + flags).",
+        "documentation": "指定中断 GPIO 的控制器、引脚及标志。",
         "constraints": {
           "cells": 3,
           "description": "phandle pin flags"
@@ -3637,7 +3637,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#prevfod1_product_list",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3655,7 +3655,7 @@
       "content": {
         "valueShape": "bytes",
         "units": null,
-        "documentation": "mt,mt5788 的 DTS 属性「prevfod1 product list」（prevfod1_product_list），用于驱动读取的设备树配置。",
+        "documentation": "列出使用 prevfod1 异物检测配置的产品标识。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3673,7 +3673,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#rx_fod_cond",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3691,7 +3691,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "mt,mt5788 的 DTS 属性「rx fod cond」（rx_fod_cond），用于驱动读取的设备树配置。",
+        "documentation": "配置接收端异物检测参数的选择条件。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3709,7 +3709,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#rx_mod_cm_cfg",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3727,7 +3727,7 @@
       "content": {
         "valueShape": "bytes",
         "units": null,
-        "documentation": "mt,mt5788 的 DTS 属性「rx mod cm cfg」（rx_mod_cm_cfg），用于驱动读取的设备树配置。",
+        "documentation": "配置无线充电接收端的共模调制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3745,7 +3745,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#rx_ploss_th0",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3763,7 +3763,7 @@
       "content": {
         "valueShape": "bytes",
         "units": null,
-        "documentation": "mt,mt5788 的 DTS 属性「rx ploss th0」（rx_ploss_th0），用于驱动读取的设备树配置。",
+        "documentation": "配置接收端异物检测使用的第 0 组功率损耗阈值。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3781,7 +3781,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#time_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3799,7 +3799,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "mt,mt5788 的 DTS 属性「time para」（time_para），用于驱动读取的设备树配置。",
+        "documentation": "配置充电时长与控制参数的对应表。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3817,7 +3817,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#time_para_group",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3835,7 +3835,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "mt,mt5788 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。",
+        "documentation": "配置充电模式与对应时间参数组的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3853,7 +3853,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#tx_current_fod_para",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3871,7 +3871,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "mt,mt5788 的 DTS 属性「tx current fod para」（tx_current_fod_para），用于驱动读取的设备树配置。",
+        "documentation": "配置发射端基于电流的异物检测参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3889,7 +3889,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt-l-v800.yaml",
-      "sourceDigest": "914bfd645041bf7346aee28bd9899e4e50ad81d45a7e3f13bc5917d653790cf6",
+      "sourceDigest": "a42d2f23a1e8cef089ed2c011ec7391a9e65183432bdd98299af995f5775b183",
       "sourceLocator": "vendor/wiseeff/nodename-batt-l-v800.yaml#batt_indentify_fcc",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3907,7 +3907,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电池相关参数「batt_indentify_fcc」，用于容量、标识或采样策略。",
+        "documentation": "配置用于识别电池的满充容量参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3925,7 +3925,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt-l-v800.yaml",
-      "sourceDigest": "914bfd645041bf7346aee28bd9899e4e50ad81d45a7e3f13bc5917d653790cf6",
+      "sourceDigest": "a42d2f23a1e8cef089ed2c011ec7391a9e65183432bdd98299af995f5775b183",
       "sourceLocator": "vendor/wiseeff/nodename-batt-l-v800.yaml#batt_index",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3943,7 +3943,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电池相关参数「batt_index」，用于容量、标识或采样策略。",
+        "documentation": "指定电池在多电池配置中的索引编号。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3961,7 +3961,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt-l-v800.yaml",
-      "sourceDigest": "914bfd645041bf7346aee28bd9899e4e50ad81d45a7e3f13bc5917d653790cf6",
+      "sourceDigest": "a42d2f23a1e8cef089ed2c011ec7391a9e65183432bdd98299af995f5775b183",
       "sourceLocator": "vendor/wiseeff/nodename-batt-l-v800.yaml#batt_name",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -3979,7 +3979,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "电池相关参数「batt_name」，用于容量、标识或采样策略。",
+        "documentation": "指定电池计量设备的名称。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -3997,7 +3997,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt-l-v800.yaml",
-      "sourceDigest": "914bfd645041bf7346aee28bd9899e4e50ad81d45a7e3f13bc5917d653790cf6",
+      "sourceDigest": "a42d2f23a1e8cef089ed2c011ec7391a9e65183432bdd98299af995f5775b183",
       "sourceLocator": "vendor/wiseeff/nodename-batt-l-v800.yaml#r_pcb",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4015,7 +4015,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电阻相关参数「r_pcb」，常用于 PCB 或采样电阻。",
+        "documentation": "配置电池电路板的电阻参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4033,7 +4033,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt-l-v800.yaml",
-      "sourceDigest": "914bfd645041bf7346aee28bd9899e4e50ad81d45a7e3f13bc5917d653790cf6",
+      "sourceDigest": "a42d2f23a1e8cef089ed2c011ec7391a9e65183432bdd98299af995f5775b183",
       "sourceLocator": "vendor/wiseeff/nodename-batt-l-v800.yaml#soe_dynamic_enable",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4051,7 +4051,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "batt_l_v800 的 DTS 属性「soe dynamic enable」（soe_dynamic_enable），用于驱动读取的设备树配置。",
+        "documentation": "指定是否启用电池动态能量状态估算。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4069,7 +4069,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt.yaml",
-      "sourceDigest": "5424765979db1447e2a86ae4c7279411b0bf8aeec5b0838a7b2d9764be6382fe",
+      "sourceDigest": "ce896f18a258a08ad8fa0230c6f9bf2d286b2a8dc68d0226a36ea4dbd8734fad",
       "sourceLocator": "vendor/wiseeff/nodename-batt.yaml#batt_indentify_fcc",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4087,7 +4087,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电池相关参数「batt_indentify_fcc」，用于容量、标识或采样策略。",
+        "documentation": "配置用于识别电池的满充容量参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4105,7 +4105,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt.yaml",
-      "sourceDigest": "5424765979db1447e2a86ae4c7279411b0bf8aeec5b0838a7b2d9764be6382fe",
+      "sourceDigest": "ce896f18a258a08ad8fa0230c6f9bf2d286b2a8dc68d0226a36ea4dbd8734fad",
       "sourceLocator": "vendor/wiseeff/nodename-batt.yaml#batt_index",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4123,7 +4123,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电池相关参数「batt_index」，用于容量、标识或采样策略。",
+        "documentation": "指定电池在多电池配置中的索引编号。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4141,7 +4141,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt.yaml",
-      "sourceDigest": "5424765979db1447e2a86ae4c7279411b0bf8aeec5b0838a7b2d9764be6382fe",
+      "sourceDigest": "ce896f18a258a08ad8fa0230c6f9bf2d286b2a8dc68d0226a36ea4dbd8734fad",
       "sourceLocator": "vendor/wiseeff/nodename-batt.yaml#batt_name",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4159,7 +4159,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "电池相关参数「batt_name」，用于容量、标识或采样策略。",
+        "documentation": "指定电池计量设备的名称。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4177,7 +4177,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt.yaml",
-      "sourceDigest": "5424765979db1447e2a86ae4c7279411b0bf8aeec5b0838a7b2d9764be6382fe",
+      "sourceDigest": "ce896f18a258a08ad8fa0230c6f9bf2d286b2a8dc68d0226a36ea4dbd8734fad",
       "sourceLocator": "vendor/wiseeff/nodename-batt.yaml#r_pcb",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4195,7 +4195,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "电阻相关参数「r_pcb」，常用于 PCB 或采样电阻。",
+        "documentation": "配置电池电路板的电阻参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4213,7 +4213,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-batt.yaml",
-      "sourceDigest": "5424765979db1447e2a86ae4c7279411b0bf8aeec5b0838a7b2d9764be6382fe",
+      "sourceDigest": "ce896f18a258a08ad8fa0230c6f9bf2d286b2a8dc68d0226a36ea4dbd8734fad",
       "sourceLocator": "vendor/wiseeff/nodename-batt.yaml#soe_dynamic_enable",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4231,7 +4231,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "batt 的 DTS 属性「soe dynamic enable」（soe_dynamic_enable），用于驱动读取的设备树配置。",
+        "documentation": "指定是否启用电池动态能量状态估算。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4249,7 +4249,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery-checker.yaml",
-      "sourceDigest": "83bcea16bb1ca2591cce3f8e2192b27fffec3a8a3424855eee31795bc29c2a18",
+      "sourceDigest": "38f0450ac78ae6a72b698c441f0af74cba1127a1b9f87ec6f59ee3d28081e2af",
       "sourceLocator": "vendor/wiseeff/nodename-battery-checker.yaml#matchable",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4267,7 +4267,7 @@
       "content": {
         "valueShape": "phandle-list",
         "units": null,
-        "documentation": "battery_checker 的 DTS 属性「matchable」（matchable），用于驱动读取的设备树配置。",
+        "documentation": "指定电池校验节点是否参与匹配。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4285,7 +4285,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery-checker.yaml",
-      "sourceDigest": "83bcea16bb1ca2591cce3f8e2192b27fffec3a8a3424855eee31795bc29c2a18",
+      "sourceDigest": "38f0450ac78ae6a72b698c441f0af74cba1127a1b9f87ec6f59ee3d28081e2af",
       "sourceLocator": "vendor/wiseeff/nodename-battery-checker.yaml#spare-cycles",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4303,7 +4303,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "battery_checker 的 DTS 属性「spare cycles」（spare-cycles），用于驱动读取的设备树配置。",
+        "documentation": "设置电池校验使用的备用循环次数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4321,7 +4321,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery0.yaml",
-      "sourceDigest": "f906306a04489d44676a8bedf948a70656560860ba3dcd3ae673456cfbedce6d",
+      "sourceDigest": "c9deaf9fe82c2bfd9d4ccd42657917a1b56ff177f2297a3fa02b69580bfc6449",
       "sourceLocator": "vendor/wiseeff/nodename-battery0.yaml#cccv_0",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4339,7 +4339,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "恒流恒压（CCCV）相关参数「cccv_0」。",
+        "documentation": "配置第 0 组恒流恒压充电的电压与电流参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4357,7 +4357,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery0.yaml",
-      "sourceDigest": "f906306a04489d44676a8bedf948a70656560860ba3dcd3ae673456cfbedce6d",
+      "sourceDigest": "c9deaf9fe82c2bfd9d4ccd42657917a1b56ff177f2297a3fa02b69580bfc6449",
       "sourceLocator": "vendor/wiseeff/nodename-battery0.yaml#cccv_10_20",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4375,7 +4375,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "恒流恒压（CCCV）相关参数「cccv_10_20」。",
+        "documentation": "配置 10～20℃ 温区的恒流恒压充电参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4393,7 +4393,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery0.yaml",
-      "sourceDigest": "f906306a04489d44676a8bedf948a70656560860ba3dcd3ae673456cfbedce6d",
+      "sourceDigest": "c9deaf9fe82c2bfd9d4ccd42657917a1b56ff177f2297a3fa02b69580bfc6449",
       "sourceLocator": "vendor/wiseeff/nodename-battery0.yaml#temp_tab",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4411,7 +4411,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "温度相关参数「temp_tab」，用于保护或拟合。",
+        "documentation": "配置温度区间与对应 CCCV 参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4429,7 +4429,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery0.yaml",
-      "sourceDigest": "f906306a04489d44676a8bedf948a70656560860ba3dcd3ae673456cfbedce6d",
+      "sourceDigest": "c9deaf9fe82c2bfd9d4ccd42657917a1b56ff177f2297a3fa02b69580bfc6449",
       "sourceLocator": "vendor/wiseeff/nodename-battery0.yaml#weight",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4447,7 +4447,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "battery0 的 DTS 属性「weight」（weight），用于驱动读取的设备树配置。",
+        "documentation": "设置多电池参数计算使用的电池权重。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4465,7 +4465,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery1.yaml",
-      "sourceDigest": "62f8470f2cb55135c96704df24bfcbc51a53a8b7a394825830994976df6d0cda",
+      "sourceDigest": "b7ef94439a82d466d1d042fc1f5d60f5f69548654d2a6ccf8eefa648b51f6d19",
       "sourceLocator": "vendor/wiseeff/nodename-battery1.yaml#cccv_10_20",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4483,7 +4483,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "恒流恒压（CCCV）相关参数「cccv_10_20」。",
+        "documentation": "配置 10～20℃ 温区的恒流恒压充电参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4501,7 +4501,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery1.yaml",
-      "sourceDigest": "62f8470f2cb55135c96704df24bfcbc51a53a8b7a394825830994976df6d0cda",
+      "sourceDigest": "b7ef94439a82d466d1d042fc1f5d60f5f69548654d2a6ccf8eefa648b51f6d19",
       "sourceLocator": "vendor/wiseeff/nodename-battery1.yaml#temp_tab",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4519,7 +4519,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "温度相关参数「temp_tab」，用于保护或拟合。",
+        "documentation": "配置温度区间与对应 CCCV 参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4537,7 +4537,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-battery1.yaml",
-      "sourceDigest": "62f8470f2cb55135c96704df24bfcbc51a53a8b7a394825830994976df6d0cda",
+      "sourceDigest": "b7ef94439a82d466d1d042fc1f5d60f5f69548654d2a6ccf8eefa648b51f6d19",
       "sourceLocator": "vendor/wiseeff/nodename-battery1.yaml#weight",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4555,7 +4555,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "battery1 的 DTS 属性「weight」（weight），用于驱动读取的设备树配置。",
+        "documentation": "设置多电池参数计算使用的电池权重。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4573,7 +4573,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-cccv-para0.yaml",
-      "sourceDigest": "bf7969bed14782c4ab7ca05f37224e3740a3ec4d84ab93d2fda7409fd9d4130d",
+      "sourceDigest": "317aa3bb3dcd105808d5c90f23f594fff0df5b07c148bd2042989bc22db9f256",
       "sourceLocator": "vendor/wiseeff/nodename-cccv-para0.yaml#buck_cccv_0_5",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4591,7 +4591,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "cccv_para0 的 DTS 属性「buck cccv 0 5」（buck_cccv_0_5），用于驱动读取的设备树配置。",
+        "documentation": "配置 0～5℃ 温区的降压恒流恒压充电参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4609,7 +4609,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-cccv-para0.yaml",
-      "sourceDigest": "bf7969bed14782c4ab7ca05f37224e3740a3ec4d84ab93d2fda7409fd9d4130d",
+      "sourceDigest": "317aa3bb3dcd105808d5c90f23f594fff0df5b07c148bd2042989bc22db9f256",
       "sourceLocator": "vendor/wiseeff/nodename-cccv-para0.yaml#buck_temp_tab",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4627,7 +4627,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "cccv_para0 的 DTS 属性「buck temp tab」（buck_temp_tab），用于驱动读取的设备树配置。",
+        "documentation": "配置温度区间与对应降压 CCCV 参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4645,7 +4645,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-cccv-para0.yaml",
-      "sourceDigest": "bf7969bed14782c4ab7ca05f37224e3740a3ec4d84ab93d2fda7409fd9d4130d",
+      "sourceDigest": "317aa3bb3dcd105808d5c90f23f594fff0df5b07c148bd2042989bc22db9f256",
       "sourceLocator": "vendor/wiseeff/nodename-cccv-para0.yaml#cccv_10_20",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4663,7 +4663,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "恒流恒压（CCCV）相关参数「cccv_10_20」。",
+        "documentation": "配置 10～20℃ 温区的恒流恒压充电参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4681,7 +4681,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-cccv-para0.yaml",
-      "sourceDigest": "bf7969bed14782c4ab7ca05f37224e3740a3ec4d84ab93d2fda7409fd9d4130d",
+      "sourceDigest": "317aa3bb3dcd105808d5c90f23f594fff0df5b07c148bd2042989bc22db9f256",
       "sourceLocator": "vendor/wiseeff/nodename-cccv-para0.yaml#temp_tab",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4699,7 +4699,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "温度相关参数「temp_tab」，用于保护或拟合。",
+        "documentation": "配置温度区间与对应 CCCV 参数表的映射。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4717,7 +4717,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-charging-core.yaml",
-      "sourceDigest": "4de7675c48357423839d4127589ff8f044f3dd93bb589bf686b62ae89c7b7ef7",
+      "sourceDigest": "c1c5ea736014c035f830d1926890ee2183bdea27ee9f07da471da45f1a64854b",
       "sourceLocator": "vendor/wiseeff/nodename-charging-core.yaml#battery-thermal-derate-curve",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4735,7 +4735,7 @@
       "content": {
         "valueShape": "nested-u32-array",
         "units": null,
-        "documentation": "Demo nested integer cell matrix for the DTS compatibility seed. Row and column counts are observations, not schema bounds.",
+        "documentation": "配置电池热降额曲线的整数矩阵。",
         "constraints": {},
         "hasExampleValue": false,
         "hasDefault": false,
@@ -4753,7 +4753,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-charging-core.yaml",
-      "sourceDigest": "4de7675c48357423839d4127589ff8f044f3dd93bb589bf686b62ae89c7b7ef7",
+      "sourceDigest": "c1c5ea736014c035f830d1926890ee2183bdea27ee9f07da471da45f1a64854b",
       "sourceLocator": "vendor/wiseeff/nodename-charging-core.yaml#fast-charge-profile-matrix",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4771,7 +4771,7 @@
       "content": {
         "valueShape": "nested-string-array",
         "units": null,
-        "documentation": "Demo nested string matrix for the DTS compatibility seed. Row and column counts are observations, not schema bounds.",
+        "documentation": "配置快充配置的字符串矩阵。",
         "constraints": {},
         "hasExampleValue": false,
         "hasDefault": false,
@@ -4789,7 +4789,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-i2c.yaml",
-      "sourceDigest": "96383c098936c343f7b674fe4756221e2908ae607ab372bee5d5d59e00eec23a",
+      "sourceDigest": "8094cbb6bbe3f63340f0767090f09a18976b4010eb391f412a006030d398d189",
       "sourceLocator": "vendor/wiseeff/nodename-i2c.yaml#hold-time",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4807,7 +4807,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "i2c 的 DTS 属性「hold time」（hold-time），用于驱动读取的设备树配置。",
+        "documentation": "配置 I²C 总线的信号保持时间参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4825,7 +4825,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-middle-cpu.yaml",
-      "sourceDigest": "0e30ca14cfe4374b76ae71262d1a2e8518b9d24061161f8b134f8f21cf448ede",
+      "sourceDigest": "d686a3bf7af315198af99ab12a76f55d8d516dcac0f64f3170a383d86dc8c0b0",
       "sourceLocator": "vendor/wiseeff/nodename-middle-cpu.yaml#active_perf_limit",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4843,7 +4843,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "middle_cpu 的 DTS 属性「active perf limit」（active_perf_limit），用于驱动读取的设备树配置。",
+        "documentation": "配置主动控制策略下的处理器性能限制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4861,7 +4861,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-middle-cpu.yaml",
-      "sourceDigest": "0e30ca14cfe4374b76ae71262d1a2e8518b9d24061161f8b134f8f21cf448ede",
+      "sourceDigest": "d686a3bf7af315198af99ab12a76f55d8d516dcac0f64f3170a383d86dc8c0b0",
       "sourceLocator": "vendor/wiseeff/nodename-middle-cpu.yaml#passive_perf_limit",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4879,7 +4879,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "middle_cpu 的 DTS 属性「passive perf limit」（passive_perf_limit），用于驱动读取的设备树配置。",
+        "documentation": "配置被动控制策略下的处理器性能限制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4897,7 +4897,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-root.yaml",
-      "sourceDigest": "171c3d480cb39343855335dc5a4c4f578b18c485b23cc2ddf9892fe018186100",
+      "sourceDigest": "9f061fd25d483bda64fd952f95db81502418699b4d1445e6f5bc7b1ddd916d39",
       "sourceLocator": "vendor/wiseeff/nodename-root.yaml#board_id",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4915,7 +4915,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "/ 的 DTS 属性「board id」（board_id），用于驱动读取的设备树配置。",
+        "documentation": "指定当前板卡的标识编号。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4933,7 +4933,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-buck.yaml",
-      "sourceDigest": "41badb2f9971b11b9c20657c9dcbb7bd425796ce09b5066d5f213916ec05183d",
+      "sourceDigest": "4edbf5030dee6e93ebaff9759af6bf692413c5ebfc05173741341c235a3e7fbc",
       "sourceLocator": "vendor/wiseeff/nodename-scharger-v800-buck.yaml#cur_balance_mos",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4951,7 +4951,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "scharger_v800_buck 的 DTS 属性「cur balance mos」（cur_balance_mos），用于驱动读取的设备树配置。",
+        "documentation": "配置电流均衡使用的 MOS 控制参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -4969,7 +4969,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-buck.yaml",
-      "sourceDigest": "41badb2f9971b11b9c20657c9dcbb7bd425796ce09b5066d5f213916ec05183d",
+      "sourceDigest": "4edbf5030dee6e93ebaff9759af6bf692413c5ebfc05173741341c235a3e7fbc",
       "sourceLocator": "vendor/wiseeff/nodename-scharger-v800-buck.yaml#pswovp_sw_flag",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -4987,7 +4987,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "scharger_v800_buck 的 DTS 属性「pswovp sw flag」（pswovp_sw_flag），用于驱动读取的设备树配置。",
+        "documentation": "配置电源开关过压保护的控制标志。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5005,7 +5005,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-buck.yaml",
-      "sourceDigest": "41badb2f9971b11b9c20657c9dcbb7bd425796ce09b5066d5f213916ec05183d",
+      "sourceDigest": "4edbf5030dee6e93ebaff9759af6bf692413c5ebfc05173741341c235a3e7fbc",
       "sourceLocator": "vendor/wiseeff/nodename-scharger-v800-buck.yaml#r_charger_uohm",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5023,7 +5023,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": "uOhm",
-        "documentation": "电阻相关参数「r_charger_uohm」，常用于 PCB 或采样电阻。",
+        "documentation": "配置充电电路的电阻参数，单位为微欧。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5041,7 +5041,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-buck.yaml",
-      "sourceDigest": "41badb2f9971b11b9c20657c9dcbb7bd425796ce09b5066d5f213916ec05183d",
+      "sourceDigest": "4edbf5030dee6e93ebaff9759af6bf692413c5ebfc05173741341c235a3e7fbc",
       "sourceLocator": "vendor/wiseeff/nodename-scharger-v800-buck.yaml#usbovp_sw_flag",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5059,7 +5059,7 @@
       "content": {
         "valueShape": "string-list",
         "units": null,
-        "documentation": "scharger_v800_buck 的 DTS 属性「usbovp sw flag」（usbovp_sw_flag），用于驱动读取的设备树配置。",
+        "documentation": "配置 USB 过压保护开关的控制标志。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5077,7 +5077,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-scharger-v800-flash.yaml",
-      "sourceDigest": "80ce6feabcccbc16ff216cb7fdf1705dacf187c40470bd9610c07be4646525c2",
+      "sourceDigest": "9ef589b5d3d6ba9661f00302b1d630a34b9b8e671dea142c73b4b71f19356b53",
       "sourceLocator": "vendor/wiseeff/nodename-scharger-v800-flash.yaml#vendor,led-type",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5095,7 +5095,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "scharger_v800_flash 的 DTS 属性「vendor,led type」（vendor,led-type），用于驱动读取的设备树配置。",
+        "documentation": "指定闪光灯 LED 的类型标识。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5113,7 +5113,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-scharger-v800.yaml",
-      "sourceDigest": "bd1c10cdcba9f9106e474f40873ebe06dc35a302900bea8f944679c201f6e7cb",
+      "sourceDigest": "e41aaeebe697bc4de72eb3a7153967ab72a881e123219dcd5ecc98fd2d4dccde",
       "sourceLocator": "vendor/wiseeff/nodename-scharger-v800.yaml#gpios",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5131,7 +5131,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "scharger_v800 的 DTS 属性「gpios」（gpios），用于驱动读取的设备树配置。",
+        "documentation": "指定设备使用的 GPIO 控制器、引脚及标志。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5149,7 +5149,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#fcp_support",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5167,7 +5167,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "sc8562 的 DTS 属性「fcp support」（fcp_support），用于驱动读取的设备树配置。",
+        "documentation": "指定是否支持 FCP 快充协议。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5185,7 +5185,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#gpio_int",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5203,7 +5203,7 @@
       "content": {
         "valueShape": "mixed",
         "units": null,
-        "documentation": "SC8562 interrupt GPIO phandle-array (pin + flags).",
+        "documentation": "指定中断 GPIO 的控制器、引脚及标志。",
         "constraints": {
           "cells": 3,
           "description": "phandle pin flags"
@@ -5224,7 +5224,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#ic_role",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5242,7 +5242,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "芯片角色或标识参数「ic_role」。",
+        "documentation": "指定芯片在充电电路中的角色标识。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5260,7 +5260,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#scp_support",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5278,7 +5278,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "sc8562 的 DTS 属性「scp support」（scp_support），用于驱动读取的设备树配置。",
+        "documentation": "指定是否支持 SCP 快充协议。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5296,7 +5296,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#sense_r_actual",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5314,7 +5314,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "sc8562 的 DTS 属性「sense r actual」（sense_r_actual），用于驱动读取的设备树配置。",
+        "documentation": "配置电流采样电阻的实际阻值。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5332,7 +5332,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#sense_r_config",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5350,7 +5350,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "sc8562 的 DTS 属性「sense r config」（sense_r_config），用于驱动读取的设备树配置。",
+        "documentation": "配置芯片使用的电流采样电阻参数。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5368,7 +5368,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#slave_mode",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5386,7 +5386,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": null,
-        "documentation": "sc8562 的 DTS 属性「slave mode」（slave_mode），用于驱动读取的设备树配置。",
+        "documentation": "指定充电芯片是否使用从机模式。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5404,7 +5404,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#vout_ovp_mv",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5422,7 +5422,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": "mV",
-        "documentation": "sc8562 的 DTS 属性「vout ovp mv」（vout_ovp_mv），用于驱动读取的设备树配置。",
+        "documentation": "设置输出过压保护的触发电压，单位为毫伏。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5440,7 +5440,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#watchdog_time",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {
@@ -5458,7 +5458,7 @@
       "content": {
         "valueShape": "u32-array",
         "units": "ms",
-        "documentation": "sc8562 的 DTS 属性「watchdog time」（watchdog_time），用于驱动读取的设备树配置。",
+        "documentation": "设置看门狗超时时长，单位为毫秒。",
         "constraints": {},
         "hasExampleValue": true,
         "hasDefault": false,
@@ -5478,7 +5478,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-amba-bus.yaml",
-      "sourceDigest": "a6325d4e8a258a0049c475d5598153c290a39f85256440936f6970e001c1b3e1",
+      "sourceDigest": "9b1f0282a16c6712e4c21c3a20bad0d0f802b7f3ab9c0326a068bbce1c9ad7b9",
       "sourceLocator": "vendor/wiseeff/arm-amba-bus.yaml##address-cells",
       "propertyKey": "#address-cells",
       "disposition": "exclude",
@@ -5489,7 +5489,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-amba-bus.yaml",
-      "sourceDigest": "a6325d4e8a258a0049c475d5598153c290a39f85256440936f6970e001c1b3e1",
+      "sourceDigest": "9b1f0282a16c6712e4c21c3a20bad0d0f802b7f3ab9c0326a068bbce1c9ad7b9",
       "sourceLocator": "vendor/wiseeff/arm-amba-bus.yaml##size-cells",
       "propertyKey": "#size-cells",
       "disposition": "exclude",
@@ -5500,7 +5500,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-amba-bus.yaml",
-      "sourceDigest": "a6325d4e8a258a0049c475d5598153c290a39f85256440936f6970e001c1b3e1",
+      "sourceDigest": "9b1f0282a16c6712e4c21c3a20bad0d0f802b7f3ab9c0326a068bbce1c9ad7b9",
       "sourceLocator": "vendor/wiseeff/arm-amba-bus.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5511,7 +5511,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-amba-bus.yaml",
-      "sourceDigest": "a6325d4e8a258a0049c475d5598153c290a39f85256440936f6970e001c1b3e1",
+      "sourceDigest": "9b1f0282a16c6712e4c21c3a20bad0d0f802b7f3ab9c0326a068bbce1c9ad7b9",
       "sourceLocator": "vendor/wiseeff/arm-amba-bus.yaml#ranges",
       "propertyKey": "ranges",
       "disposition": "exclude",
@@ -5522,7 +5522,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-gic-v3.yaml",
-      "sourceDigest": "a129990ad2890b0d19f19d61efbd09649e3a52f0c0e0f1608ed168eee9dea9ec",
+      "sourceDigest": "144d31edfdf05e16bd0bc3b1776d8d6690a818fcc8c252d5aac848074a95a762",
       "sourceLocator": "vendor/wiseeff/arm-gic-v3.yaml##interrupt-cells",
       "propertyKey": "#interrupt-cells",
       "disposition": "exclude",
@@ -5533,7 +5533,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-gic-v3.yaml",
-      "sourceDigest": "a129990ad2890b0d19f19d61efbd09649e3a52f0c0e0f1608ed168eee9dea9ec",
+      "sourceDigest": "144d31edfdf05e16bd0bc3b1776d8d6690a818fcc8c252d5aac848074a95a762",
       "sourceLocator": "vendor/wiseeff/arm-gic-v3.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5544,7 +5544,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/arm-gic-v3.yaml",
-      "sourceDigest": "a129990ad2890b0d19f19d61efbd09649e3a52f0c0e0f1608ed168eee9dea9ec",
+      "sourceDigest": "144d31edfdf05e16bd0bc3b1776d8d6690a818fcc8c252d5aac848074a95a762",
       "sourceLocator": "vendor/wiseeff/arm-gic-v3.yaml#interrupt-controller",
       "propertyKey": "interrupt-controller",
       "disposition": "exclude",
@@ -5555,7 +5555,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-gpio.yaml",
-      "sourceDigest": "3532bbf66bc7b56cca7bc9e22efcd6a1e754a92b43e4e7ccd39ee441968f6bc9",
+      "sourceDigest": "031cd4814d7a69c778cd9cc71389c499c6676cf24753062927112ef82890effa",
       "sourceLocator": "vendor/wiseeff/hisilicon-gpio.yaml##gpio-cells",
       "propertyKey": "#gpio-cells",
       "disposition": "exclude",
@@ -5566,7 +5566,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-gpio.yaml",
-      "sourceDigest": "3532bbf66bc7b56cca7bc9e22efcd6a1e754a92b43e4e7ccd39ee441968f6bc9",
+      "sourceDigest": "031cd4814d7a69c778cd9cc71389c499c6676cf24753062927112ef82890effa",
       "sourceLocator": "vendor/wiseeff/hisilicon-gpio.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5577,7 +5577,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-gpio.yaml",
-      "sourceDigest": "3532bbf66bc7b56cca7bc9e22efcd6a1e754a92b43e4e7ccd39ee441968f6bc9",
+      "sourceDigest": "031cd4814d7a69c778cd9cc71389c499c6676cf24753062927112ef82890effa",
       "sourceLocator": "vendor/wiseeff/hisilicon-gpio.yaml#gpio-controller",
       "propertyKey": "gpio-controller",
       "disposition": "exclude",
@@ -5588,7 +5588,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/hisilicon-spmi.yaml",
-      "sourceDigest": "f62a132e2ddcbed3b3280b5796fab0d06fec209d2b1bbb3b3310cd6bb7ca3c28",
+      "sourceDigest": "fb141e6adbef25589ddd82bc768f223460aee291b4bd45f7062fdd0bfea3790f",
       "sourceLocator": "vendor/wiseeff/hisilicon-spmi.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5599,7 +5599,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-bypass-bst-hl7603.yaml",
-      "sourceDigest": "4a237c51605bd7146273068592b83270f42880422ae6b29830464ff3c14ad845",
+      "sourceDigest": "0c0a63a00e05937d50588969abc0aec1dcb1b6d5bd7b48c65729311bbd8500eb",
       "sourceLocator": "vendor/wiseeff/huawei-bypass-bst-hl7603.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5610,7 +5610,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-bypass-bst-hl7603.yaml",
-      "sourceDigest": "4a237c51605bd7146273068592b83270f42880422ae6b29830464ff3c14ad845",
+      "sourceDigest": "0c0a63a00e05937d50588969abc0aec1dcb1b6d5bd7b48c65729311bbd8500eb",
       "sourceLocator": "vendor/wiseeff/huawei-bypass-bst-hl7603.yaml#reg",
       "propertyKey": "reg",
       "disposition": "exclude",
@@ -5621,7 +5621,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-t91407.yaml",
-      "sourceDigest": "66d8ce02638adb883e8466010f19b437f6e5a737c9d3c1df5a0b06352cc4d7dc",
+      "sourceDigest": "2af28f862047279b2c9bfad905c5122f2162c713bf5b57addb0e8889198dd60b",
       "sourceLocator": "vendor/wiseeff/huawei-t91407.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5632,7 +5632,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5643,7 +5643,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/mt-mt5788.yaml",
-      "sourceDigest": "436c737bba7191f60a86c5c50e33bdac6829d32a9af2be23e12efa44eecf4445",
+      "sourceDigest": "a660375be552e786852322ef45bb591d815a8f464e7269b8a2c18859fe1c4780",
       "sourceLocator": "vendor/wiseeff/mt-mt5788.yaml#reg",
       "propertyKey": "reg",
       "disposition": "exclude",
@@ -5654,7 +5654,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-i2c.yaml",
-      "sourceDigest": "96383c098936c343f7b674fe4756221e2908ae607ab372bee5d5d59e00eec23a",
+      "sourceDigest": "8094cbb6bbe3f63340f0767090f09a18976b4010eb391f412a006030d398d189",
       "sourceLocator": "vendor/wiseeff/nodename-i2c.yaml##address-cells",
       "propertyKey": "#address-cells",
       "disposition": "exclude",
@@ -5665,7 +5665,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-i2c.yaml",
-      "sourceDigest": "96383c098936c343f7b674fe4756221e2908ae607ab372bee5d5d59e00eec23a",
+      "sourceDigest": "8094cbb6bbe3f63340f0767090f09a18976b4010eb391f412a006030d398d189",
       "sourceLocator": "vendor/wiseeff/nodename-i2c.yaml##size-cells",
       "propertyKey": "#size-cells",
       "disposition": "exclude",
@@ -5676,7 +5676,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-pmic.yaml",
-      "sourceDigest": "c481bae57b45533ed2bb9f5123109f091a196a2bdd9b6c818b599499e5d1aa63",
+      "sourceDigest": "fc7b5c58e8c6735a6f2ee2ba76a789ac342a5ce1eda0ce6a47c70972958479df",
       "sourceLocator": "vendor/wiseeff/nodename-pmic.yaml##address-cells",
       "propertyKey": "#address-cells",
       "disposition": "exclude",
@@ -5687,7 +5687,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/nodename-pmic.yaml",
-      "sourceDigest": "c481bae57b45533ed2bb9f5123109f091a196a2bdd9b6c818b599499e5d1aa63",
+      "sourceDigest": "fc7b5c58e8c6735a6f2ee2ba76a789ac342a5ce1eda0ce6a47c70972958479df",
       "sourceLocator": "vendor/wiseeff/nodename-pmic.yaml##size-cells",
       "propertyKey": "#size-cells",
       "disposition": "exclude",
@@ -5698,7 +5698,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#compatible",
       "propertyKey": "compatible",
       "disposition": "exclude",
@@ -5709,7 +5709,7 @@
       "family": "vendor",
       "scope": "excluded",
       "sourcePath": "schemas/dts/vendor/wiseeff/sc8562.yaml",
-      "sourceDigest": "aa489e8a8e2f10c6cab7baeacccca1319e12b795b480eecee5c7e75addea7849",
+      "sourceDigest": "ce9e7ce2d1c64468ce7bd56778061413615be3461157e2b9493dd6ee310b8c13",
       "sourceLocator": "vendor/wiseeff/sc8562.yaml#reg",
       "propertyKey": "reg",
       "disposition": "exclude",

@@ -342,6 +342,8 @@ export function DtsParameterWorkbenchTable({
           const isChecked = selectedBindingIds?.has(row.bindingId) ?? false;
           const actionContext = bindingActionContext(row);
           const displayRaw = formatDtsRawValueForUi(row.rawValue) || row.rawValue;
+          const displayName = row.displayName?.trim();
+          const hasDisplayName = Boolean(displayName && displayName !== row.propertyKey);
           return (
             <div
               role="row"
@@ -365,28 +367,39 @@ export function DtsParameterWorkbenchTable({
                 </span>
               ) : null}
               <span role="cell" data-label="参数名" className="dts-parameter-workbench-table__property">
-                <code title={row.propertyKey}>{row.propertyKey}</code>
-                {isDraft ? (
-                  <span
-                    className="dts-parameter-workbench-table__draft-badge"
-                    data-testid={`draft-${row.bindingId}`}
-                  >
-                    草稿
-                  </span>
-                ) : null}
-                {row.nodeEnablementNotice ? (
-                  <small
-                    className="dts-parameter-workbench-table__enablement-notice"
-                    title={row.nodeEnablementNotice}
-                  >
-                    {row.nodeEnablementNotice}
-                    {row.topologyPath ? (
-                      <span className="dts-parameter-workbench-table__enablement-path">
-                        {" "}
-                        · {row.topologyPath}
-                      </span>
+                <span className="dts-parameter-workbench-table__property-primary">
+                  {hasDisplayName ? (
+                    <strong title={displayName}>{displayName}</strong>
+                  ) : (
+                    <code title={row.propertyKey}>{row.propertyKey}</code>
+                  )}
+                  {isDraft ? (
+                    <span
+                      className="dts-parameter-workbench-table__draft-badge"
+                      data-testid={`draft-${row.bindingId}`}
+                    >
+                      草稿
+                    </span>
+                  ) : null}
+                </span>
+                {hasDisplayName || row.nodeEnablementNotice ? (
+                  <span className="dts-parameter-workbench-table__property-secondary">
+                    {hasDisplayName ? <code title={row.propertyKey}>{row.propertyKey}</code> : null}
+                    {row.nodeEnablementNotice ? (
+                      <small
+                        className="dts-parameter-workbench-table__enablement-notice"
+                        title={row.nodeEnablementNotice}
+                      >
+                        {row.nodeEnablementNotice}
+                        {row.topologyPath ? (
+                          <span className="dts-parameter-workbench-table__enablement-path">
+                            {" "}
+                            · {row.topologyPath}
+                          </span>
+                        ) : null}
+                      </small>
                     ) : null}
-                  </small>
+                  </span>
                 ) : null}
               </span>
               <span
