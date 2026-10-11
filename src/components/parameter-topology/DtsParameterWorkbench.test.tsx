@@ -249,6 +249,75 @@ function selectModuleDevice(moduleLabel: RegExp, deviceLabel: RegExp) {
 }
 
 describe("DtsParameterWorkbench", () => {
+  it("shows the revision display name above the unchanged monospace key without replacing the binding description", () => {
+    const displayName = "GPIO 中断配置的完整显示名称";
+    renderWorkbench({
+      effectiveRows: effectiveRows.map((item) => item.bindingId === "binding-gpio-int"
+        ? { ...item, displayName, description: "项目中的展示描述" }
+        : item),
+    });
+    const bindingRow = visibleBindingRows().find((item) => item.dataset.bindingId === "binding-gpio-int")!;
+    const nameCell = bindingRow.querySelector('[data-label="参数名"]')!;
+    const name = within(nameCell as HTMLElement).getByText(displayName);
+    const key = within(nameCell as HTMLElement).getByText("gpio_int");
+    expect(name.tagName).toBe("STRONG");
+    expect(name).toHaveAttribute("title", displayName);
+    expect(key.tagName).toBe("CODE");
+    expect(key).toHaveAttribute("title", "gpio_int");
+    expect(name.compareDocumentPosition(key) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bindingRow.querySelector('[data-label="展示描述"]')).toHaveTextContent("项目中的展示描述");
+    expect(within(nameCell as HTMLElement).getByTestId("draft-binding-gpio-int")).toBeVisible();
+  });
+
+  it.each([undefined, null, "", "  ", "gpio_int", " gpio_int "])("shows only the key when the name is absent or duplicates it: %s", (displayName) => {
+    renderWorkbench({ effectiveRows: [{ ...effectiveRows[0]!, displayName }] });
+    const nameCell = visibleBindingRows()[0]!.querySelector('[data-label="参数名"]')!;
+    expect(within(nameCell as HTMLElement).getAllByText("gpio_int")).toHaveLength(1);
+    expect(nameCell.querySelector("code")).toHaveAttribute("title", "gpio_int");
+    expect(nameCell.querySelector("strong")).toBeNull();
+  });
+
+  it("bounds long names, keys and node notices to two single-line groups with full tooltips", () => {
+    const displayName = "很长的中文参数显示名称".repeat(8);
+    const propertyKey = "vendor,very-long-property-key-".repeat(8);
+    const notice = "所属节点不可达".repeat(8);
+    renderWorkbench({ effectiveRows: [{ ...effectiveRows[0]!, displayName, propertyKey, nodeEnablementNotice: notice }] });
+    const nameCell = visibleBindingRows()[0]!.querySelector('[data-label="参数名"]')!;
+    expect(nameCell.children).toHaveLength(2);
+    expect(within(nameCell as HTMLElement).getByText(displayName)).toHaveAttribute("title", displayName);
+    expect(within(nameCell as HTMLElement).getByText(propertyKey)).toHaveAttribute("title", propertyKey);
+    expect(nameCell.querySelector(".dts-parameter-workbench-table__enablement-notice")).toHaveAttribute("title", notice);
+    const styles = readStylesheet("src/styles.css");
+    for (const selector of [
+      ".dts-parameter-workbench-table__property-primary > strong",
+      ".dts-parameter-workbench-table__property-primary > code",
+      ".dts-parameter-workbench-table__property-secondary > code",
+      ".dts-parameter-workbench-table__property-secondary > .dts-parameter-workbench-table__enablement-notice",
+    ]) {
+      expect(declarationFor(styles, selector, "white-space")).toBe("nowrap");
+      expect(declarationFor(styles, selector, "overflow")).toBe("hidden");
+      expect(declarationFor(styles, selector, "text-overflow")).toBe("ellipsis");
+    }
+  });
+
+  it("matches the display name as well as the unchanged key in the workbench search field", () => {
+    renderWorkbench({
+      effectiveRows: effectiveRows.map((item) => item.bindingId === "binding-gpio-int"
+        ? { ...item, displayName: "GPIO 中断配置" }
+        : item),
+    });
+    const search = screen.getByRole("searchbox", { name: "搜索 DTS 参数" });
+    fireEvent.change(search, { target: { value: "中断配置" } });
+    expect(visibleBindingRows().map((item) => item.dataset.bindingId)).toEqual(["binding-gpio-int"]);
+    expect(within(visibleBindingRows()[0]!).getByText("GPIO 中断配置")).toBeVisible();
+    fireEvent.change(search, { target: { value: "gpio_int" } });
+    expect(visibleBindingRows().map((item) => item.dataset.bindingId)).toEqual(["binding-gpio-int"]);
+    fireEvent.change(search, { target: { value: "未定义的参数名" } });
+    expect(screen.getByText("当前筛选范围内没有参数。")).toBeVisible();
+    fireEvent.change(search, { target: { value: "" } });
+    expect(visibleBindingRows()).toHaveLength(effectiveRows.length);
+  });
+
   it("exposes scoped mature-workbench regions for topology, list and current edits", () => {
     renderWorkbench({
       currentEdits: <div data-testid="current-edits-slot">当前已修改</div>
