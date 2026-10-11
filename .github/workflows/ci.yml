@@ -63,15 +63,35 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # Docker Hub no longer serves minio/minio and minio/mc. The real server already has these exact
-      # pinned tags locally; load the same tags from MinIO's quay.io registry and keep the original names.
-      - name: Preload pinned MinIO images (Docker Hub unavailable)
+      # Docker Hub and quay.io no longer serve minio/minio and minio/mc. The real server already has these exact
+      # pinned tags locally. Rebuild the same pinned releases (official binary by exact release name, falling back
+      # to the tagged source) in a minimal image under the original names. Image IDs differ from the server's.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: false
+      - name: Rebuild pinned MinIO images (registries unavailable)
         run: |
           set -euo pipefail
-          for image in minio/minio:RELEASE.2024-12-18T13-15-44Z minio/mc:RELEASE.2024-11-21T17-21-54Z; do
-            docker pull "quay.io/${image}"
-            docker tag "quay.io/${image}" "${image}"
-          done
+          work="$(mktemp -d)"
+          fetch() { # name release out
+            if curl -fsSL --retry 3 -o "$3" "https://dl.min.io/$( [ "$1" = minio ] && echo server/minio || echo client/mc )/release/linux-amd64/archive/$1.$2"; then
+              echo "downloaded $1 $2"
+            else
+              echo "binary unavailable; building $1 $2 from source"
+              git clone -q --depth 1 --branch "$2" "https://github.com/minio/$1.git" "$work/src-$1"
+              (cd "$work/src-$1" && CGO_ENABLED=0 go build -trimpath -o "$3" .)
+            fi
+            chmod +x "$3"
+          }
+          fetch minio RELEASE.2024-12-18T13-15-44Z "$work/minio"
+          fetch mc RELEASE.2024-11-21T17-21-54Z "$work/mc"
+          printf 'FROM alpine:3.20\nCOPY minio /usr/bin/minio\nENTRYPOINT ["/usr/bin/minio"]\n' > "$work/Dockerfile.minio"
+          printf 'FROM alpine:3.20\nCOPY mc /usr/bin/mc\nENTRYPOINT ["/usr/bin/mc"]\n' > "$work/Dockerfile.mc"
+          docker build -q -f "$work/Dockerfile.minio" -t minio/minio:RELEASE.2024-12-18T13-15-44Z "$work"
+          docker build -q -f "$work/Dockerfile.mc" -t minio/mc:RELEASE.2024-11-21T17-21-54Z "$work"
+          docker run --rm minio/minio:RELEASE.2024-12-18T13-15-44Z --version
+          docker run --rm minio/mc:RELEASE.2024-11-21T17-21-54Z --version
       - name: Rehearse the real in-place upgrade from 360bbc428
         run: npx tsx scripts/rehearse-upgrade-from-360bbc428.ts
       - name: Retain sanitized rehearsal evidence only
