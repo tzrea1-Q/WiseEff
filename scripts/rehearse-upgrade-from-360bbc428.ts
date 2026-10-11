@@ -102,6 +102,17 @@ async function main() {
     }
     throw new Error("API readiness timed out");
   }
+  /** seed-rebuild records each service's health at begin and requires the same health at finish; begin only once every health-checked service is healthy. */
+  async function allServicesHealthy() {
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const ids = spawnSync("docker", ["ps", "-q", "--filter", `label=com.docker.compose.project=${project}`], { encoding: "utf8" }).stdout.split(/\s+/).filter(Boolean);
+      const states = ids.map((id) => spawnSync("docker", ["inspect", "-f", "{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", id], { encoding: "utf8" }).stdout.trim());
+      const pending = states.filter((state) => !/ (healthy|none)$/.test(state));
+      if (ids.length > 0 && pending.length === 0) return;
+      await setTimeout(2000);
+    }
+    throw new Error("Services did not all become healthy before seed rebuild");
+  }
   async function login() {
     const values = parse(readFileSync(envFile, "utf8"));
     const response = await fetch(`${origin}/api/v1/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: values.WISEEFF_LAB_ADMIN_USERNAME, password: values.WISEEFF_LAB_ADMIN_PASSWORD }), signal: AbortSignal.timeout(15_000) });
@@ -218,6 +229,7 @@ async function main() {
     registerSecrets();
     compose("runtime-logins-start", ["up", "-d", "--force-recreate", "--no-build", "api", "worker", "publication-manager"]);
     await ready();
+    await allServicesHealthy();
     phase = "native-seed-rebuild";
     seed("plan", ["--actor", bootstrap.actor, "--organization-id", "org-chargelab"]);
     const seedState = () => JSON.parse(readFileSync(`${directory}/seed-state/${seedId}/core-state.json`, "utf8"));
