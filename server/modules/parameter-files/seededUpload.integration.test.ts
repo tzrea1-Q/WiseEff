@@ -17,11 +17,10 @@ import { createWiseEffServer } from "../../app";
 import { parsePowerManagementConfig, seedM1Parameters, seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../scripts/seed-m1-parameters";
 import { seedM0Foundation } from "../../../scripts/seed-m0";
 import { loadCommittedDtsSeedFiles } from "../../../scripts/compile-dts-seed";
-import { seedPublishedCatalog } from "../../testing/parameterCatalog/seedPublishedCatalog";
+import { readSeededCatalogPointer, seedPublishedCatalog } from "../../testing/parameterCatalog/seedPublishedCatalog";
 import { VENDOR_LOCALIZED_RELEASE_ID } from "../../../scripts/compile-vendor-catalog-release";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { SEMANTIC_BINDING_FIXTURE_RELEASE_ID, seedSemanticBindingCatalog } from "../../testing/parameterCatalog/semanticBinding";
-import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
@@ -84,20 +83,20 @@ describe("disposable acceptance post-cutover DTS upload", () => {
     const pool = getRootPostgresPool(db)!;
     const pin = await captureCurrentCatalogPin(pool);
     expect(pin?.id).toBe(VENDOR_LOCALIZED_RELEASE_ID);
-    expect(await readCurrentCatalogPointer(pool)).toMatchObject({
+    expect(await readSeededCatalogPointer(pool)).toMatchObject({
       kind: "installed", current: { id: VENDOR_LOCALIZED_RELEASE_ID, version: "1.2.1" },
     });
     expect(await seedPublishedCatalog(pool)).toMatchObject(pin!);
     const binding = await seedIsolatedBinding(request, {
       propertyKey: "iin_max", dts: numericCellDts("iin_max", 80), timeoutMs: 5_000
     });
-    const acceptance = await readCurrentCatalogPointer(pool);
+    const acceptance = await readSeededCatalogPointer(pool);
     expect(acceptance).toMatchObject({
       kind: "installed", current: { id: SEMANTIC_BINDING_FIXTURE_RELEASE_ID, version: "1.3.0" },
       predecessorReleaseId: VENDOR_LOCALIZED_RELEASE_ID,
     });
     await seedSemanticBindingCatalog(pool);
-    expect(await readCurrentCatalogPointer(pool)).toEqual(acceptance);
+    expect(await readSeededCatalogPointer(pool)).toEqual(acceptance);
     expect(binding.rawValue).toBe("<80>");
     expect(binding.nodeLocator).toBe("/td079_cell");
     expect(binding.bindingId).toBeTruthy();

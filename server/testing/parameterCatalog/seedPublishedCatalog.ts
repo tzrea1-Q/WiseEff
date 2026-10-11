@@ -6,6 +6,11 @@ import { installPublishedRelease } from "../../modules/catalog-kernel/install/in
 import { firstReleaseBundle } from "./cutoverPopulatedFixture";
 import { compileLocalizedVendorCatalogSuccessor } from "../../../scripts/compile-vendor-catalog-release";
 
+/** Test-side read of the installed Catalog pointer, so module tests need not import kernel internals. */
+export function readSeededCatalogPointer(pool: pg.Pool) {
+  return readCurrentCatalogPointer(pool);
+}
+
 export async function seedPublishedCatalog(pool: pg.Pool) {
   const localized = compileLocalizedVendorCatalogSuccessor();
   const vendor = localized.previous;
