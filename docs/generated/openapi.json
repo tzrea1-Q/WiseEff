@@ -23934,6 +23934,12 @@
                   "null"
                 ]
               },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
               "targets": {
                 "type": "array",
                 "items": {
@@ -24732,6 +24738,12 @@
                     "string",
                     "null"
                   ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
                 },
                 "targets": {
                   "type": "array",
@@ -25650,6 +25662,12 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
                   },
                   "targets": {
                     "type": "array",
@@ -26778,6 +26796,12 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
                   },
                   "targets": {
                     "type": "array",
