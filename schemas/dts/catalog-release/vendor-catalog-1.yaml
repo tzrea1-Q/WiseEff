@@ -1,0 +1,2980 @@
+schemaVersion: 1.0.0
+documents:
+  - kind: subject
+    content:
+      id: csub_acme_power
+      kind: driver
+      canonicalKey: driver:acme,power
+      lifecycle: retired
+      selector:
+        kind: driver-compatible
+        value: acme,power
+        provenance:
+          source: schemas/dts/vendor/acme-power.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone:
+        reason: acme-sample-retired
+        withdrawnByReleaseId: crel_vendor_catalog_1
+        previousSelector: acme,power
+  - kind: alias
+    content:
+      id: cali_acme_power_v1
+      subjectId: csub_acme_power
+      selectorKind: driver-compatible
+      normalizedSelector: acme,power-v1
+      lifecycle: retired
+      selectorProvenance:
+        source: catalog-review
+      tombstone:
+        reason: acme-sample-retired
+        withdrawnByReleaseId: crel_vendor_catalog_1
+        previousSelector: acme,power-v1
+  - kind: definition
+    content:
+      id: pdef_acme_power_iin_max
+      subjectId: csub_acme_power
+      propertyKey: iin_max
+      revision:
+        id: drev_acme_power_iin_max_1
+        number: 1
+        contentDigest: sha256:65f9a9aabfbe4742090a6f131b19f4444b17c32f83f1a578503f87e2644cc314
+        lifecycle: active
+        displayName: Input current limit
+        documentation: Maximum accepted input current.
+        unit: mA
+        valueSchema:
+          type: integer
+          minimum: 0
+        matching:
+          sourceProperty: iin_max
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_arm_amba_bus
+      kind: driver
+      canonicalKey: driver:arm,amba-bus
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: arm,amba-bus
+        provenance:
+          source: vendor/wiseeff/arm-amba-bus.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_arm_amba_bus_interrupt_parent
+      subjectId: csub_drv_arm_amba_bus
+      propertyKey: interrupt-parent
+      revision:
+        id: drev_drv_arm_amba_bus_interrupt_parent_1
+        number: 1
+        contentDigest: sha256:cd10772ea65e030f689ab003bad9a72f9f74cdc54cfc4cac09f4da6e9c6a2ee7
+        lifecycle: active
+        displayName: interrupt-parent
+        documentation: 指向中断控制器的 phandle。
+        valueSchema:
+          type: array
+        matching:
+          sourceProperty: interrupt-parent
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_arm_gic_v3
+      kind: driver
+      canonicalKey: driver:arm,gic-v3
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: arm,gic-v3
+        provenance:
+          source: vendor/wiseeff/arm-gic-v3.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_drv_hisilicon_gpio
+      kind: driver
+      canonicalKey: driver:hisilicon,gpio
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: hisilicon,gpio
+        provenance:
+          source: vendor/wiseeff/hisilicon-gpio.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_drv_hisilicon_hisi_bci_battery
+      kind: driver
+      canonicalKey: driver:hisilicon,hisi_bci_battery
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: hisilicon,hisi_bci_battery
+        provenance:
+          source: vendor/wiseeff/hisilicon-hisi-bci-battery.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_hisilicon_hisi_bci_battery_battery_board_type
+      subjectId: csub_drv_hisilicon_hisi_bci_battery
+      propertyKey: battery_board_type
+      revision:
+        id: drev_drv_hisilicon_hisi_bci_battery_battery_board_type_1
+        number: 1
+        contentDigest: sha256:379dfda7cfeafa5d6451d785f0d264e13d26d1df45adf3e0ef12516a8d14e9df
+        lifecycle: active
+        displayName: battery_board_type
+        documentation: 电池相关参数「battery_board_type」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: battery_board_type
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_hisilicon_hisi_bci_battery_battery_design_fcc
+      subjectId: csub_drv_hisilicon_hisi_bci_battery
+      propertyKey: battery_design_fcc
+      revision:
+        id: drev_drv_hisilicon_hisi_bci_battery_battery_design_fcc_1
+        number: 1
+        contentDigest: sha256:4b0778f64a0aa3b5e73e7eb7232444f5d6a0a0aa5a7dc7ac6dc081f4558c4e85
+        lifecycle: active
+        displayName: battery_design_fcc
+        documentation: 电池相关参数「battery_design_fcc」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: battery_design_fcc
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_hisilicon_hisi_bci_battery_vth_correct_para
+      subjectId: csub_drv_hisilicon_hisi_bci_battery
+      propertyKey: vth_correct_para
+      revision:
+        id: drev_drv_hisilicon_hisi_bci_battery_vth_correct_para_1
+        number: 1
+        contentDigest: sha256:c3a700b077986c3bc9c195b4a1b96b556bcb5df0c26d614514db374d07b85ab1
+        lifecycle: active
+        displayName: vth_correct_para
+        documentation: 阈值/校正参数「vth_correct_para」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: vth_correct_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_hisilicon_hisi_bci_battery_vth_correct_para_low_temp
+      subjectId: csub_drv_hisilicon_hisi_bci_battery
+      propertyKey: vth_correct_para_low_temp
+      revision:
+        id: drev_drv_hisilicon_hisi_bci_battery_vth_correct_para_low_temp_1
+        number: 1
+        contentDigest: sha256:daf72de84045b5efb6d9b80f290e0ab8b676fb7656918250fc2e286198084ee7
+        lifecycle: active
+        displayName: vth_correct_para_low_temp
+        documentation: 阈值/校正参数「vth_correct_para_low_temp」。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: vth_correct_para_low_temp
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_hisilicon_hisi_vbat_drop_protect_v2
+      kind: driver
+      canonicalKey: driver:hisilicon,hisi_vbat_drop_protect_v2
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: hisilicon,hisi_vbat_drop_protect_v2
+        provenance:
+          source: vendor/wiseeff/hisilicon-hisi-vbat-drop-protect-v2.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_hisilicon_hisi_vbat_drop_protect_v2_vbat_drop_vol_mv
+      subjectId: csub_drv_hisilicon_hisi_vbat_drop_protect_v2
+      propertyKey: vbat_drop_vol_mv
+      revision:
+        id: drev_drv_hisilicon_hisi_vbat_drop_protect_v2_vbat_drop_vol_mv_1
+        number: 1
+        contentDigest: sha256:27f5873022a546b56e911d30ae6199bb010c60d53a9ded8229b861b7d33bd07b
+        lifecycle: active
+        displayName: vbat_drop_vol_mv
+        documentation: 电池电压相关参数「vbat_drop_vol_mv」，单位通常为毫伏。
+        unit: mV
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: vbat_drop_vol_mv
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_hisilicon_hisi_vbat_drop_protect
+      kind: driver
+      canonicalKey: driver:hisilicon,hisi_vbat_drop_protect
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: hisilicon,hisi_vbat_drop_protect
+        provenance:
+          source: vendor/wiseeff/hisilicon-hisi-vbat-drop-protect.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_hisilicon_hisi_vbat_drop_protect_vbat_drop_vol_mv
+      subjectId: csub_drv_hisilicon_hisi_vbat_drop_protect
+      propertyKey: vbat_drop_vol_mv
+      revision:
+        id: drev_drv_hisilicon_hisi_vbat_drop_protect_vbat_drop_vol_mv_1
+        number: 1
+        contentDigest: sha256:27f5873022a546b56e911d30ae6199bb010c60d53a9ded8229b861b7d33bd07b
+        lifecycle: active
+        displayName: vbat_drop_vol_mv
+        documentation: 电池电压相关参数「vbat_drop_vol_mv」，单位通常为毫伏。
+        unit: mV
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: vbat_drop_vol_mv
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_hisilicon_spmi
+      kind: driver
+      canonicalKey: driver:hisilicon,spmi
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: hisilicon,spmi
+        provenance:
+          source: vendor/wiseeff/hisilicon-spmi.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_drv_huawei_batt_identify
+      kind: driver
+      canonicalKey: driver:huawei,batt_identify
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,batt_identify
+        provenance:
+          source: vendor/wiseeff/huawei-batt-identify.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_batt_identify_gpios
+      subjectId: csub_drv_huawei_batt_identify
+      propertyKey: gpios
+      revision:
+        id: drev_drv_huawei_batt_identify_gpios_1
+        number: 1
+        contentDigest: sha256:b29e61e2cb0400e3acf3663fedfa4311a25a731b633f3348f68ebb6fe634dd8d
+        lifecycle: active
+        displayName: gpios
+        documentation: huawei,batt_identify 的 DTS 属性「gpios」（gpios），用于驱动读取的设备树配置。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: gpios
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_batt_identify_id_voltage_gpiov
+      subjectId: csub_drv_huawei_batt_identify
+      propertyKey: id_voltage_gpiov
+      revision:
+        id: drev_drv_huawei_batt_identify_id_voltage_gpiov_1
+        number: 1
+        contentDigest: sha256:d29174c02fa6a257e87dba4eea5791c69ba993cc57337cf053012e077cb73954
+        lifecycle: active
+        displayName: id_voltage_gpiov
+        documentation: huawei,batt_identify 的 DTS 属性「id voltage gpiov」（id_voltage_gpiov），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: id_voltage_gpiov
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_batt_info
+      kind: driver
+      canonicalKey: driver:huawei,batt_info
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,batt_info
+        provenance:
+          source: vendor/wiseeff/huawei-batt-info.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_batt_info_sn_check_type
+      subjectId: csub_drv_huawei_batt_info
+      propertyKey: sn-check-type
+      revision:
+        id: drev_drv_huawei_batt_info_sn_check_type_1
+        number: 1
+        contentDigest: sha256:5c6ba0bd2e02a2f4e8dcd1be9a889ad26481e6793c44889adfe3b6104490dbf1
+        lifecycle: active
+        displayName: sn-check-type
+        documentation: huawei,batt_info 的 DTS 属性「sn check type」（sn-check-type），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: sn-check-type
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_battery_cccv
+      kind: driver
+      canonicalKey: driver:huawei,battery_cccv
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,battery_cccv
+        provenance:
+          source: vendor/wiseeff/huawei-battery-cccv.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_battery_cccv_battery_tbl
+      subjectId: csub_drv_huawei_battery_cccv
+      propertyKey: battery_tbl
+      revision:
+        id: drev_drv_huawei_battery_cccv_battery_tbl_1
+        number: 1
+        contentDigest: sha256:40405e64847b219c25e36d193595bdfe7f46f05d3f75e60468889a9283ecea76
+        lifecycle: active
+        displayName: battery_tbl
+        documentation: 电池相关参数「battery_tbl」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: battery_tbl
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_battery_charge_balance
+      kind: driver
+      canonicalKey: driver:huawei,battery_charge_balance
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,battery_charge_balance
+        provenance:
+          source: vendor/wiseeff/huawei-battery-charge-balance.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_battery_charge_balance_unbalance_th
+      subjectId: csub_drv_huawei_battery_charge_balance
+      propertyKey: unbalance_th
+      revision:
+        id: drev_drv_huawei_battery_charge_balance_unbalance_th_1
+        number: 1
+        contentDigest: sha256:d4b6433648d2df0653fafdc437f3454b5cc7822812db10c4d4a6a1294509c7f3
+        lifecycle: active
+        displayName: unbalance_th
+        documentation: huawei,battery_charge_balance 的 DTS 属性「unbalance th」（unbalance_th），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: unbalance_th
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_battery_ocv
+      kind: driver
+      canonicalKey: driver:huawei,battery_ocv
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,battery_ocv
+        provenance:
+          source: vendor/wiseeff/huawei-battery-ocv.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_battery_ocv_ocv_table
+      subjectId: csub_drv_huawei_battery_ocv
+      propertyKey: ocv_table
+      revision:
+        id: drev_drv_huawei_battery_ocv_ocv_table_1
+        number: 1
+        contentDigest: sha256:5fd3768630721126262cf81f7fa7f751b0b7c65b0a0c47fba125d460c727c470
+        lifecycle: active
+        displayName: ocv_table
+        documentation: 开路电压（OCV）相关参数「ocv_table」。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: ocv_table
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_battery_temp_fitting
+      kind: driver
+      canonicalKey: driver:huawei,battery_temp_fitting
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,battery_temp_fitting
+        provenance:
+          source: vendor/wiseeff/huawei-battery-temp-fitting.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_battery_temp_fitting_btf_temp_lth
+      subjectId: csub_drv_huawei_battery_temp_fitting
+      propertyKey: btf_temp_lth
+      revision:
+        id: drev_drv_huawei_battery_temp_fitting_btf_temp_lth_1
+        number: 1
+        contentDigest: sha256:6e12efc3f501e949836ee09ca6cc0e096db3e1351ae4c4a5ad824ff2f5279767
+        lifecycle: active
+        displayName: btf_temp_lth
+        documentation: huawei,battery_temp_fitting 的 DTS 属性「btf temp lth」（btf_temp_lth），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: btf_temp_lth
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_battery_temp_fitting_fitting_mode
+      subjectId: csub_drv_huawei_battery_temp_fitting
+      propertyKey: fitting_mode
+      revision:
+        id: drev_drv_huawei_battery_temp_fitting_fitting_mode_1
+        number: 1
+        contentDigest: sha256:222d831c0fd7d0a7fb9d2fa2aab787847555248de47804850c3ea070c552bf4d
+        lifecycle: active
+        displayName: fitting_mode
+        documentation: huawei,battery_temp_fitting 的 DTS 属性「fitting mode」（fitting_mode），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: fitting_mode
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_battery_temp_fitting_replace_sensor
+      subjectId: csub_drv_huawei_battery_temp_fitting
+      propertyKey: replace_sensor
+      revision:
+        id: drev_drv_huawei_battery_temp_fitting_replace_sensor_1
+        number: 1
+        contentDigest: sha256:40f4761183332103a7e2de0d91335625a3ad12892b9dbb1c7d489dbdccfa0947
+        lifecycle: active
+        displayName: replace_sensor
+        documentation: huawei,battery_temp_fitting 的 DTS 属性「replace sensor」（replace_sensor），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: replace_sensor
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_battery_temp_fitting_temp_para
+      subjectId: csub_drv_huawei_battery_temp_fitting
+      propertyKey: temp_para
+      revision:
+        id: drev_drv_huawei_battery_temp_fitting_temp_para_1
+        number: 1
+        contentDigest: sha256:a7c8e1622583c6826ea7a2a1393d2c2c0f9deb06d9d643a5bd78d69966d4f9ef
+        lifecycle: active
+        displayName: temp_para
+        documentation: 温度相关参数「temp_para」，用于保护或拟合。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: temp_para
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_boost_5v
+      kind: driver
+      canonicalKey: driver:huawei,boost_5v
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,boost_5v
+        provenance:
+          source: vendor/wiseeff/huawei-boost-5v.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_boost_5v_gpio_5v_boost
+      subjectId: csub_drv_huawei_boost_5v
+      propertyKey: gpio_5v_boost
+      revision:
+        id: drev_drv_huawei_boost_5v_gpio_5v_boost_1
+        number: 1
+        contentDigest: sha256:61f3a22a3e8bbb1fb4750cb6728cc9bfcaa6eaad5b95fc3d04d8e74564680365
+        lifecycle: active
+        displayName: gpio_5v_boost
+        documentation: GPIO 相关配置项「gpio_5v_boost」，描述引脚、极性或中断线。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: gpio_5v_boost
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_btb_check
+      kind: driver
+      canonicalKey: driver:huawei,btb_check
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,btb_check
+        provenance:
+          source: vendor/wiseeff/huawei-btb-check.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_btb_check_vol_check_para
+      subjectId: csub_drv_huawei_btb_check
+      propertyKey: vol_check_para
+      revision:
+        id: drev_drv_huawei_btb_check_vol_check_para_1
+        number: 1
+        contentDigest: sha256:2e71070453c7f18abf1c1d45f8f4ed9f90e1efdabe77d311c7cd1d33caf9a670
+        lifecycle: active
+        displayName: vol_check_para
+        documentation: huawei,btb_check 的 DTS 属性「vol check para」（vol_check_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: vol_check_para
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_bypass_bst_hl7603
+      kind: driver
+      canonicalKey: driver:huawei,bypass_bst_hl7603
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,bypass_bst_hl7603
+        provenance:
+          source: vendor/wiseeff/huawei-bypass-bst-hl7603.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_bypass_bst_hl7603_const_vout
+      subjectId: csub_drv_huawei_bypass_bst_hl7603
+      propertyKey: const_vout
+      revision:
+        id: drev_drv_huawei_bypass_bst_hl7603_const_vout_1
+        number: 1
+        contentDigest: sha256:f60d3f52e3293f2c67cd5b37aeeb4c6e8a656e39ddd3909eca2371ae27780bc0
+        lifecycle: active
+        displayName: const_vout
+        documentation: 恒定输出/限值参数「const_vout」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: const_vout
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_bypass_bst_hl7603_gpio_enable
+      subjectId: csub_drv_huawei_bypass_bst_hl7603
+      propertyKey: gpio_enable
+      revision:
+        id: drev_drv_huawei_bypass_bst_hl7603_gpio_enable_1
+        number: 1
+        contentDigest: sha256:1edd5c91f8e13a42d7a4077712b2651e1fd94e9f4cd26868114ed78cfed8e59b
+        lifecycle: active
+        displayName: gpio_enable
+        documentation: GPIO 相关配置项「gpio_enable」，描述引脚、极性或中断线。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: gpio_enable
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_bypass_bst_hl7603_ic_role
+      subjectId: csub_drv_huawei_bypass_bst_hl7603
+      propertyKey: ic_role
+      revision:
+        id: drev_drv_huawei_bypass_bst_hl7603_ic_role_1
+        number: 1
+        contentDigest: sha256:6ce692b2cf03d384ec1c75fa4bf870220813c338dddb7d79dbf9edeaa20141d5
+        lifecycle: active
+        displayName: ic_role
+        documentation: 芯片角色或标识参数「ic_role」。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: ic_role
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_bypass_bst_hl7603_shutdown_cfg
+      subjectId: csub_drv_huawei_bypass_bst_hl7603
+      propertyKey: shutdown_cfg
+      revision:
+        id: drev_drv_huawei_bypass_bst_hl7603_shutdown_cfg_1
+        number: 1
+        contentDigest: sha256:104615d0ecef760c32e1e5c075e8041ae88102eb9ea092473443cdb86bb2e6a2
+        lifecycle: active
+        displayName: shutdown_cfg
+        documentation: 关机/关断相关配置「shutdown_cfg」。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: shutdown_cfg
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_charge_mode_test
+      kind: driver
+      canonicalKey: driver:huawei,charge_mode_test
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,charge_mode_test
+        provenance:
+          source: vendor/wiseeff/huawei-charge-mode-test.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charge_mode_test_test_para
+      subjectId: csub_drv_huawei_charge_mode_test
+      propertyKey: test_para
+      revision:
+        id: drev_drv_huawei_charge_mode_test_test_para_1
+        number: 1
+        contentDigest: sha256:abfe158748456464cdc59b495516b140d5b73f5271555c6bbc8a5d581d98d334
+        lifecycle: active
+        displayName: test_para
+        documentation: huawei,charge_mode_test 的 DTS 属性「test para」（test_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: test_para
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_charger
+      kind: driver
+      canonicalKey: driver:huawei,charger
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,charger
+        provenance:
+          source: vendor/wiseeff/huawei-charger.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charger_charge_done_sleep_enabled
+      subjectId: csub_drv_huawei_charger
+      propertyKey: charge_done_sleep_enabled
+      revision:
+        id: drev_drv_huawei_charger_charge_done_sleep_enabled_1
+        number: 1
+        contentDigest: sha256:107e7360b3f71190b753d5d497a4b366d65f7e9e3537ecb214f782ab8ba79242
+        lifecycle: active
+        displayName: charge_done_sleep_enabled
+        documentation: 充电策略参数「charge_done_sleep_enabled」，影响充电电流/电压或模式切换。
+        valueSchema:
+          type: boolean
+        matching:
+          sourceProperty: charge_done_sleep_enabled
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charger_recharge_para
+      subjectId: csub_drv_huawei_charger
+      propertyKey: recharge_para
+      revision:
+        id: drev_drv_huawei_charger_recharge_para_1
+        number: 1
+        contentDigest: sha256:15ec91ef0610fcc671d974bf7e073567d571da5edfb94939dc0238c9808a2988
+        lifecycle: active
+        displayName: recharge_para
+        documentation: huawei,charger 的 DTS 属性「recharge para」（recharge_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: recharge_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charger_support_new_pd_process
+      subjectId: csub_drv_huawei_charger
+      propertyKey: support_new_pd_process
+      revision:
+        id: drev_drv_huawei_charger_support_new_pd_process_1
+        number: 1
+        contentDigest: sha256:78154ffe53a2ec98b49294c1dcf8837520f48911b3ae3045d9f84c8aecb1802a
+        lifecycle: active
+        displayName: support_new_pd_process
+        documentation: huawei,charger 的 DTS 属性「support new pd process」（support_new_pd_process），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: support_new_pd_process
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charger_weak_source_sleep_enabled
+      subjectId: csub_drv_huawei_charger
+      propertyKey: weak_source_sleep_enabled
+      revision:
+        id: drev_drv_huawei_charger_weak_source_sleep_enabled_1
+        number: 1
+        contentDigest: sha256:9930e0dd83ccb415c70da0b1065217e0ff596f494e0fa88909c5bd2735f76f64
+        lifecycle: active
+        displayName: weak_source_sleep_enabled
+        documentation: huawei,charger 的 DTS 属性「weak source sleep enabled」（weak_source_sleep_enabled），用于驱动读取的设备树配置。
+        valueSchema:
+          type: boolean
+        matching:
+          sourceProperty: weak_source_sleep_enabled
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_charging_core
+      kind: driver
+      canonicalKey: driver:huawei,charging_core
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,charging_core
+        provenance:
+          source: vendor/wiseeff/huawei-charging-core.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charging_core_ichg_max
+      subjectId: csub_drv_huawei_charging_core
+      propertyKey: ichg_max
+      revision:
+        id: drev_drv_huawei_charging_core_ichg_max_1
+        number: 1
+        contentDigest: sha256:2ce74253efc37328f9d90642465ae1ca82af01bdb4cb8f26aa832aa987ff9df4
+        lifecycle: active
+        displayName: ichg_max
+        documentation: huawei,charging_core 的 DTS 属性「ichg max」（ichg_max），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: ichg_max
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charging_core_iin_max
+      subjectId: csub_drv_huawei_charging_core
+      propertyKey: iin_max
+      revision:
+        id: drev_drv_huawei_charging_core_iin_max_1
+        number: 1
+        contentDigest: sha256:ee6e0af2f284374462569b964099cc2245700871d35a7416d8c4fd870d439831
+        lifecycle: active
+        displayName: iin_max
+        documentation: huawei,charging_core 的 DTS 属性「iin max」（iin_max），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: iin_max
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charging_core_iterm_table
+      subjectId: csub_drv_huawei_charging_core
+      propertyKey: iterm_table
+      revision:
+        id: drev_drv_huawei_charging_core_iterm_table_1
+        number: 1
+        contentDigest: sha256:0b9aa797317b9c06144a2635cf080fc261f5a12fa41322a17e2cf2ecbea1d498
+        lifecycle: active
+        displayName: iterm_table
+        documentation: huawei,charging_core 的 DTS 属性「iterm table」（iterm_table），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: iterm_table
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_charging_core_jeita_table
+      subjectId: csub_drv_huawei_charging_core
+      propertyKey: jeita_table
+      revision:
+        id: drev_drv_huawei_charging_core_jeita_table_1
+        number: 1
+        contentDigest: sha256:6f32896f98ea3d5bff2a0cc3b563a501c09b6c53b70c65cab89d0457ed8bc2cd
+        lifecycle: active
+        displayName: jeita_table
+        documentation: huawei,charging_core 的 DTS 属性「jeita table」（jeita_table），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: jeita_table
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_direct_charge_comp
+      kind: driver
+      canonicalKey: driver:huawei,direct_charge_comp
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,direct_charge_comp
+        provenance:
+          source: vendor/wiseeff/huawei-direct-charge-comp.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charge_comp_vbat_comp_ic_para
+      subjectId: csub_drv_huawei_direct_charge_comp
+      propertyKey: vbat_comp_ic_para
+      revision:
+        id: drev_drv_huawei_direct_charge_comp_vbat_comp_ic_para_1
+        number: 1
+        contentDigest: sha256:496e7e5001725c2603c45e0515087c2659a5f62be4d029b7b84fdd8222df1f5c
+        lifecycle: active
+        displayName: vbat_comp_ic_para
+        documentation: 电池电压相关参数「vbat_comp_ic_para」，单位通常为毫伏。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: vbat_comp_ic_para
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_direct_charge_ic
+      kind: driver
+      canonicalKey: driver:huawei,direct_charge_ic
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,direct_charge_ic
+        provenance:
+          source: vendor/wiseeff/huawei-direct-charge-ic.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charge_ic_ic_para1
+      subjectId: csub_drv_huawei_direct_charge_ic
+      propertyKey: ic_para1
+      revision:
+        id: drev_drv_huawei_direct_charge_ic_ic_para1_1
+        number: 1
+        contentDigest: sha256:d0c97d987418db4d884ef7a98cca790a94a29995c80f9dcf9377bcaa22176052
+        lifecycle: active
+        displayName: ic_para1
+        documentation: 芯片角色或标识参数「ic_para1」。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: ic_para1
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charge_ic_mode_para
+      subjectId: csub_drv_huawei_direct_charge_ic
+      propertyKey: mode_para
+      revision:
+        id: drev_drv_huawei_direct_charge_ic_mode_para_1
+        number: 1
+        contentDigest: sha256:d03679248b6ab8760699d8fcf42ea05bfb7bfef2d93956bf19be8ea7e7fbf96e
+        lifecycle: active
+        displayName: mode_para
+        documentation: huawei,direct_charge_ic 的 DTS 属性「mode para」（mode_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: mode_para
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_direct_charge_turbo
+      kind: driver
+      canonicalKey: driver:huawei,direct_charge_turbo
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,direct_charge_turbo
+        provenance:
+          source: vendor/wiseeff/huawei-direct-charge-turbo.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charge_turbo_time_para_group
+      subjectId: csub_drv_huawei_direct_charge_turbo
+      propertyKey: time_para_group
+      revision:
+        id: drev_drv_huawei_direct_charge_turbo_time_para_group_1
+        number: 1
+        contentDigest: sha256:5ac29a61026b209a281271a983d2a7462351006caa7ea7fb16088f120b7f44fd
+        lifecycle: active
+        displayName: time_para_group
+        documentation: huawei,direct_charge_turbo 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: time_para_group
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charge_turbo_time_para01
+      subjectId: csub_drv_huawei_direct_charge_turbo
+      propertyKey: time_para01
+      revision:
+        id: drev_drv_huawei_direct_charge_turbo_time_para01_1
+        number: 1
+        contentDigest: sha256:26938ce2fd8b177626acf6b8ba7bbe92d8b1508c45ecc7ad07c27e637411f0b3
+        lifecycle: active
+        displayName: time_para01
+        documentation: huawei,direct_charge_turbo 的 DTS 属性「time para01」（time_para01），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: time_para01
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_direct_charger
+      kind: driver
+      canonicalKey: driver:huawei,direct_charger
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,direct_charger
+        provenance:
+          source: vendor/wiseeff/huawei-direct-charger.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charger_bat_para
+      subjectId: csub_drv_huawei_direct_charger
+      propertyKey: bat_para
+      revision:
+        id: drev_drv_huawei_direct_charger_bat_para_1
+        number: 1
+        contentDigest: sha256:c65a4e845189d8a7050b4995be1e0f4867439d3ea4ffb55792f51686c53299bb
+        lifecycle: active
+        displayName: bat_para
+        documentation: huawei,direct_charger 的 DTS 属性「bat para」（bat_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: bat_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charger_resist_para
+      subjectId: csub_drv_huawei_direct_charger
+      propertyKey: resist_para
+      revision:
+        id: drev_drv_huawei_direct_charger_resist_para_1
+        number: 1
+        contentDigest: sha256:8554ba4d7f42e337bc84f754c12927b47b85d13e48ba548814f6827790562cca
+        lifecycle: active
+        displayName: resist_para
+        documentation: huawei,direct_charger 的 DTS 属性「resist para」（resist_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: resist_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charger_stage_need_to_jump
+      subjectId: csub_drv_huawei_direct_charger
+      propertyKey: stage_need_to_jump
+      revision:
+        id: drev_drv_huawei_direct_charger_stage_need_to_jump_1
+        number: 1
+        contentDigest: sha256:d5c1979fd79350aa5111add7148b49ad13514b502a951feeeb216330cc454746
+        lifecycle: active
+        displayName: stage_need_to_jump
+        documentation: huawei,direct_charger 的 DTS 属性「stage need to jump」（stage_need_to_jump），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: stage_need_to_jump
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charger_temp_para
+      subjectId: csub_drv_huawei_direct_charger
+      propertyKey: temp_para
+      revision:
+        id: drev_drv_huawei_direct_charger_temp_para_1
+        number: 1
+        contentDigest: sha256:a7c8e1622583c6826ea7a2a1393d2c2c0f9deb06d9d643a5bd78d69966d4f9ef
+        lifecycle: active
+        displayName: temp_para
+        documentation: 温度相关参数「temp_para」，用于保护或拟合。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: temp_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charger_use_5A
+      subjectId: csub_drv_huawei_direct_charger
+      propertyKey: use_5A
+      revision:
+        id: drev_drv_huawei_direct_charger_use_5A_1
+        number: 1
+        contentDigest: sha256:baa231cd049a4869f4b68be1861f3035dd68f37262cb052c7e6b70e3cbe42d57
+        lifecycle: active
+        displayName: use_5A
+        documentation: huawei,direct_charger 的 DTS 属性「use 5A」（use_5A），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: use_5A
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charger_volt_para
+      subjectId: csub_drv_huawei_direct_charger
+      propertyKey: volt_para
+      revision:
+        id: drev_drv_huawei_direct_charger_volt_para_1
+        number: 1
+        contentDigest: sha256:9146fbab35cdd1a2032036ff7e244babc3bfc302faa4a01576a2b7f9fc414541
+        lifecycle: active
+        displayName: volt_para
+        documentation: huawei,direct_charger 的 DTS 属性「volt para」（volt_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: volt_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_direct_charger_volt_para1
+      subjectId: csub_drv_huawei_direct_charger
+      propertyKey: volt_para1
+      revision:
+        id: drev_drv_huawei_direct_charger_volt_para1_1
+        number: 1
+        contentDigest: sha256:bf0f3a1d8b4deca2b9fe96a6f18752f975d08ec9caee9651831f42a15a921f42
+        lifecycle: active
+        displayName: volt_para1
+        documentation: huawei,direct_charger 的 DTS 属性「volt para1」（volt_para1），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: volt_para1
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_fm1230_swi
+      kind: driver
+      canonicalKey: driver:huawei,fm1230_swi
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,fm1230_swi
+        provenance:
+          source: vendor/wiseeff/huawei-fm1230-swi.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_drv_huawei_fm1230
+      kind: driver
+      canonicalKey: driver:huawei,fm1230
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,fm1230
+        provenance:
+          source: vendor/wiseeff/huawei-fm1230.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_fm1230_battct_id_gpio_supply
+      subjectId: csub_drv_huawei_fm1230
+      propertyKey: battct_id_gpio-supply
+      revision:
+        id: drev_drv_huawei_fm1230_battct_id_gpio_supply_1
+        number: 1
+        contentDigest: sha256:ee4e797e3d9e332070bb5afb6c26f3c6133cd340bc0c88cd4cd041e737f6af72
+        lifecycle: active
+        displayName: battct_id_gpio-supply
+        documentation: huawei,fm1230 的 DTS 属性「battct id gpio supply」（battct_id_gpio-supply），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+        matching:
+          sourceProperty: battct_id_gpio-supply
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_fm1230_ic_index
+      subjectId: csub_drv_huawei_fm1230
+      propertyKey: ic_index
+      revision:
+        id: drev_drv_huawei_fm1230_ic_index_1
+        number: 1
+        contentDigest: sha256:5149cabaada0e1766ec60946695dd9f484638448d21ee77afeb94ba304a756e1
+        lifecycle: active
+        displayName: ic_index
+        documentation: 芯片角色或标识参数「ic_index」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: ic_index
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_fm1230_onewire_gpio
+      subjectId: csub_drv_huawei_fm1230
+      propertyKey: onewire-gpio
+      revision:
+        id: drev_drv_huawei_fm1230_onewire_gpio_1
+        number: 1
+        contentDigest: sha256:6854d78049b903424b38432c9e4a37b80ddd85559c70b83af9811c36db01c551
+        lifecycle: active
+        displayName: onewire-gpio
+        documentation: huawei,fm1230 的 DTS 属性「onewire gpio」（onewire-gpio），用于驱动读取的设备树配置。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: onewire-gpio
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_fm1230_ow_read_end_delay
+      subjectId: csub_drv_huawei_fm1230
+      propertyKey: ow_read_end_delay
+      revision:
+        id: drev_drv_huawei_fm1230_ow_read_end_delay_1
+        number: 1
+        contentDigest: sha256:3c1c4332c81802e162c689a77a74a93e57d98a1a241df7a1bda8e60d9a4afd5a
+        lifecycle: active
+        displayName: ow_read_end_delay
+        documentation: huawei,fm1230 的 DTS 属性「ow read end delay」（ow_read_end_delay），用于驱动读取的设备树配置。
+        unit: ms
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: ow_read_end_delay
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_fm1230_ow_reset_start_delay
+      subjectId: csub_drv_huawei_fm1230
+      propertyKey: ow_reset_start_delay
+      revision:
+        id: drev_drv_huawei_fm1230_ow_reset_start_delay_1
+        number: 1
+        contentDigest: sha256:df27c0db75633699e42b59330adb2db10d88d1983e5bc461e17cb84861eaf25a
+        lifecycle: active
+        displayName: ow_reset_start_delay
+        documentation: huawei,fm1230 的 DTS 属性「ow reset start delay」（ow_reset_start_delay），用于驱动读取的设备树配置。
+        unit: ms
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: ow_reset_start_delay
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_multi_btb_temp
+      kind: driver
+      canonicalKey: driver:huawei,multi_btb_temp
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,multi_btb_temp
+        provenance:
+          source: vendor/wiseeff/huawei-multi-btb-temp.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_multi_btb_temp_sensor_names
+      subjectId: csub_drv_huawei_multi_btb_temp
+      propertyKey: sensor-names
+      revision:
+        id: drev_drv_huawei_multi_btb_temp_sensor_names_1
+        number: 1
+        contentDigest: sha256:7c78d3a311d661b8962c78ed950c9563e84249ccb0704d538bd2ed9840f7309d
+        lifecycle: active
+        displayName: sensor-names
+        documentation: huawei,multi_btb_temp 的 DTS 属性「sensor names」（sensor-names），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: sensor-names
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_soh_core
+      kind: driver
+      canonicalKey: driver:huawei,soh_core
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,soh_core
+        provenance:
+          source: vendor/wiseeff/huawei-soh-core.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_drv_huawei_t91407
+      kind: driver
+      canonicalKey: driver:huawei,t91407
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,t91407
+        provenance:
+          source: vendor/wiseeff/huawei-t91407.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_t91407_battct_id_gpio_supply
+      subjectId: csub_drv_huawei_t91407
+      propertyKey: battct_id_gpio-supply
+      revision:
+        id: drev_drv_huawei_t91407_battct_id_gpio_supply_1
+        number: 1
+        contentDigest: sha256:b1e1bdeea51b938651ba80b5022844f6c1a33ea6d458c811e5f622fcaa4cacee
+        lifecycle: active
+        displayName: battct_id_gpio-supply
+        documentation: huawei,t91407 的 DTS 属性「battct id gpio supply」（battct_id_gpio-supply），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+        matching:
+          sourceProperty: battct_id_gpio-supply
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_t91407_onewire_gpio
+      subjectId: csub_drv_huawei_t91407
+      propertyKey: onewire-gpio
+      revision:
+        id: drev_drv_huawei_t91407_onewire_gpio_1
+        number: 1
+        contentDigest: sha256:b546ebae1322a9d8c821c7dfa469d84ac9d1eba6ac5cc785cf1d8d41af0f9073
+        lifecycle: active
+        displayName: onewire-gpio
+        documentation: huawei,t91407 的 DTS 属性「onewire gpio」（onewire-gpio），用于驱动读取的设备树配置。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: onewire-gpio
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_wireless_charger
+      kind: driver
+      canonicalKey: driver:huawei,wireless_charger
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,wireless_charger
+        provenance:
+          source: vendor/wiseeff/huawei-wireless-charger.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_charger_pmax
+      subjectId: csub_drv_huawei_wireless_charger
+      propertyKey: pmax
+      revision:
+        id: drev_drv_huawei_wireless_charger_pmax_1
+        number: 1
+        contentDigest: sha256:ea25a8153f116a51187a7c53ebc437aac7021b2d2ce088447c1900a6662443f3
+        lifecycle: active
+        displayName: pmax
+        documentation: huawei,wireless_charger 的 DTS 属性「pmax」（pmax），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: pmax
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_charger_rx_mode_para
+      subjectId: csub_drv_huawei_wireless_charger
+      propertyKey: rx_mode_para
+      revision:
+        id: drev_drv_huawei_wireless_charger_rx_mode_para_1
+        number: 1
+        contentDigest: sha256:07cc81c31ceedda2a218402f62dcb8c4a3885b92df8117e44be7a64e85854f54
+        lifecycle: active
+        displayName: rx_mode_para
+        documentation: huawei,wireless_charger 的 DTS 属性「rx mode para」（rx_mode_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: rx_mode_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_charger_rx_mode_type_para
+      subjectId: csub_drv_huawei_wireless_charger
+      propertyKey: rx_mode_type_para
+      revision:
+        id: drev_drv_huawei_wireless_charger_rx_mode_type_para_1
+        number: 1
+        contentDigest: sha256:040182eb12c5e4d576ad27ab28dbdbe81bfa92e9ea104b859991236b313a8a0d
+        lifecycle: active
+        displayName: rx_mode_type_para
+        documentation: huawei,wireless_charger 的 DTS 属性「rx mode type para」（rx_mode_type_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: string
+        matching:
+          sourceProperty: rx_mode_type_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_charger_sc_err_tx
+      subjectId: csub_drv_huawei_wireless_charger
+      propertyKey: sc_err_tx
+      revision:
+        id: drev_drv_huawei_wireless_charger_sc_err_tx_1
+        number: 1
+        contentDigest: sha256:48f959267eebc1144e4f98fa30835e824f41b3e5f3ea598320469150dec987d8
+        lifecycle: active
+        displayName: sc_err_tx
+        documentation: huawei,wireless_charger 的 DTS 属性「sc err tx」（sc_err_tx），用于驱动读取的设备树配置。
+        valueSchema:
+          type: string
+        matching:
+          sourceProperty: sc_err_tx
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_charger_trx_plim
+      subjectId: csub_drv_huawei_wireless_charger
+      propertyKey: trx_plim
+      revision:
+        id: drev_drv_huawei_wireless_charger_trx_plim_1
+        number: 1
+        contentDigest: sha256:deb7178198704b091e669789c6d4ed9198f9c3262c0e234f373e1f8c835482a7
+        lifecycle: active
+        displayName: trx_plim
+        documentation: huawei,wireless_charger 的 DTS 属性「trx plim」（trx_plim），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: trx_plim
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_huawei_wireless_sc
+      kind: driver
+      canonicalKey: driver:huawei,wireless_sc
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: huawei,wireless_sc
+        provenance:
+          source: vendor/wiseeff/huawei-wireless-sc.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_sc_bat_para
+      subjectId: csub_drv_huawei_wireless_sc
+      propertyKey: bat_para
+      revision:
+        id: drev_drv_huawei_wireless_sc_bat_para_1
+        number: 1
+        contentDigest: sha256:2432f83b1e802dde27b65bf1171b3a5c3b62f804a5436365fbf101837d0a3a5e
+        lifecycle: active
+        displayName: bat_para
+        documentation: huawei,wireless_sc 的 DTS 属性「bat para」（bat_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: bat_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_sc_init_para
+      subjectId: csub_drv_huawei_wireless_sc
+      propertyKey: init_para
+      revision:
+        id: drev_drv_huawei_wireless_sc_init_para_1
+        number: 1
+        contentDigest: sha256:3c84ab5b2a16a5a5907361aa031e5f4b12f3d31b4821ba80dfc4ab019e987c2d
+        lifecycle: active
+        displayName: init_para
+        documentation: huawei,wireless_sc 的 DTS 属性「init para」（init_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: init_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_sc_init_para_col
+      subjectId: csub_drv_huawei_wireless_sc
+      propertyKey: init_para_col
+      revision:
+        id: drev_drv_huawei_wireless_sc_init_para_col_1
+        number: 1
+        contentDigest: sha256:7ede75733294d461045c232bf813e36889a791dad4f6c1f1c8a2b2a196c54e75
+        lifecycle: active
+        displayName: init_para_col
+        documentation: huawei,wireless_sc 的 DTS 属性「init para col」（init_para_col），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: init_para_col
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_sc_volt_para00
+      subjectId: csub_drv_huawei_wireless_sc
+      propertyKey: volt_para00
+      revision:
+        id: drev_drv_huawei_wireless_sc_volt_para00_1
+        number: 1
+        contentDigest: sha256:0c86344253da17306dd7373b08e926c190e8c53757e299c7755aba567f2b24a6
+        lifecycle: active
+        displayName: volt_para00
+        documentation: huawei,wireless_sc 的 DTS 属性「volt para00」（volt_para00），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: volt_para00
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_huawei_wireless_sc_volt_para01
+      subjectId: csub_drv_huawei_wireless_sc
+      propertyKey: volt_para01
+      revision:
+        id: drev_drv_huawei_wireless_sc_volt_para01_1
+        number: 1
+        contentDigest: sha256:61cdb194646c1ed2fa9b37a2fee2452a53e9fb9fa68e54698f76f96d7f09af7c
+        lifecycle: active
+        displayName: volt_para01
+        documentation: huawei,wireless_sc 的 DTS 属性「volt para01」（volt_para01），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: volt_para01
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_drv_mt_mt5788
+      kind: driver
+      canonicalKey: driver:mt,mt5788
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: mt,mt5788
+        provenance:
+          source: vendor/wiseeff/mt-mt5788.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_gpio_en
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: gpio_en
+      revision:
+        id: drev_drv_mt_mt5788_gpio_en_1
+        number: 1
+        contentDigest: sha256:f7a9ea15920ee60b355361bc58f3f584db1ddf254ca790cccfad5f70bb1900a1
+        lifecycle: active
+        displayName: gpio_en
+        documentation: GPIO 相关配置项「gpio_en」，描述引脚、极性或中断线。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: gpio_en
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_gpio_int
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: gpio_int
+      revision:
+        id: drev_drv_mt_mt5788_gpio_int_1
+        number: 1
+        contentDigest: sha256:2a2feafb44063c1cda67733b5581fcbfd5a418e5acf3640857d32c0c020c58e2
+        lifecycle: active
+        displayName: gpio_int
+        documentation: MT5788 interrupt GPIO phandle-array (pin + flags).
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: gpio_int
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_prevfod1_product_list
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: prevfod1_product_list
+      revision:
+        id: drev_drv_mt_mt5788_prevfod1_product_list_1
+        number: 1
+        contentDigest: sha256:87796ed33b790e397e0165e7245d1d1ee41e071965de98f56e7e81a0d05e4de9
+        lifecycle: active
+        displayName: prevfod1_product_list
+        documentation: mt,mt5788 的 DTS 属性「prevfod1 product list」（prevfod1_product_list），用于驱动读取的设备树配置。
+        valueSchema:
+          type: string
+        matching:
+          sourceProperty: prevfod1_product_list
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_rx_fod_cond
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: rx_fod_cond
+      revision:
+        id: drev_drv_mt_mt5788_rx_fod_cond_1
+        number: 1
+        contentDigest: sha256:2ce932b92e39d977e96c92b0d3a250c632db3c3af0142db9da1adb99abb58cec
+        lifecycle: active
+        displayName: rx_fod_cond
+        documentation: mt,mt5788 的 DTS 属性「rx fod cond」（rx_fod_cond），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: rx_fod_cond
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_rx_mod_cm_cfg
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: rx_mod_cm_cfg
+      revision:
+        id: drev_drv_mt_mt5788_rx_mod_cm_cfg_1
+        number: 1
+        contentDigest: sha256:9425ada640bcf68b9af1bb34f70fcf10e2c2b2fe497ddd715d588f84c1472cb7
+        lifecycle: active
+        displayName: rx_mod_cm_cfg
+        documentation: mt,mt5788 的 DTS 属性「rx mod cm cfg」（rx_mod_cm_cfg），用于驱动读取的设备树配置。
+        valueSchema:
+          type: string
+        matching:
+          sourceProperty: rx_mod_cm_cfg
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_rx_ploss_th0
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: rx_ploss_th0
+      revision:
+        id: drev_drv_mt_mt5788_rx_ploss_th0_1
+        number: 1
+        contentDigest: sha256:e228d41e88b5bf6841c004504d21a9d3cc8b5f7c1c10da0cbf0f0fcaa1e8f8bd
+        lifecycle: active
+        displayName: rx_ploss_th0
+        documentation: mt,mt5788 的 DTS 属性「rx ploss th0」（rx_ploss_th0），用于驱动读取的设备树配置。
+        valueSchema:
+          type: string
+        matching:
+          sourceProperty: rx_ploss_th0
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_time_para
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: time_para
+      revision:
+        id: drev_drv_mt_mt5788_time_para_1
+        number: 1
+        contentDigest: sha256:f66268304017a323ca5429331b0729aaed3cafbf4822e1b185fddaab8b408a7a
+        lifecycle: active
+        displayName: time_para
+        documentation: mt,mt5788 的 DTS 属性「time para」（time_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: time_para
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_time_para_group
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: time_para_group
+      revision:
+        id: drev_drv_mt_mt5788_time_para_group_1
+        number: 1
+        contentDigest: sha256:6c0995c61c7019ef658038d2b0e2d185c6d54947e335250e84c45208ce8d3347
+        lifecycle: active
+        displayName: time_para_group
+        documentation: mt,mt5788 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: time_para_group
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_mt_mt5788_tx_current_fod_para
+      subjectId: csub_drv_mt_mt5788
+      propertyKey: tx_current_fod_para
+      revision:
+        id: drev_drv_mt_mt5788_tx_current_fod_para_1
+        number: 1
+        contentDigest: sha256:31017c76bda5ac7a3126d64e230ff284c50fb178fd5dd056990d825a324cb397
+        lifecycle: active
+        displayName: tx_current_fod_para
+        documentation: mt,mt5788 的 DTS 属性「tx current fod para」（tx_current_fod_para），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: tx_current_fod_para
+          selectorKind: driver-compatible
+  - kind: subject
+    content:
+      id: csub_nt_batt_l_v800
+      kind: node-type
+      canonicalKey: node-type:batt_l_v800
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: batt_l_v800
+        provenance:
+          source: vendor/wiseeff/nodename-batt-l-v800.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_batt_l_v800_batt_indentify_fcc
+      subjectId: csub_nt_batt_l_v800
+      propertyKey: batt_indentify_fcc
+      revision:
+        id: drev_nt_batt_l_v800_batt_indentify_fcc_1
+        number: 1
+        contentDigest: sha256:804dafe738777d27bfcc112db1f73969d0486e639f496929cad7ee0a651fdf16
+        lifecycle: active
+        displayName: batt_indentify_fcc
+        documentation: 电池相关参数「batt_indentify_fcc」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: batt_indentify_fcc
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_l_v800_batt_index
+      subjectId: csub_nt_batt_l_v800
+      propertyKey: batt_index
+      revision:
+        id: drev_nt_batt_l_v800_batt_index_1
+        number: 1
+        contentDigest: sha256:11a62d891ae7c74d9cb58f6b3cfd4705afc6eb726f236d418543ae3bb5e01f9d
+        lifecycle: active
+        displayName: batt_index
+        documentation: 电池相关参数「batt_index」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: batt_index
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_l_v800_batt_name
+      subjectId: csub_nt_batt_l_v800
+      propertyKey: batt_name
+      revision:
+        id: drev_nt_batt_l_v800_batt_name_1
+        number: 1
+        contentDigest: sha256:931f5ec8ff2e0157b850d0229952afb377e8daa6fb7e6500125c6bcf80a65c19
+        lifecycle: active
+        displayName: batt_name
+        documentation: 电池相关参数「batt_name」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: batt_name
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_l_v800_r_pcb
+      subjectId: csub_nt_batt_l_v800
+      propertyKey: r_pcb
+      revision:
+        id: drev_nt_batt_l_v800_r_pcb_1
+        number: 1
+        contentDigest: sha256:f8a0e7a4b6dd57d3d66bd678651d9d16781d94c3b2e8692200d1c970d360be01
+        lifecycle: active
+        displayName: r_pcb
+        documentation: 电阻相关参数「r_pcb」，常用于 PCB 或采样电阻。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: r_pcb
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_l_v800_soe_dynamic_enable
+      subjectId: csub_nt_batt_l_v800
+      propertyKey: soe_dynamic_enable
+      revision:
+        id: drev_nt_batt_l_v800_soe_dynamic_enable_1
+        number: 1
+        contentDigest: sha256:3ce823ad9cc3844c3693fc64151d99bde1c1efc4c31e4efc303ad6e156e6aa22
+        lifecycle: active
+        displayName: soe_dynamic_enable
+        documentation: batt_l_v800 的 DTS 属性「soe dynamic enable」（soe_dynamic_enable），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: soe_dynamic_enable
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_batt
+      kind: node-type
+      canonicalKey: node-type:batt
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: batt
+        provenance:
+          source: vendor/wiseeff/nodename-batt.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_batt_batt_indentify_fcc
+      subjectId: csub_nt_batt
+      propertyKey: batt_indentify_fcc
+      revision:
+        id: drev_nt_batt_batt_indentify_fcc_1
+        number: 1
+        contentDigest: sha256:804dafe738777d27bfcc112db1f73969d0486e639f496929cad7ee0a651fdf16
+        lifecycle: active
+        displayName: batt_indentify_fcc
+        documentation: 电池相关参数「batt_indentify_fcc」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: batt_indentify_fcc
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_batt_index
+      subjectId: csub_nt_batt
+      propertyKey: batt_index
+      revision:
+        id: drev_nt_batt_batt_index_1
+        number: 1
+        contentDigest: sha256:11a62d891ae7c74d9cb58f6b3cfd4705afc6eb726f236d418543ae3bb5e01f9d
+        lifecycle: active
+        displayName: batt_index
+        documentation: 电池相关参数「batt_index」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: batt_index
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_batt_name
+      subjectId: csub_nt_batt
+      propertyKey: batt_name
+      revision:
+        id: drev_nt_batt_batt_name_1
+        number: 1
+        contentDigest: sha256:931f5ec8ff2e0157b850d0229952afb377e8daa6fb7e6500125c6bcf80a65c19
+        lifecycle: active
+        displayName: batt_name
+        documentation: 电池相关参数「batt_name」，用于容量、标识或采样策略。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: batt_name
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_r_pcb
+      subjectId: csub_nt_batt
+      propertyKey: r_pcb
+      revision:
+        id: drev_nt_batt_r_pcb_1
+        number: 1
+        contentDigest: sha256:f8a0e7a4b6dd57d3d66bd678651d9d16781d94c3b2e8692200d1c970d360be01
+        lifecycle: active
+        displayName: r_pcb
+        documentation: 电阻相关参数「r_pcb」，常用于 PCB 或采样电阻。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: r_pcb
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_batt_soe_dynamic_enable
+      subjectId: csub_nt_batt
+      propertyKey: soe_dynamic_enable
+      revision:
+        id: drev_nt_batt_soe_dynamic_enable_1
+        number: 1
+        contentDigest: sha256:e6c07eaa7eba2c80b3d442dcdd28d414d32c5a66ef812ec7d54fcffaeb95193f
+        lifecycle: active
+        displayName: soe_dynamic_enable
+        documentation: batt 的 DTS 属性「soe dynamic enable」（soe_dynamic_enable），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: soe_dynamic_enable
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_battery_checker
+      kind: node-type
+      canonicalKey: node-type:battery_checker
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: battery_checker
+        provenance:
+          source: vendor/wiseeff/nodename-battery-checker.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_battery_checker_matchable
+      subjectId: csub_nt_battery_checker
+      propertyKey: matchable
+      revision:
+        id: drev_nt_battery_checker_matchable_1
+        number: 1
+        contentDigest: sha256:bb3238df1ef89f8c1d0554d82d0e420fe81019edcd0af0a68ff30ed93e5996e8
+        lifecycle: active
+        displayName: matchable
+        documentation: battery_checker 的 DTS 属性「matchable」（matchable），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+        matching:
+          sourceProperty: matchable
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_battery_checker_spare_cycles
+      subjectId: csub_nt_battery_checker
+      propertyKey: spare-cycles
+      revision:
+        id: drev_nt_battery_checker_spare_cycles_1
+        number: 1
+        contentDigest: sha256:146e0cf672c5c5f5872bd4e722f43c347abd42d5bf4edbfcd13a04f5ef79bf35
+        lifecycle: active
+        displayName: spare-cycles
+        documentation: battery_checker 的 DTS 属性「spare cycles」（spare-cycles），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: spare-cycles
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_battery0
+      kind: node-type
+      canonicalKey: node-type:battery0
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: battery0
+        provenance:
+          source: vendor/wiseeff/nodename-battery0.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_battery0_cccv_0
+      subjectId: csub_nt_battery0
+      propertyKey: cccv_0
+      revision:
+        id: drev_nt_battery0_cccv_0_1
+        number: 1
+        contentDigest: sha256:9b45c44135dd23532ef6540c80509ca1e93462d146b8ae32ac0c6e54b6e728d5
+        lifecycle: active
+        displayName: cccv_0
+        documentation: 恒流恒压（CCCV）相关参数「cccv_0」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: cccv_0
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_battery0_cccv_10_20
+      subjectId: csub_nt_battery0
+      propertyKey: cccv_10_20
+      revision:
+        id: drev_nt_battery0_cccv_10_20_1
+        number: 1
+        contentDigest: sha256:9595c9a5b3815eeb506cdd3375bf3a82e78aeaa8d11f4c44bb94275460098a3f
+        lifecycle: active
+        displayName: cccv_10_20
+        documentation: 恒流恒压（CCCV）相关参数「cccv_10_20」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: cccv_10_20
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_battery0_temp_tab
+      subjectId: csub_nt_battery0
+      propertyKey: temp_tab
+      revision:
+        id: drev_nt_battery0_temp_tab_1
+        number: 1
+        contentDigest: sha256:c0234bf9034a0cfa20ee2e715fcc59b8ed756513328774a1e0c59c0f47d47ede
+        lifecycle: active
+        displayName: temp_tab
+        documentation: 温度相关参数「temp_tab」，用于保护或拟合。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: temp_tab
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_battery0_weight
+      subjectId: csub_nt_battery0
+      propertyKey: weight
+      revision:
+        id: drev_nt_battery0_weight_1
+        number: 1
+        contentDigest: sha256:79da818e17b2f2df183a8084840877a75511d9c4fcf49477e5ffb4149f83aafb
+        lifecycle: active
+        displayName: weight
+        documentation: battery0 的 DTS 属性「weight」（weight），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: weight
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_battery1
+      kind: node-type
+      canonicalKey: node-type:battery1
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: battery1
+        provenance:
+          source: vendor/wiseeff/nodename-battery1.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_battery1_cccv_10_20
+      subjectId: csub_nt_battery1
+      propertyKey: cccv_10_20
+      revision:
+        id: drev_nt_battery1_cccv_10_20_1
+        number: 1
+        contentDigest: sha256:9595c9a5b3815eeb506cdd3375bf3a82e78aeaa8d11f4c44bb94275460098a3f
+        lifecycle: active
+        displayName: cccv_10_20
+        documentation: 恒流恒压（CCCV）相关参数「cccv_10_20」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: cccv_10_20
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_battery1_temp_tab
+      subjectId: csub_nt_battery1
+      propertyKey: temp_tab
+      revision:
+        id: drev_nt_battery1_temp_tab_1
+        number: 1
+        contentDigest: sha256:c0234bf9034a0cfa20ee2e715fcc59b8ed756513328774a1e0c59c0f47d47ede
+        lifecycle: active
+        displayName: temp_tab
+        documentation: 温度相关参数「temp_tab」，用于保护或拟合。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: temp_tab
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_battery1_weight
+      subjectId: csub_nt_battery1
+      propertyKey: weight
+      revision:
+        id: drev_nt_battery1_weight_1
+        number: 1
+        contentDigest: sha256:cb9898e15cec8f6afbcd8fdfd55d2d99465bd8f83381ca1614230a88f229787c
+        lifecycle: active
+        displayName: weight
+        documentation: battery1 的 DTS 属性「weight」（weight），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: weight
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_cccv_para0
+      kind: node-type
+      canonicalKey: node-type:cccv_para0
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: cccv_para0
+        provenance:
+          source: vendor/wiseeff/nodename-cccv-para0.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_cccv_para0_buck_cccv_0_5
+      subjectId: csub_nt_cccv_para0
+      propertyKey: buck_cccv_0_5
+      revision:
+        id: drev_nt_cccv_para0_buck_cccv_0_5_1
+        number: 1
+        contentDigest: sha256:d6bc61835f05c978d542ca68e49abf5ffb3bc9ae7b36309f63dcf3760b931e9a
+        lifecycle: active
+        displayName: buck_cccv_0_5
+        documentation: cccv_para0 的 DTS 属性「buck cccv 0 5」（buck_cccv_0_5），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: buck_cccv_0_5
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_cccv_para0_buck_temp_tab
+      subjectId: csub_nt_cccv_para0
+      propertyKey: buck_temp_tab
+      revision:
+        id: drev_nt_cccv_para0_buck_temp_tab_1
+        number: 1
+        contentDigest: sha256:5cbdc728f6803ee2ed4827aef26f90df6baa0770787ec22aeced9a8de2fa2d5a
+        lifecycle: active
+        displayName: buck_temp_tab
+        documentation: cccv_para0 的 DTS 属性「buck temp tab」（buck_temp_tab），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: buck_temp_tab
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_cccv_para0_cccv_10_20
+      subjectId: csub_nt_cccv_para0
+      propertyKey: cccv_10_20
+      revision:
+        id: drev_nt_cccv_para0_cccv_10_20_1
+        number: 1
+        contentDigest: sha256:9595c9a5b3815eeb506cdd3375bf3a82e78aeaa8d11f4c44bb94275460098a3f
+        lifecycle: active
+        displayName: cccv_10_20
+        documentation: 恒流恒压（CCCV）相关参数「cccv_10_20」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: cccv_10_20
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_cccv_para0_temp_tab
+      subjectId: csub_nt_cccv_para0
+      propertyKey: temp_tab
+      revision:
+        id: drev_nt_cccv_para0_temp_tab_1
+        number: 1
+        contentDigest: sha256:c0234bf9034a0cfa20ee2e715fcc59b8ed756513328774a1e0c59c0f47d47ede
+        lifecycle: active
+        displayName: temp_tab
+        documentation: 温度相关参数「temp_tab」，用于保护或拟合。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: temp_tab
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_charging_core
+      kind: node-type
+      canonicalKey: node-type:charging_core
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: charging_core
+        provenance:
+          source: vendor/wiseeff/nodename-charging-core.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_charging_core_fast_charge_profile_matrix
+      subjectId: csub_nt_charging_core
+      propertyKey: fast-charge-profile-matrix
+      revision:
+        id: drev_nt_charging_core_fast_charge_profile_matrix_1
+        number: 1
+        contentDigest: sha256:c7a7f0a776e1ac0f59e2aeb16d0d173c4b2db769df8333be6097d5e40538cebf
+        lifecycle: active
+        displayName: fast-charge-profile-matrix
+        documentation: Demo nested string matrix for the DTS compatibility seed. Row and column counts are observations, not schema bounds.
+        valueSchema:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        matching:
+          sourceProperty: fast-charge-profile-matrix
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_charging_core_battery_thermal_derate_curve
+      subjectId: csub_nt_charging_core
+      propertyKey: battery-thermal-derate-curve
+      revision:
+        id: drev_nt_charging_core_battery_thermal_derate_curve_1
+        number: 1
+        contentDigest: sha256:654f5f0c5a972673635eea443be75c2604a439baeb4a6e52185b39e5d9e0ec02
+        lifecycle: active
+        displayName: battery-thermal-derate-curve
+        documentation: Demo nested integer cell matrix for the DTS compatibility seed. Row and column counts are observations, not schema bounds.
+        valueSchema:
+          type: array
+          items:
+            type: array
+            items:
+              type: integer
+              minimum: 0
+        matching:
+          sourceProperty: battery-thermal-derate-curve
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_hi6xxx_coul
+      kind: node-type
+      canonicalKey: node-type:hi6xxx_coul
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: hi6xxx_coul
+        provenance:
+          source: vendor/wiseeff/nodename-hi6xxx-coul.yaml
+      subtype: {}
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_nt_i2c
+      kind: node-type
+      canonicalKey: node-type:i2c
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: i2c
+        provenance:
+          source: vendor/wiseeff/nodename-i2c.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_i2c_hold_time
+      subjectId: csub_nt_i2c
+      propertyKey: hold-time
+      revision:
+        id: drev_nt_i2c_hold_time_1
+        number: 1
+        contentDigest: sha256:a1984efecf9e802bb5ae1299974033f615b208c1a569b9f799dff6b14dca298f
+        lifecycle: active
+        displayName: hold-time
+        documentation: i2c 的 DTS 属性「hold time」（hold-time），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: hold-time
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_middle_cpu
+      kind: node-type
+      canonicalKey: node-type:middle_cpu
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: middle_cpu
+        provenance:
+          source: vendor/wiseeff/nodename-middle-cpu.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_middle_cpu_active_perf_limit
+      subjectId: csub_nt_middle_cpu
+      propertyKey: active_perf_limit
+      revision:
+        id: drev_nt_middle_cpu_active_perf_limit_1
+        number: 1
+        contentDigest: sha256:e32f8dfbf3d743a4bcec8373ec0ccc03394afac31f6b57776e273727e4800ef8
+        lifecycle: active
+        displayName: active_perf_limit
+        documentation: middle_cpu 的 DTS 属性「active perf limit」（active_perf_limit），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: active_perf_limit
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_middle_cpu_passive_perf_limit
+      subjectId: csub_nt_middle_cpu
+      propertyKey: passive_perf_limit
+      revision:
+        id: drev_nt_middle_cpu_passive_perf_limit_1
+        number: 1
+        contentDigest: sha256:1c69033eb1062187c4e13ffb30c8172be6396a21b16759e135d067f7c8dce08a
+        lifecycle: active
+        displayName: passive_perf_limit
+        documentation: middle_cpu 的 DTS 属性「passive perf limit」（passive_perf_limit），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: passive_perf_limit
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_pmic
+      kind: node-type
+      canonicalKey: node-type:pmic
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: pmic
+        provenance:
+          source: vendor/wiseeff/nodename-pmic.yaml
+      subtype: {}
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_nt_root
+      kind: node-type
+      canonicalKey: node-type:/
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: /
+        provenance:
+          source: vendor/wiseeff/nodename-root.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_root_board_id
+      subjectId: csub_nt_root
+      propertyKey: board_id
+      revision:
+        id: drev_nt_root_board_id_1
+        number: 1
+        contentDigest: sha256:f587e58db7daaf41eabcc56c4bece5bfb365289eab55783034d6780b71c1568d
+        lifecycle: active
+        displayName: board_id
+        documentation: / 的 DTS 属性「board id」（board_id），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: board_id
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_scharger_v800_buck
+      kind: node-type
+      canonicalKey: node-type:scharger_v800_buck
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: scharger_v800_buck
+        provenance:
+          source: vendor/wiseeff/nodename-scharger-v800-buck.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_scharger_v800_buck_cur_balance_mos
+      subjectId: csub_nt_scharger_v800_buck
+      propertyKey: cur_balance_mos
+      revision:
+        id: drev_nt_scharger_v800_buck_cur_balance_mos_1
+        number: 1
+        contentDigest: sha256:55f4490b42ed6f8579112c56498461a627056aff32e6ab548710bcc6ed0666d4
+        lifecycle: active
+        displayName: cur_balance_mos
+        documentation: scharger_v800_buck 的 DTS 属性「cur balance mos」（cur_balance_mos），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: cur_balance_mos
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_scharger_v800_buck_pswovp_sw_flag
+      subjectId: csub_nt_scharger_v800_buck
+      propertyKey: pswovp_sw_flag
+      revision:
+        id: drev_nt_scharger_v800_buck_pswovp_sw_flag_1
+        number: 1
+        contentDigest: sha256:fea4c20239c90494c718d33a4957d8c1771308ba0066f5bae6ee537b796b8499
+        lifecycle: active
+        displayName: pswovp_sw_flag
+        documentation: scharger_v800_buck 的 DTS 属性「pswovp sw flag」（pswovp_sw_flag），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: pswovp_sw_flag
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_scharger_v800_buck_r_charger_uohm
+      subjectId: csub_nt_scharger_v800_buck
+      propertyKey: r_charger_uohm
+      revision:
+        id: drev_nt_scharger_v800_buck_r_charger_uohm_1
+        number: 1
+        contentDigest: sha256:c2c16f36c6db49c7ec1059c265cb14ef1a68e6305060d837960dc9b24fbda5a7
+        lifecycle: active
+        displayName: r_charger_uohm
+        documentation: 电阻相关参数「r_charger_uohm」，常用于 PCB 或采样电阻。
+        unit: uOhm
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: r_charger_uohm
+          selectorKind: node-type-name
+  - kind: definition
+    content:
+      id: pdef_nt_scharger_v800_buck_usbovp_sw_flag
+      subjectId: csub_nt_scharger_v800_buck
+      propertyKey: usbovp_sw_flag
+      revision:
+        id: drev_nt_scharger_v800_buck_usbovp_sw_flag_1
+        number: 1
+        contentDigest: sha256:f594f247d76404853c0ce5d0809fba0f4cd726b6e7426656ffb0594e81020913
+        lifecycle: active
+        displayName: usbovp_sw_flag
+        documentation: scharger_v800_buck 的 DTS 属性「usbovp sw flag」（usbovp_sw_flag），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: string
+        matching:
+          sourceProperty: usbovp_sw_flag
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_scharger_v800_coul
+      kind: node-type
+      canonicalKey: node-type:scharger_v800_coul
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: scharger_v800_coul
+        provenance:
+          source: vendor/wiseeff/nodename-scharger-v800-coul.yaml
+      subtype: {}
+      tombstone: null
+  - kind: subject
+    content:
+      id: csub_nt_scharger_v800_flash
+      kind: node-type
+      canonicalKey: node-type:scharger_v800_flash
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: scharger_v800_flash
+        provenance:
+          source: vendor/wiseeff/nodename-scharger-v800-flash.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_scharger_v800_flash_vendor_led_type
+      subjectId: csub_nt_scharger_v800_flash
+      propertyKey: vendor,led-type
+      revision:
+        id: drev_nt_scharger_v800_flash_vendor_led_type_1
+        number: 1
+        contentDigest: sha256:fbbee42dd67e273c8ab2d3b98a4c199eb369125ca03fadabf67fdcab1af75f62
+        lifecycle: active
+        displayName: vendor,led-type
+        documentation: scharger_v800_flash 的 DTS 属性「vendor,led type」（vendor,led-type），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: vendor,led-type
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_nt_scharger_v800
+      kind: node-type
+      canonicalKey: node-type:scharger_v800
+      lifecycle: active
+      selector:
+        kind: node-type-name
+        value: scharger_v800
+        provenance:
+          source: vendor/wiseeff/nodename-scharger-v800.yaml
+      subtype: {}
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_nt_scharger_v800_gpios
+      subjectId: csub_nt_scharger_v800
+      propertyKey: gpios
+      revision:
+        id: drev_nt_scharger_v800_gpios_1
+        number: 1
+        contentDigest: sha256:4ed3949ec2f1110cace3d7eb2fc3ff2d303649234f9c4e56223cc1f7b149bbc4
+        lifecycle: active
+        displayName: gpios
+        documentation: scharger_v800 的 DTS 属性「gpios」（gpios），用于驱动读取的设备树配置。
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: gpios
+          selectorKind: node-type-name
+  - kind: subject
+    content:
+      id: csub_drv_sc8562
+      kind: driver
+      canonicalKey: driver:sc8562
+      lifecycle: active
+      selector:
+        kind: driver-compatible
+        value: sc8562
+        provenance:
+          source: vendor/wiseeff/sc8562.yaml
+      subtype:
+        nature: physical-device
+        cardinality:
+          kind: multiple
+      tombstone: null
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_fcp_support
+      subjectId: csub_drv_sc8562
+      propertyKey: fcp_support
+      revision:
+        id: drev_drv_sc8562_fcp_support_1
+        number: 1
+        contentDigest: sha256:311edcb2fcd3cd726b42a4ddea488614476530b3ee143ce7a726d2888d30e891
+        lifecycle: active
+        displayName: fcp_support
+        documentation: sc8562 的 DTS 属性「fcp support」（fcp_support），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: fcp_support
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_gpio_int
+      subjectId: csub_drv_sc8562
+      propertyKey: gpio_int
+      revision:
+        id: drev_drv_sc8562_gpio_int_1
+        number: 1
+        contentDigest: sha256:2cd6c206996e8025a8091c9bacde074958a49ed7306cdcab64d7070d31f5df86
+        lifecycle: active
+        displayName: gpio_int
+        documentation: SC8562 interrupt GPIO phandle-array (pin + flags).
+        valueSchema:
+          description: mixed
+        matching:
+          sourceProperty: gpio_int
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_ic_role
+      subjectId: csub_drv_sc8562
+      propertyKey: ic_role
+      revision:
+        id: drev_drv_sc8562_ic_role_1
+        number: 1
+        contentDigest: sha256:b216d7d109a9a88eec1099b02bf4c777124dd77ae048b18d1072c3fd54164a47
+        lifecycle: active
+        displayName: ic_role
+        documentation: 芯片角色或标识参数「ic_role」。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: ic_role
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_scp_support
+      subjectId: csub_drv_sc8562
+      propertyKey: scp_support
+      revision:
+        id: drev_drv_sc8562_scp_support_1
+        number: 1
+        contentDigest: sha256:944391fa69121982b887510880179bbe75420e41bc6d0c92410ea9a25c0f09a7
+        lifecycle: active
+        displayName: scp_support
+        documentation: sc8562 的 DTS 属性「scp support」（scp_support），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: scp_support
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_sense_r_actual
+      subjectId: csub_drv_sc8562
+      propertyKey: sense_r_actual
+      revision:
+        id: drev_drv_sc8562_sense_r_actual_1
+        number: 1
+        contentDigest: sha256:ae7ea8ca0ed2555e6a571d8586697a38f24c53f4b9902d7eaf5f29cb4299cd39
+        lifecycle: active
+        displayName: sense_r_actual
+        documentation: sc8562 的 DTS 属性「sense r actual」（sense_r_actual），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: sense_r_actual
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_sense_r_config
+      subjectId: csub_drv_sc8562
+      propertyKey: sense_r_config
+      revision:
+        id: drev_drv_sc8562_sense_r_config_1
+        number: 1
+        contentDigest: sha256:b7ba5052467c0bf3a36dd1328eda4cb09d4b7e96c049494f325f4119eb9e06dc
+        lifecycle: active
+        displayName: sense_r_config
+        documentation: sc8562 的 DTS 属性「sense r config」（sense_r_config），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: sense_r_config
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_slave_mode
+      subjectId: csub_drv_sc8562
+      propertyKey: slave_mode
+      revision:
+        id: drev_drv_sc8562_slave_mode_1
+        number: 1
+        contentDigest: sha256:3559fd63f6e95204431fb356643366b841bc5bc104a923a7d71882147c4c722e
+        lifecycle: active
+        displayName: slave_mode
+        documentation: sc8562 的 DTS 属性「slave mode」（slave_mode），用于驱动读取的设备树配置。
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: slave_mode
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_vout_ovp_mv
+      subjectId: csub_drv_sc8562
+      propertyKey: vout_ovp_mv
+      revision:
+        id: drev_drv_sc8562_vout_ovp_mv_1
+        number: 1
+        contentDigest: sha256:416bef927d6f42568c38dac7408ad44ec61145e5601c82dbcfe605a950020309
+        lifecycle: active
+        displayName: vout_ovp_mv
+        documentation: sc8562 的 DTS 属性「vout ovp mv」（vout_ovp_mv），用于驱动读取的设备树配置。
+        unit: mV
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: vout_ovp_mv
+          selectorKind: driver-compatible
+  - kind: definition
+    content:
+      id: pdef_drv_sc8562_watchdog_time
+      subjectId: csub_drv_sc8562
+      propertyKey: watchdog_time
+      revision:
+        id: drev_drv_sc8562_watchdog_time_1
+        number: 1
+        contentDigest: sha256:12ee790f15083011976b7c01993a4e79e5966ada3a6b3696c4b625d6c33bcd9a
+        lifecycle: active
+        displayName: watchdog_time
+        documentation: sc8562 的 DTS 属性「watchdog time」（watchdog_time），用于驱动读取的设备树配置。
+        unit: ms
+        valueSchema:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        matching:
+          sourceProperty: watchdog_time
+          selectorKind: driver-compatible

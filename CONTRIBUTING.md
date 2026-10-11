@@ -27,6 +27,10 @@ npm run db:seed:m3
 
 `db:seed:m1` compiles the three full DTS project fixtures before writing parameter data. The seed therefore requires `dtc`; the bootstrap command installs it with Homebrew on macOS or the native package manager on supported Linux distributions.
 
+For a new local/demo database with the published Catalog, use `npm run db:seed:all` instead of the four individual seed commands. It installs the Catalog between M0 and M1; M1 alone only synchronizes an already published Catalog. The default seed is `crel_vendor_catalog_3` version `1.2.1` (Chinese display names and documentation), after the unchanged Acme and vendor 1/2 releases. The disposable semantic Binding helper extends this exact seed with `crel_acceptance_bindings_1` version `1.3.0`, deriving its predecessor pin and next sequence from the compiled seed; replay still goes through the installer. `schemas/dts/catalog-release/vendor-catalog-1.yaml` freezes the original compiled source so historical digests and revisions are not rewritten.
+
+Author seed presentation content in the property `displayName` and `documentation` fields of `schemas/dts/vendor/wiseeff/*.yaml`. `displayName` is optional and defaults to the unchanged property key; invalid names are rejected by the Catalog content/release schema. Refresh `catalog.json` with `npx tsx scripts/enrich-vendor-property-docs.ts`, then compile with `npm run catalog:compile-vendor -- --localized --out /tmp/vendor-catalog-zh.json`. The localized successor changes presentation only, not keys, subjects, value schemas, units, matching, Bindings or Project values. The retained, retired Acme sample's Chinese presentation is seed content in the compiler; its historical fixture stays unchanged. For an adopted or live Catalog, use the normal typed ChangeSet and reviewed release path; do not reseed or edit database rows to rename definitions.
+
 For the full DTS toolchain (dtc + fdtoverlay + dt-validate) used by fail-closed production publish:
 
 ```bash

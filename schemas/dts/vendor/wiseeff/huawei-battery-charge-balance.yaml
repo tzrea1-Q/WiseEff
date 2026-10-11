@@ -14,4 +14,5 @@ properties:
     valueShape: u32-array
     exampleValue: <100 10000>
     constraints: {}
-    documentation: huawei,battery_charge_balance 的 DTS 属性「unbalance th」（unbalance_th），用于驱动读取的设备树配置。
+    documentation: 配置双电池充电均衡控制的不均衡判定阈值。
+    displayName: 电池不均衡阈值

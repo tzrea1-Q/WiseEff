@@ -11,34 +11,41 @@ properties:
     valueShape: string-list
     exampleValue: "\"default\", \"10\", \"15\", \"volt_para\",\n\t\t\"CAE\", \"15\", \"20\", \"volt_para1\""
     constraints: {}
-    documentation: huawei,direct_charger 的 DTS 属性「bat para」（bat_para），用于驱动读取的设备树配置。
+    documentation: 配置电池类型及温度区间与充电参数表的映射。
+    displayName: 电池充电参数映射
   resist_para:
     valueShape: string-list
     exampleValue: "\"0\", \"260\", \"3300\",\n\t\t\"260\", \"32767\", \"2000\""
     constraints: {}
-    documentation: huawei,direct_charger 的 DTS 属性「resist para」（resist_para），用于驱动读取的设备树配置。
+    documentation: 配置不同电阻区间对应的直充控制参数。
+    displayName: 电阻参数表
   stage_need_to_jump:
     valueShape: string-list
     exampleValue: "\"1\""
     constraints: {}
-    documentation: huawei,direct_charger 的 DTS 属性「stage need to jump」（stage_need_to_jump），用于驱动读取的设备树配置。
+    documentation: 指定直充流程中需要跳过的阶段。
+    displayName: 跳过充电阶段
   temp_para:
     valueShape: string-list
     exampleValue: "\"-32767\", \"10\", \"0\",\n\t\t\"45\", \"32767\", \"0\""
     constraints: {}
-    documentation: 温度相关参数「temp_para」，用于保护或拟合。
+    documentation: 配置不同温度区间对应的充电控制参数。
+    displayName: 温度参数表
   use_5A:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
-    documentation: huawei,direct_charger 的 DTS 属性「use 5A」（use_5A），用于驱动读取的设备树配置。
+    documentation: 指定是否启用 5A 充电支持。
+    displayName: 5A 充电使能
   volt_para:
     valueShape: string-list
     exampleValue: "\"4080\", \"5000\", \"3777\",\n\t\t\"4555\", \"1618\", \"1200\""
     constraints: {}
-    documentation: huawei,direct_charger 的 DTS 属性「volt para」（volt_para），用于驱动读取的设备树配置。
+    documentation: 配置电池电压区间对应的充电控制参数。
+    displayName: 电压参数表
   volt_para1:
     valueShape: string-list
     exampleValue: "\"4500\", \"5000\", \"3776\",\n\t\t\"4555\", \"2697\", \"1200\""
     constraints: {}
-    documentation: huawei,direct_charger 的 DTS 属性「volt para1」（volt_para1），用于驱动读取的设备树配置。
+    documentation: 配置第 1 组电池电压区间对应的充电控制参数。
+    displayName: 电压参数表 1

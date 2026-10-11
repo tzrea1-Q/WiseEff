@@ -178,6 +178,39 @@ describe("inventoryVendorCatalog", () => {
 });
 
 describe("importVendorCatalog", () => {
+  it.each(['""', '" "', "123", "null"])("rejects an invalid authored displayName: %s", async (displayName) => {
+    const predecessor = firstAcmePredecessor();
+    const schemasRoot = writeTree(
+      { "charger.yaml": chargerYaml.replace("    valueShape: integer", `    displayName: ${displayName}\n    valueShape: integer`) },
+      ["vendor/wiseeff/charger.yaml"],
+    );
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot,
+      ...importOpts("invalid_name"),
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("publishes an authored Chinese display name without changing the property key", async () => {
+    const predecessor = firstAcmePredecessor();
+    const schemasRoot = writeTree(
+      { "charger.yaml": chargerYaml.replace("    valueShape: integer", "    displayName: 最大输入电流\n    valueShape: integer") },
+      ["vendor/wiseeff/charger.yaml"],
+    );
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot,
+      ...importOpts("chinese"),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const change = result.value.changeSet.find((entry) => entry.op === "create-subject-with-definitions");
+    expect(change).toMatchObject({
+      definitions: [{ propertyKey: "iin_limit", content: { displayName: "最大输入电流" } }],
+    });
+  });
+
   it("emits typed subject changes with opaque IDs and keeps acme predecessor identities", async () => {
     const predecessor = firstAcmePredecessor();
     const schemasRoot = writeTree(
@@ -291,6 +324,9 @@ describe("importVendorCatalog", () => {
     });
     expect(first.ok).toBe(true);
     if (!first.ok || first.value.kind !== "successor" || first.value.built.kind !== "successor") return;
+    expect(first.value.changeSet).toMatchObject([
+      { definitions: [{ propertyKey: "iin_limit", content: { displayName: "iin_limit" } }] },
+    ]);
     const successorBytes = first.value.built.artifact.artifactBytes;
     const successorDigest = first.value.built.artifact.artifactDigest;
     const publishedSubject = first.value.frozenIdentity.subjects?.[0]?.subjectId;
@@ -428,7 +464,8 @@ properties:
     if (!first.ok || first.value.kind !== "successor" || first.value.built.kind !== "successor") return;
     writeFileSync(
       path.join(schemasRoot, "vendor/wiseeff/charger.yaml"),
-      chargerYaml.replace("Vendor input current limit.", "Updated vendor input current limit."),
+      chargerYaml.replace("Vendor input current limit.", "设置允许的最大输入电流，单位为毫安。")
+        .replace("    valueShape: integer", "    displayName: 最大输入电流\n    valueShape: integer"),
     );
     writeFileSync(
       path.join(schemasRoot, "catalog.json"),
@@ -452,6 +489,7 @@ properties:
         op: "revise-definition",
         class: "documentation",
         definitionId: first.value.frozenIdentity.definitions[0]?.definitionId,
+        content: expect.objectContaining({ displayName: "最大输入电流", documentation: "设置允许的最大输入电流，单位为毫安。" }),
       }),
     ]);
     if (second.value.built.kind !== "successor") return;

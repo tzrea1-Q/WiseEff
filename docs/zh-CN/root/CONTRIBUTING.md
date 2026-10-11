@@ -15,6 +15,10 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 首次运行 M1 seed 前执行 `npm run dtc:bootstrap` 与 `npm run dtc:check -- --required`。`db:seed:m1` 会先真实编译三份项目 DTS，再写入参数库、项目值与结构化数据。
 
+需要已发布 Catalog 的新建本地或演示数据库，应使用 `npm run db:seed:all`，而不是分别执行四个 seed 命令。它在 M0 与 M1 之间安装 Catalog；单独执行 M1 只会同步已发布的 Catalog。默认种子发布为 `crel_vendor_catalog_3`（版本 `1.2.1`），提供中文显示名与说明，并保留原有 Acme 和 vendor 1/2 发布。临时语义 Binding 辅助函数在该精确种子上安装 `crel_acceptance_bindings_1`（版本 `1.3.0`），从已编译种子派生前驱 pin 和下一发布序号；重放仍须经过安装器校验。`schemas/dts/catalog-release/vendor-catalog-1.yaml` 固定原始编译源，避免重写历史 digest 和修订。
+
+种子展示内容写在 `schemas/dts/vendor/wiseeff/*.yaml` 的属性 `displayName` 与 `documentation` 字段中。`displayName` 可选，缺省时仍使用原属性键；非法名称由 Catalog 内容或发布 schema 拒绝。使用 `npx tsx scripts/enrich-vendor-property-docs.ts` 刷新 `catalog.json`，再执行 `npm run catalog:compile-vendor -- --localized --out /tmp/vendor-catalog-zh.json` 编译。中文后继发布只改变展示内容，不改变属性键、主体、值 schema、单位、匹配规则、Binding 或 Project value。保留的退役 Acme 样例，其中文展示内容在编译器的种子内容中定义，历史夹具不变。已接管或运行中的 Catalog 仍须通过正常的 typed ChangeSet 与受审发布路径改名，不得重新 seed 或直接修改数据库行。
+
 真实小泽本地配置使用原子的 `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY` 三键组；旧别名仅在三键全部缺席时作为迁移输入，设置向导与模板只写规范键。规范组任一键存在时，空值也是显式配置，不能回退旧别名。
 
 生产发布失败关闭依赖完整工具链：`npm run dts:toolchain:check`。参数语义身份切换仅在维护窗口执行，见 `docs/runbooks/parameter-identity-cutover.md`；`--apply` 失败后禁止部分继续。

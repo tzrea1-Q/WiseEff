@@ -11,24 +11,29 @@ properties:
     valueShape: u32-array
     exampleValue: <1805>
     constraints: {}
-    documentation: 电池相关参数「batt_indentify_fcc」，用于容量、标识或采样策略。
+    documentation: 配置用于识别电池的满充容量参数。
+    displayName: 电池识别 FCC
   batt_index:
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
-    documentation: 电池相关参数「batt_index」，用于容量、标识或采样策略。
+    documentation: 指定电池在多电池配置中的索引编号。
+    displayName: 电池索引
   batt_name:
     valueShape: string-list
     exampleValue: "\"battery_gauge\""
     constraints: {}
-    documentation: 电池相关参数「batt_name」，用于容量、标识或采样策略。
+    documentation: 指定电池计量设备的名称。
+    displayName: 电池名称
   r_pcb:
     valueShape: u32-array
     exampleValue: <23330>
     constraints: {}
-    documentation: 电阻相关参数「r_pcb」，常用于 PCB 或采样电阻。
+    documentation: 配置电池电路板的电阻参数。
+    displayName: PCB 电阻
   soe_dynamic_enable:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
-    documentation: batt_l_v800 的 DTS 属性「soe dynamic enable」（soe_dynamic_enable），用于驱动读取的设备树配置。
+    documentation: 指定是否启用电池动态能量状态估算。
+    displayName: 动态能量估算使能

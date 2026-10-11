@@ -7,11 +7,16 @@ import {
   VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
   VENDOR_SUCCESSOR_RELEASE_ID,
   compileVendorCatalogSuccessor,
+  VENDOR_LOCALIZED_AGGREGATE_DIGEST,
+  VENDOR_LOCALIZED_RELEASE_ID,
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { installCatalogRelease } from "../../../../scripts/install-catalog-release";
 import { compileCatalogRelease } from "../compiler/index";
 import { validCatalogReleaseBundle } from "../compiler/__fixtures__/catalogReleaseBundle";
 import type { CatalogReleaseBundle } from "../compiler/types";
+import { seedPublishedCatalog } from "../../../testing/parameterCatalog/seedPublishedCatalog";
+import { loadPublishedCatalog } from "../../parameter-bindings/catalogProjectValueSync";
+import { ParameterDefinitionId } from "../../parameter-catalog-contract";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
@@ -73,6 +78,25 @@ describe("vendor catalog successor advance", () => {
     await pool?.end().catch(() => undefined);
     await database?.drop();
   });
+
+  it("installs and replays the Chinese seed through the Catalog release path", async () => {
+    const release = await seedPublishedCatalog(pool);
+    expect(release).toMatchObject({ id: VENDOR_LOCALIZED_RELEASE_ID, version: "1.2.1", digest: VENDOR_LOCALIZED_AGGREGATE_DIGEST });
+    const snapshot = await loadPublishedCatalog(pool);
+    expect(snapshot).not.toBeNull();
+    const definition = snapshot!.getDefinitionById(ParameterDefinitionId("pdef_drv_huawei_charging_core_iin_max"));
+    expect(definition).toMatchObject({
+      status: "found",
+      definition: {
+        propertyKey: "iin_max",
+        selectedRevision: { content: {
+          displayName: "最大输入电流",
+          documentation: { kind: "present", value: "设置允许的最大输入电流，单位为毫安。" },
+        } },
+      },
+    });
+    expect(await seedPublishedCatalog(pool)).toEqual(release);
+  }, 120_000);
 
   it("bootstraps crel_acme_1 then advances the vendor successor as-of snapshot", async () => {
     const firstCompiled = compileCatalogRelease(firstReleaseBundle());

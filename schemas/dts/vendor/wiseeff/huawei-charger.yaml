@@ -11,19 +11,23 @@ properties:
     valueShape: bool
     exampleValue: ""
     constraints: {}
-    documentation: 充电策略参数「charge_done_sleep_enabled」，影响充电电流/电压或模式切换。
+    documentation: 启用充电完成后的休眠行为。
+    displayName: 充电完成休眠使能
   recharge_para:
     valueShape: u32-array
     exampleValue: <96 60 3 5 1 0 1 100>
     constraints: {}
-    documentation: huawei,charger 的 DTS 属性「recharge para」（recharge_para），用于驱动读取的设备树配置。
+    documentation: 配置充电完成后触发再充电的控制参数。
+    displayName: 再充电参数
   support_new_pd_process:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
-    documentation: huawei,charger 的 DTS 属性「support new pd process」（support_new_pd_process），用于驱动读取的设备树配置。
+    documentation: 指定是否支持新的 PD 充电处理流程。
+    displayName: 新 PD 流程支持
   weak_source_sleep_enabled:
     valueShape: bool
     exampleValue: ""
     constraints: {}
-    documentation: huawei,charger 的 DTS 属性「weak source sleep enabled」（weak_source_sleep_enabled），用于驱动读取的设备树配置。
+    documentation: 启用输入电源供电能力不足时的休眠行为。
+    displayName: 弱电源休眠使能

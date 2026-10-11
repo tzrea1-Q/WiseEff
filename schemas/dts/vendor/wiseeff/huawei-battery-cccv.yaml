@@ -13,4 +13,5 @@ properties:
     valueShape: string-list
     exampleValue: "\"default\", \"cccv_para0\""
     constraints: {}
-    documentation: 电池相关参数「battery_tbl」，用于容量、标识或采样策略。
+    documentation: 配置电池类型与对应 CCCV 参数表的映射。
+    displayName: 电池参数表映射

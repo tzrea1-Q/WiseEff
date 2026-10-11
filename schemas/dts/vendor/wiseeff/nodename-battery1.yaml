@@ -11,14 +11,17 @@ properties:
     valueShape: u32-array
     exampleValue: "<4200 7180\n\t\t\t4500 3590\n\t\t\t4555 2513>"
     constraints: {}
-    documentation: 恒流恒压（CCCV）相关参数「cccv_10_20」。
+    documentation: 配置 10～20℃ 温区的恒流恒压充电参数。
+    displayName: 10～20℃ CCCV 表
   temp_tab:
     valueShape: string-list
     exampleValue: "\"0\", \"cccv_0\",\n\t\t\t\"20\", \"cccv_10_20\""
     constraints: {}
-    documentation: 温度相关参数「temp_tab」，用于保护或拟合。
+    documentation: 配置温度区间与对应 CCCV 参数表的映射。
+    displayName: 温度参数表映射
   weight:
     valueShape: u32-array
     exampleValue: <3590>
     constraints: {}
-    documentation: battery1 的 DTS 属性「weight」（weight），用于驱动读取的设备树配置。
+    documentation: 设置多电池参数计算使用的电池权重。
+    displayName: 电池权重

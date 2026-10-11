@@ -11,14 +11,17 @@ properties:
     valueShape: u32-array
     exampleValue: <3>
     constraints: {}
-    documentation: 中断说明符所需的 cell 数量。
+    documentation: 指定中断说明符占用的设备树单元数量。
+    displayName: 中断单元数
   compatible:
     valueShape: string-list
     exampleValue: "\"arm,gic-v3\""
     constraints: {}
-    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
+    documentation: 指定设备树兼容标识，用于匹配对应驱动。
+    displayName: 兼容标识
   interrupt-controller:
     valueShape: bool
     exampleValue: ""
     constraints: {}
     documentation: 标记本节点为中断控制器。
+    displayName: 中断控制器标识

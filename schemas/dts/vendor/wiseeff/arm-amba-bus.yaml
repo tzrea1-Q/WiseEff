@@ -11,24 +11,29 @@ properties:
     valueShape: u32-array
     exampleValue: <2>
     constraints: {}
-    documentation: 子节点地址字段占用的 cell 数量。
+    documentation: 指定子节点地址字段占用的设备树单元数量。
+    displayName: 地址单元数
   "#size-cells":
     valueShape: u32-array
     exampleValue: <2>
     constraints: {}
-    documentation: 子节点尺寸字段占用的 cell 数量。
+    documentation: 指定子节点长度字段占用的设备树单元数量。
+    displayName: 长度单元数
   compatible:
     valueShape: string-list
     exampleValue: "\"arm,amba-bus\""
     constraints: {}
-    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
+    documentation: 指定设备树兼容标识，用于匹配对应驱动。
+    displayName: 兼容标识
   interrupt-parent:
     valueShape: phandle-list
     exampleValue: <&gic>
     constraints: {}
-    documentation: 指向中断控制器的 phandle。
+    documentation: 指定处理本节点中断的中断控制器。
+    displayName: 中断父节点
   ranges:
     valueShape: empty
     exampleValue: ""
     constraints: {}
-    documentation: 父子地址空间映射；空属性表示 1:1 透传。
+    documentation: 指定父子地址空间映射，空属性表示地址直接透传。
+    displayName: 地址映射
