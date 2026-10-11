@@ -60,7 +60,9 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
           const bar = await panel.locator(".local-device-bridge-panel__readiness").boundingBox();
           expect(bar).not.toBeNull();
           expect(bar!.height).toBeLessThanOrEqual(40);
-          const firstRow = page.locator(path === "/node-debugging" ? '.debug-table tbody tr:has(td[data-label="参数名称"])' : '.dts-parameter-workbench-table__row').first();
+          const firstRow = page.locator(path === "/node-debugging"
+            ? '.debug-table tbody tr:has(td[data-label="参数名称"])'
+            : ".dts-reload-candidate-table tbody tr:has(.dts-reload-candidate-table__param)").first();
           await expect(firstRow).toBeVisible();
           const row = await firstRow.boundingBox();
           expect(row).not.toBeNull();
