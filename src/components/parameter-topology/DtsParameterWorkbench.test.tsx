@@ -249,10 +249,27 @@ function selectModuleDevice(moduleLabel: RegExp, deviceLabel: RegExp) {
   return screen.getByRole("treeitem", { name: deviceLabel });
 }
 
-beforeEach(() => window.history.replaceState(null, "", "/parameters"));
+beforeEach(() => {
+  localStorage.clear();
+  window.history.replaceState(null, "", "/parameters");
+});
 afterEach(() => window.history.replaceState(null, "", "/"));
 
 describe("DtsParameterWorkbench", () => {
+  it("collapses the shared navigator without changing module scope, search or project URL", async () => {
+    window.history.replaceState(null, "", "/parameters?project=atlas");
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), { target: { value: "watchdog" } });
+    const href = window.location.href;
+    expect(visibleBindingRows()).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(window.location.href).toBe(href);
+    expect(visibleBindingRows()).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(screen.getByRole("treeitem", { name: /未分类 · sc8562/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("searchbox", { name: "搜索 DTS 参数" })).toHaveValue("watchdog");
+  });
   it("shows every hydrated row on a fresh reload without inventing a module scope", () => {
     const view = renderWorkbench({ sourceRows: [], effectiveRows: [] });
     const partialRows = effectiveRows.filter((row) => row.driverModule === "sc8562");
@@ -299,7 +316,7 @@ describe("DtsParameterWorkbench", () => {
 
     const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(workbench).toHaveClass("dts-parameter-workbench");
-    expect(workbench.querySelector(".dts-workbench-topology")).toHaveAttribute(
+    expect(within(workbench).getByRole("region", { name: "模块导航" })).toHaveAttribute(
       "aria-label",
       "模块导航"
     );
@@ -320,7 +337,6 @@ describe("DtsParameterWorkbench", () => {
     [
       ".dts-parameter-workbench",
       ".dts-workbench-topology",
-      ".dts-workbench-list",
       ".dts-draft-tray"
     ].forEach((selector) => expect(hasRule(styles, selector)).toBe(true));
     [1200, 820, 480].forEach((width) => {
@@ -332,8 +348,8 @@ describe("DtsParameterWorkbench", () => {
       )
     ).toBe(true);
 
-    expect(declarationFor(styles, ".dts-workbench-list", "height")).toBe(
-      "min(670px, calc(100vh - 230px))"
+    expect(declarationFor(readStylesheet("src/components/layout/navigator-workbench.css"), ".navigator-workbench__task.dts-workbench-list", "height")).toBe(
+      "var(--navigator-workbench-pane-height)"
     );
     expect(declarationFor(styles, ".dts-workbench-list__scroll-x", "overflow-x")).toBe("auto");
     expect(declarationFor(styles, ".dts-workbench-list__scroll-y", "min-width")).toBe("680px");
@@ -616,10 +632,11 @@ describe("DtsParameterWorkbench", () => {
     ]);
   });
 
-  it("reserves the table budget before allowing a long desktop module navigator to grow", () => {
-    expect(declarationFor(readStylesheet("src/styles.css"), ".dts-parameter-workbench .dts-workbench-topology", "max-width", {
-      within: "@media (min-width: 1201px)"
-    })).toBe("min(var(--module-navigator-max-width), max(var(--module-navigator-min-width), calc(100cqw - var(--dts-workbench-table-min-width) - var(--dts-workbench-scrollbar-width) - var(--space-3))))");
+  it("reserves the table budget with a bounded shared navigator independent of long module names", () => {
+    const tokens = declarationsFor(readStylesheet("src/styles.css"), ":root");
+    expect(tokens["--navigator-workbench-navigator-width"]).toBe("18rem");
+    expect(declarationFor(readStylesheet("src/components/layout/navigator-workbench.css"), ".navigator-workbench__body", "grid-template-columns"))
+      .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
   });
 
   it("reserves the same three-action track in header and rows, with or without draft selection", () => {
@@ -1037,7 +1054,7 @@ describe("DtsParameterWorkbench", () => {
 
     const downloadButton = await screen.findByRole("button", { name: "下载 DTS" });
     expect(downloadButton).not.toBeDisabled();
-    const headerActions = downloadButton.closest(".dts-parameter-workbench__header-actions") as HTMLElement;
+    const headerActions = downloadButton.closest('[aria-label="工作台操作"]') as HTMLElement;
     expect(within(headerActions).queryByText("aurora-board.dts · v2")).not.toBeInTheDocument();
     expect(screen.queryByText("aurora-board.dts · v2")).not.toBeInTheDocument();
   });

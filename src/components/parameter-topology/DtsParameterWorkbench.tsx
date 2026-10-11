@@ -1,4 +1,5 @@
-import { TabPanel } from "@/components/ui/tab-panel";
+import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { SectionEmpty } from "@/components/common/SectionState";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Download,
@@ -103,6 +104,7 @@ export type DtsParameterWorkbenchProps = {
    * does not reserve a blank governance shell.
    */
   governanceContent?: ReactNode;
+  notice?: ReactNode;
   /**
    * Soft notices rendered below the main workbench body (e.g. collapsed dangling
    * overlay self-anchor summary). Kept out of the top governance strip.
@@ -194,6 +196,7 @@ export function DtsParameterWorkbench({
   loadParameterSpec,
   currentEdits,
   governanceContent,
+  notice,
   footerContent,
   toolbarActions,
   expandAllNodesByDefault: _expandAllNodesByDefault = false,
@@ -669,7 +672,15 @@ export function DtsParameterWorkbench({
       data-revision-id={revisionId}
     >
       {/* The shell TopBar owns the page title; the workbench starts at the toolbar. */}
-      <div className="dts-parameter-workbench__toolbar">
+      <NavigatorWorkbench pageKey="parameters" navigatorLabel="模块导航"
+        taskLabel={resultsMode === "parameters" ? "DTS 参数列表" : "DTS 源码结果"}
+        taskClassName="dts-workbench-list"
+        panelId={`${resultsId}-${resultsMode}-panel`} tabId={`${resultsId}-${resultsMode}-tab`}
+        taskState={resultsMode === "parameters" ? undefined
+          : dtsSourceStatus === "loading" ? { kind: "loading", message: "正在加载 DTS 源码…" }
+          : dtsSourceStatus === "error" ? { kind: "error", message: "无法加载 DTS 源码。", detail: dtsSourceErrorMessage ?? undefined, onRetry: loadDtsSource }
+          : !dtsSource ? { kind: "empty", message: "暂无 DTS 源码。" } : undefined}
+        toolbar={<>
         <label className="dts-parameter-workbench__search">
           <span>{resultsMode === "dtsSource" ? "查找源码" : "搜索参数"}</span>
           <SearchField
@@ -707,7 +718,11 @@ export function DtsParameterWorkbench({
                   id: `${resultsId}-dtsSource-tab`, panelId: `${resultsId}-dtsSource-panel` }
               ]}
             />
-            {resultsMode === "dtsSource" ? (
+          </div>
+          {toolbarActions}
+        </div>
+        </>}
+        primaryAction={resultsMode === "dtsSource" ? (
               <button
                 type="button"
                 className="button subtle"
@@ -728,12 +743,7 @@ export function DtsParameterWorkbench({
                 导出当前结果
               </button>
             ) : null}
-          </div>
-          {toolbarActions}
-        </div>
-      </div>
-
-      {currentEdits ? (
+        context={currentEdits ? (
         <div
           className="dts-parameter-workbench__current-edits dts-draft-tray"
           role="region"
@@ -741,24 +751,9 @@ export function DtsParameterWorkbench({
         >
           {currentEdits}
         </div>
-      ) : null}
-      {governanceContent ? (
-        <div className="dts-parameter-workbench__governance-content">
-          {governanceContent}
-        </div>
-      ) : null}
-
-      <TabPanel className="dts-parameter-workbench__body" role="tabpanel"
-        id={`${resultsId}-${resultsMode}-panel`} aria-labelledby={`${resultsId}-${resultsMode}-tab`}>
-        <div
-          className="dts-parameter-workbench__navigator dts-workbench-topology"
-          role="region"
-          aria-label="模块导航"
-        >
-          <div className="dts-parameter-workbench__navigator-header">
-            <h3 className="dts-parameter-workbench__navigator-title">
-              模块导航
-            </h3>
+        ) : null}
+        notice={notice || governanceContent ? <>{notice}{governanceContent}</> : undefined}
+        navigator={<>
             {canEdit && onEditNodeEnablement && selectedEnablementNode ? (
               <button
                 type="button"
@@ -769,7 +764,6 @@ export function DtsParameterWorkbench({
                 节点启用…
               </button>
             ) : null}
-          </div>
           <DtsTopologyNavigator
             view="effective"
             nodes={tree}
@@ -780,12 +774,8 @@ export function DtsParameterWorkbench({
             ariaLabel="业务模块树"
             onSelectNode={(nodeId) => setSelectedNodeId((current) => current === nodeId ? null : nodeId)}
           />
-        </div>
-        <div
-          className="dts-parameter-workbench__results dts-workbench-list"
-          role="region"
-          aria-label={resultsMode === "parameters" ? "DTS 参数列表" : "DTS 源码结果"}
-        >
+        </>}
+      >
           {resultsMode === "parameters" ? (
             <>
               <div
@@ -809,7 +799,7 @@ export function DtsParameterWorkbench({
                     onSelectedBindingIdsChange={setSelectedBindingIds}
                   />
                   {visibleRows.length === 0 ? (
-                    <p className="dts-parameter-workbench__empty">当前筛选范围内没有参数。</p>
+                    <SectionEmpty message="当前筛选范围内没有参数。" />
                   ) : null}
                 </div>
               </div>
@@ -821,18 +811,6 @@ export function DtsParameterWorkbench({
                 <div className="dts-workbench-list__h-rail-spacer" />
               </div>
             </>
-          ) : dtsSourceStatus === "loading" ? (
-            <p className="dts-parameter-workbench__empty" role="status">正在加载 DTS 源码…</p>
-          ) : dtsSourceStatus === "error" ? (
-            <div className="dts-parameter-workbench__dts-source-error">
-              <p role="alert">无法加载 DTS 源码。</p>
-              {dtsSourceErrorMessage ? (
-                <p className="dts-parameter-workbench__dts-source-error-detail">{dtsSourceErrorMessage}</p>
-              ) : null}
-              <button type="button" className="button subtle" onClick={loadDtsSource}>
-                重试
-              </button>
-            </div>
           ) : dtsSource ? (
             <ProjectPrimaryDtsViewer
               fileName={dtsSource.fileName}
@@ -843,11 +821,8 @@ export function DtsParameterWorkbench({
               findNextToken={findNextToken}
               onFindStatusChange={onFindStatusChange}
             />
-          ) : (
-            <p className="dts-parameter-workbench__empty" role="status">暂无 DTS 源码。</p>
-          )}
-        </div>
-      </TabPanel>
+          ) : null}
+      </NavigatorWorkbench>
       {footerContent ? (
         <div className="dts-parameter-workbench__footer">
           {footerContent}

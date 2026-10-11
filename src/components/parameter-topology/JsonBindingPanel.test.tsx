@@ -4,7 +4,10 @@ import type { ProjectParameterBinding } from "@/domain/parameter-topology/types"
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import { JsonBindingPanel } from "./JsonBindingPanel";
 
-beforeEach(() => window.history.replaceState(null, "", "/parameters"));
+beforeEach(() => {
+  localStorage.clear();
+  window.history.replaceState(null, "", "/parameters");
+});
 afterEach(() => window.history.replaceState(null, "", "/"));
 
 const jsonBinding: ProjectParameterBinding = {
@@ -75,6 +78,18 @@ const moduleRegistry: ParameterModuleRegistry = {
 };
 
 describe("JsonBindingPanel", () => {
+  it("keeps the selected JSON module and search when the shared navigator collapses", () => {
+    render(<JsonBindingPanel bindings={[jsonBinding, secondBinding]} moduleRegistry={moduleRegistry} canEdit={false} />);
+    fireEvent.click(screen.getByRole("treeitem", { name: /充电管理/ }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 JSON 参数" }), { target: { value: "charging-policy" } });
+    const href = window.location.href;
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(window.location.href).toBe(href);
+    expect(screen.getByRole("searchbox", { name: "搜索 JSON 参数" })).toHaveValue("charging-policy");
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(screen.getByRole("treeitem", { name: /充电管理/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("battery-limits")).not.toBeInTheDocument();
+  });
   it("keeps one mixed JSON workbench with editing only for eligible exact Binding IDs", async () => {
     const props = { bindings: [jsonBinding, secondBinding], canEdit: true,
       editableBindingIds: new Set([jsonBinding.id]), onValidateEdit: vi.fn() };
