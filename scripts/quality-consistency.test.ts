@@ -9,6 +9,7 @@ function collectMarkup(markup: string) {
     x: 100, y: 100, left: 100, top: 100, right: 200, bottom: 132, width: 100, height: 32, toJSON: () => ({})
   });
   dom.window.Element.prototype.checkVisibility = () => true;
+  dom.window.Range.prototype.getBoundingClientRect = () => dom.window.document.documentElement.getBoundingClientRect();
   vi.stubGlobal("document", dom.window.document);
   vi.stubGlobal("getComputedStyle", dom.window.getComputedStyle.bind(dom.window));
   vi.stubGlobal("innerWidth", 1440);
@@ -25,6 +26,25 @@ import { consistencyRoutes } from "../e2e/quality/consistency-routes";
 import { installConsistencyReadGuard } from "../e2e/quality/consistency";
 
 describe("view-switch collection", () => {
+  it("measures Catalog module counts alongside shared workbench counts", () => {
+    const measurements = collectMarkup(`
+      <div class="navigator-workbench">
+        <div class="navigator-workbench__navigation">
+          <span class="parameter-catalog__module-count">4</span>
+          <span class="dts-topology-navigator__count">12 个参数</span>
+          <span class="parameter-catalog__subject-meta">已登记</span>
+        </div>
+      </div>
+    `);
+    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["4", "12 个参数"]);
+  });
+
+  it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameters/definitions"])(
+    "requires navigator-workbench geometry for the migrated route %s", (path) => {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
+    }
+  );
+
   it("checks actual switches nested in module navigator containers while excluding only tree items", () => {
     const measurements = collectMarkup(`
       <div class="dts-parameter-workbench__navigator"><div role="tablist"><button role="tab">Protocol</button></div></div>

@@ -25,6 +25,18 @@ function renderSurface(authoringAllowed: boolean) {
 }
 
 describe("Catalog definition action capability", () => {
+  it("keeps publication guidance between release context and the module navigator", async () => {
+    renderSurface(true);
+    const notice = await screen.findByRole("region", { name: "发布状态" });
+    const page = screen.getByRole("region", { name: "参数定义目录" });
+    const release = within(page).getByRole("region", { name: "目录发布" });
+    const navigator = within(page).getByRole("region", { name: "模块导航" });
+    expect(page).toContainElement(notice);
+    expect(release.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(notice.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(notice).toHaveTextContent("可以保存草稿并预览，但发布需要 catalog:publish。");
+  });
+
   it("offers viewing and explains the authoring grant when the server denies authoring", async () => {
     renderSurface(false);
     const user = userEvent.setup();

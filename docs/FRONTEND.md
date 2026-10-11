@@ -509,7 +509,7 @@ Admin **list** tables use `src/components/admin/DataTable` (sort + `aria-sort`, 
 
 ## Shared Module Navigation
 
-The `/parameters` DTS/JSON surfaces use the shared [Navigator workbench contract](design-docs/ui-design-system.md#navigator-workbench). The template owns slot order, fixed tokenized pane widths, collapse preferences and scrollports; module-tree primitives still own label anchors and selection. Other routes retain their existing content-sized navigation until their own migration.
+The `/parameters` DTS/JSON surfaces and Catalog definitions family (`/parameter-admin`, `/parameter-admin/specs` and its definition aliases, `/parameters/definitions`) use the shared [Navigator workbench contract](design-docs/ui-design-system.md#navigator-workbench). The template owns slot order, fixed tokenized pane widths, collapse preferences and scrollports; module-tree primitives still own label anchors and selection. Other routes retain their existing content-sized navigation until their own migration.
 
 `DtsTopologyNavigator` is the shared module-first tree on `/parameters`, `/node-debugging`, and `/dts-reload`. `CatalogModuleNavigator` on `/parameter-admin/specs` retains its module/subject distinction and subject metadata while reusing the shared row, disclosure, and nested-group geometry. Disclosure columns have a fixed tokenized width, so label length and selection do not move same-depth label anchors; all four surfaces use the same chevrons and indentation.
 

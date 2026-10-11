@@ -277,6 +277,7 @@ export function PageRouter({
     case "parameters":
       if (page.path === CATALOG_READ_PAGE_PATH && runtime?.parameterCatalogRepository) {
         return <CatalogPage
+          pageKey="parameter-definitions"
           repository={runtime.parameterCatalogRepository}
           actor="user"
           search={search}

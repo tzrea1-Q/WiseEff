@@ -249,7 +249,7 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 ### 导航工作台
 
-`src/components/layout/` 中的 `NavigatorWorkbench` 负责固定顺序：工具栏（主动作位于最右端）、可选的紧凑上下文、至多一个通知槽，然后是有名称的导航、任务及可选检查器区域。页面只填充槽，不重定义网格、面板宽度或滚动预算。`/parameters` 的 DTS 与 JSON 均使用此模板；模拟模式的平面参数表及其他路由在各自迁移前保留原有布局。
+`src/components/layout/` 中的 `NavigatorWorkbench` 负责固定顺序：工具栏（主动作位于最右端）、可选的紧凑上下文、至多一个通知槽，然后是有名称的导航、任务及可选检查器区域。页面只填充槽，不重定义网格、面板宽度或滚动预算。`/parameters` 的 DTS 与 JSON 均使用此模板。Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）将发布条放在上下文槽、治理提示放在通知槽，并保留现有定义对话框。Catalog 管理别名共用 `catalog-definitions` 折叠键；只读的 `/parameters/definitions` 使用 `parameter-definitions`。模拟模式的平面参数表及其他路由在各自迁移前保留原有布局。
 
 布局常量仅在 `src/styles.css` 根令牌块定义一次：`--navigator-workbench-navigator-width`（18rem，为模块数量预留空间）、`--navigator-workbench-navigator-cap`（现有模块宽度上限）、`--navigator-workbench-collapsed-width`（40px）、`--navigator-workbench-inspector-width`（20rem）、`--navigator-workbench-gap` 与 `--navigator-workbench-toolbar-padding`（12px），以及 `--navigator-workbench-pane-height` / `--navigator-workbench-scroll-rail-height`。在 1440×900 下，导航从模板左边界开始，任务区左边界为一个有上限的导航宽度加一个间距。标签保持单行并使用省略号；数量列保留固有宽度，不收缩或裁切。工具栏、面板、树和参数表的颜色使用语义主题令牌，深色模式也遵循 Phase 2 对比度配对。模板负责任务区滚动容器，加载、空状态及可重试错误使用 `SectionState`；搜索无匹配时仍保留表头与筛选入口。
 
