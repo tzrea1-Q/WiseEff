@@ -167,6 +167,10 @@ export function CatalogOrganizationSurface({
   );
 
   const surfaceStatus = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
+  const adoptionNotice = publicationSurface?.blockers.includes("catalog-not-adopted");
+  const operatorAudience = sessionRoles === undefined
+    ? actor === "platform-admin" || roleId === "operator"
+    : sessionRoles?.some((role) => role.projectId === null && ["platform-admin", "operator"].includes(role.roleId));
 
   return (
     <div className="parameter-catalog-organization">
@@ -182,7 +186,16 @@ export function CatalogOrganizationSurface({
           aria-label={publicationSurfaceCopy.title}
         >
           <p>{surfaceStatus.message}</p>
-          <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>
+          {adoptionNotice ? (
+            <details>
+              <summary>{publicationSurfaceCopy.adoptionDetails}</summary>
+              <p>{surfaceStatus.next}</p>
+              {operatorAudience ? <>
+                <p>{publicationSurfaceCopy.adoptionOperator}</p>
+                <p>{publicationSurfaceCopy.adoptionHandbook}</p>
+              </> : null}
+            </details>
+          ) : <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>}
         </section>
       ) : null}
       {platformOnly ? (

@@ -24,7 +24,11 @@ export const publicationSurfaceCopy = {
   nextStep: "下一步",
   policyDisabled: "实例发布策略已关闭。日常编写入口仍可查看，但不能预览或发布。",
   frozen: "目录发布处于维护冻结。请等待解冻，不要在本页解除运维 freeze。",
-  notAdopted: "当前目录尚未完成接管。需要运维按手册执行 inspect/adopt，本页不能代替接管。",
+  notAdopted: "参数目录正在接管中，部分管理操作暂不可用。",
+  adoptionDetails: "了解详情",
+  adoptionNext: "请等待目录接管完成；本页不能代替接管。",
+  adoptionOperator: "由平台运维完成接管后即可使用。",
+  adoptionHandbook: "操作员手册：inspect/adopt。",
   capabilityMissing: "当前会话缺少目录编写或发布权限。",
   notAuthorized: "当前身份不能发起目录发布。",
   authorOnly: "可以保存草稿并预览，但发布需要 catalog:publish。",
@@ -45,11 +49,11 @@ export function publicationSurfaceAdvisory(surface: PublicationSurfaceItem): {
   message: string;
   next: string;
 } | null {
+  if (surface.blockers.includes("catalog-not-adopted")) {
+    return { tone: "warning", message: publicationSurfaceCopy.notAdopted, next: publicationSurfaceCopy.adoptionNext };
+  }
   if (surface.blockers.includes("publication-not-authorized")) {
     return { tone: "warning", message: publicationSurfaceCopy.notAuthorized, next: publicationSurfaceCopy.noOps };
-  }
-  if (surface.blockers.includes("catalog-not-adopted")) {
-    return { tone: "warning", message: publicationSurfaceCopy.notAdopted, next: "由运维按操作员手册执行 inspect 与 adopt。" };
   }
   if (surface.blockers.includes("publication-frozen")) {
     return { tone: "warning", message: publicationSurfaceCopy.frozen, next: "等待升级或维护完成后由拥有冻结的操作员解冻。" };
