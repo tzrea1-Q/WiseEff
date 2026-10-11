@@ -75,11 +75,13 @@ export function requireCompactControlHeights(
 }
 
 export function requireMeasuredCategories(
-  measurements: Partial<Record<ConsistencyCategory, readonly unknown[]>>,
+  measurements: Partial<Record<ConsistencyCategory, readonly unknown[]>> & { visibleTableCount?: number },
   required: readonly ConsistencyCategory[],
   routePath: string
 ) {
-  const missing = required.filter((category) => !measurements[category]?.length);
+  const missing = required.filter((category) =>
+    !(routePath === "/logs" && category === "tableScrollports" && measurements.visibleTableCount === 0)
+    && !measurements[category]?.length);
   if (missing.length) {
     throw new Error(`${routePath}: missing consistency measurements: ${missing.join(", ")}`);
   }

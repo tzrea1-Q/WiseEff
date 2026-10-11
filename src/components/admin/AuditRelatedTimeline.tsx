@@ -1,5 +1,6 @@
 import type { AuditEventView } from "@/domain/audit/types";
 import { cn } from "@/lib/utils";
+import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLabels";
 
 export type AuditRelatedTimelineProps = {
   events: AuditEventView[];
@@ -31,19 +32,26 @@ export function AuditRelatedTimeline({
         <span>{events.length} 条</span>
       </header>
       <ul>
-        {events.map((event) => (
-          <li key={event.id}>
-            <button
-              type="button"
-              className={cn("audit-related-item", activeEventId === event.id && "audit-related-item-active")}
-              onClick={() => onSelect?.(event.id)}
-            >
-              <span>{event.kind}</span>
-              <strong>{event.action}</strong>
-              <span>{event.timeLabel}</span>
-            </button>
-          </li>
-        ))}
+        {events.map((event) => {
+          const action = presentAuditAction(event.action);
+          return (
+            <li key={event.id}>
+              <button
+                type="button"
+                className={cn("audit-related-item", activeEventId === event.id && "audit-related-item-active")}
+                onClick={() => onSelect?.(event.id)}
+              >
+                <span>{presentAuditKind(event.kind).label}</span>
+                <strong>{action.label}</strong>
+                <span>{event.timeLabel}</span>
+                <span className="col-span-3 text-xs text-muted-foreground">
+                  <code>{event.kind}</code>
+                  {action.isRaw || action.label !== event.action ? <><span className="mx-1">·</span><code>{event.action}</code></> : null}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

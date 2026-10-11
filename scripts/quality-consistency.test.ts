@@ -217,6 +217,17 @@ describe("compact filter, sort and pagination height contract", () => {
 });
 
 describe("consistency measurement coverage", () => {
+  it("allows the failed logs layout without a table, but still requires measurements for visible tables", () => {
+    expect(() => requireMeasuredCategories({ tableScrollports: [], visibleTableCount: 0 }, ["tableScrollports"], "/logs"))
+      .not.toThrow();
+    expect(() => requireMeasuredCategories({ tableScrollports: [], visibleTableCount: 1 }, ["tableScrollports"], "/logs"))
+      .toThrow("tableScrollports");
+    expect(() => requireMeasuredCategories({ tableScrollports: [] }, ["tableScrollports"], "/logs"))
+      .toThrow("tableScrollports");
+    expect(() => requireMeasuredCategories({ tableScrollports: [], visibleTableCount: 0 }, ["tableScrollports"], "/parameters"))
+      .toThrow("tableScrollports");
+  });
+
   it("fails with the route and missing applicable category instead of silently passing", () => {
     expect(() => requireMeasuredCategories({ viewSwitches: [] }, ["viewSwitches"], "/parameters"))
       .toThrow("/parameters: missing consistency measurements: viewSwitches");
