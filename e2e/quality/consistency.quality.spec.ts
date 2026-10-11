@@ -59,7 +59,7 @@ for (const route of routes) {
         await expect(async () => {
           measurements = await page.evaluate(collectConsistencyMeasurements);
           requireMeasuredCategories(measurements, route.required, route.path);
-          if (moduleNavigationPaths.includes(routePath)) {
+          if (route.required.includes("navigatorWorkbenches") || moduleNavigationPaths.includes(routePath)) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }
           requirePrimaryActionColors(measurements, route.path);

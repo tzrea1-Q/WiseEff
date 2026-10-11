@@ -191,6 +191,21 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("orders workbench actions, release context, navigation and definitions for keyboard users", async () => {
+    renderCatalog();
+    await screen.findByRole("table", { name: "参数定义列表" });
+    const toolbar = screen.getByRole("group", { name: "工作台操作" });
+    const release = screen.getByRole("region", { name: "目录发布" });
+    const navigator = screen.getByRole("region", { name: "模块导航" });
+    const task = screen.getByRole("region", { name: "目录列表" });
+    expect(within(toolbar).getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
+    expect(within(toolbar).getByRole("button", { name: "搜索" })).toBeVisible();
+    expect(toolbar.compareDocumentPosition(release) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(release.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(navigator.compareDocumentPosition(task) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(navigator).getByRole("button", { name: "收起模块导航" })).toBeVisible();
+  });
+
   it("exposes directory actions as a named group for read-only users", async () => {
     renderCatalog({ actor: "user" });
     const actions = await screen.findByRole("group", { name: "目录动作" });
@@ -415,7 +430,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       .toBeVisible();
     expect(list).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "目录列表" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "目录列表" })).queryByRole("table")).not.toBeInTheDocument();
     expect(document.querySelector("[data-catalog-unpublished-workspace='true']")).toBeInTheDocument();
   });
   it("renders the three-view ready catalog without Effective or Governance peers", async () => {

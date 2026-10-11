@@ -43,7 +43,7 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
   sortControls: [],
   paginationControls: catalogPaths,
-  navigatorWorkbenches: ["/parameters"]
+  navigatorWorkbenches: ["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameters/definitions"]
 };
 const otherPhaseTwoPaths = [
   "/log-admin", "/parameter-admin/projects/aurora", "/parameter-admin/projects/aurora/config-sets",
