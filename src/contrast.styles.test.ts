@@ -77,6 +77,10 @@ describe.each(["light", "dark"])("%s theme contrast pairs", (theme) => {
     ...(theme === "dark" ? declarationsFor(styles, ".dark") : {})
   };
 
+  it.each([".brand-subtitle", ".nav-group-label"])("keeps %s readable on the sidebar surface", (selector) => {
+    expectReadable(declarationsFor(styles, selector).color, declarationsFor(styles, ".sidebar").background, tokens);
+  });
+
   it("uses semantic theme tokens throughout the parameter navigator workbench", () => {
     const workbench = declarationsFor(styles, ".navigator-workbench");
     for (const [local, semantic] of Object.entries({

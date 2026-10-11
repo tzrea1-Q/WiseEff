@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { declarationsFor, readStylesheet } from "../../test/cssAssertions";
 
 describe("DtsTopologyNavigator responsive width", () => {
+  it("uses shared elevation for parameter workbench row hover", () => {
+    const styles = readStylesheet("src/components/layout/navigator-workbench.css");
+    expect(declarationsFor(styles, ".navigator-workbench .dts-parameter-workbench-table__row:hover")["box-shadow"])
+      .toBe("var(--shadow-1)");
+  });
+
   it("keeps the disclosure column fixed instead of distributing spare space before labels", () => {
     const styles = readStylesheet("src/styles.css");
     const tokens = declarationsFor(styles, ":root");

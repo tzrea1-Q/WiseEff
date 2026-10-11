@@ -634,6 +634,11 @@ body {
   text-transform: uppercase;
 }
 
+.brand-subtitle,
+.nav-group-label {
+  color: var(--text-muted);
+}
+
 .sidebar-toggle {
   flex: 0 0 auto;
   color: var(--shell-nav-text);

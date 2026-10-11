@@ -184,7 +184,7 @@
 
 .navigator-workbench .dts-parameter-workbench-table__row:hover {
   background: var(--surface-raised);
-  box-shadow: inset 3px 0 0 var(--border-strong);
+  box-shadow: var(--shadow-1);
 }
 
 .navigator-workbench .dts-parameter-workbench-table__row.is-selected {
