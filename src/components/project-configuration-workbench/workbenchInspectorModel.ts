@@ -2,6 +2,22 @@ export type WorkbenchCanvasMode = "working" | "history" | "unified-diff" | "side
 
 export type InspectorLevel = "config-set" | "file" | "node" | "property" | "activity";
 
+export function formatSourceCanvasEmpty(mode: WorkbenchCanvasMode, versionId: string | null, historySource: string, workingSource: string, candidateSource: string, historySourceAvailable: boolean) {
+  return mode === "unified-diff" || mode === "side-by-side"
+    ? !versionId
+      ? { title: "选择要对比的版本", message: "从版本历史中选择一个版本，与工作配置进行只读对比。", actionLabel: "选择版本" }
+      : !historySourceAvailable
+        ? { title: "对比版本不可用", message: "该版本已被清理或尚未生成；可返回工作源查看当前配置。", actionLabel: "返回工作源" }
+        : historySource === workingSource
+          ? { title: "两个版本没有差异", message: "所选版本与工作配置的源码内容一致。", actionLabel: undefined }
+          : null
+    : mode === "candidate" && !candidateSource
+      ? { title: "暂无上传的候选", message: "上传候选后可在这里查看只读源码；上传不会自动激活工作配置。", actionLabel: "上传候选" }
+      : mode === "history" && !historySource
+        ? { title: "暂无历史版本", message: "首次发布后，历史版本的只读源码会显示在这里。", actionLabel: undefined }
+        : null;
+}
+
 export function parseCanvasMode(raw: string | null | undefined): WorkbenchCanvasMode {
   switch (raw) {
     case "history":

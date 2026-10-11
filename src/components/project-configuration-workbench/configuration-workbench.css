@@ -863,6 +863,28 @@
   color: var(--configuration-source-text-secondary);
 }
 
+.configuration-workbench__source-state .section-empty {
+  justify-items: center;
+  color: inherit;
+}
+
+.configuration-workbench__source-state .section-empty [data-slot="button"] {
+  color: var(--configuration-source-text);
+  background: var(--configuration-source-surface-raised);
+  border-color: var(--configuration-source-outline);
+}
+
+.configuration-workbench__source-state .section-empty [data-slot="button"]:hover {
+  color: var(--configuration-source-text-strong);
+  background: var(--configuration-source-surface);
+}
+
+.configuration-workbench__source-success {
+  color: var(--success);
+  background: var(--success-soft);
+  border-radius: var(--radius-full);
+}
+
 .configuration-workbench__source-state p,
 .configuration-workbench__setup-state p {
   max-width: 500px;
