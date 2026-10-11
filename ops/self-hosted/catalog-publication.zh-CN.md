@@ -22,6 +22,8 @@ setup/upgrade 在缺少私有文件时写入**未配置 stub**，绝不复制 `D
 
 ## schema 升级后刷新既有 LOGIN 权限
 
+setup preflight 与 doctor 解析 `DATABASE_URL`：bootstrap 用户 `wiseeff` 的密码必须与已展开的 `POSTGRES_PASSWORD` 完全一致；认可的 API 运行时 LOGIN `wiseeff_api` 使用自身非空凭据。两条路径均拒绝未展开的 `${...}` 插值、格式错误的 URL、未认可的用户名与错误的 bootstrap 密码，即使 `POSTGRES_PASSWORD` 出现在 URL 的其他位置也不能通过。比较前会解码 URL 编码的凭据，并拒绝查询参数中的 `user` 与 `password` 覆盖。API 应继续使用 `wiseeff_api`，不要为满足 doctor 而退回 bootstrap 超管。这些配置检查不证明实际认证或数据库权限；后者需通过运行时状态与当前 Catalog 门禁检查。
+
 运行时 LOGIN 可能早于新应用表创建。迁移会创建表，但不会重新执行 LOGIN 配置入口对 public 表的授权。例如，API LOGIN 缺少 `public.project_parameter_value_drafts` 或 `public.project_parameter_value_change_requests` 的 SELECT 时，项目草稿接口会返回 500，即使项目没有草稿。通用 API readiness 不会执行这个接口。
 
 用 API LOGIN 确认缺少权限后，复用现有配置入口恢复既定运行时权限。先确认三个正式 LOGIN 均已存在且属于本部署，再在 `ops/self-hosted` 执行；bootstrap DSN 只从容器环境读取：

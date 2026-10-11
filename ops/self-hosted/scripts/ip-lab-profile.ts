@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
+import { createRequire } from "node:module";
 import { resolveXiaozeLlmConfig } from "../../../server/config/xiaozeLlmConfig";
+
+const { databaseUrlError } = createRequire(import.meta.url)("./database-url.cjs");
 
 export const ipLabSeedOrganizationId = "org-chargelab";
 export const ipLabSeedOrganizationName = "ChargeLab";
@@ -331,8 +334,11 @@ export function evaluateIpLabEnv(env: Record<string, string | undefined>): IpLab
     });
   }
   const databaseUrl = requireValue("DATABASE_URL");
-  if (postgresPassword && databaseUrl && !databaseUrl.includes(postgresPassword)) {
-    issues.push({ level: "error", message: "DATABASE_URL must embed the expanded POSTGRES_PASSWORD." });
+  if (databaseUrl) {
+    const message = databaseUrlError(databaseUrl, postgresPassword);
+    if (message) {
+      issues.push({ level: "error", message });
+    }
   }
 
   const minioPassword = requireValue("MINIO_ROOT_PASSWORD");

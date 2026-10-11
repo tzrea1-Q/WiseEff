@@ -22,6 +22,8 @@ Setup and upgrade write `.env.publication-manager` as an **unconfigured stub** w
 
 ## Refresh existing LOGIN privileges after schema upgrades
 
+Setup preflight and doctor parse `DATABASE_URL`: the bootstrap `wiseeff` user must have the exact expanded `POSTGRES_PASSWORD`, while the recognized API runtime LOGIN `wiseeff_api` uses its own non-empty credential. Both paths reject unexpanded `${...}` interpolation, malformed URLs, unrecognized users, and a wrong bootstrap password even if `POSTGRES_PASSWORD` appears elsewhere in the URL. URL-encoded credentials are decoded before comparison; `user` and `password` query overrides are rejected. Keep the API on `wiseeff_api`; do not revert to the bootstrap superuser to satisfy doctor. These configuration checks do not prove live authentication or database privileges; use the runtime status and current-Catalog gate for those checks.
+
 An existing runtime LOGIN can predate a new application table. Migrations create
 the table but do not replay the LOGIN provisioner's grants on public tables. For
 example, missing SELECT on `public.project_parameter_value_drafts` or

@@ -123,6 +123,10 @@ Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中
 
 ## 数据平面就绪与恢复验证
 
+普通保留数据升级中，候选 API 使用自身配置的 `DATABASE_URL`（包括最小权限 `wiseeff_api` LOGIN）执行 `npm run parameter-definitions:check -- --catalog-only`。该只读门禁要求当前 Catalog 指针存在，并通过规范 reader/kernel 加载对应发布。有效的已发布 `crel_seed_*` 与厂商发布均可通过；成功输出已验证的 Release ID、digest 与版本。当前 Catalog 缺失或无效时返回非零退出码。控制器依据退出码判定，失败记录 `candidate-parameter-catalog` 并进入恢复流程，不向未验证的候选恢复流量。显式 `new-empty` 数据模式初始化仍使用独立门禁。
+
+Catalog-only 默认不要求历史验证报告；若显式传入 `--report-id` 或 `--run-id`，对应报告也必须存在，否则失败。普通 `parameter-definitions:check` 报告验证同样不再把 `{ kind: "absent", reason: "missing" }` 当成成功。其他 reconciliation 模式不变。
+
 `apply` 重建 `postgres`、`redis`、`minio` 和 `minio-init` 后，控制器按服务分别执行就绪门禁：
 
 - PostgreSQL 只有 Docker 报告 `healthy` 才算就绪。

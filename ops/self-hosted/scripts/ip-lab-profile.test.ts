@@ -23,6 +23,17 @@ const validLabInput = {
 };
 
 describe("ip lab profile helpers", () => {
+  it.each([
+    ["bootstrap", "postgres://wiseeff:postgres_lab_secret@postgres:5432/wiseeff", "passed"],
+    ["runtime login", "postgres://wiseeff_api:independent_secret@postgres:5432/wiseeff", "passed"],
+    ["interpolation", "postgres://wiseeff:${POSTGRES_PASSWORD}@postgres:5432/wiseeff", "failed"],
+    ["wrong bootstrap password", "postgres://wiseeff:wrong@postgres:5432/wiseeff?probe=postgres_lab_secret", "failed"]
+  ])("checks DATABASE_URL for %s", (_name, databaseUrl, status) => {
+    const env = parseEnvText(renderIpLabEnv(validLabInput));
+    env.DATABASE_URL = databaseUrl;
+    expect(evaluateIpLabEnv(env).status).toBe(status);
+  });
+
   it("generates URL-safe secrets and HTTP or internal public URLs", () => {
     expect(generateUrlSafeSecret()).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(publicUrlForLab("203.0.113.10", "http")).toBe("http://203.0.113.10");
@@ -75,7 +86,7 @@ describe("ip lab profile helpers", () => {
     expect(result.status).toBe("failed");
     expect(result.issues.map((issue) => issue.message)).toEqual(
       expect.arrayContaining([
-        "DATABASE_URL must embed the expanded POSTGRES_PASSWORD.",
+        "DATABASE_URL must be a valid PostgreSQL URL with expanded credentials: wiseeff requires the exact POSTGRES_PASSWORD; wiseeff_api requires a nonempty password.",
         "Set XIAOZE_DETERMINISTIC=true or provide XIAOZE_LLM_API_BASE_URL and XIAOZE_LLM_API_KEY.",
         "WISEEFF_CADDYFILE must be Caddyfile.ip-lab when WISEEFF_TLS_MODE=http."
       ])

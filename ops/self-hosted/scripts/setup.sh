@@ -784,11 +784,35 @@ run_preflight() {
   caddyfile="$(env_value WISEEFF_CADDYFILE)"
   [ -n "${site_host}" ] || { echo "WISEEFF_SITE_HOST is required." >&2; exit 1; }
   [ -n "${postgres_password}" ] || { echo "POSTGRES_PASSWORD is required." >&2; exit 1; }
-  case "${database_url}" in
-    *'${'*) echo "DATABASE_URL must embed the expanded POSTGRES_PASSWORD." >&2; exit 1 ;;
-    *"${postgres_password}"*) ;;
-    *) echo "DATABASE_URL must embed the expanded POSTGRES_PASSWORD." >&2; exit 1 ;;
-  esac
+  if command -v node >/dev/null 2>&1; then
+    printf '%s\0%s\0' "${database_url}" "${postgres_password}" | node "${script_dir}/database-url.cjs"
+  else
+    local parser_image app_image app_tag base_image
+    app_image="${WISEEFF_APP_IMAGE:-$(env_value WISEEFF_APP_IMAGE)}"
+    app_tag="${WISEEFF_APP_TAG:-$(env_value WISEEFF_APP_TAG)}"
+    parser_image="$(docker image inspect --format '{{.Id}}' "${app_image:-wiseeff-app}:${app_tag:-local}" 2>/dev/null || true)"
+    if [ -z "${parser_image}" ]; then
+      base_image="$(awk -F= '$1 == "WISEEFF_BASE_IMAGE_REF" { print $2 }' "${compose_dir}/images/base-image-bundle.env")"
+      parser_image="$(docker image inspect --format '{{.Id}}' "${base_image}" 2>/dev/null || true)"
+    fi
+    if [ -z "${parser_image}" ]; then
+      (
+        source "${script_dir}/upgrade-lib.sh"
+        upgrade_repo_root="${repo_root}"
+        upgrade_run_dir=""
+        wiseeff_upgrade_ensure_base_image
+      ) >&2
+      parser_image="$(docker image inspect --format '{{.Id}}' "${base_image}" 2>/dev/null || true)"
+    fi
+    [ -n "${parser_image}" ] || {
+      echo "DATABASE_URL preflight requires a local WiseEff application image or the documented base-image bundle. No image will be pulled." >&2
+      exit 1
+    }
+    printf '%s\0%s\0' "${database_url}" "${postgres_password}" |
+      docker run --rm --pull never -i --network none --entrypoint node "${parser_image}" \
+        -e "$(cat "${script_dir}/database-url.cjs")
+checkDatabaseUrlFromStdin();"
+  fi
   [ -f "${compose_dir}/${caddyfile}" ] || { echo "Missing Caddyfile: ${compose_dir}/${caddyfile}" >&2; exit 1; }
   [ "$(env_value AUTH_PROVIDER)" = "local" ] || { echo "AUTH_PROVIDER must be local." >&2; exit 1; }
   wiseeff_build_network_print_status text
@@ -831,13 +855,12 @@ run_official_migrate() {
 }
 
 run_up() {
-  local build_flag=(--build)
-  if [ "${skip_build}" = "true" ]; then
-    build_flag=()
-  else
+  set -- up -d
+  if [ "${skip_build}" != "true" ]; then
+    set -- "$@" --build
     echo "Building and starting the stack. The first image build can take several minutes."
   fi
-  "${script_dir}/compose" --env-file "${env_file}" up -d "${build_flag[@]}" postgres redis minio minio-init
+  "${script_dir}/compose" --env-file "${env_file}" "$@" postgres redis minio minio-init
   run_official_migrate
   "${script_dir}/compose" --env-file "${env_file}" up -d api worker publication-manager web proxy
 }
