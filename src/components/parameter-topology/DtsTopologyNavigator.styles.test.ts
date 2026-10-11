@@ -1,7 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { declarationsFor, readStylesheet } from "../../test/cssAssertions";
+import { declarationsFor, hasRule, readStylesheet } from "../../test/cssAssertions";
 
 describe("DtsTopologyNavigator responsive width", () => {
+  it("leaves JSON workbench shell spacing and pane geometry to the shared template", () => {
+    const styles = readStylesheet("src/styles.css");
+
+    for (const selector of [
+      ".json-parameter-workbench",
+      ".json-parameter-workbench__list",
+      ".json-parameter-workbench__list .dts-workbench-list__scroll-x",
+      ".json-parameter-workbench__list .dts-workbench-list__scroll-y"
+    ]) {
+      expect(hasRule(styles, selector), selector).toBe(false);
+    }
+  });
+
+  it("does not retain the replaced inline inspector or page-state boxes", () => {
+    const styles = readStylesheet("src/styles.css");
+
+    for (const selector of [
+      ".json-parameter-workbench__inspector",
+      ".json-parameter-workbench__no-selection",
+      ".json-parameter-workbench__no-selection-icon",
+      ".dts-parameter-workbench--status",
+      '.dts-parameter-workbench--status[aria-busy="true"]',
+      '.dts-parameter-workbench--status[aria-busy="true"] [role="status"]',
+      ".dts-parameter-workbench--status .project-topology-workspace__empty",
+      ".dts-parameter-workbench--status .project-topology-workspace__error",
+      ".dts-parameter-workbench--status .project-topology-workspace__error .button"
+    ]) {
+      expect(hasRule(styles, selector), selector).toBe(false);
+    }
+  });
+
   it("uses shared elevation for parameter workbench row hover", () => {
     const styles = readStylesheet("src/components/layout/navigator-workbench.css");
     expect(declarationsFor(styles, ".navigator-workbench .dts-parameter-workbench-table__row:hover")["box-shadow"])

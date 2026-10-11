@@ -251,9 +251,20 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 `src/components/layout/` 中的 `NavigatorWorkbench` 负责固定顺序：工具栏（主动作位于最右端）、可选的紧凑上下文、至多一个通知槽，然后是有名称的导航、任务及可选检查器区域。页面只填充槽，不重定义网格、面板宽度或滚动预算。`/parameters` 的 DTS 与 JSON 均使用此模板。Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）将发布条放在上下文槽、治理提示放在通知槽，并保留现有定义对话框。Catalog 管理别名共用 `catalog-definitions` 折叠键；只读的 `/parameters/definitions` 使用 `parameter-definitions`。模拟模式的平面参数表及其他路由在各自迁移前保留原有布局。
 
-布局常量仅在 `src/styles.css` 根令牌块定义一次：`--navigator-workbench-navigator-width`（18rem，为模块数量预留空间）、`--navigator-workbench-navigator-cap`（现有模块宽度上限）、`--navigator-workbench-collapsed-width`（40px）、`--navigator-workbench-inspector-width`（20rem）、`--navigator-workbench-gap` 与 `--navigator-workbench-toolbar-padding`（12px），以及 `--navigator-workbench-pane-height` / `--navigator-workbench-scroll-rail-height`。在 1440×900 下，导航从模板左边界开始，任务区左边界为一个有上限的导航宽度加一个间距。标签保持单行并使用省略号；数量列保留固有宽度，不收缩或裁切。工具栏、面板、树和参数表的颜色使用语义主题令牌，深色模式也遵循 Phase 2 对比度配对。模板负责任务区滚动容器，加载、空状态及可重试错误使用 `SectionState`；搜索无匹配时仍保留表头与筛选入口。
+| 槽 | 契约 |
+| --- | --- |
+| `toolbar` / `primaryAction` | 搜索、视图切换、筛选及次要动作放在控件组中；可选主动作固定在最右端。 |
+| `context` | 工具栏下方可选的紧凑发布、项目或状态条。 |
+| `notice` | 上下文下方至多一个紧凑通知槽；使用共享提示样式，保留页面现有的关闭行为。 |
+| `navigator` | 有名称、可折叠的模块或对象区域；内容在面板内滚动。 |
+| `children` / `taskState` | 有名称的任务区拥有滚动容器。加载、空状态及可重试错误交给 `SectionState`；搜索无匹配时仍保留表头和筛选入口。 |
+| `inspector` | 任务区之后可选的有名称详情区域，由页面决定何时打开。参数定义详情与历史保留在现有对话框中，不占用常驻检查器。 |
 
-折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化，存储不可用时本次挂载仍可操作。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`）。切换按钮标明受控内容及展开状态。DOM 与键盘顺序遵循槽顺序，格式切换后焦点回到当前格式标签。
+布局常量仅在 `src/styles.css` 根令牌块定义一次：`--navigator-workbench-navigator-width`（18rem，为模块数量预留空间）、`--navigator-workbench-navigator-cap`（别名为 `--module-navigator-max-width`，即 `min(32.5rem, 42vw)`）、`--navigator-workbench-collapsed-width`（`--space-10`，40px）、`--navigator-workbench-inspector-width`（20rem）、`--navigator-workbench-gap` 与 `--navigator-workbench-toolbar-padding`（`--space-3`，12px）、`--navigator-workbench-pane-height`（`min(670px, calc(100vh - 230px))`）及 `--navigator-workbench-scroll-rail-height`（14px）。主体网格使用导航宽度与上限的较小值、`minmax(0, 1fr)` 任务轨道，以及可选的检查器宽度。在 1440×900 下，导航从模板左边界开始，任务区左边界为一个有上限的导航宽度加一个间距。标签保持单行并使用省略号；数量列保留固有宽度，不收缩或裁切。溢出只在导航或任务滚动容器内处理，不延伸到页面。工具栏、面板、树和参数表的颜色使用语义主题令牌，深色模式也遵循 Phase 2 对比度配对。已迁移页面不得在模板外再套一层带留白的卡片，也不得保留局部网格、面板宽度或滚动高度规则。
+
+折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的 `section` 区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
+
+后续迁移不属于本轮首批范围：模块治理、项目配置、#1110（Bridge 就绪）之后的节点调试与 DTS 重载，以及 #1112 之后的日志。在对应工单迁移调用方之前，保留节点调试与 DTS 重载仍使用的 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters` 或 Catalog 界面的面板覆盖。本契约不改变配色、字体、密度、URL、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
 
 质量一致性项目在浅色、深色主题的 1440×900 视口下检查展开与折叠几何（±1px）、工具栏与动作位置、单一通知、首行可见、页面横向溢出，数量文字裁切，以及现有行操作和模块树契约。深色 `/parameters` 检查还运行无排除项的 axe 文字对比度扫描。截图附件是 Catalog 迁移前的审阅门槛；不得在本地重生成 Linux 视觉基线。
 

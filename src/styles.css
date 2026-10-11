@@ -21620,39 +21620,6 @@ body.xiaoze-popup-drag-active {
 }
 
 /* ── JSON Parameter Workbench ── */
-.json-parameter-workbench {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-1);
-}
-
-.json-parameter-workbench__list {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  height: min(670px, calc(100vh - 230px));
-  max-height: min(670px, calc(100vh - 230px));
-  background: var(--dts-workbench-surface);
-  border: 1px solid var(--dts-workbench-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.json-parameter-workbench__list .dts-workbench-list__scroll-x {
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.json-parameter-workbench__list .dts-workbench-list__scroll-y {
-  width: 100%;
-  min-width: 100%;
-  overflow-y: auto;
-}
-
 .json-parameter-workbench-table {
   width: 100%;
   border-collapse: collapse;
@@ -21808,13 +21775,6 @@ body.xiaoze-popup-drag-active {
   color: var(--danger);
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
-}
-
-.json-parameter-workbench__inspector {
-  position: sticky;
-  top: var(--space-3);
-  max-height: min(670px, calc(100vh - 230px));
-  overflow-y: auto;
 }
 
 .json-binding-card {
@@ -21985,25 +21945,6 @@ body.xiaoze-popup-drag-active {
   color: var(--text-secondary);
 }
 
-.json-parameter-workbench__no-selection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 280px;
-  padding: var(--space-8);
-  text-align: center;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  gap: var(--space-3);
-}
-
-.json-parameter-workbench__no-selection-icon {
-  color: var(--text-muted);
-  opacity: 0.6;
-}
-
 .binding-detail-panel,
 .binding-detail-drawer {
   display: grid;
@@ -22098,32 +22039,6 @@ body.xiaoze-popup-drag-active {
   color: var(--dts-workbench-ink);
 }
 
-.dts-parameter-workbench--status {
-  min-height: 180px;
-  align-content: center;
-}
-
-.dts-parameter-workbench--status[aria-busy="true"] {
-  color: var(--dts-workbench-blue);
-}
-
-.dts-parameter-workbench--status[aria-busy="true"] [role="status"],
-.dts-parameter-workbench--status .project-topology-workspace__empty,
-.dts-parameter-workbench--status .project-topology-workspace__error {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-4);
-  color: var(--dts-workbench-muted);
-  background: var(--dts-workbench-surface-soft);
-  border: 1px dashed var(--dts-workbench-border-strong);
-  border-radius: 10px;
-  font-size: var(--text-base);
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
 .dts-status-icon {
   flex: 0 0 auto;
   margin-top: 1px;
@@ -22143,17 +22058,6 @@ body.xiaoze-popup-drag-active {
   .dts-status-icon--spin {
     animation: none;
   }
-}
-
-.dts-parameter-workbench--status .project-topology-workspace__error {
-  color: var(--dts-workbench-red);
-  background: var(--dts-workbench-red-soft);
-  border-style: solid;
-  border-color: #f0c7cb;
-}
-
-.dts-parameter-workbench--status .project-topology-workspace__error .button {
-  margin-top: var(--space-3);
 }
 
 .dts-parameter-workbench__header-actions {

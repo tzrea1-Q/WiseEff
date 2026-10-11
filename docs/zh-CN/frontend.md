@@ -329,6 +329,8 @@ Xiaoze（小泽，唯一 Agent）：
 
 `/parameters` 的 DTS/JSON 界面及 Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）遵循共享[导航工作台契约](design-docs/ui-design-system.md#导航工作台)。模板负责槽顺序、有上限的令牌化宽度、折叠偏好与滚动容器；模块树原语继续负责标签锚点和选择。其他路由在各自迁移前保留现有的内容自适应导航。
 
+填充 `NavigatorWorkbench` 槽，不添加页面局部网格、面板宽度或第二层带留白的外壳。契约除几何外还定义地标、键盘顺序和状态位置。后续迁移为模块治理、项目配置、#1110 之后的节点调试与 DTS 重载，以及 #1112 之后的日志；对应工单迁移之前保留旧布局。
+
 `DtsTopologyNavigator` 是 `/parameters`、`/node-debugging` 和 `/dts-reload` 共用的模块优先树。`/parameter-admin/specs` 的 `CatalogModuleNavigator` 保留模块与主体的区别及主体元信息，同时复用共享的行、展开控件和子树布局。展开列使用固定宽度令牌，标签长度和选中状态不会移动同层级标签的左侧锚点；四个页面使用相同的箭头与缩进。
 
 选中模块会筛选完整子树，再次点击当前模块清除范围。三个工作台将选择写入 `?moduleNode=`，刷新或浏览器历史导航后恢复选择。Catalog 保留已有的 `moduleNodeId` 发布锚点查询契约及去重主体汇总数。

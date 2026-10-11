@@ -511,6 +511,8 @@ Admin **list** tables use `src/components/admin/DataTable` (sort + `aria-sort`, 
 
 The `/parameters` DTS/JSON surfaces and Catalog definitions family (`/parameter-admin`, `/parameter-admin/specs` and its definition aliases, `/parameters/definitions`) use the shared [Navigator workbench contract](design-docs/ui-design-system.md#navigator-workbench). The template owns slot order, fixed tokenized pane widths, collapse preferences and scrollports; module-tree primitives still own label anchors and selection. Other routes retain their existing content-sized navigation until their own migration.
 
+Fill `NavigatorWorkbench` slots rather than adding page-local grids, pane widths or a second padded shell. The contract defines landmarks, keyboard order and state placement as well as geometry. Next migrations are module governance, project configuration, node debugging and DTS reload after #1110, and logs after #1112; keep their legacy layouts until those tickets migrate them.
+
 `DtsTopologyNavigator` is the shared module-first tree on `/parameters`, `/node-debugging`, and `/dts-reload`. `CatalogModuleNavigator` on `/parameter-admin/specs` retains its module/subject distinction and subject metadata while reusing the shared row, disclosure, and nested-group geometry. Disclosure columns have a fixed tokenized width, so label length and selection do not move same-depth label anchors; all four surfaces use the same chevrons and indentation.
 
 Selecting a module scopes its subtree; selecting it again clears the scope. The three workbenches persist selection in `?moduleNode=` and restore it after reload or browser history navigation. Catalog keeps its existing `moduleNodeId` release-anchor query contract and distinct-subject roll-up counts.
