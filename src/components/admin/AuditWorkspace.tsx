@@ -57,7 +57,7 @@ export function AuditWorkspace({
       const rows = await fetchAllForExport();
       // Chinese labels for humans; the raw kind slug stays alongside so the
       // export remains machine-filterable and auditable.
-      const header = ["时间", "模块", "类型", "类型标识", "操作", "操作人", "严重度", "对象类型", "对象", "Trace"];
+      const header = ["时间", "模块", "类型", "类型标识", "操作", "操作标识", "操作人", "严重度", "对象类型", "对象", "Trace"];
       const severityLabels: Record<string, string> = { High: "高", Medium: "中", Low: "低" };
       const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
       const lines = [header.join(",")].concat(
@@ -68,6 +68,7 @@ export function AuditWorkspace({
             presentAuditKind(event.kind).label,
             event.kind,
             presentAuditAction(event.action).label,
+            event.action,
             event.actor,
             severityLabels[event.severity] ?? event.severity,
             event.targetType ?? "",

@@ -134,7 +134,7 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
     case "publication-self-approval-forbidden":
       return "单人策略未开启时，不能自行批准本次发布，请由其他具备发布权限的人员确认。";
     case "catalog-not-adopted":
-      return "目录尚未完成接管，不能在线发布。请由运维完成 inspect/adopt，而不是在本页提权。";
+      return "参数目录正在接管中，暂不能在线发布。请等待接管完成。";
     case "publication-policy-disabled":
       return "目录发布策略已关闭，输入已保留。";
     case "publication-frozen":
