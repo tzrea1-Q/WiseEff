@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
-import { Info } from "lucide-react";
+import { CheckCircle2, Info } from "lucide-react";
+import { SectionEmpty } from "@/components/common/SectionState";
 
 import type { DtsConfigSetMemberFile } from "@/application/ports/DtsStructuredRepository";
 import type {
@@ -11,7 +12,7 @@ import {
   type DtsViewerFocusSpan,
   type DtsViewerSessionChangeMarker
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
-import type { WorkbenchCanvasMode } from "./workbenchInspectorModel";
+import { formatSourceCanvasEmpty, type WorkbenchCanvasMode } from "./workbenchInspectorModel";
 
 export type WorkbenchSourceCanvasProps = {
   sourceRegionRef: RefObject<HTMLElement | null>;
@@ -22,6 +23,8 @@ export type WorkbenchSourceCanvasProps = {
   candidateId: string | null;
   activeCandidate: ParameterFileCandidate | null;
   fileVersions: ProjectParameterFileVersion[];
+  onSelectVersion?: () => void;
+  onUploadCandidate?: () => void;
   onEnterCanvasMode: (mode: WorkbenchCanvasMode, versionId: string | null) => void;
   onExitSpecialCanvasMode: () => void;
   candidateError: string;
@@ -33,6 +36,7 @@ export type WorkbenchSourceCanvasProps = {
   onClearModeSourceError: () => void;
   source: string;
   historySource: string;
+  historySourceAvailable?: boolean;
   candidateSource: string;
   candidateLoading: boolean;
   compareSource: string;
@@ -55,6 +59,8 @@ export function WorkbenchSourceCanvas({
   candidateId,
   activeCandidate,
   fileVersions,
+  onSelectVersion,
+  onUploadCandidate,
   onEnterCanvasMode,
   onExitSpecialCanvasMode,
   candidateError,
@@ -66,6 +72,7 @@ export function WorkbenchSourceCanvas({
   onClearModeSourceError,
   source,
   historySource,
+  historySourceAvailable = Boolean(historySource),
   candidateSource,
   candidateLoading,
   compareSource,
@@ -81,6 +88,9 @@ export function WorkbenchSourceCanvas({
   const sourceFormatLabel =
     (selectedMember?.format ?? activeCandidate?.format) === "json" ? "JSON" : "DTS";
   const sourceBodyAriaLabel = `${sourceFormatLabel} 源码`;
+  const workingSource = historySourceAvailable ? compareSource : source;
+  const emptyState = formatSourceCanvasEmpty(canvasMode, historyVersionId, historySource, workingSource, candidateId ? candidateSource : "", historySourceAvailable);
+  const identical = Boolean(historyVersionId && historySourceAvailable && historySource === workingSource);
   return (
     <main className="configuration-workbench__source" aria-label={`只读 ${sourceFormatLabel} 源码`} ref={sourceRegionRef}>
       {selectedMember ? (
@@ -188,6 +198,12 @@ export function WorkbenchSourceCanvas({
           {candidateError}
         </div>
       ) : null}
+      {!sourceLoading && !modeSourceLoading && !candidateLoading && !sourceError && !modeSourceError && !candidateError && selectedMember && emptyState ? (
+        <div className="configuration-workbench__source-state" role="status">
+          {identical ? <CheckCircle2 className="configuration-workbench__source-success" size={20} aria-hidden="true" /> : <Info size={20} aria-hidden="true" />}
+          <SectionEmpty {...emptyState} onAction={canvasMode === "candidate" ? onUploadCandidate : historyVersionId ? onExitSpecialCanvasMode : fileVersions.length ? onSelectVersion : undefined} />
+        </div>
+      ) : null}
       {sourceLoading || modeSourceLoading ? (
         <div className="configuration-workbench__source-state" role="status">
           {canvasMode === "working" ? "正在加载活跃源码…" : "正在加载对照源码…"}
@@ -281,7 +297,7 @@ export function WorkbenchSourceCanvas({
           bodyAriaLabel={sourceBodyAriaLabel}
         />
       ) : null}
-      {!candidateLoading && canvasMode === "candidate" && candidateSource ? (
+      {!candidateLoading && canvasMode === "candidate" && candidateId && candidateSource ? (
         <ProjectPrimaryDtsViewer
           className="configuration-workbench__code"
           fileName={activeCandidate?.fileName ?? selectedMember?.fileName ?? "candidate.dts"}
@@ -301,6 +317,7 @@ export function WorkbenchSourceCanvas({
       !modeSourceError &&
       selectedMember &&
       canvasMode === "unified-diff" &&
+      !emptyState &&
       unifiedDiffText ? (
         <pre className="configuration-workbench__diff" aria-label="统一差异对比">
           {unifiedDiffText}
@@ -310,13 +327,14 @@ export function WorkbenchSourceCanvas({
       !modeSourceError &&
       selectedMember &&
       canvasMode === "side-by-side" &&
-      historySource ? (
+      !emptyState &&
+      historySourceAvailable ? (
         <div className="configuration-workbench__side-by-side" aria-label="并排差异对比">
           <ProjectPrimaryDtsViewer
             className="configuration-workbench__code"
             fileName={`${selectedMember.fileName} · 工作配置`}
             versionNumber={selectedMember.currentVersionNumber ?? 0}
-            text={compareSource || source}
+            text={workingSource}
             onVisibleLineChange={onVisibleLineChange}
             bodyAriaLabel={sourceBodyAriaLabel}
           />

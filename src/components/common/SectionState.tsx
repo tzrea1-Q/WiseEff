@@ -18,14 +18,16 @@ export function SectionSkeleton({ label }: SectionSkeletonProps) {
 }
 
 type SectionEmptyProps = {
+  title?: string;
   message: string;
   actionLabel?: string;
   onAction?: () => void;
 };
 
-export function SectionEmpty({ message, actionLabel, onAction }: SectionEmptyProps) {
+export function SectionEmpty({ title, message, actionLabel, onAction }: SectionEmptyProps) {
   return (
     <div className="section-empty">
+      {title ? <strong>{title}</strong> : null}
       <p>{message}</p>
       {actionLabel && onAction ? (
         <Button type="button" variant="outline" size="sm" onClick={onAction}>
