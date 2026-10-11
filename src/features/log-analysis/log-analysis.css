@@ -16,6 +16,22 @@
   min-width: 0;
 }
 
+.logs-v2-main--failed {
+  grid-template-rows: auto;
+  align-content: start;
+}
+
+.log-error-alert .logs-metadata-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--space-16) * 2)), 1fr));
+  padding: 0;
+  margin-bottom: var(--space-4);
+}
+
+.log-error-alert .logs-metadata-list div {
+  color: var(--app-ink);
+  border-color: var(--outline);
+}
+
 .logs-v2-header,
 .logs-conclusion-card,
 .log-timeline,
