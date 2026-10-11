@@ -60,7 +60,7 @@ Notification feedback (`state.notifications`, pushed by `ADD_NOTIFICATION`) reac
 
 The audit center (`/audit`) pushes its filters down to `GET /api/v1/audit-events`: text search (`q`, matching action / kind / target id / actor name server-side), a time window (today / last 7 days / last 30 days, sent as `from`), plus the existing app-group / project / severity / trace filters and cursor paging. The CSV export button exports the current filter's full result (paged fetch, 2000-row cap) as UTF-8-BOM CSV with Chinese headers and Chinese labels for app / kind / action / severity, keeping the raw kind and action slugs in dedicated columns for machine filtering. Event rows and related trace events use the shared Chinese labels with secondary monospace codes; unknown codes remain visible verbatim. In mock mode the same filters run client-side.
 
-Catalog definition rows retain the published display name next to a monospace property key; Chinese names are Catalog release content tracked by #1114, not UI translations. While the Catalog is being adopted, `/parameter-admin` shows plain-language status with an “了解详情” disclosure. Only platform admins and operators see the operator handbook's inspect/adopt instructions inside it. Server authoring and publishing gates remain unchanged.
+Catalog definition rows retain the published display name next to a monospace property key; Chinese names are Catalog release content tracked by #1114, not UI translations. While the Catalog is being adopted, `/parameter-admin` shows plain-language status with a Chinese-labelled “Learn more” disclosure. Only platform admins and operators see the operator handbook's inspect/adopt instructions inside it. Server authoring and publishing gates remain unchanged.
 
 ## TopBar Project Selector
 
@@ -194,7 +194,7 @@ Canonical DTS and JSON editors expose property deletion with a required reason a
 - The current-edits tray healthy copy (N = draft count):
 
   ```text
-  本轮 N 项
+  N items in this round (Chinese UI label)
   ```
 
   Mixed revision tips within a round are exceptional; the tray surfaces actionable remediation in Chinese when they occur.
