@@ -111,8 +111,11 @@ export function collectConsistencyMeasurements() {
   const xiaozeLaunchers = overlays('[data-testid="copilot-chat-toggle"],.xiaoze-chat-toggle');
   const xiaozeHints = overlays('[data-testid="xiaoze-toggle-hint"],.xiaoze-toggle-hint');
   const scrollports = new Set<Element>();
-  const visibleTables = elements('table,[role="table"],[role="grid"]');
-  for (const table of [...visibleTables, ...elements(".audit-workspace-list")]) {
+  const visibleTables = [...new Set([
+    ...elements('table,[role="table"],[role="grid"]'),
+    ...document.querySelectorAll('[role="dialog"] :is(table,[role="table"],[role="grid"])')
+  ])].filter(visible);
+  for (const table of [...visibleTables, ...elements(".audit-workspace-list, .navigator-workbench__task .identity-mapping-review__list")]) {
     let hasScrollport = false;
     for (let ancestor: Element | null = table; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
       const style = getComputedStyle(ancestor);
@@ -181,7 +184,7 @@ export function collectConsistencyMeasurements() {
       probe.remove();
       return width;
     };
-    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"])');
+    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item');
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",

@@ -3,8 +3,8 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
 import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, shouldRequireXiaozeHint } from "../e2e/quality/consistency-assertions";
 
-function collectMarkup(markup: string) {
-  const dom = new JSDOM(`<main>${markup}</main>`);
+function collectMarkup(markup: string, portalMarkup = "") {
+  const dom = new JSDOM(`<main>${markup}</main>${portalMarkup}`);
   vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockReturnValue({
     x: 100, y: 100, left: 100, top: 100, right: 200, bottom: 132, width: 100, height: 32, toJSON: () => ({})
   });
@@ -26,6 +26,16 @@ import { consistencyRoutes } from "../e2e/quality/consistency-routes";
 import { installConsistencyReadGuard } from "../e2e/quality/consistency";
 
 describe("view-switch collection", () => {
+  it("measures the first read-only identity evidence item and protects its task scrollport", () => {
+    const measurements = collectMarkup(`
+      <div class="navigator-workbench"><section class="navigator-workbench__task" style="overflow-x: auto; overflow-y: auto">
+        <ul class="identity-mapping-review__list"><li class="identity-mapping-review__item">Historical evidence</li></ul>
+      </section></div>
+    `);
+    expect(measurements.navigatorWorkbenches[0].firstRow).toEqual({ left: 100, top: 100, right: 200, bottom: 132, width: 100, height: 32 });
+    expect(measurements.tableScrollports.map((area) => area.dom)).toContain("section.navigator-workbench__task");
+  });
+
   it("measures Catalog module counts alongside shared workbench counts", () => {
     const measurements = collectMarkup(`
       <div class="navigator-workbench">
@@ -39,9 +49,16 @@ describe("view-switch collection", () => {
     expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["4", "12 个参数"]);
   });
 
-  it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameters/definitions"])(
+  it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions"])(
     "requires navigator-workbench geometry for the migrated route %s", (path) => {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
+    }
+  );
+
+  it.each(["/parameter-admin/spec-review", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"])(
+    "covers the pending-work deep link for %s without dropping workbench guarantees", (path) => {
+      expect(consistencyRoutes.find((route) => route.path === `${path}?review=open`)?.required)
+        .toEqual(expect.arrayContaining(["navigatorWorkbenches", "rowActions", "moduleTreeLabels", "paginationControls"]));
     }
   );
 
@@ -114,6 +131,13 @@ describe("primary action collection", () => {
 });
 
 describe("Xiaoze placement contract", () => {
+  it("protects pending-work tables portalled outside main as well as the background table", () => {
+    const measurements = collectMarkup('<table><tr><td>Catalog</td></tr></table>',
+      '<section role="dialog" aria-label="待处理工作"><table><tr><td>Review item</td></tr></table></section>');
+    expect(measurements.visibleTableCount).toBe(2);
+    expect(measurements.tableScrollports).toHaveLength(2);
+  });
+
   it("requires protected areas whenever a consistency route renders a table", () => {
     expect(() => assertXiaozePlacement({
       xiaozeLaunchers: [], xiaozeHints: [], tableScrollports: [], stickyActionAreas: [], visibleTableCount: 1
@@ -179,6 +203,14 @@ describe("compact filter, sort and pagination height contract", () => {
       .toThrow("missing consistency measurements: filterControls");
   });
   const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: null, height, compactControl });
+
+  it("does not invent pagination for read-only identity evidence but still validates rendered controls", () => {
+    expect(() => requireCompactControlHeights({}, "/parameter-admin/specs/identity-mapping", ["navigatorWorkbenches"]))
+      .not.toThrow();
+    expect(() => requireCompactControlHeights({ paginationControls: [control("button", 38, "pagination")] },
+      "/parameter-admin/specs/identity-mapping", ["navigatorWorkbenches"]))
+      .toThrow("has height 38px; expected 32px");
+  });
 
   it.each([
     ["viewSwitches", "button.parameter-admin-scope-nav__tab", 43],

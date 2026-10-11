@@ -15,7 +15,7 @@ export type OrganizationSpecsAreaProps = {
   search: string;
   onNavigate: (path: string) => void;
   /** Live Catalog destination for `/parameter-admin/specs`. Identity-mapping stays nested. */
-  catalogLibrary: ReactNode;
+  renderCatalogLibrary: (taskContent?: ReactNode) => ReactNode;
 };
 
 type MappingCountState =
@@ -31,7 +31,7 @@ export function OrganizationSpecsArea({
   pathname,
   search,
   onNavigate,
-  catalogLibrary
+  renderCatalogLibrary
 }: OrganizationSpecsAreaProps) {
   const { application, dispatch } = useParameterAdmin();
   const [mappingCounts, setMappingCounts] = useState<MappingCountState>({ status: "loading" });
@@ -133,11 +133,9 @@ export function OrganizationSpecsArea({
           ]} />
       ) : null}
 
-      {activeSubView === "identity-mapping" ? (
-        <OrganizationIdentityMappingPanel onTasksLoaded={handleMappingTasksLoaded} />
-      ) : (
-        catalogLibrary
-      )}
+      {renderCatalogLibrary(activeSubView === "identity-mapping"
+        ? <OrganizationIdentityMappingPanel onTasksLoaded={handleMappingTasksLoaded} />
+        : undefined)}
     </>
   );
 }

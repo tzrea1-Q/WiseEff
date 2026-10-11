@@ -281,6 +281,33 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(repository.listMappingTasks).not.toHaveBeenCalled();
   });
 
+  it("keeps the identity route and project scope while pinning Catalog context and selecting modules", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const repository = createRepository({ listMappingTasks: vi.fn().mockResolvedValue([{
+      id: "unresolved-history", projectId: "aurora", configRevisionId: "revision-1",
+      previousLogicalNodeId: "previous-node", candidateLogicalNodeIds: [], status: "open",
+      createdAt: "2026-10-09T00:00:00.000Z"
+    }]) });
+    const { onNavigate } = renderPage({
+      path: "/parameter-admin/specs/identity-mapping?project=aurora&projectId=project-1", runtimeMode: "api", repository,
+      runtime: { parameterCatalogRepository: ports.catalog, parameterCatalogGovernanceRepository: ports.governance } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+    await screen.findByRole("region", { name: "节点对应确认" });
+    await waitFor(() => expect(onNavigate).toHaveBeenCalled());
+    const pinned = new URL(onNavigate.mock.calls.at(-1)![0], window.location.origin);
+    expect(pinned.pathname).toBe("/parameter-admin/specs/identity-mapping");
+    expect(pinned.searchParams.get("project")).toBe("aurora");
+    expect(pinned.searchParams.get("projectId")).toBe("project-1");
+    expect(pinned.searchParams.get("catalogReleaseId")).toBeTruthy();
+    const navigator = screen.getByRole("region", { name: "模块导航" });
+    await userEvent.click(await within(navigator).findByRole("button", { name: /^Root/ }));
+    const selected = new URL(onNavigate.mock.calls.at(-1)![0], window.location.origin);
+    expect(selected.pathname).toBe("/parameter-admin/specs/identity-mapping");
+    expect(selected.searchParams.get("project")).toBe("aurora");
+    expect(selected.searchParams.get("moduleNodeId")).toBeTruthy();
+  });
+
   it("redirects the organization entry to the specs sub-route while preserving query", () => {
     const { onNavigate } = renderPage({
       path: "/parameter-admin?q=gpio&lifecycle=active&spec=spec-sc8562-gpio-int"

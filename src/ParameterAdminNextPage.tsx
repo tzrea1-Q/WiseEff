@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, type Dispatch } from "react";
+import { useCallback, useEffect, useMemo, type Dispatch, type ReactNode } from "react";
 import type { AppRuntime } from "@/app/appRuntime";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
@@ -11,8 +11,10 @@ import { isProjectConfigurationWorkbenchPath } from "@/application/project-confi
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import {
   buildParameterAdminOrganizationPath,
+  buildParameterAdminSpecsPath,
   isParameterAdminOrganizationEntryPath,
   parseParameterAdminOrganizationPath,
+  parseParameterAdminSpecsSubView,
   resolveParameterAdminOrganizationRedirect,
   type ParameterAdminOrganizationView
 } from "@/application/parameters/parameterAdminOrganizationPath";
@@ -145,17 +147,27 @@ export function ParameterAdminNextPage({
         (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
   const handleCatalogAnchorChange = useCallback(
     (href: string, mode: "push" | "replace") => {
-      if (mode === "replace") {
-        const url = new URL(href, window.location.origin);
-        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      const url = new URL(href, window.location.origin);
+      if (parseParameterAdminSpecsSubView(pathname) === "identity-mapping") {
+        url.pathname = buildParameterAdminSpecsPath("identity-mapping");
+        const current = new URLSearchParams(search);
+        for (const queryKey of ["project", "projectId", "review"]) {
+          const value = current.get(queryKey);
+          if (value !== null) url.searchParams.set(queryKey, value);
+        }
       }
-      onNavigate(href);
+      const destination = `${url.pathname}${url.search}`;
+      if (mode === "replace") {
+        window.history.replaceState(null, "", destination);
+      }
+      onNavigate(destination);
     },
-    [onNavigate]
+    [onNavigate, pathname, search]
   );
-  const catalogLibrary =
+  const renderCatalogLibrary = (taskContent?: ReactNode) =>
     runtime?.parameterCatalogRepository && runtime.parameterCatalogGovernanceRepository ? (
       <CatalogOrganizationSurface
+        taskContent={taskContent}
         catalog={runtime.parameterCatalogRepository}
         governance={runtime.parameterCatalogGovernanceRepository}
         actor={catalogActorForSession({
@@ -169,7 +181,7 @@ export function ParameterAdminNextPage({
         currentPersonId={state?.currentUserId ?? ""}
         relatedKnowledge={definitionRelatedKnowledge}
       />
-    ) : undefined;
+    ) : taskContent;
   const isConfigurationWorkbenchRoute =
     area === "projects" &&
     isProjectConfigurationWorkbenchPath(pathname);
@@ -252,7 +264,7 @@ export function ParameterAdminNextPage({
                 pathname={pathname}
                 search={search}
                 onNavigate={onNavigate}
-                catalogLibrary={catalogLibrary}
+                renderCatalogLibrary={renderCatalogLibrary}
               />
             ) : null}
             {organizationView === "specs" && runtimeMode === "mock" ? (
@@ -260,7 +272,7 @@ export function ParameterAdminNextPage({
                 {pathname.endsWith("/identity-mapping") ? (
                   <p role="status">Mock 模式不提供旧节点对应任务。请使用 API 模式的规范审核队列。</p>
                 ) : null}
-                {catalogLibrary}
+                {renderCatalogLibrary()}
               </>
             ) : null}
             {organizationView === "modules" ? (

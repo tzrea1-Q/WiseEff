@@ -3,7 +3,7 @@ import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { IdentityMappingReview } from "@/components/parameter-topology/IdentityMappingReview";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
-import { ParamAdminEmptyState } from "./ParamAdminEmptyState";
+import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
 export type OrganizationIdentityMappingPanelProps = {
@@ -50,7 +50,7 @@ export function OrganizationIdentityMappingPanel({
   const historyTasks = tasks.filter((task) => task.status !== "open");
 
   return (
-    <section className="param-admin-main param-admin-governance-card" aria-label="节点对应确认">
+    <section className="parameter-catalog__list" aria-label="节点对应确认">
       <div className="parameters-table-heading">
         <div>
           <h2>{PARAMETER_ADMIN_UI.identityMapping}</h2>
@@ -67,17 +67,16 @@ export function OrganizationIdentityMappingPanel({
         打开规范审核队列
       </a>
       {loading && openTasks.length === 0 && historyTasks.length === 0 ? (
-        <p className="form-hint">{PARAMETER_ADMIN_UI.identityMappingLoading}</p>
+        <SectionSkeleton label={PARAMETER_ADMIN_UI.identityMappingLoading} />
       ) : null}
       {error ? (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
+        <SectionError message={error} onRetry={() => void reload()} />
       ) : null}
       {!loading && !error && openTasks.length === 0 && historyTasks.length === 0 ? (
-        <ParamAdminEmptyState message={PARAMETER_ADMIN_UI.identityMappingEmpty}>
+        <>
+          <SectionEmpty message={PARAMETER_ADMIN_UI.identityMappingEmpty} />
           <p>新的未知或歧义证据请前往规范审核队列查看。</p>
-        </ParamAdminEmptyState>
+        </>
       ) : (
         <IdentityMappingReview tasks={tasks} />
       )}
