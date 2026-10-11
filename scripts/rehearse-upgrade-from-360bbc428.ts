@@ -46,7 +46,8 @@ async function main() {
   const composeDirectory = path.join(checkout, "ops/self-hosted");
   const envFile = path.join(composeDirectory, ".env");
   const managerFile = path.join(composeDirectory, ".env.publication-manager");
-  const ca = "/etc/ssl/certs/ca-certificates.crt";
+  // Hosted runners have no enterprise CA: use the bundled intentionally-empty PEM (documented "no enterprise CA").
+  const ca = path.join(composeDirectory, "build-network/empty-ca.pem");
   const project = `rehearsal-${randomBytes(8).toString("hex")}`;
   const runId = `${project}-upgrade`;
   const seedId = `${project}-seed`;
