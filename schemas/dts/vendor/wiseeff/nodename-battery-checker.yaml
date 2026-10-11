@@ -11,9 +11,11 @@ properties:
     valueShape: phandle-list
     exampleValue: <&fm1230 &t91407>
     constraints: {}
-    documentation: battery_checker 的 DTS 属性「matchable」（matchable），用于驱动读取的设备树配置。
+    documentation: 指定电池校验节点是否参与匹配。
+    displayName: 匹配使能
   spare-cycles:
     valueShape: u32-array
     exampleValue: <150>
     constraints: {}
-    documentation: battery_checker 的 DTS 属性「spare cycles」（spare-cycles），用于驱动读取的设备树配置。
+    documentation: 设置电池校验使用的备用循环次数。
+    displayName: 备用循环次数

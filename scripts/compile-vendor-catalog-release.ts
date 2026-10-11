@@ -1,9 +1,10 @@
 /**
- * Compile schemas/dts/catalog.json (minus retired/ambiguous fixtures) into a
- * Catalog Release successor of the bootstrap fixture crel_acme_1.
+ * Compile the pinned seed Catalog lineage from crel_acme_1 through vendor
+ * constraints (release 2), optionally adding Chinese presentation (release 3).
  *
  * Frozen publication policy:
- * - Input is catalog.json schemaPaths only; power-management.json is not merged.
+ * - Release 1 uses its frozen source snapshot; later seed content comes from
+ *   catalog.json schemaPaths only; power-management.json is not merged.
  * - Exclude common-status.yaml and test-ambiguous-*.yaml.
  * - Predecessor identities from crel_acme_1 stay in the successor snapshot.
  * - Opaque ids are deterministic slugs; collisions fail closed.
@@ -54,6 +55,9 @@ export const VENDOR_SUCCESSOR_AGGREGATE_DIGEST =
 export const VENDOR_CONSTRAINED_RELEASE_ID = "crel_vendor_catalog_2";
 export const VENDOR_CONSTRAINED_AGGREGATE_DIGEST =
   "sha256:1afcc2219a870525a979c4a14f3d2972204cd293f3b228750842d6a7ce97a8f0";
+export const VENDOR_LOCALIZED_RELEASE_ID = "crel_vendor_catalog_3";
+export const VENDOR_LOCALIZED_AGGREGATE_DIGEST =
+  "sha256:f6c18a3e77c231d15b80376c783f01501fd4d7f18eb967679f51eae5e3a682b9";
 
 export { EXCLUDED_SCHEMA_BASENAMES };
 
@@ -280,7 +284,7 @@ const vendorDocuments = (schemasRoot: string, carryConstraints = false): Catalog
       const revisionId = claimId(usedIds, `drev_${subjectSlug}_${slug(propertyKey)}_1`, "revision");
       const revisionContent = {
         lifecycle: "active" as const,
-        displayName: propertyKey,
+        displayName: property.displayName === undefined ? propertyKey : property.displayName,
         documentation: property.documentation ?? `${document.title ?? canonical} property ${propertyKey}`,
         ...(property.units ? { unit: property.units } : {}),
         valueSchema,
@@ -342,7 +346,10 @@ export const compileVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
   }
 
   const schemasRoot = path.join(repoRoot, "schemas/dts");
-  const added = vendorDocuments(schemasRoot);
+  vendorDocuments(schemasRoot);
+  const frozen = parseYaml(readFileSync(path.join(repoRoot, VENDOR_SUCCESSOR_SOURCE_PATH), "utf8")) as {
+    documents: Array<Pick<CatalogReleaseDocument, "kind" | "content">>;
+  };
   const successor = mutable(structuredClone(predecessor));
   successor.manifest.release.id = VENDOR_SUCCESSOR_RELEASE_ID;
   successor.manifest.release.version = VENDOR_SUCCESSOR_VERSION;
@@ -352,10 +359,11 @@ export const compileVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
     id: predecessor.manifest.release.id,
     digest: firstCompiled.value.release.digest,
   };
-  successor.documents = [
-    ...structuredClone(predecessor.documents),
-    ...added,
-  ] as DeepMutable<CatalogReleaseDocument>[];
+  successor.documents = frozen.documents.map((document) => ({
+    ...document,
+    source: predecessor.documents[0]!.source,
+    normalizedDigest: canonicalDigest(document.content as unknown as ContractJsonValue),
+  })) as DeepMutable<CatalogReleaseDocument>[];
 
   // Issue #849 scope item 4: retire the acme sample while keeping crel_acme_1 and
   // its activation history intact. Retirement is expressed as a tombstone on the
@@ -443,12 +451,53 @@ export const compileConstrainedVendorCatalogSuccessor = (repoRoot = process.cwd(
   return { bundle, compiled: compiled.value, predecessor: previous.compiled.release, previous, excluded: previous.excluded };
 };
 
+export const compileLocalizedVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
+  const previous = compileConstrainedVendorCatalogSuccessor(repoRoot);
+  const mappedDefinitions = new Map(vendorDocuments(path.join(repoRoot, "schemas/dts"), true)
+    .filter((document) => document.kind === "definition")
+    .map((document) => [document.content.id, document]));
+  const successor = mutable(structuredClone(previous.bundle.releases.at(-1)!));
+  successor.manifest.release = {
+    ...successor.manifest.release,
+    id: VENDOR_LOCALIZED_RELEASE_ID,
+    version: "1.2.1",
+    sequence: 4,
+    publishedAt: "2026-10-10T00:00:00Z",
+    predecessor: { id: previous.compiled.release.id, digest: previous.compiled.release.digest },
+  };
+  for (const document of successor.documents) {
+    if (document.kind !== "definition") continue;
+    const presentation = document.content.id === "pdef_acme_power_iin_max"
+      ? { displayName: "最大输入电流", documentation: "设置允许的最大输入电流，单位为毫安。" }
+      : mappedDefinitions.get(document.content.id)?.content.revision;
+    if (!presentation) throw new Error(`catalog-vendor-localization-missing:${document.content.id}`);
+    document.content.revision.displayName = presentation.displayName;
+    document.content.revision.documentation = presentation.documentation;
+    document.content.revision.number += 1;
+    document.content.revision.id = document.content.revision.id.replace(/_\d+$/, `_${document.content.revision.number}`);
+  }
+  refreshSuccessorSource(successor, "schemas/dts/catalog-release/vendor-catalog-3.yaml");
+  const bundle: CatalogReleaseBundle = {
+    ...previous.bundle,
+    targetReleaseId: VENDOR_LOCALIZED_RELEASE_ID,
+    releases: [...previous.bundle.releases, successor],
+  };
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) throw new Error(`catalog-vendor-successor-invalid:${compiled.error.kind}:${JSON.stringify(compiled.error.violations)}`);
+  if (compiled.value.aggregateDigest !== VENDOR_LOCALIZED_AGGREGATE_DIGEST) {
+    throw new Error(`catalog-vendor-digest-drift:expected=${VENDOR_LOCALIZED_AGGREGATE_DIGEST}:actual=${compiled.value.aggregateDigest}`);
+  }
+  return { bundle, compiled: compiled.value, predecessor: previous.compiled.release, previous, excluded: previous.excluded };
+};
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const outFlag = process.argv.indexOf("--out");
   const outPath = outFlag >= 0 ? process.argv[outFlag + 1] : undefined;
   try {
-    const result = compileConstrainedVendorCatalogSuccessor();
+    const result = process.argv.includes("--localized")
+      ? compileLocalizedVendorCatalogSuccessor()
+      : compileConstrainedVendorCatalogSuccessor();
     if (outPath) {
       writeFileSync(outPath, `${JSON.stringify(result.bundle)}\n`);
     }

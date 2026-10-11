@@ -11,56 +11,67 @@ properties:
     valueShape: string-list
     exampleValue: "\"mt,mt5788\""
     constraints: {}
-    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
+    documentation: 指定设备树兼容标识，用于匹配对应驱动。
+    displayName: 兼容标识
   gpio_en:
     valueShape: mixed
     exampleValue: <&gpio2 26 0>
     constraints: {}
-    documentation: GPIO 相关配置项「gpio_en」，描述引脚、极性或中断线。
+    documentation: 指定控制设备使能的 GPIO 引脚。
+    displayName: 使能 GPIO
   gpio_int:
     valueShape: mixed
     exampleValue: <&gpio6 15 0>
     constraints:
       cells: 3
       description: phandle pin flags
-    documentation: MT5788 interrupt GPIO phandle-array (pin + flags).
+    documentation: 指定中断 GPIO 的控制器、引脚及标志。
+    displayName: 中断 GPIO
   prevfod1_product_list:
     valueShape: bytes
     exampleValue: /bits/ 8 <17>
     constraints: {}
-    documentation: mt,mt5788 的 DTS 属性「prevfod1 product list」（prevfod1_product_list），用于驱动读取的设备树配置。
+    documentation: 列出使用 prevfod1 异物检测配置的产品标识。
+    displayName: 前置 FOD 产品表
   reg:
     valueShape: u32-array
     exampleValue: <0x2B>
     constraints: {}
-    documentation: 设备在父总线上的地址/寄存器范围。
+    documentation: 指定设备在父总线上的地址或寄存器范围。
+    displayName: 寄存器地址
   rx_fod_cond:
     valueShape: string-list
     exampleValue: "\"0\", \"-1\", \"2\", \"5000\",\n\t\t\t\t\"31\", \"-1\", \"-1\", \"15000\""
     constraints: {}
-    documentation: mt,mt5788 的 DTS 属性「rx fod cond」（rx_fod_cond），用于驱动读取的设备树配置。
+    documentation: 配置接收端异物检测参数的选择条件。
+    displayName: 接收 FOD 条件表
   rx_mod_cm_cfg:
     valueShape: bytes
     exampleValue: /bits/ 8 <0x5 0x5 0x5>
     constraints: {}
-    documentation: mt,mt5788 的 DTS 属性「rx mod cm cfg」（rx_mod_cm_cfg），用于驱动读取的设备树配置。
+    documentation: 配置无线充电接收端的共模调制参数。
+    displayName: 接收共模调制配置
   rx_ploss_th0:
     valueShape: bytes
     exampleValue: /bits/ 8 <0x19 0x32 0x4B 0x64 0x7D 0x96 0xAF 0xE1 0xEB 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0xFF>
     constraints: {}
-    documentation: mt,mt5788 的 DTS 属性「rx ploss th0」（rx_ploss_th0），用于驱动读取的设备树配置。
+    documentation: 配置接收端异物检测使用的第 0 组功率损耗阈值。
+    displayName: 接收损耗阈值表 0
   time_para:
     valueShape: u32-array
     exampleValue: "<\n\t\t\t\t1800 1250\n\t\t\t\t0 2500\n\t\t\t>"
     constraints: {}
-    documentation: mt,mt5788 的 DTS 属性「time para」（time_para），用于驱动读取的设备树配置。
+    documentation: 配置充电时长与控制参数的对应表。
+    displayName: 时间参数表
   time_para_group:
     valueShape: string-list
     exampleValue: "\"SC_2\", \"1\", \"time_para01\",\n\t\t\t\t\"SC_4\", \"0\", \"time_para\""
     constraints: {}
-    documentation: mt,mt5788 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。
+    documentation: 配置充电模式与对应时间参数组的映射。
+    displayName: 时间参数组映射
   tx_current_fod_para:
     valueShape: string-list
     exampleValue: "\"3\", \"550\", \"9900\", \"300\", \"9900\", \"250\",\n\t\t\t\t\"12\", \"195\", \"9900\", \"200\", \"9900\", \"1\""
     constraints: {}
-    documentation: mt,mt5788 的 DTS 属性「tx current fod para」（tx_current_fod_para），用于驱动读取的设备树配置。
+    documentation: 配置发射端基于电流的异物检测参数。
+    displayName: 发射电流 FOD 参数

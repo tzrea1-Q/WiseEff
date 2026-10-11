@@ -11,19 +11,23 @@ properties:
     valueShape: u32-array
     exampleValue: <2500>
     constraints: {}
-    documentation: huawei,charging_core 的 DTS 属性「ichg max」（ichg_max），用于驱动读取的设备树配置。
+    documentation: 设置允许的最大充电电流，单位为毫安。
+    displayName: 最大充电电流
   iin_max:
     valueShape: u32-array
     exampleValue: <2300>
     constraints: {}
-    documentation: huawei,charging_core 的 DTS 属性「iin max」（iin_max），用于驱动读取的设备树配置。
+    documentation: 设置允许的最大输入电流，单位为毫安。
+    displayName: 最大输入电流
   iterm_table:
     valueShape: string-list
     exampleValue: "\"-32767\", \"10\", \"200\",\n\t\t\"10\", \"20\", \"400\",\n\t\t\"45\", \"32767\", \"200\""
     constraints: {}
-    documentation: huawei,charging_core 的 DTS 属性「iterm table」（iterm_table），用于驱动读取的设备树配置。
+    documentation: 配置不同温度区间对应的充电截止电流。
+    displayName: 截止电流表
   jeita_table:
     valueShape: string-list
     exampleValue: "\"-32767\", \"1\", \"2300\", \"0\", \"4200\", \"0\",\n\t\t\"10\", \"35\", \"2300\", \"3000\", \"4530\", \"3\",\n\t\t\"55\", \"32767\", \"2300\", \"0\", \"4195\", \"0\""
     constraints: {}
-    documentation: huawei,charging_core 的 DTS 属性「jeita table」（jeita_table），用于驱动读取的设备树配置。
+    documentation: 配置 JEITA 温度区间对应的充电电流、电压及控制参数。
+    displayName: JEITA 温度充电表

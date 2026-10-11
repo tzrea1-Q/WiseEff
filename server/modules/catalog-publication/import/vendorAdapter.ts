@@ -87,6 +87,7 @@ const DOCUMENT_FIELD_KEYS = new Set([
   "childNodes",
 ]);
 const PROPERTY_FIELD_KEYS = new Set([
+  "displayName",
   "valueShape",
   "units",
   "documentation",
@@ -961,7 +962,7 @@ export async function importVendorCatalog(
         property.documentation ??
         `${parsed.title ?? canonical} property ${parsedKey.value}`;
       const contentInput = {
-        displayName: parsedKey.value,
+        displayName: property.displayName === undefined ? parsedKey.value : property.displayName,
         documentation,
         ...(property.units !== undefined ? { unit: property.units } : {}),
         valueSchema: withConstraints.value,
@@ -975,7 +976,7 @@ export async function importVendorCatalog(
             validated.error.kind === "unsupported-catalog-capability"
               ? `${validated.error.detail}:${validated.error.path}`
               : validated.error.kind,
-            ["valueShape", "units", "documentation"].filter((field) => field in propertyRecord),
+            ["displayName", "valueShape", "units", "documentation"].filter((field) => field in propertyRecord),
           ),
         );
         continue;
@@ -1029,6 +1030,7 @@ export async function importVendorCatalog(
         if (previous && previousFingerprint === nextFingerprint) {
           dispositions.push(
             disposition(propertyPath, "unchanged", "published definition retained", [
+              "displayName",
               "valueShape",
               "documentation",
               "units",
@@ -1067,7 +1069,7 @@ export async function importVendorCatalog(
           revisionId,
         });
         dispositions.push(
-          disposition(propertyPath, "mapped", `revise-${reviseClass}`, ["documentation", "valueShape", "units"]),
+          disposition(propertyPath, "mapped", `revise-${reviseClass}`, ["displayName", "documentation", "valueShape", "units"]),
         );
         identityMap.push({
           canonicalKey,
@@ -1108,6 +1110,7 @@ export async function importVendorCatalog(
       });
       dispositions.push(
         disposition(propertyPath, "mapped", allocated ? "new-subject-definition" : "create-definition", [
+          "displayName",
           "valueShape",
           "documentation",
           "units",

@@ -11,9 +11,11 @@ properties:
     valueShape: u32-array
     exampleValue: "<\n\t\t\t16 100 100\n\t\t\t6 15 100\n\t\t\t0 5 100>"
     constraints: {}
-    documentation: middle_cpu 的 DTS 属性「active perf limit」（active_perf_limit），用于驱动读取的设备树配置。
+    documentation: 配置主动控制策略下的处理器性能限制参数。
+    displayName: 主动性能限制表
   passive_perf_limit:
     valueShape: u32-array
     exampleValue: "<\n\t\t\t0 5 10 40 10 0\n\t\t\t6 15 10 70 10 0\n\t\t\t16 100 0 100 10 0>"
     constraints: {}
-    documentation: middle_cpu 的 DTS 属性「passive perf limit」（passive_perf_limit），用于驱动读取的设备树配置。
+    documentation: 配置被动控制策略下的处理器性能限制参数。
+    displayName: 被动性能限制表

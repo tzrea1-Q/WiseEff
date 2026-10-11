@@ -11,4 +11,5 @@ properties:
     valueShape: string-list
     exampleValue: "\"schargerV800\", \"13\", \"7\", \"3\",\n\t\t\"sc8565\", \"2\", \"0.5\", \"3\""
     constraints: {}
-    documentation: 电池电压相关参数「vbat_comp_ic_para」，单位通常为毫伏。
+    documentation: 配置不同充电芯片对应的电池电压补偿参数。
+    displayName: 电池电压补偿参数

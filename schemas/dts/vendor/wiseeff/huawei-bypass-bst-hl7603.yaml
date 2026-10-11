@@ -11,29 +11,35 @@ properties:
     valueShape: string-list
     exampleValue: "\"huawei,bypass_bst_hl7603\""
     constraints: {}
-    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
+    documentation: 指定设备树兼容标识，用于匹配对应驱动。
+    displayName: 兼容标识
   const_vout:
     valueShape: u32-array
     exampleValue: <3600>
     constraints: {}
-    documentation: 恒定输出/限值参数「const_vout」。
+    documentation: 设置升压电路的恒定输出电压。
+    displayName: 恒定输出电压
   gpio_enable:
     valueShape: mixed
     exampleValue: <&gpio10 5 0>
     constraints: {}
-    documentation: GPIO 相关配置项「gpio_enable」，描述引脚、极性或中断线。
+    documentation: 指定控制设备使能的 GPIO 引脚。
+    displayName: 使能 GPIO
   ic_role:
     valueShape: string-list
     exampleValue: "\"0\""
     constraints: {}
-    documentation: 芯片角色或标识参数「ic_role」。
+    documentation: 指定芯片在充电电路中的角色标识。
+    displayName: 芯片角色
   reg:
     valueShape: u32-array
     exampleValue: <0x77>
     constraints: {}
-    documentation: 设备在父总线上的地址/寄存器范围。
+    documentation: 指定设备在父总线上的地址或寄存器范围。
+    displayName: 寄存器地址
   shutdown_cfg:
     valueShape: string-list
     exampleValue: "\"0xb\", \"2\", \"2850\",\n\t\t\t\t\"0xc\", \"2\", \"2850\""
     constraints: {}
-    documentation: 关机/关断相关配置「shutdown_cfg」。
+    documentation: 配置设备关断时使用的控制参数。
+    displayName: 关断配置

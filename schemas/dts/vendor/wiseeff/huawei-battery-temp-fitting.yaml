@@ -11,19 +11,23 @@ properties:
     valueShape: string-list
     exampleValue: "\"-50\""
     constraints: {}
-    documentation: huawei,battery_temp_fitting 的 DTS 属性「btf temp lth」（btf_temp_lth），用于驱动读取的设备树配置。
+    documentation: 设置电池温度拟合的温度下限。
+    displayName: 温度拟合下限
   fitting_mode:
     valueShape: u32-array
     exampleValue: <2>
     constraints: {}
-    documentation: huawei,battery_temp_fitting 的 DTS 属性「fitting mode」（fitting_mode），用于驱动读取的设备树配置。
+    documentation: 选择电池温度拟合的计算模式。
+    displayName: 温度拟合模式
   replace_sensor:
     valueShape: string-list
     exampleValue: "\"bat0_raw_temp\""
     constraints: {}
-    documentation: huawei,battery_temp_fitting 的 DTS 属性「replace sensor」（replace_sensor），用于驱动读取的设备树配置。
+    documentation: 指定温度拟合使用的替代传感器名称。
+    displayName: 替代温度传感器
   temp_para:
     valueShape: string-list
     exampleValue: "\"-32767\", \"1\", \"2300\", \"0\", \"4200\", \"0\",\n\t\t\"55\", \"32767\", \"2300\", \"0\", \"4195\", \"0\""
     constraints: {}
-    documentation: 温度相关参数「temp_para」，用于保护或拟合。
+    documentation: 配置电池温度拟合使用的温度区间及拟合参数。
+    displayName: 温度参数表

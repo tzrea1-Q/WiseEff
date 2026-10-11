@@ -11,4 +11,5 @@ properties:
     valueShape: mixed
     exampleValue: <&gpio7 27 0>
     constraints: {}
-    documentation: GPIO 相关配置项「gpio_5v_boost」，描述引脚、极性或中断线。
+    documentation: 指定控制 5V 升压电源的 GPIO 引脚。
+    displayName: 5V 升压 GPIO
