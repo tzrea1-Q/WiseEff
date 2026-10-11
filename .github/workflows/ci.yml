@@ -63,6 +63,15 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Docker Hub no longer serves minio/minio and minio/mc. The real server already has these exact
+      # pinned tags locally; load the same tags from MinIO's quay.io registry and keep the original names.
+      - name: Preload pinned MinIO images (Docker Hub unavailable)
+        run: |
+          set -euo pipefail
+          for image in minio/minio:RELEASE.2024-12-18T13-15-44Z minio/mc:RELEASE.2024-11-21T17-21-54Z; do
+            docker pull "quay.io/${image}"
+            docker tag "quay.io/${image}" "${image}"
+          done
       - name: Rehearse the real in-place upgrade from 360bbc428
         run: npx tsx scripts/rehearse-upgrade-from-360bbc428.ts
       - name: Retain sanitized rehearsal evidence only
