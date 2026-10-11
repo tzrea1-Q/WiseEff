@@ -347,12 +347,17 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       const detail = page.getByRole("article", { name: "批量源文件请求详情" });
       await expect(detail).toBeVisible();
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
+      await detail.getByText("溯源信息", { exact: true }).click();
       await expect(detail).toContainText(receipt.batchProofDigest);
       await expect(detail).toContainText(format.toUpperCase());
       await expect(detail.getByRole("region", { name: "批量固定源差异" })).toBeVisible();
       const approve = detail.getByRole("button", { name: "批准全部 2 项" });
       if (outcomeKind === "reject") {
         await detail.getByRole("button", { name: "驳回全部 2 项" }).click();
+        const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+        await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+        await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("手动同步需要补充依据");
+        await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
         await expect(detail).toContainText("已驳回");
       } else {
         await expect(approve).toBeEnabled();

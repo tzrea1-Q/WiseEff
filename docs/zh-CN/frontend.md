@@ -181,7 +181,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 ### 项目参数初始化
 
-新建项目默认 `initialization_status = not_initialized`。创建者通过 `ProjectParameterInitializationWizard` 做一次性**语义 binding** 快照（或显式空库），提交初始化审阅；Admin 在 `/parameter-review` 的初始化 Tab 批准/驳回。
+新建项目默认 `initialization_status = not_initialized`。创建者通过 `ProjectParameterInitializationWizard` 做一次性**语义 binding** 快照（或显式空库），提交初始化审阅；Admin 在 `/parameter-review` 的统一队列中选择初始化请求并批准/驳回。
 
 - Port：`ParameterInitializationRepository`；API 模式走 HTTP + 项目切换 hydrate；mock 实现同一 Port。
 - 未 `initialized` 时 `ParametersPage` 锁定常规编辑；服务端 `submitParameterChanges` 经 `assertProjectAllowsParameterSubmit` 失败关闭。
@@ -198,6 +198,8 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` 加载；mock mode 由 `src/config/power-management.json` 的 `parent`/`path` 经 `buildPowerManagementModuleTree()` 派生。
 
 mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量。API mode 的 `db:seed:m1` 会在 seed 时从已提交的 `aurora-board.dts` 模板额外派生 228 个 DTS 来源参数；每个落库项目值都包含 `sourceFileName=aurora-board.dts` 和含属性名的 `sourceNodePath`。修改基础 DTS 或项目差异后，运行 `npm run dts:seed:generate` 重新生成三份项目主 DTS fixture。可选：`npm run dtc:seed:compile` 在 CI 中用钉扎工具链验证 seed 板——不是产品正确性叙事的前提（seed 板为 SoT）。
+`/parameter-review` 与 `/parameter-submissions` 共用一个 `ReviewInbox`：待处理/已处理 `ViewSwitch`、紧凑变更类型筛选，以及待处理按提交时间升序排列的统一列表。软件配置、JSON 成员删除和仍可处理的旧流程合并展示；API 旧 binding 归档保持只读历史。详情先展示人员、状态和可读时间，依次展示变更摘要、完整冻结前后对比和影响范围；吸附操作区保留原有确认与证明门槛。ID、来源 pin、摘要和 ISO 时间归入默认折叠、可复制的溯源信息。`view`、`type` 与 `request` 或 `legacyRequest` 选中项保存在 URL（兼容 `memberRequest`），支持后退/前进。待处理空队列只显示一个空态及历史入口；筛选空态指明筛选条件并可清除。
+
 API 模式的 `/parameter-submissions` 与 `/parameter-review` 复用 canonical 请求 owner 及 pending、approved、rejected、withdrawn 状态。个人追踪的 `mine=true` 由服务端绑定认证提交人 ID，审核可见性与固定来源差异读取保持项目和租户授权。面板展示固定来源、审核决定和应用结果，不生成旧提交轮次；撤回只使用现有 pending 请求 owner。
 
 `?project=…&request=…` 在刷新后恢复 canonical 选择；无效或不可见 ID 明确提示不可用。选择只更新 URL，保留行按钮焦点；终态动作同步或清除所选 ID，项目切换后丢弃旧响应。保留的旧请求使用 `legacyRequest`（仍识别已知旧 `request` 链接）；API 模式下，旧个人归档信任服务端按本人、组织及项目范围过滤后的 `mine=true` 结果。旧归档 DTO 不包含提交人 ID，因此客户端不再重复按身份过滤，也不显示缺失的 ID；mock/旧流程本地数据仍可使用已有身份字段。旧记录只读，不进入 canonical 待办；旧批量审核仅属于 mock/旧流程。`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts` 在隔离本地真实 API 中以 1440×900 验证 canonical-only 生命周期、本人/审核人追踪、权限拒绝、失效链接、键盘焦点、刷新和重启。

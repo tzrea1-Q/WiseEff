@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appReducer } from "@/application/state/appState";
 import { TopBarActionsContext } from "@/components/layout";
@@ -65,6 +65,7 @@ describe("parameter action panels", () => {
       }
     });
     renderReview({ ...initializationState, activeRoleId: "admin" });
+    fireEvent.click(screen.getByRole("button", { name: "查看 Zephyr 初始化 提交详情" }));
 
     const initializationDetail = screen.getByRole("complementary", { name: "审阅详情" });
     const approveInitialization = within(initializationDetail).getByRole("button", { name: "通过初始化" });

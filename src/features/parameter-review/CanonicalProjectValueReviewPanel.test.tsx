@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -34,6 +35,154 @@ const request = {
 };
 
 describe("CanonicalProjectValueReviewPanel", () => {
+  it.each(["withdraw", "approve"] as const)("ignores an unmounted request's deferred %s completion after selecting another request", async (decision) => {
+    let finishAction!: (value: unknown) => void;
+    const action = vi.fn().mockImplementation(() => new Promise((resolve) => { finishAction = resolve; }));
+    const onSelectRequest = vi.fn();
+    const onRequestsChanged = vi.fn();
+    const nextRequest = { ...request, id: "next-request", reason: "另一项请求" };
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request, nextRequest] }),
+      reviewProjectValueChangeRequest: action,
+      withdrawProjectValueChangeRequest: action,
+      getProjectValueChangeSourceDiff: vi.fn().mockImplementation(async (_projectId: string, requestId: string) => ({
+        item: { requestId, format: "json", sourceName: "config.json", bindings: [], before: "before", after: "after" }
+      })),
+      getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } })
+    } as unknown as ParameterCatalogRepository;
+    const currentUserId = decision === "withdraw" ? "user-1" : "reviewer-1";
+    const mounted = render(<StrictMode><CanonicalProjectValueReviewPanel key={request.id}
+      projectId="project-1" repository={repository} currentUserId={currentUserId}
+      detailOnly initialRequestId={request.id} onSelectRequest={onSelectRequest} onRequestsChanged={onRequestsChanged} />
+    </StrictMode>);
+    const button = await screen.findByRole("button", { name: decision === "withdraw" ? "撤回我的提交" : "批准软件配置" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    mounted.rerender(<StrictMode><CanonicalProjectValueReviewPanel key={nextRequest.id}
+      projectId="project-1" repository={repository} currentUserId={currentUserId}
+      detailOnly initialRequestId={nextRequest.id} />
+    </StrictMode>);
+    await screen.findByRole("heading", { name: nextRequest.reason });
+    await act(async () => { finishAction({ item: { ...request, status: decision === "withdraw" ? "withdrawn" : "approved" } }); });
+    expect(onRequestsChanged).not.toHaveBeenCalled();
+    expect(onSelectRequest).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: nextRequest.reason })).toBeInTheDocument();
+  });
+
+  it("never substitutes a different detail after an uncertain decision and queue refetch", async () => {
+    const onRequestsChanged = vi.fn();
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
+      reviewProjectValueChangeRequest: vi.fn().mockRejectedValue(new Error("connection interrupted")),
+      getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } })
+    } as unknown as ParameterCatalogRepository;
+    const mounted = render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      detailOnly currentUserId="reviewer-1" initialRequestId={request.id} onRequestsChanged={onRequestsChanged} />);
+    fireEvent.click(await screen.findByRole("button", { name: "驳回" }));
+    fireEvent.change(screen.getByLabelText("驳回原因"), { target: { value: "核对来源" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认驳回" }));
+    await screen.findAllByText(/软件审核失败/);
+    expect(onRequestsChanged).not.toHaveBeenCalled();
+    const refreshedRepository = { ...repository,
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [{ ...request, id: "another-request", reason: "不相关请求" }] }) };
+    mounted.rerender(<CanonicalProjectValueReviewPanel projectId="project-1" repository={refreshedRepository}
+      detailOnly currentUserId="reviewer-1" initialRequestId={request.id} onRequestsChanged={onRequestsChanged} />);
+    await waitFor(() => expect(screen.queryByRole("article")).not.toBeInTheDocument());
+    expect(await screen.findByText(/已失效、已归档/)).toHaveTextContent(request.id);
+    expect(screen.queryByRole("heading", { name: "不相关请求" })).not.toBeInTheDocument();
+  });
+
+  it("reloads frozen evidence when an external selection selects the already selected request", async () => {
+    const source = { requestId: request.id, format: "json", sourceName: "config.json", bindings: [], before: "before", after: "after" };
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
+      reviewProjectValueChangeRequest: vi.fn(),
+      getProjectValueChangeSourceDiff: vi.fn().mockResolvedValueOnce({ item: source })
+        .mockReturnValue(new Promise(() => {}))
+    } as unknown as ParameterCatalogRepository;
+    const mounted = render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      detailOnly currentUserId="reviewer-1" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "批准软件配置" })).toBeEnabled());
+    mounted.rerender(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      detailOnly currentUserId="reviewer-1" initialRequestId={request.id} />);
+    await waitFor(() => expect(repository.getProjectValueChangeSourceDiff).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "批准软件配置" })).toBeDisabled();
+    expect(screen.queryByLabelText("固定源变更前")).not.toBeInTheDocument();
+  });
+
+  it("presents the full frozen diff before scope, sticky actions and collapsed provenance", async () => {
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
+      reviewProjectValueChangeRequest: vi.fn(),
+      getProjectValueChangeSourceDiff: vi.fn().mockResolvedValue({ item: {
+        requestId: request.id, format: "json", sourceName: "config.json", bindings: [],
+        before: '{"enabled":false,"untouched":"all source lines"}\n',
+        after: '{"enabled":true,"untouched":"all source lines"}\n', diffDigest: "sha256:full"
+      } })
+    } as unknown as ParameterCatalogRepository;
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} detailOnly
+      currentUserId="reviewer-1" users={[{ id: "user-1", name: "提交者" }]} />);
+    const detail = await screen.findByRole("article", { name: "源文件请求详情" });
+    expect(detail.querySelector("header")).toHaveTextContent("提交者 → 未指派");
+    expect(within(detail).getAllByRole("heading", { level: 4 }).slice(0, 3).map((heading) => heading.textContent))
+      .toEqual(["变更摘要", "前后对比", "影响范围"]);
+    expect(await within(detail).findByLabelText("固定源变更前")).toHaveTextContent("all source lines");
+    expect(within(detail).getByLabelText("固定源变更后")).toHaveTextContent("all source lines");
+    const footer = detail.querySelector("footer")!;
+    expect(footer).toHaveClass("dialog-actions");
+    const disclosure = detail.querySelector("details")!;
+    expect(disclosure.open).toBe(false);
+    expect(footer.compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(detail).queryByRole("button", { name: "复制 固定来源元数据 · diffDigest" })).not.toBeInTheDocument();
+  });
+
+  it("requires a trimmed rejection reason and notifies the queue only after success", async () => {
+    const onRequestsChanged = vi.fn();
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
+      reviewProjectValueChangeRequest: vi.fn().mockResolvedValue({ item: { ...request, status: "rejected" } }),
+      getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } })
+    } as unknown as ParameterCatalogRepository;
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      currentUserId="reviewer-1" onRequestsChanged={onRequestsChanged} />);
+    fireEvent.click(await screen.findByRole("button", { name: "驳回" }));
+    const dialog = screen.getByRole("dialog", { name: "驳回请求" });
+    const confirm = within(dialog).getByRole("button", { name: "确认驳回" });
+    expect(confirm).toBeDisabled();
+    expect(repository.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText("驳回原因"), { target: { value: "  " } });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("驳回原因"), { target: { value: "  请补充依据  " } });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(repository.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
+      "project-1", request.id, { decision: "reject", note: "请补充依据" }, expect.any(Object)));
+    await waitFor(() => expect(onRequestsChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it("embeds only detail and follows the coordinator's view and selection", async () => {
+    const terminal = { ...request, id: "history-request", status: "rejected" as const };
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request, terminal] }),
+      reviewProjectValueChangeRequest: vi.fn(),
+      getProjectValueChangeSourceDiff: vi.fn().mockRejectedValue(new Error("source unavailable"))
+    } as unknown as ParameterCatalogRepository;
+    const mounted = render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      detailOnly externalView="pending" initialRequestId={request.id} />);
+    expect(await screen.findByRole("article", { name: "源文件请求详情" })).toHaveTextContent(request.reason);
+    expect(screen.queryByRole("heading", { name: "软件配置审核" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+    mounted.rerender(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      detailOnly externalView="history" initialRequestId={terminal.id} />);
+    await waitFor(() => expect(screen.getByRole("article")).toHaveTextContent("已驳回"));
+    expect(repository.getProjectValueChangeSourceDiff).toHaveBeenLastCalledWith("project-1", terminal.id);
+    mounted.rerender(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      detailOnly externalView="pending" initialRequestId={request.id} />);
+    await waitFor(() => expect(repository.getProjectValueChangeSourceDiff).toHaveBeenLastCalledWith("project-1", request.id));
+  });
+
   it("keeps a non-reviewer's single-target request available without reading the reviewer batch queue", async () => {
     const listProjectValueBatchChangeRequests = vi.fn().mockRejectedValue(new Error("403"));
     const repository = {
@@ -66,7 +215,9 @@ describe("CanonicalProjectValueReviewPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "撤回我的提交" }));
     await waitFor(() => expect(withdrawProjectValueChangeRequest).toHaveBeenCalled());
     rerender(<CanonicalProjectValueReviewPanel projectId="project-2" repository={repository} currentUserId="user-1" canReview={false} onSelectRequest={onSelectRequest} />);
-    expect(await screen.findByText("project-2-request")).toBeInTheDocument();
+    await screen.findByRole("article", { name: "源文件请求详情" });
+    fireEvent.click(screen.getByText("溯源信息"));
+    expect(await screen.findByText("project-2-request")).toBeVisible();
     finishWithdrawal({ item: { ...request, status: "withdrawn" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "撤回我的提交" })).toBeEnabled());
     expect(screen.getByText("project-2-request")).toBeInTheDocument();
@@ -310,8 +461,9 @@ describe("CanonicalProjectValueReviewPanel", () => {
     );
 
     const panel = await screen.findByRole("region", { name: "软件配置审核" });
-    expect(await within(panel).findByText("已批准")).toBeInTheDocument();
-    expect(within(panel).getByText("reviewer-1")).toBeInTheDocument();
+    const detail = await within(panel).findByRole("article", { name: "源文件请求详情" });
+    expect(within(detail).getByText("已批准")).toBeVisible();
+    expect(detail.querySelector("header")).toHaveTextContent("reviewer-1");
     expect(within(panel).getByText("已核对固定源差异")).toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "批准软件配置" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "撤回我的提交" })).not.toBeInTheDocument();
