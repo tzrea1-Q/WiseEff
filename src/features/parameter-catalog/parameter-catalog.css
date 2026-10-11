@@ -18,6 +18,9 @@
   --pcat-nav-chevron: var(--text-muted);
   --pcat-success: var(--success);
   --pcat-success-soft: var(--success-soft);
+  --pcat-table-min-width: 40rem;
+  --pcat-table-status-width: 7rem;
+  --pcat-table-actions-width: 8rem;
 
   display: grid;
   gap: var(--space-4);
@@ -31,8 +34,7 @@
 .parameter-catalog__anchor,
 .parameter-catalog__toolbar,
 .parameter-catalog__banner,
-.parameter-catalog__pane,
-.parameter-catalog__sheet-tabs {
+.parameter-catalog__pane {
   min-width: 0;
 }
 
@@ -599,7 +601,7 @@
   min-width: 0;
 }
 
-.parameter-catalog__tree {
+.parameter-catalog__tree:not(.dts-topology-navigator__group) {
   display: grid;
   gap: var(--space-1);
   margin: 0;
@@ -614,33 +616,12 @@
   list-style: none;
 }
 
-.parameter-catalog__tree .parameter-catalog__tree {
-  margin: var(--space-1) 0 0 var(--space-4);
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--pcat-border);
-}
-
 .parameter-catalog__tree-row {
-  display: grid;
-  grid-template-columns: minmax(28px, auto) minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-1);
   min-width: 0;
 }
 
 .parameter-catalog__tree-toggle {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
   color: var(--pcat-nav-chevron);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-  line-height: 1;
-  cursor: pointer;
 }
 
 button.parameter-catalog__tree-toggle:hover {
@@ -650,17 +631,18 @@ button.parameter-catalog__tree-toggle:hover {
 }
 
 .parameter-catalog__tree-select {
+  grid-column: 2 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-1);
   width: 100%;
   min-width: 0;
-  min-height: 42px;
-  padding: var(--space-2);
+  min-height: var(--module-navigator-disclosure-size);
+  padding: 0;
   color: var(--pcat-nav-item);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-md);
   font: 400 var(--text-sm) / 1.35 var(--font-sans);
   text-align: left;
@@ -671,17 +653,16 @@ button.parameter-catalog__tree-toggle:hover {
     border-color var(--duration-fast) var(--ease-out);
 }
 
-.parameter-catalog__tree-select:hover {
+.parameter-catalog__tree-row:has(button.parameter-catalog__tree-select):hover {
   color: var(--pcat-accent);
   background: var(--pcat-accent-soft);
   border-color: color-mix(in srgb, var(--pcat-accent) 24%, transparent);
 }
 
-.parameter-catalog__tree-select[aria-pressed="true"] {
+.parameter-catalog__tree-row.is-selected {
   color: var(--pcat-accent);
   background: var(--pcat-accent-soft);
   border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
-  border-left: 3px solid var(--pcat-accent);
 }
 
 .parameter-catalog__tree-select:focus-visible,
@@ -841,6 +822,33 @@ button.parameter-catalog__tree-toggle:hover {
   border-color: var(--border-strong);
 }
 
+.parameter-catalog .parameter-catalog__table {
+  width: 100%;
+  min-width: var(--pcat-table-min-width);
+  table-layout: fixed;
+}
+
+.parameter-catalog__table th,
+.parameter-catalog__table td {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.parameter-catalog__table td:not(.parameter-catalog__lifecycle):not([data-label="操作"]) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parameter-catalog__table .parameter-catalog__lifecycle {
+  width: var(--pcat-table-status-width);
+}
+
+.parameter-catalog__table th:last-child {
+  width: var(--pcat-table-actions-width);
+  min-width: 0;
+}
+
 /* The actions cell is the last, narrowest column; trimming its padding keeps the
    table at the pane width so no action is clipped. */
 .parameter-catalog table td[data-label="操作"] {
@@ -881,8 +889,9 @@ button.parameter-catalog__tree-toggle:hover {
   color: var(--pcat-nav-item);
 }
 
-.parameter-catalog__tree-select--group:hover {
+.parameter-catalog__tree-row:has(.parameter-catalog__tree-select--group):hover {
   background: transparent;
+  border-color: transparent;
 }
 
 .parameter-catalog__module-count {
@@ -929,16 +938,6 @@ button.parameter-catalog__tree-toggle:hover {
   gap: var(--space-2);
   color: var(--pcat-secondary);
   font-size: var(--text-sm);
-}
-
-.parameter-catalog__page-size select {
-  height: 28px;
-  padding: 0 var(--space-2);
-  color: var(--pcat-text);
-  background: var(--surface-sunken);
-  border: 1px solid var(--pcat-border);
-  border-radius: var(--radius-sm);
-  font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans);
 }
 
 .parameter-catalog__page-buttons {
@@ -1140,24 +1139,6 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-catalog__fact:last-child {
   border-bottom: none;
   padding-bottom: 0;
-}
-
-.parameter-catalog__sheet-tabs {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-/* The detail dialog tabs read as buttons and show which pane is selected. */
-.parameter-catalog__sheet-tabs [role="tab"] {
-  background: var(--pcat-surface);
-  border-color: var(--border-strong);
-}
-
-.parameter-catalog__sheet-tabs [role="tab"][aria-selected="true"] {
-  color: var(--pcat-accent);
-  background: var(--pcat-accent-soft);
-  border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
 }
 
 .parameter-catalog[data-catalog-layout="desktop"] .parameter-catalog__table-wrap--mobile,

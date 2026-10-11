@@ -486,7 +486,7 @@ export function useXiaozePopupLayout(enabled = true) {
     const launcherPositionController: XiaozeLauncherPositionController = {
       get: () => launcherPosition,
       set: (position) => {
-        launcherPosition = clampXiaozeLauncherPosition(position);
+        launcherPosition = clampXiaozeLauncherPosition({ ...position, y: getDefaultXiaozeLauncherPosition().y });
         return launcherPosition;
       },
       reset: () => {
@@ -526,6 +526,9 @@ export function useXiaozePopupLayout(enabled = true) {
     const handleBreakpointChange = () => {
       const nextDesktop = isXiaozePopupDesktop();
       if (nextDesktop === desktop) {
+        if (desktop && boundLauncher) {
+          applyXiaozeLauncherLayout(boundLauncher, launcherPositionController.set(launcherPosition));
+        }
         return;
       }
       desktop = nextDesktop;

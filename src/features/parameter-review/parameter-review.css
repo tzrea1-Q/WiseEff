@@ -232,52 +232,10 @@
   grid-column: span 1;
 }
 
-.review-view-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 3px;
-  background: var(--surface);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  letter-spacing: 0;
-  text-transform: none;
-}
 
-.review-view-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 5px 10px;
-  color: var(--outline-strong);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: var(--text-base);
-  font-weight: 700;
-  cursor: pointer;
-}
 
-.review-view-tabs button:hover {
-  color: var(--app-primary);
-  background: var(--primary-soft);
-}
 
-.review-view-tabs button.active {
-  color: var(--primary-foreground);
-  background: var(--app-primary);
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 18%, transparent);
-}
 
-.review-view-tabs button span {
-  padding: 2px 6px;
-  color: inherit;
-  background: color-mix(in srgb, var(--surface) 20%, transparent);
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-}
 
 .detail-card .review-module-description {
   margin-top: var(--space-2);

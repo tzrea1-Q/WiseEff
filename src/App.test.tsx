@@ -1327,7 +1327,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole("tab", { name: "历史审阅" }));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "历史审阅" }), { button: 0, ctrlKey: false });
     const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
     // Prefer selecting the merged row if the queue does not auto-select it
     const row = within(screen.getByRole("table")).getByText(merged.title);
@@ -1380,7 +1380,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole("tab", { name: "历史审阅" }));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "历史审阅" }), { button: 0, ctrlKey: false });
     const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
     const row = within(screen.getByRole("table")).getByText(merged.title);
     fireEvent.click(row.closest("tr") ?? row);
@@ -1792,7 +1792,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "工作台视图" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "工作台视图" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "热榜" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "个人工作台" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "待办事项" })).toBeInTheDocument();
@@ -1810,14 +1810,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("我的工作台");
     expect(topbar.querySelector(".topbar-subtitle")).toBeNull();
-    expect(within(topbar).getByRole("group", { name: "工作台视图" })).toBeInTheDocument();
+    expect(within(topbar).getByRole("radiogroup", { name: "工作台视图" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 变更审阅" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group", { name: "时间窗口" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("radiogroup", { name: "时间窗口" }).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("button", { name: "看板" })).not.toBeInTheDocument();
     const activeNavButtons = screen.getAllByRole("button", { name: "我的工作台" }).filter((btn) => btn.classList.contains("active"));
     expect(activeNavButtons.length).toBe(1);
@@ -1841,7 +1841,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderAppForCurrentPath();
 
-    expect(await screen.findByRole("group", { name: "概览视角" })).toBeInTheDocument();
+    expect(await screen.findByRole("radiogroup", { name: "概览视角" })).toBeInTheDocument();
     expect(screen.getAllByRole("radio", { name: "个人" }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("radio", { name: "整体" }).length).toBeGreaterThanOrEqual(1);
   });
@@ -2875,7 +2875,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(pendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
     expect(within(pendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
 
-    fireEvent.click(historyTab);
+    fireEvent.mouseDown(historyTab, { button: 0, ctrlKey: false });
 
     const historyTable = screen.getByRole("table");
     expect(historyTab).toHaveAttribute("aria-selected", "true");
@@ -2890,7 +2890,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(reviewDetail).queryByRole("button", { name: "推进流程" })).not.toBeInTheDocument();
     expect(within(reviewDetail).queryByRole("button", { name: "打回修改" })).not.toBeInTheDocument();
 
-    fireEvent.click(pendingTab);
+    fireEvent.mouseDown(pendingTab, { button: 0, ctrlKey: false });
 
     expect(pendingTab).toHaveAttribute("aria-selected", "true");
     expect(historyTab).toHaveAttribute("aria-selected", "false");

@@ -1,3 +1,4 @@
+import { TabPanel } from "@/components/ui/tab-panel";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertCircle, Boxes, CheckCircle2, CircleX, Download, Eye, FileCode, History, Pencil } from "lucide-react";
 import type {
@@ -6,12 +7,14 @@ import type {
 } from "@/domain/parameter-topology/types";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import { SearchField } from "@/components/common/SearchField";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { presentError } from "@/infrastructure/http/presentError";
 import { formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
+import { useModuleNodeSelection } from "@/hooks/useModuleNodeSelection";
 import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
 import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
@@ -163,11 +166,11 @@ export function JsonBindingPanel({
     [bindings]
   );
   const [resultsMode, setResultsMode] = useState<"parameters" | "jsonSource">("parameters");
+  const resultsId = useId();
   const [query, setQuery] = useState("");
   const [jsonFindQuery, setJsonFindQuery] = useState("");
   const [findNextToken, setFindNextToken] = useState(0);
   const [findStatus, setFindStatus] = useState({ matchCount: 0, activeIndex: 0 });
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   // Source viewer states
   const [jsonSourceStatus, setJsonSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -179,15 +182,6 @@ export function JsonBindingPanel({
   const [viewingBindingId, setViewingBindingId] = useState<string | null>(null);
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const handledRequest = useRef<string | null>(null);
-  useEffect(() => {
-    if (!requestedBindingId || handledRequest.current === requestedBindingId
-      || !jsonBindings.some((binding) => binding.id === requestedBindingId)) return;
-    handledRequest.current = requestedBindingId;
-    setResultsMode("parameters");
-    setQuery("");
-    setSelectedNodeId(null);
-    setViewingBindingId(requestedBindingId);
-  }, [jsonBindings, requestedBindingId]);
 
   // Draft form states inside edit dialog
   const activeEditBinding = useMemo(
@@ -266,12 +260,19 @@ export function JsonBindingPanel({
     });
   }, [jsonRows, moduleRegistry]);
 
+  const [selectedNodeId, setSelectedNodeId] = useModuleNodeSelection((nodeId) => treeContainsNode(tree, nodeId));
   const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
   const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
 
   useEffect(() => {
-    if (selectedNodeId && !selectedNodeExists) setSelectedNodeId(null);
-  }, [selectedNodeExists, selectedNodeId]);
+    if (!requestedBindingId || handledRequest.current === requestedBindingId
+      || !jsonBindings.some((binding) => binding.id === requestedBindingId)) return;
+    handledRequest.current = requestedBindingId;
+    setResultsMode("parameters");
+    setQuery("");
+    setSelectedNodeId(null);
+    setViewingBindingId(requestedBindingId);
+  }, [jsonBindings, requestedBindingId, setSelectedNodeId]);
 
   const subtreeBindingIds = useMemo(
     () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),
@@ -500,25 +501,19 @@ export function JsonBindingPanel({
           </span>
         )}
         <div className="dts-parameter-workbench__toolbar-actions">
-          <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
-            <button
-              type="button"
-              className={`button subtle${resultsMode === "parameters" ? " is-active" : ""}`}
-              aria-pressed={resultsMode === "parameters"}
-              onClick={() => setResultsMode("parameters")}
-            >
-              <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
-              参数列表
-            </button>
-            <button
-              type="button"
-              className={`button subtle${resultsMode === "jsonSource" ? " is-active" : ""}`}
-              aria-pressed={resultsMode === "jsonSource"}
-              onClick={enterJsonSourceMode}
-            >
-              <FileCode size={15} strokeWidth={1.9} aria-hidden="true" />
-              JSON 源码
-            </button>
+          <div className="dts-parameter-workbench__header-actions">
+            <ViewSwitch
+              variant="tabs"
+              ariaLabel="结果模式"
+              value={resultsMode}
+              onValueChange={(value) => value === "parameters" ? setResultsMode("parameters") : enterJsonSourceMode()}
+              items={[
+                { value: "parameters", label: <><Boxes size={15} strokeWidth={1.9} aria-hidden="true" />参数列表</>,
+                  id: `${resultsId}-parameters-tab`, panelId: `${resultsId}-parameters-panel` },
+                { value: "jsonSource", label: <><FileCode size={15} strokeWidth={1.9} aria-hidden="true" />JSON 源码</>,
+                  id: `${resultsId}-jsonSource-tab`, panelId: `${resultsId}-jsonSource-panel` }
+              ]}
+            />
             {resultsMode === "jsonSource" ? (
               <button
                 type="button"
@@ -554,7 +549,8 @@ export function JsonBindingPanel({
         </div>
       ) : null}
 
-      <div className="dts-parameter-workbench__body">
+      <TabPanel className="dts-parameter-workbench__body" role="tabpanel"
+        id={`${resultsId}-${resultsMode}-panel`} aria-labelledby={`${resultsId}-${resultsMode}-tab`}>
         {/* Module Navigator */}
         <div
           className="dts-parameter-workbench__navigator dts-workbench-topology"
@@ -701,7 +697,7 @@ export function JsonBindingPanel({
             <p className="dts-parameter-workbench__empty" role="status">暂无 JSON 源码。</p>
           )}
         </div>
-      </div>
+      </TabPanel>
 
       {/* 1. Detail Dialog (查看弹窗) */}
       {activeViewBinding ? (

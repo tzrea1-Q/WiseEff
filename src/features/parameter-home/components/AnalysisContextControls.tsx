@@ -1,5 +1,5 @@
 import type { DashboardWindow, HotspotDimension } from "@/domain/parameters/dashboardTypes";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const WINDOW_OPTIONS: Array<{ value: DashboardWindow; label: string }> = [
@@ -49,7 +49,7 @@ export function AnalysisContextControls({
             onProjectChange(nextValue === ALL_PROJECTS_VALUE ? null : nextValue)
           }
         >
-          <SelectTrigger aria-label="项目范围" size="sm" className="parameter-home__context-select">
+          <SelectTrigger aria-label="项目范围" size="filter" className="parameter-home__context-select">
             <SelectValue placeholder="全部项目" />
           </SelectTrigger>
           <SelectContent>
@@ -64,44 +64,24 @@ export function AnalysisContextControls({
       </div>
       <div className="parameter-home__context-group">
         <span className="parameter-home__context-label">时间窗口</span>
-        <ToggleGroup
-          aria-label="时间窗口"
-          className="parameter-home__toggle-group"
-          type="single"
+        <ViewSwitch
+          variant="toggle"
+          ariaLabel="时间窗口"
           value={window}
-          onValueChange={(nextValue) => {
-            if (nextValue) {
-              onWindowChange(nextValue as DashboardWindow);
-            }
-          }}
-        >
-          {WINDOW_OPTIONS.map((option) => (
-            <ToggleGroupItem key={option.value} className="parameter-home__toggle-item" value={option.value}>
-              {option.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          onValueChange={(nextValue) => onWindowChange(nextValue as DashboardWindow)}
+          items={WINDOW_OPTIONS}
+        />
       </div>
       {showHotspotDimension ? (
         <div className="parameter-home__context-group">
           <span className="parameter-home__context-label">热榜维度</span>
-          <ToggleGroup
-            aria-label="热榜维度"
-            className="parameter-home__toggle-group"
-            type="single"
+          <ViewSwitch
+            variant="toggle"
+            ariaLabel="热榜维度"
             value={dimension}
-            onValueChange={(nextValue) => {
-              if (nextValue) {
-                onDimensionChange(nextValue as HotspotDimension);
-              }
-            }}
-          >
-            {DIMENSION_OPTIONS.map((option) => (
-              <ToggleGroupItem key={option.value} className="parameter-home__toggle-item" value={option.value}>
-                {option.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+            onValueChange={(nextValue) => onDimensionChange(nextValue as HotspotDimension)}
+            items={DIMENSION_OPTIONS}
+          />
         </div>
       ) : null}
     </div>

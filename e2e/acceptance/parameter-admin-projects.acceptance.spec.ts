@@ -54,7 +54,7 @@ test("B1 preserves canonical admin and read-only Definition pages at PC 1440x900
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
   await expect(dialog.getByText(definition.id, { exact: true }).first()).toBeVisible();
-  await expect(dialog.getByText("当前会话缺少目录编写能力，只能查看该定义。")).toBeVisible();
+  await expect(dialog.getByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "保存内容修订" })).toHaveCount(0);
   await expect(dialog.getByRole("textbox", { name: "属性键" })).toHaveCount(0);
   await dialog.getByRole("button", { name: /查看历史/ }).click();

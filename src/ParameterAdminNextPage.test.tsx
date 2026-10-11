@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterPageActions } from "@/app/routes";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
@@ -140,6 +141,25 @@ function renderPage(options: {
 }
 
 describe("ParameterAdminNextPage · shell", () => {
+  it.each([
+    { nav: "组织配置子视图", first: "参数定义管理", second: "模块管理", path: "/parameter-admin/modules" },
+    { nav: "参数定义管理子视图", first: "定义库", second: "节点对应", path: "/parameter-admin/specs/identity-mapping?project=aurora" }
+  ])("preserves the destination and query contract of $nav by keyboard", async ({ nav, first, second, path }) => {
+    const user = userEvent.setup();
+    const { onNavigate } = renderPage({ path: "/parameter-admin/specs?project=aurora", runtimeMode: "api",
+      repository: createRepository({ listMappingTasks: vi.fn().mockRejectedValue(new Error("任务计数不可用")) }) });
+    const navigation = screen.getByRole("navigation", { name: nav });
+    within(navigation).getByRole("button", { name: first }).focus();
+    await user.keyboard("{End}");
+    expect(within(navigation).getByRole("button", { name: new RegExp(second) })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(onNavigate).toHaveBeenCalledWith(path);
+    if (nav === "参数定义管理子视图") {
+      await waitFor(() => expect(within(navigation).getByRole("button", { name: /节点对应/ })).toHaveAccessibleName(/节点对应任务计数加载失败/));
+      expect(within(navigation).getByRole("button", { name: /节点对应/ })).toHaveAttribute("title", "任务计数不可用");
+    }
+  });
+
   it("presents organization and project areas as peer destinations", () => {
     const { onNavigate } = renderPage({ path: "/parameter-admin/specs" });
 

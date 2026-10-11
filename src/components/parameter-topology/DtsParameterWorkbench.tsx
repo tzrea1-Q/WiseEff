@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { TabPanel } from "@/components/ui/tab-panel";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Download,
   FileCode,
   Boxes
 } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { filterItems } from "@/lib/search";
 import { dtsWorkbenchRowSearchProfile } from "@/lib/search/profiles";
 
@@ -43,6 +45,7 @@ import {
 } from "./DtsBindingDraftDialog";
 import { DtsParameterWorkbenchTable } from "./DtsParameterWorkbenchTable";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
+import { useModuleNodeSelection } from "@/hooks/useModuleNodeSelection";
 import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
 
 type WorkbenchResultsMode = "parameters" | "dtsSource";
@@ -200,7 +203,7 @@ export function DtsParameterWorkbench({
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string[]>([]);
   const [resultsMode, setResultsMode] = useState<WorkbenchResultsMode>("parameters");
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const resultsId = useId();
   const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
   const [uncontrolledSelectedBindingIds, setUncontrolledSelectedBindingIds] = useState<Set<string>>(new Set());
   const selectedBindingIds = controlledSelectedBindingIds ?? uncontrolledSelectedBindingIds;
@@ -225,6 +228,15 @@ export function DtsParameterWorkbench({
 
   const currentRows = effectiveRows;
   const handledRequest = useRef<string | null>(null);
+  const moduleTree = useMemo(
+    () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules, groupByDevice: true }),
+    [currentRows, moduleRegistry],
+  );
+  const tree = moduleTree;
+  const [selectedNodeId, setSelectedNodeId] = useModuleNodeSelection((nodeId) => treeContainsNode(tree, nodeId));
+  const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
+  const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
+
   useEffect(() => {
     const key = `${projectId ?? ""}:${requestedBindingId ?? ""}`;
     if (!requestedBindingId || handledRequest.current === key
@@ -237,18 +249,7 @@ export function DtsParameterWorkbench({
     setSelectedBindingId(requestedBindingId);
     setDetailIntent("view");
     onSelectBinding(requestedBindingId);
-  }, [currentRows, onSelectBinding, projectId, requestedBindingId]);
-  const moduleTree = useMemo(
-    () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules, groupByDevice: true }),
-    [currentRows, moduleRegistry],
-  );
-  const tree = moduleTree;
-  const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
-  const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
-
-  useEffect(() => {
-    if (selectedNodeId && !selectedNodeExists) setSelectedNodeId(null);
-  }, [selectedNodeExists, selectedNodeId]);
+  }, [currentRows, onSelectBinding, projectId, requestedBindingId, setSelectedNodeId]);
 
   const [dtsSourceStatus, setDtsSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [dtsSource, setDtsSource] = useState<PrimaryDtsSource | null>(null);
@@ -693,25 +694,19 @@ export function DtsParameterWorkbench({
           </p>
         ) : null}
         <div className="dts-parameter-workbench__toolbar-actions">
-          <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
-            <button
-              type="button"
-              className={`button subtle${resultsMode === "parameters" ? " is-active" : ""}`}
-              aria-pressed={resultsMode === "parameters"}
-              onClick={() => setResultsMode("parameters")}
-            >
-              <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
-              参数列表
-            </button>
-            <button
-              type="button"
-              className={`button subtle${resultsMode === "dtsSource" ? " is-active" : ""}`}
-              aria-pressed={resultsMode === "dtsSource"}
-              onClick={enterDtsSourceMode}
-            >
-              <FileCode size={15} strokeWidth={1.9} aria-hidden="true" />
-              DTS 源码
-            </button>
+          <div className="dts-parameter-workbench__header-actions">
+            <ViewSwitch
+              variant="tabs"
+              ariaLabel="结果模式"
+              value={resultsMode}
+              onValueChange={(value) => value === "parameters" ? setResultsMode("parameters") : enterDtsSourceMode()}
+              items={[
+                { value: "parameters", label: <><Boxes size={15} strokeWidth={1.9} aria-hidden="true" />参数列表</>,
+                  id: `${resultsId}-parameters-tab`, panelId: `${resultsId}-parameters-panel` },
+                { value: "dtsSource", label: <><FileCode size={15} strokeWidth={1.9} aria-hidden="true" />DTS 源码</>,
+                  id: `${resultsId}-dtsSource-tab`, panelId: `${resultsId}-dtsSource-panel` }
+              ]}
+            />
             {resultsMode === "dtsSource" ? (
               <button
                 type="button"
@@ -753,7 +748,8 @@ export function DtsParameterWorkbench({
         </div>
       ) : null}
 
-      <div className="dts-parameter-workbench__body">
+      <TabPanel className="dts-parameter-workbench__body" role="tabpanel"
+        id={`${resultsId}-${resultsMode}-panel`} aria-labelledby={`${resultsId}-${resultsMode}-tab`}>
         <div
           className="dts-parameter-workbench__navigator dts-workbench-topology"
           role="region"
@@ -851,7 +847,7 @@ export function DtsParameterWorkbench({
             <p className="dts-parameter-workbench__empty" role="status">暂无 DTS 源码。</p>
           )}
         </div>
-      </div>
+      </TabPanel>
       {footerContent ? (
         <div className="dts-parameter-workbench__footer">
           {footerContent}

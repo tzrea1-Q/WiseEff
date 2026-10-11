@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { ViewSwitch } from "@/components/ui/view-switch";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
@@ -19,6 +20,7 @@ import {
 } from "@/components/LocalDeviceBridgePanel";
 import { useTopBarActions } from "@/components/layout";
 import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
+import { useModuleNodeSelection } from "@/hooks/useModuleNodeSelection";
 import { DtsReloadCandidateEditDialog } from "@/features/dts-reload/DtsReloadCandidateEditDialog";
 import { DtsReloadCandidateTable } from "@/features/dts-reload/DtsReloadCandidateTable";
 import {
@@ -198,7 +200,6 @@ export function DtsReloadPage({
   );
   const [nameQuery, setNameQuery] = useState("");
   const [moduleColumnFilter, setModuleColumnFilter] = useState<string[]>([]);
-  const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const [reachableTargets, setReachableTargets] = useState<DtsReloadReachableTarget[]>([]);
   const [detectingTargets, setDetectingTargets] = useState(false);
@@ -265,17 +266,12 @@ export function DtsReloadPage({
     [handoffFilteredCandidates, moduleRegistry.modules]
   );
 
+  const [selectedModuleNodeId, setSelectedModuleNodeId] = useModuleNodeSelection((nodeId) => Boolean(findWorkbenchTreeNode(moduleTree, nodeId)));
   const selectedModuleNode = useMemo(
     () =>
       selectedModuleNodeId ? findWorkbenchTreeNode(moduleTree, selectedModuleNodeId) : null,
     [moduleTree, selectedModuleNodeId]
   );
-
-  useEffect(() => {
-    if (selectedModuleNodeId && !selectedModuleNode) {
-      setSelectedModuleNodeId(null);
-    }
-  }, [selectedModuleNodeId, selectedModuleNode]);
 
   const selectedModuleBindingIds = useMemo(
     () => (selectedModuleNode ? collectSubtreeBindingIds(selectedModuleNode) : null),
@@ -707,23 +703,15 @@ export function DtsReloadPage({
         ) : null}
 
         <div className="node-debugging-controls dts-reload-controls">
-          <div className="protocol-switch" role="group" aria-label="连接协议">
-            {(["hdc", "adb"] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={protocol === item ? "protocol-switch-button active" : "protocol-switch-button"}
-                aria-pressed={protocol === item}
-                disabled={!canStartRun}
-                onClick={() => handleProtocolChange(item)}
-              >
-                {item.toUpperCase()}
-              </button>
-            ))}
-          </div>
+          <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
+            onValueChange={(value) => handleProtocolChange(value as DtsReloadDeployProtocol)}
+            items={(["hdc", "adb"] as const).map((value) => ({ value, label: value.toUpperCase(), disabled: !canStartRun,
+              id: `dts-reload-${value}-tab`, panelId: `dts-reload-${value}-panel` }))} />
           <label className="dts-reload-project-select">
             <span>项目</span>
             <select
+              className="compact-filter-control"
+              data-compact-control="filter"
               aria-label="选择项目"
               value={projectId}
               onChange={(event) => session.selectProject(event.target.value)}
@@ -737,6 +725,8 @@ export function DtsReloadPage({
           </label>
         </div>
 
+        <div className="workbench-one-col" role="tabpanel" id={`dts-reload-${protocol}-panel`}
+          aria-labelledby={`dts-reload-${protocol}-tab`}>
         <LocalDeviceBridgePanel
           target={connectedBridgeId ? targetRef.trim() || undefined : undefined}
           detecting={detectingTargets}
@@ -1051,6 +1041,10 @@ export function DtsReloadPage({
           onOpenRun={onOpenHistoryRun}
           onLoadMore={() => void session.loadMoreHistory(repository)}
         />
+
+        </div>
+        <div role="tabpanel" id={`dts-reload-${protocol === "hdc" ? "adb" : "hdc"}-panel`}
+          aria-labelledby={`dts-reload-${protocol === "hdc" ? "adb" : "hdc"}-tab`} hidden />
 
         {editingCandidate ? (
           <DtsReloadCandidateEditDialog

@@ -277,6 +277,7 @@ describe("/debugging runtime wiring", () => {
     renderDebuggingPage({ state: runtimePendingUserState, debuggingActions: actions, dispatch });
 
     expect(getPushButton()).not.toBeDisabled();
+    expect(getPushButton()).toHaveAttribute("data-primary-action", "true");
     fireEvent.click(getPushButton());
 
     await waitFor(() => expect(actions.pushValues).toHaveBeenCalledWith(pendingIds));

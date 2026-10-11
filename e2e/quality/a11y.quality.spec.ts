@@ -22,25 +22,16 @@ const coreRoutes = [
   "/parameter-admin/projects/aurora/configuration",
   "/dts-reload",
   "/feedback-admin",
-  "/node-debugging"
+  "/node-debugging",
+  "/debugging-admin/nodes",
+  "/log-admin",
+  "/log-dashboard",
+  "/parameter-admin/projects/aurora",
+  "/parameter-admin/projects/aurora/config-sets",
+  "/parameter-admin/projects/aurora/conflicts",
+  "/parameter-admin/projects/aurora/files",
+  "/parameter-admin/projects/aurora/structure"
 ] as const;
-
-/**
- * Known color-contrast findings registered by the FA-25 route expansion.
- * Fixing them means retuning color tokens in styles.css, which belongs to the
- * parallel P3 motion/theme wave — excluded here (never whole surfaces, only
- * the exact offending selectors) so the rest of each page stays gated.
- */
-const routeScanExcludes: Partial<Record<(typeof coreRoutes)[number], string[]>> = {
-  // Off-state workbench/hotspots page toggle text fails 4.5:1.
-  "/parameter-home": [".parameter-home__view-switcher-item--hotspots"],
-  "/parameter-admin/projects/aurora/configuration": [
-    // "工作配置" status chip fails 4.5:1 against its tinted background.
-    ".configuration-workbench__working",
-    // Decorative line numbers on the dark source canvas fail 4.5:1.
-    ".project-primary-dts-viewer__line-number"
-  ]
-};
 
 async function scan(page: Page, testInfo: TestInfo, label: string, excludeSelectors: string[] = []) {
   await page.waitForFunction(
@@ -77,9 +68,50 @@ async function scan(page: Page, testInfo: TestInfo, label: string, excludeSelect
 }
 
 test.describe("M5.11 accessibility quality gate", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
   test.beforeAll(() => {
     seedQualityRuntime();
   });
+
+  for (const route of [
+    "/parameter-admin/projects/aurora",
+    "/parameter-admin/projects/aurora/files",
+    "/parameter-admin/projects/aurora/config-sets",
+    "/parameter-admin/projects/aurora/configuration?inspector=file",
+    "/parameter-admin/projects/aurora/configuration?inspector=config-set"
+  ]) {
+    test(`has valid inspector definition lists on ${route}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(route);
+      await settleQualityRoute(page, "/parameter-admin/projects/aurora/configuration");
+      await settleXiaozePopupClosed(page);
+      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
+      if (await inspectorToggle.getAttribute("aria-expanded") !== "true") {
+        await inspectorToggle.click();
+      }
+      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
+      const configSetInspector = route.endsWith("/config-sets") || route.includes("inspector=config-set");
+      await expect(page.getByText(configSetInspector ? "成员管理" : "文件格式", { exact: true }).first()).toBeVisible();
+      const results = await new AxeBuilder({ page }).withRules(["definition-list", "dlitem"]).analyze();
+      expect(results.violations).toEqual([]);
+    });
+  }
+
+  for (const route of ["/log-dashboard", "/parameters/definitions"]) {
+    test(`permits accessible names on groups on ${route}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(route);
+      await settleQualityRoute(page, route);
+      await settleXiaozePopupClosed(page);
+      // The Catalog action group renders only when it has actions, so wait on the definitions table there.
+      await expect(
+        route === "/log-dashboard" ? page.getByRole("group", { name: "今日状态拆分" }) : page.getByRole("table").first()
+      ).toBeVisible();
+      const results = await new AxeBuilder({ page }).withRules(["aria-prohibited-attr"]).analyze();
+      expect(results.violations).toEqual([]);
+    });
+  }
 
   for (const route of coreRoutes) {
     test(`has no WCAG A/AA violations on ${route}`, async ({ page }, testInfo) => {
@@ -88,7 +120,7 @@ test.describe("M5.11 accessibility quality gate", () => {
       await settleQualityRoute(page, route);
       await settleXiaozePopupClosed(page);
 
-      await scan(page, testInfo, route.replace(/[/?=]+/g, "-") || "home", routeScanExcludes[route] ?? []);
+      await scan(page, testInfo, route.replace(/[/?=]+/g, "-") || "home");
     });
   }
 

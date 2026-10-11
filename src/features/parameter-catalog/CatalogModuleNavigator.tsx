@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 
@@ -33,19 +34,21 @@ function TreeNode({
 
   return (
     <li className="parameter-catalog__tree-node">
-      <div className="parameter-catalog__tree-row">
+      <div className={`parameter-catalog__tree-row dts-topology-navigator__item${selected ? " is-selected" : ""}`}>
         {hasChildren ? (
           <button
             type="button"
-            className="parameter-catalog__tree-toggle"
+            className="parameter-catalog__tree-toggle dts-topology-navigator__disclosure"
             aria-label={`${expanded ? "收起" : "展开"} ${node.displayName}`}
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? "▾" : "▸"}
+            {expanded
+              ? <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
+              : <ChevronRight size={15} strokeWidth={2} aria-hidden="true" />}
           </button>
         ) : (
-          <span className="parameter-catalog__tree-toggle" aria-hidden="true" />
+          <span className="parameter-catalog__tree-toggle dts-topology-navigator__disclosure" aria-hidden="true" />
         )}
         {selectable ? (
           <button
@@ -79,7 +82,7 @@ function TreeNode({
         )}
       </div>
       {hasChildren && expanded ? (
-        <ul className="parameter-catalog__tree">
+        <ul className="parameter-catalog__tree dts-topology-navigator__group">
           {node.children.map((child) => (
             <TreeNode
               key={child.id}

@@ -94,6 +94,7 @@ export function AgentInsightBar({
               return (
                 <button
                   className={`insight-action insight-action--${variant}`}
+                  data-primary-action={variant === "primary" ? "true" : undefined}
                   key={action.id}
                   type="button"
                   onClick={action.onClick}

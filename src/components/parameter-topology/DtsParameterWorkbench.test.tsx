@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   EffectiveTopologyNode,
@@ -12,6 +12,7 @@ import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workb
 import {
   allSelectors,
   declarationFor,
+  declarationsFor,
   hasAtRule,
   hasRule,
   readStylesheet
@@ -248,6 +249,9 @@ function selectModuleDevice(moduleLabel: RegExp, deviceLabel: RegExp) {
   return screen.getByRole("treeitem", { name: deviceLabel });
 }
 
+beforeEach(() => window.history.replaceState(null, "", "/parameters"));
+afterEach(() => window.history.replaceState(null, "", "/"));
+
 describe("DtsParameterWorkbench", () => {
   it("shows the revision display name above the unchanged monospace key without replacing the binding description", () => {
     const displayName = "GPIO 中断配置的完整显示名称";
@@ -316,6 +320,45 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.getByText("当前筛选范围内没有参数。")).toBeVisible();
     fireEvent.change(search, { target: { value: "" } });
     expect(visibleBindingRows()).toHaveLength(effectiveRows.length);
+  });
+
+  it("shows every hydrated row on a fresh reload without inventing a module scope", () => {
+    const view = renderWorkbench({ sourceRows: [], effectiveRows: [] });
+    const partialRows = effectiveRows.filter((row) => row.driverModule === "sc8562");
+    view.rerender(<DtsParameterWorkbench {...view.props} effectiveRows={partialRows} />);
+    expect(visibleBindingRows()).toHaveLength(2);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(screen.queryByRole("treeitem", { selected: true })).not.toBeInTheDocument();
+
+    view.rerender(<DtsParameterWorkbench {...view.props} sourceRows={sourceRows} effectiveRows={effectiveRows} />);
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(screen.queryByRole("treeitem", { selected: true })).not.toBeInTheDocument();
+    view.unmount();
+
+    renderWorkbench();
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+    expect(screen.getByRole("tab", { name: "参数列表" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps a URL-selected module through loading and restores its subtree after reload", () => {
+    window.history.replaceState(null, "", "/parameters?moduleNode=module%3Adriver%3Asc8562");
+    const view = renderWorkbench({
+      sourceRows: sourceRows.filter((row) => row.driverModule !== "sc8562"),
+      effectiveRows: effectiveRows.filter((row) => row.driverModule !== "sc8562")
+    });
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBe("module:driver:sc8562");
+    view.rerender(<DtsParameterWorkbench {...view.props} sourceRows={sourceRows} effectiveRows={effectiveRows} />);
+    expect(screen.getByRole("treeitem", { name: /未分类 · sc8562/ })).toHaveAttribute("aria-selected", "true");
+    expect(visibleBindingRows()).toHaveLength(2);
+    view.unmount();
+    renderWorkbench();
+    const selected = screen.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    expect(selected).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(selected);
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
   });
 
   it("exposes scoped mature-workbench regions for topology, list and current edits", () => {
@@ -441,8 +484,10 @@ describe("DtsParameterWorkbench", () => {
     expect(within(workbench).queryByText(/显示\s+\d+\s*\/\s*\d+\s*个参数/)).not.toBeInTheDocument();
     expect(within(workbench).queryByRole("button", { name: /带到参数调试/ })).not.toBeInTheDocument();
     expect(within(workbench).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeVisible();
-    expect(within(workbench).getByRole("button", { name: "参数列表" })).toBeInTheDocument();
-    expect(within(workbench).getByRole("button", { name: "DTS 源码" })).toBeInTheDocument();
+    const modes = within(workbench).getByRole("tablist", { name: "结果模式" });
+    const list = within(modes).getByRole("tab", { name: "参数列表", selected: true });
+    expect(within(modes).getByRole("tab", { name: "DTS 源码", selected: false })).toBeInTheDocument();
+    expect(list).toHaveAttribute("aria-controls", screen.getByRole("tabpanel", { name: "参数列表" }).id);
   });
 
   it("shows each parameter display description as a dedicated list column", () => {
@@ -510,9 +555,9 @@ describe("DtsParameterWorkbench", () => {
     fireEvent.click(moduleNode);
     expect(visibleBindingRows()).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
-    expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
+    expect(within(screen.getByRole("tabpanel", { name: "DTS 源码" })).getByLabelText("DTS 源码")).toBeInTheDocument();
     expect(screen.queryByRole("row", { name: /gpio_int/ })).not.toBeInTheDocument();
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
   });
@@ -640,6 +685,38 @@ describe("DtsParameterWorkbench", () => {
     ]);
   });
 
+  it("reserves the table budget before allowing a long desktop module navigator to grow", () => {
+    expect(declarationFor(readStylesheet("src/styles.css"), ".dts-parameter-workbench .dts-workbench-topology", "max-width", {
+      within: "@media (min-width: 1201px)"
+    })).toBe("min(var(--module-navigator-max-width), max(var(--module-navigator-min-width), calc(100cqw - var(--dts-workbench-table-min-width) - var(--dts-workbench-scrollbar-width) - var(--space-3))))");
+  });
+
+  it("reserves the same three-action track in header and rows, with or without draft selection", () => {
+    const styles = readStylesheet("src/styles.css");
+    const tokens = declarationsFor(styles, ":root");
+    expect(tokens["--dts-workbench-table-min-width"]).toBe("680px");
+    expect(tokens["--dts-workbench-scrollbar-width"]).toBe("var(--space-3)");
+    expect(tokens["--space-3"]).toBe("12px");
+    expect(tokens["--space-8"]).toBe("32px");
+    expect(tokens["--space-1"]).toBe("4px");
+    expect(tokens["--space-16"]).toBe("64px");
+    expect(tokens["--dts-workbench-table-columns"]).toBe(
+      "calc(var(--space-8) + var(--space-1)) var(--dts-workbench-table-columns-without-selection)"
+    );
+    expect(tokens["--dts-workbench-table-columns-without-selection"]).toBe(
+      "minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width)"
+    );
+    for (const columns of ["--dts-workbench-table-columns", "--dts-workbench-table-columns-without-selection"]) {
+      expect(tokens[columns].replace(
+        "var(--dts-workbench-table-columns-without-selection)",
+        tokens["--dts-workbench-table-columns-without-selection"]
+      ))
+        .toMatch(/var\(--dts-workbench-table-actions-width\)$/);
+    }
+    expect(tokens["--dts-workbench-table-actions-width"])
+      .toBe("calc(3 * var(--space-8) + 2 * var(--space-1))");
+  });
+
   it("renders importance as the primary column and only surfaces anomaly governance badges", () => {
     renderWorkbench();
 
@@ -663,12 +740,12 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ loadPrimaryDtsSource });
 
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
 
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
     expect(screen.queryByRole("tree", { name: "生效 DTS 拓扑" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
+    expect(within(screen.getByRole("tabpanel", { name: "DTS 源码" })).getByLabelText("DTS 源码")).toBeInTheDocument();
   });
 
   it("always exposes details while canEdit only controls the edit entry", () => {
@@ -990,10 +1067,10 @@ describe("DtsParameterWorkbench", () => {
     });
     const { container } = renderWorkbench({ effectiveRows: rowsWithLines, loadPrimaryDtsSource });
 
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
+      expect(within(screen.getByRole("tabpanel", { name: "DTS 源码" })).getByLabelText("DTS 源码")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
@@ -1009,7 +1086,7 @@ describe("DtsParameterWorkbench", () => {
     });
     renderWorkbench({ effectiveRows: rowsWithoutLines, loadPrimaryDtsSource });
 
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
 
@@ -1024,7 +1101,7 @@ describe("DtsParameterWorkbench", () => {
     });
     renderWorkbench({ loadPrimaryDtsSource });
 
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
 
     const downloadButton = await screen.findByRole("button", { name: "下载 DTS" });
@@ -1040,7 +1117,7 @@ describe("DtsParameterWorkbench", () => {
     );
     renderWorkbench({ loadPrimaryDtsSource });
 
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
 
     expect(screen.getByRole("alert")).toHaveTextContent("无法加载 DTS 源码。");
@@ -1056,7 +1133,7 @@ describe("DtsParameterWorkbench", () => {
     });
     renderWorkbench({ loadPrimaryDtsSource });
 
-    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "DTS 源码" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
 
     const searchbox = await screen.findByRole("searchbox", { name: "在 DTS 源码中查找" });

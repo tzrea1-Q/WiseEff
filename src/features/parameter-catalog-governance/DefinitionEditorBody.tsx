@@ -749,9 +749,6 @@ export function DefinitionEditorBody({
           </div>
         ) : (
           <div className="definition-editor__readonly">
-            <p className="parameter-catalog__muted">
-              当前会话缺少目录编写能力，只能查看该定义。
-            </p>
             <dl className="parameter-catalog__dl definition-editor__dl">
               <dt>主体编号</dt>
               <dd>

@@ -248,7 +248,8 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
                 aria-label="状态筛选"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as ProductFeedbackStatus | "all")}
-                className="h-7 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="compact-filter-control"
+                data-compact-control="filter"
               >
                 <option value="all">全部状态</option>
                 {productFeedbackStatuses.map((status) => (
@@ -261,7 +262,8 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
                 aria-label="类型筛选"
                 value={typeFilter}
                 onChange={(event) => setTypeFilter(event.target.value as ProductFeedbackType | "all")}
-                className="h-7 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="compact-filter-control"
+                data-compact-control="filter"
               >
                 <option value="all">全部类型</option>
                 {productFeedbackTypes.map((type) => (

@@ -314,10 +314,56 @@ afterEach(() => {
   url.searchParams.delete("uiPreview");
   url.searchParams.delete("bindingIds");
   url.searchParams.delete("project");
+  url.searchParams.delete("moduleNode");
   window.history.replaceState({}, "", `${url.pathname}${url.search}`);
 });
 
 describe("DtsReloadPage", () => {
+  it("restores a selected module after candidates reload and clears it on reselect", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository();
+    const first = renderPage(repository);
+    await screen.findByRole("button", { name: /编辑 Watchdog/ });
+    const module = within(screen.getByRole("tree", { name: "业务模块树" })).getByRole("treeitem", { name: /charger/ });
+    await user.click(module);
+    expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
+    first.unmount();
+    renderPage(repository);
+    await screen.findByRole("button", { name: /编辑 Watchdog/ });
+    const restored = within(screen.getByRole("tree", { name: "业务模块树" })).getByRole("treeitem", { name: /charger/ });
+    expect(restored).toHaveAttribute("aria-selected", "true");
+    await user.click(restored);
+    expect(restored).toHaveAttribute("aria-selected", "false");
+    expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+  });
+
+  it("explains an unreachable local Bridge with expandable details and a working retry", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(bridgeLauncher, "connectLocalBridge").mockResolvedValue({ reachable: true, ok: true, accepted: true });
+    vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockResolvedValue(null);
+    vi.spyOn(bridgeLauncher, "probeLocalBridgeHealthDetailed")
+      .mockResolvedValueOnce({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })
+      .mockResolvedValueOnce({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })
+      .mockResolvedValue({ health: null, reachability: "ok" });
+    renderPage(createRepository(), { bridges: undefined, probeBridgeHealth: undefined });
+
+    await user.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
+    const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+    await waitFor(() => expect(connect).toBeEnabled());
+    await user.click(connect);
+
+    const message = await screen.findByText("无法连接本地 Bridge，请确认本机 Bridge 已启动，然后刷新代理状态重试。");
+    const alert = message.closest('[role="alert"]') as HTMLElement;
+    const detail = within(alert).getByText("Failed to fetch");
+    const disclosure = detail.closest("details") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    await user.click(within(alert).getByText("技术详情"));
+    expect(disclosure.open).toBe(true);
+    await user.click(within(alert).getByRole("button", { name: "刷新代理状态" }));
+    await waitFor(() => expect(message).not.toBeInTheDocument());
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
+
   it("does not query the default project while opening a run deep link", async () => {
     let resolveRun: ((value: DtsReloadRun) => void) | undefined;
     const getRun = vi.fn(
@@ -497,7 +543,7 @@ describe("DtsReloadPage", () => {
   it("exposes workbench landmarks for protocol, candidates, start bar, and collapsed history", async () => {
     const repository = createRepository();
     renderPage(repository);
-    expect(await screen.findByRole("group", { name: "连接协议" })).toBeInTheDocument();
+    expect(await screen.findByRole("tablist", { name: "连接协议" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "本地设备连接" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "部署目标" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "可调试参数" })).toBeInTheDocument();
@@ -527,7 +573,7 @@ describe("DtsReloadPage", () => {
     await user.click(within(topbarActions).getByRole("button", { name: "重新检测" }));
     await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-1"));
 
-    await user.click(screen.getByRole("button", { name: "ADB" }));
+    await user.click(screen.getByRole("tab", { name: "ADB" }));
     await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 ADB 设备"));
     expect(detectTargets).toHaveBeenLastCalledWith("adb", "bridge-1");
   });
@@ -607,7 +653,29 @@ describe("DtsReloadPage", () => {
     const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement;
     await waitFor(() => expect(topbarActions).toHaveTextContent("已连接：HDC target"));
 
-    await user.click(screen.getByRole("button", { name: "ADB" }));
+    const protocols = screen.getByRole("tablist", { name: "连接协议" });
+    const hdc = within(protocols).getByRole("tab", { name: "HDC" });
+    const adb = within(protocols).getByRole("tab", { name: "ADB" });
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    hdc.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(adb).toHaveFocus();
+    expect(hdc).toHaveAttribute("aria-selected", "true");
+    expect(topbarActions).toHaveTextContent("HDC target");
+    await user.keyboard("{Enter}");
+    expect(adb).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel", { name: "ADB" });
+    expect(panel).toHaveAttribute("id", adb.getAttribute("aria-controls"));
+    expect(panel).toHaveAttribute("aria-labelledby", adb.id);
+    expect(panel).not.toHaveAttribute("tabindex");
+    adb.focus();
+    await user.tab();
+    expect(screen.getByRole("combobox", { name: "选择项目" })).toHaveFocus();
+    await user.tab();
+    expect(panel).toContainElement(document.activeElement as HTMLElement);
+    expect(panel).not.toHaveFocus();
+    expect(within(panel).getByRole("region", { name: "模块导航" })).toBeInTheDocument();
+    expect(document.getElementById(hdc.getAttribute("aria-controls")!)).not.toBeVisible();
 
     expect(topbarActions).not.toHaveTextContent("HDC target");
     expect(screen.queryByText("HDC-TARGET")).not.toBeInTheDocument();

@@ -5,6 +5,18 @@ import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 const stylesheet = "src/features/parameter-catalog/parameter-catalog.css";
 
 describe("parameter catalog layout contract", () => {
+  it("keeps a usable selection target without introducing padding or selection-border label drift", () => {
+    const styles = readStylesheet(stylesheet);
+    const select = declarationsFor(styles, ".parameter-catalog__tree-select");
+    const selectedRow = declarationsFor(styles, ".parameter-catalog__tree-row.is-selected");
+
+    expect(select["min-height"]).toBe("var(--module-navigator-disclosure-size)");
+    expect(select["grid-column"]).toBe("2 / -1");
+    expect(select.padding).toBe("0");
+    expect(select.border).toBe("0");
+    expect(selectedRow["border-left"]).toBeUndefined();
+  });
+
   it("gives the definition table the main work area beside a bounded module navigator", () => {
     const styles = readStylesheet(stylesheet);
     const page = declarationsFor(styles, ".parameter-catalog");
@@ -31,6 +43,22 @@ describe("parameter catalog layout contract", () => {
     expect(navigator.overflow).toBe("auto");
     // A readable floor plus horizontal scroll, so columns are never crushed.
     expect(table["min-width"]).toBe("48rem");
+  });
+
+  it("keeps secondary table cells single-line without shrinking status or actions", () => {
+    const styles = readStylesheet(stylesheet);
+    const secondaryCells = declarationsFor(
+      styles,
+      '.parameter-catalog__table td:not(.parameter-catalog__lifecycle):not([data-label="操作"])'
+    );
+    const lifecycle = declarationsFor(styles, ".parameter-catalog__table .parameter-catalog__lifecycle");
+    const actions = declarationsFor(styles, ".parameter-catalog__table th:last-child");
+
+    expect(secondaryCells["white-space"]).toBe("nowrap");
+    expect(secondaryCells.overflow).toBe("hidden");
+    expect(secondaryCells["text-overflow"]).toBe("ellipsis");
+    expect(lifecycle.width).toBe("var(--pcat-table-status-width)");
+    expect(actions.width).toBe("var(--pcat-table-actions-width)");
   });
 
   it("keeps narrow-screen navigation and identity text manageable", () => {

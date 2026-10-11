@@ -281,7 +281,8 @@ Xiaoze（小泽，唯一 Agent）：
 
 - API mode（`VITE_WISEEFF_RUNTIME_MODE=api`）始终挂载 `XiaozeProvider`（CopilotKit V2 + `HttpAgent`），SSE 对接 `POST /api/v1/agent/xiaoze`；`XiaozePageContextRegistrar` 声明 `wiseeff.page` 上下文。
 - mock mode 不挂载任何 Agent UI，前端也不发起 Agent HTTP 请求。
-- 视口宽度不少于 `768px` 时，小泽悬浮球可在完整的 `16px` 视口安全区内自由拖动；跨过移动阈值的拖动不会误触打开或关闭。独立位置只属于当前页面生命周期：正常松手，以及发生有效移动后由触控取消或 pointer capture 丢失结束的松手，都会保留最后坐标；展开或收起小泽及 SPA 路由切换后也保持不变，浏览器刷新后才恢复右下角默认位置。展开后拖动悬浮球时，弹窗会根据可用空间智能附着到球的上、下、左或右侧，因此两者持续可见，悬浮球也不会再被弹窗尺寸限制。中部品牌区仍支持指针拖动和方向键移动（默认 `8px`，Shift 加速到 `32px`）。页面保持可操作，点击外部和 SPA 路由切换都不会关闭；Home 或复位按钮恢复右下角默认布局，右下角手柄在固定弹窗左上角的前提下调整大小。弹窗矩形继续写入 `wiseeff.xiaoze.popup.layout.v2`，仅在手势提交时落盘。小于 `768px` 时保持全屏模态，停用悬浮球/弹窗拖动和缩放且不覆盖桌面布局。桌面 Escape 只有在焦点位于小泽或其审批层内时才关闭。
+- 视口宽度不少于 `768px` 时，小泽悬浮球只可沿底部预留留白水平拖动；跨过移动阈值的拖动不会误触打开或关闭。独立位置只属于当前页面生命周期：正常松手，以及发生有效移动后由触控取消或 pointer capture 丢失结束的松手，都会保留最后坐标；展开或收起小泽及 SPA 路由切换后也保持不变，浏览器刷新后才恢复右下角默认位置。展开后拖动悬浮球时，弹窗会根据可用空间智能附着到球的上、下、左或右侧，因此两者持续可见，悬浮球也不会再被弹窗尺寸限制。中部品牌区仍支持指针拖动和方向键移动（默认 `8px`，Shift 加速到 `32px`）。页面保持可操作，点击外部和 SPA 路由切换都不会关闭；Home 或复位按钮恢复右下角默认布局，右下角手柄在固定弹窗左上角的前提下调整大小。弹窗矩形继续写入 `wiseeff.xiaoze.popup.layout.v2`，仅在手势提交时落盘。小于 `768px` 时保持全屏模态，停用悬浮球/弹窗拖动和缩放且不覆盖桌面布局。桌面 Escape 只有在焦点位于小泽或其审批层内时才关闭；普通页面焦点由页面处理自身的 Escape 行为。
+- 入口与提示不得遮挡可见表格滚动区或吸附操作区；入口位于左侧时提示朝内翻转，关闭提示后导航及刷新均保持关闭。
 - P0：`perception.*` 只读工具。
 - P1：`XiaozeApprovalCard`（`useInterrupt`）处理 mutating `action.submitParameterChange` 提案；低风险前端工具仅保留 `navigateTo`（`useFrontendTool`，不写库）——原 `prefillParameterValue` 因注册表无任何页面消费、会让小泽虚报「已预填」而被移除。审批卡已全中文化（批准 / 拒绝 / 目标值），payload 携带理由时渲染「变更理由」区块；拒绝提供可选理由输入（默认「在小泽对话中被拒绝」），随 interrupt resolve 的 `reason` 字段回传。`on_interrupt` emitter、审批卡与服务端 Zod schema 都编译依赖零依赖协议包中唯一的 `XiaozeInterruptPayload` shape。
 - P2：后端 LangGraph 规划循环（intent → perceive → plan → act → observe）与 checkpoint resume；`VITE_XIAOZE_PROACTIVE_ENABLED=true`（且 API `XIAOZE_PROACTIVE_ENABLED=true`）时，`src/infrastructure/http/xiaozeSuggestionsClient.ts` 负责带认证的 `POST /api/v1/agent/xiaoze/suggest` 请求与响应合同解析；`useXiaozeSuggestions` 只消费类型化建议，并在失败时关闭为空 insight 列表。点击建议可预填打开小泽聊天。
@@ -326,9 +327,13 @@ Xiaoze（小泽，唯一 Agent）：
 
 ## 共享模块导航
 
-`DtsTopologyNavigator` 是参数修改、参数调试及 `/parameter-admin/specs` 共用的模块优先树。定义管理适配器按实测归属路径构树、对定义数去重汇总；选中节点会筛选完整子树并写入 `?moduleNode=`，再次点击当前节点清除范围。
+`DtsTopologyNavigator` 是 `/parameters`、`/node-debugging` 和 `/dts-reload` 共用的模块优先树。`/parameter-admin/specs` 的 `CatalogModuleNavigator` 保留模块与主体的区别及主体元信息，同时复用共享的行、展开控件和子树布局。展开列使用固定宽度令牌，标签长度和选中状态不会移动同层级标签的左侧锚点；四个页面使用相同的箭头与缩进。
 
-模块名保持单行。桌面端导航宽度随内容增长至布局令牌上限，超出后只在导航内部横向滚动；低于双栏断点时占满可用宽度，页面本身不得产生横向溢出。
+选中模块会筛选完整子树，再次点击当前模块清除范围。三个工作台将选择写入 `?moduleNode=`，刷新或浏览器历史导航后恢复选择。Catalog 保留已有的 `moduleNodeId` 发布锚点查询契约及去重主体汇总数。
+
+工作台在参数行或模块登记加载期间保留 URL 中的节点 ID。恢复的节点出现之前，不筛选参数行，也不显示为已选中。DTS/JSON 参数修改与 DTS 重载保留原有的失效选择行为：已确认存在的选中节点被移除时，清除其子树范围与 URL 选择；节点重新出现后不会自动再次选中。
+
+模块名保持单行。桌面端工作台导航宽度随内容增长至布局令牌上限，超出后只在导航内部横向滚动；低于双栏断点时占满可用宽度，页面本身不得产生横向溢出。Catalog 保留现有的导航宽度约束与溢出规则。
 
 层级列表头筛选统一使用共享 `ColumnFilter mode="tree"`：`/parameter-review` 的变更审阅、`/parameter-admin/specs` 的参数定义库与内嵌审阅队列、`/node-debugging` 的节点调试参数表、`/dts-reload` 的参数调试候选表，以及 `/debugging-admin/nodes` 的节点目录都使用受页面作用域约束的模块树。若审阅任务接口只提供模块名称而没有归属路径，筛选器只展示可证实的模块层级，不推测不存在的祖先关系。
 

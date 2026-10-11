@@ -1,4 +1,5 @@
 import { Eye, Pencil, RotateCcw, RotateCw, Send } from "lucide-react";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { canPerform } from "@/app/permissions";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -18,6 +19,7 @@ import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import { DtsTopologyNavigator } from "./components/parameter-topology/DtsTopologyNavigator";
+import { useModuleNodeSelection } from "./hooks/useModuleNodeSelection";
 import {
   probeLocalBridgeHealthDetailed,
   type LocalBridgeProbeResult
@@ -378,7 +380,7 @@ export function NodeDebuggingPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [moduleFilters, setModuleFilters] = useState<string[]>([]);
-  const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
+  const [selectedModuleNodeId, setSelectedModuleNodeId] = useModuleNodeSelection();
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -498,20 +500,13 @@ export function NodeDebuggingPage({
     <div className="workbench-page node-debugging-page">
       <div className="workbench-one-col">
         <div className="node-debugging-controls">
-          <div className="protocol-switch" role="group" aria-label="连接协议">
-            {(["hdc", "adb"] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={protocol === item ? "protocol-switch-button active" : "protocol-switch-button"}
-                aria-pressed={protocol === item}
-                onClick={() => session.setProtocol(item, debuggingActions)}
-              >
-                {protocolLabel(item)}
-              </button>
-            ))}
-          </div>
+          <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
+            onValueChange={(value) => session.setProtocol(value as DebugConnectionProtocol, debuggingActions)}
+            items={(["hdc", "adb"] as const).map((value) => ({ value, label: protocolLabel(value),
+              id: `node-debugging-${value}-tab`, panelId: `node-debugging-${value}-panel` }))} />
         </div>
+        <div className="workbench-one-col" role="tabpanel" id={`node-debugging-${protocol}-panel`}
+          aria-labelledby={`node-debugging-${protocol}-tab`}>
         <LocalDeviceBridgePanel
           target={target}
           detecting={detecting}
@@ -774,6 +769,7 @@ export function NodeDebuggingPage({
               </button>
               <button
                 className="submit-round-button debugging-deploy-button"
+                data-primary-action="true"
                 type="button"
                 disabled={!connected || batchTargetRows.length === 0}
                 onClick={() => void session.requestBulkWrite(debuggingActions)}
@@ -788,6 +784,9 @@ export function NodeDebuggingPage({
         </section>
 
         <NodeOperationHistoryPanel events={events} />
+        </div>
+        <div role="tabpanel" id={`node-debugging-${protocol === "hdc" ? "adb" : "hdc"}-panel`}
+          aria-labelledby={`node-debugging-${protocol === "hdc" ? "adb" : "hdc"}-tab`} hidden />
       </div>
 
       {editingRow ? (
@@ -819,6 +818,7 @@ export function NodeDebuggingPage({
                   </button>
                   <button
                     className="submit-round-button debugging-deploy-button"
+                    data-primary-action="true"
                     type="button"
                     disabled={!connected || editingRow.runtimeStatus === "执行中"}
                     onClick={() => void session.requestWrite(editingRow.id, debuggingActions)}

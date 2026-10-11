@@ -7,7 +7,8 @@ describe("WorkbenchPageToggle", () => {
     const onPageChange = vi.fn();
     render(<WorkbenchPageToggle page="overview" hotspotCount={3} onPageChange={onPageChange} />);
 
-    expect(screen.getByRole("group", { name: "工作台视图" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "工作台视图" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "工作台" })).toBeChecked();
     expect(screen.getByText("3")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("radio", { name: "热榜" }));
