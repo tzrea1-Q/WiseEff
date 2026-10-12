@@ -1,7 +1,7 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, requireRowActionVisibility, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation } from "../e2e/quality/consistency-assertions";
 
 describe("workbench optional descriptions and single-line keys", () => {
   const key = { text: "vendor,long-key", title: "vendor,long-key", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
@@ -170,6 +170,18 @@ describe("unified review inbox structure", () => {
 });
 
 describe("view-switch collection", () => {
+  it.each(["未检测", "可调试", "不支持的值类型"])("measures row actions and explicit status %s without accepting missing evidence", (status) => {
+    const markup = `<table><tbody><tr><td><span data-row-status>${status}</span></td>
+      <td data-label="操作"><button disabled>编辑</button></td></tr></tbody></table>`;
+    const measurements = collectMarkup(markup);
+    expect(measurements.rowActions[0].statuses).toHaveLength(1);
+    expect(() => requireRowActionVisibility(measurements.rowActions, "/dts-reload")).not.toThrow();
+    for (const incomplete of [markup.replace("data-row-status", ""), markup.replace("<button disabled>编辑</button>", "")]) {
+      expect(() => requireRowActionVisibility(collectMarkup(incomplete).rowActions, "/dts-reload"))
+        .toThrow("missing action or status measurements");
+    }
+  });
+
   it("measures the first read-only identity evidence item and protects its task scrollport", () => {
     const measurements = collectMarkup(`
       <div class="navigator-workbench"><section class="navigator-workbench__task" style="overflow-x: auto; overflow-y: auto">
@@ -193,7 +205,7 @@ describe("view-switch collection", () => {
     expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["4", "12 个参数"]);
   });
 
-  it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions"])(
+  it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions", "/node-debugging", "/dts-reload"])(
     "requires navigator-workbench geometry for the migrated route %s", (path) => {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
     }

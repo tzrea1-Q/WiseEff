@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { ViewSwitch } from "@/components/ui/view-switch";
+import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { Button } from "@/components/ui/button";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
@@ -666,7 +668,7 @@ export function DtsReloadPage({
 
   return (
     <div className="workbench-page dts-reload-page">
-      <div className="workbench-one-col">
+      <div className="debugging-workbench-content">
         {!canStartRun ? (
           <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             当前账号仅有调试查看权限：可浏览运行历史与参数上次重载状态，但无法启动、部署或恢复基线。需要{" "}
@@ -707,7 +709,12 @@ export function DtsReloadPage({
             onValueChange={(value) => handleProtocolChange(value as DtsReloadDeployProtocol)}
             items={(["hdc", "adb"] as const).map((value) => ({ value, label: value.toUpperCase(), disabled: !canStartRun,
               id: `dts-reload-${value}-tab`, panelId: `dts-reload-${value}-panel` }))} />
-          <label className="dts-reload-project-select">
+        </div>
+
+        <div role="tabpanel" id={`dts-reload-${protocol}-panel`}
+          aria-labelledby={`dts-reload-${protocol}-tab`}>
+        <NavigatorWorkbench pageKey="dts-reload"
+          toolbar={<label className="dts-reload-project-select">
             <span>项目</span>
             <select
               className="compact-filter-control"
@@ -722,11 +729,28 @@ export function DtsReloadPage({
                 </option>
               ))}
             </select>
-          </label>
-        </div>
-
-        <div className="workbench-one-col" role="tabpanel" id={`dts-reload-${protocol}-panel`}
-          aria-labelledby={`dts-reload-${protocol}-tab`}>
+          </label>}
+          primaryAction={<Button
+                  data-primary-action="true"
+                  aria-label={
+                    starting ? "下发中" : selectedCandidates.length ? `下发参数（${selectedCandidates.length}）` : "选择参数后下发"
+                  }
+                  onClick={onStart}
+                  disabled={
+                    !canStartRun || selectedCandidates.length === 0 ||
+                    starting ||
+                    !selectedHasMeaningfulDebugChange ||
+                    (selectedHasCriticalSensitive && !criticalConfirmed)
+                  }
+                  title={
+                    !selectedHasMeaningfulDebugChange
+                      ? "本轮调试值均与库基线相同或为空"
+                      : undefined
+                  }
+                >
+                  {starting ? "下发中…" : selectedCandidates.length ? `下发参数（${selectedCandidates.length}）` : "选择参数后下发"}
+                </Button>}
+          context={<>
         <LocalDeviceBridgePanel
           target={connectedBridgeId ? targetRef.trim() || undefined : undefined}
           detecting={detectingTargets}
@@ -782,6 +806,53 @@ export function DtsReloadPage({
             </button>
           </div>
         ) : null}
+
+          </>}
+          navigatorLabel="模块导航" taskLabel="DTS 重载任务"
+          navigator={<DtsTopologyNavigator
+                view="effective"
+                nodes={moduleTree}
+                selectedNodeId={selectedModuleNode?.id ?? null}
+                defaultExpandDepth={2}
+                labelKind="text"
+                emptyMessage="暂无模块分组"
+                ariaLabel="业务模块树"
+                onSelectNode={(nodeId) =>
+                  setSelectedModuleNodeId((current) => (current === nodeId ? null : nodeId))
+                }
+              />}
+        >
+        <section className="debug-table dts-reload-candidates">
+          <div className="panel-header">
+            <strong>可调试参数</strong>
+            <span>
+              {projectName} · {bridgeStatusPill}
+            </span>
+          </div>
+
+              <DtsReloadCandidateTable
+                rows={filtered}
+                selectedBindingIds={selectedBindingIds}
+                loading={loading}
+                nameQuery={nameQuery}
+                onNameQueryChange={setNameQuery}
+                listedCount={filtered.length}
+                totalCount={handoffFilteredCandidates.length}
+                moduleFilterNodes={moduleFilterNodes}
+                selectedModuleFilterIds={activeModuleColumnFilter}
+                onChangeModuleFilter={setModuleColumnFilter}
+                onToggleModuleFilter={(value) =>
+                  setModuleColumnFilter((current) =>
+                    current.includes(value)
+                      ? current.filter((item) => item !== value)
+                      : [...current, value]
+                  )
+                }
+                onClearModuleFilter={() => setModuleColumnFilter([])}
+                onToggle={(bindingId) => session.toggleCandidate(bindingId)}
+                onEdit={openCandidateEditor}
+              />
+        </section>
 
         {selectedCandidates.length > 0 ? (
           <div className="dts-parameter-workbench__current-edits dts-draft-tray dts-reload-run-tray-slot">
@@ -914,89 +985,11 @@ export function DtsReloadPage({
                 >
                   清空本轮
                 </button>
-                <button
-                  type="button"
-                  className="button primary"
-                  aria-label={
-                    starting ? "下发中" : `下发参数（${selectedCandidates.length}）`
-                  }
-                  onClick={onStart}
-                  disabled={
-                    !canStartRun ||
-                    starting ||
-                    !selectedHasMeaningfulDebugChange ||
-                    (selectedHasCriticalSensitive && !criticalConfirmed)
-                  }
-                  title={
-                    !selectedHasMeaningfulDebugChange
-                      ? "本轮调试值均与库基线相同或为空"
-                      : undefined
-                  }
-                >
-                  {starting ? "下发中…" : `下发参数（${selectedCandidates.length}）`}
-                </button>
               </div>
             </section>
           </div>
         ) : null}
 
-        <section className="debug-table dts-reload-candidates">
-          <div className="panel-header">
-            <strong>可调试参数</strong>
-            <span>
-              {projectName} · {bridgeStatusPill}
-            </span>
-          </div>
-
-          <div className="dts-parameter-workbench__body dts-reload-candidates-body">
-            <div
-              className="dts-parameter-workbench__navigator dts-workbench-topology"
-              role="region"
-              aria-label="模块导航"
-            >
-              <div className="dts-parameter-workbench__navigator-header">
-                <h3 className="dts-parameter-workbench__navigator-title">模块导航</h3>
-              </div>
-              <DtsTopologyNavigator
-                view="effective"
-                nodes={moduleTree}
-                selectedNodeId={selectedModuleNode?.id ?? null}
-                defaultExpandDepth={2}
-                labelKind="text"
-                emptyMessage="暂无模块分组"
-                ariaLabel="业务模块树"
-                onSelectNode={(nodeId) =>
-                  setSelectedModuleNodeId((current) => (current === nodeId ? null : nodeId))
-                }
-              />
-            </div>
-
-            <div className="dts-reload-candidates-results">
-              <DtsReloadCandidateTable
-                rows={filtered}
-                selectedBindingIds={selectedBindingIds}
-                loading={loading}
-                nameQuery={nameQuery}
-                onNameQueryChange={setNameQuery}
-                listedCount={filtered.length}
-                totalCount={handoffFilteredCandidates.length}
-                moduleFilterNodes={moduleFilterNodes}
-                selectedModuleFilterIds={activeModuleColumnFilter}
-                onChangeModuleFilter={setModuleColumnFilter}
-                onToggleModuleFilter={(value) =>
-                  setModuleColumnFilter((current) =>
-                    current.includes(value)
-                      ? current.filter((item) => item !== value)
-                      : [...current, value]
-                  )
-                }
-                onClearModuleFilter={() => setModuleColumnFilter([])}
-                onToggle={(bindingId) => session.toggleCandidate(bindingId)}
-                onEdit={openCandidateEditor}
-              />
-            </div>
-          </div>
-        </section>
 
         {run ? (
           <>
@@ -1042,6 +1035,7 @@ export function DtsReloadPage({
           onLoadMore={() => void session.loadMoreHistory(repository)}
         />
 
+        </NavigatorWorkbench>
         </div>
         <div role="tabpanel" id={`dts-reload-${protocol === "hdc" ? "adb" : "hdc"}-panel`}
           aria-labelledby={`dts-reload-${protocol === "hdc" ? "adb" : "hdc"}-tab`} hidden />

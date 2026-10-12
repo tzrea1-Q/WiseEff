@@ -60,6 +60,7 @@ describe("navigator-workbench geometry", () => {
       { ...measurement(), noticeCount: 2 },
       { ...measurement(), pageOverflow: 2 },
       { ...measurement(), firstRow: null },
+      { ...measurement(), firstRowClip: null },
       { ...measurement(), firstRow: rect(533, 890, 882, 40) },
       { ...measurement(), firstRowClip: rect(533, 210, 882, 20) }
     ]) {

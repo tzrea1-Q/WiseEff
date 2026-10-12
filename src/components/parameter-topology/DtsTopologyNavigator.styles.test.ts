@@ -93,36 +93,28 @@ describe("DtsTopologyNavigator responsive width", () => {
     expect(topology["max-width"]).toBe("none");
   });
 
-  it("restores the DTS reload two-column layout without stretching a collapsed navigator", () => {
+  it("leaves DTS reload pane geometry to the shared navigator workbench", () => {
     const styles = readStylesheet("src/styles.css");
-    const body = declarationsFor(
-      styles,
-      ".dts-reload-page .dts-reload-candidates-body.dts-parameter-workbench__body",
-      { within: "workbench-main (min-width: 960px)" }
-    );
-    const topology = declarationsFor(
-      styles,
-      ".dts-reload-page .dts-reload-candidates-body .dts-workbench-topology",
-      { within: "workbench-main (min-width: 960px)" }
-    );
-    const results = declarationsFor(
-      styles,
-      ".dts-reload-page .dts-reload-candidates-results",
-      { within: "workbench-main (min-width: 960px)" }
-    );
-    const tree = declarationsFor(
-      styles,
-      ".dts-reload-page .dts-reload-candidates-body .dts-topology-navigator"
-    );
+    const sharedStyles = readStylesheet("src/components/layout/navigator-workbench.css");
+    const body = declarationsFor(sharedStyles, ".navigator-workbench__body");
+    const navigator = declarationsFor(sharedStyles, ".navigator-workbench__navigator");
+    const task = declarationsFor(sharedStyles, ".navigator-workbench__task");
 
-    expect(body["grid-template-columns"]).toBe("auto minmax(0, 1fr)");
-    expect(body.height).toBe("var(--dts-reload-candidates-pane-height)");
-    expect(topology.width).toBe("max-content");
-    expect(topology.height).toBe("auto");
-    expect(topology["max-height"]).toBe("100%");
-    expect(topology["align-self"]).toBe("start");
-    expect(tree.flex).toBe("0 1 auto");
-    expect(results.height).toBe("100%");
+    for (const selector of [
+      ".dts-reload-page .dts-reload-candidates-body.dts-parameter-workbench__body",
+      ".dts-reload-page .dts-reload-candidates-body .dts-workbench-topology",
+      ".dts-reload-page .dts-reload-candidates-results",
+      ".dts-reload-page .dts-reload-candidates-body .dts-topology-navigator"
+    ]) {
+      expect(hasRule(styles, selector), selector).toBe(false);
+    }
+    expect(body["grid-template-columns"])
+      .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
+    expect(body["align-items"]).toBe("start");
+    expect(navigator.height).toBeUndefined();
+    expect(navigator["max-height"]).toBe("var(--navigator-workbench-pane-height)");
+    expect(task["max-height"]).toBe("var(--navigator-workbench-pane-height)");
+    expect(task.overflow).toBe("auto");
   });
 
   it("fits parameter counts in the bounded navigator and ellipsizes only long labels", () => {
@@ -146,10 +138,16 @@ describe("DtsTopologyNavigator responsive width", () => {
     expect(declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__count").overflow).toBe("visible");
   });
 
-  it("does not stretch collapsed roots on the node debugging page", () => {
+  it("does not stretch collapsed roots inside the shared navigation slot", () => {
     const styles = readStylesheet("src/styles.css");
-    const tree = declarationsFor(styles, ".node-debugging-module-workbench .dts-topology-navigator");
+    const sharedStyles = readStylesheet("src/components/layout/navigator-workbench.css");
+    const navigation = declarationsFor(sharedStyles, ".navigator-workbench__navigation");
+    const tree = declarationsFor(sharedStyles, ".navigator-workbench__navigation .dts-topology-navigator");
 
-    expect(tree.flex).toBe("0 1 auto");
+    expect(hasRule(styles, ".node-debugging-module-workbench .dts-topology-navigator")).toBe(false);
+    expect(navigation.display).not.toBe("flex");
+    expect(navigation.height).toBeUndefined();
+    expect(tree.flex).toBeUndefined();
+    expect(tree["max-height"]).toBe("none");
   });
 });
