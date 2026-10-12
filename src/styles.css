@@ -101,6 +101,9 @@
   --space-16: 64px;
 
   --page-gutter: var(--space-6);
+  --admin-list-table-min-width: 1080px;
+  --admin-list-name-max-width: 240px;
+  --admin-list-detail-width: 520px;
 
   /* ── Radius ── */
   --radius-sm: 6px;
@@ -14803,138 +14806,12 @@ body.xiaoze-popup-drag-active {
   gap: var(--space-4);
 }
 
-.project-admin-library-table .parameters-table-heading h2 {
-  margin: 0;
-}
-
-.project-admin-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  font-size: var(--text-sm);
-  background: #eef2f7;
-  color: var(--text-secondary);
-}
-
-.project-admin-status--initialized {
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.project-admin-status--maintenance {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.project-admin-status--initialization_pending_review {
-  background: #fff7ed;
-  color: #c2410c;
-}
-
-.project-admin-status--initialization_rejected {
-  background: #fef2f2;
-  color: #b91c1c;
-}
-
-.project-admin-attention {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.project-admin-attention--conflict {
-  color: #c2410c;
-}
-
-.project-admin-attention--baseline {
-  color: #047857;
-}
-
-.project-admin-attention-muted {
-  color: #94a3b8;
-  font-variant-numeric: tabular-nums;
-}
-
-.project-admin-library-grid {
-  width: 100%;
-  table-layout: auto;
-}
-
-.project-admin-library-grid .project-admin-col-numeric,
-.project-admin-library-grid .project-admin-col-updated-cell {
-  font-variant-numeric: tabular-nums;
-}
-
-.project-admin-library-grid .project-admin-row-actions {
-  display: inline-flex;
-  flex-flow: row wrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-}
-
-/* True mobile card stack only. Mid widths (641–960) keep a dense scrollable
-   table via `.param-admin-library-table` rules; do not force min-width:0 there
-   or columns crush with no horizontal scroll. */
-@media (max-width: 640px) {
-  .param-admin-shell .project-admin-library-table .data-table-scroll {
-    overflow: visible;
-    max-height: none;
-  }
-
-  .param-admin-shell .project-admin-library-table .data-table-scroll > table,
-  .param-admin-shell .project-admin-library-grid {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .param-admin-shell .project-admin-library-grid .project-admin-row-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .project-admin-library-table .horizontal-drag-scroll-rail {
-    display: none;
-  }
-
-  .param-admin-shell .project-admin-library-grid td:first-child {
-    display: grid;
-  }
-
-  .param-admin-shell .project-admin-library-grid td:first-child::before {
-    content: attr(data-label);
-  }
-}
-
 /* Table column sizing for any non-card shell (≥641). Must stay outside the
    ≤640px card layout or white-space:nowrap leaks into cards and clips cells.
    Table min-width keeps nowrap columns from being crushed. Native overlay
    scrollbars stay hidden; the shared horizontal drag rail is the always-visible
    handle (same pattern as `.dts-workbench-list__h-rail`). */
 @media (min-width: 641px) {
-  .param-admin-shell .project-admin-library-table .data-table-scroll {
-    max-height: none;
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-
-  .param-admin-shell .project-admin-library-table .data-table-scroll::-webkit-scrollbar {
-    display: none;
-  }
-
-  .param-admin-shell .project-admin-library-table .data-table-scroll > table,
-  .param-admin-shell .project-admin-library-table .project-admin-library-grid {
-    width: 100%;
-    min-width: 1080px;
-    max-width: none;
-    table-layout: auto;
-  }
-
   .horizontal-drag-scroll-rail {
     display: block;
     position: relative;
@@ -14942,7 +14819,7 @@ body.xiaoze-popup-drag-active {
     height: var(--space-4);
     overflow: hidden;
     background: var(--surface-sunken);
-    border: 1px solid var(--border);
+    border: var(--stroke-hairline) solid var(--border);
     border-top: 0;
     border-radius: 0 0 var(--radius-md) var(--radius-md);
     cursor: pointer;
@@ -14968,8 +14845,8 @@ body.xiaoze-popup-drag-active {
   }
 
   .horizontal-drag-scroll-rail:not([hidden]):focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: -2px;
+    outline: var(--view-switch-focus-width) solid var(--ring);
+    outline-offset: calc(-1 * var(--view-switch-focus-width));
     background: var(--surface-raised);
   }
 
@@ -14982,105 +14859,11 @@ body.xiaoze-popup-drag-active {
     background: var(--text-secondary);
   }
 
-  .project-admin-library-table .data-table-scroll {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-
-  .project-admin-library-grid th,
-  .project-admin-library-grid td {
-    position: static;
-    display: table-cell;
-    width: auto;
-    min-width: max-content;
-    max-width: none;
-    box-shadow: none;
-    white-space: nowrap;
-    padding-block: var(--space-2);
-  }
-
-  .project-admin-library-grid th:first-child,
-  .project-admin-library-grid td:first-child {
-    width: auto;
-    min-width: 140px;
-    max-width: 240px;
-    white-space: normal;
-  }
-
-  .project-admin-library-grid td:first-child strong {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* 状态: keep the badge + filter compact and centered (global ParametersTable
-     nth-child(4) is 16%/120px and left-aligned for a different column map). */
-  .project-admin-library-grid th:nth-child(3),
-  .project-admin-library-grid td:nth-child(3) {
-    width: 1%;
-    min-width: 88px;
-    max-width: 104px;
-    text-align: center;
-    padding-inline: 6px;
-  }
-
-  /* 冲突: short numeric attention column — override global 16%/112px slot. */
-  .project-admin-library-grid th:nth-child(4),
-  .project-admin-library-grid td:nth-child(4) {
-    width: 1%;
-    min-width: 56px;
-    max-width: 72px;
-    text-align: center;
-    padding-inline: 6px;
-  }
-
-  .project-admin-library-grid th:nth-child(5),
-  .project-admin-library-grid th:nth-child(6),
-  .project-admin-library-grid th:nth-child(7),
-  .project-admin-library-grid td:nth-child(5),
-  .project-admin-library-grid .project-admin-col-numeric {
-    text-align: center;
-  }
-
-  .project-admin-library-grid th:last-child,
-  .project-admin-library-grid td:last-child {
-    width: 1%;
-    min-width: max-content;
-    white-space: nowrap;
-    text-align: center;
-  }
-
-  .project-admin-library-grid .project-admin-row-actions {
-    flex-flow: row nowrap;
-    justify-content: center;
-  }
-}
-
-.project-admin-row-edit {
-  color: var(--app-muted);
-}
-
-.project-admin-row-edit:hover {
-  color: var(--app-primary);
-}
-
-.project-admin-row-delete {
-  color: var(--app-muted);
-}
-
-.project-admin-row-delete:hover:not(:disabled) {
-  color: var(--danger);
-}
-
-.project-admin-row-delete:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 
 .project-admin-form-dialog {
-  width: min(520px, calc(100vw - 48px));
-  max-width: 520px;
+  width: min(var(--admin-list-detail-width), calc(100vw - var(--space-12)));
+  max-width: var(--admin-list-detail-width);
 }
 
 .project-admin-form-body {
@@ -15090,11 +14873,11 @@ body.xiaoze-popup-drag-active {
 .project-admin-form-grid label span {
   color: var(--app-muted);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 
 .project-admin-form-grid input:read-only {
-  background: #f8fafc;
+  background: var(--surface-sunken);
   color: var(--app-muted);
   cursor: default;
 }
@@ -15120,17 +14903,17 @@ body.xiaoze-popup-drag-active {
 
 .project-admin-form-grid label {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .project-admin-form-grid input,
 .project-admin-form-select {
   width: 100%;
-  min-height: 38px;
+  min-height: var(--space-8);
   padding: var(--space-2) var(--space-3);
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   font: inherit;
   font-size: var(--text-base);
@@ -15142,20 +14925,14 @@ body.xiaoze-popup-drag-active {
 
 .project-admin-form-select:disabled {
   cursor: default;
-  opacity: 0.6;
-}
-
-.project-admin-row-manage-files {
-  min-height: 28px;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-sm);
+  opacity: var(--view-switch-disabled-opacity);
 }
 
 .project-operations-not-found {
   display: grid;
   justify-items: start;
-  gap: 10px;
-  max-width: 560px;
+  gap: var(--space-3);
+  max-width: var(--admin-list-detail-width);
 }
 
 .project-operations-not-found h2 {
@@ -15166,7 +14943,7 @@ body.xiaoze-popup-drag-active {
 .project-operations-not-found p {
   margin: 0;
   color: var(--app-muted);
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
 }
 
 .dts-search-panel {
@@ -15805,19 +15582,19 @@ body.xiaoze-popup-drag-active {
 .governance-confirm-dialog,
 .delete-project-dialog {
   display: grid;
-  gap: 14px;
-  width: min(520px, calc(100vw - 48px));
+  gap: var(--space-4);
+  width: min(var(--admin-list-detail-width), calc(100vw - var(--space-12)));
   color: var(--text);
   font-size: var(--text-base);
-  line-height: 1.6;
+  line-height: var(--leading-base);
 }
 
 .governance-confirm-dialog h2,
 .delete-project-dialog h2 {
   margin: 0;
   font-size: var(--text-lg);
-  font-weight: 700;
-  line-height: 1.35;
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-lg);
 }
 
 .delete-project-dialog p {
@@ -15833,7 +15610,7 @@ body.xiaoze-popup-drag-active {
 
 .governance-confirm-dialog .confirm-dialog__scroll {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .governance-confirm-dialog__body strong,
@@ -15873,8 +15650,8 @@ body.xiaoze-popup-drag-active {
 
 .governance-confirm-dialog__error {
   margin: 0;
-  color: #b42318;
-  font-size: 0.875rem;
+  color: var(--danger);
+  font-size: var(--text-base);
 }
 
 .structured-diff-view {
@@ -26362,25 +26139,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
     display: table;
     width: 100%;
     min-width: 560px;
-  }
-
-  .param-admin-shell .project-admin-library-table .project-admin-library-grid {
-    width: 100%;
-    min-width: 1080px;
-    max-width: none;
-  }
-
-  .param-admin-shell .project-admin-library-table .data-table-scroll {
-    overflow-x: auto;
-    overflow-y: hidden;
-    max-height: none;
-    border: 1px solid var(--outline);
-    background: var(--surface);
-    scrollbar-width: none;
-  }
-
-  .param-admin-shell .project-admin-library-table .data-table-scroll::-webkit-scrollbar {
-    display: none;
   }
 
   .param-admin-shell .param-admin-library-table .parameters-table-grid thead {

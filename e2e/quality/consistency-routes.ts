@@ -33,17 +33,18 @@ export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges"> = {
   viewSwitches: [...viewSwitchStylePaths, "/log-admin"],
   viewSwitchSignatures: viewSwitchStylePaths,
-  primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
-  rowActions: [...catalogPaths, "/parameters"],
+  primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects"],
+  rowActions: [...catalogPaths, "/parameters", "/parameter-admin/projects"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
     "/debugging-admin/nodes", "/feedback-admin", "/log-admin", "/dts-reload",
     "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"],
   moduleTreeLabels: [...catalogPaths, "/parameters", "/node-debugging", "/dts-reload"],
-  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
-  sortControls: [],
+  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects"],
+  sortControls: ["/parameter-admin/projects"],
   paginationControls: catalogPaths,
-  navigatorWorkbenches: ["/parameters", ...catalogPaths]
+  navigatorWorkbenches: ["/parameters", ...catalogPaths],
+  adminLists: ["/parameter-admin/projects"]
 };
 const otherPhaseTwoPaths = [
   "/knowledge-admin",

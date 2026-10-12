@@ -331,6 +331,8 @@ Xiaoze（小泽，唯一 Agent）：
 
 管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。列宽超出卡片时，内层 `.data-table-scroll` 保持 `overflow-x: auto`（指针拖动 + 触控板/触摸滑动）；表头 `ColumnFilter` 菜单是 `position: fixed`，不得再把滚动层改成 `overflow-visible`。其他会溢出的表滚动层复用同一套 `HorizontalDragScroll` / `useHorizontalDragScroll`（`ParametersTable`、审阅 `Table`、参数后台库表、调试表、初始化/导入预览、平台控制台候选体）；列表需要常显横向滚动条时，也由这个公共接缝按需提供。页面外壳仍不得造成整页横向滚动。已接入：`/organization/members` 成员表、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表、`/dts-reload` 候选网格，以及 `/parameter-admin/projects` 管理端项目清单。项目清单在 390px 使用卡片，在 768px 使用 1080px 宽表格加 16px 常显横向滚动条，在 1440px 完整显示且页面不横向溢出。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 在管理端列表边界闭环：规范项目配置工作台本身没有表格；日常工作的 `DtsParameterWorkbenchTable` 与仅 mock 使用的旧 `ParametersTable` 产品语义不同，不属于这条列表合同。
 
+管理列表迁移使用 `src/components/layout/` 中的 `AdminListPage`，提供页头操作、紧凑筛选、DataTable 与可选详情弹窗槽。项目试点将筛选、排序、分页保存在 URL，通过 RowActionMenu 提供配置、审核角色、编辑和确认删除。布局由模板令牌负责，页面删除局部表格 CSS。参见[管理列表模板契约](design-docs/ui-design-system.md#管理列表页面)。
+
 ## 共享模块导航
 
 `/parameters` 的 DTS/JSON 界面及 Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）遵循共享[导航工作台契约](design-docs/ui-design-system.md#导航工作台)。模板负责槽顺序、有上限的令牌化宽度、折叠偏好与滚动容器；模块树原语继续负责标签锚点和选择。其他路由在各自迁移前保留现有的内容自适应导航。

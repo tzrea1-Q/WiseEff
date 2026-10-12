@@ -3711,7 +3711,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       })
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument();
     expect(document.querySelector(".project-admin-detail")).not.toBeInTheDocument();
@@ -3743,7 +3743,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     window.history.replaceState(null, "", "/parameter-admin/projects");
     renderApp({ initialAppState: adminState });
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
   });
 

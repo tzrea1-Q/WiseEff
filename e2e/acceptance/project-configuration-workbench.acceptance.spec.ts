@@ -214,7 +214,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
       await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
       await dismissXiaozeHint(page);
-      await expect(page.getByRole("heading", { name: "项目清单" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("region", { name: "项目清单", exact: true })).toBeVisible({ timeout: 30_000 });
       const auroraRow = page.getByRole("row").filter({ hasText: /aurora/i }).last();
       await auroraRow.getByRole("button", { name: /配置工作台/ }).click();
       await expect(page).toHaveURL(new RegExp(`/parameter-admin/projects/${projectId}/configuration(?:\\?|$)`));

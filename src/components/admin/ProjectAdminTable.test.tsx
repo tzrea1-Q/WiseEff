@@ -6,6 +6,8 @@ import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSear
 import type { ParameterAdminProjectRow } from "@/parameterAdminProjects";
 import { ProjectAdminTable } from "./ProjectAdminTable";
 import { mapProjectAdminSummaryDto } from "@/parameterAdminProjects";
+import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
+import { requireMeasuredCategories, requireCompactControlHeights } from "../../../e2e/quality/consistency-assertions";
 
 const rows: ParameterAdminProjectRow[] = [
   {
@@ -56,7 +58,7 @@ function renderTable(overrides: {
   const onEditProject = overrides.onEditProject ?? vi.fn();
   const onDeleteProject = overrides.onDeleteProject ?? vi.fn();
   const onManageFiles = overrides.onManageFiles ?? vi.fn();
-  render(
+  const view = render(
     <ProjectAdminTable
       rows={overrides.rows ?? rows}
       search={overrides.search ?? defaultSearch}
@@ -68,23 +70,49 @@ function renderTable(overrides: {
       primaryActionLabel="配置工作台"
     />
   );
-  return { onUpdateSearch, onEditProject, onDeleteProject, onManageFiles };
+  return { onUpdateSearch, onEditProject, onDeleteProject, onManageFiles, unmount: view.unmount };
 }
 
 describe("ProjectAdminTable", () => {
+  it("exposes the shared status filter and sortable headers to the live consistency collector", () => {
+    const { container } = render(<main><ProjectAdminTable rows={rows} search={defaultSearch}
+      onUpdateSearch={vi.fn()} onCreateProject={vi.fn()} onEditProject={vi.fn()}
+      onDeleteProject={vi.fn()} onManageFiles={vi.fn()} /></main>);
+    for (const element of container.querySelectorAll("*")) {
+      element.getBoundingClientRect = () => new DOMRect(0, 0, 120, 32);
+      Object.defineProperty(element, "checkVisibility", { value: () => true });
+    }
+    const measurements = collectConsistencyMeasurements();
+    expect(() => requireMeasuredCategories(measurements, ["filterControls", "sortControls"], "/parameter-admin/projects")).not.toThrow();
+    expect(measurements.filterControls).toHaveLength(1);
+    expect(measurements.sortControls).toHaveLength(3);
+    expect(() => requireCompactControlHeights(measurements, "/parameter-admin/projects")).not.toThrow();
+    for (const name of ["筛选状态", "项目名称", "参数", "最近更新"]) {
+      expect(screen.getByRole("button", { name, exact: true })).toHaveClass("compact-filter-control");
+    }
+  });
+
   it("gates canonical project Delete with the retention policy while empty Delete stays enabled", async () => {
     const canonical = mapProjectAdminSummaryDto({ ...rows[0], canonicalOwned: true });
     const empty = mapProjectAdminSummaryDto({ ...rows[1], parameterCount: 0, canonicalOwned: false });
     const { onDeleteProject } = renderTable({ rows: [canonical, empty] });
-    const disabledDelete = screen.getByRole("button", { name: `删除 ${canonical.name}` });
-    expect(disabledDelete).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: `${canonical.name}操作：更多` }));
+    const disabledDelete = screen.getByRole("menuitem", { name: `删除 ${canonical.name}` });
+    expect(disabledDelete).toHaveAttribute("data-disabled");
     expect(disabledDelete).toHaveAccessibleDescription("项目需保留规范历史，不能删除；归档或处置功能尚未开放。");
     expect(screen.getByText("项目需保留规范历史，不能删除；归档或处置功能尚未开放。")).toBeVisible();
     await userEvent.click(disabledDelete);
     expect(onDeleteProject).not.toHaveBeenCalled();
-    const emptyDelete = screen.getByRole("button", { name: `删除 ${empty.name}` });
-    expect(emptyDelete).toBeEnabled();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: `${empty.name}操作：更多` }));
+    const emptyDelete = screen.getByRole("menuitem", { name: `删除 ${empty.name}` });
+    expect(emptyDelete).not.toHaveAttribute("data-disabled");
     await userEvent.click(emptyDelete);
+    expect(onDeleteProject).not.toHaveBeenCalled();
+    const confirmation = screen.getByRole("dialog", { name: /删除项目 Alpha/ });
+    expect(confirmation).toHaveTextContent("此操作不可撤销");
+    expect(confirmation).toHaveTextContent("共享参数库中的参数定义会保留");
+    await userEvent.click(within(confirmation).getByRole("button", { name: "确认删除" }));
     expect(onDeleteProject).toHaveBeenCalledWith(empty.id);
   });
 
@@ -148,13 +176,16 @@ describe("ProjectAdminTable", () => {
       code: `P${String(index + 1).padStart(2, "0")}`,
       parameterCount: index + 1
     }));
-    renderTable({ rows: manyRows });
+    const { onUpdateSearch, unmount } = renderTable({ rows: manyRows });
 
     expect(screen.getByText("第 1 / 2 页 · 共 12 条")).toBeInTheDocument();
     expect(screen.getByText("Project 10")).toBeInTheDocument();
     expect(screen.queryByText("Project 11")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(onUpdateSearch).toHaveBeenLastCalledWith({ page: 2 });
+    unmount();
+    renderTable({ rows: manyRows, search: { ...defaultSearch, page: 2 } });
     expect(screen.getByText("Project 11")).toBeInTheDocument();
     expect(screen.getByText("Project 12")).toBeInTheDocument();
   });
@@ -168,11 +199,16 @@ describe("ProjectAdminTable", () => {
     expect(onManageFiles).toHaveBeenCalledWith("project-alpha");
 
     onManageFiles.mockClear();
-    await userEvent.click(within(alphaRow).getByRole("button", { name: "编辑 Alpha" }));
+    expect(within(alphaRow).getAllByRole("button")).toHaveLength(2);
+    await userEvent.click(within(alphaRow).getByRole("button", { name: "Alpha操作：更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "编辑 Alpha" }));
     expect(onEditProject).toHaveBeenCalledWith("project-alpha");
     expect(onManageFiles).not.toHaveBeenCalled();
 
-    await userEvent.click(within(alphaRow).getByRole("button", { name: "删除 Alpha" }));
+    await userEvent.click(within(alphaRow).getByRole("button", { name: "Alpha操作：更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "删除 Alpha" }));
+    expect(onDeleteProject).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "确认删除" }));
     expect(onDeleteProject).toHaveBeenCalledWith("project-alpha");
     expect(onManageFiles).not.toHaveBeenCalled();
   });

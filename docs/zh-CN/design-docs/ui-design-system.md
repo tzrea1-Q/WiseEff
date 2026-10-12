@@ -285,6 +285,17 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 一致性测试在每条路由比较壳层令牌定义的左边缘与路由内容、页面根内容、TopBar、页脚左边缘（±1px）。区域缺失或非有限测量值均失败。仅当 DOM 中不存在壳层页脚时，页脚区域才是可选的（包括重定向到配置工作台的旧版项目链接）；所有存在的页脚即使隐藏也必须测量并检查。仍需真实运行时截图与质量/验收测试，静态测试不能替代它们。
 
+### 管理列表页面
+
+`src/components/layout/` 中的 `AdminListPage` 负责页头操作、紧凑筛选栏、共享 `DataTable`、可选通知与可选详情抽屉/弹窗。页面标题与边距来自壳层；模板不再添加重复标题或外层留白。次要操作排在主动作之前，主动作保持在最右端。页面只填充槽，并删除旧列表布局 CSS，不覆盖模板。
+
+- `table` 沿用 DataTable 契约，包括受控 `sort`、`onSort`、`page` 和 `onPageChange`。路由负责序列化：项目试点将搜索（`q`）、状态（`status`）、排序（`sort`）与分页（`page`）保存在 URL，支持刷新和浏览器历史恢复。筛选/排序变化回到第一页；第一页省略 URL 参数，无效页码归一为一。
+- 模板启用 DataTable 的 `compactControls` 模式：列筛选配置由共享 `ColumnFilter` 渲染，可排序表头保留 `aria-sort`。两者使用令牌化的 32px `.compact-filter-control` 几何与显式 `data-compact-control` 筛选/排序标记，供一致性采集器测量。模板以外的原生表头控件保留原有尺寸和测量范围。
+- `rowActions` 提供 `RowActionMenu` 参数，而非任意按钮组：每行至多一个小尺寸文本操作加「更多」。操作可选 `ariaLabel` 与 `descriptionId` 保留逐行名称和禁用说明。规范历史项目仍禁用删除；允许的删除通过 ConfirmDialog 复用项目影响范围文案。提交中与失败状态遵循共享菜单确认契约。
+- `emptyState` 必须提供一条消息和唯一下一步，由 SectionEmpty 在表格内渲染。无项目时提供创建，无匹配时提供清除筛选。`detailDrawer` 接入调用方已有的可访问弹窗，不替换其焦点管理。
+- 布局常量只在根令牌定义一次：`--admin-list-table-min-width`（1080px）、`--admin-list-name-max-width`（240px）与 `--admin-list-detail-width`（520px）。长名称保留完整名称提示，共享滚动条与已有小窗口卡片字段标签继续保留；删除页面专属表格规则，试点的详情表单也改用令牌。
+- 真实运行时一致性项目在浅色/深色 1440×900 下检查项目试点：页头/筛选/表格对齐、首行可见、每行小尺寸操作加「更多」、无可见危险操作，并沿用边距、字号、主色与裁切契约。组件和纯采集器测试不能替代真实 API、无障碍、验收或截图证据。
+
 ### 导航工作台
 
 `src/components/layout/` 中的 `NavigatorWorkbench` 负责固定顺序：工具栏（主动作位于最右端）、可选的紧凑上下文、至多一个通知槽，然后是有名称的导航、任务及可选检查器区域。页面只填充槽，不重定义网格、面板宽度或滚动预算。`/parameters` 的 DTS 与 JSON 均使用此模板。Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）将发布条放在上下文槽、治理提示放在通知槽，并保留现有定义对话框。Catalog 管理别名共用 `catalog-definitions` 折叠键；只读的 `/parameters/definitions` 使用 `parameter-definitions`。模拟模式的平面参数表及其他路由在各自迁移前保留原有布局。

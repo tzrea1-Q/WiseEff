@@ -15,6 +15,7 @@ type ColumnFilterCommonProps = {
   groupLabel: string;
   onClear: () => void;
   align?: "left" | "right";
+  compact?: boolean;
 };
 
 export type ColumnFilterFlatProps = ColumnFilterCommonProps & {
@@ -136,7 +137,8 @@ export function ColumnFilter(props: ColumnFilterProps) {
         ref={triggerRef}
         aria-expanded={open}
         aria-label={`筛选${label}`}
-        className={`parameters-column-filter__trigger${selectedCount > 0 ? " active" : ""}`}
+        className={`parameters-column-filter__trigger${props.compact ? " compact-filter-control" : ""}${selectedCount > 0 ? " active" : ""}`}
+        data-compact-control={props.compact ? "filter" : undefined}
         type="button"
         onClick={(event) => {
           event.stopPropagation();

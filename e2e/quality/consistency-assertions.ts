@@ -87,6 +87,35 @@ export function requireModuleTreeAlignment(
   }
 }
 
+export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLists"], routePath: string) {
+  requireMeasuredCategories({ adminLists: lists }, ["adminLists"], routePath);
+  for (const list of lists) {
+    if (list.tableCount !== 1 || !list.header || !list.filters || !list.table || !list.primaryAction
+      || [list.root, list.header, list.filters, list.table, list.primaryAction].some((slot) => Object.values(slot).some((value) => !Number.isFinite(value)))
+      || Math.abs(list.primaryAction.right - list.header.right) > 1
+      || list.header.bottom > list.filters.top + 1 || list.filters.bottom > list.table.top + 1
+      || [list.header, list.filters, list.table].some((slot) => !Number.isFinite(slot.left) || Math.abs(slot.left - list.root.left) > 1)) {
+      throw new Error(`${routePath}: admin list requires one aligned header, filter bar and table in that order`);
+    }
+    if (list.rows.length && !list.firstRow) {
+      throw new Error(`${routePath}: admin list first row must be measured`);
+    }
+    if (list.firstRow && (!Number.isFinite(list.firstRow.top) || !Number.isFinite(list.firstRow.bottom)
+      || list.firstRow.top < 0 || list.firstRow.bottom > 900)) {
+      throw new Error(`${routePath}: admin list first row must be visible at 1440x900`);
+    }
+    if (!list.rows.length && list.emptyActionCount !== 1) {
+      throw new Error(`${routePath}: empty admin list must offer exactly one next step`);
+    }
+    for (const row of list.rows) {
+      if (row.actions.length > 2 || row.actions.filter((action) => action.overflow).length !== 1
+        || row.actions.some((action) => !Number.isFinite(action.height) || Math.abs(action.height - 28) > 1 || action.destructive)) {
+        throw new Error(`${routePath}: rows require at most one small text action plus overflow, with no visible destructive action`);
+      }
+    }
+  }
+}
+
 export function requireRowActionVisibility(rows: ConsistencyMeasurements["rowActions"], routePath: string) {
   requireMeasuredCategories({ rowActions: rows }, ["rowActions"], routePath);
   for (const { dom, cell, row, clip, scrollLeft, actions, statuses } of rows) {

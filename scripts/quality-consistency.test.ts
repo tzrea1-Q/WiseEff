@@ -1,7 +1,66 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireAdminListGeometry } from "../e2e/quality/consistency-assertions";
+
+describe("admin list template contract", () => {
+  const rect = { left: 24, right: 1200, top: 100, bottom: 132, width: 1176, height: 32 };
+  const list = { root: rect, header: rect, primaryAction: { ...rect, left: 1100, width: 100 }, filters: { ...rect, top: 144, bottom: 176 },
+    table: { ...rect, top: 188, bottom: 400 }, tableCount: 1,
+    firstRow: { ...rect, top: 220, bottom: 252 }, emptyActionCount: 0,
+    rows: [{ actions: [{ height: 28, overflow: false, destructive: false }, { height: 28, overflow: true, destructive: false }] }] };
+  it("requires one aligned template, a visible first row and one small action plus overflow", () => {
+    expect(() => requireAdminListGeometry([list], "/parameter-admin/projects")).not.toThrow();
+    expect(() => requireAdminListGeometry([], "/parameter-admin/projects")).toThrow(/missing/);
+    for (const invalid of [
+      { ...list, tableCount: 2 }, { ...list, filters: { ...list.filters, left: 48 } },
+      { ...list, primaryAction: { ...list.primaryAction, right: 1150 } },
+      { ...list, firstRow: { ...list.firstRow, bottom: 901 } },
+      { ...list, firstRow: { ...list.firstRow, top: -1 } },
+      { ...list, root: { ...list.root, left: NaN } },
+      { ...list, rows: [{ actions: [...list.rows[0].actions, list.rows[0].actions[0]] }] },
+      { ...list, rows: [{ actions: [{ height: 32, overflow: true, destructive: false }] }] },
+      { ...list, rows: [{ actions: [{ height: 28, overflow: false, destructive: true }] }] }
+    ]) expect(() => requireAdminListGeometry([invalid], "/parameter-admin/projects")).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, firstRow: null, rows: [], emptyActionCount: 1 }], "/parameter-admin/projects")).not.toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, firstRow: null, rows: [], emptyActionCount: 0 }], "/parameter-admin/projects")).toThrow(/empty/);
+  });
+  it("collects template geometry and row-action semantics instead of ignoring the pilot", () => {
+    const measured = collectMarkup(`<section class="admin-list-page">
+      <div class="admin-list-page__header"></div><div class="admin-list-page__filters"></div>
+      <table><tbody><tr><td data-label="状态">在研</td><td data-label="操作"><div class="row-action-menu">
+        <button>配置工作台</button><button aria-haspopup="menu">更多</button>
+      </div></td></tr></tbody></table></section>`);
+    expect(measured.adminLists).toHaveLength(1);
+    expect(measured.adminLists[0].rows[0].actions.map((action) => action.overflow)).toEqual([false, true]);
+    expect(measured.rowActions[0].statuses).toHaveLength(1);
+    expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/projects")?.required)
+      .toEqual(expect.arrayContaining(["adminLists", "rowActions", "filterControls", "sortControls"]));
+  });
+  it("rejects unmeasured rows and non-finite slot geometry", () => {
+    for (const invalid of [
+      { ...list, firstRow: null },
+      { ...list, header: { ...list.header, bottom: NaN } },
+      { ...list, filters: { ...list.filters, top: NaN } },
+      { ...list, table: { ...list.table, top: NaN } }
+    ]) expect(() => requireAdminListGeometry([invalid], "/parameter-admin/projects")).toThrow();
+  });
+  it("measures every data row so a missing overflow menu cannot escape the guard", () => {
+    const measured = collectMarkup(`<section class="admin-list-page"><table><tbody>
+      <tr><td data-label="操作"><div class="row-action-menu"><button aria-haspopup="menu">更多</button></div></td></tr>
+      <tr><td data-label="操作"><button>删除</button></td></tr>
+    </tbody></table></section>`);
+    expect(measured.adminLists[0].rows).toHaveLength(2);
+    expect(measured.adminLists[0].rows[1].actions).toEqual([{ height: 32, overflow: false, destructive: true }]);
+  });
+  it("does not mistake a project name for a destructive action", () => {
+    const measured = collectMarkup(`<section class="admin-list-page"><table><tbody><tr><td data-label="操作">
+      <div class="row-action-menu"><button aria-label="配置工作台 删除 演练">配置工作台</button>
+      <button aria-haspopup="menu" aria-label="删除 演练操作：更多">更多</button><button aria-label="删除 演练"></button>
+      </div></td></tr></tbody></table></section>`);
+    expect(measured.adminLists[0].rows[0].actions.map((action) => action.destructive)).toEqual([false, false, true]);
+  });
+});
 
 describe("workbench optional descriptions and single-line keys", () => {
   const key = { text: "vendor,long-key", title: "vendor,long-key", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };

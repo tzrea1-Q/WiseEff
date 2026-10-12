@@ -1,114 +1,82 @@
 import { describe, expect, it } from "vitest";
-import { declarationsFor, hasRule, readStylesheet } from "../../test/cssAssertions";
+import { declarationsFor, hasRule, parseCssRules, readStylesheet } from "../../test/cssAssertions";
 
-const css = readStylesheet("src/styles.css");
-
-/** Non-card project-admin library rules live in the desktop (min-width: 641px) block. */
+const css = readStylesheet("src/components/layout/admin-list-page.css");
+const shared = readStylesheet("src/styles.css");
 const desktop = { within: "(min-width: 641px)" } as const;
 
-describe("ProjectAdminTable layout CSS", () => {
-  it("gives the project list a table min-width so narrow shells can scroll horizontally", () => {
-    const table = declarationsFor(
-      css,
-      ".param-admin-shell .project-admin-library-table .data-table-scroll > table",
-      desktop
-    );
-    const minWidth = Number.parseInt(table["min-width"] ?? "", 10);
-
-    expect(minWidth).toBeGreaterThanOrEqual(900);
-    expect(minWidth).toBeLessThan(1300);
+describe("Admin list layout", () => {
+  it("uses theme-aware muted text instead of the outline color for column headers", () => {
+    expect(declarationsFor(css, ".admin-list-page th").color).toBe("var(--text-muted)");
   });
 
-  it("lets the project list fill shells wider than its scroll minimum", () => {
-    const table = declarationsFor(
-      css,
-      ".param-admin-shell .project-admin-library-table .data-table-scroll > table",
-      desktop
-    );
-
-    expect(table.width).toBe("100%");
+  it("keeps pilot, row-menu and confirmation styles free of raw visual values", () => {
+    const pilotRules = parseCssRules(shared).filter((rule) => rule.selectors.some((selector) =>
+      /^\.(project-admin-|project-operations-not-found|horizontal-drag-scroll-rail|governance-confirm-dialog(?: h2|__body|__error| \.confirm-dialog__scroll)?$|delete-project-dialog)/.test(selector)));
+    const rules = [...pilotRules, ...parseCssRules(css), ...parseCssRules(readStylesheet("src/components/common/row-action-menu.css"))];
+    expect(pilotRules.length).toBeGreaterThan(0);
+    const rawValues = rules.flatMap((rule) => Object.entries(rule.declarations)
+      .filter(([, value]) => /(?:#[\da-f]{3,8}\b|\b(?:rgb|hsl|oklch)a?\(|\b[1-9]\d*(?:\.\d+)?(?:px|rem|em)\b|\b0\.\d+(?:px|rem|em)\b)/i.test(value))
+      .map(([property, value]) => `${rule.selector}: ${property}: ${value}`));
+    expect(rawValues).toEqual([]);
   });
 
-  it("uses a dedicated always-visible horizontal rail with a painted thumb", () => {
-    const scrollbar = declarationsFor(
-      css,
-      ".param-admin-shell .project-admin-library-table .data-table-scroll::-webkit-scrollbar",
-      desktop
-    );
-    const rail = declarationsFor(css, ".horizontal-drag-scroll-rail", desktop);
+  it("uses the tokenized scroll minimum without adding another page gutter", () => {
+    expect(declarationsFor(css, ".admin-list-page .data-table-scroll > table")["min-width"])
+      .toBe("var(--admin-list-table-min-width)");
+    const minimum = Number.parseInt(declarationsFor(shared, ":root")["--admin-list-table-min-width"], 10);
+    expect(minimum).toBeGreaterThanOrEqual(900);
+    expect(minimum).toBeLessThan(1300);
+    const root = declarationsFor(css, ".admin-list-page");
+    expect(root.padding).toBeUndefined();
+    expect(root.margin).toBeUndefined();
+    expect(root["min-width"]).toBe("0");
+  });
 
-    expect(scrollbar.display).toBe("none");
+  it("keeps cells on one line without crushing their content", () => {
+    const cell = declarationsFor(css, ".admin-list-page td");
+    expect(cell["white-space"]).toBe("nowrap");
+    expect(cell["min-width"]).not.toBe("0");
+    expect(cell.padding).toBe("var(--space-2)");
+  });
+
+  it("bounds long names and reserves content width for actions", () => {
+    const name = declarationsFor(css, ".admin-list-page td:first-child");
+    expect(name["max-width"]).toBe("var(--admin-list-name-max-width)");
+    expect(name["text-overflow"]).toBe("ellipsis");
+    expect(declarationsFor(css, '.admin-list-page td[data-label="操作"]').width).toBe("max-content");
+  });
+
+  it("keeps the pilot's detail form on tokens rather than raw colors and dimensions", () => {
+    const form = declarationsFor(shared, ".project-admin-form-dialog");
+    expect(form.width).toBe("min(var(--admin-list-detail-width), calc(100vw - var(--space-12)))");
+    expect(form["max-width"]).toBe("var(--admin-list-detail-width)");
+    expect(declarationsFor(shared, ".project-admin-form-grid input:read-only").background).toBe("var(--surface-sunken)");
+    expect(declarationsFor(shared, ".project-admin-form-grid label").gap).toBe("var(--space-2)");
+    expect(declarationsFor(shared, ".project-admin-form-grid input")["min-height"]).toBe("var(--space-8)");
+  });
+
+  it("retains the shared visible rail and its keyboard-focus contrast", () => {
+    const rail = declarationsFor(shared, ".horizontal-drag-scroll-rail", desktop);
     expect(rail.height).toBe("var(--space-4)");
-    expect(hasRule(css, ".horizontal-drag-scroll-rail__thumb", desktop)).toBe(true);
-    expect(declarationsFor(css, ".horizontal-drag-scroll-rail").display).toBe("none");
-  });
-
-  it("gives the focusable rail tokenized hover and keyboard-focus states", () => {
-    const thumb = declarationsFor(css, ".horizontal-drag-scroll-rail__thumb", desktop);
-    const hover = declarationsFor(css, ".horizontal-drag-scroll-rail:not([hidden]):hover", desktop);
-    const focus = declarationsFor(css, ".horizontal-drag-scroll-rail:not([hidden]):focus-visible", desktop);
-    const focusThumb = declarationsFor(
-      css,
-      ".horizontal-drag-scroll-rail:not([hidden]):focus-visible .horizontal-drag-scroll-rail__thumb",
-      desktop
-    );
-
-    expect(thumb["--horizontal-drag-scroll-thumb-min-width"]).toBe("var(--space-10)");
+    expect(hasRule(shared, ".horizontal-drag-scroll-rail__thumb", desktop)).toBe(true);
+    expect(declarationsFor(shared, ".horizontal-drag-scroll-rail").display).toBe("none");
+    const thumb = declarationsFor(shared, ".horizontal-drag-scroll-rail__thumb", desktop);
     expect(thumb["min-width"]).toBe("var(--horizontal-drag-scroll-thumb-min-width)");
-    expect(hover.background).toBe("var(--surface-muted)");
-    expect(focus.outline).toBe("2px solid var(--ring)");
-    expect(focusThumb.background).toBe("var(--accent)");
+    expect(declarationsFor(shared, ".horizontal-drag-scroll-rail:not([hidden]):hover", desktop).background)
+      .toBe("var(--surface-muted)");
+    expect(declarationsFor(shared, ".horizontal-drag-scroll-rail:not([hidden]):focus-visible", desktop).outline)
+      .toBe("var(--view-switch-focus-width) solid var(--ring)");
+    expect(declarationsFor(shared, ".horizontal-drag-scroll-rail:not([hidden]):focus-visible .horizontal-drag-scroll-rail__thumb", desktop).background)
+      .toBe("var(--accent)");
   });
 
-  it("centers and tightens the project-admin status column", () => {
-    const statusRule = declarationsFor(css, ".project-admin-library-grid th:nth-child(3)", desktop);
-    expect(statusRule["text-align"]).toBe("center");
-    expect(statusRule["max-width"]).toBe("104px");
-    expect(statusRule["min-width"]).toBe("88px");
-  });
-
-  it("tightens the project-admin conflict column", () => {
-    const conflictRule = declarationsFor(css, ".project-admin-library-grid th:nth-child(4)", desktop);
-
-    expect(conflictRule["text-align"]).toBe("center");
-    expect(conflictRule["max-width"]).toBe("72px");
-    expect(conflictRule["min-width"]).toBe("56px");
-  });
-
-  it("does not let nowrap cells shrink below content with min-width: 0", () => {
-    const cellRule = declarationsFor(css, ".project-admin-library-grid th", desktop);
-    const actionsRule = declarationsFor(css, ".project-admin-library-grid th:last-child", desktop);
-
-    expect(cellRule["white-space"]).toBe("nowrap");
-    expect(cellRule["min-width"]).not.toBe("0");
-    expect(actionsRule["min-width"]).not.toBe("0");
-  });
-
-  it("keeps project-admin columns visible when ParametersTable hides slots 3 and 6", () => {
-    const narrow = { within: "(max-width: 1180px)" } as const;
-
-    expect(
-      hasRule(css, ".parameters-table-grid:not(.project-admin-library-grid) th:nth-child(3)", narrow)
-    ).toBe(true);
-    expect(
-      hasRule(css, ".parameters-table-grid:not(.project-admin-library-grid) td:nth-child(6)", narrow)
-    ).toBe(true);
-    expect(hasRule(css, ".parameters-table-grid th:nth-child(3)", narrow)).toBe(false);
-  });
-
-  it("keeps the project list as a complete card at 390px", () => {
+  it("preserves the existing mobile card fields without leaking nowrap into them", () => {
     const mobile = { within: "(max-width: 640px)" } as const;
-
-    expect(
-      declarationsFor(css, ".param-admin-shell .project-admin-library-table .data-table-scroll", mobile).overflow
-    ).toBe("visible");
-    expect(
-      declarationsFor(css, ".param-admin-shell .project-admin-library-table .data-table-scroll > table", mobile)[
-        "min-width"
-      ]
-    ).toBe("0");
-    expect(
-      declarationsFor(css, ".project-admin-library-table .horizontal-drag-scroll-rail", mobile).display
-    ).toBe("none");
+    expect(declarationsFor(css, ".admin-list-page .data-table-scroll", mobile).overflow).toBe("visible");
+    expect(declarationsFor(css, ".admin-list-page .data-table-scroll > table", mobile)["min-width"]).toBe("0");
+    expect(declarationsFor(css, ".admin-list-page .horizontal-drag-scroll-rail", mobile).display).toBe("none");
+    expect(declarationsFor(css, ".admin-list-page td", mobile)["white-space"]).toBe("normal");
+    expect(declarationsFor(css, ".admin-list-page td[data-label]::before", mobile).content).toBe("attr(data-label)");
   });
 });
