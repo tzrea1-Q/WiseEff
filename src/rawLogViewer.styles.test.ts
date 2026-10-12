@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { declarationFor as cssDeclarationFor, readStylesheet } from "./test/cssAssertions";
+import { declarationFor as cssDeclarationFor, declarationsFor, readStylesheet } from "./test/cssAssertions";
 
 const cssText =
   readStylesheet("src/styles.css") + readStylesheet("src/features/log-analysis/log-analysis.css");
 
-function declarationFor(selector: string, property: string) {
-  const value = cssDeclarationFor(cssText, selector, property);
+function declarationFor(selector: string, property: string, tokens: Record<string, string>) {
+  let value = cssDeclarationFor(cssText, selector, property);
+  const visited = new Set<string>();
+  while (value?.startsWith("var(") && !visited.has(value)) {
+    visited.add(value);
+    value = tokens[value.slice(4, -1)];
+  }
   if (!value || !/^#[0-9a-fA-F]{6}$/.test(value)) {
-    throw new Error(`Missing hex ${property} declaration for ${selector}`);
+    throw new Error(`Missing resolved hex ${property} declaration for ${selector}`);
   }
 
   return value;
@@ -35,9 +40,13 @@ function contrastRatio(foreground: string, background: string) {
 }
 
 describe("raw log viewer styles", () => {
-  it("keeps raw log table headers above the WCAG AA contrast threshold", () => {
-    const foreground = declarationFor(".rawlog-table th", "color");
-    const background = declarationFor(".rawlog-table thead", "background");
+  it.each(["light", "dark"])("keeps raw log table headers above the WCAG AA contrast threshold in %s", (theme) => {
+    const tokens = {
+      ...declarationsFor(cssText, ":root"),
+      ...(theme === "dark" ? declarationsFor(cssText, ".dark") : {})
+    };
+    const foreground = declarationFor(".rawlog-table th", "color", tokens);
+    const background = declarationFor(".rawlog-table thead", "background", tokens);
 
     expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);
   });

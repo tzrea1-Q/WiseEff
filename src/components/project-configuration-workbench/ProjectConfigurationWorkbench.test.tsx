@@ -2934,7 +2934,9 @@ describe("configuration-workbench stylesheet", () => {
         css,
         ".project-primary-dts-viewer__line.has-session-change .project-primary-dts-viewer__line-number"
       )["box-shadow"]
-    ).toBe("inset 3px 0 0 var(--accent, #0b6e4f)");
+    ).toBe("var(--shadow-status-accent)");
+    expect(declarationsFor(readStylesheet("src/styles.css"), ":root")["--shadow-status-accent"])
+      .toBe("inset 3px 0 0 var(--accent)");
   });
 
   it("leaves shared workbench chrome in styles.css", () => {

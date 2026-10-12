@@ -434,7 +434,7 @@ export function ProjectReviewRolesPanel({
           }}
         >
           <div>
-            <h2 style={{ fontSize: "1.125rem", margin: 0, fontWeight: 600 }}>组织成员职责授权</h2>
+            <h2 style={{ fontSize: "var(--text-lg)", lineHeight: "var(--leading-lg)", margin: 0, fontWeight: 600 }}>组织成员职责授权</h2>
             <p style={{ margin: "0.25rem 0 0 0", fontSize: "0.8125rem", color: "#64748b" }}>
               选择组织成员赋予本项目审核职责；已停用账号不可授予新角色。
             </p>

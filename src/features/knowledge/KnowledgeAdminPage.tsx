@@ -360,7 +360,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   ];
 
   return (
-    <div className="knowledge-admin-page flex flex-col gap-5 p-6">
+    <div className="knowledge-admin-page flex flex-col gap-5">
       <PageInsightBar
         variant={agentDrafts.length > 0 ? "warn" : "info"}
         headline={`待审阅 Agent 草稿 ${agentDrafts.length} 条 · 已归档 ${archivedCount} 条`}

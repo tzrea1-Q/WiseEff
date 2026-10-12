@@ -10,6 +10,7 @@ export function collectConsistencyMeasurements() {
   const role = (element: Element) => element.getAttribute("role")
     ?? (({ BUTTON: "button", A: "link", LI: "listitem", NAV: "navigation" } as Record<string, string>)[element.tagName] ?? null);
   const main = document.querySelector("main, .main-content");
+  const footer = document.querySelector(".app-footer");
   const elements = (selector: string) => [...(main?.querySelectorAll(selector) ?? [])].filter(visible);
   const bounds = (element: Element) => {
     const rect = element.getBoundingClientRect();
@@ -20,6 +21,42 @@ export function collectConsistencyMeasurements() {
     dom: describeElement(element), role: role(element), height: element.getBoundingClientRect().height,
     compactControl: element.getAttribute("data-compact-control")
   });
+  const measureTypography = (element: Element) => ({
+    dom: describeElement(element), fontSize: Number.parseFloat(getComputedStyle(element).fontSize)
+  });
+  const titles = [...document.querySelectorAll('.topbar-title, main h1, main h2, main h3, main h4, main h5, main h6, main [role="heading"], main [class$="__title"], main [class$="-title"], [role="dialog"] h1, [role="dialog"] h2, [role="dialog"] h3')]
+    .filter(visible).map((element) => ({ ...measureTypography(element), pageTitle: element.matches(".topbar-title") }));
+  const buttons = [...document.querySelectorAll('button, .button, [data-slot="button"], [role="button"]')]
+    .filter(visible).map(measureTypography);
+  const typeProbe = document.createElement("span");
+  typeProbe.style.cssText = "position: absolute; visibility: hidden; pointer-events: none";
+  document.documentElement.append(typeProbe);
+  const typeScale = ["xs", "sm", "base", "md", "lg", "xl", "2xl"].map((step) => {
+    typeProbe.style.fontSize = `var(--text-${step})`;
+    return { fontSize: Number.parseFloat(getComputedStyle(typeProbe).fontSize) };
+  });
+  typeProbe.remove();
+  const pageEdges: { dom: string; region: string; left: number; expectedLeft: number }[] = [];
+  if (main) {
+    const gutterProbe = document.createElement("span");
+    gutterProbe.style.cssText = "position: absolute; visibility: hidden; width: var(--page-gutter)";
+    main.append(gutterProbe);
+    const expectedLeft = bounds(main).left + Number.parseFloat(getComputedStyle(gutterProbe).width);
+    gutterProbe.remove();
+    const measureEdge = (element: Element, region: string) => ({
+      dom: describeElement(element), region, expectedLeft,
+      left: bounds(element).left + (Number.parseFloat(getComputedStyle(element).paddingLeft) || 0)
+    });
+    pageEdges.push(measureEdge(main, "shell"));
+    const content = main.querySelector(":scope > .page-content");
+    if (content && visible(content)) {
+      pageEdges.push(measureEdge(content, "content"));
+      pageEdges.push(...[...content.children].filter(visible).map((element) => measureEdge(element, "page")));
+    }
+    const toolbar = document.querySelector(".topbar");
+    if (toolbar && visible(toolbar)) pageEdges.push(measureEdge(toolbar, "toolbar"));
+    if (footer) pageEdges.push(measureEdge(footer, "footer"));
+  }
   const viewSwitchElements = elements([
     '[role="tablist"] [role="tab"]', '[role="radiogroup"] [role="radio"]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
@@ -239,6 +276,7 @@ export function collectConsistencyMeasurements() {
     };
   });
   return {
+    titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer),
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
     moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, visibleTableCount: visibleTables.length
   };

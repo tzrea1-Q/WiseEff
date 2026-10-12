@@ -1,6 +1,42 @@
 import type { ConsistencyMeasurements, ConsistencyCategory } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 
+export function requirePageGutter(pageEdges: ConsistencyMeasurements["pageEdges"], routePath: string, footerPresent: boolean) {
+  requireMeasuredCategories({ pageEdges }, ["pageEdges"], routePath);
+  const required = ["shell", "content", "page", "toolbar", ...(footerPresent ? ["footer"] : [])];
+  for (const region of required) {
+    if (!pageEdges.some((edge) => edge.region === region)) {
+      throw new Error(`${routePath}: missing page-gutter region: ${region}`);
+    }
+  }
+  for (const edge of pageEdges) {
+    if (![edge.left, edge.expectedLeft].every(Number.isFinite) || Math.abs(edge.left - edge.expectedLeft) > 1) {
+      throw new Error(`${routePath}: ${edge.dom} does not align with the shell-owned page gutter`);
+    }
+  }
+}
+
+export function requireTypographyScale(
+  measurements: Pick<ConsistencyMeasurements, "titles" | "buttons" | "typeScale">,
+  routePath: string
+) {
+  requireMeasuredCategories(measurements, ["titles", "buttons", "typeScale"], routePath);
+  const scale = [11, 12, 13, 14, 16, 20, 24];
+  if (measurements.typeScale.length !== scale.length
+    || measurements.typeScale.some((step, index) => step.fontSize !== scale[index])) {
+    throw new Error(`${routePath}: typography scale tokens differ from the documented scale`);
+  }
+  const pageTitles = measurements.titles.filter((title) => title.pageTitle);
+  if (pageTitles.length !== 1 || pageTitles[0].fontSize !== 20) {
+    throw new Error(`${routePath}: page title must use the typography page-title step (20px)`);
+  }
+  for (const item of [...measurements.titles, ...measurements.buttons]) {
+    if (!scale.includes(item.fontSize)) {
+      throw new Error(`${routePath}: ${item.dom} has off-scale typography (${item.fontSize}px)`);
+    }
+  }
+}
+
 export function requireWorkbenchPresentation(tables: ConsistencyMeasurements["workbenchTables"], routePath: string) {
   if (!tables.length) throw new Error(`${routePath}: missing workbench table measurements`);
   for (const table of tables) {
