@@ -1,7 +1,41 @@
 import type { BrowserContext, Route } from "playwright/test";
+import { requireOverviewGeometry, requireRetiredNotice } from "../e2e/quality/consistency-assertions";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, requireRowActionVisibility, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, requireRowActionVisibility, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
+
+
+describe("settings form layout contract", () => {
+  const form = { dom: "form", rect: { left: 100, right: 1060, top: 100, bottom: 800, width: 960, height: 700 },
+    maxWidth: 960, widthToken: 960, direction: "column", sectionCount: 2, titledSections: 2, helpedSections: 2,
+    dirty: false, saveBars: [] };
+  const bar = { position: "sticky", bottom: 16, primaryCount: 1, saveLabel: "保存", discardLabel: "放弃" };
+  it("collects section help and dirty actions, and requires coverage on all three routes", () => {
+    const measurements = collectMarkup(`<form class="settings-form-page" data-settings-dirty="true" style="display:flex;flex-direction:column;max-width:960px">
+      <section class="settings-form-page__section"><header><h2>设置</h2><p>说明</p></header></section>
+      <div class="settings-form-page__save-bar" style="position:sticky;bottom:16px"><button type="button">放弃</button><button type="submit" data-variant="default">保存</button></div>
+    </form>`);
+    expect(measurements.settingsForms).toEqual([expect.objectContaining({ direction: "column", sectionCount: 1,
+      titledSections: 1, helpedSections: 1, dirty: true, saveBars: [bar] })]);
+    for (const path of ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("settingsForms");
+    }
+  });
+  it("accepts clean single-column forms and dirty forms with the shared save bar", () => {
+    expect(() => requireSettingsFormPresentation([form], "/organization")).not.toThrow();
+    expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [bar] }], "/organization")).not.toThrow();
+  });
+  it("rejects absent coverage, untitled sections, non-token widths and non-sticky or missing save actions", () => {
+    for (const forms of [[], [form, form], [{ ...form, sectionCount: 0 }], [{ ...form, helpedSections: 1 }],
+      [{ ...form, titledSections: 1 }], [{ ...form, maxWidth: 1200 }], [{ ...form, direction: "row" }],
+      [{ ...form, dirty: true }], [{ ...form, saveBars: [bar] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, position: "static" }] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, primaryCount: 2 }] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, discardLabel: "" }] }]]) {
+      expect(() => requireSettingsFormPresentation(forms, "/organization")).toThrow(/settings form/);
+    }
+  });
+});
 
 describe("workbench optional descriptions and single-line keys", () => {
   const key = { text: "vendor,long-key", title: "vendor,long-key", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
@@ -486,6 +520,59 @@ describe("consistency measurement coverage", () => {
       expect(route.required, route.path).toContain("xiaozeLaunchers");
       expect(route.required, route.path).not.toContain("xiaozeHints");
     }
+  });
+});
+
+describe("overview consistency", () => {
+  const rect = { left: 24, top: 20, right: 624, bottom: 120, width: 600, height: 100 };
+  const overview = {
+    root: { ...rect, bottom: 500, height: 480 }, summary: rect,
+    content: { ...rect, top: 140, bottom: 400, height: 260 },
+    actions: null, gap: 20, pageOverflow: 0, viewportHeight: 900,
+    tiles: [{ rect, hasSamples: false, value: "暂无样本", trendCount: 0 }],
+    items: [{ ...rect, top: 140, bottom: 400, height: 260 }],
+    verdicts: [{ hasSamples: false, text: "暂无样本，无法判断" }]
+  };
+  it("requires template measurements on both overviews and both retired routes", () => {
+    for (const path of ["/parameter-home", "/log-dashboard"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("overviewPages");
+    }
+    for (const path of ["/parameter-comparison", "/debugging"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("retiredNotices");
+    }
+    expect(() => requireOverviewGeometry([], "/log-dashboard")).toThrow(/missing/i);
+    expect(() => requireRetiredNotice([], "/debugging")).toThrow(/missing/i);
+  });
+  it("accepts the token-aligned grid and rejects overflow, missing tiles and fabricated empty-source verdicts", () => {
+    expect(() => requireOverviewGeometry([overview], "/log-dashboard")).not.toThrow();
+    for (const invalid of [
+      { ...overview, content: { ...overview.content, left: 48 } },
+      { ...overview, pageOverflow: 10 },
+      { ...overview, gap: Number.NaN },
+      { ...overview, tiles: [] },
+      { ...overview, items: [] },
+      { ...overview, tiles: [{ ...overview.tiles[0], value: "100%" }] },
+      { ...overview, tiles: [{ ...overview.tiles[0], trendCount: 1 }] },
+      { ...overview, verdicts: [{ hasSamples: false, text: "质量表现稳定" }] }
+    ]) {
+      expect(() => requireOverviewGeometry([invalid], "/log-dashboard")).toThrow();
+    }
+  });
+  it("rejects an overview with its first content section below the PC viewport", () => {
+    const belowFold = { ...overview, viewportHeight: 100 };
+    expect(() => requireOverviewGeometry([belowFold], "/parameter-home")).toThrow(/first section/i);
+  });
+  it("collects overview tiles and retired replacement links through the rendered DOM", () => {
+    const measurements = collectMarkup(`
+      <section class="overview-page"><div class="overview-page__summary">
+        <dl><div class="overview-tile" data-has-samples="false"><dt>今日分析</dt><dd class="overview-tile__value">暂无样本</dd></div></dl>
+      </div><div class="overview-page__content"><article><strong data-overview-verdict data-has-samples="false">暂无样本，无法判断</strong></article></div></section>
+      <section class="retired-notice"><h2>已下线</h2><p>请使用节点调试。</p><a href="/node-debugging" data-variant="default">节点调试</a></section>
+    `);
+    expect(measurements.overviewPages[0].tiles[0]).toMatchObject({ hasSamples: false, value: "暂无样本", trendCount: 0 });
+    expect(measurements.overviewPages[0].viewportHeight).toBe(900);
+    expect(() => requireRetiredNotice(measurements.retiredNotices, "/debugging")).not.toThrow();
+    expect(() => requireRetiredNotice([{ ...measurements.retiredNotices[0], href: "/wrong" }], "/debugging")).toThrow();
   });
 });
 

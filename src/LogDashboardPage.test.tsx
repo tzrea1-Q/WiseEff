@@ -61,7 +61,11 @@ describe("LogDashboardPage", () => {
     vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
     window.history.replaceState(null, "", "/log-dashboard");
 
-    render(<App initialAppState={{ ...userState, logs, archivedLogIds }} />);
+    const { container } = render(<App initialAppState={{ ...userState, logs, archivedLogIds }} />);
+    const summary = container.querySelector(".overview-page__summary") as HTMLElement;
+    expect(summary).toBeInTheDocument();
+    expect(within(summary).getAllByText("暂无样本")).toHaveLength(4);
+    expect(within(summary).queryByText("0")).not.toBeInTheDocument();
 
     for (const name of ["今日分析", "平均置信度", "失败文件", "吞吐峰值"]) {
       expect(within(screen.getByRole("article", { name })).getAllByText("暂无样本，无法判断").length).toBeGreaterThan(0);
@@ -84,7 +88,7 @@ describe("LogDashboardPage", () => {
     expect(screen.queryByRole("heading", { level: 1, name: "日志分析看板" })).not.toBeInTheDocument();
     expect(container.querySelector(".workspace-header")).not.toBeInTheDocument();
     expect(within(topbar).getByRole("button", { name: "进入智能分析" })).toBeInTheDocument();
-    expect(container.querySelector(".log-dashboard-topic-grid")).toBeInTheDocument();
+    expect(container.querySelector(".overview-page__content")).toBeInTheDocument();
     expect(container.querySelectorAll(".log-dashboard-topic-card")).toHaveLength(4);
     expect(screen.getByRole("article", { name: "今日分析" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "平均置信度" })).toBeInTheDocument();
@@ -127,6 +131,39 @@ describe("LogDashboardPage", () => {
     expect(screen.queryByText("处理队列稳定")).not.toBeInTheDocument();
     expect(screen.getByText("需要人工介入")).toBeInTheDocument();
     expect(screen.queryByText("charging_thermal_trace_20260504.log")).not.toBeInTheDocument();
+  });
+
+  it("does not infer quality from logs without confidence observations", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+    const { container } = render(<App initialAppState={{ ...userState, logs: [failedApiLog], archivedLogIds: [] }} />);
+    const quality = screen.getByRole("article", { name: "平均置信度" });
+    expect(within(quality).getByText("暂无样本，无法判断")).toBeInTheDocument();
+    expect(within(quality).queryByText("质量表现稳定")).not.toBeInTheDocument();
+    expect(within(quality).queryByText(/0%/)).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.overview-tile[data-has-samples="false"]')).toHaveLength(1);
+  });
+
+  it("does not report completed quality from an in-progress log", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+    render(<App initialAppState={{ ...userState, logs: [{ ...completedApiLog, status: "Processing" }], archivedLogIds: [] }} />);
+
+    const quality = screen.getByRole("article", { name: "平均置信度" });
+    expect(within(quality).getByText("暂无样本，无法判断")).toBeInTheDocument();
+    expect(within(quality).queryByText("质量表现稳定")).not.toBeInTheDocument();
+  });
+
+  it("does not place unfinished confidence observations in the quality review queue", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+    render(<App initialAppState={{ ...userState,
+      logs: [{ ...completedApiLog, status: "Processing", confidence: 85 }], archivedLogIds: [] }} />);
+    const queue = screen.getByRole("group", { name: "置信度复核队列" });
+    expect(within(queue).queryByText("85%")).not.toBeInTheDocument();
   });
 
   it("shows a stable queue verdict only when there are no failures or stalled analyses", () => {
@@ -188,7 +225,7 @@ describe("LogDashboardPage", () => {
       />
     );
 
-    const primaryMetrics = Array.from(container.querySelectorAll(".topic-primary-metric strong")).map((node) => node.textContent ?? "");
+    const primaryMetrics = Array.from(container.querySelectorAll(".overview-tile__value")).map((node) => node.textContent ?? "");
     expect(primaryMetrics[0]).toBe("2");
     expect(primaryMetrics[2]).toBe("1");
     expect(todayStatusCounts(container)).toEqual(["1", "0", "1"]);
@@ -211,7 +248,7 @@ describe("LogDashboardPage", () => {
       />
     );
 
-    const primaryMetrics = Array.from(container.querySelectorAll(".topic-primary-metric strong")).map((node) => node.textContent ?? "");
+    const primaryMetrics = Array.from(container.querySelectorAll(".overview-tile__value")).map((node) => node.textContent ?? "");
     expect(primaryMetrics[0]).toBe("2");
     expect(todayStatusCounts(container)).toEqual(["1", "0", "1"]);
     expect(screen.queryByText("api-archived.log")).not.toBeInTheDocument();

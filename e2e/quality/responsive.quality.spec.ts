@@ -96,7 +96,7 @@ test.describe("M5.11 responsive quality gate", () => {
     await settleQualityRoute(page, "/log-dashboard");
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
 
-    const dashboard = page.locator(".log-dashboard-page");
+    const dashboard = page.getByRole("region", { name: "日志分析核心指标", exact: true });
     // Four panel verdicts plus the failure-record card.
     await expect(dashboard.getByText("暂无样本，无法判断", { exact: true })).toHaveCount(5);
     await expect(dashboard.getByText("今日覆盖 0 份日志。", { exact: true })).toBeVisible();

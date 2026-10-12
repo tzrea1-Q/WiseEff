@@ -529,7 +529,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       (response) =>
         response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/v1/organization"
     );
-    await page.getByRole("button", { name: "保存名称" }).click();
+    await page.getByRole("button", { name: "保存", exact: true }).click();
     const renameResponse = await renameResponsePromise;
     expect(renameResponse.ok()).toBe(true);
     await expect(nameInput).toHaveValue(renamed);
