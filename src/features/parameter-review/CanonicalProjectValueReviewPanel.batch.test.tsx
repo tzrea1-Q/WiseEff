@@ -92,7 +92,12 @@ describe("canonical batch reviewer", () => {
     expect(within(detail).getByLabelText("批量固定源变更后")).toHaveTextContent(diff.after);
     const disclosure = detail.querySelector("details")!;
     expect(disclosure.open).toBe(false);
-    expect(detail.querySelector("footer")!.compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const header = detail.querySelector("header")!;
+    const approve = within(header).getByRole("button", { name: "批准全部 2 项" });
+    expect(approve.compareDocumentPosition(within(detail).getByLabelText("批量固定源变更前")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(header).getByRole("button", { name: "驳回全部 2 项" })).toBeInTheDocument();
+    expect(detail.querySelector("footer")).toBeNull();
+    expect(within(detail).getByRole("region", { name: "影响范围" }).compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(detail).getByText("溯源信息"));
     expect(await within(detail).findByRole("button", { name: "复制 批量证明摘要" })).toBeVisible();
     expect(within(detail).getByRole("button", { name: "复制 来源元数据 · bindings · 1 · sourcePinId" })).toBeVisible();

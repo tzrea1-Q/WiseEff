@@ -114,6 +114,18 @@ describe("parameter action panels", () => {
     expect(declarationFor(parameterReviewStylesheet, ".review-merge-link", "grid-column")).toBeUndefined();
   });
 
+  it("bounds the unified inbox table and keeps inspector actions out of sticky code overlays", () => {
+    const stylesheet = readStylesheet("src/features/parameter-review/parameter-review.css");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap table", "table-layout")).toBe("fixed");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap table", "min-width")).toBe("0");
+    expect(declarationFor(stylesheet, ".review-inbox__summary", "text-overflow")).toBe("ellipsis");
+    expect(declarationFor(stylesheet, ".review-inbox__summary", "overflow")).toBe("hidden");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "white-space")).toBe("normal");
+    expect(hasRule(stylesheet, ".review-inbox .review-detail footer.dialog-actions")).toBe(false);
+    expect(declarationFor(stylesheet, ".review-inspector__actions", "position")).toBeUndefined();
+    expect(declarationFor(stylesheet, ".review-inbox .review-inspector__meta dt", "color")).toBe("var(--text-muted)");
+  });
+
   it("keeps the software merge field and confirmation in the same hook-free action panel", () => {
     const mergeRequest = initialState.changeRequests.find((request) => request.status === "软件User合入");
     expect(mergeRequest).toBeDefined();

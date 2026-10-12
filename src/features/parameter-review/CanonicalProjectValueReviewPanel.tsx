@@ -1,4 +1,5 @@
 import { TabPanel } from "@/components/ui/tab-panel";
+import { Badge } from "@/components/ui/badge";
 import { useEffect, useId, useRef, useState } from "react";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -699,13 +700,35 @@ export function CanonicalProjectValueReviewPanel({
           </div> : null}
           {selected ? (
             <article aria-label="源文件请求详情">
-              <header>
-                <p>软件配置 · {selected.sourceFormat.toUpperCase()}</p><h3>{selected.reason}</h3>
-                <span className="status-chip">{canonicalStatusLabels[selected.status]}</span>
-                <p><span>{userName(selected.submitterUserId)}</span> → <span>{userName(selected.assignedToUserId)}</span></p>
-                <time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time>
-                {selected.reviewerUserId ? <p>实际审核人：{userName(selected.reviewerUserId)}</p> : null}
+              <header className="review-inspector__header">
+                <p className="review-inspector__eyebrow">软件配置 · {selected.sourceFormat.toUpperCase()}</p>
+                <div className="review-inspector__title">
+                  <h3>{selected.reason}</h3><Badge variant="secondary">{canonicalStatusLabels[selected.status]}</Badge>
+                </div>
+                <dl className="review-inspector__meta">
+                  <div><dt>提交人</dt><dd>{userName(selected.submitterUserId)}</dd></div>
+                  <div><dt>指定审核人</dt><dd>{userName(selected.assignedToUserId)}</dd></div>
+                  <div><dt>提交时间</dt><dd><time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time></dd></div>
+                  {selected.reviewerUserId ? <div><dt>实际审核人</dt><dd>{userName(selected.reviewerUserId)}</dd></div> : null}
+                </dl>
                 {selected.reviewerNote ? <p>{selected.reviewerNote}</p> : null}
+                <div className="review-inspector__actions">
+                  {view === "pending" && selected.status === "pending" && canReviewSelected ? (
+                    <>
+                      <button type="button" className="button primary" disabled={busy || !sourceDiffReadyForSelected}
+                        onClick={() => void reviewSelected("approve")}>批准软件配置</button>
+                      <button type="button" className="button subtle" disabled={busy} onClick={() => setRejectRequestId(selected.id)}>驳回</button>
+                    </>
+                  ) : view === "pending" && selected.status === "pending" ? (
+                    <p role="note">{selected.submitterUserId === currentUserId
+                      ? "不能审核自己的提交；请由其他合格审核员处理。"
+                      : "当前账号不是该项目的软件审核员；审核操作由服务端拒绝。"}</p>
+                  ) : null}
+                  {view === "pending" && selected.status === "pending" && selected.submitterUserId === currentUserId
+                    && canonicalRepository.withdrawProjectValueChangeRequest ? (
+                      <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawSelected()}>撤回我的提交</button>
+                    ) : null}
+                </div>
               </header>
               <section aria-label="变更摘要"><h4>变更摘要</h4>
                 <p>{singleDiff?.sourceName ?? selected.sourceFormat.toUpperCase()}：<span>{selected.action === "delete" && selected.status === "pending"
@@ -762,33 +785,6 @@ export function CanonicalProjectValueReviewPanel({
                 </section>
               ) : null}
               </section>
-              <footer className="dialog-actions">
-              {view === "pending" && selected.status === "pending" && canReviewSelected ? (
-                <div>
-                  <button
-                    type="button"
-                    className="button primary"
-                    disabled={busy || !sourceDiffReadyForSelected}
-                    onClick={() => void reviewSelected("approve")}
-                  >
-                    批准软件配置
-                  </button>{" "}
-                  <button type="button" className="button subtle" disabled={busy} onClick={() => setRejectRequestId(selected.id)}>
-                    驳回
-                  </button>
-                </div>
-              ) : view === "pending" && selected.status === "pending" ? (
-                <p role="note">{selected.submitterUserId === currentUserId
-                  ? "不能审核自己的提交；请由其他合格审核员处理。"
-                  : "当前账号不是该项目的软件审核员；审核操作由服务端拒绝。"}</p>
-              ) : null}
-              {view === "pending" && selected.status === "pending" && selected.submitterUserId === currentUserId
-                && canonicalRepository.withdrawProjectValueChangeRequest ? (
-                  <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawSelected()}>
-                    撤回我的提交
-                  </button>
-                ) : null}
-              </footer>
               <ReviewProvenance key={selected.id} entries={[
                 { label: "请求 ID", value: selected.id },
                 ...Object.entries(selected).filter(([key]) => !["id", "reason", "status", "reviewerNote", "targetValue", "sourceTarget"].includes(key))
@@ -800,15 +796,39 @@ export function CanonicalProjectValueReviewPanel({
           ) : null}
           {batchSelected && batchRequest ? (
             <article aria-label="批量源文件请求详情">
-              <header>
-                <p>软件配置 · 批量来源变更 · <span>{batchDiff?.format.toUpperCase()}</span></p><h3>{batchRequest.reason}</h3>
-                <span className="status-chip">{canonicalStatusLabels[batchRequest.status]}</span>
-                <p><span>{userName(batchRequest.submitterUserId)}</span> → <span>{userName(batchRequest.assignedToUserId)}</span></p>
-                {batchRequest.createdAt ? <time dateTime={batchRequest.createdAt ?? ""} title={formatAbsolute(batchRequest.createdAt ?? "")}>
-                  {formatRelativeOrAbsolute(batchRequest.createdAt ?? "")}
-                </time> : <span>提交时间未记录</span>}
-                {batchRequest.reviewerUserId ? <p>实际审核人：{userName(batchRequest.reviewerUserId)}</p> : null}
+              <header className="review-inspector__header">
+                <p className="review-inspector__eyebrow">软件配置 · 批量来源变更 · <span>{batchDiff?.format.toUpperCase()}</span></p>
+                <div className="review-inspector__title">
+                  <h3>{batchRequest.reason}</h3><Badge variant="secondary">{canonicalStatusLabels[batchRequest.status]}</Badge>
+                </div>
+                <dl className="review-inspector__meta">
+                  <div><dt>提交人</dt><dd>{userName(batchRequest.submitterUserId)}</dd></div>
+                  <div><dt>指定审核人</dt><dd>{userName(batchRequest.assignedToUserId)}</dd></div>
+                  <div><dt>提交时间</dt><dd>{batchRequest.createdAt ? <time dateTime={batchRequest.createdAt} title={formatAbsolute(batchRequest.createdAt)}>
+                    {formatRelativeOrAbsolute(batchRequest.createdAt)}
+                  </time> : "提交时间未记录"}</dd></div>
+                  {batchRequest.reviewerUserId ? <div><dt>实际审核人</dt><dd>{userName(batchRequest.reviewerUserId)}</dd></div> : null}
+                </dl>
                 {batchRequest.reviewerNote ? <p>{batchRequest.reviewerNote}</p> : null}
+                <div className="review-inspector__actions">
+                  {batchRequest.status === "pending" && canReviewBatch ? (
+                    <>
+                      <p role="note">批准时服务端会重新核对当前来源，并将全部目标作为一次事务提交。</p>
+                      <button type="button" className="button primary" disabled={busy || !batchProofReady}
+                        onClick={() => void reviewBatch("approve")}>批准全部 {batchRequest.targets.length} 项</button>
+                      <button type="button" className="button subtle" disabled={busy}
+                        onClick={() => setRejectRequestId(batchRequest.id)}>驳回全部 {batchRequest.targets.length} 项</button>
+                    </>
+                  ) : batchRequest.status === "pending" ? (
+                    <p role="note">{batchRequest.submitterUserId === currentUserId
+                      ? "不能审核自己的提交；请由其他合格审核员处理。"
+                      : "当前账号不是此请求的被指派审核人；审核操作由服务端拒绝。"}</p>
+                  ) : null}
+                  {batchRequest.status === "pending" && batchRequest.submitterUserId === currentUserId
+                    && canonicalRepository.withdrawProjectValueChangeRequest ? (
+                      <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawBatch()}>撤回我的批量提交</button>
+                    ) : null}
+                </div>
               </header>
               <section aria-label="变更摘要"><h4>变更摘要</h4>
                 <p>将 {batchDiff?.sourceName ?? "固定来源"} 的 {batchRequest.targets.length} 项变更作为一次事务提交，核对完整 {batchRequest.cohortCount} 项 Binding 来源。</p>
@@ -871,27 +891,6 @@ export function CanonicalProjectValueReviewPanel({
                 </li>)}</ol>
               </section> : null}
               </section>
-              <footer className="dialog-actions">
-              {batchRequest.status === "pending" && canReviewBatch ? (
-                <div>
-                  <p role="note">批准时服务端会重新核对当前来源，并将全部目标作为一次事务提交。</p>
-                  <button type="button" className="button primary" disabled={busy || !batchProofReady}
-                    onClick={() => void reviewBatch("approve")}>批准全部 {batchRequest.targets.length} 项</button>{" "}
-                  <button type="button" className="button subtle" disabled={busy}
-                    onClick={() => setRejectRequestId(batchRequest.id)}>驳回全部 {batchRequest.targets.length} 项</button>
-                </div>
-              ) : batchRequest.status === "pending" ? (
-                <p role="note">{batchRequest.submitterUserId === currentUserId
-                  ? "不能审核自己的提交；请由其他合格审核员处理。"
-                  : "当前账号不是此请求的被指派审核人；审核操作由服务端拒绝。"}</p>
-              ) : null}
-              {batchRequest.status === "pending" && batchRequest.submitterUserId === currentUserId
-                && canonicalRepository.withdrawProjectValueChangeRequest ? (
-                  <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawBatch()}>
-                    撤回我的批量提交
-                  </button>
-                ) : null}
-              </footer>
               <ReviewProvenance key={batchRequest.id} entries={[
                 { label: "请求 ID", value: batchRequest.id }, { label: "批量证明摘要", value: batchRequest.batchProofDigest },
                 ...Object.entries(batchRequest).filter(([key]) => !["id", "reason", "status", "reviewerNote", "batchProofDigest"].includes(key))

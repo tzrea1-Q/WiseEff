@@ -28,6 +28,21 @@ function inbox(rows: ReviewInboxRow[] = [], search = "") {
 }
 
 describe("unified review inbox", () => {
+  it("keeps one selectable summary row with the full title available when truncated", () => {
+    const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
+    inbox([{ ...older, title }]);
+    const queue = screen.getByRole("region", { name: "审阅队列" });
+    const rows = within(queue).getAllByRole("row").filter((row) => row.textContent?.includes(title));
+    expect(rows).toHaveLength(1);
+    const summary = within(rows[0]).getByRole("button", { name: `查看 ${title} 提交详情` });
+    expect(summary).toHaveAttribute("title", title);
+    expect(within(summary).getByText(title)).toHaveClass("review-inbox__summary");
+    fireEvent.click(summary);
+    const inspector = screen.getByRole("complementary", { name: "审阅详情" });
+    expect(within(inspector).getByRole("heading", { name: `${title}详情` })).toBeInTheDocument();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+  });
+
   it("shows one pending empty state with a history action", () => {
     inbox();
     expect(screen.getAllByText("暂无待审核请求")).toHaveLength(1);

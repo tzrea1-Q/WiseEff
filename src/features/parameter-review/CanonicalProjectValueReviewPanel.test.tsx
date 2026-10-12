@@ -35,6 +35,31 @@ const request = {
 };
 
 describe("CanonicalProjectValueReviewPanel", () => {
+  it("puts structured metadata and review actions in the header above labelled fixed-source panes", async () => {
+    const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
+    const dtsRequest = { ...request, reason: title, sourceFormat: "dts" as const, targetValue: "<4600 0>",
+      sourceTarget: { format: "dts" as const, sourceText: "<4600 0>" }, assignedToUserId: "reviewer-1" };
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [dtsRequest] }),
+      reviewProjectValueChangeRequest: vi.fn(),
+      getProjectValueChangeSourceDiff: vi.fn().mockResolvedValue({ item: {
+        requestId: request.id, format: "dts", sourceName: "aurora-board.dts", bindings: [], before: "<4500 0>", after: "<4600 0>"
+      } }),
+      getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } })
+    } as unknown as ParameterCatalogRepository;
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository}
+      currentUserId="reviewer-1" detailOnly initialRequestId={request.id} />);
+    const heading = await screen.findByRole("heading", { name: title });
+    const header = heading.closest("header")!;
+    expect(within(header).getByText("待审核")).toHaveAttribute("data-slot", "badge");
+    expect(within(header).getAllByRole("term").map((term) => term.textContent)).toEqual(["提交人", "指定审核人", "提交时间"]);
+    expect(await within(header).findByRole("button", { name: "批准软件配置" })).toBeInTheDocument();
+    expect(within(header).getByRole("button", { name: "驳回" })).toBeInTheDocument();
+    expect(screen.getByLabelText("固定源目标内容")).toHaveTextContent("<4600 0>");
+    await waitFor(() => expect(screen.getByLabelText("固定源变更前")).toHaveTextContent("<4500 0>"));
+    expect(screen.getByLabelText("固定源变更后")).toHaveTextContent("<4600 0>");
+  });
+
   it.each(["withdraw", "approve"] as const)("ignores an unmounted request's deferred %s completion after selecting another request", async (decision) => {
     let finishAction!: (value: unknown) => void;
     const action = vi.fn().mockImplementation(() => new Promise((resolve) => { finishAction = resolve; }));
@@ -111,7 +136,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
     expect(screen.queryByLabelText("固定源变更前")).not.toBeInTheDocument();
   });
 
-  it("presents the full frozen diff before scope, sticky actions and collapsed provenance", async () => {
+  it("presents header actions followed by the full frozen diff, scope and collapsed provenance", async () => {
     const repository = {
       listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
       reviewProjectValueChangeRequest: vi.fn(),
@@ -124,16 +149,19 @@ describe("CanonicalProjectValueReviewPanel", () => {
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} detailOnly
       currentUserId="reviewer-1" users={[{ id: "user-1", name: "提交者" }]} />);
     const detail = await screen.findByRole("article", { name: "源文件请求详情" });
-    expect(detail.querySelector("header")).toHaveTextContent("提交者 → 未指派");
+    const header = detail.querySelector("header")!;
+    expect(within(header).getByText("提交者").closest("div")).toHaveTextContent("提交人提交者");
+    expect(within(header).getByText("未指派").closest("div")).toHaveTextContent("指定审核人未指派");
     expect(within(detail).getAllByRole("heading", { level: 4 }).slice(0, 3).map((heading) => heading.textContent))
       .toEqual(["变更摘要", "前后对比", "影响范围"]);
     expect(await within(detail).findByLabelText("固定源变更前")).toHaveTextContent("all source lines");
     expect(within(detail).getByLabelText("固定源变更后")).toHaveTextContent("all source lines");
-    const footer = detail.querySelector("footer")!;
-    expect(footer).toHaveClass("dialog-actions");
+    const approve = within(header).getByRole("button", { name: "批准软件配置" });
+    expect(approve.compareDocumentPosition(within(detail).getByLabelText("固定源变更前")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(detail.querySelector("footer")).toBeNull();
     const disclosure = detail.querySelector("details")!;
     expect(disclosure.open).toBe(false);
-    expect(footer.compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(detail).getByRole("region", { name: "影响范围" }).compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(detail).queryByRole("button", { name: "复制 固定来源元数据 · diffDigest" })).not.toBeInTheDocument();
   });
 

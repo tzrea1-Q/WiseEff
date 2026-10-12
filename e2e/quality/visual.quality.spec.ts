@@ -46,9 +46,14 @@ const stableRoutes = [
 ] as const;
 
 async function expectLocalizedVisualReviewFixture(page: Page) {
-  const review = page.getByRole("region", { name: "软件配置审核" });
-  const request = review.getByRole("row").filter({ hasText: "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600" });
+  const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
+  const queue = page.getByRole("table", { name: "审阅队列" });
+  const request = queue.getByRole("row").filter({ hasText: title });
   await expect(request).toHaveCount(1);
+  await request.getByRole("button", { name: `查看 ${title} 提交详情`, exact: true }).click();
+  await expect(request).toHaveAttribute("aria-selected", "true");
+  const review = page.getByRole("complementary", { name: "审阅详情" });
+  await expect(review.getByRole("heading", { name: title, exact: true })).toBeVisible();
   await expect(review.getByLabel("固定源目标内容")).toContainText("<4600 0>");
   await expect(review.getByLabel("固定源变更前")).toContainText("<4500 0>");
   await expect(review.getByLabel("固定源变更后")).toContainText("<4600 0>");

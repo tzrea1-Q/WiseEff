@@ -215,7 +215,12 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
         {error || legacyError ? <SectionError message={error ?? legacyError ?? ""} onRetry={changed} /> : null}
         {loading || legacyLoading ? <SectionSkeleton label="正在加载审核队列…" /> : null}
         {view === "pending" && visibleRows.some((row) => row.kind === "legacy") ? queueActions : null}
-        <div className="table-wrap review-table-wrap"><Table aria-label="审阅队列" id="review-queue-table"><TableHeader><TableRow>
+        <div className="table-wrap review-table-wrap"><Table aria-label="审阅队列" id="review-queue-table">
+          <colgroup>
+            {renderRowSelection ? <col className="review-inbox__selection-column" /> : null}
+            <col /><col /><col /><col /><col className="review-inbox__summary-column" /><col /><col />
+          </colgroup>
+          <TableHeader><TableRow>
           {renderRowSelection ? <TableHead>{selectAll}</TableHead> : null}
           <TableHead>类型</TableHead>
           {([ ["projectId", "项目"], ["module", "模块"], ["submitter", "提交人"] ] as const).map(([field, label]) => <TableHead key={field}>
@@ -240,9 +245,9 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
           {renderRowSelection ? <TableCell>{renderRowSelection(row)}</TableCell> : null}
           <TableCell><span className="review-inbox__chip">{row.kind === "legacy" ? "旧版" : typeLabels[row.kind]}</span></TableCell>
           <TableCell>{row.project}</TableCell><TableCell>{row.module}</TableCell><TableCell>{row.submitter}</TableCell>
-          <TableCell className="change-cell"><Button type="button" variant="ghost" className="value-change value-change-button" aria-label={`查看 ${row.title} 提交详情`} onClick={(event) => {
+          <TableCell className="change-cell"><Button type="button" variant="ghost" className="value-change value-change-button" title={row.title} aria-label={`查看 ${row.title} 提交详情`} onClick={(event) => {
             event.stopPropagation(); select(row.id); if (row.kind === "legacy") onOpenLegacy?.(row.id);
-          }}>{renderRowTitle?.(row) ?? row.title}</Button></TableCell>
+          }}><span className="review-inbox__summary">{renderRowTitle?.(row) ?? row.title}</span></Button></TableCell>
           <TableCell>{row.createdAt ? <time dateTime={row.createdAt} title={formatAbsolute(row.createdAt)}>{formatRelativeOrAbsolute(row.createdAt)}</time> : "提交时间未记录"}</TableCell>
           <TableCell>{row.status}</TableCell>
         </TableRow>)}</TableBody></Table></div>
