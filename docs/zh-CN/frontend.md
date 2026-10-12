@@ -66,6 +66,8 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 Catalog 定义行在等宽属性键旁保留已发布的显示名；中文名称属于 Catalog 发布内容，由 #1114 跟踪，前端不自行翻译。目录接管期间，`/parameter-admin` 显示普通用户可理解的状态与「了解详情」折叠区，只有平台管理员和操作员能在其中看到操作员手册的 inspect/adopt 指引。服务端编写与发布权限门禁保持不变。
 
+参数工作台优先显示当前已发布 Catalog head 的可选字段 `currentDisplayName`；`displayName` 仍保留 Binding 钉住的修订名称。因此，仅文档名称变更无需切换 Binding 或 Project value。「展示描述」列仅在当前筛选结果至少有一条非空白描述时显示。属性键保持单行，溢出使用省略号，并在提示中保留完整键。重新播种按稳定来源键定位默认驱动分组，仅将旧播种默认名「Seed placement capacity」原位重命名为「默认驱动分组」，管理员自定义名称保持不变。
+
 本地账号注册没有组织下拉；新账号加入评估组织（有种子时是 ChargeLab）。自助注册角色下拉使用：`guest`、`hardware-user`、`software-user`、`hardware-committer`、`software-committer`。`admin` 与 `platform-admin` 只能通过组织管理分配，且后者仅已持有 `platform-admin` 的调用方可以授予或撤销；不能在注册页自助选择。
 
 ## 端口和实现

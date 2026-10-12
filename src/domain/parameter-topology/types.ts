@@ -254,6 +254,7 @@ export type ProjectParameterBinding = {
   moduleId: string;
   /** Presentation copy from the exact parameter spec version pinned by this revision. */
   displayName?: string | null;
+  currentDisplayName?: string | null;
   description?: string | null;
   documentation?: string | null;
 };

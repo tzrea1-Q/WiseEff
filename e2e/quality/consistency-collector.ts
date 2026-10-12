@@ -260,10 +260,25 @@ export function collectConsistencyMeasurements() {
       }
     };
   });
+  const workbenchTables = elements(".dts-parameter-workbench-table").map((table) => {
+    const rows = [...table.querySelectorAll('.dts-parameter-workbench-table__row')].filter(visible);
+    return {
+      rowCount: rows.length,
+      descriptionHeaderCount: [...table.querySelectorAll('[role="columnheader"]')]
+        .filter((header) => visible(header) && header.textContent?.trim() === "展示描述").length,
+      descriptions: rows.flatMap((row) => [...row.querySelectorAll('[data-label="展示描述"]')]
+        .filter(visible).map((cell) => cell.getAttribute("title")?.trim() ?? "")),
+      keys: rows.flatMap((row) => [...row.querySelectorAll('[data-label="参数名"] code')].filter(visible).map((key) => {
+        const style = getComputedStyle(key);
+        return { text: key.textContent?.trim() ?? "", title: key.getAttribute("title"),
+          whiteSpace: style.whiteSpace, overflow: style.overflow, textOverflow: style.textOverflow };
+      }))
+    };
+  });
   return {
     titles, buttons, typeScale, pageEdges,
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, visibleTableCount: visibleTables.length
   };
 }
 
