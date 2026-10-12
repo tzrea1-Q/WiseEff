@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
   XiaozeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -42,6 +43,21 @@ import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+
+it("replaces legacy module bookmarks and restores governance tabs on browser Back", async () => {
+  window.history.replaceState(null, "", "/parameter-admin/modules/queue?q=power");
+  const historyLength = window.history.length;
+  render(<App runtimeMode="mock" initialAppState={adminState} />);
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/parameter-admin/modules?q=power&tab=queue"));
+  expect(window.history.length).toBe(historyLength);
+  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
+  await waitFor(() => expect(window.location.search).toBe("?q=power&tab=registry"));
+  expect(window.history.length).toBe(historyLength + 1);
+  window.history.back();
+  await waitFor(() => expect(window.location.search).toBe("?q=power&tab=queue"));
+  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+});
 
 it("waits for the settings leave dialog before changing a shell route", async () => {
   window.history.replaceState(null, "", "/organization");
@@ -3856,7 +3872,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       })
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument();
     expect(document.querySelector(".project-admin-detail")).not.toBeInTheDocument();
@@ -3888,7 +3904,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     window.history.replaceState(null, "", "/parameter-admin/projects");
     renderApp({ initialAppState: adminState });
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
   });
 

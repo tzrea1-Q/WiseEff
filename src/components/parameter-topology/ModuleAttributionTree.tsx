@@ -505,6 +505,7 @@ export function ModuleAttributionTree({
         </div>
         <div className="module-attribution-tree__filters" aria-label="模块树筛选">
           <MultiSelectDropdown
+            compact
             label="类型"
             value={[...filters.kinds]}
             options={KIND_FILTER_OPTIONS}
@@ -516,6 +517,7 @@ export function ModuleAttributionTree({
             }
           />
           <MultiSelectDropdown
+            compact
             label="来源"
             value={[...filters.origins]}
             options={ORIGIN_FILTER_OPTIONS}

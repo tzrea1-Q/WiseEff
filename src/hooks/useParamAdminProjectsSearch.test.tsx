@@ -11,13 +11,25 @@ afterEach(() => {
 });
 
 describe("parameter-admin project list URL state", () => {
+  it("normalizes invalid pages and resets pagination when filters change", () => {
+    for (const page of ["0", "-2", "NaN", "Infinity", "1.5", "9007199254740992"]) {
+      expect(parseParamAdminProjectsSearch(`?page=${page}`).page).toBe(1);
+    }
+    expect(buildParamAdminProjectsPath({ page: 3 })).toBe("/parameter-admin/projects?page=3");
+    window.history.replaceState(null, "", "/parameter-admin/projects?page=3");
+    const view = renderHook(() => useParamAdminProjectsSearch());
+    act(() => view.result.current.updateSearch({ statuses: ["maintenance"] }));
+    expect(window.location.search).toBe("?status=maintenance");
+    expect(view.result.current.search.page).toBe(1);
+  });
   it("parses and serializes the public q, status, and sort keys", () => {
     expect(
       parseParamAdminProjectsSearch("?q=aurora&status=maintenance,initialized&sort=updated-desc")
     ).toEqual({
       q: "aurora",
       statuses: ["maintenance", "initialized"],
-      sort: "updated-desc"
+      sort: "updated-desc",
+      page: 1
     });
     expect(
       buildParamAdminProjectsPath({
@@ -39,7 +51,8 @@ describe("parameter-admin project list URL state", () => {
     expect(first.result.current.search).toEqual({
       q: "aurora",
       statuses: ["maintenance"],
-      sort: "name-desc"
+      sort: "name-desc",
+      page: 1
     });
 
     act(() => first.result.current.updateSearch({ q: "beta" }));
@@ -56,7 +69,8 @@ describe("parameter-admin project list URL state", () => {
     expect(reloaded.result.current.search).toEqual({
       q: "",
       statuses: ["initialized"],
-      sort: "updated-asc"
+      sort: "updated-asc",
+      page: 1
     });
   });
 });

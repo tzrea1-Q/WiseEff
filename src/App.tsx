@@ -916,7 +916,7 @@ function AppShell({
     };
   }, []);
 
-  const navigate = useCallback((nextPath: string) => {
+  const navigate = useCallback((nextPath: string, options?: { replace?: boolean }) => {
     const request = ++navigationRequest.current;
     const url = new URL(nextPath, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
@@ -936,8 +936,8 @@ function AppShell({
     }
 
     const applyNavigation = () => {
-      window.history.pushState(null, "", nextUrl);
-      historyIndex.current = window.history.state?.wiseeffNavigationIndex ?? historyIndex.current + 1;
+      window.history[options?.replace ? "replaceState" : "pushState"](null, "", nextUrl);
+      historyIndex.current = window.history.state?.wiseeffNavigationIndex ?? historyIndex.current + (options?.replace ? 0 : 1);
       setPath(nextPage.path);
       setSearch(url.search);
     };

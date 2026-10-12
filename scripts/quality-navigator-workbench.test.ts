@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { requireNavigatorWorkbenchGeometry } from "../e2e/quality/consistency-assertions";
+import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency-routes";
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   left, top, right: left + width, bottom: top + height, width, height
@@ -21,6 +22,17 @@ const measurement = () => ({
 });
 
 describe("navigator-workbench geometry", () => {
+  it.each([
+    "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
+    "/parameter-admin/modules?tab=queue", "/parameter-admin/modules?tab=registry"
+  ])("gates module governance geometry and content tabs on %s", (path) => {
+    expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
+    expect(viewSwitchStyleExpectations[path.split("?")[0]]).toEqual(["section", "tabs"]);
+    for (const theme of ["light", "dark"]) {
+      expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageKey: "module-governance" }], `${path} (${theme})`)).not.toThrow();
+      expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageOverflow: 2 }], `${path} (${theme})`)).toThrow("horizontal");
+    }
+  });
   it("rejects count text clipped by its own box or the navigator edge", () => {
     const count = measurement().navigatorCounts[0];
     for (const navigatorCounts of [
@@ -60,6 +72,7 @@ describe("navigator-workbench geometry", () => {
       { ...measurement(), noticeCount: 2 },
       { ...measurement(), pageOverflow: 2 },
       { ...measurement(), firstRow: null },
+      { ...measurement(), firstRowClip: null },
       { ...measurement(), firstRow: rect(533, 890, 882, 40) },
       { ...measurement(), firstRowClip: rect(533, 210, 882, 20) }
     ]) {

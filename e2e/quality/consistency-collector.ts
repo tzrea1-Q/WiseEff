@@ -141,7 +141,7 @@ export function collectConsistencyMeasurements() {
     return [{
       dom: describeElement(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
       actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
-      statuses: [...row.querySelectorAll('[data-label="重要性"],.parameter-catalog__lifecycle')].filter(visible).map(geometry)
+      statuses: [...row.querySelectorAll('[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle,[data-label="状态"]')].filter(visible).map(geometry)
     }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
@@ -190,7 +190,7 @@ export function collectConsistencyMeasurements() {
       || element.querySelector('button,a[href],[role="button"]'))
   ).flatMap(clippedGeometry);
   const moduleTrees = elements('[role="tree"],nav > .parameter-catalog__tree');
-  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label").map((element) => {
+  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label,.parameter-module-mapping-panel .module-attribution-tree__label").map((element) => {
     const tree = element.closest('[role="tree"],nav > .parameter-catalog__tree') ?? element.parentElement!;
     const treeItem = element.closest('[role="treeitem"]');
     let depth = Number(treeItem?.getAttribute("aria-level")) || 0;
@@ -221,7 +221,9 @@ export function collectConsistencyMeasurements() {
       probe.remove();
       return width;
     };
-    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task .logs-conclusion-card, .navigator-workbench__task .log-error-alert');
+    const firstRow = [...workbench.querySelectorAll('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task .logs-conclusion-card, .navigator-workbench__task .log-error-alert, .navigator-workbench__task [data-canonical-subject-id], .navigator-workbench__task .canonical-driver-discovery__item')].find(visible)
+      ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
+        ? [...workbench.querySelectorAll('.navigator-workbench__task [role="status"], .navigator-workbench__task [role="alert"]')].find(visible) : undefined);
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
@@ -231,7 +233,7 @@ export function collectConsistencyMeasurements() {
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
-      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .logs-history-status")].filter(visible).map((count) => {
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .logs-history-status, .navigator-workbench__navigation .module-attribution-tree__count")].filter(visible).map((count) => {
         const navigation = count.closest(".navigator-workbench__navigation")!;
         const navigationRect = bounds(navigation);
         const countRect = bounds(count);
@@ -273,6 +275,26 @@ export function collectConsistencyMeasurements() {
         return { text: key.textContent?.trim() ?? "", title: key.getAttribute("title"),
           whiteSpace: style.whiteSpace, overflow: style.overflow, textOverflow: style.textOverflow };
       }))
+    };
+  });
+  const adminLists = elements(".admin-list-page").map((list) => {
+    const measure = (selector: string) => {
+      const element = list.querySelector(selector);
+      return element && visible(element) ? bounds(element) : null;
+    };
+    const rows = [...list.querySelectorAll("tbody tr")].filter((row) => visible(row) && !row.querySelector("td[colspan]"));
+    return {
+      root: bounds(list), header: measure(":scope > .admin-list-page__header"),
+      primaryAction: measure('.admin-list-page__header [data-primary-action="true"],.admin-list-page__header [data-slot="button"][data-variant="default"],.admin-list-page__header .button.primary'),
+      filters: measure(":scope > .admin-list-page__filters"), table: measure("table"),
+      tableCount: [...list.querySelectorAll("table")].filter(visible).length,
+      firstRow: rows[0] ? bounds(rows[0]) : null,
+      emptyActionCount: [...list.querySelectorAll("td .section-empty button, td .section-empty a")].filter(visible).length,
+      rows: rows.map((row) => ({ actions: [...row.querySelectorAll('td[data-label="操作"] button,td[data-label="操作"] a')].filter(visible).map((action) => ({
+        height: action.getBoundingClientRect().height, overflow: action.getAttribute("aria-haspopup") === "menu",
+        destructive: action.matches('[data-destructive="true"],.danger,[data-variant="destructive"]')
+          || /^(删除|注销|撤销)(?:\s|$)/.test(action.textContent?.trim() || action.getAttribute("aria-label") || "")
+      })) }))
     };
   });
   const overviewPages = elements(".overview-page").map((overview) => {
@@ -328,7 +350,7 @@ export function collectConsistencyMeasurements() {
   return {
     titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer), overviewPages, retiredNotices,
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, settingsForms, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, adminLists, settingsForms, visibleTableCount: visibleTables.length
   };
 }
 

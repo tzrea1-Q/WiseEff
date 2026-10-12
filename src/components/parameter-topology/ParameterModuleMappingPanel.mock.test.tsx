@@ -40,7 +40,7 @@ describe("mock module registry withdrawal", () => {
       };
       render(<ParameterModuleMappingPanel canAdmin repository={repository} pathname={pathname} />);
 
-      await screen.findByRole("region", { name: "历史驱动注册表" });
+      await screen.findByRole("tree", { name: "模块归属树" });
       expect(screen.queryAllByRole("button", { name: /全量重算|登记驱动|前往归类|归类|认领|忽略|恢复/ }))
         .toHaveLength(0);
       expect(repository.getDiscoveryHints).not.toHaveBeenCalled();
