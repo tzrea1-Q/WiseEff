@@ -6,6 +6,23 @@ import { scanCssContent } from "../../scripts/check-ui-standards";
 const styles = readStylesheet("src/styles.css");
 
 describe("shared consistency contracts", () => {
+  it("keeps settings forms on token-only styles, one column and the section-title scale", () => {
+    const settings = readStylesheet("src/components/layout/settings-form-page.css");
+    expect(declarationsFor(settings, ".settings-form-page")["max-width"]).toBe("var(--settings-form-max-width)");
+    expect(declarationsFor(settings, ".settings-form-page")["flex-direction"]).toBe("column");
+    expect(declarationsFor(settings, ".settings-form-page__section h2")["font-size"]).toBe("var(--text-lg)");
+    expect(declarationsFor(settings, ".settings-form-page__section h2")["line-height"]).toBe("var(--leading-lg)");
+    expect(declarationsFor(settings, ".settings-form-page__save-bar").position).toBe("sticky");
+    const roleStyles = readStylesheet("src/components/parameter-admin-next/project-review-roles.css");
+    expect(declarationsFor(roleStyles, ".project-review-roles__pools").display).toBe("grid");
+    expect(declarationsFor(roleStyles, ".project-review-roles__pools")["grid-template-columns"]).toBe("repeat(3, minmax(0, 1fr))");
+    expect(declarationsFor(roleStyles, ".project-review-roles__pools").gap).toBe("var(--space-3)");
+    const formStyles = parseCssRules(styles).filter((rule) => /organization-profile|reload-configuration/.test(rule.selector))
+      .map((rule) => `${rule.selector} { ${Object.entries(rule.declarations).map(([property, value]) => `${property}: ${value};`).join(" ")} }`).join("\n");
+    expect(scanCssContent("src/styles.css", formStyles)).toEqual([]);
+    expect(scanCssContent("src/components/layout/settings-form-page.css", settings)).toEqual([]);
+    expect(scanCssContent("src/components/parameter-admin-next/project-review-roles.css", readStylesheet("src/components/parameter-admin-next/project-review-roles.css"))).toEqual([]);
+  });
   it("keeps all workbench table and shared column-filter typography on scale, including inherited header controls", () => {
     const rules = parseCssRules(styles).filter((rule) => /dts-parameter-workbench-table|parameters-column-filter/.test(rule.selector));
     const fontRules = rules.filter((rule) => rule.declarations["font-size"]);
