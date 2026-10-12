@@ -209,7 +209,7 @@ for (const route of routes) {
           if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
             requireReviewInboxStructure(measurements, route.path);
           }
-          if (route.required.includes("navigatorWorkbenches") || moduleNavigationPaths.includes(routePath)) {
+          if (route.required.includes("moduleTreeLabels") || moduleNavigationPaths.includes(routePath)) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }
           requirePrimaryActionColors(measurements, route.path);
@@ -242,6 +242,21 @@ for (const route of routes) {
           await testInfo.attach(`navigator-workbench-expanded-${theme}`, {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
+          if (routePath === "/logs") {
+            await page.getByRole("complementary", { name: "历史日志记录" })
+              .getByRole("button", { name: /charging-foldback\.log/ }).click();
+            await expect(page.getByRole("region", { name: "分析结果" })).toBeVisible();
+            await waitForFontsAndNextPaint(page);
+            const completed = await page.evaluate(collectConsistencyMeasurements);
+            requireMeasuredCategories(completed, required, route.path);
+            requireNavigatorWorkbenchGeometry(completed.navigatorWorkbenches, route.path);
+            requireTypographyScale(completed, route.path);
+            requirePrimaryActionColors(completed, route.path);
+            requireViewSwitchStyles(completed, route.path);
+            await testInfo.attach(`logs-complete-${theme}`, {
+              contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            });
+          }
           await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
           await waitForFontsAndNextPaint(page);
           const collapsed = await page.evaluate(collectConsistencyMeasurements);

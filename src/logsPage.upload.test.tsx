@@ -74,7 +74,7 @@ async function waitForApiRuntime(repository: LogAnalysisRepository) {
 }
 
 function openUploadDialog() {
-  fireEvent.click(document.querySelector(".topbar-page-actions .button.primary") as HTMLButtonElement);
+  fireEvent.click(screen.getByRole("button", { name: "上传新日志" }));
   return screen.getByRole("dialog");
 }
 
@@ -170,6 +170,8 @@ describe("LogsPage api upload wiring", () => {
     await waitForApiRuntime(repository);
     vi.useFakeTimers();
 
+    fireEvent.keyDown(screen.getByRole("tab", { name: "元数据" }), { key: "Enter" });
+    expect(screen.getByRole("tab", { name: "元数据" })).toHaveAttribute("aria-selected", "true");
     openUploadDialog();
     chooseFile(file);
     setQuestion("why");
@@ -179,6 +181,7 @@ describe("LogsPage api upload wiring", () => {
       file,
       analysisQuestion: "why"
     });
+    expect(screen.getByRole("tab", { name: "报告" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("lists log domains in the upload dialog and passes the selected logDomainId", async () => {

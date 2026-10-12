@@ -44,7 +44,7 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects"],
   sortControls: ["/parameter-admin/projects"],
   paginationControls: catalogPaths,
-  navigatorWorkbenches: ["/parameters", ...catalogPaths, "/node-debugging", "/dts-reload", ...moduleGovernancePaths],
+  navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths, "/node-debugging", "/dts-reload", ...moduleGovernancePaths],
   adminLists: ["/parameter-admin/projects"],
   overviewPages: ["/parameter-home", "/log-dashboard"],
   retiredNotices: ["/parameter-comparison", "/debugging"],

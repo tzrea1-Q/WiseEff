@@ -483,7 +483,7 @@ function auditSummaryFor(
 
 async function uploadLogThroughUi(page: Page, filePath: string, question?: string, domainName?: string) {
   await prepareInteractionSurface(page);
-  await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
+  await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
   const dialog = page.getByRole("dialog", { name: "上传日志" });
   if (domainName) {
     await expect(dialog.locator("#upload-log-domain option", { hasText: domainName })).toHaveCount(1, { timeout: 10_000 });
@@ -1137,7 +1137,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const gzBuffer = gzipSync(readFileSync(supportedFixture));
     await page.goto("/logs");
     await prepareInteractionSurface(page);
-    await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
+    await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
     const uploadDialog = page.getByRole("dialog", { name: "上传日志" });
     await expect(uploadDialog).toContainText(/\.gz、单条目 \.zip 压缩包/);
     await uploadDialog.getByLabel("选择日志文件").setInputFiles({
