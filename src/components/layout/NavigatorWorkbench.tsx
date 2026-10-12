@@ -22,6 +22,7 @@ type NavigatorWorkbenchProps = {
   panelId?: string;
   tabId?: string;
   inspector?: ReactNode;
+  inspectorOverlay?: boolean;
   inspectorLabel?: string;
   children?: ReactNode;
 };
@@ -31,7 +32,7 @@ export function NavigatorWorkbench(props: NavigatorWorkbenchProps) {
 }
 
 function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navigator, navigatorLabel,
-  taskLabel, taskClassName = "", taskState, panelId, tabId, inspector, inspectorLabel = "检查器", children }: NavigatorWorkbenchProps) {
+  taskLabel, taskClassName = "", taskState, panelId, tabId, inspector, inspectorOverlay = false, inspectorLabel = "检查器", children }: NavigatorWorkbenchProps) {
   const navigationId = useId();
   const storageKey = `wiseeff.navigator-workbench.collapsed:${pageKey}`;
   const [collapsed, setCollapsed] = useState(() => {
@@ -71,13 +72,13 @@ function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navi
           </div>
           <div id={navigationId} className="navigator-workbench__navigation" hidden={collapsed}>{navigator}</div>
         </section>
-        <section className={`navigator-workbench__task ${taskClassName}`} aria-label={taskLabel}>
+        <TabPanel role="region" className={`navigator-workbench__task ${taskClassName}`} aria-label={taskLabel}>
           {taskState?.kind === "loading" ? <SectionSkeleton label={taskState.message} />
             : taskState?.kind === "empty" ? <SectionEmpty message={taskState.message} />
             : taskState?.kind === "error" ? <SectionError message={taskState.message} detail={taskState.detail} onRetry={taskState.onRetry} />
             : children}
-        </section>
-        {inspector ? <section className="navigator-workbench__inspector" aria-label={inspectorLabel}>{inspector}</section> : null}
+        </TabPanel>
+        {inspector ? <section className="navigator-workbench__inspector" data-overlay={inspectorOverlay} aria-label={inspectorLabel}>{inspector}</section> : null}
       </TabPanel>
     </div>
   );

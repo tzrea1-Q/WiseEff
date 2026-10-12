@@ -19,6 +19,23 @@ const slots = {
 describe("NavigatorWorkbench", () => {
   beforeEach(() => localStorage.clear());
 
+  it("keeps the named inspector in its slot when the source requires an overlay", () => {
+    const view = render(<NavigatorWorkbench {...slots} inspectorOverlay />);
+    expect(screen.getByRole("region", { name: "参数检查器" })).toHaveAttribute("data-overlay", "true");
+    view.rerender(<NavigatorWorkbench {...slots} inspectorOverlay={false} />);
+    expect(screen.getByRole("region", { name: "参数检查器" })).toHaveAttribute("data-overlay", "false");
+  });
+
+  it("keeps the task scrollport keyboard-accessible without tabbable content", () => {
+    render(<NavigatorWorkbench {...slots}><div role="tree" aria-label="结构树">
+      <div role="treeitem" tabIndex={-1} aria-selected="false">节点</div>
+    </div></NavigatorWorkbench>);
+    const task = screen.getByRole("region", { name: "参数列表" });
+    expect(task).toHaveAttribute("tabindex", "0");
+    task.focus();
+    expect(task).toHaveFocus();
+  });
+
   it("names its regions and orders toolbar, context, notice, navigator, task and inspector", () => {
     const { container } = render(<NavigatorWorkbench {...slots} />);
     expect(screen.getByRole("region", { name: "模块导航" })).toBeInTheDocument();

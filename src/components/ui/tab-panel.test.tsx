@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 import { TabPanel } from "./tab-panel";
 
 describe("TabPanel keyboard entry", () => {
-  it("lets keyboard users reach a text-only panel", async () => {
+  it.each(["tabpanel", "region"])("lets keyboard users reach a text-only %s", async (role) => {
     const user = userEvent.setup();
-    render(<><button>Before</button><TabPanel aria-label="Details">No requests</TabPanel></>);
+    render(<><button>Before</button><TabPanel role={role} aria-label="Details">No requests</TabPanel></>);
     await user.tab();
     await user.tab();
-    expect(screen.getByRole("tabpanel", { name: "Details" })).toHaveFocus();
+    expect(screen.getByRole(role, { name: "Details" })).toHaveFocus();
   });
 
   it("enters controls directly and restores panel focus when they disappear", async () => {

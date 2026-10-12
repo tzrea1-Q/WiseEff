@@ -4,7 +4,10 @@ const catalogPaths = [
   "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping",
   "/parameter-admin/spec-review", "/parameter-admin/specs/identity-mapping", "/parameters/definitions"
 ];
+const projectConfigurationPaths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
+  .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
 export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
+  ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["section", "tabs"] as const])),
   "/organization": ["section"],
   "/organization/members": ["section", "tabs"],
   "/parameter-home": ["toggle"],
@@ -34,7 +37,7 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   viewSwitches: [...viewSwitchStylePaths, "/log-admin"],
   viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
-  rowActions: [...catalogPaths, "/parameters"],
+  rowActions: [...catalogPaths, "/parameters", ...projectConfigurationPaths],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
     "/debugging-admin/nodes", "/feedback-admin", "/log-admin", "/dts-reload",
@@ -43,7 +46,7 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
   sortControls: [],
   paginationControls: catalogPaths,
-  navigatorWorkbenches: ["/parameters", ...catalogPaths]
+  navigatorWorkbenches: ["/parameters", ...catalogPaths, ...projectConfigurationPaths]
 };
 const otherPhaseTwoPaths = [
   "/knowledge-admin",
@@ -63,6 +66,12 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
   }))
   .flatMap((route) => [
     route,
+    ...(projectConfigurationPaths.includes(route.path)
+      ? ["history", "candidate", "unified-diff", "side-by-side"].map((mode) => ({ ...route, path: `${route.path}?sourceMode=${mode}` }))
+      : []),
+    ...(route.path === "/parameter-admin/projects/aurora/configuration"
+      ? ["tab=structure", "tab=conflicts", "inspector=file"].map((query) => ({ ...route, path: `${route.path}?${query}` }))
+      : []),
     ...(["/parameter-admin/spec-review", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"].includes(route.path)
       ? [{ ...route, path: `${route.path}?review=open` }]
       : [])

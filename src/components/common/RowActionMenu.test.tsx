@@ -20,19 +20,19 @@ describe("RowActionMenu", () => {
   it("exposes one text action and a keyboard-operated, labelled ARIA menu", async () => {
     const user = userEvent.setup();
     const edit = vi.fn();
-    render(<RowActionMenu label="项目 A 操作" primaryAction={{ id: "view", label: "查看", onSelect: vi.fn() }} items={[
+    render(<RowActionMenu label="项目 A 操作" triggerLabel="项目操作：A" triggerText="操作" primaryAction={{ id: "view", label: "查看", onSelect: vi.fn() }} items={[
       { id: "disabled", label: "不可用", disabled: true, onSelect: vi.fn() },
       { id: "edit", label: "编辑", onSelect: edit },
       { id: "copy", label: "复制", onSelect: vi.fn() }
     ]} />);
     const group = screen.getByRole("group", { name: "项目 A 操作" });
-    expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(["查看", "更多"]);
-    const trigger = screen.getByRole("button", { name: "项目 A 操作：更多" });
+    expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(["查看", "操作"]);
+    const trigger = screen.getByRole("button", { name: "项目操作：A" });
     expect(trigger).toHaveAttribute("aria-haspopup", "menu");
     await user.tab();
     await user.tab();
     await user.keyboard("{ArrowDown}");
-    const menu = screen.getByRole("menu", { name: "项目 A 操作：更多" });
+    const menu = screen.getByRole("menu", { name: "项目操作：A" });
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(within(menu).getByRole("menuitem", { name: "不可用" })).toHaveAttribute("aria-disabled", "true");
     expect(within(menu).getByRole("menuitem", { name: "编辑" })).toHaveFocus();

@@ -300,9 +300,11 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 布局常量仅在 `src/styles.css` 根令牌块定义一次：`--navigator-workbench-navigator-width`（18rem，为模块数量预留空间）、`--navigator-workbench-navigator-cap`（别名为 `--module-navigator-max-width`，即 `min(32.5rem, 42vw)`）、`--navigator-workbench-collapsed-width`（`--space-10`，40px）、`--navigator-workbench-inspector-width`（20rem）、`--navigator-workbench-gap` 与 `--navigator-workbench-toolbar-padding`（`--space-3`，12px）、`--navigator-workbench-pane-height`（`min(670px, calc(100vh - 230px))`）及 `--navigator-workbench-scroll-rail-height`（14px）。主体网格使用导航宽度与上限的较小值、`minmax(0, 1fr)` 任务轨道，以及可选的检查器宽度。在 1440×900 下，导航从模板左边界开始，任务区左边界为一个有上限的导航宽度加一个间距。标签保持单行并使用省略号；数量列保留固有宽度，不收缩或裁切。溢出只在导航或任务滚动容器内处理，不延伸到页面。工具栏、面板、树和参数表的颜色使用语义主题令牌，深色模式也遵循 Phase 2 对比度配对。已迁移页面不得在模板外再套一层带留白的卡片，也不得保留局部网格、面板宽度或滚动高度规则。
 
-折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的 `section` 区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
+折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。任务滚动容器复用 TabPanel 的键盘入口：没有可 Tab 聚焦的内容时，有名称的区域获得 `tabIndex=0`。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
 
-后续迁移不属于本轮首批范围：模块治理、项目配置、#1110（Bridge 就绪）之后的节点调试与 DTS 重载，以及 #1112 之后的日志。在对应工单迁移调用方之前，保留节点调试与 DTS 重载仍使用的 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters` 或 Catalog 界面的面板覆盖。本契约不改变配色、字体、密度、URL、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
+项目配置复用同一模板：配置集与成员文件放在导航区，各源码模式及现有空状态保留在任务区，现有检查器放入检查器槽。源码、结构、冲突使用 URL 驱动的内容标签（`tab`）；旧文件/配置集链接保留检查器选择，结构链接选择结构标签，`tasks=conflicts` 或 `dock=conflicts` 选择冲突标签。切换标签保留配置集、文件、节点、属性、源码模式与版本焦点。当常驻检查器会使源码区不足 640px 时，共享检查器槽以浮层呈现，不占用网格列。配置工作台保留受限壳高度与内部滚动容器，不再添加外层卡片或留白。一致性项目在浅色、深色主题的 1440×900 视口下覆盖每个配置子路由、全部五种源码模式，以及检查器深链接。
+
+其余导航工作台迁移包括模块治理、节点调试、DTS 重载和日志。在调用方迁移前保留 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters`、Catalog 或项目配置界面的面板覆盖。本契约不改变配色、字体、密度、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
 
 质量一致性项目在浅色、深色主题的 1440×900 视口下检查展开与折叠几何（±1px）、工具栏与动作位置、单一通知、首行可见、页面横向溢出，数量文字裁切，以及现有行操作和模块树契约。深色 `/parameters` 检查还运行无排除项的 axe 文字对比度扫描。截图附件是 Catalog 迁移前的审阅门槛；不得在本地重生成 Linux 视觉基线。
 

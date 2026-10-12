@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
-import { ChevronLeft, ChevronRight, FileCode2 } from "lucide-react";
+import { FileCode2 } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
+import { RowActionMenu } from "@/components/common/RowActionMenu";
 
 import type {
   ConfigSetRole,
@@ -41,8 +42,7 @@ function groupHitsByFile(
 }
 
 export type WorkbenchSourceTreeProps = {
-  treeOpen: boolean;
-  onTreeOpenChange: (open: boolean) => void;
+  showStructure?: boolean;
   treeRegionRef: RefObject<HTMLElement | null>;
   selectedConfigSet: DtsConfigSet;
   searchInputRef: RefObject<HTMLInputElement | null>;
@@ -63,6 +63,7 @@ export type WorkbenchSourceTreeProps = {
   selectedMembers: DtsConfigSetMemberFile[];
   selectedMember: DtsConfigSetMemberFile | null;
   onSelectMember: (fileId: string) => void;
+  onInspectMember: (fileId: string) => void;
   structureLoading: boolean;
   structureError: string;
   onStructureRetry: () => void;
@@ -83,8 +84,7 @@ export type WorkbenchSourceTreeProps = {
 };
 
 export function WorkbenchSourceTree({
-  treeOpen,
-  onTreeOpenChange,
+  showStructure = true,
   treeRegionRef,
   selectedConfigSet,
   searchInputRef,
@@ -105,6 +105,7 @@ export function WorkbenchSourceTree({
   selectedMembers,
   selectedMember,
   onSelectMember,
+  onInspectMember,
   structureLoading,
   structureError,
   onStructureRetry,
@@ -136,19 +137,6 @@ export function WorkbenchSourceTree({
         ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
       : "配置集来源一致性尚未完成校验，成员变更已禁用。";
 
-  if (!treeOpen) {
-    return (
-      <button
-        type="button"
-        className="button subtle configuration-workbench__tree-collapsed"
-        aria-label="展开源结构"
-        onClick={() => onTreeOpenChange(true)}
-      >
-        <ChevronRight size={16} aria-hidden="true" />
-      </button>
-    );
-  }
-
   return (
     <aside className="configuration-workbench__tree" aria-label="源结构" tabIndex={-1} ref={treeRegionRef}>
       <div className="configuration-workbench__region-head">
@@ -156,14 +144,6 @@ export function WorkbenchSourceTree({
           <span>源结构</span>
           <strong>{selectedConfigSet.name}</strong>
         </div>
-        <button
-          className="button subtle configuration-workbench__icon-button"
-          type="button"
-          aria-label="折叠源结构"
-          onClick={() => onTreeOpenChange(false)}
-        >
-          <ChevronLeft size={16} aria-hidden="true" />
-        </button>
       </div>
       <form
         className="configuration-workbench__search"
@@ -252,14 +232,26 @@ export function WorkbenchSourceTree({
             // role="group": a tree may only own treeitem/group children, and this
             // block wraps the member treeitem together with its expanded subtree.
             <div key={item.fileId} role="group" className="configuration-workbench__member-block">
-              <button
-                type="button"
+              <div className="configuration-workbench__member-row" data-row-action-row
                 role="treeitem"
                 aria-selected={selected}
                 aria-expanded={selected ? true : undefined}
                 aria-label={`${item.fileName} ${roleLabel} ${versionLabel}`}
+                tabIndex={0}
+                onClick={(event) => {
+                  if (!(event.target as HTMLElement).closest(".row-action-menu")) onSelectMember(item.fileId);
+                }}
+                onKeyDown={(event) => {
+                  if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    onSelectMember(item.fileId);
+                  }
+                }}>
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={`${item.fileName} ${roleLabel} ${versionLabel}`}
                 className={`button subtle configuration-workbench__member${selected ? " is-selected" : ""}`}
-                onClick={() => onSelectMember(item.fileId)}
               >
                 <FileCode2 size={15} aria-hidden="true" />
                 <span>
@@ -269,11 +261,14 @@ export function WorkbenchSourceTree({
                     {item.currentVersionNumber ? `版本 v${item.currentVersionNumber}` : "无活跃版本"}
                   </small>
                 </span>
-                <span className="configuration-workbench__member-meta" aria-hidden="true">
+                <span className="configuration-workbench__member-meta" data-row-action-status aria-hidden="true">
                   <span>{roleLabel}</span>
                 </span>
               </button>
-              {selected ? (
+                <RowActionMenu label={`${item.fileName} 操作`} items={[]}
+                  primaryAction={{ id: "details", label: "详情", onSelect: () => onInspectMember(item.fileId) }} />
+              </div>
+              {selected && showStructure ? (
                 <div className="configuration-workbench__node-tree-wrap">
                   {structureLoading ? <p role="status">正在加载结构树…</p> : null}
                   {structureError ? (
