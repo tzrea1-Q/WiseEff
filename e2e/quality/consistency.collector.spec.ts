@@ -5,6 +5,43 @@ import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
 import { settleQualityRoute } from "./helpers";
 
+test("measures only the active governance task and keeps historical counts and empty states", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const task of [
+    '<li data-canonical-subject-id="subject-one">规范主体</li>',
+    '<li class="canonical-driver-discovery__item">发现记录</li>',
+    '<table><tbody><tr><td>历史注册记录</td></tr></tbody></table>',
+    '<p role="status" style="margin: 0">当前范围没有来源观察记录。</p>'
+  ]) {
+    await page.setContent(`<style>
+      .navigator-workbench__task > div:not([hidden]) { position: absolute; top: 240px; left: 600px; width: 600px; }
+      .module-attribution-tree__count { display: block; }
+    </style>
+    <main><div class="parameter-module-mapping-panel"><div class="navigator-workbench" data-workbench-page="module-governance">
+      <div class="navigator-workbench__body">
+        <section class="navigator-workbench__navigator"><div class="navigator-workbench__navigation">
+          <ul role="tree"><li role="treeitem" aria-level="1"><span class="module-attribution-tree__label">充电驱动</span>
+            <span class="module-attribution-tree__count">14 定义</span></li></ul>
+        </div></section>
+        <section class="navigator-workbench__task"><div hidden><li data-canonical-subject-id="hidden-subject">隐藏主体</li></div>
+          <div>${task}</div></section>
+      </div>
+    </div></div></main>`);
+    const measurements = await page.evaluate(collectConsistencyMeasurements);
+    expect(measurements.navigatorWorkbenches).toHaveLength(1);
+    const measurement = measurements.navigatorWorkbenches[0];
+    expect(measurement.firstRow?.left).toBeGreaterThanOrEqual(600);
+    expect(measurement.firstRow?.left).toBeLessThan(610);
+    expect(measurement.firstRow?.top).toBeGreaterThanOrEqual(240);
+    expect(measurement.firstRow?.top).toBeLessThan(250);
+    expect(measurement.firstRowClip?.width).toBe(measurement.firstRow?.width);
+    expect(measurement.navigatorCounts.map((count) => count.text)).toEqual(["14 定义"]);
+    expect(measurements.moduleTreeLabels).toEqual([
+      expect.objectContaining({ depth: 1 })
+    ]);
+  }
+});
+
 test("resolves all three root switch signatures and catches scoped geometry or semantic drift", async ({ page }) => {
   await page.setContent(`
     <style>

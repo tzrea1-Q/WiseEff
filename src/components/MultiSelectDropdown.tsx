@@ -9,12 +9,14 @@ export function MultiSelectDropdown({
   label,
   value,
   options,
-  onChange
+  onChange,
+  compact = false
 }: {
   label: string;
   value: string[];
   options: DropdownOption[];
   onChange: (next: string[]) => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -49,7 +51,8 @@ export function MultiSelectDropdown({
       <button
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="dropdown-trigger"
+        className={compact ? "dropdown-trigger compact-filter-control" : "dropdown-trigger"}
+        data-compact-control={compact ? "filter" : undefined}
         type="button"
         onClick={() => setOpen((current) => !current)}
       >

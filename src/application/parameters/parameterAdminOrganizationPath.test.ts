@@ -58,18 +58,29 @@ describe("parameterAdminOrganizationPath · specs sub-views", () => {
 });
 
 describe("parameterAdminOrganizationPath · modules sub-views", () => {
-  it("distinguishes tree and queue; legacy registry path falls back to tree", () => {
+  it("resolves URL-backed tabs and preserves old queue and registry bookmarks", () => {
     expect(parseParameterAdminModulesSubView("/parameter-admin/modules")).toBe("tree");
     expect(parseParameterAdminModulesSubView("/parameter-admin/modules/")).toBe("tree");
     expect(parseParameterAdminModulesSubView("/parameter-admin/modules/queue")).toBe("queue");
-    expect(parseParameterAdminModulesSubView("/parameter-admin/modules/registry")).toBe("tree");
+    expect(parseParameterAdminModulesSubView("/parameter-admin/modules/registry")).toBe("registry");
+    expect(parseParameterAdminModulesSubView("/parameter-admin/modules", "?tab=queue")).toBe("queue");
+    expect(parseParameterAdminModulesSubView("/parameter-admin/modules", "?tab=registry")).toBe("registry");
+    expect(parseParameterAdminModulesSubView("/parameter-admin/modules", "?tab=modules")).toBe("tree");
+    expect(parseParameterAdminModulesSubView("/parameter-admin/modules", "?tab=unknown")).toBe("tree");
+    expect(parseParameterAdminModulesSubView("/parameter-admin/modules/queue", "?tab=registry")).toBe("queue");
     expect(parseParameterAdminModulesSubView("/parameter-admin/specs")).toBeNull();
   });
 
   it("builds modules paths", () => {
     expect(buildParameterAdminModulesPath("tree")).toBe("/parameter-admin/modules");
     expect(buildParameterAdminModulesPath("queue", "?audit=1")).toBe(
-      "/parameter-admin/modules/queue?audit=1"
+      "/parameter-admin/modules?audit=1&tab=queue"
+    );
+    expect(buildParameterAdminModulesPath("registry", "?q=driver&tab=queue")).toBe(
+      "/parameter-admin/modules?q=driver&tab=registry"
+    );
+    expect(buildParameterAdminModulesPath("tree", "?q=driver&tab=registry")).toBe(
+      "/parameter-admin/modules?q=driver"
     );
   });
 });

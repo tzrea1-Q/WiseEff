@@ -876,7 +876,7 @@ function AppShell({
     };
   }, []);
 
-  const navigate = useCallback((nextPath: string) => {
+  const navigate = useCallback((nextPath: string, options?: { replace?: boolean }) => {
     const url = new URL(nextPath, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
       window.location.assign(url.href);
@@ -892,7 +892,7 @@ function AppShell({
       return;
     }
 
-    window.history.pushState(null, "", nextUrl);
+    window.history[options?.replace ? "replaceState" : "pushState"](null, "", nextUrl);
     setPath(nextPage.path);
     setSearch(url.search);
   }, []);

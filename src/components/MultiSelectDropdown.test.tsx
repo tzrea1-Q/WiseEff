@@ -7,6 +7,15 @@ afterEach(() => {
 });
 
 describe("MultiSelectDropdown", () => {
+  it("opts into the shared compact filter contract without changing multiselect behavior", () => {
+    const onChange = vi.fn();
+    render(<MultiSelectDropdown compact label="类型" value={[]} options={[{ value: "business", label: "业务分类" }]} onChange={onChange} />);
+    const trigger = screen.getByRole("button", { name: /类型/ });
+    expect(trigger).toHaveAttribute("data-compact-control", "filter");
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("checkbox", { name: "业务分类" }));
+    expect(onChange).toHaveBeenCalledWith(["business"]);
+  });
   it("shows the selected count in the trigger", () => {
     render(
       <MultiSelectDropdown

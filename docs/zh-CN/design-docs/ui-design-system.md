@@ -302,7 +302,9 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的 `section` 区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
 
-后续迁移不属于本轮首批范围：模块治理、项目配置、#1110（Bridge 就绪）之后的节点调试与 DTS 重载，以及 #1112 之后的日志。在对应工单迁移调用方之前，保留节点调试与 DTS 重载仍使用的 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters` 或 Catalog 界面的面板覆盖。本契约不改变配色、字体、密度、URL、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
+模块治理（`/parameter-admin/modules`）使用 `module-governance` 折叠键。现有可编辑分类树位于导航区；内容标签分别显示规范主体与归属、兼容发现，以及只读历史注册表。各标签保留挂载内容，复用同一工作台几何。默认模块标签使用基础 URL；`?tab=queue` 和 `?tab=registry` 选择其他标签。旧 `/modules/queue` 和 `/modules/registry` 书签替换当前历史记录为对应标签 URL，保留其他查询参数；浏览器后退恢复标签状态。分类操作、规范权限检查及历史只读对话框均保持不变。
+
+后续迁移为项目配置、#1110（Bridge 就绪）之后的节点调试与 DTS 重载，以及 #1112 之后的日志。在对应工单迁移调用方之前，保留节点调试与 DTS 重载仍使用的 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters` 或 Catalog 界面的面板覆盖。本契约不改变配色、字体、密度、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
 
 质量一致性项目在浅色、深色主题的 1440×900 视口下检查展开与折叠几何（±1px）、工具栏与动作位置、单一通知、首行可见、页面横向溢出，数量文字裁切，以及现有行操作和模块树契约。深色 `/parameters` 检查还运行无排除项的 axe 文字对比度扫描。截图附件是 Catalog 迁移前的审阅门槛；不得在本地重生成 Linux 视觉基线。
 

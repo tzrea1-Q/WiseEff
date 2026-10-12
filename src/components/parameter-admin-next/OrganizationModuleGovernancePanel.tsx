@@ -27,7 +27,7 @@ export function OrganizationModuleGovernancePanel({
 }: {
   pathname?: string;
   search?: string;
-  onNavigate?: (path: string) => void;
+  onNavigate?: (path: string, options?: { replace?: boolean }) => void;
   catalog?: ParameterCatalogRepository | null;
   governance?: ParameterCatalogGovernanceRepository | null;
   organizationId?: string;

@@ -211,7 +211,7 @@ for (const route of routes) {
           await waitForFontsAndNextPaint(page);
           const collapsed = await page.evaluate(collectConsistencyMeasurements);
           requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
-          requireRowActionVisibility(collapsed.rowActions, route.path);
+          if (route.required.includes("rowActions")) requireRowActionVisibility(collapsed.rowActions, route.path);
           await testInfo.attach(`navigator-workbench-collapsed-${theme}`, {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
