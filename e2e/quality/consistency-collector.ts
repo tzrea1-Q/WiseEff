@@ -275,10 +275,60 @@ export function collectConsistencyMeasurements() {
       }))
     };
   });
+  const overviewPages = elements(".overview-page").map((overview) => {
+    const measureSlot = (selector: string) => {
+      const slot = overview.querySelector(selector);
+      return slot && visible(slot) ? bounds(slot) : null;
+    };
+    return {
+      root: bounds(overview), summary: measureSlot(":scope > .overview-page__summary"),
+      content: measureSlot(":scope > .overview-page__content"), actions: measureSlot(":scope > .overview-page__actions"),
+      gap: Number.parseFloat(getComputedStyle(overview).rowGap),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      viewportHeight: innerHeight,
+      tiles: [...overview.querySelectorAll(".overview-tile")].filter(visible).map((tile) => ({
+        rect: bounds(tile), hasSamples: tile.getAttribute("data-has-samples") === "true",
+        value: tile.querySelector(".overview-tile__value")?.textContent?.trim() ?? "",
+        trendCount: tile.querySelectorAll(".overview-tile__trend").length
+      })),
+      items: [...overview.querySelectorAll(":scope > .overview-page__content > *")].filter(visible).map(bounds),
+      verdicts: [...overview.querySelectorAll("[data-overview-verdict]")].filter(visible).map((verdict) => ({
+        hasSamples: verdict.getAttribute("data-has-samples") === "true", text: verdict.textContent?.trim() ?? ""
+      }))
+    };
+  });
+  const retiredNotices = elements(".retired-notice").map((notice) => ({
+    root: bounds(notice), titleCount: notice.querySelectorAll("h2").length,
+    descriptionCount: notice.querySelectorAll("p").length, linkCount: notice.querySelectorAll("a").length,
+    href: notice.querySelector("a")?.getAttribute("href") ?? null,
+    primary: notice.querySelector("a")?.getAttribute("data-variant") === "default"
+  }));
+  const settingsForms = elements(".settings-form-page").map((form) => {
+    const style = getComputedStyle(form);
+    const sections = [...form.querySelectorAll(".settings-form-page__section")].filter(visible);
+    const probe = document.createElement("span");
+    probe.style.cssText = "position: absolute; visibility: hidden; width: var(--settings-form-max-width)";
+    document.documentElement.append(probe);
+    const widthToken = Number.parseFloat(getComputedStyle(probe).width);
+    probe.remove();
+    return { ...geometry(form), maxWidth: Number.parseFloat(style.maxWidth), widthToken,
+      direction: style.display === "flex" ? style.flexDirection : "",
+      sectionCount: sections.length,
+      titledSections: sections.filter((section) => section.querySelector("header h2")?.textContent?.trim()).length,
+      helpedSections: sections.filter((section) => section.querySelector("header p")?.textContent?.trim()).length,
+      dirty: form.getAttribute("data-settings-dirty") === "true",
+      saveBars: [...form.querySelectorAll(".settings-form-page__save-bar")].filter(visible).map((bar) => ({
+        position: getComputedStyle(bar).position, bottom: Number.parseFloat(getComputedStyle(bar).bottom),
+        primaryCount: bar.querySelectorAll('[data-variant="default"]').length,
+        saveLabel: bar.querySelector('button[type="submit"]')?.textContent?.trim() ?? "",
+        discardLabel: bar.querySelector('button[type="button"]')?.textContent?.trim() ?? ""
+      }))
+    };
+  });
   return {
-    titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer),
+    titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer), overviewPages, retiredNotices,
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, settingsForms, visibleTableCount: visibleTables.length
   };
 }
 

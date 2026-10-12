@@ -33,7 +33,7 @@ export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges"> = {
   viewSwitches: [...viewSwitchStylePaths, "/log-admin"],
   viewSwitchSignatures: viewSwitchStylePaths,
-  primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
+  primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-comparison", "/debugging"],
   rowActions: [...catalogPaths, "/parameters"],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
@@ -43,7 +43,10 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
   sortControls: [],
   paginationControls: catalogPaths,
-  navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths]
+  navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths],
+  overviewPages: ["/parameter-home", "/log-dashboard"],
+  retiredNotices: ["/parameter-comparison", "/debugging"],
+  settingsForms: ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]
 };
 const otherPhaseTwoPaths = [
   "/knowledge-admin",

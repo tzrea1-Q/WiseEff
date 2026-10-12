@@ -1,4 +1,5 @@
 import { useTopBarActions } from "@/components/layout";
+import { OverviewPage, OverviewTile, OverviewVerdict } from "@/components/layout/OverviewPage";
 import { applyTimeWindow, deriveMetrics, isSparseSparkline } from "@/logAdminAnalytics";
 import { formatPercent } from "@/domain/format/formatPercent";
 import { STAGE_LABELS, type LogRecord, type PrototypeState } from "@/domain/prototype/types";
@@ -21,8 +22,8 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
   const completeCount = todayLogs.filter((log) => log.status === "Complete").length;
   const processingCount = todayLogs.filter((log) => log.status === "Processing").length;
   const failedLogs = todayLogs.filter((log) => log.status === "Failed");
-  const lowConfidenceLogs = todayLogs.filter((log) => log.status !== "Failed" && log.confidence > 0 && log.confidence < 90);
-  const confidenceLogs = todayLogs.filter((log) => log.status !== "Failed" && log.confidence > 0);
+  const confidenceLogs = todayLogs.filter((log) => log.status === "Complete" && log.confidence > 0);
+  const lowConfidenceLogs = confidenceLogs.filter((log) => log.confidence < 90);
   const totalCount = todayLogs.length;
   const noSampleVerdict = "暂无样本，无法判断";
   const statusSegments = [
@@ -94,17 +95,21 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
   );
 
   return (
-    <div className="log-dashboard-page">
-      <section className="log-dashboard-topic-grid" aria-label="日志分析核心指标">
+    <OverviewPage label="日志分析核心指标" summary={
+      <dl className="overview-page__tiles">
+        <OverviewTile label="今日分析" value={metrics.todayCount.value} hasSamples={totalCount > 0}
+          trend={`较昨日 ${metrics.todayCount.trendPct >= 0 ? "+" : ""}${metrics.todayCount.trendPct}%`} />
+        <OverviewTile label="平均置信度" value={`${metrics.avgConfidence.value}%`} hasSamples={confidenceLogs.length > 0}
+          trend={`较昨日 ${metrics.avgConfidence.trendPct >= 0 ? "+" : ""}${metrics.avgConfidence.trendPct} pts`} />
+        <OverviewTile label="失败文件" value={metrics.failedCount.value} hasSamples={totalCount > 0} />
+        <OverviewTile label="吞吐峰值" value={formatSize(metrics.throughputPeak.sizeMB)} hasSamples={totalCount > 0} />
+      </dl>
+    }>
         <article className="log-dashboard-topic-card topic-throughput" aria-label="今日分析">
           <div className="topic-card-head">
             <div>
               <span>处理节奏</span>
               <h2>今日分析</h2>
-            </div>
-            <div className="topic-primary-metric">
-              <strong>{metrics.todayCount.value}</strong>
-              <span>份</span>
             </div>
           </div>
 
@@ -112,7 +117,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
             {queueJudgement.tone === "risk" ? <AlertTriangle size={18} /> : queueJudgement.tone === "empty" ? <Info size={18} /> : <CheckCircle2 size={18} />}
             <div>
               <span>关键判断</span>
-              <strong>{queueJudgement.headline}</strong>
+              <OverviewVerdict hasSamples={totalCount > 0}>{queueJudgement.headline}</OverviewVerdict>
               <p>{queueJudgement.detail}</p>
             </div>
           </div>
@@ -121,7 +126,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
             <section className="topic-evidence-block">
               <div className="topic-section-head">
                 <strong>趋势洞察</strong>
-                <span>较昨日 {metrics.todayCount.trendPct >= 0 ? "+" : ""}{metrics.todayCount.trendPct}%</span>
+                <span>{totalCount > 0 ? `较昨日 ${metrics.todayCount.trendPct >= 0 ? "+" : ""}${metrics.todayCount.trendPct}%` : "暂无样本"}</span>
               </div>
               <div className="topic-line-chart" aria-hidden="true">
                 {metrics.todayCount.sparkline.map((value, index) => (
@@ -166,18 +171,14 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
               <span>完成质量</span>
               <h2>平均置信度</h2>
             </div>
-            <div className="topic-primary-metric">
-              <strong>{metrics.avgConfidence.value}</strong>
-              <span>%</span>
-            </div>
           </div>
 
-          <div className={`topic-decision-panel ${totalCount === 0 ? "is-capacity" : "is-quality"}`}>
+          <div className={`topic-decision-panel ${confidenceLogs.length === 0 ? "is-capacity" : "is-quality"}`}>
             <Info size={18} />
             <div>
               <span>关键判断</span>
-              <strong>{totalCount === 0 ? noSampleVerdict : lowConfidenceLogs.length > 0 ? "存在复核样本" : "质量表现稳定"}</strong>
-              <p>{totalCount === 0 ? "今日暂无质量样本。" : <>平均置信度 {metrics.avgConfidence.value}%，最低样本 {qualityFloor}%，较昨日 {metrics.avgConfidence.trendPct >= 0 ? "+" : ""}{metrics.avgConfidence.trendPct} pts。</>}</p>
+              <OverviewVerdict hasSamples={confidenceLogs.length > 0}>{lowConfidenceLogs.length > 0 ? "存在复核样本" : "质量表现稳定"}</OverviewVerdict>
+              <p>{confidenceLogs.length === 0 ? "今日暂无质量样本。" : <>平均置信度 {metrics.avgConfidence.value}%，最低样本 {qualityFloor}%，较昨日 {metrics.avgConfidence.trendPct >= 0 ? "+" : ""}{metrics.avgConfidence.trendPct} pts。</>}</p>
             </div>
           </div>
 
@@ -188,10 +189,10 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                 <span>{lowConfidenceLogs.length} 份需关注</span>
               </div>
               <div className="topic-quality-panel">
-                <div className="topic-score-meter" style={{ "--score": `${metrics.avgConfidence.value}%` } as CSSProperties}>
+                {confidenceLogs.length > 0 ? <div className="topic-score-meter" style={{ "--score": `${metrics.avgConfidence.value}%` } as CSSProperties}>
                   <span />
                   <strong>{metrics.avgConfidence.value}%</strong>
-                </div>
+                </div> : <p>暂无样本</p>}
                 <div className="topic-quality-bands">
                   {qualityBands.map((band) => (
                     <div key={band.label}>
@@ -229,17 +230,13 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
               <span>失败影响</span>
               <h2>失败文件</h2>
             </div>
-            <div className="topic-primary-metric">
-              <strong>{metrics.failedCount.value}</strong>
-              <span>份</span>
-            </div>
           </div>
 
           <div className={`topic-decision-panel ${totalCount === 0 ? "is-capacity" : "is-risk"}`}>
             {totalCount === 0 ? <Info size={18} /> : <AlertTriangle size={18} />}
             <div>
               <span>关键判断</span>
-              <strong>{totalCount === 0 ? noSampleVerdict : failedLogs.length > 0 ? "需要人工介入" : "无需人工介入"}</strong>
+              <OverviewVerdict hasSamples={totalCount > 0}>{failedLogs.length > 0 ? "需要人工介入" : "无需人工介入"}</OverviewVerdict>
               <p>{totalCount === 0 ? "今日暂无处理样本。" : failedLogs[0]?.failureReason ?? "所有日志均进入正常分析流程。"}</p>
             </div>
           </div>
@@ -281,16 +278,13 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
               <span>大文件压力</span>
               <h2>吞吐峰值</h2>
             </div>
-            <div className="topic-primary-metric">
-              <strong>{formatSize(metrics.throughputPeak.sizeMB)}</strong>
-            </div>
           </div>
 
           <div className="topic-decision-panel is-capacity">
             <FileText size={18} />
             <div>
               <span>关键判断</span>
-              <strong>{totalCount === 0 ? noSampleVerdict : `峰值占比 ${peakShare}%`}</strong>
+              <OverviewVerdict hasSamples={totalCount > 0}>{`峰值占比 ${peakShare}%`}</OverviewVerdict>
               <p>{totalCount === 0 ? "今日暂无容量样本。" : <>今日总解析容量 {formatSize(totalFileSize)}，峰值样本来自 {compactLogLabel(peakLog)}。</>}</p>
             </div>
           </div>
@@ -331,8 +325,6 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
           </div>
 
         </article>
-      </section>
-
-    </div>
+    </OverviewPage>
   );
 }

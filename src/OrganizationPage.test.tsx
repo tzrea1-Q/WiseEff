@@ -36,6 +36,17 @@ function renderOrganizationPage(
 }
 
 describe("OrganizationPage", () => {
+  it("discards a changed name without a server write and hides clean save actions", async () => {
+    const organizationActions = createOrganizationActions();
+    renderOrganizationPage(organizationActions);
+    const name = await screen.findByLabelText("显示名称");
+    const original = (name as HTMLInputElement).value;
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    fireEvent.change(name, { target: { value: "未保存名称" } });
+    fireEvent.click(screen.getByRole("button", { name: "放弃" }));
+    expect(name).toHaveValue(original);
+    expect(organizationActions.updateOrganization).not.toHaveBeenCalled();
+  });
   it("shows the home organization profile without the members table", async () => {
     renderOrganizationPage(createOrganizationActions());
 
@@ -95,7 +106,7 @@ describe("OrganizationPage", () => {
 
     const nameInput = await screen.findByLabelText("显示名称");
     fireEvent.change(nameInput, { target: { value: "雷泽能源" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(organizationActions.updateOrganization).toHaveBeenCalledWith({ name: "雷泽能源" })
@@ -130,7 +141,7 @@ describe("OrganizationPage", () => {
     );
 
     fireEvent.change(await screen.findByLabelText("显示名称"), { target: { value: "雷泽能源" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(organizationActions.updateOrganization).toHaveBeenCalled());
     expect(screen.getByLabelText("显示名称")).toHaveValue("雷泽能源");
@@ -144,10 +155,30 @@ describe("OrganizationPage", () => {
 
     const nameInput = await screen.findByLabelText("显示名称");
     fireEvent.change(nameInput, { target: { value: "   " } });
-    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("显示名称不能为空。");
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(nameInput).toHaveAccessibleDescription("显示名称不能为空。");
     expect(organizationActions.updateOrganization).not.toHaveBeenCalled();
+  });
+
+  it("preserves a failed-save draft for retry and discards back to the saved organization", async () => {
+    const organizationActions = createOrganizationActions();
+    vi.mocked(organizationActions.updateOrganization).mockRejectedValueOnce(new Error("网络不可用"));
+    renderOrganizationPage(organizationActions);
+    const nameInput = await screen.findByLabelText("显示名称");
+    fireEvent.change(nameInput, { target: { value: "未保存的组织名称" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByRole("alert", { name: "保存错误摘要" })).toHaveTextContent("网络不可用");
+    expect(nameInput).toHaveValue("未保存的组织名称");
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "放弃" }));
+    expect(nameInput).toHaveValue("ChargeLab");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(organizationActions.updateOrganization).toHaveBeenCalledExactlyOnceWith({ name: "未保存的组织名称" });
   });
 
   it("hides the rename form when organization actions are missing", async () => {

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { OrganizationAdminArea } from "@/application/organization/organizationAdminPath";
 import { OrganizationAdminScopeNav } from "@/components/admin/OrganizationAdminScopeNav";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
+import { SettingsFormPage, SettingsFormSection, useDirtyState } from "@/components/layout/SettingsFormPage";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError } from "@/infrastructure/http/presentError";
 import { UserPermissionsPage, type UserPermissionsPageProps } from "@/UserPermissionsPage";
@@ -36,6 +37,7 @@ export function OrganizationPage({
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [fieldError, setFieldError] = useState("");
 
   const loadOrganization = useCallback(async () => {
     if (!organizationActions) {
@@ -62,13 +64,13 @@ export function OrganizationPage({
     void loadOrganization();
   }, [area, loadOrganization]);
 
-  async function submitRename(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitRename() {
     if (!organizationActions || !organization) {
       return;
     }
     const name = displayName.trim();
     if (!name) {
+      setFieldError("显示名称不能为空。");
       setSaveError("显示名称不能为空。");
       return;
     }
@@ -90,7 +92,7 @@ export function OrganizationPage({
     }
   }
 
-  const nameUnchanged = displayName.trim() === (organization?.name ?? "");
+  const dirty = useDirtyState(displayName, organization?.name ?? "");
 
   return (
     <div className="organization-page">
@@ -99,14 +101,14 @@ export function OrganizationPage({
         <UserPermissionsPage {...memberProps} />
       ) : (
         <section className="organization-profile" aria-label="组织档案">
-          <div className="organization-profile__heading">
-            <span className="eyebrow">组织档案</span>
-            <h2>本组织</h2>
-          </div>
           {status === "loading" ? <SectionSkeleton label="正在加载组织档案" /> : null}
           {status === "error" ? <SectionError message={error} onRetry={() => void loadOrganization()} /> : null}
           {status === "ready" && organizationActions && organization ? (
-            <form className="organization-profile__form" onSubmit={submitRename}>
+            <SettingsFormPage label="组织设置" dirty={dirty} saving={saving} error={saveError}
+              onSave={() => void submitRename()} onDiscard={() => {
+                setDisplayName(organization.name); setSaveError(""); setFieldError("");
+              }}>
+              <SettingsFormSection title="本组织" help="更新组织显示名称；组织编号和创建时间保持不变。">
               <label className="organization-profile__field" htmlFor="organization-display-name">
                 <span className="organization-profile__label">显示名称</span>
                 <input
@@ -114,11 +116,13 @@ export function OrganizationPage({
                   className="organization-profile__control"
                   value={displayName}
                   maxLength={80}
-                  aria-invalid={saveError ? true : undefined}
-                  aria-describedby={saveError ? "organization-display-name-error" : undefined}
+                  disabled={saving}
+                  aria-invalid={fieldError ? true : undefined}
+                  aria-describedby={fieldError ? "organization-display-name-error" : undefined}
                   onChange={(event) => {
                     setDisplayName(event.target.value);
                     setSaveError("");
+                    setFieldError("");
                   }}
                   required
                 />
@@ -139,15 +143,13 @@ export function OrganizationPage({
                   </time>
                 </div>
               </div>
-              {saveError ? (
-                <p id="organization-display-name-error" role="alert" className="organization-profile__error">
-                  {saveError}
+              {fieldError ? (
+                <p id="organization-display-name-error" className="organization-profile__error">
+                  {fieldError}
                 </p>
               ) : null}
-              <button className="button primary organization-profile__save" type="submit" disabled={saving || nameUnchanged}>
-                {saving ? "保存中" : "保存名称"}
-              </button>
-            </form>
+              </SettingsFormSection>
+            </SettingsFormPage>
           ) : null}
         </section>
       )}
