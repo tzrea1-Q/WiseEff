@@ -1,4 +1,4 @@
-.dts-reload-candidates-results .dts-reload-candidate-table-wrap {
+.dts-reload-candidate-table-wrap {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -31,28 +31,28 @@
 
 .dts-reload-candidate-table__grid {
   table-layout: fixed;
-  min-width: 640px;
+  min-width: calc(10 * var(--space-16));
 }
 
 .dts-reload-candidate-table__grid th:last-child,
 .dts-reload-candidate-table__grid td:last-child {
-  width: 96px;
-  min-width: 96px;
-  max-width: 96px;
+  width: calc(3 * var(--space-8));
+  min-width: calc(3 * var(--space-8));
+  max-width: calc(3 * var(--space-8));
   text-align: center;
 }
 
 .dts-reload-candidate-table__select {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
+  width: calc(var(--space-10) + var(--space-1));
+  min-width: calc(var(--space-10) + var(--space-1));
+  max-width: calc(var(--space-10) + var(--space-1));
   padding-inline: var(--space-1);
   text-align: center;
   vertical-align: top;
 }
 
 .dts-reload-candidate-table__param {
-  min-width: 128px;
+  min-width: calc(2 * var(--space-16));
   vertical-align: top;
 }
 
@@ -87,15 +87,15 @@
 }
 
 .dts-reload-candidate-table__module {
-  width: 108px;
-  min-width: 100px;
+  width: calc(var(--space-16) + var(--space-10) + var(--space-1));
+  min-width: calc(var(--space-16) + var(--space-8) + var(--space-1));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .dts-reload-candidate-table__baseline {
-  min-width: 112px;
+  min-width: calc(var(--space-16) + var(--space-12));
 }
 
 .dts-reload-candidate-table__baseline code {

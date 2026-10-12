@@ -20,8 +20,9 @@ import {
 test.beforeAll(() => seedQualityRuntime());
 
 for (const path of ["/node-debugging", "/dts-reload"]) {
+  for (const theme of ["light", "dark"] as const) {
   for (const readiness of ["returning", "first-time", "connected"] as const) {
-    test(`Bridge readiness on ${path}: ${readiness}`, async ({ context, page }, testInfo) => {
+    test(`Bridge readiness on ${path}: ${readiness} (${theme})`, async ({ context, page }, testInfo) => {
       testInfo.annotations.push({ type: "setup", description: "Read-only UI fixtures replace Bridge listing, local health and target detection; the workbench and identity use the real API. This does not prove hardware pairing or device writes." });
       const blockedRequests = await installConsistencyReadGuard(context);
       await context.route("**/api/v1/device-bridges/mine", async (request) => request.fulfill({ json: {
@@ -45,10 +46,12 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
       ]);
       expect(identity.ok()).toBe(true);
       await expectUsablePage(page);
+      await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
       await settleQualityRoute(page, path, { readOnly: true });
       await settleAppToasts(page);
       await settleXiaozePopupClosed(page);
       const panel = page.getByRole("region", { name: "本地设备连接", exact: true });
+      await expect(page.locator(".navigator-workbench__context").getByRole("region", { name: "本地设备连接", exact: true })).toBeVisible();
       if (readiness === "connected") {
         await expect(panel.getByText("已连接 · 质量检查工作站", { exact: true })).toBeVisible();
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(0);
@@ -61,19 +64,20 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
           const bar = await panel.locator(".local-device-bridge-panel__readiness").boundingBox();
           expect(bar).not.toBeNull();
           expect(bar!.height).toBeLessThanOrEqual(40);
-          const firstRow = page.locator(path === "/node-debugging"
-            ? '.debug-table tbody tr:has(td[data-label="参数名称"])'
-            : ".dts-reload-candidate-table tbody tr:has(.dts-reload-candidate-table__param)").first();
-          await expect(firstRow).toBeVisible();
-          const row = await firstRow.boundingBox();
-          expect(row).not.toBeNull();
-          expect(row!.y).toBeGreaterThanOrEqual(0);
-          expect(row!.y + row!.height).toBeLessThanOrEqual(900);
         } else {
           await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toBeVisible();
         }
       }
-      await testInfo.attach(`bridge-${readiness}${path.replaceAll("/", "-")}`, {
+      if (readiness === "returning" || readiness === "connected") {
+        const firstRow = page.locator(path === "/node-debugging"
+          ? '.navigator-workbench__task tbody tr:has(td[data-label="参数名称"])'
+          : ".navigator-workbench__task tbody tr:has(.dts-reload-candidate-table__param)").first();
+        await expect(firstRow).toBeVisible();
+        await waitForFontsAndNextPaint(page);
+        const measurements = await page.evaluate(collectConsistencyMeasurements);
+        requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, path);
+      }
+      await testInfo.attach(`bridge-${readiness}-${theme}${path.replaceAll("/", "-")}`, {
         contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
       });
       if (readiness !== "connected") {
@@ -94,6 +98,7 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
       }
       expect(blockedRequests).toEqual([]);
     });
+  }
   }
 }
 

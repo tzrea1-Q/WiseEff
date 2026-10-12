@@ -141,7 +141,7 @@ export function collectConsistencyMeasurements() {
     return [{
       dom: describeElement(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
       actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
-      statuses: [...row.querySelectorAll('[data-label="重要性"],.parameter-catalog__lifecycle')].filter(visible).map(geometry)
+      statuses: [...row.querySelectorAll('[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle')].filter(visible).map(geometry)
     }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
