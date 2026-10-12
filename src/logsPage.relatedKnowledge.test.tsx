@@ -24,6 +24,7 @@ function renderLogsPage() {
 function selectCompleteLog() {
   const history = screen.getByRole("complementary", { name: "历史日志记录" });
   fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+  fireEvent.keyDown(screen.getByRole("tab", { name: "相关", exact: true }), { key: "Enter" });
 }
 
 function renderStandaloneLogsPage(options: {

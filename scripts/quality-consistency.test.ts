@@ -170,6 +170,23 @@ describe("unified review inbox structure", () => {
 });
 
 describe("view-switch collection", () => {
+  it("requires the shared navigator geometry on logs", () => {
+    expect(consistencyRoutes.find((route) => route.path === "/logs")?.required).toContain("navigatorWorkbenches");
+  });
+
+  it.each(["Complete", "Processing", "Failed"])("measures the first %s log report section and history status", (status) => {
+    const measurements = collectMarkup(`
+      <div class="navigator-workbench" data-workbench-page="logs">
+        <div class="navigator-workbench__navigation"><span class="logs-history-status">${status} · 88%</span></div>
+        <section class="navigator-workbench__task">
+          <section class="${status === "Failed" ? "log-error-alert" : "logs-conclusion-card"}">Report</section>
+        </section>
+      </div>
+    `);
+    expect(measurements.navigatorWorkbenches[0].firstRow).not.toBeNull();
+    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual([`${status} · 88%`]);
+  });
+
   it("measures the first read-only identity evidence item and protects its task scrollport", () => {
     const measurements = collectMarkup(`
       <div class="navigator-workbench"><section class="navigator-workbench__task" style="overflow-x: auto; overflow-y: auto">

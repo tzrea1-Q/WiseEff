@@ -101,6 +101,7 @@
   --space-16: 64px;
 
   --page-gutter: var(--space-6);
+  --log-analysis-label-tracking: 0.04em;
 
   /* ── Radius ── */
   --radius-sm: 6px;
@@ -6944,7 +6945,7 @@ td small {
   color: inherit;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #e7ecf7;
+  border-bottom: var(--stroke-hairline) solid var(--border);
   text-align: left;
 }
 
@@ -6954,18 +6955,21 @@ td small {
 
 .history-item:focus-visible {
   background: var(--surface-low);
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline: var(--view-switch-focus-width) solid var(--ring);
+  outline-offset: calc(var(--view-switch-focus-width) * -1);
 }
 
 .history-item.active {
-  background: #f4f7ff;
-  box-shadow: inset 3px 0 0 var(--app-primary);
+  background: var(--accent-soft);
+  box-shadow: var(--shadow-status-accent);
 }
 
 .history-item strong,
 .history-item span {
   display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .history-item span {

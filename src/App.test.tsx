@@ -3237,7 +3237,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     await waitFor(() => {
-      expect(document.querySelector(".topbar-page-actions .button.primary")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
     });
   });
 
@@ -3996,6 +3996,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.pushState(null, "", "/logs");
     fireEvent.popState(window);
 
-    expect(within(document.querySelector(".topbar") as HTMLElement).getByRole("button", { name: "上传新日志" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传新日志" })).toBeInTheDocument();
   });
 });

@@ -221,7 +221,7 @@ export function collectConsistencyMeasurements() {
       probe.remove();
       return width;
     };
-    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item');
+    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task .logs-conclusion-card, .navigator-workbench__task .log-error-alert');
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
@@ -231,7 +231,7 @@ export function collectConsistencyMeasurements() {
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
-      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count")].filter(visible).map((count) => {
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .logs-history-status")].filter(visible).map((count) => {
         const navigation = count.closest(".navigator-workbench__navigation")!;
         const navigationRect = bounds(navigation);
         const countRect = bounds(count);
