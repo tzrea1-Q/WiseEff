@@ -1,4 +1,15 @@
-import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+
+export function projectDeleteConfirmation(project: { name: string; code: string; parameterCount: number; moduleCount: number }) {
+  return {
+    title: `删除项目 ${project.name}`,
+    description: <>确认删除项目 <code>{project.code}</code>？此操作不可撤销，将移除项目基础信息
+      {project.parameterCount > 0 ? `及其 ${project.parameterCount} 个参数值` : ""}
+      {project.moduleCount > 0 ? `和 ${project.moduleCount} 个模块` : ""}。
+      共享参数库中的参数定义会保留。</>,
+    confirmLabel: "确认删除"
+  };
+}
 
 export function DeleteProjectDialog({
   open,
@@ -20,34 +31,7 @@ export function DeleteProjectDialog({
   onCancel: () => void;
 }) {
   return (
-    <ModalDialog
-      open={open}
-      onDismiss={loading ? undefined : onCancel}
-      className="confirm-dialog delete-project-dialog"
-      backdropClassName="param-admin-modal-backdrop"
-      describedBy
-    >
-      {({ titleId, descriptionId }) => (
-        <>
-          <h2 id={titleId}>
-            删除项目 <strong>{projectName}</strong>
-          </h2>
-          <p id={descriptionId}>
-            确认删除项目 <code>{projectCode}</code>？此操作不可撤销，将移除项目基础信息
-            {parameterCount > 0 ? `及其 ${parameterCount} 个参数值` : ""}
-            {moduleCount > 0 ? `和 ${moduleCount} 个模块` : ""}。
-            共享参数库中的参数定义会保留。
-          </p>
-          <div className="dialog-actions">
-            <button className="button subtle" type="button" disabled={loading} onClick={onCancel}>
-              取消
-            </button>
-            <button className="button danger" type="button" disabled={loading} onClick={onConfirm}>
-              {loading ? "删除中…" : "确认删除"}
-            </button>
-          </div>
-        </>
-      )}
-    </ModalDialog>
+    <ConfirmDialog open={open} {...projectDeleteConfirmation({ name: projectName, code: projectCode, parameterCount, moduleCount })}
+      className="delete-project-dialog" tone="danger" pending={loading} pendingLabel="删除中…" onConfirm={onConfirm} onCancel={onCancel} />
   );
 }

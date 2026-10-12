@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireOverviewGeometry, requireRetiredNotice, requireSettingsFormPresentation } from "./consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireAdminListGeometry, requireOverviewGeometry, requireRetiredNotice, requireSettingsFormPresentation } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
@@ -213,6 +213,9 @@ for (const route of routes) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }
           requirePrimaryActionColors(measurements, route.path);
+          if (route.required.includes("adminLists")) {
+            requireAdminListGeometry(measurements.adminLists, route.path);
+          }
           if (route.required.includes("rowActions")) {
             requireRowActionVisibility(measurements.rowActions, route.path);
           }
@@ -228,12 +231,12 @@ for (const route of routes) {
           }
         }).toPass({ timeout: 20_000 });
         requireCompactControlHeights(measurements, route.path, required);
-        if (routePath === "/parameters" && theme === "dark") {
+        if (["/parameters", "/parameter-admin/projects"].includes(routePath) && theme === "dark") {
           const contrast = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
-          await testInfo.attach("parameters-dark-color-contrast", {
+          await testInfo.attach(`${routePath.replaceAll("/", "-")}-dark-color-contrast`, {
             contentType: "application/json", body: Buffer.from(JSON.stringify(contrast.violations, null, 2))
           });
-          expect(contrast.violations, "dark parameter workbench must meet WCAG AA text contrast").toEqual([]);
+          expect(contrast.violations, `${routePath}: dark text must meet WCAG AA contrast`).toEqual([]);
         }
         if (route.required.includes("navigatorWorkbenches")) {
           await testInfo.attach(`navigator-workbench-expanded-${theme}`, {
@@ -256,6 +259,26 @@ for (const route of routes) {
           await testInfo.attach(`row-actions${route.path.replaceAll("/", "-")}-${theme}`, {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
+        }
+        if (route.required.includes("adminLists")) {
+          const listUrl = page.url();
+          const trigger = page.getByRole("table", { name: "项目管理列表" }).getByRole("button", { name: /：更多$/ }).first();
+          await trigger.click();
+          const deleteItem = page.getByRole("menuitem", { name: /^删除 / });
+          if (await deleteItem.isDisabled()) {
+            await expect(deleteItem).toHaveAccessibleDescription("项目需保留规范历史，不能删除；归档或处置功能尚未开放。");
+            await page.keyboard.press("Escape");
+          } else {
+            await deleteItem.click();
+            const confirmation = page.getByRole("dialog", { name: /^删除项目 / });
+            await expect(confirmation).toBeVisible();
+            await expect(confirmation).toContainText("此操作不可撤销");
+            await expect(confirmation).toContainText("共享参数库中的参数定义会保留。");
+            await page.keyboard.press("Escape");
+            await expect(confirmation).toHaveCount(0);
+          }
+          await expect(trigger).toBeFocused();
+          await expect(page).toHaveURL(listUrl);
         }
         // Routes that deep-link into a modal (e.g. identity mapping's pending work) trap focus by design,
         // so the launcher behind the dialog is intentionally unreachable by keyboard.

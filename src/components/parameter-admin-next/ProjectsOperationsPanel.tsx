@@ -9,7 +9,6 @@ import { resolveAuditQuery } from "@/application/parameters/auditQueryRuntime";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { presentError } from "@/infrastructure/http/presentError";
-import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
@@ -136,18 +135,14 @@ export function ProjectsOperationsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [formPending, setFormPending] = useState(false);
-  const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
-  const [deleteError, setDeleteError] = useState("");
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const listSearch = useMemo(() => parseParamAdminProjectsSearch(search), [search]);
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
   const rows = isApiMode ? apiRows : mockRows;
   const editingProject = rows.find((row) => row.id === editingProjectId) ?? null;
-  const deleteTarget = rows.find((row) => row.id === deleteTargetId) ?? null;
   const selectedProject = projectId ? rows.find((row) => row.id === projectId) ?? null : null;
 
   const loadProjects = useCallback(async () => {
@@ -184,7 +179,7 @@ export function ProjectsOperationsPanel({
 
   const updateListSearch = useCallback(
     (patch: Partial<ParamAdminProjectsSearch>) => {
-      onNavigate(buildParamAdminProjectsPath({ ...listSearch, ...patch }));
+      onNavigate(buildParamAdminProjectsPath({ ...listSearch, ...patch, page: patch.page ?? 1 }));
     },
     [listSearch, onNavigate]
   );
@@ -233,26 +228,18 @@ export function ProjectsOperationsPanel({
     setEditingProjectId(null);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = async (id: string) => {
+    const deleteTarget = rows.find((row) => row.id === id);
     if (!deleteTarget) {
       return;
     }
     if (isApiMode) {
-      setDeletePending(true);
-      setDeleteError("");
-      try {
-        await adminClient.deleteProject(deleteTarget.id);
-        await parameterActions?.refresh();
-        await loadProjects();
-        await refreshRecentAudits();
-        setDeleteTargetId(null);
-        if (projectId === deleteTarget.id) {
-          onNavigate("/parameter-admin/projects");
-        }
-      } catch (submitError) {
-        setDeleteError(presentError(submitError, "删除项目失败，请稍后重试。"));
-      } finally {
-        setDeletePending(false);
+      await adminClient.deleteProject(deleteTarget.id);
+      await parameterActions?.refresh();
+      await loadProjects();
+      await refreshRecentAudits();
+      if (projectId === deleteTarget.id) {
+        onNavigate("/parameter-admin/projects");
       }
       return;
     }
@@ -267,7 +254,6 @@ export function ProjectsOperationsPanel({
         recordedAt: new Date().toISOString()
       }
     });
-    setDeleteTargetId(null);
     if (projectId === deleteTarget.id) {
       onNavigate("/parameter-admin/projects");
     }
@@ -290,11 +276,6 @@ export function ProjectsOperationsPanel({
       {error ? (
         <p className="project-admin-error" role="alert">
           {error}
-        </p>
-      ) : null}
-      {deleteError ? (
-        <p className="project-admin-error" role="alert">
-          {deleteError}
         </p>
       ) : null}
 
@@ -326,10 +307,7 @@ export function ProjectsOperationsPanel({
               setFormError("");
               setEditingProjectId(id);
             }}
-            onDeleteProject={(id) => {
-              setDeleteError("");
-              setDeleteTargetId(id);
-            }}
+            onDeleteProject={confirmDelete}
             onConfigureReviewRoles={(id) =>
               onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/review-roles`)
             }
@@ -337,6 +315,23 @@ export function ProjectsOperationsPanel({
               onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/configuration`)
             }
             primaryActionLabel="配置工作台"
+            detailDrawer={<ProjectAdminFormDialog
+              open={editingProjectId !== null}
+              mode="edit"
+              initialName={editingProject?.name}
+              initialCode={editingProject?.code}
+              initialProjectId={editingProject?.id}
+              initialStatus={editingProject?.status}
+              loading={formPending}
+              error={formError}
+              onClose={() => {
+                if (!formPending) {
+                  setEditingProjectId(null);
+                  setFormError("");
+                }
+              }}
+              onSubmit={submitForm}
+            />}
           />
         </>
       ) : null}
@@ -374,41 +369,6 @@ export function ProjectsOperationsPanel({
         />
       ) : null}
 
-      <ProjectAdminFormDialog
-        open={editingProjectId !== null}
-        mode="edit"
-        initialName={editingProject?.name}
-        initialCode={editingProject?.code}
-        initialProjectId={editingProject?.id}
-        initialStatus={editingProject?.status}
-        loading={formPending}
-        error={formError}
-        onClose={() => {
-          if (!formPending) {
-            setEditingProjectId(null);
-            setFormError("");
-          }
-        }}
-        onSubmit={submitForm}
-      />
-
-      <DeleteProjectDialog
-        loading={deletePending}
-        open={deleteTarget !== null}
-        projectCode={deleteTarget?.code ?? ""}
-        projectName={deleteTarget?.name ?? ""}
-        parameterCount={deleteTarget?.parameterCount ?? 0}
-        moduleCount={deleteTarget?.moduleCount ?? 0}
-        onCancel={() => {
-          if (!deletePending) {
-            setDeleteTargetId(null);
-            setDeleteError("");
-          }
-        }}
-        onConfirm={() => {
-          void confirmDelete();
-        }}
-      />
     </section>
   );
 }

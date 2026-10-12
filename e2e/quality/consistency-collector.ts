@@ -141,7 +141,7 @@ export function collectConsistencyMeasurements() {
     return [{
       dom: describeElement(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
       actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
-      statuses: [...row.querySelectorAll('[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle')].filter(visible).map(geometry)
+      statuses: [...row.querySelectorAll('[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle,[data-label="状态"]')].filter(visible).map(geometry)
     }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
@@ -277,6 +277,26 @@ export function collectConsistencyMeasurements() {
       }))
     };
   });
+  const adminLists = elements(".admin-list-page").map((list) => {
+    const measure = (selector: string) => {
+      const element = list.querySelector(selector);
+      return element && visible(element) ? bounds(element) : null;
+    };
+    const rows = [...list.querySelectorAll("tbody tr")].filter((row) => visible(row) && !row.querySelector("td[colspan]"));
+    return {
+      root: bounds(list), header: measure(":scope > .admin-list-page__header"),
+      primaryAction: measure('.admin-list-page__header [data-primary-action="true"],.admin-list-page__header [data-slot="button"][data-variant="default"],.admin-list-page__header .button.primary'),
+      filters: measure(":scope > .admin-list-page__filters"), table: measure("table"),
+      tableCount: [...list.querySelectorAll("table")].filter(visible).length,
+      firstRow: rows[0] ? bounds(rows[0]) : null,
+      emptyActionCount: [...list.querySelectorAll("td .section-empty button, td .section-empty a")].filter(visible).length,
+      rows: rows.map((row) => ({ actions: [...row.querySelectorAll('td[data-label="操作"] button,td[data-label="操作"] a')].filter(visible).map((action) => ({
+        height: action.getBoundingClientRect().height, overflow: action.getAttribute("aria-haspopup") === "menu",
+        destructive: action.matches('[data-destructive="true"],.danger,[data-variant="destructive"]')
+          || /^(删除|注销|撤销)(?:\s|$)/.test(action.textContent?.trim() || action.getAttribute("aria-label") || "")
+      })) }))
+    };
+  });
   const overviewPages = elements(".overview-page").map((overview) => {
     const measureSlot = (selector: string) => {
       const slot = overview.querySelector(selector);
@@ -330,7 +350,7 @@ export function collectConsistencyMeasurements() {
   return {
     titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer), overviewPages, retiredNotices,
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, settingsForms, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, adminLists, settingsForms, visibleTableCount: visibleTables.length
   };
 }
 
