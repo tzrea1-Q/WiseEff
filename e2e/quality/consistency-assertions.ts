@@ -1,10 +1,9 @@
 import type { ConsistencyMeasurements, ConsistencyCategory } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
-import { isProjectConfigurationWorkbenchPath } from "../../src/application/project-configuration/workbenchPath";
 
-export function requirePageGutter(pageEdges: ConsistencyMeasurements["pageEdges"], routePath: string) {
+export function requirePageGutter(pageEdges: ConsistencyMeasurements["pageEdges"], routePath: string, footerPresent: boolean) {
   requireMeasuredCategories({ pageEdges }, ["pageEdges"], routePath);
-  const required = ["shell", "content", "page", "toolbar", ...(!isProjectConfigurationWorkbenchPath(routePath.split("?")[0]) ? ["footer"] : [])];
+  const required = ["shell", "content", "page", "toolbar", ...(footerPresent ? ["footer"] : [])];
   for (const region of required) {
     if (!pageEdges.some((edge) => edge.region === region)) {
       throw new Error(`${routePath}: missing page-gutter region: ${region}`);

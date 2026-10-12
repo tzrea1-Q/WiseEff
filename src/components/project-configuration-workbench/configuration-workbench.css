@@ -5,6 +5,11 @@
   overflow: hidden;
 }
 
+.main-content:has(.param-admin-shell--configuration-workbench) > .page-content {
+  height: 100%;
+  min-height: 0;
+}
+
 .param-admin-shell--configuration-workbench {
   height: 100%;
   min-height: 0;
@@ -143,7 +148,7 @@
 .configuration-workbench__config-select select {
   min-width: 0;
   width: 100%;
-  padding: 0 var(--space-6) 0 var(--space-2);
+  padding: 0 calc(var(--space-6) + var(--space-1)) 0 var(--space-2);
   font-size: var(--text-sm);
 }
 
@@ -770,7 +775,7 @@
   padding: 0;
   overflow: hidden;
   color: var(--configuration-source-text);
-  font: var(--text-sm) / var(--leading-sm) var(--font-mono);
+  font: var(--text-sm) / 1.75 var(--font-code);
   tab-size: 2;
 }
 
@@ -854,7 +859,7 @@
   justify-items: center;
   gap: var(--space-2);
   min-height: 180px;
-  padding: var(--space-6);
+  padding: calc(var(--space-6) + var(--space-1));
   text-align: center;
 }
 
@@ -1281,7 +1286,7 @@
   grid-template-rows: 44px minmax(0, 1fr);
   width: 100%;
   height: min(250px, 40%);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--shadow-sheet-above);
 }
 
 .configuration-workbench__tasks > .configuration-workbench__task-toggle {

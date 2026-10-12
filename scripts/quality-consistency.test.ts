@@ -90,22 +90,38 @@ describe("shell-owned page gutter", () => {
   }));
 
   it("aligns every content, toolbar and footer edge to the shell token within one pixel", () => {
-    expect(() => requirePageGutter(edges(), "/audit")).not.toThrow();
-    expect(() => requirePageGutter(edges().map((edge) => ({ ...edge, left: 281 })), "/audit")).not.toThrow();
+    expect(() => requirePageGutter(edges(), "/audit", true)).not.toThrow();
+    expect(() => requirePageGutter(edges().map((edge) => ({ ...edge, left: 281 })), "/audit", true)).not.toThrow();
     for (const left of [282, 304, NaN, Infinity]) {
-      expect(() => requirePageGutter(edges().map((edge) => edge.region === "page" ? { ...edge, left } : edge), "/audit"))
+      expect(() => requirePageGutter(edges().map((edge) => edge.region === "page" ? { ...edge, left } : edge), "/audit", true))
         .toThrow(/gutter/);
     }
-    expect(() => requirePageGutter(edges().map((edge) => ({ ...edge, expectedLeft: NaN })), "/audit")).toThrow(/gutter/);
+    expect(() => requirePageGutter(edges().map((edge) => ({ ...edge, expectedLeft: NaN })), "/audit", true)).toThrow(/gutter/);
   });
 
-  it("fails on empty or missing regions while preserving the configuration workbench's omitted footer", () => {
-    expect(() => requirePageGutter([], "/audit")).toThrow(/missing consistency measurements/);
+  it("fails on empty or missing regions and exempts only a footer absent from the DOM", () => {
+    expect(() => requirePageGutter([], "/audit", false)).toThrow(/missing consistency measurements/);
     for (const region of ["shell", "content", "page", "toolbar", "footer"]) {
-      expect(() => requirePageGutter(edges().filter((edge) => edge.region !== region), "/audit")).toThrow(/missing.*gutter/);
+      expect(() => requirePageGutter(edges().filter((edge) => edge.region !== region), "/audit", true)).toThrow(/missing.*gutter/);
     }
-    expect(() => requirePageGutter(edges().filter((edge) => edge.region !== "footer"), "/parameter-admin/projects/aurora/configuration"))
+    expect(() => requirePageGutter(edges().filter((edge) => edge.region !== "footer"), "/parameter-admin/projects/aurora", false))
       .not.toThrow();
+    expect(() => requirePageGutter(edges().filter((edge) => edge.region !== "footer"), "/parameter-admin/projects/aurora/configuration", true))
+      .toThrow(/missing.*footer/);
+    expect(() => requirePageGutter(edges().map((edge) => edge.region === "footer" ? { ...edge, left: 304 } : edge), "/parameter-admin/projects/aurora/configuration", true))
+      .toThrow(/gutter/);
+    expect(() => requirePageGutter(edges().filter((edge) => edge.region !== "toolbar" && edge.region !== "footer"), "/parameter-admin/projects/aurora", false))
+      .toThrow(/missing.*toolbar/);
+  });
+
+  it("records footer DOM presence even when a present footer is hidden", () => {
+    expect(collectMarkup('<div class="page-content"><section>Page</section></div>').footerPresent).toBe(false);
+    const measured = collectMarkup('<div class="page-content"><section>Page</section></div><footer class="app-footer" style="display:none">Footer</footer>');
+    expect(measured.footerPresent).toBe(true);
+    expect(measured.pageEdges.some((edge) => edge.region === "footer")).toBe(true);
+    const misplaced = collectMarkup('<div class="page-content"><section>Page</section></div>', '<footer class="app-footer">Footer</footer>');
+    expect(misplaced.footerPresent).toBe(true);
+    expect(misplaced.pageEdges.some((edge) => edge.region === "footer")).toBe(true);
   });
 
   it("collects page insets, shell chrome, portal titles and disabled button typography", () => {
@@ -118,6 +134,7 @@ describe("shell-owned page gutter", () => {
     expect(measured.titles.map((title) => title.fontSize)).toEqual([16, 14, 20, 16]);
     expect(measured.titles.filter((title) => title.pageTitle)).toEqual([{ dom: "div.topbar-title", fontSize: 20, pageTitle: true }]);
     expect(measured.buttons.map((button) => button.fontSize)).toEqual([12, 13]);
+    expect(measured.footerPresent).toBe(true);
     expect(measured.pageEdges.map((edge) => [edge.region, edge.left])).toEqual([
       ["shell", 100], ["content", 100], ["page", 124], ["toolbar", 100], ["footer", 100]
     ]);

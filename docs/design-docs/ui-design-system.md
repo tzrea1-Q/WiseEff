@@ -173,7 +173,7 @@ Exactly four levels; shadows are never invented inline:
 | `--shadow-3` | Dialogs, sheets |
 | `--ring` | Focus ring: `0 0 0 2px` accent at fixed alpha, optionally offset by surface color |
 
-Status rails (`--shadow-status-warning`, `--shadow-status-accent`, `--shadow-status-accent-light`) and outline/focus/pulse recipes (`--ring-soft`, `--ring-outline`, `--ring-secondary`, `--ring-accent`, `--ring-pulse-start`, `--ring-pulse-end`) live in the same root token block. These are semantic strokes, not additional elevation levels; page CSS must not invent their geometry or colors inline.
+Status rails (`--shadow-status-warning`, `--shadow-status-accent`, `--shadow-status-accent-light`) and outline/focus/pulse recipes (`--ring-soft`, `--ring-outline`, `--ring-secondary`, `--ring-accent`, `--ring-pulse-start`, `--ring-pulse-end`) live in the same root token block. These are semantic strokes, not additional elevation levels; page CSS must not invent their geometry or colors inline. The bottom-anchored configuration task sheet uses the directional `--shadow-sheet-above` recipe so its shadow falls onto the content above it, not below the viewport.
 
 ### Motion
 
@@ -279,9 +279,11 @@ Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, 
 
 The app shell owns `--page-gutter` (24px on PC). `.main-content` and `.topbar` consume it; `.page-content` wraps routed app content without an inset, and the app footer remains its shell sibling. Page roots add no outer padding or margin. Cards and workbench panes retain their internal padding; do not remove those interior insets or replace page-local CSS with global overrides. The configuration workbench keeps its existing omitted footer.
 
+The configuration content wrapper preserves the full-height chain into the bounded panes. Its source canvas keeps the existing `--font-code` stack at `--text-sm` with a 1.75 line-height ratio (12/21px); token migration must not change source-line geometry. Compact shell bottom clearance is 120px on the 4px grid, not a single 64px spacing step. Screen-reader-only chart fallback text uses a negative `--stroke-hairline` margin, not negative content spacing.
+
 Expanded and collapsed shared navigation use the 4px spacing tokens; ordinary items have a 40px minimum height, 8px vertical / 12px horizontal padding and a 12px icon-label gap. Active items use the named `--shadow-1` tier in both themes. No custom active shadows or off-grid navigation spacing are permitted.
 
-The consistency harness compares the shell's token-defined left edge with routed content, page-root content, TopBar and footer edges (±1px) on every consistency route. Missing regions or non-finite measurements fail; only the existing configuration-workbench footer omission is exempt. Runtime screenshots and quality/acceptance runs remain required, not replaced by static tests.
+The consistency harness compares the shell's token-defined left edge with routed content, page-root content, TopBar and footer edges (±1px) on every consistency route. Missing regions or non-finite measurements fail. The footer is optional only when no shell footer exists in the DOM (including legacy project links redirected to the configuration workbench); every present footer is measured and checked, even if hidden. Runtime screenshots and quality/acceptance runs remain required, not replaced by static tests.
 
 ### Navigator workbench
 

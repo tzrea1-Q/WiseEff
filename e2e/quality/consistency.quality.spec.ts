@@ -173,7 +173,7 @@ for (const route of routes) {
           }
           requireMeasuredCategories(measurements, required, route.path);
           requireTypographyScale(measurements, route.path);
-          requirePageGutter(measurements.pageEdges, route.path);
+          requirePageGutter(measurements.pageEdges, route.path, measurements.footerPresent);
           if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
             requireReviewInboxStructure(measurements, route.path);
           }

@@ -90,6 +90,9 @@ describe("ProjectReviewRolesPanel", () => {
     expect(screen.getByText("硬件 MDE 池")).toBeInTheDocument();
     expect(screen.getByText("1 人就绪")).toBeInTheDocument();
     expect(screen.getByText("软件 MDE 池")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "组织成员职责授权" })).toHaveStyle({
+      fontSize: "var(--text-lg)", lineHeight: "var(--leading-lg)"
+    });
   });
 
   it("disables new role checkboxes for inactive users", async () => {

@@ -10,6 +10,7 @@ export function collectConsistencyMeasurements() {
   const role = (element: Element) => element.getAttribute("role")
     ?? (({ BUTTON: "button", A: "link", LI: "listitem", NAV: "navigation" } as Record<string, string>)[element.tagName] ?? null);
   const main = document.querySelector("main, .main-content");
+  const footer = document.querySelector(".app-footer");
   const elements = (selector: string) => [...(main?.querySelectorAll(selector) ?? [])].filter(visible);
   const bounds = (element: Element) => {
     const rect = element.getBoundingClientRect();
@@ -54,8 +55,7 @@ export function collectConsistencyMeasurements() {
     }
     const toolbar = document.querySelector(".topbar");
     if (toolbar && visible(toolbar)) pageEdges.push(measureEdge(toolbar, "toolbar"));
-    const footer = main.querySelector(":scope > .app-footer");
-    if (footer && visible(footer)) pageEdges.push(measureEdge(footer, "footer"));
+    if (footer) pageEdges.push(measureEdge(footer, "footer"));
   }
   const viewSwitchElements = elements([
     '[role="tablist"] [role="tab"]', '[role="radiogroup"] [role="radio"]',
@@ -276,7 +276,7 @@ export function collectConsistencyMeasurements() {
     };
   });
   return {
-    titles, buttons, typeScale, pageEdges,
+    titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer),
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
     moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, visibleTableCount: visibleTables.length
   };

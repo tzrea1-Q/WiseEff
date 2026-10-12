@@ -6,6 +6,42 @@ import { scanCssContent } from "../../scripts/check-ui-standards";
 const styles = readStylesheet("src/styles.css");
 
 describe("shared consistency contracts", () => {
+  it("keeps all workbench table and shared column-filter typography on scale, including inherited header controls", () => {
+    const rules = parseCssRules(styles).filter((rule) => /dts-parameter-workbench-table|parameters-column-filter/.test(rule.selector));
+    const fontRules = rules.filter((rule) => rule.declarations["font-size"]);
+    expect(fontRules.length).toBeGreaterThan(0);
+    expect(fontRules.filter((rule) => !/^var\(--text-(?:xs|sm|base|md|lg|xl|2xl)\)$/.test(rule.declarations["font-size"]))
+      .map((rule) => `${rule.selector}: ${rule.declarations["font-size"]}`)).toEqual([]);
+    expect(declarationsFor(styles, ".dts-parameter-workbench-table__head")["font-size"]).toBe("var(--text-sm)");
+    expect(declarationsFor(styles, ".dts-parameter-workbench-table")["font-size"]).toBe("var(--text-base)");
+    expect(declarationsFor(styles, ".parameters-column-filter")["font-size"]).toBe("var(--text-xs)");
+    expect(declarationsFor(styles, ".parameters-column-filter__trigger")["font-size"]).toBe("var(--text-xs)");
+    expect(declarationsFor(styles, ".parameters-column-filter__trigger span")["font-size"]).toBe("var(--text-xs)");
+    expect(declarationsFor(styles, ".dts-parameter-workbench-table__provenance small")["font-size"]).toBe("var(--text-xs)");
+  });
+  it("preserves the bounded configuration pane height through the routed content wrapper", () => {
+    const configuration = readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css");
+    const content = declarationsFor(configuration, ".main-content:has(.param-admin-shell--configuration-workbench) > .page-content");
+    expect(content.height).toBe("100%");
+    expect(content["min-height"]).toBe("0");
+    for (const selector of [".param-admin-shell--configuration-workbench", ".project-admin-layout--configuration-workbench", ".configuration-workbench"]) {
+      expect(declarationsFor(configuration, selector).height).toBe("100%");
+    }
+    expect(declarationsFor(configuration, ".configuration-workbench")["grid-template-rows"]).toBe("auto minmax(0, 1fr) 44px");
+  });
+
+  it("preserves source canvas metrics, full-grid insets and the upward task dock shadow", () => {
+    const configuration = readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css");
+    expect(declarationsFor(configuration, ".configuration-workbench__config-select select").padding).toBe("0 calc(var(--space-6) + var(--space-1)) 0 var(--space-2)");
+    expect(declarationsFor(configuration, ".configuration-workbench__source-state").padding).toBe("calc(var(--space-6) + var(--space-1))");
+    expect(declarationsFor(configuration, ".configuration-workbench__code").font).toBe("var(--text-sm) / 1.75 var(--font-code)");
+    expect(declarationsFor(styles, ":root")["--font-code"]).toBe('"SFMono-Regular", Consolas, "Liberation Mono", monospace');
+    expect(declarationsFor(configuration, ".configuration-workbench__tasks.is-open")["box-shadow"]).toBe("var(--shadow-sheet-above)");
+    expect(declarationsFor(styles, ":root")["--shadow-sheet-above"]).toBe("0 -12px 30px color-mix(in srgb, var(--text) 16%, transparent)");
+    const compactMain = parseCssRules(styles).find((rule) => rule.selector === ".main-content" && rule.atRules.length > 0);
+    expect(compactMain?.declarations.padding).toBe("var(--space-4) var(--space-3) calc(var(--space-16) + var(--space-12) + var(--space-2))");
+    expect(declarationsFor(readStylesheet("src/features/parameter-home/parameter-home.css"), ".parameter-home__chart-fallback").margin).toBe("calc(-1 * var(--stroke-hairline))");
+  });
   it("keeps entire touched page stylesheets and row actions free of raw visual values", () => {
     const home = declarationsFor(readStylesheet("src/features/parameter-home/parameter-home.css"), ".parameter-home");
     expect(home["--ph-panel-radius"]).toBe("var(--radius-lg)");
@@ -80,6 +116,19 @@ describe("shared consistency contracts", () => {
       ".dts-node-tree-view__item code, .dts-structure-browser-panel__detail h4 code",
       ".dts-structure-browser-panel__detail h4",
       ".structured-value-editor button",
+      ".dts-parameter-workbench-table__sort",
+      ".dts-parameter-workbench-table",
+      ".dts-parameter-workbench-table__head",
+      ".dts-parameter-workbench-table__provenance",
+      ".dts-parameter-workbench-table__provenance small",
+      ".dts-parameter-workbench-table__module small",
+      ".dts-parameter-workbench-table__identity small",
+      ".dts-parameter-workbench-table__governance-badge, .dts-parameter-workbench-table__draft-badge",
+      ".dts-parameter-workbench-table__enablement-notice",
+      '.dts-parameter-workbench-table__row > [role="cell"]::before',
+      ".parameters-column-filter",
+      ".parameters-column-filter__trigger",
+      ".parameters-column-filter__trigger span",
       ".config-set-baseline-panel__section h3",
       ".governance-confirm-dialog h2, .delete-project-dialog h2",
       ".structured-diff-view__file, .structured-diff-view__changeset h4",
@@ -166,6 +215,7 @@ describe("shared consistency contracts", () => {
   });
 
   it("keeps specialized toolbar, select and line-number actions on the same scale", () => {
+    expect(declarationsFor(styles, ".dts-parameter-workbench-table__sort")["font-size"]).toBe("var(--text-xs)");
     for (const selector of [".topbar .topbar-page-actions .project-chip__trigger", '.reload-configuration-form [data-slot="select-trigger"]', ".project-init-source-empty-toggle"]) {
       expect(declarationsFor(styles, selector)["font-size"]).toMatch(/^var\(--text-(?:xs|sm|base|md|lg|xl|2xl)\)$/);
     }
