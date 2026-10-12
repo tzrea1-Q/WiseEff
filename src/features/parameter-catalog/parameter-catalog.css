@@ -1141,7 +1141,7 @@ button.parameter-catalog__tree-toggle:hover {
 
 .parameter-catalog__history h2 {
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: var(--text-md);
 }
 
 .parameter-catalog__history ul {

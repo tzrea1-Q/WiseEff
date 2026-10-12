@@ -133,6 +133,8 @@
 
 不允许其它 `font-size` 值。`letter-spacing` 只允许 `0`（正文）与 `0.04em`（仅大写 eyebrow）。
 
+TopBar 使用 `--text-xl` / `--leading-xl`（20/28）。应用内标题和按钮文案只使用这套字号，包括旧控件与通过 Portal 渲染的确认弹窗。一致性采集器检查每个可见标题和按钮，要求恰好一个 TopBar 标题，并在所有一致性路由的 1440×900 明暗主题检查中拒绝空采集或刻度外字号。公开营销首页的排版不属于应用壳层契约。
+
 ### 间距
 
 4px 栅格。令牌 `--space-1..-16` = 4、8、12、16、20、24、32、40、48、64。默认:
@@ -171,6 +173,8 @@
 | `--shadow-3` | 弹窗、侧板 |
 | `--ring` | 焦点环:`0 0 0 2px` 固定透明度的 accent,可按表面色偏移 |
 
+状态侧线（`--shadow-status-warning`、`--shadow-status-accent`、`--shadow-status-accent-light`）以及轮廓、焦点和脉冲配方（`--ring-soft`、`--ring-outline`、`--ring-secondary`、`--ring-accent`、`--ring-pulse-start`、`--ring-pulse-end`）统一定义在根令牌块。这些是语义描边，不是新增的层次等级；页面 CSS 不得内联发明其尺寸和颜色。
+
 ### 动效
 
 | 令牌 | 值 | 用途 |
@@ -184,6 +188,8 @@
 规则:禁用 `ease` 关键字;UI 过渡不超过 400ms;入场只动 opacity/transform;所有无限循环动画必须带 `prefers-reduced-motion: reduce` 回退。
 
 ### z-index
+
+页面内容内部使用命名子阶梯：`--z-content-base`（0）、`--z-content`（1）、`--z-content-sticky`（2）、`--z-content-panel`（3）、`--z-content-toolbar`（4）、`--z-content-menu`（5）、`--z-content-overlay`（10）。它保留工作台、树、检查器和底部任务区的现有叠放关系，全部低于应用级吸顶层（20）。
 
 `:root` 中只声明一条阶梯；组件 CSS 或 TSX 里的裸数字一律禁止。浮层刻度为 `--z-xiaoze-fab: 1100`、`--z-xiaoze-popup: 1140`、`--z-modal-backdrop: 1150`、`--z-modal-backdrop-nested: 1160`、`--z-xiaoze-approval: 1250`、`--z-toast: 1350`，吸顶头、侧边栏、下拉/浮层等应用层令牌位于其下。无模态小泽窗口刻意低于业务弹窗，小泽审批层和 toast 刻意高于业务弹窗。「+1 逃生舱」（40 对 41、60 对 61）是缺陷。
 
@@ -209,6 +215,26 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 - 只有一套实现。变体:`primary`（accent 实心）、`secondary`（表面 + 边框）、`ghost`（透明）、`danger`（危险实心或描边）、`link`（文本)。尺寸:`sm` 28px、`md` 32px（默认）、`lg` 36px;纯图标按钮为方形、内含居中 16px 图标。
 - `docs/FRONTEND.md` § Button And Action Styling 的完整视觉契约继续生效。当前 42 个作用域各自覆写 `.button` 几何属于缺陷,按计划迁移。
 - 每个视图只有一个主按钮。
+
+旧 `.button` 和共享 `Button` 使用同一张基于现有间距与字号令牌的 CSS 尺寸表，不再分别定义 Tailwind 与 CSS 尺寸：
+
+| 尺寸 | 高度 | 字号/行高 | 水平内边距 |
+| --- | --- | --- | --- |
+| `xs`（共享辅助控件） | 24px | 11/16 | 4px |
+| `sm`（行操作） | 28px | 12/18 | 8px |
+| `md`（共享 `default`） | 32px | 13/20 | 12px |
+| `lg` | 36px | 13/20 | 16px |
+
+尺寸表只在共享 `.button-size-*` 规则及并列的旧选择器中定义一次。图标变体使用对应高度的方形边长、零内边距；图标为 16px，`xs` 图标为 12px。小控件内容间距为 4px，默认和大控件为 8px。两种实现均使用中等圆角和 600 字重。页面不得重定义这些几何值。
+
+### 行操作
+
+`src/components/common/RowActionMenu.tsx` 是后续列表迁移共用的行操作契约。每行至多展示一个文本操作（`primaryAction`）和一个有名称的「更多」入口。可见操作与入口使用 `Button size="sm" variant="ghost"`，菜单项使用相同的小尺寸。本次契约工单不迁移旧页面的行操作。
+
+- `label` 为辅助技术标识该行的操作组和菜单。`items` 提供稳定 ID、文案、可选禁用状态和 `onSelect` 回调。空菜单集合不渲染「更多」。
+- Radix DropdownMenu 提供 menu/menuitem 语义、游走焦点、方向键、Home/End、输入定位、Escape、点击外部关闭和焦点返回。菜单通过 Portal 渲染，不被表格滚动区域裁切。
+- 危险项必须声明 `destructive: true`，并提供包含标题、影响范围说明和确认文案的 `confirmation`；可选风险勾选复用 ConfirmDialog 契约。危险项不能成为可见文本操作，只在菜单中显示红字，不在表格行中放实心红按钮。选择危险项只打开 `ConfirmDialog`。
+- 仅在用户确认后执行危险回调。提交中禁用重复提交和关闭；失败保留弹窗并显示经共享格式化器处理的中文错误，允许重试；取消和成功后焦点返回「更多」。普通操作的结果仍由调用方处理。
 
 ### 输入与选择
 
@@ -248,6 +274,14 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 色带批准值（P3）:`--chart-1` 别名 `--accent`;`--chart-2` teal `#0e7490`、`--chart-3` violet `#7c3aed`、`--chart-4` sky `#0284c7`（即 `--info` 色相）、`--chart-5` slate `#64748b`——浅色下对 `--surface` 全部 ≥3:1,五个中四个 ≥4.5:1。深色主题将 `--chart-2..5` 提亮一档（`#22b8cf` / `#a78bfa` / `#38bdf8` / `#94a3b8`）,`--chart-1` 跟随深色 accent。请经由 `src/domain/format/chartTheme.ts` 消费色带（系列色/状态色/网格线/坐标刻度/tooltip 样式以 `var()` 引用导出）,不要硬编码取值,使图表随激活主题切换。
 
 ## 布局与页面结构
+
+### 壳层边距与导航
+
+应用壳层拥有 `--page-gutter`（PC 为 24px）。`.main-content` 与 `.topbar` 消费此令牌；`.page-content` 无额外内边距地包裹路由内容，应用页脚仍是它在壳层中的同级区域。页面根容器不添加外层内边距或外边距。卡片与工作台面板保留内部留白；不要删除这些内部内边距，也不要用全局覆写替代页面局部 CSS。配置工作台保留现有的不显示页脚行为。
+
+共享导航展开和折叠状态均使用 4px 间距令牌；普通导航项最小高度为 40px，垂直/水平内边距为 8px/12px，图标与标签间距为 12px。明暗主题的活动项都使用命名的 `--shadow-1` 层级，不允许自定义活动阴影或刻度外导航间距。
+
+一致性测试在每条路由比较壳层令牌定义的左边缘与路由内容、页面根内容、TopBar、页脚左边缘（±1px）。区域缺失或非有限测量值均失败；仅豁免配置工作台现有的页脚缺省。仍需真实运行时截图与质量/验收测试，静态测试不能替代它们。
 
 ### 导航工作台
 

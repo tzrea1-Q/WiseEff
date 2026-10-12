@@ -361,7 +361,7 @@ export function KnowledgePage({
     : undefined;
 
   return (
-    <div className="knowledge-page flex flex-col gap-5 p-6">
+    <div className="knowledge-page flex flex-col gap-5">
       <PageInsightBar
         variant="info"
         headline={loading ? "知识条目统计加载中…" : listError ? "知识条目统计暂不可用" : `已发布 ${publishedCount} 条 · 草稿 ${draftCount} 条`}

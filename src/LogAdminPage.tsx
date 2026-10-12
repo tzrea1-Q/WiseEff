@@ -1322,7 +1322,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   );
 
   return (
-    <div className="log-admin-page flex flex-col gap-5 p-6">
+    <div className="log-admin-page flex flex-col gap-5">
       {insight && !insightDismissed ? (
         <PageInsightBar
           variant={insight.severity}

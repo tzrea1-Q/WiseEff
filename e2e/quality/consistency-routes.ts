@@ -30,7 +30,7 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/user-permissions": ["section", "tabs"]
 };
 export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
-const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls"> = {
+const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges"> = {
   viewSwitches: [...viewSwitchStylePaths, "/log-admin"],
   viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
@@ -46,6 +46,7 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   navigatorWorkbenches: ["/parameters", ...catalogPaths]
 };
 const otherPhaseTwoPaths = [
+  "/knowledge-admin",
   "/log-admin", "/parameter-admin/projects/aurora", "/parameter-admin/projects/aurora/config-sets",
   "/parameter-admin/projects/aurora/configuration", "/parameter-admin/projects/aurora/conflicts",
   "/parameter-admin/projects/aurora/files", "/parameter-admin/projects/aurora/structure"
@@ -55,6 +56,7 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
   .map((path) => ({
     path,
     required: [
+      "titles", "buttons", "typeScale", "pageEdges",
       "xiaozeLaunchers",
       ...(Object.keys(applicablePaths) as (keyof typeof applicablePaths)[]).filter((category) => applicablePaths[category].includes(path))
     ] satisfies ConsistencyCategory[]

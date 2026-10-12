@@ -1187,40 +1187,42 @@ function AppShell({
             >
               {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
-              <PageRouter
-                page={page}
-                onFeedback={() => setFeedbackOpen(true)}
-                state={state}
-                dispatch={dispatch}
-                onNavigate={navigate}
-                onNewProject={() => setProjectInitOpen(true)}
-                debuggingActions={debuggingActions}
-                logActions={logActions}
-                parameterActions={parameterActions}
-                runtime={appRuntime}
-                knowledgeCapability={knowledgeCapability}
-                canStartDtsReload={canStartDtsReload}
-                canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
-                runtimeMode={runtimeMode}
-                search={search}
-                dashboardState={dashboardState}
-                dashboardRuntime={dashboardRuntime}
-                onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
-                onDashboardDimensionChange={(dimension) =>
-                  dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
-                }
-                onDashboardOverviewScopeChange={(scope) =>
-                  dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
-                }
-                onDashboardProjectChange={(projectId) =>
-                  dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
-                }
-                onAuthContextRefresh={hydrateAuthContext}
-                organizationId={organizationId}
-                sessionPermissions={apiAuthPermissions}
-                sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
-                DebuggingAdminPage={DebuggingAdminPageWithRuntime}
-              />
+              <div className="page-content">
+                <PageRouter
+                  page={page}
+                  onFeedback={() => setFeedbackOpen(true)}
+                  state={state}
+                  dispatch={dispatch}
+                  onNavigate={navigate}
+                  onNewProject={() => setProjectInitOpen(true)}
+                  debuggingActions={debuggingActions}
+                  logActions={logActions}
+                  parameterActions={parameterActions}
+                  runtime={appRuntime}
+                  knowledgeCapability={knowledgeCapability}
+                  canStartDtsReload={canStartDtsReload}
+                  canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
+                  runtimeMode={runtimeMode}
+                  search={search}
+                  dashboardState={dashboardState}
+                  dashboardRuntime={dashboardRuntime}
+                  onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
+                  onDashboardDimensionChange={(dimension) =>
+                    dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                  }
+                  onDashboardOverviewScopeChange={(scope) =>
+                    dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
+                  }
+                  onDashboardProjectChange={(projectId) =>
+                    dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
+                  }
+                  onAuthContextRefresh={hydrateAuthContext}
+                  organizationId={organizationId}
+                  sessionPermissions={apiAuthPermissions}
+                  sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
+                  DebuggingAdminPage={DebuggingAdminPageWithRuntime}
+                />
+              </div>
               {showsApplicationFooter ? (
                 <AppFooter config={appFooterConfig} onFeedback={() => setFeedbackOpen(true)} />
               ) : null}

@@ -133,6 +133,8 @@ Type scale (px values; one `rem` basis is acceptable, but no mixing per surface)
 
 No other `font-size` values. `letter-spacing` is limited to `0` (body) and `0.04em` (uppercase eyebrows only).
 
+The TopBar uses `--text-xl` / `--leading-xl` (20/28). App headings and button labels consume this scale, including legacy controls and portalled confirmations. The consistency collector checks every visible heading and button, requires one TopBar title, and rejects missing or off-scale measurements on every consistency route in light and dark at 1440×900. Public marketing typography stays outside this app-shell contract.
+
 ### Spacing
 
 4px grid. Tokens `--space-1..-16` = 4, 8, 12, 16, 20, 24, 32, 40, 48, 64. Defaults:
@@ -171,6 +173,8 @@ Exactly four levels; shadows are never invented inline:
 | `--shadow-3` | Dialogs, sheets |
 | `--ring` | Focus ring: `0 0 0 2px` accent at fixed alpha, optionally offset by surface color |
 
+Status rails (`--shadow-status-warning`, `--shadow-status-accent`, `--shadow-status-accent-light`) and outline/focus/pulse recipes (`--ring-soft`, `--ring-outline`, `--ring-secondary`, `--ring-accent`, `--ring-pulse-start`, `--ring-pulse-end`) live in the same root token block. These are semantic strokes, not additional elevation levels; page CSS must not invent their geometry or colors inline.
+
 ### Motion
 
 | Token | Value | Use |
@@ -184,6 +188,8 @@ Exactly four levels; shadows are never invented inline:
 Rules: no `ease` keyword; no UI transition above 400ms; entrances animate opacity/transform only; every infinite animation has a `prefers-reduced-motion: reduce` fallback.
 
 ### Z-Index
+
+Within page content, the named sub-ladder is `--z-content-base` (0), `--z-content` (1), `--z-content-sticky` (2), `--z-content-panel` (3), `--z-content-toolbar` (4), `--z-content-menu` (5), and `--z-content-overlay` (10). This preserves existing workbench/tree/inspector/dock stacking below the app-level sticky tier (20).
 
 One declared ladder in `:root`; raw numbers in component CSS or TSX are forbidden. The overlay scale is `--z-xiaoze-fab: 1100`, `--z-xiaoze-popup: 1140`, `--z-modal-backdrop: 1150`, `--z-modal-backdrop-nested: 1160`, `--z-xiaoze-approval: 1250`, and `--z-toast: 1350`, with app-layer tokens below it (sticky header, sidebar, dropdown/popover). The modeless Xiaoze popup deliberately sits below business dialogs; its approval surface and toasts deliberately sit above them. "+1 escape hatches" (40 vs 41, 60 vs 61) are defects.
 
@@ -209,6 +215,26 @@ Hover and focus-visible must remain visually distinguishable (do not merge them 
 - One implementation. Variants: `primary` (accent fill), `secondary` (surface + border), `ghost` (transparent), `danger` (danger fill or outline), `link` (text). Sizes: `sm` 28px, `md` 32px (default), `lg` 36px; icon-only buttons are square with centered 16px icons.
 - The full visual contract in `docs/FRONTEND.md` § Button And Action Styling applies. Per-scope geometry overrides of `.button` (42 scopes today) are defects to migrate.
 - Primary actions per view: exactly one.
+
+Legacy `.button` and shared `Button` use one CSS size table over the existing spacing and typography tokens, not separate Tailwind and CSS sizes:
+
+| Size | Height | Font / line-height | Horizontal padding |
+| --- | --- | --- | --- |
+| `xs` (shared auxiliary controls) | 24px | 11/16 | 4px |
+| `sm` (row actions) | 28px | 12/18 | 8px |
+| `md` (shared `default`) | 32px | 13/20 | 12px |
+| `lg` | 36px | 13/20 | 16px |
+
+The table is declared once by the shared `.button-size-*` rules alongside their legacy selectors. Icon variants use the corresponding square side with zero padding; their icons are 16px, except the 12px `xs` icon. Small controls have a 4px content gap; default and large controls have an 8px gap. Both implementations use the medium radius and weight 600. Page scopes must not redefine this geometry.
+
+### Row actions
+
+`src/components/common/RowActionMenu.tsx` is the shared row-action contract for subsequent list migrations. Each row has at most one visible text action (`primaryAction`) plus a labelled overflow trigger. The visible action and trigger use `Button size="sm" variant="ghost"`; overflow items use the same small geometry. Existing callers are not migrated by the contract-only ticket.
+
+- `label` identifies the row's action group and overflow menu for assistive technology. `items` have stable IDs, labels, optional disabled state and `onSelect` callbacks. An empty item collection renders no overflow trigger.
+- Radix DropdownMenu supplies menu/menuitem semantics, roving keyboard focus, arrows, Home/End, typeahead, Escape, outside dismissal and focus return. The menu is portalled so table scrollports do not clip it.
+- A destructive item must declare `destructive: true` and `confirmation` with a title, blast-radius description and confirm label; optional acknowledgement uses the existing ConfirmDialog contract. Destructive actions cannot be the visible action. They are red text in the menu, never solid red row buttons, and selection only opens `ConfirmDialog`.
+- The destructive callback runs only after confirmation. Pending confirmation disables repeat submission and dismissal. Rejections remain in the dialog as localized errors for retry; cancellation and success return focus to the overflow trigger. Ordinary action callbacks retain caller-owned outcome handling.
 
 ### Inputs and selects
 
@@ -248,6 +274,14 @@ Recharts surfaces consume tokens: categorical ramp `--chart-1..5`, gridlines `--
 Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, `--chart-3` violet `#7c3aed`, `--chart-4` sky `#0284c7` (the `--info` hue), `--chart-5` slate `#64748b` — all ≥3:1 against `--surface` in light, four of five ≥4.5:1. The dark theme brightens `--chart-2..5` one step (`#22b8cf` / `#a78bfa` / `#38bdf8` / `#94a3b8`) while `--chart-1` follows the dark accent. Consume the ramp through `src/domain/format/chartTheme.ts` (series/status colors, grid stroke, axis ticks, tooltip styles exported as `var()` references) instead of hardcoding values, so charts follow the active theme.
 
 ## Layout and Page Structure
+
+### Shell gutter and navigation
+
+The app shell owns `--page-gutter` (24px on PC). `.main-content` and `.topbar` consume it; `.page-content` wraps routed app content without an inset, and the app footer remains its shell sibling. Page roots add no outer padding or margin. Cards and workbench panes retain their internal padding; do not remove those interior insets or replace page-local CSS with global overrides. The configuration workbench keeps its existing omitted footer.
+
+Expanded and collapsed shared navigation use the 4px spacing tokens; ordinary items have a 40px minimum height, 8px vertical / 12px horizontal padding and a 12px icon-label gap. Active items use the named `--shadow-1` tier in both themes. No custom active shadows or off-grid navigation spacing are permitted.
+
+The consistency harness compares the shell's token-defined left edge with routed content, page-root content, TopBar and footer edges (±1px) on every consistency route. Missing regions or non-finite measurements fail; only the existing configuration-workbench footer omission is exempt. Runtime screenshots and quality/acceptance runs remain required, not replaced by static tests.
 
 ### Navigator workbench
 

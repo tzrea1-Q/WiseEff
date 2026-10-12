@@ -205,7 +205,7 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
   };
 
   return (
-    <div className="feedback-admin-page flex flex-col gap-5 p-6">
+    <div className="feedback-admin-page flex flex-col gap-5">
       <PageInsightBar
         variant={openCount > 0 ? "warn" : "info"}
         headline={`待处理 ${openCount} 条`}
