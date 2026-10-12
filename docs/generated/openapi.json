@@ -21197,6 +21197,12 @@
                 },
                 "recognizedAgainstCatalogReleaseId": {
                   "type": "string"
+                },
+                "currentDisplayName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "required": [

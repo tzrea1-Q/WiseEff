@@ -285,6 +285,7 @@ export function buildDtsWorkbenchRows({
       logicalNodeId: binding.logicalNodeId,
       propertyKey: binding.propertyKey,
       displayName: binding.displayName?.trim() || null,
+      currentDisplayName: binding.currentDisplayName?.trim() || null,
       description: binding.description?.trim() || null,
       documentation: binding.documentation?.trim() || null,
       driverModule: binding.driverModule,
@@ -314,6 +315,7 @@ export function buildDtsWorkbenchRows({
       searchText: buildSearchText([
         binding.propertyKey,
         binding.displayName,
+        binding.currentDisplayName,
         binding.description,
         binding.documentation,
         moduleAssignment.moduleName,

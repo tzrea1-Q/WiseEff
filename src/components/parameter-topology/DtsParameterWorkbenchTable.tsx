@@ -221,6 +221,7 @@ export function DtsParameterWorkbenchTable({
     if (!sort) return filteredRows;
     return [...filteredRows].sort((left, right) => compareRows(left, right, sort));
   }, [filteredRows, sort]);
+  const showDescription = filteredRows.some((row) => Boolean(row.description?.trim()));
 
   const updateSort = (key: DtsWorkbenchSortKey) => {
     setSort((current) => {
@@ -279,7 +280,7 @@ export function DtsParameterWorkbenchTable({
   };
 
   return (
-    <div role="table" aria-label="DTS 参数列表" className="dts-parameter-workbench-table dts-parameter-workbench-table--surface-mvp">
+    <div role="table" aria-label="DTS 参数列表" className={`dts-parameter-workbench-table dts-parameter-workbench-table--surface-mvp${showDescription ? "" : " dts-parameter-workbench-table--without-description"}`}>
       <div role="rowgroup" className="dts-parameter-workbench-table__head">
         <div role="row" className="dts-parameter-workbench-table__header-row">
           {selectionEnabled ? (
@@ -296,7 +297,7 @@ export function DtsParameterWorkbenchTable({
           <span role="columnheader">
             <SortableHeader label="参数名" sortKey="propertyKey" sort={sort} onSort={updateSort} />
           </span>
-          <span role="columnheader">展示描述</span>
+          {showDescription ? <span role="columnheader">展示描述</span> : null}
           <span role="columnheader" className="dts-parameter-workbench-table__module-filter-col">
             <span className="dts-parameter-workbench-table__head-cell">
               <span>所属模块</span>
@@ -342,7 +343,7 @@ export function DtsParameterWorkbenchTable({
           const isChecked = selectedBindingIds?.has(row.bindingId) ?? false;
           const actionContext = bindingActionContext(row);
           const displayRaw = formatDtsRawValueForUi(row.rawValue) || row.rawValue;
-          const displayName = row.displayName?.trim();
+          const displayName = row.currentDisplayName?.trim() || row.displayName?.trim();
           const hasDisplayName = Boolean(displayName && displayName !== row.propertyKey);
           return (
             <div
@@ -402,14 +403,14 @@ export function DtsParameterWorkbenchTable({
                   </span>
                 ) : null}
               </span>
-              <span
+              {showDescription ? <span
                 role="cell"
                 data-label="展示描述"
                 className="dts-parameter-workbench-table__description"
                 title={row.description?.trim() || undefined}
               >
                 {row.description?.trim() || "—"}
-              </span>
+              </span> : null}
               <span role="cell" data-label="所属模块">
                 <span className="dts-parameter-workbench-table__module">
                   <strong>{row.moduleName}</strong>

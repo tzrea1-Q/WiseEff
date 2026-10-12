@@ -26,6 +26,7 @@ export type DtsParameterWorkbenchRow = {
   propertyKey: string;
   /** Presentation copy from the parameter spec version pinned by the binding revision. */
   displayName?: string | null;
+  currentDisplayName?: string | null;
   description?: string | null;
   documentation?: string | null;
   driverModule: string | null;

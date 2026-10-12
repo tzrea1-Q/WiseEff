@@ -73,6 +73,7 @@ export type CatalogBindingView = {
   policyState: "not_applicable";
   moduleId: string;
   displayName: string | null;
+  currentDisplayName?: string | null;
   description: string | null;
   documentation: string | null;
 };
@@ -996,6 +997,7 @@ export async function listCatalogBindingRowsForProject(
   const rows = protectedRows.filter((row) => row.pin.source.sourceRef !== "canonical-binding-identity" &&
     (!input.revisionId || revisionIds.has(row.pin.source.configRevisionId)));
   if (rows.length === 0) return [];
+  const currentCatalog = await loadPublishedCatalog(pool);
   const locator = await db.query<{
       binding_id: string;
       node_locator: string | null;
@@ -1074,6 +1076,7 @@ export async function listCatalogBindingRowsForProject(
     const loc = locators.get(row.pin.bindingId);
     if (!loc?.source_format) throw new ApiError("CONFLICT", "Canonical read requires an exact owned source pin.");
     const view = payloadToBindingView(row.pin.payload, loc?.source_format ?? undefined);
+    const currentDefinition = currentCatalog?.getDefinitionById(row.pin.definitionId);
     items.push({
       id: row.pin.bindingId,
       parameterSpecId: row.pin.definitionId,
@@ -1096,6 +1099,9 @@ export async function listCatalogBindingRowsForProject(
       policyState: "not_applicable",
       moduleId: loc?.module_id ?? "",
       displayName: row.revision.content.displayName,
+      currentDisplayName: currentDefinition?.status === "found" || currentDefinition?.status === "retired"
+        ? currentDefinition.definition.selectedRevision.content.displayName
+        : null,
       description: row.revision.content.description.kind === "present"
         ? row.revision.content.description.value
         : null,

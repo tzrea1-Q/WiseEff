@@ -290,6 +290,18 @@ describe("DtsParameterWorkbench", () => {
     expect(within(nameCell as HTMLElement).getByTestId("draft-binding-gpio-int")).toBeVisible();
   });
 
+  it("prefers the current head display name and finds it through workbench search", () => {
+    renderWorkbench({ effectiveRows: [{ ...effectiveRows[0]!,
+      displayName: "旧中断名称", currentDisplayName: "当前中断名称"
+    }] });
+    expect(screen.getByText("当前中断名称")).toHaveAttribute("title", "当前中断名称");
+    expect(screen.queryByText("旧中断名称")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
+      target: { value: "当前中断名称" }
+    });
+    expect(visibleBindingRows()).toHaveLength(1);
+  });
+
   it.each([undefined, null, "", "  ", "gpio_int", " gpio_int "])("shows only the key when the name is absent or duplicates it: %s", (displayName) => {
     renderWorkbench({ effectiveRows: [{ ...effectiveRows[0]!, displayName }] });
     const nameCell = visibleBindingRows()[0]!.querySelector('[data-label="参数名"]')!;
@@ -485,7 +497,6 @@ describe("DtsParameterWorkbench", () => {
     expect(headers).toEqual([
       expect.stringContaining(""),
       expect.stringContaining("参数名"),
-      "展示描述",
       expect.stringContaining("所属模块"),
       "器件 / 驱动",
       expect.stringContaining("当前值"),
@@ -522,6 +533,22 @@ describe("DtsParameterWorkbench", () => {
     expect(within(describedRow).getByRole("cell", { name: /SC8562 中断 GPIO 展示描述/ })).toBeInTheDocument();
     const emptyDescriptionRow = within(workbench).getByRole("row", { name: /watchdog_time/ });
     expect(within(emptyDescriptionRow).getByRole("cell", { name: "—" })).toHaveAttribute("data-label", "展示描述");
+  });
+
+  it("hides an all-empty description column, including after filtering the current result", () => {
+    renderWorkbench({ effectiveRows: effectiveRows.map((item, index) => ({
+      ...item, description: index === 0 ? "中断说明" : "  "
+    })) });
+    expect(screen.getByRole("columnheader", { name: "展示描述" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
+      target: { value: "watchdog_time" }
+    });
+    expect(screen.queryByRole("columnheader", { name: "展示描述" })).not.toBeInTheDocument();
+    expect(document.querySelector('[data-label="展示描述"]')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
+      target: { value: "" }
+    });
+    expect(screen.getByRole("columnheader", { name: "展示描述" })).toBeInTheDocument();
   });
 
   it("searches precomputed semantic search text and clears the query back to the full result", () => {

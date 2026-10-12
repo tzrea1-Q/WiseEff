@@ -352,6 +352,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         policyState: row.policyState,
         moduleId: row.moduleId,
         displayName: row.displayName,
+        currentDisplayName: row.currentDisplayName,
         description: row.description,
         documentation: row.documentation
       })
