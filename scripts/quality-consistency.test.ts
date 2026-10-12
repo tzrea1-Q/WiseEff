@@ -1,7 +1,7 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, shouldRequireXiaozeHint } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint } from "../e2e/quality/consistency-assertions";
 
 function collectMarkup(markup: string) {
   const dom = new JSDOM(`<main>${markup}</main>`);
@@ -23,6 +23,27 @@ function collectMarkup(markup: string) {
 import { collectConsistencyMeasurements } from "../e2e/quality/consistency-collector";
 import { consistencyRoutes } from "../e2e/quality/consistency-routes";
 import { installConsistencyReadGuard } from "../e2e/quality/consistency";
+
+describe("unified review inbox structure", () => {
+  const tabs = `<div role="tablist"><button role="tab" aria-selected="true">待处理</button>
+    <button role="tab" aria-selected="false">已处理</button></div>`;
+
+  it.each(["/parameter-review", "/parameter-submissions"])("accepts one queue and one two-tab view on %s", (route) => {
+    const measurements = collectMarkup(`${tabs}<table><tbody></tbody></table>`);
+    expect(() => requireReviewInboxStructure(measurements, route)).not.toThrow();
+  });
+
+  it.each([
+    ["missing view", "<table></table>"],
+    ["stacked views", `${tabs}<section>${tabs}</section><table></table>`],
+    ["missing queue", tabs],
+    ["stacked queues", `${tabs}<table></table><table></table>`],
+    ["no selected tab", `${tabs.replace('aria-selected="true"', 'aria-selected="false"')}<table></table>`],
+    ["two selected tabs", `${tabs.replace('aria-selected="false"', 'aria-selected="true"')}<table></table>`]
+  ])("rejects %s", (_name, markup) => {
+    expect(() => requireReviewInboxStructure(collectMarkup(markup), "/parameter-review")).toThrow(/unified review inbox/);
+  });
+});
 
 describe("view-switch collection", () => {
   it("checks actual switches nested in module navigator containers while excluding only tree items", () => {
@@ -217,6 +238,17 @@ describe("compact filter, sort and pagination height contract", () => {
 });
 
 describe("consistency measurement coverage", () => {
+  it("allows the failed logs layout without a table, but still requires measurements for visible tables", () => {
+    expect(() => requireMeasuredCategories({ tableScrollports: [], visibleTableCount: 0 }, ["tableScrollports"], "/logs"))
+      .not.toThrow();
+    expect(() => requireMeasuredCategories({ tableScrollports: [], visibleTableCount: 1 }, ["tableScrollports"], "/logs"))
+      .toThrow("tableScrollports");
+    expect(() => requireMeasuredCategories({ tableScrollports: [] }, ["tableScrollports"], "/logs"))
+      .toThrow("tableScrollports");
+    expect(() => requireMeasuredCategories({ tableScrollports: [], visibleTableCount: 0 }, ["tableScrollports"], "/parameters"))
+      .toThrow("tableScrollports");
+  });
+
   it("fails with the route and missing applicable category instead of silently passing", () => {
     expect(() => requireMeasuredCategories({ viewSwitches: [] }, ["viewSwitches"], "/parameters"))
       .toThrow("/parameters: missing consistency measurements: viewSwitches");

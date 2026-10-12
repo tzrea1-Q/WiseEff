@@ -6,6 +6,7 @@ import type {
   ParameterFileRepository
 } from "@/application/ports/ParameterFileRepository";
 import { createCandidateVersionFlow } from "./candidateVersionFlow";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 function candidate(overrides: Partial<ParameterFileCandidate> = {}): ParameterFileCandidate {
   return {
@@ -31,6 +32,15 @@ function encodeFile(name: string, text: string): File {
 }
 
 describe("createCandidateVersionFlow", () => {
+  it.each(["NOT_FOUND", "GONE"])("treats an absent candidate (%s) as empty rather than failed", async (code) => {
+    const flow = createCandidateVersionFlow();
+    await flow.load("proj", "removed", {
+      getCandidate: vi.fn().mockRejectedValue(new WiseEffApiError(code, "missing", {}, "request")),
+      downloadCandidate: vi.fn().mockResolvedValue({ bytes: new Uint8Array() })
+    });
+    expect(flow.error).toBe("");
+    expect(flow.candidate).toBeNull();
+  });
   it("create encodes File to contentBase64 and calls narrow createCandidate Pick", async () => {
     const created = candidate({ status: "ready" });
     const createCandidate = vi.fn(async () => created);

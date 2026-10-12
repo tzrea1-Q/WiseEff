@@ -1253,6 +1253,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}`
     );
     await dismissXiaozeHint(page);
+    await page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${changeRequestId}"]`)
+      .getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
     const softwareReview = page.getByRole("region", { name: "软件配置审核" });
     await expect(softwareReview.getByLabel("固定源变更后")).toContainText("30");
     const approvedResponse = page.waitForResponse(
@@ -2547,7 +2549,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const nodeRound = ((await nodeSubmit.json()) as { item: { id: string; items: Array<{ requestId: string }> } }).item;
       const nodeRequestId = nodeRound.items[0]!.requestId;
       await page.goto(`${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
-      const nodeTracking = page.getByRole("region", { name: "节点启用提交" });
+      await page.getByRole("combobox", { name: "变更类型", exact: true }).selectOption("legacy");
+      const nodeSubmissionRow = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${nodeRound.id}"]`);
+      await expect(nodeSubmissionRow).toContainText("旧版");
+      await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
+      const nodeTracking = page.getByRole("region", { name: "提交轮次详情" });
       await expect(nodeTracking).toContainText("1 项");
       await expect(nodeTracking).toContainText(disableReason);
       await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toBeEnabled();
@@ -2642,6 +2648,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       expect(nodeEvidence.audits.map((audit) => audit.action)).toEqual(["advance", "advance", "merge"]);
 
       await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
+      await page.getByRole("tablist", { name: "审阅视角" }).getByRole("tab", { name: "已处理", exact: true }).click();
+      await page.getByRole("combobox", { name: "变更类型", exact: true }).selectOption("legacy");
+      await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
       await expect(nodeTracking).toContainText(disableReason);
       await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled();
       await nodeTracking.scrollIntoViewIfNeeded();

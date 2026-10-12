@@ -1,4 +1,3 @@
-import { ReviewImpactList } from "@/components/parameters/ReviewImpactList";
 import {
   type ChangeRequest,
   type ParameterRecord,
@@ -248,10 +247,10 @@ export function ReviewDetailSummary({
         </>
       ) : (
         <p className="review-detail-summary__headline">
-          {showSupplementalSummary ? supplementalSummary : summary.headline}
+          {summary.headline}
         </p>
       )}
-      {summary.isComplex && showSupplementalSummary ? (
+      {showSupplementalSummary ? (
         <p className="review-detail-summary__supplement">{supplementalSummary}</p>
       ) : null}
       {resolvedModuleDescription || resolvedParameterDescription ? (
@@ -283,7 +282,6 @@ export function ReviewDetailSummary({
           ))}
         </ul>
       ) : null}
-      <ReviewImpactList items={request.impact} />
     </div>
   );
 }

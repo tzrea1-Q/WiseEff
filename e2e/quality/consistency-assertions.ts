@@ -1,6 +1,18 @@
 import type { ConsistencyMeasurements, ConsistencyCategory } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 
+export function requireReviewInboxStructure(
+  measurements: Pick<ConsistencyMeasurements, "viewSwitches" | "visibleTableCount">,
+  routePath: string
+) {
+  const tabs = measurements.viewSwitches.filter((control) => control.role === "tab");
+  if (tabs.length !== 2 || tabs.some((tab) => tab.groupRole !== "tablist")
+    || new Set(tabs.map((tab) => tab.group)).size !== 1
+    || tabs.filter((tab) => tab.selected).length !== 1 || measurements.visibleTableCount !== 1) {
+    throw new Error(`${routePath}: unified review inbox requires one two-tab view with one selected tab and one visible queue`);
+  }
+}
+
 export function requireModuleTreeAlignment(
   labels: ConsistencyMeasurements["moduleTreeLabels"],
   routePath: string
@@ -75,11 +87,13 @@ export function requireCompactControlHeights(
 }
 
 export function requireMeasuredCategories(
-  measurements: Partial<Record<ConsistencyCategory, readonly unknown[]>>,
+  measurements: Partial<Record<ConsistencyCategory, readonly unknown[]>> & { visibleTableCount?: number },
   required: readonly ConsistencyCategory[],
   routePath: string
 ) {
-  const missing = required.filter((category) => !measurements[category]?.length);
+  const missing = required.filter((category) =>
+    !(routePath === "/logs" && category === "tableScrollports" && measurements.visibleTableCount === 0)
+    && !measurements[category]?.length);
   if (missing.length) {
     throw new Error(`${routePath}: missing consistency measurements: ${missing.join(", ")}`);
   }

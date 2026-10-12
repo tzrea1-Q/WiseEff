@@ -347,8 +347,7 @@ describe("DtsReloadPage", () => {
       .mockResolvedValue({ health: null, reachability: "ok" });
     renderPage(createRepository(), { bridges: undefined, probeBridgeHealth: undefined });
 
-    await user.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
-    const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+    const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
     await waitFor(() => expect(connect).toBeEnabled());
     await user.click(connect);
 
@@ -433,14 +432,14 @@ describe("DtsReloadPage", () => {
     await user.click(within(await screen.findByRole("dialog", { name: "撤销设备代理" })).getByRole("button", { name: "撤销" }));
     await screen.findByText(revokeFails ? "撤销失败" : "已撤销");
     if (revokeOther || revokeFails) {
-      expect(screen.queryByRole("button", { name: "重新配对" })).not.toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "重新检测设备" }));
+      expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "重新检测", exact: true }));
       expect(detectTargets).toHaveBeenLastCalledWith("hdc", "bridge-old");
       expect(connect).not.toHaveBeenCalled();
       return;
     }
     detectTargets.mockClear();
-    const repairButton = await screen.findByRole("button", { name: "重新配对" });
+    const repairButton = await screen.findByRole("button", { name: "连接本机" });
     expect(screen.queryByRole("button", { name: "重新检测设备" })).not.toBeInTheDocument();
     expect(detectTargets).not.toHaveBeenCalled();
     await waitFor(() => expect(repairButton).toBeEnabled());
@@ -448,7 +447,7 @@ describe("DtsReloadPage", () => {
     expect(connect).toHaveBeenCalledWith(expect.objectContaining({ code: "123456" }));
     expect(poll).toHaveBeenCalledWith(expect.objectContaining({ excludeBridgeId: "bridge-old" }));
     await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-new"));
-    expect(await screen.findByRole("button", { name: "重新检测设备" })).toBeInTheDocument();
+    expect(await screen.findByText("已连接 · Lab PC")).toBeInTheDocument();
     expect(screen.queryByText("本地 Device Bridge 未连接，请先连接本机后重新检测。")).not.toBeInTheDocument();
   });
 
@@ -490,7 +489,7 @@ describe("DtsReloadPage", () => {
       { targetRef: "HDC-LAB", label: "Lab device", bridgeId }
     ]);
     renderPageWithTopBar(createRepository(), { bridges: undefined, probeBridgeHealth: undefined, detectTargets });
-    const repairButton = await screen.findByRole("button", { name: "重新配对" });
+    const repairButton = await screen.findByRole("button", { name: "连接本机" });
     expect(screen.getByText(/其他账号/)).toBeInTheDocument();
     expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
     await waitFor(() => expect(repairButton).toBeEnabled());
@@ -1600,7 +1599,7 @@ describe("DtsReloadPage", () => {
       initialTargetRef: ""
     });
     expect(await screen.findByRole("region", { name: "本地设备连接" })).toBeInTheDocument();
-    expect(await screen.findByText(/未检测到本地 Bridge/)).toBeInTheDocument();
+    expect(await screen.findByText("本地 Bridge 未运行")).toHaveAttribute("title", expect.stringMatching(/未检测到本地 Bridge/));
 
     rerender(
       <DtsReloadPage
@@ -1613,7 +1612,7 @@ describe("DtsReloadPage", () => {
         moduleRegistryRepository={null}
       />
     );
-    expect(await screen.findByText(/Bridge 已配对，但尚未连接到服务器/)).toBeInTheDocument();
+    expect(await screen.findByText("本地 Bridge 未运行")).toHaveAttribute("title", "Bridge 已配对，但尚未连接到服务器。");
 
     rerender(
       <DtsReloadPage
@@ -1626,7 +1625,7 @@ describe("DtsReloadPage", () => {
         moduleRegistryRepository={null}
       />
     );
-    expect(await screen.findByText(/Bridge 在线，请插入 USB 设备/)).toBeInTheDocument();
+    expect(await screen.findByText("已连接 · Lab Mac")).toHaveAttribute("title", "Bridge 在线，请插入 USB 设备并授权调试。");
   });
 
   it("does not treat recent lastSeen as connected when health probe reports offline", async () => {
@@ -1636,8 +1635,8 @@ describe("DtsReloadPage", () => {
       probeBridgeHealth: async () => ({ connected: false, bridgeId: undefined }),
       initialTargetRef: ""
     });
-    expect(await screen.findByText(/Bridge 已配对，但尚未连接到服务器/)).toBeInTheDocument();
-    expect(screen.queryByText(/Bridge 在线/)).not.toBeInTheDocument();
+    expect(await screen.findByText("本地 Bridge 未运行")).toHaveAttribute("title", "Bridge 已配对，但尚未连接到服务器。");
+    expect(screen.queryByText(/已连接 ·/)).not.toBeInTheDocument();
   });
 
   it("does not mark a different bridge connected when health is bound to another id", async () => {
@@ -1647,7 +1646,7 @@ describe("DtsReloadPage", () => {
       probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-other" }),
       initialTargetRef: ""
     });
-    expect(await screen.findByRole("button", { name: "重新配对" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "连接本机" })).toBeInTheDocument();
     expect(screen.getByText(/其他账号/)).toBeInTheDocument();
     expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
   });

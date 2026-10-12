@@ -1130,6 +1130,7 @@ export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   sourceProofToken: z.string(), cohortProofToken: z.string(),
   fileId: z.string(), baseVersionId: z.string(), configSetId: z.string(),
   appliedAt: z.string().nullable(), appliedAuditRef: z.string().nullable(),
+  createdAt: z.string().optional(), updatedAt: z.string().optional(),
   targets: z.array(catalogObject({
     ordinal: z.number().int().nonnegative(), draftId: z.string().nullable(),
     decision: closedEnum(["file", "draft", "unverified-draft"]),

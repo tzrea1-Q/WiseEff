@@ -6,6 +6,7 @@ import type {
   ParameterFileSourceReviewResult
 } from "@/application/ports/ParameterFileRepository";
 import { sourceReviewReason } from "./sourceReviewReason";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 export type CandidateFileRepository = Pick<
   ParameterFileRepository,
@@ -334,7 +335,9 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         candidate = null;
         sourceText = "";
         sourcePreview = null;
-        error = err instanceof Error ? err.message : "候选加载失败。";
+        error = err instanceof WiseEffApiError && (err.code === "NOT_FOUND" || err.code === "GONE")
+          ? ""
+          : err instanceof Error ? err.message : "候选加载失败。";
       } finally {
         if (generation === loadGeneration) {
           loading = false;

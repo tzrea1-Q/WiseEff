@@ -265,18 +265,20 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     for (const label of ["参数记录", "请求 ID", "来源快照", "候选文件", "提交时间", "状态更新时间"]) {
       masks.push(
         details
-          .locator("dl > div")
-          .filter({ hasText: label })
-          .locator("dd code, dd time")
+          .locator(":scope > header, :scope > dl")
+          .getByRole("term")
+          .filter({ hasText: new RegExp(`^${label}$`) })
+          .locator("..")
+          .getByRole("definition")
+          .locator("code, time")
       );
     }
   }
 
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {
     // Bridge install guide: the API mints a fresh random 6-digit pairing code
-    // on every page load; the surrounding copy is static, so only the <strong>
-    // digits need masking.
-    masks.push(page.locator(".local-device-bridge-panel__already-installed strong"));
+    // on every page load; mask its digits and expiry, not the guide or controls.
+    masks.push(page.locator(".local-device-bridge-panel__pairing-code code, .local-device-bridge-panel__pairing-code time"));
   }
 
   if (routePath === "/logs") {
@@ -355,15 +357,10 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
   }
 
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {
-    // No local bridge listens on 127.0.0.1:18787 in CI, so the wizard settles
-    // on the install guide; wait for the async release manifest and pairing
-    // code so the "not connected" state is fully rendered before asserting.
-    await expect(page.getByText("已识别当前环境").first()).toBeVisible({ timeout });
-    if (options.readOnly) {
-      await expect(page.getByText("正在生成配对码...")).toHaveCount(0, { timeout });
-    } else {
-      await expect(page.getByText("当前配对码").first()).toBeVisible({ timeout });
-    }
+    // Wait for readiness to settle without assuming every user needs setup.
+    // Returning users and connected users have no inline installer content.
+    await expect(page.locator(".local-device-bridge-panel__readiness[aria-busy='false'], .local-device-bridge-panel__connected").first()).toBeVisible({ timeout });
+    await expect(page.getByText("正在生成配对码...")).toHaveCount(0, { timeout });
     if (routePath === "/dts-reload") {
       // The seeded reload workbench (tree + table + history) loads below the wizard.
       await expect(page.getByText("运行历史").first()).toBeVisible({ timeout });
@@ -399,6 +396,13 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout });
     await waitForFontsAndNextPaint(page);
     await expect.poll(async () => failureAlert.isVisible(), { timeout: 5_000 }).toBe(true);
+    await expect(failureAlert).toContainText("在 日志解析 阶段失败");
+    await expect(failureAlert).toContainText(".log / .txt / .csv / .json");
+    await expect(failureAlert.getByText("unsupported.bin", { exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "分析流程" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "分析结果" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "原始日志" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "日志分析证据链" })).toHaveCount(0);
   }
 }
 

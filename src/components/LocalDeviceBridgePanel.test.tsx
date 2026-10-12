@@ -76,6 +76,83 @@ function renderPanel() {
   );
 }
 
+it("keeps returning users on a compact readiness bar using any unrevoked server record", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const records = deferred<Awaited<ReturnType<typeof import("../infrastructure/http/deviceBridgeClient").listMyBridges>>>();
+  render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
+    listBridges={() => records.promise}
+    probeHealth={async () => ({ health: null, reachability: "offline" })}
+    createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
+  expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+  await act(async () => records.resolve([{ id: "br-returning", machineLabel: "工程机", platform: "linux", arch: "amd64", revokedAt: null }] as never));
+  expect(await screen.findByText("本地 Bridge 未运行")).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "连接本机", exact: true })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "安装指南" })).toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+  expect(screen.queryByText("暂时无法加载安装包列表，请稍后重试。")).not.toBeInTheDocument();
+  expect(screen.getByRole("list", { name: "我的设备代理列表", hidden: true }).closest("details")).not.toHaveAttribute("open");
+});
+
+it("shows first-time setup once and opens the same guide in a keyboard-accessible drawer", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  renderPanel();
+  expect(await screen.findByRole("list", { name: "Bridge 连接步骤" })).toBeInTheDocument();
+  expect(screen.queryByRole("tablist", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "连接本机", exact: true })).toHaveLength(1);
+  expect(await screen.findByText("123456", { selector: "code" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "收起安装指南" }));
+  expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+  const trigger = screen.getByRole("button", { name: "安装指南" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const drawer = screen.getByRole("dialog", { name: "安装与连接本地 Bridge" });
+  expect(drawer.contains(document.activeElement)).toBe(true);
+  expect(within(drawer).getByRole("list", { name: "Bridge 连接步骤" })).toBeInTheDocument();
+  const copy = within(drawer).getByRole("button", { name: "复制配对码" });
+  const clipboard = vi.fn(async () => undefined);
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: clipboard } });
+  fireEvent.click(copy);
+  await waitFor(() => expect(clipboard).toHaveBeenCalledWith("123456"));
+  const lastAction = within(drawer).getByRole("button", { name: "连接本机", exact: true });
+  lastAction.focus();
+  fireEvent.keyDown(lastAction, { key: "Tab" });
+  expect(within(drawer).getByRole("button", { name: "关闭安装指南" })).toHaveFocus();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+  expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+});
+
+it("announces a busy readiness bar throughout the existing launch-and-pair flow", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const connection = deferred<Awaited<ReturnType<typeof bridgeLauncher.connectLocalBridge>>>();
+  vi.mocked(bridgeLauncher.connectLocalBridge).mockImplementationOnce(() => connection.promise);
+  renderPanel();
+  const connect = screen.getByRole("button", { name: "连接本机", exact: true });
+  await waitFor(() => expect(connect).toBeEnabled());
+  fireEvent.click(connect);
+  expect(screen.getByText("正在连接…")).toBeInTheDocument();
+  expect(connect).toBeDisabled();
+  expect(connect.closest('[aria-busy="true"]')).toBeInTheDocument();
+  await act(async () => connection.resolve({ reachable: false, ok: false }));
+  await waitFor(() => expect(connect).toBeEnabled());
+});
+
+it.each([undefined, "device-1"])("shows a quiet connected chip with target %s", async (target) => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  render(<LocalDeviceBridgePanel target={target} detecting={false} protocol="hdc" onDetect={vi.fn()}
+    createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })}
+    listBridges={async () => [{ id: "br-online", machineLabel: "工程机", platform: "darwin", arch: "arm64", revokedAt: null }] as never}
+    probeHealth={async () => ({ reachability: "ok", health: {
+      ok: true, paired: true, connected: true, bridgeId: "br-online", updatedAt: "2026-10-11T00:00:00Z",
+      tools: { adb: { available: true }, hdc: { available: true, source: "system", version: "1" } }
+    } })} />);
+  expect(await screen.findByText("已连接 · 工程机")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "重新检测设备" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+});
+
 describe("LocalDeviceBridgePanel install manifest loading", () => {
   it("treats a resolving manifest without items as no manifest instead of crashing", async () => {
     // Regression guard: `listReleases().catch(() => null)` only covers rejections.
@@ -149,11 +226,11 @@ it("shows local Bridge advice with technical details after a failed connection a
     listBridges={async () => []}
     probeHealth={async () => ({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })}
     createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
-  fireEvent.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
-  const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+  const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
   await waitFor(() => expect(connect).toBeEnabled());
   fireEvent.click(connect);
   const alert = await screen.findByRole("alert");
+  expect(alert.closest(".local-device-bridge-panel__readiness")).toBeInTheDocument();
   expect(alert).toHaveTextContent(/本机.*Bridge/);
   expect(within(alert).getByText("技术详情")).toBeInTheDocument();
   expect(within(alert).getByText("Failed to fetch")).toBeInTheDocument();
@@ -172,8 +249,7 @@ it.each(["silent", "manual"] as const)("clears a recovered local error on a %s h
       ? { health: { ok: true, paired: false, connected: false }, reachability: "ok" }
       : { health: null, reachability: "offline", error: new TypeError("Failed to fetch") }}
     createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
-  fireEvent.click(await screen.findByRole("button", { name: "我已安装，去连接本机" }));
-  const connect = await screen.findByRole("button", { name: "启动并连接本机" });
+  const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
   await waitFor(() => expect(connect).toBeEnabled());
   fireEvent.click(connect);
   await screen.findByRole("alert");
@@ -226,7 +302,7 @@ it("retains confirmed pairing when listing fails and allows retry", async () => 
 
   expect(await screen.findByText(/代理列表暂时不可用/)).toBeInTheDocument();
   expect(screen.getByDisplayValue("本机")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "重新配对", exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "连接本机", exact: true })).not.toBeInTheDocument();
   expect(createCode).not.toHaveBeenCalled();
   expect(onState.mock.lastCall?.[0].bridges).toEqual([bridge]);
 
@@ -273,15 +349,15 @@ it("asks the current user to rebind a live local bridge owned by another account
     />
   );
 
-  const rebindButton = await screen.findByRole("button", { name: "重新配对" });
-  expect(screen.getByText(FOREIGN_ACCOUNT_REBIND_HINT)).toBeInTheDocument();
+  const rebindButton = await screen.findByRole("button", { name: "连接本机" });
+  expect(await screen.findByText(FOREIGN_ACCOUNT_REBIND_HINT)).toBeInTheDocument();
   expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
   await waitFor(() => expect(rebindButton).toBeEnabled());
 
   fireEvent.click(rebindButton);
 
   await waitFor(() => expect(onDetect).toHaveBeenCalledTimes(1));
-  expect(await screen.findByText(/Bridge 在线/)).toBeInTheDocument();
+  expect(await screen.findByText("已连接 · 本机")).toBeInTheDocument();
   expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
 });
 
@@ -322,7 +398,7 @@ it("prompts to install the latest Bridge when local health is an older client", 
 
   expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
   expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
-  await waitFor(() => expect(screen.getByRole("button", { name: "重新检测设备" })).toBeEnabled());
+  expect(screen.getByText("已连接 · 本机")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
   expect(await screen.findByText("图形安装包（推荐）")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();

@@ -300,24 +300,46 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     });
 
     await signInBrowserAsRole(page, "software-committer", disposablePageUrl(disposableRuntime, `/parameter-review?project=${projectId}&request=${requestId}`));
-    const reviewPerspective = page.getByLabel("软件配置审核视角");
-    await reviewPerspective.getByRole("tab", { name: "历史", exact: true }).click();
-    const requestRow = page.getByRole("row").filter({ hasText: `${rejectReasonPrefix} submitted request` });
+    const reviewPerspective = page.getByRole("tablist", { name: "审阅视角" });
+    await expect(reviewPerspective).toHaveCount(1);
+    await expect(reviewPerspective.getByRole("tab")).toHaveCount(2);
+    const processedTab = reviewPerspective.getByRole("tab", { name: "已处理", exact: true });
+    await processedTab.click();
+    await expect(processedTab).toHaveAttribute("aria-selected", "true");
+    const panelId = await processedTab.getAttribute("aria-controls");
+    expect(panelId).toBeTruthy();
+    await expect(page.locator(`[id="${panelId}"]`)).toHaveAttribute("role", "tabpanel");
+    await expect(page.locator(`[id="${panelId}"]`)).toBeVisible();
+    const changeType = page.getByRole("combobox", { name: "变更类型", exact: true });
+    await expect(changeType.locator("option")).toHaveText(["全部类型", "软件配置", "JSON 成员删除", "旧版请求"]);
+    await changeType.selectOption("value");
+    const queue = page.getByRole("table", { name: "审阅队列", exact: true });
+    await expect(queue).toHaveCount(1);
+    await expect(queue).toHaveAttribute("id", "review-queue-table");
+    const requestRow = queue.locator(`[data-review-row-id="${requestId}"]`);
     await expect(requestRow).toBeVisible();
-    await expect(requestRow).toContainText("DTS");
-    await requestRow.getByRole("button", { name: "查看请求", exact: true }).click();
+    await expect(requestRow).toContainText(`${rejectReasonPrefix} submitted request`);
+    await requestRow.getByRole("button", { name: `查看 ${rejectReasonPrefix} submitted request 提交详情`, exact: true }).click();
 
     const reviewDetail = page.getByRole("article", { name: "源文件请求详情" });
+    await expect(reviewDetail).toContainText("DTS");
+    await expect(reviewDetail.getByRole("heading", { level: 4 })).toHaveText(["变更摘要", "前后对比", "影响范围"]);
+    await expect(reviewDetail.locator("details")).not.toHaveAttribute("open");
+    await reviewDetail.getByText("溯源信息", { exact: true }).click();
     await expect(reviewDetail).toContainText(binding.bindingId);
     await expect(reviewDetail.getByLabel("固定源目标内容")).toContainText(rejectTargetValue);
     await expect(reviewDetail).toContainText(rejectionReason);
 
     await page.reload();
-    await reviewPerspective.getByRole("tab", { name: "历史", exact: true }).click();
-    const reloadedRow = page.getByRole("row").filter({ hasText: `${rejectReasonPrefix} submitted request` });
+    await expect(processedTab).toHaveAttribute("aria-selected", "true");
+    await expect(changeType).toHaveValue("value");
+    const reloadedRow = queue.locator(`[data-review-row-id="${requestId}"]`);
     await expect(reloadedRow).toBeVisible();
     await expect(reloadedRow.locator("td").last()).toContainText(/./);
-    await reloadedRow.getByRole("button", { name: "查看请求", exact: true }).click();
+    await reloadedRow.getByRole("button", { name: `查看 ${rejectReasonPrefix} submitted request 提交详情`, exact: true }).click();
+    await expect(reviewDetail.locator("details")).not.toHaveAttribute("open");
+    await reviewDetail.getByText("溯源信息", { exact: true }).click();
+    await expect(reviewDetail).toContainText(binding.bindingId);
     await expect(reviewDetail).toContainText(rejectionReason);
 
     const changesResponse = await expectSuccessfulApiResponse(page, changesRoute);
