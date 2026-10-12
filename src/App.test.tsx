@@ -1242,7 +1242,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       routesSource.indexOf('case "debugging-admin":')
     );
 
-    expect(debuggingCase).toContain("NoEntryPage");
+    expect(debuggingCase).toContain("RetiredNotice");
     expect(debuggingCase).not.toContain("DebuggingPageWithRuntimeProps");
     // Both runtime modes route through the same debugging actions (the gateway behind
     // them is mode-selected by resolveDebuggingGateway); mock mode adds bridge seams.
@@ -2557,7 +2557,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("heading", { name: "页面不可用" })).toBeInTheDocument();
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "参数工作台" }));
+    expect(screen.getByRole("link", { name: "参数工作台" })).toHaveAttribute("href", "/parameters");
+    fireEvent.click(screen.getByRole("link", { name: "参数工作台" }));
 
     expect(window.location.pathname).toBe("/parameters");
   });
@@ -3418,6 +3419,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByRole("heading", { level: 2, name: "页面暂时不可用" })).toBeInTheDocument();
     expect(screen.queryByText("实时可调参数")).not.toBeInTheDocument();
+    const replacement = screen.getByRole("link", { name: "节点调试" });
+    expect(replacement).toHaveAttribute("href", "/node-debugging");
+    fireEvent.click(replacement);
+    expect(window.location.pathname).toBe("/node-debugging");
   });
 
   it("shows the project selector only on parameter-management routes", () => {
