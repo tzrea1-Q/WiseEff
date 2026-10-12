@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_PARAMETER_MODULE_REGISTRY } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
@@ -53,6 +54,7 @@ describe("canonical module page request boundary", () => {
       canonicalOrganizationId="org_one" />);
 
     expect(await screen.findByText(/当前来源：device.dts/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
     await waitFor(() => expect(screen.getByRole("region", { name: "历史驱动注册表" }))
       .toHaveAttribute("aria-busy", "false"));
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Historical driver" }));
@@ -74,6 +76,7 @@ describe("canonical module page request boundary", () => {
     expect(screen.queryByRole("button", { name: /编写覆盖解析|配置组织级解析|全量重算/ })).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "管理规范主体与归属" }));
+    expect(screen.getByRole("tab", { name: "模块" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(repository.updateModule).not.toHaveBeenCalled();
     for (const retiredWrite of Object.values(retiredWrites)) {
@@ -99,8 +102,10 @@ describe("canonical module page request boundary", () => {
       canonicalOrganizationId="org_one" />);
     expect(await screen.findByText("当前范围没有来源观察记录。")).toBeInTheDocument();
     expect(getDiscoveryHints).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("tab", { name: "发现队列" }));
     fireEvent.click(screen.getByRole("button", { name: "刷新发现" }));
     await waitFor(() => expect(listDriverCompatibleDiscovery).toHaveBeenCalledTimes(2));
+    await userEvent.click(screen.getByRole("tab", { name: "模块" }));
     fireEvent.click(screen.getByRole("button", { name: "完成规范登记" }));
     await waitFor(() => expect(listDriverCompatibleDiscovery).toHaveBeenCalledTimes(3));
     expect(getRegistry).toHaveBeenCalledTimes(2);

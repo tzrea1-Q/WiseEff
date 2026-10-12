@@ -82,6 +82,7 @@ export function DtsReloadCandidateTable({
         <div className={cn("dts-reload-candidate-table__identity", !candidate.debuggable && "is-blocked")}>
           <strong title={candidateName(candidate)}>{candidateName(candidate)}</strong>
           <small title={candidate.nodePath ?? "无路径"}>{candidate.nodePath ?? "无路径"}</small>
+          {candidate.debuggable ? <span data-row-status className="dts-reload-status-text">可调试</span> : null}
         </div>
       )
     },
@@ -151,25 +152,22 @@ export function DtsReloadCandidateTable({
             </span>
           </div>
         }
-        renderRowActions={(candidate) =>
-          candidate.debuggable ? (
+        renderRowActions={(candidate) => <>
             <button
               type="button"
               className="button subtle dts-parameter-workbench-table__icon-action dts-reload-candidate-table__edit"
               aria-label={`编辑 ${candidateName(candidate)}`}
-              title="编辑"
+              disabled={!candidate.debuggable}
+              title={candidate.debuggable ? "编辑" : dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
               onClick={() => onEdit(candidate)}
             >
               <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
             </button>
-          ) : (
-            <span
-              className="dts-reload-status-text"
-              title={dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
-            >
+            {!candidate.debuggable ? <span data-row-status className="dts-reload-status-text"
+              title={dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}>
               {dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
-            </span>
-          )
+            </span> : null}
+          </>
         }
       />
     </section>

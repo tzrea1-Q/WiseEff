@@ -13,6 +13,8 @@ type DebugAdminSelectControlProps<Value extends string> = {
   onValueChange: (value: Value) => void;
   options: ReadonlyArray<SelectOption<Value>>;
   ariaLabel?: string;
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
   disabled?: boolean;
   withinModal?: boolean;
 };
@@ -22,12 +24,14 @@ export function DebugAdminSelectControl<Value extends string>({
   onValueChange,
   options,
   ariaLabel,
+  ariaInvalid,
+  ariaDescribedBy,
   disabled = false,
   withinModal = false
 }: DebugAdminSelectControlProps<Value>) {
   return (
     <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)} disabled={disabled}>
-      <SelectTrigger aria-label={ariaLabel} className="w-full">
+      <SelectTrigger aria-label={ariaLabel} aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy} className="w-full">
         <SelectValue />
       </SelectTrigger>
       <SelectContent

@@ -149,19 +149,6 @@ export function ParameterHomePage({
     });
   };
 
-  const overviewRow = (
-    <OverviewRow
-      summaryStatus={dashboardState.summary.status}
-      summary={summary}
-      kpis={summary?.kpis ?? null}
-      overviewScope={dashboardState.overviewScope}
-      roleView={workbench.roleView}
-      onOverviewScopeChange={onDashboardOverviewScopeChange}
-      summaryError={dashboardState.summary.error}
-      onSummaryRetry={reloadSummary}
-    />
-  );
-
   const workbenchPrimary = (
     <WorkbenchPrimary
       workbench={workbench}
@@ -235,8 +222,17 @@ export function ParameterHomePage({
 
       {workbenchPage === "overview" ? (
         <div className="parameter-home__page parameter-home__page--overview" role="tabpanel" aria-label="工作台">
-          {overviewRow}
-          {workbenchPrimary}
+          <OverviewRow
+            summaryStatus={dashboardState.summary.status}
+            summary={summary}
+            kpis={summary?.kpis ?? null}
+            overviewScope={dashboardState.overviewScope}
+            roleView={workbench.roleView}
+            onOverviewScopeChange={onDashboardOverviewScopeChange}
+            summaryError={dashboardState.summary.error}
+            onSummaryRetry={reloadSummary}
+            quickActions={workbenchPrimary}
+          />
         </div>
       ) : (
         <div className="parameter-home__page parameter-home__page--hotspots" role="tabpanel" aria-label="热榜">

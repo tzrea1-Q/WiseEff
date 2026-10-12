@@ -141,7 +141,7 @@ export function collectConsistencyMeasurements() {
     return [{
       dom: describeElement(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
       actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
-      statuses: [...row.querySelectorAll('[data-label="重要性"],.parameter-catalog__lifecycle,[data-label="状态"]')].filter(visible).map(geometry)
+      statuses: [...row.querySelectorAll('[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle,[data-label="状态"]')].filter(visible).map(geometry)
     }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
@@ -190,7 +190,7 @@ export function collectConsistencyMeasurements() {
       || element.querySelector('button,a[href],[role="button"]'))
   ).flatMap(clippedGeometry);
   const moduleTrees = elements('[role="tree"],nav > .parameter-catalog__tree');
-  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label").map((element) => {
+  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label,.parameter-module-mapping-panel .module-attribution-tree__label").map((element) => {
     const tree = element.closest('[role="tree"],nav > .parameter-catalog__tree') ?? element.parentElement!;
     const treeItem = element.closest('[role="treeitem"]');
     let depth = Number(treeItem?.getAttribute("aria-level")) || 0;
@@ -221,7 +221,9 @@ export function collectConsistencyMeasurements() {
       probe.remove();
       return width;
     };
-    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item');
+    const firstRow = [...workbench.querySelectorAll('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task [data-canonical-subject-id], .navigator-workbench__task .canonical-driver-discovery__item')].find(visible)
+      ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
+        ? [...workbench.querySelectorAll('.navigator-workbench__task [role="status"], .navigator-workbench__task [role="alert"]')].find(visible) : undefined);
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
@@ -231,7 +233,7 @@ export function collectConsistencyMeasurements() {
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
-      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count")].filter(visible).map((count) => {
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .module-attribution-tree__count")].filter(visible).map((count) => {
         const navigation = count.closest(".navigator-workbench__navigation")!;
         const navigationRect = bounds(navigation);
         const countRect = bounds(count);
@@ -295,10 +297,60 @@ export function collectConsistencyMeasurements() {
       })) }))
     };
   });
+  const overviewPages = elements(".overview-page").map((overview) => {
+    const measureSlot = (selector: string) => {
+      const slot = overview.querySelector(selector);
+      return slot && visible(slot) ? bounds(slot) : null;
+    };
+    return {
+      root: bounds(overview), summary: measureSlot(":scope > .overview-page__summary"),
+      content: measureSlot(":scope > .overview-page__content"), actions: measureSlot(":scope > .overview-page__actions"),
+      gap: Number.parseFloat(getComputedStyle(overview).rowGap),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      viewportHeight: innerHeight,
+      tiles: [...overview.querySelectorAll(".overview-tile")].filter(visible).map((tile) => ({
+        rect: bounds(tile), hasSamples: tile.getAttribute("data-has-samples") === "true",
+        value: tile.querySelector(".overview-tile__value")?.textContent?.trim() ?? "",
+        trendCount: tile.querySelectorAll(".overview-tile__trend").length
+      })),
+      items: [...overview.querySelectorAll(":scope > .overview-page__content > *")].filter(visible).map(bounds),
+      verdicts: [...overview.querySelectorAll("[data-overview-verdict]")].filter(visible).map((verdict) => ({
+        hasSamples: verdict.getAttribute("data-has-samples") === "true", text: verdict.textContent?.trim() ?? ""
+      }))
+    };
+  });
+  const retiredNotices = elements(".retired-notice").map((notice) => ({
+    root: bounds(notice), titleCount: notice.querySelectorAll("h2").length,
+    descriptionCount: notice.querySelectorAll("p").length, linkCount: notice.querySelectorAll("a").length,
+    href: notice.querySelector("a")?.getAttribute("href") ?? null,
+    primary: notice.querySelector("a")?.getAttribute("data-variant") === "default"
+  }));
+  const settingsForms = elements(".settings-form-page").map((form) => {
+    const style = getComputedStyle(form);
+    const sections = [...form.querySelectorAll(".settings-form-page__section")].filter(visible);
+    const probe = document.createElement("span");
+    probe.style.cssText = "position: absolute; visibility: hidden; width: var(--settings-form-max-width)";
+    document.documentElement.append(probe);
+    const widthToken = Number.parseFloat(getComputedStyle(probe).width);
+    probe.remove();
+    return { ...geometry(form), maxWidth: Number.parseFloat(style.maxWidth), widthToken,
+      direction: style.display === "flex" ? style.flexDirection : "",
+      sectionCount: sections.length,
+      titledSections: sections.filter((section) => section.querySelector("header h2")?.textContent?.trim()).length,
+      helpedSections: sections.filter((section) => section.querySelector("header p")?.textContent?.trim()).length,
+      dirty: form.getAttribute("data-settings-dirty") === "true",
+      saveBars: [...form.querySelectorAll(".settings-form-page__save-bar")].filter(visible).map((bar) => ({
+        position: getComputedStyle(bar).position, bottom: Number.parseFloat(getComputedStyle(bar).bottom),
+        primaryCount: bar.querySelectorAll('[data-variant="default"]').length,
+        saveLabel: bar.querySelector('button[type="submit"]')?.textContent?.trim() ?? "",
+        discardLabel: bar.querySelector('button[type="button"]')?.textContent?.trim() ?? ""
+      }))
+    };
+  });
   return {
-    titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer),
+    titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer), overviewPages, retiredNotices,
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, adminLists, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, adminLists, settingsForms, visibleTableCount: visibleTables.length
   };
 }
 

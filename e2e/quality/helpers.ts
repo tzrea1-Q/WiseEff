@@ -322,6 +322,16 @@ export async function waitForFontsAndNextPaint(page: Page) {
 export async function settleQualityRoute(page: Page, routePath: string, options: { readOnly?: boolean } = {}) {
   const timeout = 20_000;
 
+  if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath.split("?")[0])) {
+    await expect(page.locator('.parameter-module-mapping-panel[aria-busy="false"]')).toBeVisible({ timeout });
+    await expect(page.getByRole("tree", { name: "模块归属树" })).toBeVisible({ timeout });
+    for (const label of ["正在加载规范主体…", "正在读取发现结果…", "正在加载历史驱动注册表…"]) {
+      await expect(page.getByText(label, { exact: true })).toHaveCount(0, { timeout });
+    }
+    await waitForFontsAndNextPaint(page);
+    return;
+  }
+
   if (routePath === "/parameter-home") {
     // The trend panel swaps its loading skeleton for the chart once the
     // dashboard summary API answers.

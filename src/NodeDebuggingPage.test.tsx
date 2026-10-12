@@ -222,6 +222,48 @@ afterEach(() => {
 });
 
 describe("/node-debugging", () => {
+  it.each(["loading", "error"] as const)("blocks toolbar device writes when a connected catalog becomes %s", async (runtimeStatus) => {
+    const debuggingActions = createDebuggingActions();
+    const state: PrototypeState = { ...userState, lastDebugSnapshot: {
+      id: "snapshot-toolbar", createdAt: "2026-05-27T09:00:00.000Z", risk: "Low", entries: []
+    } };
+    const view = renderNodeDebuggingPage({ state, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
+    fireEvent.click(within(findRowByText("charger.input_current_limit_ma")).getByRole("button", { name: /查看\/修改/ }));
+    fireEvent.change(within(getNodeDetailDialog()).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(getNodeDetailDialog()).getByRole("button", { name: "暂存" }));
+    expect(screen.getByRole("button", { name: /批量下发节点|下发选中/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "回滚快照" })).toBeEnabled();
+
+    view.rerender({ state, debuggingActions, runtimeStatus, runtimeError: "节点目录不可用" });
+    expect(screen.getByRole("button", { name: /批量下发节点|下发选中/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "回滚快照" })).toBeDisabled();
+    expect(screen.getByRole("region", { name: "节点操作记录" })).toBeInTheDocument();
+  });
+
+  it("keeps node tasks available when module navigation is collapsed and remembers the choice", async () => {
+    const props = { state: userState, debuggingActions: createDebuggingActions() };
+    const first = renderNodeDebuggingPage(props);
+    await screen.findByText(/已连接：API Gateway Target/);
+
+    const toolbar = screen.getByRole("group", { name: "工作台操作" });
+    expect(within(toolbar).getByRole("button", { name: "批量下发节点" })).toBeDisabled();
+    const task = screen.getByRole("region", { name: "节点调试任务" });
+    expect(within(task).getByRole("table")).toBeInTheDocument();
+    expect(findRowByText("charger.input_current_limit_ma").querySelector('[data-row-status]'))
+      .toHaveTextContent("成功");
+    expect(task).not.toContainElement(screen.getByRole("region", { name: "本地设备连接" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(screen.queryByRole("tree", { name: "调试节点模块树" })).not.toBeInTheDocument();
+    expect(within(task).getByRole("table")).toBeVisible();
+
+    first.unmount();
+    renderNodeDebuggingPage(props);
+    expect(screen.getByRole("button", { name: "展开模块导航" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(screen.getByRole("tree", { name: "调试节点模块树" })).toBeVisible();
+  });
+
   it("explains an unreachable local Bridge and keeps its technical detail expandable", async () => {
     vi.spyOn(bridgeLauncher, "connectLocalBridge").mockResolvedValue({ reachable: true, ok: true, accepted: true });
     vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockResolvedValue(null);
@@ -1663,6 +1705,14 @@ describe("/node-debugging", () => {
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
     expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
 
+    const selectedUrl = window.location.href;
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(window.location.href).toBe(selectedUrl);
+    expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ })).toHaveAttribute("aria-selected", "true");
+
     first.unmount();
     renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
@@ -2055,6 +2105,7 @@ describe("/node-debugging", () => {
     expect(alert).toHaveTextContent("无法加载调试节点数据");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
+    expect(screen.getByRole("region", { name: "节点操作记录" })).toBeInTheDocument();
     fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
     expect(onRuntimeRetry).toHaveBeenCalledTimes(1);
   });

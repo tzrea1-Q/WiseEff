@@ -50,7 +50,7 @@ function normalizeSearch(search: string): string {
 
 export type ParameterAdminNextPageProps = {
   area: "organization" | "projects";
-  onNavigate: (path: string) => void;
+  onNavigate: (path: string, options?: { replace?: boolean }) => void;
   search: string;
   /** Full location pathname so project-scoped deep links survive reload. */
   pathname?: string;
