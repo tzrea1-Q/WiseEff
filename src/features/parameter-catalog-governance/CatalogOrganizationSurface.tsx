@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import {
   catalogActorForRole,
@@ -48,6 +48,7 @@ export type CatalogOrganizationSurfaceProps = {
   organizationId?: string;
   currentPersonId: string;
   relatedKnowledge?: SpecRelatedKnowledgeSource;
+  taskContent?: ReactNode;
 };
 
 export function CatalogOrganizationSurface({
@@ -61,7 +62,8 @@ export function CatalogOrganizationSurface({
   onAnchorChange,
   organizationId,
   currentPersonId,
-  relatedKnowledge
+  relatedKnowledge,
+  taskContent
 }: CatalogOrganizationSurfaceProps) {
   const actor = actorProp ?? catalogActorForRole(roleId ?? "");
   const reviewActor = sessionRoles === undefined ? actor
@@ -174,37 +176,40 @@ export function CatalogOrganizationSurface({
 
   return (
     <div className="parameter-catalog-organization">
-      {publicationSurfaceLoad === "error" ? (
-        <section className="parameter-catalog__banner" data-tone="danger" aria-label={publicationSurfaceCopy.title}>
-          <p>{publicationSurfaceCopy.fetchFailed}</p>
-          <p>{publicationSurfaceCopy.nextStep}：刷新页面后重试。不要把超时当成已生效。</p>
-        </section>
-      ) : surfaceStatus ? (
-        <section
-          className="parameter-catalog__banner"
-          data-tone={surfaceStatus.tone}
-          aria-label={publicationSurfaceCopy.title}
-        >
-          <p>{surfaceStatus.message}</p>
-          {adoptionNotice ? (
-            <details>
-              <summary>{publicationSurfaceCopy.adoptionDetails}</summary>
-              <p>{surfaceStatus.next}</p>
-              {operatorAudience ? <>
-                <p>{publicationSurfaceCopy.adoptionOperator}</p>
-                <p>{publicationSurfaceCopy.adoptionHandbook}</p>
-              </> : null}
-            </details>
-          ) : <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>}
-        </section>
-      ) : null}
-      {platformOnly ? (
-        <p className="parameter-catalog__muted">
-          组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。
-        </p>
-      ) : null}
       <CatalogPage
         key={surfaceEpoch}
+        taskContent={taskContent}
+        notice={publicationSurfaceLoad === "error" || surfaceStatus || platformOnly ? <>
+          {publicationSurfaceLoad === "error" ? (
+            <section className="parameter-catalog__banner" data-tone="danger" aria-label={publicationSurfaceCopy.title}>
+              <p>{publicationSurfaceCopy.fetchFailed}</p>
+              <p>{publicationSurfaceCopy.nextStep}：刷新页面后重试。不要把超时当成已生效。</p>
+            </section>
+          ) : surfaceStatus ? (
+            <section
+              className="parameter-catalog__banner"
+              data-tone={surfaceStatus.tone}
+              aria-label={publicationSurfaceCopy.title}
+            >
+              <p>{surfaceStatus.message}</p>
+              {adoptionNotice ? (
+                <details>
+                  <summary>{publicationSurfaceCopy.adoptionDetails}</summary>
+                  <p>{surfaceStatus.next}</p>
+                  {operatorAudience ? <>
+                    <p>{publicationSurfaceCopy.adoptionOperator}</p>
+                    <p>{publicationSurfaceCopy.adoptionHandbook}</p>
+                  </> : null}
+                </details>
+              ) : <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>}
+            </section>
+          ) : null}
+          {platformOnly ? (
+            <p className="parameter-catalog__muted">
+              组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。
+            </p>
+          ) : null}
+        </> : undefined}
         repository={catalog}
         actor={actor}
         sessionPermissions={sessionPermissions}

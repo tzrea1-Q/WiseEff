@@ -2,7 +2,7 @@
   "description": "Ratchet baseline for `npm run ui:check`. Counts may only go down: when a rule's live count drops below its baseline, run `npm run ui:check -- --update-baseline` in the same change. Rules at 0 are hard-forbidden and must never ratchet up. Structure: rule id -> { count, note?, files? }.",
   "rules": {
     "raw-color": {
-      "count": 936,
+      "count": 935,
       "note": "Stock from the pre-P3 monolith; P3 (motion/chart/dark wiring) reduces it in parallel. Ratchet down after each merge.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 20,
@@ -10,7 +10,7 @@
         "src/features/parameter-home/parameter-home.css": 1,
         "src/features/parameter-review/parameter-review.css": 33,
         "src/linear-template/linear-template.css": 35,
-        "src/styles.css": 799
+        "src/styles.css": 798
       }
     },
     "raw-z-index": {
@@ -62,7 +62,7 @@
       }
     },
     "raw-radius": {
-      "count": 139,
+      "count": 138,
       "note": "Off-grid radius stock after wave 3 exact --radius-* burn; ratchet down as non-token radii are migrated.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 2,
@@ -70,7 +70,7 @@
         "src/features/parameter-home/parameter-home.css": 5,
         "src/features/parameter-review/parameter-review.css": 6,
         "src/linear-template/linear-template.css": 1,
-        "src/styles.css": 117
+        "src/styles.css": 116
       }
     },
     "ease-keyword": {

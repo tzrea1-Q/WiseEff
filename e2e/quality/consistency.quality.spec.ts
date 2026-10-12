@@ -1,7 +1,8 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint } from "./consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
@@ -110,6 +111,7 @@ for (const route of routes) {
       testInfo.annotations.push({ type: "setup", description: "Bridge pairing-code POSTs use a synthetic response; no server pairing code is issued." });
       const blockedRequests = await installConsistencyReadGuard(context);
       let measurements: ConsistencyMeasurements | null = null;
+      let required = route.required;
       try {
         const routePath = route.path.split("?")[0];
         const [authResponse] = await Promise.all([
@@ -125,21 +127,52 @@ for (const route of routes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await waitForFontsAndNextPaint(page);
+        const pendingWork = page.getByRole("dialog", { name: "待处理工作", exact: true });
+        if (route.path.includes("?review=open") || await pendingWork.isVisible()) {
+          await expect(pendingWork).toBeVisible();
+          await expect(pendingWork.locator(".section-skeleton")).toHaveCount(0);
+          await expect(pendingWork.getByRole("alert")).toHaveCount(0);
+          expect(shouldRequireXiaozeHint(await page.evaluate(() => ({
+            hasDialog: document.body.matches(':has([role="dialog"])'), viewportWidth: window.innerWidth
+          })))).toBe(false);
+          await expect(page.getByTestId("xiaoze-toggle-hint")).toBeHidden();
+          const modalMeasurements = await page.evaluate(collectConsistencyMeasurements);
+          assertXiaozePlacement(modalMeasurements, route.path);
+          await testInfo.attach(`pending-work-${theme}`, {
+            contentType: "application/json", body: JSON.stringify(modalMeasurements, null, 2)
+          });
+          await testInfo.attach(`pending-work-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          await pendingWork.getByRole("button", { name: "关闭", exact: true }).click();
+          await expect(pendingWork).toBeHidden();
+          await waitForFontsAndNextPaint(page);
+        }
         const pageState = await page.evaluate(() => ({
           hasDialog: document.body.matches(':has([role="dialog"])'),
           viewportWidth: window.innerWidth
         }));
         const requiresHint = shouldRequireXiaozeHint(pageState);
+        const historicalIdentity = page.getByRole("region", { name: "节点对应确认", exact: true });
+        const hasHistoricalIdentity = await historicalIdentity.isVisible();
+        if (hasHistoricalIdentity) {
+          await expect(historicalIdentity.getByRole("link", { name: "打开规范审核队列" }))
+            .toHaveAttribute("href", "/parameter-admin/specs?review=open");
+          await expect(historicalIdentity.locator("button, input, select, textarea")).toHaveCount(0);
+        }
+        required = hasHistoricalIdentity
+          ? route.required.filter((category) => category !== "rowActions" && category !== "paginationControls")
+          : route.required;
         if (theme === "light" && requiresHint) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
         }
         await expect(async () => {
           measurements = await page.evaluate(collectConsistencyMeasurements);
-          requireMeasuredCategories(measurements, route.required, route.path);
+          requireMeasuredCategories(measurements, required, route.path);
           if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
             requireReviewInboxStructure(measurements, route.path);
           }
-          if (moduleNavigationPaths.includes(routePath)) {
+          if (route.required.includes("navigatorWorkbenches") || moduleNavigationPaths.includes(routePath)) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }
           requirePrimaryActionColors(measurements, route.path);
@@ -147,6 +180,9 @@ for (const route of routes) {
             requireRowActionVisibility(measurements.rowActions, route.path);
           }
           requireViewSwitchStyles(measurements, route.path);
+          if (route.required.includes("navigatorWorkbenches")) {
+            requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, route.path);
+          }
           if (theme === "light") {
             if (requiresHint) {
               requireMeasuredCategories(measurements, ["xiaozeHints"], route.path);
@@ -154,7 +190,29 @@ for (const route of routes) {
             assertXiaozePlacement(measurements, route.path);
           }
         }).toPass({ timeout: 20_000 });
-        requireCompactControlHeights(measurements, route.path);
+        requireCompactControlHeights(measurements, route.path, required);
+        if (routePath === "/parameters" && theme === "dark") {
+          const contrast = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
+          await testInfo.attach("parameters-dark-color-contrast", {
+            contentType: "application/json", body: Buffer.from(JSON.stringify(contrast.violations, null, 2))
+          });
+          expect(contrast.violations, "dark parameter workbench must meet WCAG AA text contrast").toEqual([]);
+        }
+        if (route.required.includes("navigatorWorkbenches")) {
+          await testInfo.attach(`navigator-workbench-expanded-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
+          await waitForFontsAndNextPaint(page);
+          const collapsed = await page.evaluate(collectConsistencyMeasurements);
+          requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
+          requireRowActionVisibility(collapsed.rowActions, route.path);
+          await testInfo.attach(`navigator-workbench-collapsed-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          await page.getByRole("button", { name: "展开模块导航", exact: true }).click();
+          await waitForFontsAndNextPaint(page);
+        }
         if (route.required.includes("rowActions")) {
           expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
             `${route.path}: the page must not scroll horizontally`).toBeLessThanOrEqual(1);
@@ -181,7 +239,7 @@ for (const route of routes) {
         }
         if (moduleNavigationPaths.includes(routePath)) {
           await test.step("module selection survives reload and clears on reselect without label drift", async () => {
-            const catalog = route.path === "/parameter-admin/specs";
+            const catalog = routePath === "/parameter-admin/specs";
             const node = page.locator(catalog
               ? '.parameter-catalog__tree-select[data-catalog-node-kind="module"]'
               : '.dts-topology-navigator__item[role="treeitem"]').first();
@@ -201,11 +259,34 @@ for (const route of routes) {
             await settleXiaozePopupClosed(page);
             await settleAppToasts(page);
             await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+            if (await pendingWork.isVisible()) {
+              await pendingWork.getByRole("button", { name: "关闭", exact: true }).click();
+              await expect(pendingWork).toBeHidden();
+            }
             await page.mouse.move(0, 0);
             await waitForFontsAndNextPaint(page);
             await expect(node).toHaveAttribute(selectedAttribute, "true");
             requireModuleTreeAlignment((await page.evaluate(collectConsistencyMeasurements)).moduleTreeLabels, route.path);
             expect(new URL(page.url()).searchParams.get(queryKey)).toBe(selectedId);
+            if (routePath === "/parameters") {
+              const url = page.url();
+              await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
+              await expect(node).toBeHidden();
+              expect(page.url()).toBe(url);
+              await waitForFontsAndNextPaint(page);
+              await page.reload();
+              await expectUsablePage(page);
+              await settleQualityRoute(page, routePath, { readOnly: true });
+              await closeXiaozePopupIfOpen(page);
+              await settleXiaozePopupClosed(page);
+              await settleAppToasts(page);
+              await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+              await expect(page.getByRole("button", { name: "展开模块导航", exact: true })).toBeVisible();
+              expect(new URL(page.url()).searchParams.get(queryKey)).toBe(selectedId);
+              await page.getByRole("button", { name: "展开模块导航", exact: true }).click();
+              await expect(node).toHaveAttribute(selectedAttribute, "true");
+              await waitForFontsAndNextPaint(page);
+            }
             await node.click();
             await expect(node).toHaveAttribute(selectedAttribute, "false");
             await expect.poll(() => new URL(page.url()).searchParams.get(queryKey)).toBeNull();
@@ -221,7 +302,7 @@ for (const route of routes) {
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {
           contentType: "application/json",
-          body: JSON.stringify({ path: route.path, theme, viewport: page.viewportSize(), required: route.required, measurements, blockedRequests }, null, 2)
+          body: JSON.stringify({ path: route.path, theme, viewport: page.viewportSize(), required, measurements, blockedRequests }, null, 2)
         });
       }
     });

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, FileJson, Info, LoaderCircle, SlidersHorizontal } from "lucide-react";
+import { FileJson, SlidersHorizontal } from "lucide-react";
+import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { SectionEmpty } from "@/components/common/SectionState";
 import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
@@ -75,6 +77,7 @@ import {
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
   requestedBindingId?: string;
+  notice?: React.ReactNode;
   canEdit?: boolean;
   layoutMode?: TopologyLayoutMode;
   runtimeMode?: WiseEffRuntimeMode;
@@ -325,6 +328,7 @@ async function loadWorkspace(
 export function ApiProjectTopologyWorkspace({
   projectId,
   requestedBindingId,
+  notice,
   canEdit = true,
   layoutMode = "desktop",
   runtimeMode = "api",
@@ -416,6 +420,12 @@ export function ApiProjectTopologyWorkspace({
   };
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
   const [activeFormatTab, setActiveFormatTab] = useState<"dts" | "json">("dts");
+  const pendingFormatFocus = useRef<"dts" | "json" | null>(null);
+  useEffect(() => {
+    if (!pendingFormatFocus.current) return;
+    document.getElementById(`format-tab-${pendingFormatFocus.current}`)?.focus();
+    pendingFormatFocus.current = null;
+  }, [activeFormatTab]);
   const [enablementDialogTarget, setEnablementDialogTarget] = useState<{
     logicalNodeId: string;
     nodeLabel: string;
@@ -1359,6 +1369,40 @@ export function ApiProjectTopologyWorkspace({
   const currentEdits = currentDraftTray || valueDraftRead.kind !== "ready" || enablementDraftRead.kind !== "ready"
     ? <>{draftReadNotices}{currentDraftTray}</> : null;
 
+  const dtsBindingCount = loadState.kind === "ready" ? loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length : 0;
+  const jsonBindingCount = jsonBindings.length;
+
+  const formatSwitcher = jsonBindingCount > 0 ? (
+    <div className="parameter-workspace-format-switch" role="tablist" aria-label="参数配置格式">
+      <button
+        type="button"
+        role="tab"
+        id="format-tab-dts"
+        aria-selected={activeFormatTab === "dts"}
+        aria-controls="format-panel-dts"
+        className={`parameter-workspace-format-switch__tab${activeFormatTab === "dts" ? " is-active" : ""}`}
+        onClick={() => { pendingFormatFocus.current = activeFormatTab === "dts" ? null : "dts"; setActiveFormatTab("dts"); }}
+      >
+        <SlidersHorizontal size={14} aria-hidden="true" />
+        <span>DTS 设备树参数</span>
+        <span className="parameter-workspace-format-switch__badge">{dtsBindingCount}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        id="format-tab-json"
+        aria-selected={activeFormatTab === "json"}
+        aria-controls="format-panel-json"
+        className={`parameter-workspace-format-switch__tab${activeFormatTab === "json" ? " is-active" : ""}`}
+        onClick={() => { pendingFormatFocus.current = activeFormatTab === "json" ? null : "json"; setActiveFormatTab("json"); }}
+      >
+        <FileJson size={14} aria-hidden="true" />
+        <span>JSON 参数</span>
+        <span className="parameter-workspace-format-switch__badge">{jsonBindingCount}</span>
+      </button>
+    </div>
+  ) : null;
+
   const jsonContent = jsonState?.state === "error" && (canonicalRepository || loadState.kind !== "ready" || (requestedBindingId && !requestedBinding)) ? (
     <div className="project-topology-workspace__error" role="alert">
       {jsonState.message}
@@ -1380,45 +1424,23 @@ export function ApiProjectTopologyWorkspace({
       loadPrimaryJsonSource={loadPrimaryJsonSource}
       onExportRows={(bindings) => downloadJsonWorkbenchCsv(bindings, `json-parameters-${projectId}.csv`)}
       projectName={projectId}
+      toolbarActions={formatSwitcher}
+      notice={notice}
     />
   ) : jsonState?.state === "loading" || !jsonState ? <p role="status">正在加载项目 JSON 绑定…</p> : null;
   const unavailableBinding = requestedBindingId && !requestedBinding && jsonState?.state === "ready"
     ? <p role="status">关联参数在当前项目中不可用。</p> : null;
 
-  if (loadState.kind === "loading") {
+  if (loadState.kind !== "ready") {
     return (
-      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
-        <p role="status"><LoaderCircle className="dts-status-icon dts-status-icon--spin" size={17} strokeWidth={2} aria-hidden="true" />正在加载项目拓扑与绑定…</p>
-        {jsonContent}
-      </section>
-    );
-  }
-
-  if (loadState.kind === "empty") {
-    return (
-      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
-        <div className="project-topology-workspace__empty" role="status">
-          <Info className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
-          {loadState.message}
-        </div>
-        {unavailableBinding}
-        {jsonContent}
-      </section>
-    );
-  }
-
-  if (loadState.kind === "error") {
-    return (
-      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
-        <div className="project-topology-workspace__error" role="alert">
-          <AlertCircle className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
-          {loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : null}
-          {loadState.message}
-          <button type="button" className="button subtle" onClick={() => setReloadToken((t) => t + 1)}>
-            重试
-          </button>
-        </div>
-        {unavailableBinding}
+      <section className="dts-parameter-workbench" aria-label="DTS 参数工作台" aria-busy={loadState.kind === "loading"}>
+        <NavigatorWorkbench pageKey="parameters" toolbar={null} navigatorLabel="模块导航"
+          navigator={<SectionEmpty message="暂无模块分组" />} taskLabel="DTS 参数列表"
+          notice={notice || unavailableBinding ? <>{notice}{unavailableBinding}</> : undefined}
+          taskState={loadState.kind === "loading" ? { kind: "loading", message: "正在加载项目拓扑与绑定…" }
+            : loadState.kind === "empty" ? { kind: "empty", message: loadState.message }
+            : { kind: "error", message: `${loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : ""}${loadState.message}`,
+              onRetry: () => setReloadToken((token) => token + 1) }} />
         {jsonContent}
       </section>
     );
@@ -1438,45 +1460,8 @@ export function ApiProjectTopologyWorkspace({
     loadState.incompleteBase ||
     productDiagnostics.length > 0
   );
-  const dtsBindingCount = loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length;
-  const jsonBindingCount = jsonBindings.length;
-
-  const formatSwitcher = jsonBindingCount > 0 ? (
-    <div className="parameter-workspace-format-switch" role="tablist" aria-label="参数配置格式">
-      <button
-        type="button"
-        role="tab"
-        id="format-tab-dts"
-        aria-selected={activeFormatTab === "dts"}
-        aria-controls="format-panel-dts"
-        className={`parameter-workspace-format-switch__tab${activeFormatTab === "dts" ? " is-active" : ""}`}
-        onClick={() => setActiveFormatTab("dts")}
-      >
-        <SlidersHorizontal size={14} aria-hidden="true" />
-        <span>DTS 设备树参数</span>
-        <span className="parameter-workspace-format-switch__badge">{dtsBindingCount}</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        id="format-tab-json"
-        aria-selected={activeFormatTab === "json"}
-        aria-controls="format-panel-json"
-        className={`parameter-workspace-format-switch__tab${activeFormatTab === "json" ? " is-active" : ""}`}
-        onClick={() => setActiveFormatTab("json")}
-      >
-        <FileJson size={14} aria-hidden="true" />
-        <span>JSON 参数</span>
-        <span className="parameter-workspace-format-switch__badge">{jsonBindingCount}</span>
-      </button>
-    </div>
-  ) : null;
-
   return (
     <div className="api-project-topology-workspace">
-      {unavailableBinding}
-      {jsonState?.state === "error" && (canonicalRepository || (requestedBindingId && !requestedBinding)) ? jsonContent : null}
-      {formatSwitcher}
       {activeFormatTab === "json" && jsonBindingCount > 0 ? (
         <div id="format-panel-json" role="tabpanel" aria-labelledby="format-tab-json">
           {jsonContent}
@@ -1485,6 +1470,11 @@ export function ApiProjectTopologyWorkspace({
         <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts">
           <DtsParameterWorkbench
             projectId={projectId}
+            toolbarActions={formatSwitcher}
+            notice={notice || unavailableBinding || jsonState?.state === "error" ? <>
+              {notice}{unavailableBinding}
+              {jsonState?.state === "error" && (canonicalRepository || (requestedBindingId && !requestedBinding)) ? jsonContent : null}
+            </> : undefined}
             requestedBindingId={requestedBinding?.effectiveValue.kind !== "json" ? requestedBindingId : undefined}
             configSetId={loadState.configSetId}
             revisionId={loadState.revisionId}

@@ -3,6 +3,7 @@ import { declarationsFor, readStylesheet, rulesFor } from "./test/cssAssertions"
 
 const styles = [
   "src/styles.css",
+  "src/components/layout/navigator-workbench.css",
   "src/components/ui/view-switch.css",
   "src/features/log-analysis/log-analysis.css",
   "src/features/parameter-home/parameter-home.css",
@@ -75,6 +76,49 @@ describe.each(["light", "dark"])("%s theme contrast pairs", (theme) => {
     ...declarationsFor(styles, ":root"),
     ...(theme === "dark" ? declarationsFor(styles, ".dark") : {})
   };
+
+  it.each([".brand-subtitle", ".nav-group-label"])("keeps %s readable on the sidebar surface", (selector) => {
+    expectReadable(declarationsFor(styles, selector).color, declarationsFor(styles, ".sidebar").background, tokens);
+  });
+
+  it("uses semantic theme tokens throughout the parameter navigator workbench", () => {
+    const workbench = declarationsFor(styles, ".navigator-workbench");
+    for (const [local, semantic] of Object.entries({
+      ink: "text", muted: "text-muted", border: "border", "border-strong": "border-strong",
+      surface: "surface", "surface-soft": "surface-sunken", blue: "accent", "blue-soft": "accent-soft",
+      green: "success", "green-soft": "success-soft", amber: "warning", "amber-soft": "warning-soft",
+      red: "danger", "red-soft": "danger-soft"
+    })) {
+      expect(workbench[`--dts-workbench-${local}`]).toBe(`var(--${semantic})`);
+    }
+    expect(workbench.color).toBe("var(--text)");
+  });
+
+  it("keeps parameter tree and table text readable on every workbench surface", () => {
+    const workbenchTokens = { ...tokens, ...declarationsFor(styles, ".navigator-workbench") };
+    const toolbar = declarationsFor(styles, ".navigator-workbench__toolbar");
+    expectReadable(declarationsFor(styles, ".dts-parameter-workbench__search").color, toolbar.background, workbenchTokens);
+    for (const selector of [".navigator-workbench__navigator", ".navigator-workbench__task", ".navigator-workbench__inspector"]) {
+      expectReadable("var(--text)", declarationsFor(styles, selector).background, workbenchTokens);
+    }
+    for (const background of ["var(--surface)", "var(--surface-raised)", "var(--accent-soft)"]) {
+      for (const selector of [
+        ".dts-topology-navigator__label--text", ".dts-topology-navigator__item", ".dts-parameter-workbench-table__row",
+        ".navigator-workbench .dts-topology-navigator__count", ".navigator-workbench .dts-topology-navigator__disclosure",
+        ".navigator-workbench .dts-parameter-workbench-table__row code", ".navigator-workbench .dts-parameter-workbench-table__provenance",
+        ".dts-parameter-workbench-table__module small", ".dts-parameter-workbench-table__description",
+        ".json-parameter-workbench__identity-cell strong", ".json-parameter-workbench__identity-cell small"
+      ]) {
+        expectReadable(declarationsFor(styles, selector).color, background, workbenchTokens);
+      }
+    }
+    const header = declarationsFor(styles, ".dts-parameter-workbench-table__head");
+    expectReadable(declarationsFor(styles, ".navigator-workbench .dts-parameter-workbench-table__head").color,
+      header.background, workbenchTokens);
+    for (const selector of [".navigator-workbench .dts-parameter-workbench-table__row:hover", ".navigator-workbench .dts-parameter-workbench-table__row.is-selected", ".navigator-workbench .dts-parameter-workbench-table__row.is-draft"]) {
+      expectReadable("var(--text-muted)", declarationsFor(styles, selector).background, workbenchTokens);
+    }
+  });
 
   it("keeps the log trend note readable on its sunken panel", () => {
     expectReadable(declarationsFor(styles, ".topic-trend-note").color, "var(--surface-sunken)", tokens);

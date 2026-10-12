@@ -25,6 +25,18 @@ function renderSurface(authoringAllowed: boolean) {
 }
 
 describe("Catalog definition action capability", () => {
+  it("keeps publication guidance between release context and the module navigator", async () => {
+    renderSurface(true);
+    const notice = await screen.findByRole("region", { name: "发布状态" });
+    const page = screen.getByRole("region", { name: "参数定义目录" });
+    const release = within(page).getByRole("region", { name: "目录发布" });
+    const navigator = within(page).getByRole("region", { name: "模块导航" });
+    expect(page).toContainElement(notice);
+    expect(release.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(notice.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(notice).toHaveTextContent("可以保存草稿并预览，但发布需要 catalog:publish。");
+  });
+
   it("shows the published name next to a monospace property key", async () => {
     renderSurface(false);
     const action = await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
@@ -46,6 +58,12 @@ describe("Catalog definition action capability", () => {
         sessionRoles={[{ roleId, projectId: null }]} search="" currentPersonId="reader"
         onAnchorChange={vi.fn()} />);
       const banner = await screen.findByRole("region", { name: "发布状态" });
+      const page = screen.getByRole("region", { name: "参数定义目录" });
+      const release = within(page).getByRole("region", { name: "目录发布" });
+      const navigator = within(page).getByRole("region", { name: "模块导航" });
+      expect(page).toContainElement(banner);
+      expect(release.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(banner.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(within(banner).getByText("参数目录正在接管中，部分管理操作暂不可用。")).toBeVisible();
       const disclosure = within(banner).getByText("了解详情").closest("details")!;
       expect(disclosure).not.toHaveAttribute("open");

@@ -58,7 +58,8 @@ export function requireRowActionVisibility(rows: ConsistencyMeasurements["rowAct
 
 export function requireCompactControlHeights(
   measurements: Partial<Pick<ConsistencyMeasurements, "filterControls" | "sortControls" | "paginationControls" | "unmarkedCompactControls">> | null | undefined,
-  routePath: string
+  routePath: string,
+  requiredCategories?: readonly ConsistencyCategory[]
 ) {
   if (!measurements) {
     throw new Error(`${routePath}: compact control collection error: route measurements are missing`);
@@ -74,7 +75,7 @@ export function requireCompactControlHeights(
       }
     }
   }
-  const required = consistencyRoutes.find((route) => route.path === routePath.split("?")[0])?.required
+  const required = (requiredCategories ?? consistencyRoutes.find((route) => route.path === routePath.split("?")[0])?.required)
     .filter((category) => category === "filterControls" || category === "sortControls" || category === "paginationControls") ?? [];
   if (required.length && measurements.unmarkedCompactControls?.length) {
     throw new Error(`${routePath}: unmarked compact control: ${measurements.unmarkedCompactControls[0].dom}`);
@@ -101,6 +102,50 @@ export function requireMeasuredCategories(
 
 export function shouldRequireXiaozeHint({ hasDialog, viewportWidth }: { hasDialog: boolean; viewportWidth: number }) {
   return !hasDialog && viewportWidth > 640;
+}
+
+export function requireNavigatorWorkbenchGeometry(workbenches: ConsistencyMeasurements["navigatorWorkbenches"], routePath: string) {
+  requireMeasuredCategories({ navigatorWorkbenches: workbenches }, ["navigatorWorkbenches"], routePath);
+  for (const workbench of workbenches) {
+    const { root, navigator, task, toolbar, primaryAction, firstRow, firstRowClip, contract, viewport } = workbench;
+    if (!navigator || !task || !toolbar || !primaryAction || !firstRow || !firstRowClip) {
+      throw new Error(`${routePath}: missing navigator-workbench region, primary action or first row`);
+    }
+    if (![root, navigator, task, toolbar, primaryAction, firstRow, firstRowClip, contract, viewport]
+      .flatMap((measurement) => Object.values(measurement)).every(Number.isFinite)
+      || !Number.isFinite(workbench.pageOverflow) || !Number.isInteger(workbench.noticeCount)
+      || Object.values(contract).some((value) => value <= 0)) {
+      throw new Error(`${routePath}: invalid navigator-workbench measurement or layout token`);
+    }
+    const width = workbench.collapsed ? contract.collapsedWidth : contract.navigatorWidth;
+    const aligned = (actual: number, expected: number) => Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) <= 1;
+    if (!aligned(navigator.left, root.left) || !aligned(navigator.width, width)
+      || !aligned(task.left, root.left + width + contract.gap)) {
+      throw new Error(`${routePath}: navigator-workbench pane geometry differs from the token contract`);
+    }
+    if (toolbar.bottom > task.top + 1 || !aligned(primaryAction.right, toolbar.right - contract.toolbarPadding - 1)
+      || primaryAction.top < toolbar.top || primaryAction.bottom > toolbar.bottom || primaryAction.left < toolbar.left) {
+      throw new Error(`${routePath}: navigator-workbench toolbar or primary action is misplaced`);
+    }
+    if (workbench.noticeCount > 1) throw new Error(`${routePath}: navigator-workbench has more than one notice`);
+    if (workbench.pageOverflow > 1) throw new Error(`${routePath}: navigator-workbench causes page horizontal scrolling`);
+    if (!workbench.collapsed) {
+      if (!workbench.navigatorCounts.length) throw new Error(`${routePath}: missing navigator-workbench count measurements`);
+      for (const count of workbench.navigatorCounts) {
+        if (![count.textRect.left, count.textRect.right, count.textRect.width, count.clip.left, count.clip.right,
+          count.clientWidth, count.scrollWidth].every(Number.isFinite) || count.textRect.width <= 0
+          || count.scrollWidth > count.clientWidth + 1 || count.textRect.left < count.clip.left - 1
+          || count.textRect.right > count.clip.right + 1) {
+          throw new Error(`${routePath}: navigator-workbench count text is clipped: ${count.text}`);
+        }
+      }
+    }
+    if (firstRow.top < Math.max(0, task.top) || firstRow.bottom > Math.min(task.bottom, viewport.height) + 1
+      || firstRow.left < Math.max(0, task.left) || firstRow.right > Math.min(task.right, viewport.width) + 1
+      || !aligned(firstRowClip.width, firstRow.width) || !aligned(firstRowClip.height, firstRow.height)) {
+      throw new Error(`${routePath}: navigator-workbench first data row is outside the initial viewport or clipped`);
+    }
+  }
 }
 
 export function assertXiaozePlacement(

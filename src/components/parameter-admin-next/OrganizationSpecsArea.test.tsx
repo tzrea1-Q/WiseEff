@@ -1,4 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
+import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
 import { describe, expect, it, vi } from "vitest";
 
 import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
@@ -29,7 +31,7 @@ function renderIdentityEntry(tasks: IdentityMappingTask[] | Error) {
         pathname="/parameter-admin/specs/identity-mapping"
         search="?projectId=project-1"
         onNavigate={onNavigate}
-        catalogLibrary={<div>Canonical Catalog</div>}
+        renderCatalogLibrary={(taskContent) => taskContent ?? <div>Canonical Catalog</div>}
       />
     </ParameterAdminProvider>
   );
@@ -37,6 +39,25 @@ function renderIdentityEntry(tasks: IdentityMappingTask[] | Error) {
 }
 
 describe("OrganizationSpecsArea identity-mapping entry", () => {
+  it("shows unresolved identity evidence inside the Catalog task area without changing its review link", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const topology = { listMappingTasks: vi.fn().mockResolvedValue([
+      { ...historicalTask, status: "open", evidence: { evidence: ["Unresolved continuity evidence"] } }
+    ]) };
+    const onNavigate = vi.fn();
+    render(<ParameterAdminProvider topology={topology as never} moduleRegistry={{} as never}>
+      <OrganizationSpecsArea pathname="/parameter-admin/specs/identity-mapping" search="?projectId=project-1"
+        onNavigate={onNavigate}
+        renderCatalogLibrary={(taskContent) => <CatalogPage repository={ports.catalog} actor="org-admin"
+          search="?projectId=project-1" taskContent={taskContent} />} />
+    </ParameterAdminProvider>);
+    const evidence = await screen.findByText("Unresolved continuity evidence");
+    expect(screen.getByRole("region", { name: "目录列表" })).toContainElement(evidence);
+    expect(within(screen.getByRole("region", { name: "模块导航" })).getByRole("button", { name: "收起模块导航" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "打开规范审核队列" })).toHaveAttribute("href", "/parameter-admin/specs?review=open");
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
   it("does not fall back to retired Spec governance when Catalog is unavailable", async () => {
     const topology = {
       listMappingTasks: vi.fn().mockResolvedValue([]),
@@ -48,7 +69,7 @@ describe("OrganizationSpecsArea identity-mapping entry", () => {
             pathname="/parameter-admin/specs"
             search=""
             onNavigate={vi.fn()}
-            catalogLibrary={null}
+            renderCatalogLibrary={() => null}
           />
         </ParameterAdminProvider>
       </ToastProvider>

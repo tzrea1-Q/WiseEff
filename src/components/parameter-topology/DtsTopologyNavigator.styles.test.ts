@@ -1,7 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { declarationsFor, readStylesheet } from "../../test/cssAssertions";
+import { declarationsFor, hasRule, readStylesheet } from "../../test/cssAssertions";
 
 describe("DtsTopologyNavigator responsive width", () => {
+  it("leaves JSON workbench shell spacing and pane geometry to the shared template", () => {
+    const styles = readStylesheet("src/styles.css");
+
+    for (const selector of [
+      ".json-parameter-workbench",
+      ".json-parameter-workbench__list",
+      ".json-parameter-workbench__list .dts-workbench-list__scroll-x",
+      ".json-parameter-workbench__list .dts-workbench-list__scroll-y"
+    ]) {
+      expect(hasRule(styles, selector), selector).toBe(false);
+    }
+  });
+
+  it("does not retain the replaced inline inspector or page-state boxes", () => {
+    const styles = readStylesheet("src/styles.css");
+
+    for (const selector of [
+      ".json-parameter-workbench__inspector",
+      ".json-parameter-workbench__no-selection",
+      ".json-parameter-workbench__no-selection-icon",
+      ".dts-parameter-workbench--status",
+      '.dts-parameter-workbench--status[aria-busy="true"]',
+      '.dts-parameter-workbench--status[aria-busy="true"] [role="status"]',
+      ".dts-parameter-workbench--status .project-topology-workspace__empty",
+      ".dts-parameter-workbench--status .project-topology-workspace__error",
+      ".dts-parameter-workbench--status .project-topology-workspace__error .button"
+    ]) {
+      expect(hasRule(styles, selector), selector).toBe(false);
+    }
+  });
+
+  it("uses shared elevation for parameter workbench row hover", () => {
+    const styles = readStylesheet("src/components/layout/navigator-workbench.css");
+    expect(declarationsFor(styles, ".navigator-workbench .dts-parameter-workbench-table__row:hover")["box-shadow"])
+      .toBe("var(--shadow-1)");
+  });
+
   it("keeps the disclosure column fixed instead of distributing spare space before labels", () => {
     const styles = readStylesheet("src/styles.css");
     const tokens = declarationsFor(styles, ":root");
@@ -88,27 +125,25 @@ describe("DtsTopologyNavigator responsive width", () => {
     expect(results.height).toBe("100%");
   });
 
-  it("uses the shared workbench width for parameter editing and administration", () => {
-    const styles = readStylesheet("src/styles.css");
-    const workbench = declarationsFor(styles, ".dts-parameter-workbench");
-    const body = declarationsFor(
-      styles,
-      ".dts-parameter-workbench > .dts-parameter-workbench__body",
-      { within: "dts-workbench (min-width: 960px)" }
-    );
-    const topology = declarationsFor(
-      styles,
-      ".dts-parameter-workbench > .dts-parameter-workbench__body > .dts-workbench-topology",
-      { within: "dts-workbench (min-width: 960px)" }
-    );
-
-    expect(workbench["container-type"]).toBe("inline-size");
-    expect(workbench["container-name"]).toBe("dts-workbench");
-    expect(body["grid-template-columns"]).toBe("auto minmax(0, 1fr)");
-    expect(topology.position).toBe("sticky");
-    expect(topology.width).toBe("max-content");
-    expect(topology["min-width"]).toBe("var(--module-navigator-min-width)");
-    expect(topology["max-width"]).toBe("var(--module-navigator-max-width)");
+  it("fits parameter counts in the bounded navigator and ellipsizes only long labels", () => {
+    const styles = readStylesheet("src/components/layout/navigator-workbench.css");
+    const tokens = declarationsFor(readStylesheet("src/styles.css"), ":root");
+    expect(tokens["--navigator-workbench-navigator-width"]).toBe("18rem");
+    expect(tokens["--navigator-workbench-navigator-cap"]).toBe("var(--module-navigator-max-width)");
+    expect(declarationsFor(styles, ".navigator-workbench__body")["grid-template-columns"])
+      .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
+    expect(declarationsFor(styles, ".navigator-workbench__navigation").overflow).toBe("auto");
+    expect(declarationsFor(styles, ".navigator-workbench__navigation .dts-topology-navigator").width).toBe("100%");
+    expect(declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__item")["grid-template-columns"])
+      .toBe("var(--module-navigator-disclosure-size) minmax(0, 1fr) max-content");
+    const label = declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__label");
+    expect(label["white-space"]).toBe("nowrap");
+    expect(label.overflow).toBe("hidden");
+    expect(label["text-overflow"]).toBe("ellipsis");
+    const metadata = declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__meta");
+    expect(metadata["min-width"]).toBe("max-content");
+    expect(metadata["max-width"]).toBe("none");
+    expect(declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__count").overflow).toBe("visible");
   });
 
   it("does not stretch collapsed roots on the node debugging page", () => {

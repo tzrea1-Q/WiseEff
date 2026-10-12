@@ -150,6 +150,14 @@
   --module-navigator-min-width: 15rem;
   --module-navigator-max-width: min(32.5rem, 42vw);
   --module-navigator-disclosure-size: 28px;
+  --navigator-workbench-navigator-width: 18rem;
+  --navigator-workbench-navigator-cap: var(--module-navigator-max-width);
+  --navigator-workbench-collapsed-width: var(--space-10);
+  --navigator-workbench-inspector-width: 20rem;
+  --navigator-workbench-gap: var(--space-3);
+  --navigator-workbench-toolbar-padding: var(--space-3);
+  --navigator-workbench-pane-height: min(670px, calc(100vh - 230px));
+  --navigator-workbench-scroll-rail-height: 14px;
   --bridge-guide-width: 30rem;
   --dts-workbench-table-min-width: 680px;
   --dts-workbench-scrollbar-width: var(--space-3);
@@ -625,6 +633,11 @@ body {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.brand-subtitle,
+.nav-group-label {
+  color: var(--text-muted);
 }
 
 .sidebar-toggle {
@@ -21695,39 +21708,6 @@ body.xiaoze-popup-drag-active {
 }
 
 /* ── JSON Parameter Workbench ── */
-.json-parameter-workbench {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-1);
-}
-
-.json-parameter-workbench__list {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  height: min(670px, calc(100vh - 230px));
-  max-height: min(670px, calc(100vh - 230px));
-  background: var(--dts-workbench-surface);
-  border: 1px solid var(--dts-workbench-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.json-parameter-workbench__list .dts-workbench-list__scroll-x {
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.json-parameter-workbench__list .dts-workbench-list__scroll-y {
-  width: 100%;
-  min-width: 100%;
-  overflow-y: auto;
-}
-
 .json-parameter-workbench-table {
   width: 100%;
   border-collapse: collapse;
@@ -21883,13 +21863,6 @@ body.xiaoze-popup-drag-active {
   color: var(--danger);
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
-}
-
-.json-parameter-workbench__inspector {
-  position: sticky;
-  top: var(--space-3);
-  max-height: min(670px, calc(100vh - 230px));
-  overflow-y: auto;
 }
 
 .json-binding-card {
@@ -22060,25 +22033,6 @@ body.xiaoze-popup-drag-active {
   color: var(--text-secondary);
 }
 
-.json-parameter-workbench__no-selection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 280px;
-  padding: var(--space-8);
-  text-align: center;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  gap: var(--space-3);
-}
-
-.json-parameter-workbench__no-selection-icon {
-  color: var(--text-muted);
-  opacity: 0.6;
-}
-
 .binding-detail-panel,
 .binding-detail-drawer {
   display: grid;
@@ -22170,35 +22124,7 @@ body.xiaoze-popup-drag-active {
   display: grid;
   gap: var(--space-4);
   min-width: 0;
-  container-type: inline-size;
-  container-name: dts-workbench;
   color: var(--dts-workbench-ink);
-}
-
-.dts-parameter-workbench--status {
-  min-height: 180px;
-  align-content: center;
-}
-
-.dts-parameter-workbench--status[aria-busy="true"] {
-  color: var(--dts-workbench-blue);
-}
-
-.dts-parameter-workbench--status[aria-busy="true"] [role="status"],
-.dts-parameter-workbench--status .project-topology-workspace__empty,
-.dts-parameter-workbench--status .project-topology-workspace__error {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-4);
-  color: var(--dts-workbench-muted);
-  background: var(--dts-workbench-surface-soft);
-  border: 1px dashed var(--dts-workbench-border-strong);
-  border-radius: 10px;
-  font-size: var(--text-base);
-  line-height: 1.55;
-  overflow-wrap: anywhere;
 }
 
 .dts-status-icon {
@@ -22222,17 +22148,6 @@ body.xiaoze-popup-drag-active {
   }
 }
 
-.dts-parameter-workbench--status .project-topology-workspace__error {
-  color: var(--dts-workbench-red);
-  background: var(--dts-workbench-red-soft);
-  border-style: solid;
-  border-color: #f0c7cb;
-}
-
-.dts-parameter-workbench--status .project-topology-workspace__error .button {
-  margin-top: var(--space-3);
-}
-
 .dts-parameter-workbench__header-actions {
   display: inline-flex;
   flex: 0 0 auto;
@@ -22241,17 +22156,6 @@ body.xiaoze-popup-drag-active {
   gap: 6px;
 }
 
-.dts-parameter-workbench__toolbar {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
-  align-items: end;
-  gap: var(--space-2);
-  min-width: 0;
-  padding: var(--space-3);
-  background: var(--dts-workbench-surface-soft);
-  border: 1px solid var(--dts-workbench-border);
-  border-radius: var(--radius-md);
-}
 
 .dts-parameter-workbench__toolbar-actions {
   display: inline-flex;
@@ -22315,8 +22219,7 @@ body.xiaoze-popup-drag-active {
   min-width: 0;
 }
 
-.dts-workbench-topology,
-.dts-workbench-list {
+.dts-workbench-topology {
   min-width: 0;
   background: var(--dts-workbench-surface);
   border: 1px solid var(--dts-workbench-border);
@@ -22337,22 +22240,7 @@ body.xiaoze-popup-drag-active {
   overflow: hidden;
 }
 
-@media (min-width: 1201px) {
-  .dts-parameter-workbench .dts-workbench-topology {
-    max-width: min(var(--module-navigator-max-width), max(var(--module-navigator-min-width), calc(100cqw - var(--dts-workbench-table-min-width) - var(--dts-workbench-scrollbar-width) - var(--space-3))));
-  }
-}
 
-.dts-workbench-list {
-  /* Outer shell frames the dual-axis scrollports so the horizontal bar stays
-   * on the visible panel edge instead of under thousands of rows. */
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) 14px;
-  height: min(670px, calc(100vh - 230px));
-  max-height: min(670px, calc(100vh - 230px));
-  min-width: 0;
-  overflow: hidden;
-}
 
 .dts-workbench-list__scroll-x {
   /* Content pane; horizontal position syncs with the always-visible rail. */
@@ -22403,7 +22291,7 @@ body.xiaoze-popup-drag-active {
   /* Dedicated 14px track so horizontal scrolling stays discoverable even when
    * the OS uses overlay scrollbars on the content pane. */
   box-sizing: border-box;
-  height: 14px;
+  height: var(--navigator-workbench-scroll-rail-height);
   overflow-x: scroll;
   overflow-y: hidden;
   background: #d5e0ef;
@@ -22417,7 +22305,7 @@ body.xiaoze-popup-drag-active {
 }
 
 .dts-workbench-list__h-rail::-webkit-scrollbar {
-  height: 14px;
+  height: var(--navigator-workbench-scroll-rail-height);
   background: #d5e0ef;
 }
 
@@ -24006,9 +23894,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 @media (max-width: 1200px) {
-  .dts-parameter-workbench__toolbar {
-    grid-template-columns: minmax(210px, 1fr) auto auto;
-  }
 
   .dts-parameter-workbench__result-count {
     justify-self: end;
@@ -24034,10 +23919,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
     max-height: min(520px, calc(100vh - 210px));
   }
 
-  .dts-workbench-list {
-    height: min(520px, calc(100vh - 210px));
-    max-height: min(520px, calc(100vh - 210px));
-  }
 
   .dts-workbench-list__scroll-y {
     min-width: 640px;
@@ -24089,27 +23970,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 }
 
-/* Parameter editing and parameter administration own the shared DTS workbench
- * directly, so their responsive decision must use that workbench's width. */
-@container dts-workbench (min-width: 960px) {
-  .dts-parameter-workbench > .dts-parameter-workbench__body {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .dts-parameter-workbench > .dts-parameter-workbench__body > .dts-workbench-topology {
-    position: sticky;
-    top: 12px;
-    width: max-content;
-    min-width: var(--module-navigator-min-width);
-    max-width: var(--module-navigator-max-width);
-    max-height: min(670px, calc(100vh - 230px));
-  }
-
-  .dts-parameter-workbench > .dts-parameter-workbench__body > .dts-workbench-list {
-    height: min(670px, calc(100vh - 230px));
-    max-height: min(670px, calc(100vh - 230px));
-  }
-}
 
 .parameter-admin-specs-workbench__results {
   min-width: 0;
@@ -24120,10 +23980,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
     gap: var(--space-3);
   }
 
-  .dts-parameter-workbench__toolbar {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: end;
-  }
 
   .dts-parameter-workbench__result-count {
     justify-self: end;
@@ -24148,13 +24004,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
     overflow-x: clip;
   }
 
-  .dts-workbench-list {
-    height: auto;
-    max-height: none;
-    min-width: 0;
-    overflow: hidden;
-    grid-template-rows: auto;
-  }
 
   .dts-workbench-list__scroll-x,
   .dts-workbench-list__scroll-y {
@@ -24248,9 +24097,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
     --module-navigator-disclosure-size: calc(var(--space-10) + var(--space-1));
   }
 
-  .dts-parameter-workbench__toolbar {
-    grid-template-columns: 1fr;
-  }
 
   .dts-parameter-workbench__result-count {
     justify-self: start;

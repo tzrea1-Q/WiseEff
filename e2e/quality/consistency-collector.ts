@@ -111,8 +111,11 @@ export function collectConsistencyMeasurements() {
   const xiaozeLaunchers = overlays('[data-testid="copilot-chat-toggle"],.xiaoze-chat-toggle');
   const xiaozeHints = overlays('[data-testid="xiaoze-toggle-hint"],.xiaoze-toggle-hint');
   const scrollports = new Set<Element>();
-  const visibleTables = elements('table,[role="table"],[role="grid"]');
-  for (const table of [...visibleTables, ...elements(".audit-workspace-list")]) {
+  const visibleTables = [...new Set([
+    ...elements('table,[role="table"],[role="grid"]'),
+    ...document.querySelectorAll('[role="dialog"] :is(table,[role="table"],[role="grid"])')
+  ])].filter(visible);
+  for (const table of [...visibleTables, ...elements(".audit-workspace-list, .navigator-workbench__task .identity-mapping-review__list")]) {
     let hasScrollport = false;
     for (let ancestor: Element | null = table; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
       const style = getComputedStyle(ancestor);
@@ -168,9 +171,61 @@ export function collectConsistencyMeasurements() {
     .filter((element) => element.closest('[role="toolbar"],[role="search"],[class*="filter"],[class*="toolbar"],[class*="pagination"]')
       && !element.matches('[data-compact-control="filter"],[data-compact-control="sort"],[data-compact-control="pagination"]'))
     .map(measureControl);
+  const navigatorWorkbenches = elements(".navigator-workbench").map((workbench) => {
+    const measure = (selector: string) => {
+      const element = workbench.querySelector(selector);
+      return element && visible(element) ? bounds(element) : null;
+    };
+    const tokenWidth = (name: string) => {
+      const probe = document.createElement("div");
+      probe.style.cssText = `position: absolute; visibility: hidden; width: var(${name}); height: 0; padding: 0; border: 0`;
+      document.documentElement.append(probe);
+      const width = Number.parseFloat(getComputedStyle(probe).width);
+      probe.remove();
+      return width;
+    };
+    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item');
+    return {
+      pageKey: workbench.getAttribute("data-workbench-page"),
+      collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
+      root: bounds(workbench),
+      navigator: measure(":scope > .navigator-workbench__body > .navigator-workbench__navigator"),
+      task: measure(":scope > .navigator-workbench__body > .navigator-workbench__task"),
+      toolbar: measure(":scope > .navigator-workbench__toolbar"),
+      primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
+      noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count")].filter(visible).map((count) => {
+        const navigation = count.closest(".navigator-workbench__navigation")!;
+        const navigationRect = bounds(navigation);
+        const countRect = bounds(count);
+        const clip = {
+          left: Math.max(0, navigationRect.left + navigation.clientLeft, countRect.left),
+          right: Math.min(innerWidth, navigationRect.left + navigation.clientLeft + navigation.clientWidth, countRect.right)
+        };
+        const range = document.createRange();
+        range.selectNodeContents(count);
+        const textRect = range.getBoundingClientRect();
+        return {
+          text: count.textContent, clip,
+          textRect: { left: textRect.left, right: textRect.right, width: textRect.width },
+          clientWidth: count.clientWidth, scrollWidth: count.scrollWidth
+        };
+      }),
+      firstRow: firstRow ? bounds(firstRow) : null,
+      firstRowClip: firstRow ? clippedGeometry(firstRow)[0]?.rect ?? null : null,
+      viewport: { width: innerWidth, height: innerHeight },
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      contract: {
+        navigatorWidth: Math.min(tokenWidth("--navigator-workbench-navigator-width"), tokenWidth("--navigator-workbench-navigator-cap")),
+        collapsedWidth: tokenWidth("--navigator-workbench-collapsed-width"),
+        gap: tokenWidth("--navigator-workbench-gap"),
+        toolbarPadding: tokenWidth("--navigator-workbench-toolbar-padding")
+      }
+    };
+  });
   return {
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, visibleTableCount: visibleTables.length
   };
 }
 

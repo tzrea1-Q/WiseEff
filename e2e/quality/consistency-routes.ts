@@ -42,7 +42,8 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   moduleTreeLabels: [...catalogPaths, "/parameters", "/node-debugging", "/dts-reload"],
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
   sortControls: [],
-  paginationControls: catalogPaths
+  paginationControls: catalogPaths,
+  navigatorWorkbenches: ["/parameters", ...catalogPaths]
 };
 const otherPhaseTwoPaths = [
   "/log-admin", "/parameter-admin/projects/aurora", "/parameter-admin/projects/aurora/config-sets",
@@ -57,4 +58,10 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
       "xiaozeLaunchers",
       ...(Object.keys(applicablePaths) as (keyof typeof applicablePaths)[]).filter((category) => applicablePaths[category].includes(path))
     ] satisfies ConsistencyCategory[]
-  }));
+  }))
+  .flatMap((route) => [
+    route,
+    ...(["/parameter-admin/spec-review", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"].includes(route.path)
+      ? [{ ...route, path: `${route.path}?review=open` }]
+      : [])
+  ]);

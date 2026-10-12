@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
+import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 
 import {
   catalogWritesEnabled,
@@ -94,6 +95,9 @@ type RevisionItem = CatalogDefinitionRevisionResponse["item"];
 type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
 
 export type CatalogPageProps = {
+  pageKey?: string;
+  notice?: ReactNode;
+  taskContent?: ReactNode;
   repository: ParameterCatalogRepository;
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
@@ -206,6 +210,9 @@ function pickCollection(
  * of occupying the workspace by default.
  */
 export function CatalogPage({
+  pageKey = "catalog-definitions",
+  notice,
+  taskContent,
   repository,
   actor,
   sessionPermissions,
@@ -223,6 +230,7 @@ export function CatalogPage({
   organizationId,
   listReviewItems
 }: CatalogPageProps) {
+  const searchFormId = useId();
   const layoutMode = useCatalogLayoutMode(layoutOverride);
   const [internalSearch, setInternalSearch] = useState(
     () => search ?? (typeof window === "undefined" ? "" : window.location.search)
@@ -724,128 +732,131 @@ export function CatalogPage({
       data-empty-reason={pageEmptyReason ?? reviewEmptyReason ?? undefined}
       data-writes-enabled={writesEnabled ? "true" : "false"}
     >
-      <section className="parameter-catalog__anchor" aria-label={catalogReleaseLabel}>
-        <span className="parameter-catalog__anchor-label">{catalogReleaseLabel}</span>
-        <span className="parameter-catalog__anchor-value">{release?.releaseName ?? "尚未捕获"}</span>
-        {release ? (
-          <span className="parameter-catalog__anchor-id">{release.catalogReleaseId}</span>
-        ) : null}
-        <span className="parameter-catalog__badge" data-tone={domainState.kind === "ready" ? undefined : "warning"}>
-          {catalogStateBadges[domainState.kind]}
-        </span>
-      </section>
-
-      <div className="parameter-catalog__toolbar">
-        <form
-          className="parameter-catalog__search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitSearch();
-          }}
-        >
-          <SearchField
-            value={searchInput}
-            onValueChange={setSearchInput}
-            ariaLabel={catalogSearchLabel}
-            placeholder={catalogSearchLabel}
-          />
-          <button type="submit" className="button sm">
-            {catalogSearchSubmitLabel}
-          </button>
-          {anchor.q ? (
-            <button type="button" className="button ghost sm" onClick={clearSearch}>
-              {catalogSearchClearLabel}
-            </button>
+      <NavigatorWorkbench
+        pageKey={pageKey}
+        navigatorLabel={catalogNavigatorLabel}
+        taskLabel={catalogListLabel}
+        context={<section className="parameter-catalog__anchor" aria-label={catalogReleaseLabel}>
+          <span className="parameter-catalog__anchor-label">{catalogReleaseLabel}</span>
+          <span className="parameter-catalog__anchor-value">{release?.releaseName ?? "尚未捕获"}</span>
+          {release ? (
+            <span className="parameter-catalog__anchor-id">{release.catalogReleaseId}</span>
           ) : null}
-        </form>
-        {actions.length > 0 || onOpenPendingWork ? (
-          <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
-            {actions.map((action) => (
-              <button
-                key={action.action}
-                type="button"
-                className="button sm"
-                data-catalog-action={action.action}
-                disabled={!action.enabled}
-                title={action.disabledReason ?? undefined}
-                aria-disabled={!action.enabled}
-                onClick={() =>
-                  onAction?.(action.action, {
-                    subjectId: subject?.id ?? anchor.subjectId,
-                    registrationId:
-                      subject?.registration.status && subject.registration.status !== "unregistered"
-                        ? subject.registration.id
-                        : null
-                  })
-                }
-              >
-                {action.label}
-              </button>
-            ))}
-            {onOpenPendingWork ? (
-              <button
-                type="button"
-                className="button subtle sm"
-                data-catalog-action="open-pending-work"
-                onClick={onOpenPendingWork}
-              >
-                {catalogPendingWorkLabel}
-                {reviewItemCount > 0 ? (
-                  <span className="parameter-catalog__badge" data-tone="warning">
-                    {reviewItemCount}
-                  </span>
-                ) : null}
+          <span className="parameter-catalog__badge" data-tone={domainState.kind === "ready" ? undefined : "warning"}>
+            {catalogStateBadges[domainState.kind]}
+          </span>
+        </section>}
+
+        toolbar={<>
+          <form
+            id={searchFormId}
+            className="parameter-catalog__search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitSearch();
+            }}
+          >
+            <SearchField
+              value={searchInput}
+              onValueChange={setSearchInput}
+              ariaLabel={catalogSearchLabel}
+              placeholder={catalogSearchLabel}
+            />
+            {anchor.q ? (
+              <button type="button" className="button ghost sm" onClick={clearSearch}>
+                {catalogSearchClearLabel}
               </button>
             ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      {statusMessage && domainState.kind !== "ready" ? (
-        <div
-          className="parameter-catalog__banner"
-          data-tone={domainState.kind === "error" || domainState.kind === "conflict" ? "danger" : "warning"}
-          data-catalog-banner={domainState.kind}
-          role={domainState.kind === "error" ? "alert" : "status"}
-        >
-          <p>{statusMessage}</p>
-        </div>
-      ) : null}
-
-      {inFlight && !snapshot ? (
-        <SectionSkeleton label={catalogLoadingLabel} />
-      ) : domainState.kind === "error" && !snapshot ? (
-        <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
-      ) : unpublished ? (
-        <div
-          className="parameter-catalog__workspace"
-          data-catalog-unpublished-workspace="true"
-        />
-      ) : (
-        <div className="parameter-catalog__workspace">
-          <section className="parameter-catalog__navigator" aria-label={catalogNavigatorLabel}>
-            <div className="parameter-catalog__navigator-head">
-              <h2 className="parameter-catalog__pane-title">{catalogNavigatorLabel}</h2>
-              {anchor.moduleNodeId || subject ? (
-                <button type="button" className="button ghost sm" onClick={() => selectModuleNode(null)}>
-                  {catalogModuleScopeClear}
+          </form>
+          {actions.length > 0 || onOpenPendingWork ? (
+            <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
+              {actions.map((action) => (
+                <button
+                  key={action.action}
+                  type="button"
+                  className="button sm"
+                  data-catalog-action={action.action}
+                  disabled={!action.enabled}
+                  title={action.disabledReason ?? undefined}
+                  aria-disabled={!action.enabled}
+                  onClick={() =>
+                    onAction?.(action.action, {
+                      subjectId: subject?.id ?? anchor.subjectId,
+                      registrationId:
+                        subject?.registration.status && subject.registration.status !== "unregistered"
+                          ? subject.registration.id
+                          : null
+                    })
+                  }
+                >
+                  {action.label}
+                </button>
+              ))}
+              {onOpenPendingWork ? (
+                <button
+                  type="button"
+                  className="button subtle sm"
+                  data-catalog-action="open-pending-work"
+                  onClick={onOpenPendingWork}
+                >
+                  {catalogPendingWorkLabel}
+                  {reviewItemCount > 0 ? (
+                    <span className="parameter-catalog__badge" data-tone="warning">
+                      {reviewItemCount}
+                    </span>
+                  ) : null}
                 </button>
               ) : null}
             </div>
-            <p className="parameter-catalog__muted">{catalogModuleScopeHint}</p>
-            <CatalogModuleNavigator
-              nodes={navigatorNodes}
-              selectedId={subject ? `subject:${subject.id}` : anchor.moduleNodeId}
-              onSelectNode={selectNavigatorNode}
-            />
-            {anchor.moduleNodeId ? (
-              <p className="parameter-catalog__muted" data-catalog-module-scope="true">
-                {`已选模块子树 · ${scopedSubjectCount} 个主体`}
-              </p>
-            ) : null}
-          </section>
+          ) : null}
+        </>}
+        primaryAction={<button type="submit" form={searchFormId} className="button sm">
+          {catalogSearchSubmitLabel}
+        </button>}
 
-          <section className="parameter-catalog__pane parameter-catalog__pane--list" aria-label={catalogListLabel}>
+        notice={notice || (statusMessage && domainState.kind !== "ready") ? <>
+          {notice}
+          {statusMessage && domainState.kind !== "ready" ? (
+            <div
+              className="parameter-catalog__banner"
+              data-tone={domainState.kind === "error" || domainState.kind === "conflict" ? "danger" : "warning"}
+              data-catalog-banner={domainState.kind}
+              role={domainState.kind === "error" ? "alert" : "status"}
+            >
+              <p>{statusMessage}</p>
+            </div>
+          ) : null}
+        </> : undefined}
+        navigator={!unpublished && snapshot ? <>
+          {anchor.moduleNodeId || subject ? (
+            <button type="button" className="button ghost sm" onClick={() => selectModuleNode(null)}>
+              {catalogModuleScopeClear}
+            </button>
+          ) : null}
+          <p className="parameter-catalog__muted">{catalogModuleScopeHint}</p>
+          <CatalogModuleNavigator
+            nodes={navigatorNodes}
+            selectedId={subject ? `subject:${subject.id}` : anchor.moduleNodeId}
+            onSelectNode={selectNavigatorNode}
+          />
+          {anchor.moduleNodeId ? (
+            <p className="parameter-catalog__muted" data-catalog-module-scope="true">
+              {`已选模块子树 · ${scopedSubjectCount} 个主体`}
+            </p>
+          ) : null}
+        </> : null}
+      >
+
+        {taskContent ?? (inFlight && !snapshot ? (
+          <SectionSkeleton label={catalogLoadingLabel} />
+        ) : domainState.kind === "error" && !snapshot ? (
+          <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
+        ) : unpublished ? (
+          <div
+            data-catalog-unpublished-workspace="true"
+          />
+        ) : (
+          <div className="parameter-catalog__list">
             <header className="parameter-catalog__list-head">
               <h2 className="parameter-catalog__pane-title">{catalogListLabel}</h2>
               <p
@@ -986,10 +997,9 @@ export function CatalogPage({
                 </button>
               </div>
             </nav>
-          </section>
-
-        </div>
-      )}
+          </div>
+        ))}
+      </NavigatorWorkbench>
 
       {definition && editorOpen ? (
         <ModalDialog

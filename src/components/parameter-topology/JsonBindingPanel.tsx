@@ -1,4 +1,5 @@
-import { TabPanel } from "@/components/ui/tab-panel";
+import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { SectionEmpty } from "@/components/common/SectionState";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertCircle, Boxes, CheckCircle2, CircleX, Download, Eye, FileCode, History, Pencil } from "lucide-react";
 import type {
@@ -54,6 +55,8 @@ export type JsonBindingPanelProps = {
   editableBindingIds?: ReadonlySet<string>;
   draftBindingIds?: ReadonlySet<string>;
   currentEdits?: React.ReactNode;
+  toolbarActions?: React.ReactNode;
+  notice?: React.ReactNode;
   onValidateEdit?: (input: BindingEditInput) =>
     | BindingEditValidation
     | Promise<BindingEditValidation>;
@@ -152,6 +155,8 @@ export function JsonBindingPanel({
   editableBindingIds,
   draftBindingIds,
   currentEdits,
+  toolbarActions,
+  notice,
   onValidateEdit,
   onExportBinding,
   onLoadHistory,
@@ -459,7 +464,16 @@ export function JsonBindingPanel({
 
   return (
     <section className="dts-parameter-workbench json-parameter-workbench" role="region" aria-label="JSON 参数">
-      <div className="dts-parameter-workbench__toolbar">
+      <NavigatorWorkbench pageKey="parameters" navigatorLabel="模块导航"
+        taskLabel={resultsMode === "parameters" ? "JSON 参数列表" : "JSON 源码结果"}
+        taskClassName="dts-workbench-list"
+        panelId={`${resultsId}-${resultsMode}-panel`} tabId={`${resultsId}-${resultsMode}-tab`}
+        taskState={resultsMode === "parameters" ? undefined
+          : jsonSourceStatus === "loading" ? { kind: "loading", message: "正在加载 JSON 源码…" }
+          : jsonSourceStatus === "error" ? { kind: "error", message: "无法加载 JSON 源码。", detail: jsonSourceErrorMessage ?? undefined, onRetry: loadJsonSource }
+          : !jsonSource ? { kind: "empty", message: "暂无 JSON 源码。" } : undefined}
+        notice={notice}
+        toolbar={<>
         <label className="dts-parameter-workbench__search">
           <span>{resultsMode === "jsonSource" ? "查找源码" : "搜索参数"}</span>
           <SearchField
@@ -514,7 +528,11 @@ export function JsonBindingPanel({
                   id: `${resultsId}-jsonSource-tab`, panelId: `${resultsId}-jsonSource-panel` }
               ]}
             />
-            {resultsMode === "jsonSource" ? (
+          </div>
+          {toolbarActions}
+        </div>
+        </>}
+        primaryAction={resultsMode === "jsonSource" ? (
               <button
                 type="button"
                 className="button subtle"
@@ -535,11 +553,7 @@ export function JsonBindingPanel({
                 导出当前结果
               </button>
             )}
-          </div>
-        </div>
-      </div>
-
-      {currentEdits ? (
+        context={currentEdits ? (
         <div
           className="dts-parameter-workbench__current-edits dts-draft-tray"
           role="region"
@@ -549,19 +563,7 @@ export function JsonBindingPanel({
         </div>
       ) : null}
 
-      <TabPanel className="dts-parameter-workbench__body" role="tabpanel"
-        id={`${resultsId}-${resultsMode}-panel`} aria-labelledby={`${resultsId}-${resultsMode}-tab`}>
-        {/* Module Navigator */}
-        <div
-          className="dts-parameter-workbench__navigator dts-workbench-topology"
-          role="region"
-          aria-label="模块导航"
-        >
-          <div className="dts-parameter-workbench__navigator-header">
-            <h3 className="dts-parameter-workbench__navigator-title">
-              模块导航
-            </h3>
-          </div>
+        navigator={
           <DtsTopologyNavigator
             view="effective"
             nodes={tree}
@@ -574,14 +576,8 @@ export function JsonBindingPanel({
               setSelectedNodeId((current) => (current === nodeId ? null : nodeId))
             }
           />
-        </div>
-
-        {/* Parameter List Table or JSON Source Viewer */}
-        <div
-          className="dts-parameter-workbench__results dts-workbench-list"
-          role="region"
-          aria-label={resultsMode === "parameters" ? "JSON 参数列表" : "JSON 源码结果"}
-        >
+        }
+      >
           {resultsMode === "parameters" ? (
             <div className="dts-workbench-list__scroll-x">
               <div className="dts-workbench-list__scroll-y">
@@ -599,7 +595,7 @@ export function JsonBindingPanel({
                     {filteredBindings.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="json-parameter-workbench__empty">
-                          无匹配的 JSON 参数
+                          <SectionEmpty message="无匹配的 JSON 参数" />
                         </td>
                       </tr>
                     ) : (
@@ -670,18 +666,6 @@ export function JsonBindingPanel({
                 </table>
               </div>
             </div>
-          ) : jsonSourceStatus === "loading" ? (
-            <p className="dts-parameter-workbench__empty" role="status">正在加载 JSON 源码…</p>
-          ) : jsonSourceStatus === "error" ? (
-            <div className="dts-parameter-workbench__dts-source-error">
-              <p role="alert">无法加载 JSON 源码。</p>
-              {jsonSourceErrorMessage ? (
-                <p className="dts-parameter-workbench__dts-source-error-detail">{jsonSourceErrorMessage}</p>
-              ) : null}
-              <button type="button" className="button subtle" onClick={loadJsonSource}>
-                重试
-              </button>
-            </div>
           ) : jsonSource ? (
             <ProjectPrimaryDtsViewer
               fileName={jsonSource.fileName}
@@ -693,11 +677,8 @@ export function JsonBindingPanel({
               onFindStatusChange={setFindStatus}
               bodyAriaLabel="JSON 源码"
             />
-          ) : (
-            <p className="dts-parameter-workbench__empty" role="status">暂无 JSON 源码。</p>
-          )}
-        </div>
-      </TabPanel>
+          ) : null}
+      </NavigatorWorkbench>
 
       {/* 1. Detail Dialog (查看弹窗) */}
       {activeViewBinding ? (

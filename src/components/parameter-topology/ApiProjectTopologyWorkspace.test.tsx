@@ -207,6 +207,12 @@ async function createGpioDraftFromWorkbench(
 }
 
 describe("ApiProjectTopologyWorkspace", () => {
+  it("keeps topology loading in the shared task region", () => {
+    render(<ApiProjectTopologyWorkspace projectId="aurora" topologyRepository={createRepository()}
+      listConfigSets={() => new Promise(() => undefined)} />);
+    expect(within(screen.getByRole("region", { name: "DTS 参数列表" })).getByRole("status"))
+      .toHaveTextContent("正在加载项目拓扑与绑定…");
+  });
   const protectedJsonBinding = (projectId = "aurora", id = "json-current") => ({
     ...TOPOLOGY_TEACHING_BINDINGS[0],
     id,
@@ -2389,14 +2395,16 @@ describe("ApiProjectTopologyWorkspace", () => {
 
     fireEvent.click(jsonTab);
 
-    expect(dtsTab).toHaveAttribute("aria-selected", "false");
-    expect(jsonTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /DTS 设备树参数/ })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: /JSON 参数/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /JSON 参数/ })).toHaveFocus();
     expect(screen.queryByRole("region", { name: "DTS 参数工作台" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "JSON 参数" })).toBeInTheDocument();
     expect(screen.getAllByText("camera_tuning").length).toBeGreaterThan(0);
 
-    fireEvent.click(dtsTab);
-    expect(dtsTab).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: /DTS 设备树参数/ }));
+    expect(screen.getByRole("tab", { name: /DTS 设备树参数/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /DTS 设备树参数/ })).toHaveFocus();
     expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
   });
 });

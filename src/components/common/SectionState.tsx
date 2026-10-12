@@ -40,13 +40,15 @@ export function SectionEmpty({ title, message, actionLabel, onAction }: SectionE
 
 type SectionErrorProps = {
   message: string;
+  detail?: string;
   onRetry: () => void;
 };
 
-export function SectionError({ message, onRetry }: SectionErrorProps) {
+export function SectionError({ message, detail, onRetry }: SectionErrorProps) {
   return (
     <div className="section-error" role="alert">
       <p>{message}</p>
+      {detail ? <p>{detail}</p> : null}
       <Button type="button" variant="outline" size="sm" onClick={onRetry}>
         重试
       </Button>
