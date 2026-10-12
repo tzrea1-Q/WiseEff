@@ -65,8 +65,7 @@ describe("view-switch consistency", () => {
     ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions"]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
-      "/parameter-admin/specs/identity-mapping", "/parameter-admin/modules", "/parameter-admin/modules/queue",
-      "/parameter-admin/modules/registry", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
+      "/parameter-admin/specs/identity-mapping", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
       "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"].map((path) => [path, "section"])
   ])("enforces the migrated tier on %s: %s", (path, variant) => {
     expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
@@ -78,6 +77,17 @@ describe("view-switch consistency", () => {
       else expect(assertStyles).toThrow("matched 0");
     }
   });
+
+  it.each(["/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry"])(
+    "requires both organization sections and governance content tabs on %s", (path) => {
+      expect(() => requireViewSwitchStyles({
+        viewSwitches: [measurement(signatures[0]), measurement(signatures[1])], viewSwitchSignatures: signatures
+      }, path)).not.toThrow();
+      for (const style of signatures) {
+        expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(style)], viewSwitchSignatures: signatures }, path)).toThrow(/matched 0|missing view-switch tiers/);
+      }
+    }
+  );
 
   it.each(["atlas", "aurora", "nebula"])("enforces result-mode tabs on the project route %s", (project) => {
     const path = `/parameters?project=${project}`;

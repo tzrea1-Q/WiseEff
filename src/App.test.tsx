@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
   XiaozeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -42,6 +43,21 @@ import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+
+it("replaces legacy module bookmarks and restores governance tabs on browser Back", async () => {
+  window.history.replaceState(null, "", "/parameter-admin/modules/queue?q=power");
+  const historyLength = window.history.length;
+  render(<App runtimeMode="mock" initialAppState={adminState} />);
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/parameter-admin/modules?q=power&tab=queue"));
+  expect(window.history.length).toBe(historyLength);
+  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
+  await waitFor(() => expect(window.location.search).toBe("?q=power&tab=registry"));
+  expect(window.history.length).toBe(historyLength + 1);
+  window.history.back();
+  await waitFor(() => expect(window.location.search).toBe("?q=power&tab=queue"));
+  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+});
 
 it("waits for the settings leave dialog before changing a shell route", async () => {
   window.history.replaceState(null, "", "/organization");

@@ -190,7 +190,7 @@ export function collectConsistencyMeasurements() {
       || element.querySelector('button,a[href],[role="button"]'))
   ).flatMap(clippedGeometry);
   const moduleTrees = elements('[role="tree"],nav > .parameter-catalog__tree');
-  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label").map((element) => {
+  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label,.parameter-module-mapping-panel .module-attribution-tree__label").map((element) => {
     const tree = element.closest('[role="tree"],nav > .parameter-catalog__tree') ?? element.parentElement!;
     const treeItem = element.closest('[role="treeitem"]');
     let depth = Number(treeItem?.getAttribute("aria-level")) || 0;
@@ -221,7 +221,9 @@ export function collectConsistencyMeasurements() {
       probe.remove();
       return width;
     };
-    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item');
+    const firstRow = [...workbench.querySelectorAll('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task [data-canonical-subject-id], .navigator-workbench__task .canonical-driver-discovery__item')].find(visible)
+      ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
+        ? [...workbench.querySelectorAll('.navigator-workbench__task [role="status"], .navigator-workbench__task [role="alert"]')].find(visible) : undefined);
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
@@ -231,7 +233,7 @@ export function collectConsistencyMeasurements() {
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
-      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count")].filter(visible).map((count) => {
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .module-attribution-tree__count")].filter(visible).map((count) => {
         const navigation = count.closest(".navigator-workbench__navigation")!;
         const navigationRect = bounds(navigation);
         const countRect = bounds(count);

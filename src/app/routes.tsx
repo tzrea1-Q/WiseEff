@@ -81,7 +81,7 @@ export type RuntimeSectionStatus = "loading" | "ready" | "error";
 export type PageProps = {
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
-  onNavigate: (path: string) => void;
+  onNavigate: (path: string, options?: { replace?: boolean }) => void;
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
   logActions?: LogRuntimeActions;
