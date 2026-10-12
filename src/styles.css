@@ -99,6 +99,8 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
+  --overview-tile-min-width: 160px;
+  --overview-content-min-width: 400px;
 
   --page-gutter: var(--space-6);
 

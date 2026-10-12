@@ -22,6 +22,14 @@ const personalKpis = {
 };
 
 describe("SituationStrip", () => {
+  it.each(["personal", "overall"] as const)("does not substitute %s samples from the other scope", (scope) => {
+    render(<SituationStrip status="ready" scope={scope} roleView="user" onScopeChange={() => undefined}
+      kpis={scope === "overall" ? null : overallKpis}
+      personalKpis={scope === "personal" ? null : personalKpis} />);
+    expect(screen.getAllByText("暂无样本")).toHaveLength(scope === "personal" ? 5 : 6);
+    expect(screen.queryByText("不可用")).not.toBeInTheDocument();
+  });
+
   it.each(["idle", "loading", "error", "ready", "empty"] as const)(
     "only shows retained zero personal KPIs as empty when the summary is available (%s)",
     (status) => {
@@ -29,7 +37,7 @@ describe("SituationStrip", () => {
         <SituationStrip
           status={status}
           kpis={overallKpis}
-          personalKpis={{ ...personalKpis, contributionCount: 0, workflowCount: 0, openItemCount: 0, pendingTodoCount: 0 }}
+          personalKpis={{ ...personalKpis, contributionCount: 0, workflowCount: 0, openItemCount: 0, pendingTodoCount: 0, highRiskTouchCount: 0 }}
           scope="personal"
           roleView="user"
           onScopeChange={() => undefined}
@@ -49,9 +57,28 @@ describe("SituationStrip", () => {
       if (status === "error") {
         expect(screen.getByText("态势指标加载失败")).toBeInTheDocument();
       }
-      expect(screen.queryAllByText("0")).toHaveLength(status === "ready" ? 4 : 0);
+      expect(screen.queryAllByText("0")).toHaveLength(0);
+      expect(screen.queryAllByText("暂无样本")).toHaveLength(status === "ready" || status === "empty" ? 5 : 0);
     }
   );
+
+  it("does not infer observations from an empty overall inventory marked ready", () => {
+    render(<SituationStrip status="ready" scope="overall" roleView="user" onScopeChange={() => undefined}
+      kpis={{ ...overallKpis, totalParameters: 0, totalBindings: 0, totalDefinitions: 0, managedProjects: 0,
+        changeFrequency: 0, activeContributors: 0 }} personalKpis={personalKpis} />);
+    expect(screen.getAllByText("暂无样本")).toHaveLength(6);
+    expect(screen.getByText("当前时间窗口暂无参数活动数据。")).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("keeps an observed personal risk count even when other counts are zero", () => {
+    render(<SituationStrip status="ready" scope="personal" roleView="user" onScopeChange={() => undefined}
+      kpis={overallKpis} personalKpis={{ contributionCount: 0, workflowCount: 0, openItemCount: 0,
+        pendingTodoCount: 0, highRiskTouchCount: 2 }} />);
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getAllByText("0")).toHaveLength(4);
+    expect(screen.queryByText("当前时间窗口暂无个人活动")).not.toBeInTheDocument();
+  });
 
   it("renders KPIs when ready", () => {
     render(

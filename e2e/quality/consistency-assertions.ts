@@ -1,6 +1,60 @@
 import type { ConsistencyMeasurements, ConsistencyCategory } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 
+export function requireOverviewGeometry(overviews: ConsistencyMeasurements["overviewPages"], routePath: string) {
+  requireMeasuredCategories({ overviewPages: overviews }, ["overviewPages"], routePath);
+  for (const overview of overviews) {
+    const { root, summary, content, actions, gap } = overview;
+    if (!summary || !content || !overview.tiles.length || !overview.items.length) {
+      throw new Error(`${routePath}: missing overview summary, tiles or content`);
+    }
+    if (![root, summary, content, ...(actions ? [actions] : []), ...overview.tiles.map((tile) => tile.rect), ...overview.items]
+      .flatMap((rect) => Object.values(rect)).every(Number.isFinite)
+      || !Number.isFinite(gap) || gap <= 0 || !Number.isFinite(overview.pageOverflow)
+      || !Number.isFinite(overview.viewportHeight) || overview.viewportHeight <= 0) {
+      throw new Error(`${routePath}: invalid overview geometry or gap token`);
+    }
+    for (const slot of [summary, content, ...(actions ? [actions] : [])]) {
+      if (Math.abs(slot.left - root.left) > 1 || Math.abs(slot.right - root.right) > 1) {
+        throw new Error(`${routePath}: overview slot does not align with the page gutter`);
+      }
+    }
+    if (Math.abs(content.top - summary.bottom - gap) > 1
+      || (actions && Math.abs(actions.top - content.bottom - gap) > 1) || overview.pageOverflow > 1) {
+      throw new Error(`${routePath}: overview gap or page overflow differs from the contract`);
+    }
+    if (overview.items[0].top >= overview.viewportHeight) {
+      throw new Error(`${routePath}: first section must be visible in the PC viewport`);
+    }
+    for (const item of overview.items) {
+      if (item.width <= 0 || item.left < content.left - 1 || item.right > content.right + 1) {
+        throw new Error(`${routePath}: overview content escapes its grid`);
+      }
+    }
+    for (const tile of overview.tiles) {
+      if (tile.rect.width <= 0 || tile.rect.left < summary.left - 1 || tile.rect.right > summary.right + 1
+        || (!tile.hasSamples && (tile.value !== "暂无样本" || tile.trendCount !== 0))) {
+        throw new Error(`${routePath}: overview tile geometry or no-sample policy violated`);
+      }
+    }
+    if (overview.verdicts.some((verdict) => !verdict.hasSamples && verdict.text !== "暂无样本，无法判断")) {
+      throw new Error(`${routePath}: unsupported overview verdict without samples`);
+    }
+  }
+}
+
+export function requireRetiredNotice(notices: ConsistencyMeasurements["retiredNotices"], routePath: string) {
+  requireMeasuredCategories({ retiredNotices: notices }, ["retiredNotices"], routePath);
+  const replacement = routePath === "/debugging" ? "/node-debugging" : "/parameters";
+  for (const notice of notices) {
+    if (!Object.values(notice.root).every(Number.isFinite) || notice.root.width <= 0
+      || notice.titleCount !== 1 || notice.descriptionCount !== 1 || notice.linkCount !== 1
+      || !notice.primary || notice.href !== replacement) {
+      throw new Error(`${routePath}: retired notice must have one title, explanation and primary replacement link`);
+    }
+  }
+}
+
 export function requirePageGutter(pageEdges: ConsistencyMeasurements["pageEdges"], routePath: string, footerPresent: boolean) {
   requireMeasuredCategories({ pageEdges }, ["pageEdges"], routePath);
   const required = ["shell", "content", "page", "toolbar", ...(footerPresent ? ["footer"] : [])];

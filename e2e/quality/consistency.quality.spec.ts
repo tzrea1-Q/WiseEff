@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation } from "./consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireOverviewGeometry, requireRetiredNotice } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
@@ -174,6 +174,8 @@ for (const route of routes) {
           requireMeasuredCategories(measurements, required, route.path);
           requireTypographyScale(measurements, route.path);
           requirePageGutter(measurements.pageEdges, route.path, measurements.footerPresent);
+          if (route.required.includes("overviewPages")) requireOverviewGeometry(measurements.overviewPages, route.path);
+          if (route.required.includes("retiredNotices")) requireRetiredNotice(measurements.retiredNotices, route.path);
           if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
             requireReviewInboxStructure(measurements, route.path);
           }
@@ -303,6 +305,17 @@ for (const route of routes) {
             measurements = await page.evaluate(collectConsistencyMeasurements);
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           });
+        }
+        if (route.required.includes("overviewPages") || route.required.includes("retiredNotices")) {
+          await testInfo.attach(`overview${route.path.replaceAll("/", "-")}-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+        }
+        if (route.required.includes("retiredNotices")) {
+          const replacement = routePath === "/debugging" ? "/node-debugging" : "/parameters";
+          await page.locator(".retired-notice").getByRole("link").click();
+          await expect(page).toHaveURL((url) => url.pathname === replacement);
+          await expectUsablePage(page);
         }
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {

@@ -6,6 +6,8 @@ import { Panel } from "./Panel";
 import { SectionEmpty, SectionError, SectionSkeleton } from "./SectionState";
 import { SituationStrip } from "./SituationStrip";
 import { UpdateTrendChart } from "./UpdateTrendChart";
+import { OverviewPage } from "@/components/layout/OverviewPage";
+import type { ReactNode } from "react";
 
 type OverviewRowProps = {
   summaryStatus: SectionStatus;
@@ -16,6 +18,7 @@ type OverviewRowProps = {
   onOverviewScopeChange: (scope: OverviewScope) => void;
   summaryError?: string | null;
   onSummaryRetry: () => void;
+  quickActions?: ReactNode;
 };
 
 export function OverviewRow({
@@ -26,7 +29,8 @@ export function OverviewRow({
   roleView,
   onOverviewScopeChange,
   summaryError,
-  onSummaryRetry
+  onSummaryRetry,
+  quickActions
 }: OverviewRowProps) {
   const presentation = deriveOverviewPresentation(
     roleView,
@@ -37,9 +41,8 @@ export function OverviewRow({
   const points = overviewScope === "personal" ? summary?.personalTrend ?? [] : summary?.trend ?? [];
 
   return (
-    <div className="parameter-home__overview-row">
+    <OverviewPage label="参数工作台概览" quickActions={quickActions} summary={
       <SituationStrip
-        variant="sidebar"
         status={summaryStatus}
         kpis={kpis}
         personalKpis={summary?.personalKpis ?? null}
@@ -49,6 +52,7 @@ export function OverviewRow({
         error={summaryError}
         onRetry={onSummaryRetry}
       />
+    }>
       <Panel title={presentation.trendTitle} subtitle={summaryStatus === "ready" || summaryStatus === "empty" ? summary?.windowLabel : undefined} className="parameter-home__panel--trend">
         {summaryStatus === "loading" || summaryStatus === "idle" ? <SectionSkeleton label="加载趋势" /> : null}
         {summaryStatus === "error" ? (
@@ -63,6 +67,6 @@ export function OverviewRow({
           />
         ) : null}
       </Panel>
-    </div>
+    </OverviewPage>
   );
 }
