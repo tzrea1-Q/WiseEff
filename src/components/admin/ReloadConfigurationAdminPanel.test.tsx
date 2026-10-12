@@ -56,6 +56,56 @@ async function selectKernelLogCommand(command: string) {
 }
 
 describe("ReloadConfigurationAdminPanel", () => {
+  it("does not report a load failure as a failed save", async () => {
+    const repository = createRepository({ getReloadConfiguration: vi.fn().mockRejectedValue(new Error("无法读取配置")) });
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法读取配置");
+    expect(screen.queryByText("保存失败")).not.toBeInTheDocument();
+  });
+
+  it("discards edits without writes and validates inline before saving", async () => {
+    const repository = createRepository();
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
+    const directory = await screen.findByDisplayValue("/vendor/firmware/");
+    fireEvent.change(directory, { target: { value: "relative/path" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(directory).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("保存失败");
+    expect(repository.updateOrganisationReloadConfiguration).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "放弃" }));
+    expect(directory).toHaveValue("/vendor/firmware/");
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+  });
+
+  it("keeps drafts available to retry after a failed save", async () => {
+    const repository = createRepository({ updateOrganisationReloadConfiguration: vi.fn().mockRejectedValue(new Error("网络中断")) });
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
+    const directory = await screen.findByDisplayValue("/vendor/firmware/");
+    fireEvent.change(directory, { target: { value: "/oem/firmware/" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("网络中断");
+    expect(directory).toHaveValue("/oem/firmware/");
+    expect(screen.getByRole("button", { name: "放弃" })).toBeEnabled();
+  });
+
+  it.each([
+    ["组织 Overlay 目标文件名", "../escape.dtbo", "请输入单个文件名"],
+    ["组织触发节点路径", "/sys/../trigger", "请输入不含 . 或 .. 路径段的绝对路径"],
+    ["组织触发写入值", " ", "触发写入值不能为空"],
+    ["组织触发写入值", "1".repeat(257), "不能超过 256 个字符"]
+  ])("associates inline validation with %s and prevents invalid server writes", async (label, value, message) => {
+    const repository = createRepository();
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
+    await screen.findByDisplayValue("/vendor/firmware/");
+    const field = screen.getByRole("textbox", { name: label });
+    fireEvent.change(field, { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(message));
+    expect(screen.getByRole("alert", { name: "保存错误摘要" })).toHaveTextContent("请修正标记的字段后重试。");
+    expect(repository.updateOrganisationReloadConfiguration).not.toHaveBeenCalled();
+  });
+
   it("shows a static unavailable state when no repository is injected", () => {
     render(
       <ReloadConfigurationAdminPanel
@@ -75,10 +125,10 @@ describe("ReloadConfigurationAdminPanel", () => {
     expect(repository.getReloadConfiguration).toHaveBeenCalled();
     expect(screen.getByText("种子默认")).toBeInTheDocument();
 
-    const saveButton = screen.getByRole("button", { name: "保存组织默认值" });
-    expect(saveButton).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
 
     await selectKernelLogCommand("hilog");
+    const saveButton = screen.getByRole("button", { name: "保存" });
     expect(await screen.findByText("有未保存的更改")).toBeInTheDocument();
     expect(saveButton).not.toBeDisabled();
 

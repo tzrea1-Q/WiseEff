@@ -1,0 +1,15 @@
+.project-review-roles-panel { display: grid; gap: var(--space-4); min-width: 0; }
+.project-review-roles__header { display: flex; justify-content: space-between; gap: var(--space-3); }
+.project-review-roles__pools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.project-review-roles__pool { padding: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-sm); }
+.project-review-roles__pool > strong { margin-right: var(--space-3); }
+.project-review-roles__pool p { margin: var(--space-2) 0 0; color: var(--text-muted); }
+.project-review-roles__warning { color: var(--warning); background: var(--warning-soft); padding: var(--space-3); border-radius: var(--radius-sm); }
+.project-review-roles__warning p { margin: var(--space-2) 0 0; }
+.project-review-roles__success { color: var(--success); }
+.project-review-roles__table-scroll { overflow-x: auto; min-width: 0; }
+.project-review-roles__table { width: 100%; border-collapse: collapse; }
+.project-review-roles__table th, .project-review-roles__table td { padding: var(--space-3); text-align: left; border-bottom: var(--stroke-hairline) solid var(--border); }
+.project-review-roles__table th { color: var(--text-muted); white-space: nowrap; }
+.project-review-roles__table small { display: block; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading-sm); }
+.project-review-roles__table tr[data-modified="true"] { background: var(--accent-soft); }

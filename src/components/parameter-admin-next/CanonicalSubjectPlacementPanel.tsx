@@ -471,6 +471,8 @@ export function CanonicalSubjectPlacementPanel({
               <label>
                 主体身份
                 <select
+                  className="compact-filter-control"
+                  data-compact-control="filter"
                   aria-label="筛选主体身份"
                   value={typeFilter}
                   onChange={(event) => {

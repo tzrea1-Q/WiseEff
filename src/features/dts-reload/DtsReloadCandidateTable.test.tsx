@@ -4,6 +4,7 @@ import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DtsReloadCandidate } from "@/domain/dtsReload/types";
+import { dtsReloadBlockReasonLabels } from "@/domain/dtsReload/types";
 import {
   DtsReloadCandidateTable,
   DTS_RELOAD_CANDIDATE_PAGE_SIZE
@@ -63,6 +64,19 @@ function renderTable(
 }
 
 describe("DtsReloadCandidateTable", () => {
+  it("exposes candidate status and keeps blocked edit actions disabled", async () => {
+    const onEdit = vi.fn();
+    renderTable({ rows: [candidate(), candidate({ bindingId: "blocked", displayName: "Blocked", debuggable: false, blockReason: "unsupported-value-shape" })], onEdit });
+    const editable = screen.getByRole("button", { name: "编辑 Watchdog" });
+    const blocked = screen.getByRole("button", { name: "编辑 Blocked" });
+    expect(editable.closest("tr")?.querySelector("[data-row-status]")).toHaveTextContent("可调试");
+    expect(blocked.closest("tr")?.querySelector("[data-row-status]"))
+      .toHaveTextContent(dtsReloadBlockReasonLabels["unsupported-value-shape"]);
+    expect(blocked).toBeDisabled();
+    await userEvent.setup().click(blocked);
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
   it("renders the DataTable shell with sort, filter, and actions", () => {
     renderTable();
 

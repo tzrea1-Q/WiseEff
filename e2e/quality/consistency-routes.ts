@@ -6,6 +6,7 @@ const catalogPaths = [
 ];
 const projectConfigurationPaths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
   .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
+const moduleGovernancePaths = ["/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry"];
 export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
   ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["section", "tabs"] as const])),
   "/organization": ["section"],
@@ -21,9 +22,9 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/parameter-admin": ["section"],
   "/parameter-admin/specs": ["section"],
   "/parameter-admin/specs/identity-mapping": ["section"],
-  "/parameter-admin/modules": ["section"],
-  "/parameter-admin/modules/queue": ["section"],
-  "/parameter-admin/modules/registry": ["section"],
+  "/parameter-admin/modules": ["section", "tabs"],
+  "/parameter-admin/modules/queue": ["section", "tabs"],
+  "/parameter-admin/modules/registry": ["section", "tabs"],
   "/parameter-admin/identity-mapping": ["section"],
   "/parameter-admin/spec-review": ["section"],
   "/parameter-admin/projects": ["section"],
@@ -36,17 +37,21 @@ export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges"> = {
   viewSwitches: [...viewSwitchStylePaths, "/log-admin"],
   viewSwitchSignatures: viewSwitchStylePaths,
-  primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions"],
-  rowActions: [...catalogPaths, "/parameters", ...projectConfigurationPaths],
+  primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
+  rowActions: [...catalogPaths, "/parameters", "/parameter-admin/projects", ...projectConfigurationPaths],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
     "/debugging-admin/nodes", "/feedback-admin", "/log-admin", "/dts-reload",
     "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"],
-  moduleTreeLabels: [...catalogPaths, "/parameters", "/node-debugging", "/dts-reload"],
-  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions"],
-  sortControls: [],
+  moduleTreeLabels: [...catalogPaths, ...moduleGovernancePaths, "/parameters", "/node-debugging", "/dts-reload"],
+  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects"],
+  sortControls: ["/parameter-admin/projects"],
   paginationControls: catalogPaths,
-  navigatorWorkbenches: ["/parameters", ...catalogPaths, ...projectConfigurationPaths]
+  navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths, "/node-debugging", "/dts-reload", ...moduleGovernancePaths, ...projectConfigurationPaths],
+  adminLists: ["/parameter-admin/projects"],
+  overviewPages: ["/parameter-home", "/log-dashboard"],
+  retiredNotices: ["/parameter-comparison", "/debugging"],
+  settingsForms: ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]
 };
 const otherPhaseTwoPaths = [
   "/knowledge-admin",
@@ -72,6 +77,8 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
     ...(route.path === "/parameter-admin/projects/aurora/configuration"
       ? ["tab=structure", "tab=conflicts", "inspector=file"].map((query) => ({ ...route, path: `${route.path}?${query}` }))
       : []),
+    ...(route.path === "/parameter-admin/modules"
+      ? ["queue", "registry"].map((tab) => ({ ...route, path: `${route.path}?tab=${tab}` })) : []),
     ...(["/parameter-admin/spec-review", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"].includes(route.path)
       ? [{ ...route, path: `${route.path}?review=open` }]
       : [])

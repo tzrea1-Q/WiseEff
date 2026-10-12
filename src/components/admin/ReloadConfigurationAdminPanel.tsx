@@ -3,9 +3,10 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ReloadConfigurationContract } from "@/domain/dtsReload/types";
 import { isStreamingKernelLogCommand, KERNEL_LOG_COMMAND_ALLOWLIST } from "@/domain/dtsReload/types";
+import { isAllowedKernelLogCommand } from "@wiseeff/device-command-core/kernelLogCommand";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { SettingsFormPage, SettingsFormSection, useDirtyState } from "@/components/layout/SettingsFormPage";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -45,16 +46,6 @@ function contractFields(contract: ReloadConfigurationContract): ReloadConfigurat
   };
 }
 
-function contractsEqual(left: ReloadConfigurationContract, right: ReloadConfigurationContract): boolean {
-  return (
-    left.destinationDirectory === right.destinationDirectory &&
-    left.destinationFilename === right.destinationFilename &&
-    left.triggerNodePath === right.triggerNodePath &&
-    left.triggerPayload === right.triggerPayload &&
-    left.kernelLogCommand === right.kernelLogCommand
-  );
-}
-
 function PanelShell({
   children,
   title = "DTS 重载配置"
@@ -63,7 +54,7 @@ function PanelShell({
   title?: string;
 }) {
   return (
-    <section className="param-admin-panel reload-configuration-panel" aria-label="重载配置">
+    <section className="reload-configuration-panel" aria-label="重载配置">
       <header className="reload-configuration-panel__header">
         <h3>{title}</h3>
       </header>
@@ -80,10 +71,12 @@ export function ReloadConfigurationAdminPanel({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [organisationDraft, setOrganisationDraft] = useState<ReloadConfigurationContract>(EMPTY_CONTRACT);
   const [savedContract, setSavedContract] = useState<ReloadConfigurationContract>(EMPTY_CONTRACT);
   const [organisationSource, setOrganisationSource] = useState<"seeded-default" | "organisation">("seeded-default");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof ReloadConfigurationContract, string>>>({});
 
   useEffect(() => {
     if (!repository || !canEdit) {
@@ -94,6 +87,7 @@ export function ReloadConfigurationAdminPanel({
     let cancelled = false;
     setLoading(true);
     setErrorMessage("");
+    setLoadError("");
     void repository
       .getReloadConfiguration()
       .then((view) => {
@@ -105,7 +99,7 @@ export function ReloadConfigurationAdminPanel({
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setErrorMessage(error instanceof Error ? error.message : "无法加载重载配置。");
+        setLoadError(error instanceof Error ? error.message : "无法加载重载配置。");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -117,6 +111,8 @@ export function ReloadConfigurationAdminPanel({
 
   const updateOrganisationField = <K extends keyof ReloadConfigurationContract>(key: K, value: string) => {
     setStatusMessage("");
+    setErrorMessage("");
+    setFieldErrors((current) => ({ ...current, [key]: undefined }));
     setOrganisationDraft((current) => ({ ...current, [key]: value }));
   };
 
@@ -131,11 +127,25 @@ export function ReloadConfigurationAdminPanel({
     return allowlist.map((command) => ({ value: command, label: command }));
   }, [organisationDraft.kernelLogCommand]);
 
-  const isDirty = !contractsEqual(organisationDraft, savedContract);
+  const isDirty = useDirtyState(organisationDraft, savedContract);
   const fieldsDisabled = !canEdit || saving || loading;
 
   const saveOrganisation = async () => {
     if (!repository || !canEdit || !isDirty) return;
+    const errors: Partial<Record<keyof ReloadConfigurationContract, string>> = {};
+    for (const key of ["destinationDirectory", "triggerNodePath"] as const) {
+      const path = organisationDraft[key].trim();
+      if (!path.startsWith("/") || path.includes("\0") || path.split("/").some((segment) => segment === "." || segment === "..")) {
+        errors[key] = "请输入不含 . 或 .. 路径段的绝对路径。";
+      }
+    }
+    const filename = organisationDraft.destinationFilename.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(filename) || filename.includes("..")) errors.destinationFilename = "请输入单个文件名，不含路径分隔符或 ..。";
+    const payload = organisationDraft.triggerPayload.trim();
+    if (!payload || payload.length > 256) errors.triggerPayload = "触发写入值不能为空，且不能超过 256 个字符。";
+    if (!isAllowedKernelLogCommand(organisationDraft.kernelLogCommand.trim())) errors.kernelLogCommand = "请选择允许的内核日志命令。";
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) { setErrorMessage("请修正标记的字段后重试。"); return; }
     setSaving(true);
     setErrorMessage("");
     setStatusMessage("");
@@ -172,12 +182,13 @@ export function ReloadConfigurationAdminPanel({
   }
 
   return (
-    <PanelShell>
-      <p className="reload-configuration-muted">
-        组织级设备侧合约。运行时由服务端从已存储记录解析，浏览器请求体不能覆盖有效值。内核日志命令须与允许列表完全一致。
-      </p>
-
-      <div className="param-admin-panel__section reload-configuration-panel__contract">
+    <section className="reload-configuration-panel" aria-label="重载配置">
+      <SettingsFormPage label="DTS 重载设置" dirty={isDirty && !loading} saving={saving} error={errorMessage}
+        onSave={() => void saveOrganisation()} onDiscard={() => {
+          setOrganisationDraft(savedContract); setFieldErrors({}); setErrorMessage(""); setStatusMessage("");
+        }}>
+      <SettingsFormSection title="DTS 重载配置" help="组织级设备侧合约。运行时由服务端从已存储记录解析，浏览器请求体不能覆盖有效值。内核日志命令须与允许列表完全一致。">
+        {loadError ? <p className="settings-form-page__error" role="alert">{loadError}</p> : null}
         <div className="reload-configuration-panel__section-head">
           <div className="reload-configuration-panel__section-title">
             <h3>组织默认值</h3>
@@ -188,12 +199,6 @@ export function ReloadConfigurationAdminPanel({
           {loading ? <p className="reload-configuration-muted">正在加载…</p> : null}
         </div>
 
-        {errorMessage ? (
-          <p className="debug-admin-error" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-
         <div className="reload-configuration-form">
           <div className="reload-configuration-form__field">
             <Label htmlFor="reload-org-destination-directory">Overlay 目标目录</Label>
@@ -202,6 +207,8 @@ export function ReloadConfigurationAdminPanel({
               aria-label="组织 Overlay 目标目录"
               className="reload-configuration-form__control mono"
               value={organisationDraft.destinationDirectory}
+              aria-invalid={fieldErrors.destinationDirectory ? true : undefined}
+              aria-describedby={fieldErrors.destinationDirectory ? "reload-error-destinationDirectory" : undefined}
               disabled={fieldsDisabled}
               placeholder="/vendor/firmware/"
               spellCheck={false}
@@ -209,6 +216,7 @@ export function ReloadConfigurationAdminPanel({
               onChange={(event) => updateOrganisationField("destinationDirectory", event.target.value)}
             />
             <p className="reload-configuration-form__hint">{FIELD_HINTS.destinationDirectory}</p>
+            {fieldErrors.destinationDirectory ? <p id="reload-error-destinationDirectory" className="settings-form-page__error">{fieldErrors.destinationDirectory}</p> : null}
           </div>
 
           <div className="reload-configuration-form__field">
@@ -218,6 +226,8 @@ export function ReloadConfigurationAdminPanel({
               aria-label="组织 Overlay 目标文件名"
               className="reload-configuration-form__control mono"
               value={organisationDraft.destinationFilename}
+              aria-invalid={fieldErrors.destinationFilename ? true : undefined}
+              aria-describedby={fieldErrors.destinationFilename ? "reload-error-destinationFilename" : undefined}
               disabled={fieldsDisabled}
               placeholder="power_dts_overlay.dtbo"
               spellCheck={false}
@@ -225,6 +235,7 @@ export function ReloadConfigurationAdminPanel({
               onChange={(event) => updateOrganisationField("destinationFilename", event.target.value)}
             />
             <p className="reload-configuration-form__hint">{FIELD_HINTS.destinationFilename}</p>
+            {fieldErrors.destinationFilename ? <p id="reload-error-destinationFilename" className="settings-form-page__error">{fieldErrors.destinationFilename}</p> : null}
           </div>
 
           <div className="reload-configuration-form__field reload-configuration-form__field--wide">
@@ -234,6 +245,8 @@ export function ReloadConfigurationAdminPanel({
               aria-label="组织触发节点路径"
               className="reload-configuration-form__control mono"
               value={organisationDraft.triggerNodePath}
+              aria-invalid={fieldErrors.triggerNodePath ? true : undefined}
+              aria-describedby={fieldErrors.triggerNodePath ? "reload-error-triggerNodePath" : undefined}
               disabled={fieldsDisabled}
               placeholder="/sys/kernel/debug/.../trigger"
               spellCheck={false}
@@ -241,6 +254,7 @@ export function ReloadConfigurationAdminPanel({
               onChange={(event) => updateOrganisationField("triggerNodePath", event.target.value)}
             />
             <p className="reload-configuration-form__hint">{FIELD_HINTS.triggerNodePath}</p>
+            {fieldErrors.triggerNodePath ? <p id="reload-error-triggerNodePath" className="settings-form-page__error">{fieldErrors.triggerNodePath}</p> : null}
           </div>
 
           <div className="reload-configuration-form__field">
@@ -250,6 +264,8 @@ export function ReloadConfigurationAdminPanel({
               aria-label="组织触发写入值"
               className="reload-configuration-form__control mono"
               value={organisationDraft.triggerPayload}
+              aria-invalid={fieldErrors.triggerPayload ? true : undefined}
+              aria-describedby={fieldErrors.triggerPayload ? "reload-error-triggerPayload" : undefined}
               disabled={fieldsDisabled}
               placeholder="1"
               spellCheck={false}
@@ -257,6 +273,7 @@ export function ReloadConfigurationAdminPanel({
               onChange={(event) => updateOrganisationField("triggerPayload", event.target.value)}
             />
             <p className="reload-configuration-form__hint">{FIELD_HINTS.triggerPayload}</p>
+            {fieldErrors.triggerPayload ? <p id="reload-error-triggerPayload" className="settings-form-page__error">{fieldErrors.triggerPayload}</p> : null}
           </div>
 
           <div className="reload-configuration-form__field">
@@ -266,33 +283,23 @@ export function ReloadConfigurationAdminPanel({
               onValueChange={(value) => updateOrganisationField("kernelLogCommand", value)}
               options={kernelLogOptions}
               ariaLabel="组织内核日志命令"
+              ariaInvalid={fieldErrors.kernelLogCommand ? true : undefined}
+              ariaDescribedBy={fieldErrors.kernelLogCommand ? "reload-error-kernelLogCommand" : undefined}
               disabled={fieldsDisabled}
             />
             <p className="reload-configuration-form__hint">{FIELD_HINTS.kernelLogCommand}</p>
+            {fieldErrors.kernelLogCommand ? <p id="reload-error-kernelLogCommand" className="settings-form-page__error">{fieldErrors.kernelLogCommand}</p> : null}
             {isStreamingKernelLogCommand(organisationDraft.kernelLogCommand) ? (
-              <p className="reload-configuration-form__hint text-amber-900" role="note">
+              <p className="reload-configuration-form__hint" role="note">
                 {STREAMING_COMMAND_WARNING}
               </p>
             ) : null}
           </div>
         </div>
 
-        <div className="reload-configuration-actions">
-          {statusMessage ? <p className="reload-configuration-status">{statusMessage}</p> : null}
-          {!statusMessage && isDirty ? (
-            <p className="reload-configuration-muted">有未保存的更改</p>
-          ) : null}
-          <Button
-            type="button"
-            size="lg"
-            className="reload-configuration-actions__save"
-            disabled={fieldsDisabled || !isDirty}
-            onClick={() => void saveOrganisation()}
-          >
-            {saving ? "保存中…" : "保存组织默认值"}
-          </Button>
-        </div>
-      </div>
-    </PanelShell>
+        {statusMessage ? <p className="reload-configuration-status" role="status">{statusMessage}</p> : null}
+      </SettingsFormSection>
+      </SettingsFormPage>
+    </section>
   );
 }

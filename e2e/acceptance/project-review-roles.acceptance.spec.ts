@@ -88,7 +88,7 @@ test.describe("project review role configuration", () => {
     });
     await expect(hardwareCheckbox).toBeVisible();
     await hardwareCheckbox.check();
-    await page.getByRole("button", { name: "保存修改" }).click();
+    await page.getByRole("button", { name: "保存", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "确认更新项目审核角色" })).toBeVisible();
     const saved = page.waitForResponse(
       (response) =>

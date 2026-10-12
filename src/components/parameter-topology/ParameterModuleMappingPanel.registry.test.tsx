@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CATALOG_MODULE_ID,
@@ -78,12 +79,14 @@ describe("historical registry isolation", () => {
       expect(screen.queryByText("没有匹配的模块。")).not.toBeInTheDocument();
       expect(screen.queryByText("正在加载模块注册表…")).not.toBeInTheDocument();
       expect(repository.getDiscoveryHints).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole("tab", { name: "发现队列" }));
       expect(await screen.findByText("vendor,device")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "编写覆盖解析" })).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: "前往 Catalog 提交定义提案" }))
         .toHaveAttribute("href", "/parameter-admin/specs");
 
       if (scenario === "failed history") {
+        await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
         const historical = screen.getByRole("region", { name: "历史驱动注册表" });
         expect(historical).toHaveAttribute("aria-busy", "true");
         rejectHistory(new Error("historical registry unavailable"));
@@ -132,6 +135,7 @@ describe("historical registry isolation", () => {
     expect(await within(canonical).findByText(unregisteredSubject.canonicalName)).toBeInTheDocument();
     expect(canonical).toHaveTextContent("1 个有效主体");
     expect(canonical).toHaveTextContent(`${unregisteredSubject.definitionCounts.active} 个有效定义`);
+    await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
     const historical = screen.getByRole("region", { name: "历史驱动注册表" });
     expect(historical).toHaveAttribute("aria-busy", "true");
 
@@ -150,5 +154,7 @@ describe("historical registry isolation", () => {
     expect(listSubjects).toHaveBeenCalledTimes(1);
     expect(getDiscoveryHints).not.toHaveBeenCalled();
     expect(canonical).toHaveTextContent("1 个有效主体");
+    await userEvent.click(screen.getByRole("tab", { name: "模块" }));
+    expect(canonical).toBeVisible();
   });
 });

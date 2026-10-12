@@ -52,7 +52,7 @@ import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { OrganizationPage } from "@/OrganizationPage";
-import { NoEntryPage } from "@/components/NoEntryPage";
+import { RetiredNotice } from "@/components/layout/RetiredNotice";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem } from "@/domain/parameters/types";
@@ -81,7 +81,7 @@ export type RuntimeSectionStatus = "loading" | "ready" | "error";
 export type PageProps = {
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
-  onNavigate: (path: string) => void;
+  onNavigate: (path: string, options?: { replace?: boolean }) => void;
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
   logActions?: LogRuntimeActions;
@@ -330,7 +330,7 @@ export function PageRouter({
       );
     case "parameter-comparison":
       return (
-        <NoEntryPage
+        <RetiredNotice
           title="页面不可用"
           description="独立参数对比页面已下线，请回到参数工作台通过参数行的查看按钮查看跨项目对比。"
           actionLabel="参数工作台"
@@ -426,7 +426,7 @@ export function PageRouter({
       ) : null;
     case "debugging":
       return (
-        <NoEntryPage
+        <RetiredNotice
           title="页面暂时不可用"
           description="参数调试工作区已下线。请使用节点调试读写设备节点，或在调试管理后台维护可调节点目录。"
           actionLabel="节点调试"

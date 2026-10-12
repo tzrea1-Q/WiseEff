@@ -44,6 +44,8 @@ export type DataTableProps<TData> = {
   emptyState?: ReactNode;
   emptyMessage?: string;
   pageSize?: number;
+  page?: number;
+  onPageChange?: (page: number) => void;
   ariaLabel?: string;
   "aria-label"?: string;
   sort?: DataTableSort;
@@ -52,6 +54,7 @@ export type DataTableProps<TData> = {
   className?: string;
   tableClassName?: string;
   visibleScrollRail?: boolean;
+  compactControls?: boolean;
 };
 
 type SortState = { key: string; dir: "asc" | "desc" } | null;
@@ -86,6 +89,8 @@ export function DataTable<TData>({
   emptyState,
   emptyMessage = "当前筛选条件下没有数据。",
   pageSize = 10,
+  page: controlledPage,
+  onPageChange,
   ariaLabel,
   "aria-label": ariaLabelProp,
   sort: controlledSort,
@@ -93,7 +98,8 @@ export function DataTable<TData>({
   renderRowActions,
   className,
   tableClassName,
-  visibleScrollRail = false
+  visibleScrollRail = false,
+  compactControls = false
 }: DataTableProps<TData>) {
   const [sort, setSort] = useState<SortState>(null);
   const [generatedFilters, setGeneratedFilters] = useState<HeaderFilterState>({});
@@ -148,7 +154,11 @@ export function DataTable<TData>({
   }, [activeSort, columns, filteredRows]);
 
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
+  const currentPage = Math.max(1, Math.min(controlledPage ?? page, totalPages));
+  const changePage = (nextPage: number) => {
+    if (onPageChange) onPageChange(nextPage);
+    else setPage(nextPage);
+  };
   const pageRows = useMemo(
     () => sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize),
     [currentPage, pageSize, sortedRows]
@@ -159,11 +169,12 @@ export function DataTable<TData>({
     if (!accessor) {
       return;
     }
-    setPage(1);
     if (onSort) {
+      setPage(1);
       onSort(column.key);
       return;
     }
+    changePage(1);
     setSort((previous) => {
       if (!previous || previous.key !== column.key) {
         return { key: column.key, dir: "asc" };
@@ -176,7 +187,7 @@ export function DataTable<TData>({
   };
 
   const toggleGeneratedFilter = (key: string, value: string) => {
-    setPage(1);
+    changePage(1);
     setGeneratedFilters((current) => ({
       ...current,
       [key]: toggleFilterValue(current[key] ?? [], value)
@@ -184,7 +195,7 @@ export function DataTable<TData>({
   };
 
   const clearGeneratedFilter = (key: string) => {
-    setPage(1);
+    changePage(1);
     setGeneratedFilters((current) => ({ ...current, [key]: [] }));
   };
 
@@ -203,6 +214,7 @@ export function DataTable<TData>({
 
     return (
       <ColumnFilter
+        compact={compactControls}
         label={label}
         groupLabel={config.groupLabel ?? `${label}筛选`}
         values={config.values ?? uniqueFilterValues(rows, config.getValue)}
@@ -250,9 +262,11 @@ export function DataTable<TData>({
                     {accessor ? (
                       <button
                         type="button"
+                        data-compact-control={compactControls ? "sort" : undefined}
                         onClick={() => handleSort(column)}
                         className={cn(
                           "inline-flex items-center gap-1 rounded-md transition-colors hover:text-foreground",
+                          compactControls && "compact-filter-control",
                           alignment === "right" && "justify-end"
                         )}
                       >
@@ -327,7 +341,6 @@ export function DataTable<TData>({
                           data-label="操作"
                           className="px-4 py-3 text-right align-middle"
                           onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
                         >
                           {renderRowActions(row)}
                         </td>
@@ -356,7 +369,7 @@ export function DataTable<TData>({
               aria-label="上一页"
               data-compact-control="pagination"
               disabled={currentPage === 1}
-              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              onClick={() => changePage(Math.max(1, currentPage - 1))}
               className="button subtle"
             >
               <ChevronLeft className="size-3.5" />
@@ -366,7 +379,7 @@ export function DataTable<TData>({
               aria-label="下一页"
               data-compact-control="pagination"
               disabled={currentPage >= totalPages}
-              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              onClick={() => changePage(Math.min(totalPages, currentPage + 1))}
               className="button subtle"
             >
               <ChevronRight className="size-3.5" />

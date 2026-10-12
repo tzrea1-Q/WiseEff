@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -561,6 +561,33 @@ describe("DtsReloadPage", () => {
     expect(history).not.toHaveAttribute("open");
   });
 
+  it("keeps reload candidates before the tray and remembers module navigation collapse", async () => {
+    const repository = createRepository();
+    const first = renderPage(repository);
+    await screen.findByRole("button", { name: /编辑 Watchdog/ });
+    const task = screen.getByRole("region", { name: "DTS 重载任务" });
+    const table = within(task).getByRole("table", { name: "可调试参数" });
+    expect(task).not.toContainElement(screen.getByRole("region", { name: "本地设备连接" }));
+    const toolbar = screen.getByRole("group", { name: "工作台操作" });
+    expect(within(toolbar).getByRole("combobox", { name: "选择项目" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "选择参数后下发" })).toBeDisabled();
+    fireEvent.click(within(table).getByRole("checkbox", { name: "选择 Watchdog" }));
+    const tray = await screen.findByRole("region", { name: "本轮重载" });
+    expect(task).toContainElement(tray);
+    expect(table.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(toolbar).getByRole("button", { name: /下发参数/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(screen.queryByRole("tree", { name: "业务模块树" })).not.toBeInTheDocument();
+    expect(table).toBeVisible();
+    expect(tray).toBeVisible();
+
+    first.unmount();
+    renderPage(repository);
+    expect(screen.getByRole("button", { name: "展开模块导航" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(await screen.findByRole("tree", { name: "业务模块树" })).toBeVisible();
+  });
+
   it("publishes device connection status and redetection to the topbar", async () => {
     const user = userEvent.setup();
     const detectTargets = vi.fn(async () => []);
@@ -870,7 +897,7 @@ describe("DtsReloadPage", () => {
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
   });
 
-  it("keeps block reasons in the operations column for not-debuggable rows", async () => {
+  it("keeps block reasons in the operations column and disables edits for not-debuggable rows", async () => {
     const user = userEvent.setup();
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
@@ -888,9 +915,12 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
 
     expect(await screen.findByText("Blocked")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /编辑 Blocked/ })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
+    const edit = screen.getByRole("button", { name: /编辑 Blocked/ });
+    expect(edit).toBeDisabled();
+    const operations = edit.closest("td")!;
+    expect(within(operations).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
+    expect(within(operations).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
+    await user.click(edit);
     await user.click(screen.getByText("Blocked"));
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
   });

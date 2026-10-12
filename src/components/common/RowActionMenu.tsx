@@ -8,6 +8,8 @@ import "./row-action-menu.css";
 type RowAction = {
   id: string;
   label: string;
+  ariaLabel?: string;
+  descriptionId?: string;
   disabled?: boolean;
   onSelect: () => void | Promise<void>;
 };
@@ -47,7 +49,7 @@ export function RowActionMenu({ label, triggerLabel, triggerText = "更多", pri
 
   return (
     <div className="row-action-menu" role="group" aria-label={label}>
-      {primaryAction && <Button type="button" size="sm" variant="ghost" disabled={primaryAction.disabled} onClick={primaryAction.onSelect}>
+      {primaryAction && <Button type="button" size="sm" variant="ghost" aria-label={primaryAction.ariaLabel} disabled={primaryAction.disabled} onClick={primaryAction.onSelect}>
         {primaryAction.label}
       </Button>}
       {items.length > 0 && <DropdownMenu.Root modal={false}>
@@ -57,12 +59,13 @@ export function RowActionMenu({ label, triggerLabel, triggerText = "更多", pri
         <DropdownMenu.Portal>
           <DropdownMenu.Content className="row-action-menu__content" align="end" onClick={(event) => event.stopPropagation()}
             onCloseAutoFocus={(event) => { if (selected) event.preventDefault(); }}>
-            {items.map((item) => <DropdownMenu.Item key={item.id} className="row-action-menu__item button-size-sm" data-destructive={item.destructive || undefined} disabled={item.disabled} onSelect={() => {
+            {items.map((item) => <DropdownMenu.Item key={item.id} className="row-action-menu__item button-size-sm" aria-label={item.ariaLabel} aria-describedby={item.descriptionId} data-destructive={item.destructive || undefined} disabled={item.disabled} onSelect={() => {
               if (item.destructive) {
                 triggerRef.current?.focus();
                 setError("");
                 setSelected(item);
               } else {
+                triggerRef.current?.focus();
                 item.onSelect();
               }
             }}>

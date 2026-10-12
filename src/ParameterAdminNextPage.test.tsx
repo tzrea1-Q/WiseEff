@@ -181,7 +181,7 @@ describe("ParameterAdminNextPage · shell", () => {
     const nav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(nav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
   });
 });
@@ -909,7 +909,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
       area: "projects"
     });
 
-    expect(await screen.findByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     const firstOpen = screen.getAllByRole("button", { name: /配置工作台/ })[0]!;
     fireEvent.click(firstOpen);
 
@@ -1000,7 +1000,8 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     renderPage({ path: "/parameter-admin/projects", area: "projects", dispatch });
 
     const projectName = initialState.configDraft.projects[0]!.name;
-    fireEvent.click(screen.getByRole("button", { name: `编辑 ${projectName}` }));
+    await userEvent.click(screen.getByRole("button", { name: `${projectName}操作：更多` }));
+    await userEvent.click(screen.getByRole("menuitem", { name: `编辑 ${projectName}` }));
     const editDialog = await screen.findByRole("dialog", { name: "编辑项目详情" });
     fireEvent.change(within(editDialog).getByLabelText("项目名称"), {
       target: { value: `${projectName} Updated` }

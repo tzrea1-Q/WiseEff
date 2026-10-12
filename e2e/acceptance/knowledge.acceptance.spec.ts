@@ -914,6 +914,7 @@ test.describe("Knowledge base browser acceptance", () => {
     await signInBrowserAsUser(page, editorUserId, editorEmail, editorName, "/logs");
     const history = page.getByRole("complementary", { name: "历史日志记录" });
     await history.getByRole("button", { name: new RegExp(seeded.fileName.slice(0, 40)) }).click();
+    await page.getByRole("tab", { name: "相关", exact: true }).click();
 
     // Distil the conclusion into a knowledge draft and hand off to /knowledge.
     const distilButton = page.getByRole("button", { name: "沉淀为知识" });

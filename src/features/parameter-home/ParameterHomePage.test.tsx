@@ -225,9 +225,10 @@ describe("ParameterHomePage", () => {
     expect(screen.getByRole("radiogroup", { name: "热榜维度" })).toBeInTheDocument();
   });
 
-  it("lays out situation overview beside update trend", () => {
+  it("uses the shared summary strip, content grid and quick actions", () => {
     renderPage({ roleId: "admin" });
-    expect(document.querySelector(".parameter-home__overview-row")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "参数工作台概览" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "快捷操作" })).toContainElement(screen.getByRole("region", { name: "待办事项" }));
     expect(screen.getByRole("heading", { name: "概览", level: 2 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "我的治理趋势" })).toBeInTheDocument();
   });
@@ -249,8 +250,8 @@ describe("ParameterHomePage", () => {
       roleId: "guest",
       dashboardState: buildDashboardState({ overviewScope: "overall" })
     });
-    expect(screen.getByText("活跃 Binding", { selector: ".parameter-home__situation-stat-label" })).toBeInTheDocument();
-    expect(screen.queryByText("我的变更", { selector: ".parameter-home__situation-stat-label" })).not.toBeInTheDocument();
+    expect(screen.getByText("活跃 Binding", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.queryByText("我的变更", { selector: "dt" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "参数更新趋势" })).toBeInTheDocument();
   });
 
@@ -272,7 +273,7 @@ describe("ParameterHomePage", () => {
         }
       })
     });
-    expect(screen.getByText("我的变更", { selector: ".parameter-home__situation-stat-label" })).toBeInTheDocument();
+    expect(screen.getByText("我的变更", { selector: "dt" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "我的变更趋势" })).toBeInTheDocument();
   });
 });
