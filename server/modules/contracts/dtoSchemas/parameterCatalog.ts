@@ -872,7 +872,8 @@ export const catalogProjectBindingDtoSchema = catalogObject({
   definitionId: z.string(),
   effectiveRevisionId: z.string(),
   currentValueId: z.string(),
-  recognizedAgainstCatalogReleaseId: z.string()
+  recognizedAgainstCatalogReleaseId: z.string(),
+  currentDisplayName: z.string().nullable().optional()
 });
 
 export const catalogBindingHistoryEntryDtoSchema = catalogObject({

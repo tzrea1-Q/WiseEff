@@ -206,7 +206,7 @@ export const projectBindingSearchProfile: SearchProfile<ProjectParameterBinding>
 export const dtsWorkbenchRowSearchProfile: SearchProfile<DtsParameterWorkbenchRow> = {
   fields: [
     { name: "propertyKey", weight: FIELD_WEIGHT.identity, getValues: (item) => [item.propertyKey] },
-    { name: "displayName", weight: FIELD_WEIGHT.identity, getValues: (item) => [item.displayName] },
+    { name: "displayName", weight: FIELD_WEIGHT.identity, getValues: (item) => [item.currentDisplayName, item.displayName] },
     { name: "description", weight: FIELD_WEIGHT.explanation, getValues: (item) => [item.description] },
     { name: "documentation", weight: FIELD_WEIGHT.explanation, getValues: (item) => [item.documentation] },
     { name: "module", weight: FIELD_WEIGHT.attribution, getValues: (item) => [item.moduleName] },

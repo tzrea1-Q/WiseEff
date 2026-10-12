@@ -4,10 +4,33 @@ import { buildOpenApiDocument } from "./openapi";
 import { schemaRegistry } from "./schemaRegistry";
 import { dtoSchemaCatalog, dtoSchemaCoveredRouteIds } from "./dtoSchemas/catalog";
 import { dashboardHotspotDtoSchema } from "./dtoSchemas/parameters";
+import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("retains the optional current head display name without replacing pinned copy", () => {
+    const document = buildOpenApiDocument();
+    const list = document.components.schemas.ProjectParameterBindingListResponse as {
+      properties: { items: { items: { required: string[]; properties: Record<string, unknown> } } }
+    };
+    expect(list.properties.items.items.properties.currentDisplayName).toEqual({ type: ["string", "null"] });
+    expect(list.properties.items.items.required).not.toContain("currentDisplayName");
+    const binding = {
+      id: "binding", parameterSpecId: "definition", parameterSpecVersionId: "pinned",
+      propertyKey: "iin_max", driverModule: null, logicalNodeId: null, instanceName: null,
+      locator: null, effectiveValue: { kind: "boolean", present: true }, rawValue: "",
+      schemaState: "valid", policyState: "not_applicable", moduleId: "module",
+      displayName: "旧名称", currentDisplayName: "当前名称", description: null, documentation: null
+    };
+    expect(projectBindingDtoSchema.parse(binding)).toMatchObject({
+      displayName: "旧名称", currentDisplayName: "当前名称", parameterSpecVersionId: "pinned"
+    });
+    expect(projectBindingDtoSchema.parse({ ...binding, currentDisplayName: null }).currentDisplayName).toBeNull();
+    const { currentDisplayName: _name, ...legacy } = binding;
+    expect(projectBindingDtoSchema.safeParse(legacy).success).toBe(true);
+    expect(projectBindingDtoSchema.safeParse({ ...binding, currentDisplayName: 1137 }).success).toBe(false);
+  });
   it("publishes the same canonical compatibility identity and unavailable metadata for list and detail", () => {
     const document = buildOpenApiDocument();
     const list = document.components.schemas.ParameterListResponse as {

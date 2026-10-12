@@ -1,7 +1,39 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, requireWorkbenchPresentation, shouldRequireXiaozeHint } from "../e2e/quality/consistency-assertions";
+
+describe("workbench optional descriptions and single-line keys", () => {
+  const key = { text: "vendor,long-key", title: "vendor,long-key", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+  const empty = { rowCount: 1, descriptionHeaderCount: 0, descriptions: [], keys: [key] };
+  it("accepts empty columns being absent and mixed descriptions being present", () => {
+    expect(() => requireWorkbenchPresentation([empty], "/parameters")).not.toThrow();
+    expect(() => requireWorkbenchPresentation([{ ...empty, rowCount: 2,
+      descriptionHeaderCount: 1, descriptions: ["说明", ""], keys: [key, key]
+    }], "/parameters")).not.toThrow();
+  });
+  it("rejects an empty description column, wrapping keys, missing tooltips, and empty measurements", () => {
+    expect(() => requireWorkbenchPresentation([{ ...empty, descriptionHeaderCount: 1, descriptions: [""] }], "/parameters")).toThrow(/description/);
+    expect(() => requireWorkbenchPresentation([{ ...empty, keys: [{ ...key, whiteSpace: "pre-wrap" }] }], "/parameters")).toThrow(/key/);
+    expect(() => requireWorkbenchPresentation([{ ...empty, keys: [{ ...key, title: "" }] }], "/parameters")).toThrow(/key/);
+    expect(() => requireWorkbenchPresentation([], "/parameters")).toThrow(/missing/);
+  });
+  it("collects visible workbench descriptions and full-key presentation from the DOM", () => {
+    const measurements = collectMarkup(`
+      <div role="table" class="dts-parameter-workbench-table">
+        <span role="columnheader">展示描述</span>
+        <div role="row" class="dts-parameter-workbench-table__row">
+          <span data-label="参数名"><code title="vendor,long-key" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">vendor,long-key</code></span>
+          <span data-label="展示描述" title="说明">说明</span>
+        </div>
+      </div>
+    `);
+    expect(measurements.workbenchTables).toEqual([{
+      rowCount: 1, descriptionHeaderCount: 1, descriptions: ["说明"], keys: [key]
+    }]);
+    expect(() => requireWorkbenchPresentation(measurements.workbenchTables, "/parameters")).not.toThrow();
+  });
+});
 
 function collectMarkup(markup: string, portalMarkup = "") {
   const dom = new JSDOM(`<main>${markup}</main>${portalMarkup}`);

@@ -1,6 +1,22 @@
 import type { ConsistencyMeasurements, ConsistencyCategory } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 
+export function requireWorkbenchPresentation(tables: ConsistencyMeasurements["workbenchTables"], routePath: string) {
+  if (!tables.length) throw new Error(`${routePath}: missing workbench table measurements`);
+  for (const table of tables) {
+    const hasDescription = table.descriptions.some((text) => text !== "");
+    if (table.descriptionHeaderCount !== Number(hasDescription)
+      || table.descriptions.length !== (hasDescription ? table.rowCount : 0)) {
+      throw new Error(`${routePath}: description column must appear only for a nonempty current result`);
+    }
+    if (!table.rowCount || table.keys.length !== table.rowCount || table.keys.some((key) =>
+      !key.text || key.title !== key.text || key.whiteSpace !== "nowrap"
+      || key.overflow !== "hidden" || key.textOverflow !== "ellipsis")) {
+      throw new Error(`${routePath}: each workbench key requires a single-line ellipsis and full-key tooltip`);
+    }
+  }
+}
+
 export function requireReviewInboxStructure(
   measurements: Pick<ConsistencyMeasurements, "viewSwitches" | "visibleTableCount">,
   routePath: string

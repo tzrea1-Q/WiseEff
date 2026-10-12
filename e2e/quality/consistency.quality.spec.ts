@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint } from "./consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, requireWorkbenchPresentation, shouldRequireXiaozeHint } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
@@ -168,6 +168,9 @@ for (const route of routes) {
         }
         await expect(async () => {
           measurements = await page.evaluate(collectConsistencyMeasurements);
+          if (routePath === "/parameters" && !hasHistoricalIdentity) {
+            requireWorkbenchPresentation(measurements.workbenchTables, route.path);
+          }
           requireMeasuredCategories(measurements, required, route.path);
           if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
             requireReviewInboxStructure(measurements, route.path);
