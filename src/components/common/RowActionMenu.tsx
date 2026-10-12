@@ -21,11 +21,13 @@ type DestructiveRowAction = RowAction & {
 
 export type RowActionMenuProps = {
   label: string;
+  triggerLabel?: string;
+  triggerText?: string;
   primaryAction?: RowAction & { destructive?: false };
   items: readonly (RowAction & { destructive?: false } | DestructiveRowAction)[];
 };
 
-export function RowActionMenu({ label, primaryAction, items }: RowActionMenuProps) {
+export function RowActionMenu({ label, triggerLabel, triggerText = "更多", primaryAction, items }: RowActionMenuProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [selected, setSelected] = useState<DestructiveRowAction | null>(null);
   const [pending, setPending] = useState(false);
@@ -52,7 +54,7 @@ export function RowActionMenu({ label, primaryAction, items }: RowActionMenuProp
       </Button>}
       {items.length > 0 && <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
-          <Button ref={triggerRef} type="button" size="sm" variant="ghost" aria-label={`${label}：更多`}>更多</Button>
+          <Button ref={triggerRef} type="button" size="sm" variant="ghost" aria-label={triggerLabel ?? `${label}：${triggerText}`}>{triggerText}</Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content className="row-action-menu__content" align="end" onClick={(event) => event.stopPropagation()}

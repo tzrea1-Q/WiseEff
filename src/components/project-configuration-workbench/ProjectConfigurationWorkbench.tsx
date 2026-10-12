@@ -16,6 +16,12 @@ import type {
   ParameterFileSourceWorkflow,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
+import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { ViewSwitch } from "@/components/ui/view-switch";
+import { Button } from "@/components/ui/button";
+import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
+import { RowActionMenu } from "@/components/common/RowActionMenu";
+import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 import { useToast } from "@/components/common/toast/ToastProvider";
 import { presentError } from "@/infrastructure/http/presentError";
 import type { AuditEventListResponse, ListAuditEventsParams } from "@/domain/audit/types";
@@ -191,7 +197,6 @@ export function ProjectConfigurationWorkbench({
     releasedTip: releasedBaseline
   } = useReleaseBaselineSession();
   const revisionGate = useConfigRevisionGateSession();
-  const [treeOpen, setTreeOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPersistent, setInspectorPersistent] = useState(false);
   const [inspectorLevelOverride, setInspectorLevelOverride] = useState<InspectorLevel | null>(null);
@@ -278,6 +283,7 @@ export function ProjectConfigurationWorkbench({
   const [focusLineOverride, setFocusLineOverride] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
+  const workbenchBodyRef = useRef<HTMLElement | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const {
@@ -311,7 +317,6 @@ export function ProjectConfigurationWorkbench({
     workingSnapshot
   } = useWorkbenchCanvasHistorySession();
   const sourceRegionRef = useRef<HTMLElement | null>(null);
-  const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -320,7 +325,6 @@ export function ProjectConfigurationWorkbench({
     const syncViewport = () => {
       const narrow = media.matches;
       setNarrowViewport(narrow);
-      setTreeOpen(!narrow);
     };
     syncViewport();
     media.addEventListener("change", syncViewport);
@@ -410,6 +414,37 @@ export function ProjectConfigurationWorkbench({
   const selectedMemberVersionId = selectedMember?.currentVersionId ?? null;
 
   const canvasMode: WorkbenchCanvasMode = parseCanvasMode(queryValue(search, "sourceMode"));
+  const requestedTab = queryValue(search, "tab");
+  const contentTab = requestedTab === "structure" || requestedTab === "conflicts" ? requestedTab
+    : requestedTab === "source" ? "source"
+    : queryValue(search, "tasks") === "conflicts" || queryValue(search, "dock") === "conflicts" ? "conflicts" : "source";
+  const canvasSearchParams = new URLSearchParams(search);
+  if (contentTab !== "source") canvasSearchParams.set("tab", "source");
+  const canvasSearch = canvasSearchParams.toString();
+  const selectContentTab = (tab: string) => {
+    const params = new URLSearchParams(search);
+    params.set("tab", tab);
+    onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params.toString()}`);
+  };
+
+  useEffect(() => {
+    const body = workbenchBodyRef.current?.querySelector(".navigator-workbench__body");
+    const navigator = body?.querySelector(".navigator-workbench__navigator");
+    if (!body || !navigator) return;
+    const measure = () => setInspectorPersistent(shouldPersistInspector({
+      workbenchWidth: body.getBoundingClientRect().width,
+      treeWidth: navigator.getBoundingClientRect().width + 2 * (Number.parseFloat(getComputedStyle(body).columnGap) || 0)
+    }));
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    observer?.observe(body);
+    observer?.observe(navigator);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [selectedConfigSet?.id]);
   const candidateId = queryValue(search, "candidate");
   const historyVersionId = queryValue(search, "version");
 
@@ -462,29 +497,6 @@ export function ProjectConfigurationWorkbench({
       setTasksOpen(true);
     }
   }, [search]);
-
-  useEffect(() => {
-    const measure = () => {
-      const body = workbenchBodyRef.current;
-      if (!body) return;
-      const treeWidth = treeOpen
-        ? treeRegionRef.current?.getBoundingClientRect().width || 260
-        : 34;
-      const workbenchWidth = body.getBoundingClientRect().width;
-      setInspectorPersistent(shouldPersistInspector({ workbenchWidth, treeWidth }));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    const observer =
-      typeof ResizeObserver !== "undefined" && workbenchBodyRef.current
-        ? new ResizeObserver(measure)
-        : null;
-    if (workbenchBodyRef.current && observer) observer.observe(workbenchBodyRef.current);
-    return () => {
-      window.removeEventListener("resize", measure);
-      observer?.disconnect();
-    };
-  }, [treeOpen, inspectorOpen, narrowViewport, selectedConfigSet?.id]);
 
   useEffect(() => {
     if (!selectedMember || (!inspectorOpen && canvasMode !== "unified-diff" && canvasMode !== "side-by-side")) {
@@ -776,11 +788,13 @@ export function ProjectConfigurationWorkbench({
   }, [selectedNodePath, selectedPropertyName, structureNodes]);
 
   const selectStructureTarget = useCallback(
-    (fileId: string, nodePath: string | null, propertyName: string | null = null) => {
+    (fileId: string, nodePath: string | null, propertyName: string | null = null, showSource = false) => {
       if (!selectedConfigSet) return;
       setInspectorLevelOverride(null);
+      const params = new URLSearchParams(search);
+      if (showSource) params.set("tab", "source");
       onNavigate(
-        navigationSession.selectStructureTarget(project.id, search, {
+        navigationSession.selectStructureTarget(project.id, params.toString(), {
           configSetId: selectedConfigSet.id,
           fileId,
           nodePath,
@@ -800,8 +814,10 @@ export function ProjectConfigurationWorkbench({
   const handleSearchHit = useCallback(
     (hit: DtsSearchHit) => {
       if (!selectedConfigSet) return;
+      const params = new URLSearchParams(search);
+      params.set("tab", "source");
       onNavigate(
-        navigationSession.selectSearchHit(project.id, search, {
+        navigationSession.selectSearchHit(project.id, params.toString(), {
           configSetId: selectedConfigSet.id,
           hit,
           sourceMode: canvasModeQueryValue(canvasMode),
@@ -990,7 +1006,7 @@ export function ProjectConfigurationWorkbench({
     restoreWorkbenchBaseline
   } = useWorkbenchBaselineOrchestration({
     projectId: project.id,
-    search,
+    search: canvasSearch,
     onNavigate,
     canAdmin,
     dtsRepository,
@@ -1066,7 +1082,7 @@ export function ProjectConfigurationWorkbench({
     downloadActiveDts
   } = useWorkbenchCanvasOps({
     projectId: project.id,
-    search,
+    search: canvasSearch,
     onNavigate,
     fileRepository,
     canvasHistorySession,
@@ -1094,7 +1110,7 @@ export function ProjectConfigurationWorkbench({
     handleCancelActivateCandidate
   } = useWorkbenchCandidateOrchestration({
     projectId: project.id,
-    search,
+    search: canvasSearch,
     onNavigate,
     fileRepository,
     candidateFlow,
@@ -1345,7 +1361,8 @@ export function ProjectConfigurationWorkbench({
         selectStructureTarget(
           issue.target.fileId,
           issue.target.nodePath ?? null,
-          issue.target.propertyName ?? null
+          issue.target.propertyName ?? null,
+          true
         );
         if (issue.target.source?.startLine) {
           setFocusLineOverride(issue.target.source.startLine);
@@ -1478,9 +1495,81 @@ export function ProjectConfigurationWorkbench({
     );
   }, [canvasMode, compareSource, historySource, historySourceAvailable, historyVersionId]);
 
+  const taskDock = (
+      <WorkbenchTaskDock
+        tasksOpen={tasksOpen || contentTab === "conflicts"}
+        onTasksOpenChange={(open) => {
+          setTasksOpen(open);
+          if (!open && contentTab === "conflicts") selectContentTab("source");
+        }}
+        sessionDraftRows={sessionDraftRows}
+        syncEvidence={syncEvidence}
+        canonicalSyncCheck={canonicalSyncCheck}
+        exportEvidence={exportEvidence}
+        syncConflicts={syncConflicts}
+        autoLocateConflicts={contentTab !== "conflicts"}
+        releaseReadiness={releaseReadiness}
+        draftRecoveryStatus={draftRecoveryStatus}
+        draftCopyFallbackRef={draftCopyFallbackRef}
+        draftCopyStatus={draftCopyStatus}
+        onCopySessionDrafts={handleCopySessionDrafts}
+        onReconfirmStaleDrafts={handleReconfirmStaleDrafts}
+        selectedDraftKeys={selectedDraftKeys}
+        onToggleDraftKey={(key) => {
+          const next = new Set(selectedDraftKeys);
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+          structuredEditSession.selectSubset(next);
+        }}
+        submitReason={submitReason}
+        onSubmitReasonChange={(value) => structuredEditSession.setReason(value)}
+        canEdit={canEdit}
+        onValidateSelected={handleValidateSelected}
+        onSubmitSelected={handleSubmitSelected}
+        submittingEdits={submittingEdits}
+        validateStatus={validateStatus}
+        submitStatus={submitStatus}
+        stagedDrafts={stagedDrafts}
+        onSubmitReview={() => onNavigate(`/parameters?project=${encodeURIComponent(project.id)}`)}
+        submitError={submitError}
+        projectId={project.id}
+        fileRepository={fileRepository}
+        sourceWorkflowByFileId={sourceWorkflowByFileId}
+        sourceWorkflowLoading={sourceWorkflowLoading || filesLoading}
+        onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
+        onLocateConflict={(conflict) => {
+          const target = conflictLocateFacade.locate(conflict);
+          if (!target) return;
+          selectStructureTarget(target.fileId, target.nodePath, target.propertyName, true);
+        }}
+        canAdmin={canAdmin}
+        acknowledgedWarningIds={acknowledgedWarningIds}
+        onAcknowledgeWarning={(issueId) => {
+          releaseBaselineSession.acknowledgeWarning(issueId);
+        }}
+        onSelectReadinessIssue={handleSelectReadinessIssue}
+        onReadinessRetry={() => setReadinessRetry((value) => value + 1)}
+      />
+  );
+
   return (
-    <section className="configuration-workbench" aria-label="项目配置工作台">
-      <WorkbenchCommandBar
+    <section className="configuration-workbench" aria-label="项目配置工作台" ref={workbenchBodyRef}>
+      <NavigatorWorkbench
+        pageKey={`project-configuration:${project.id}`}
+        navigatorLabel="文件与配置集"
+        taskLabel="配置内容"
+        panelId={`project-configuration-${contentTab}-panel`}
+        tabId={`project-configuration-${contentTab}-tab`}
+        inspectorLabel="检查器面板"
+        inspectorOverlay={!inspectorPersistent}
+        primaryAction={<Button type="button" size="sm"
+          disabled={uploadingCandidate || !selectedConfigSet || !canAdmin}
+          title="上传创建候选文件版本，不会激活工作配置"
+          onClick={() => candidateFileInputRef.current?.click()}>
+          {uploadingCandidate ? "上传中…" : "上传候选"}
+        </Button>}
+        toolbar={<div className="configuration-workbench__toolbar-content">
+          <WorkbenchCommandBar
         project={project}
         onLeave={handleLeaveWorkbench}
         configSets={configSets}
@@ -1505,7 +1594,6 @@ export function ProjectConfigurationWorkbench({
         inspectorOpen={inspectorOpen}
         onInspectorToggle={() => setInspectorOpen((open) => !open)}
         candidateFileInputRef={candidateFileInputRef}
-        uploadingCandidate={uploadingCandidate}
         onCandidateFileChange={handleCandidateFileChange}
         downloadingDts={downloadingDts}
         onDownloadActiveDts={downloadActiveDts}
@@ -1515,14 +1603,17 @@ export function ProjectConfigurationWorkbench({
         onOpenCreateBaseline={handleOpenCreateBaseline}
         onCreateConfigSet={submitCreateConfigSet}
       />
-
-      <WorkbenchShellChrome
+          <ViewSwitch variant="tabs" ariaLabel="项目配置内容" value={contentTab}
+            onValueChange={selectContentTab}
+            items={[{ value: "source", label: "源码" }, { value: "structure", label: "结构" }, { value: "conflicts", label: "冲突" }]
+              .map((item) => ({ ...item, id: `project-configuration-${item.value}-tab`, panelId: `project-configuration-${item.value}-panel` }))} />
+        </div>}
+        context={<>
+          <WorkbenchShellChrome
         opsError={opsError}
         opsMessage={opsMessage}
         canAdmin={canAdmin}
         narrowViewport={narrowViewport}
-        treeOpen={treeOpen}
-        onTreeToggle={() => setTreeOpen((open) => !open)}
         inspectorOpen={inspectorOpen}
         inspectorLevel={inspectorLevel}
         onOpenActivity={openActivityInspector}
@@ -1530,20 +1621,23 @@ export function ProjectConfigurationWorkbench({
         tasksOpen={tasksOpen}
         onTasksToggle={() => setTasksOpen((open) => !open)}
       />
-
-      <WorkbenchSetupGate
+          <WorkbenchSetupGate
         configSetsLoading={configSetsLoading}
         configSetsError={configSetsError}
         onConfigSetsRetry={() => workspaceLoadSession.retryConfigSets()}
         selectedConfigSet={selectedConfigSet ?? null}
         canAdmin={canAdmin}
       />
-
-      {selectedConfigSet ? (
-        <div className="configuration-workbench__body" ref={workbenchBodyRef} aria-label="工作台主体">
-          <WorkbenchSourceTree
-            treeOpen={treeOpen}
-            onTreeOpenChange={setTreeOpen}
+        </>}
+        navigator={<>
+          <div className="configuration-workbench__config-sets">
+            <span className="dts-topology-navigator__count">{configSets.length} 个配置集</span>
+            <ViewSwitch variant="section" ariaLabel="配置集列表" value={selectedConfigSet?.id ?? ""}
+              onValueChange={selectConfigSet}
+              items={configSets.map((configSet) => ({ value: configSet.id, label: configSet.name }))} />
+          </div>
+          {selectedConfigSet ? <WorkbenchSourceTree
+            showStructure={contentTab !== "structure"}
             treeRegionRef={treeRegionRef}
             selectedConfigSet={selectedConfigSet}
             searchInputRef={searchInputRef}
@@ -1567,6 +1661,12 @@ export function ProjectConfigurationWorkbench({
               setManualSyncTarget(null);
               selectMember(fileId);
             }}
+            onInspectMember={(fileId) => {
+              setManualSyncTarget(null);
+              if (selectedMember?.fileId !== fileId) selectMember(fileId);
+              setInspectorLevelOverride("file");
+              setInspectorOpen(true);
+            }}
             structureLoading={structureLoading}
             structureError={structureError}
             onStructureRetry={() => workspaceLoadSession.retryStructure()}
@@ -1584,49 +1684,9 @@ export function ProjectConfigurationWorkbench({
             ungroupedFiles={ungroupedFiles}
             pendingAction={pendingAction}
             onAssignUngroupedFile={(item) => void runAction(`assign-${item.id}`, () => assignUngroupedFile(item))}
-          />
-
-          <WorkbenchSourceCanvas
-            sourceRegionRef={sourceRegionRef}
-            selectedConfigSetName={selectedConfigSet.name}
-            selectedMember={selectedMember ?? null}
-            canvasMode={canvasMode}
-            historyVersionId={historyVersionId}
-            candidateId={candidateId}
-            activeCandidate={activeCandidate}
-            fileVersions={fileVersions}
-            onSelectVersion={() => {
-              setInspectorLevelOverride("file");
-              setInspectorOpen(true);
-            }}
-            onUploadCandidate={canAdmin && !uploadingCandidate ? () => candidateFileInputRef.current?.click() : undefined}
-            onEnterCanvasMode={enterCanvasMode}
-            onExitSpecialCanvasMode={exitSpecialCanvasMode}
-            candidateError={candidateError}
-            sourceLoading={sourceLoading}
-            modeSourceLoading={modeSourceLoading}
-            sourceError={sourceError}
-            modeSourceError={modeSourceError}
-            onSourceRetry={() => workspaceLoadSession.retrySource()}
-            onClearModeSourceError={() => canvasHistorySession.clearModeSource()}
-            source={source}
-            historySource={historySource}
-            historySourceAvailable={historySourceAvailable}
-            candidateSource={candidateSource}
-            candidateLoading={candidateLoading}
-            compareSource={compareSource}
-            unifiedDiffText={unifiedDiffText}
-            focusSpan={focusSpan}
-            focusLineOverride={focusLineOverride}
-            restoredScrollLine={restoredScrollLine}
-            findQuery={findQuery}
-            findNextToken={findNextToken}
-            onVisibleLineChange={handleVisibleLineChange}
-            sessionChangeMarkers={sessionChangeMarkers}
-          />
-
-          {inspectorOpen ? (
-            <WorkbenchInspectorPanel
+          /> : null}
+        </>}
+        inspector={inspectorOpen && selectedConfigSet ? <WorkbenchInspectorPanel
               inspectorPersistent={inspectorPersistent}
               narrowViewport={narrowViewport}
               inspectorLevel={inspectorLevel}
@@ -1763,10 +1823,76 @@ export function ProjectConfigurationWorkbench({
                   />
                 ) : undefined
               }
-            />
-          ) : null}
-        </div>
-      ) : null}
+            /> : null}
+      >
+        {selectedConfigSet ? <div className="configuration-workbench__selection-row" data-row-action-row>
+          <span className="configuration-workbench__selection-label" title={selectedMember?.fileName ?? selectedConfigSet.name}>
+            {selectedMember?.fileName ?? selectedConfigSet.name}
+          </span>
+          <span data-row-action-status>{selectedMember
+            ? selectedMember.currentVersionNumber ? `活跃 v${selectedMember.currentVersionNumber}` : "无活跃版本"
+            : membersListLoading ? "正在加载成员…" : `${selectedMembers.length} 个成员`}</span>
+          <RowActionMenu label="当前配置项操作" triggerText="操作" triggerLabel={`配置项操作：${selectedMember?.fileName ?? selectedConfigSet.name}`} primaryAction={{ id: "details", label: "详情", onSelect: () => {
+            setInspectorLevelOverride(selectedMember ? "file" : "config-set");
+            setInspectorOpen(true);
+          } }} items={selectedMember ? [{ id: "config-set", label: "配置集详情", onSelect: () => {
+            setInspectorLevelOverride("config-set");
+            setInspectorOpen(true);
+          } }] : []} />
+        </div> : null}
+        {!selectedConfigSet ? <SectionEmpty message="选择或新建配置集以查看项目配置。" /> : null}
+        {contentTab === "source" && selectedConfigSet ? <WorkbenchSourceCanvas
+            sourceRegionRef={sourceRegionRef}
+            selectedConfigSetName={selectedConfigSet.name}
+            selectedMember={selectedMember ?? null}
+            canvasMode={canvasMode}
+            historyVersionId={historyVersionId}
+            candidateId={candidateId}
+            activeCandidate={activeCandidate}
+            fileVersions={fileVersions}
+            onSelectVersion={() => {
+              setInspectorLevelOverride("file");
+              setInspectorOpen(true);
+            }}
+            onUploadCandidate={canAdmin && !uploadingCandidate ? () => candidateFileInputRef.current?.click() : undefined}
+            onEnterCanvasMode={enterCanvasMode}
+            onExitSpecialCanvasMode={exitSpecialCanvasMode}
+            candidateError={candidateError}
+            sourceLoading={sourceLoading}
+            modeSourceLoading={modeSourceLoading}
+            sourceError={sourceError}
+            modeSourceError={modeSourceError}
+            onSourceRetry={() => workspaceLoadSession.retrySource()}
+            onClearModeSourceError={() => canvasHistorySession.clearModeSource()}
+            source={source}
+            historySource={historySource}
+            historySourceAvailable={historySourceAvailable}
+            candidateSource={candidateSource}
+            candidateLoading={candidateLoading}
+            compareSource={compareSource}
+            unifiedDiffText={unifiedDiffText}
+            focusSpan={focusSpan}
+            focusLineOverride={focusLineOverride}
+            restoredScrollLine={restoredScrollLine}
+            findQuery={findQuery}
+            findNextToken={findNextToken}
+            onVisibleLineChange={handleVisibleLineChange}
+            sessionChangeMarkers={sessionChangeMarkers}
+          /> : null}
+        {contentTab === "structure" ? (
+          !selectedMember ? <SectionEmpty message="选择文件以查看结构。" />
+            : structureLoading ? <SectionSkeleton label="正在加载结构树…" />
+            : structureError ? <SectionError message={structureError} onRetry={() => workspaceLoadSession.retryStructure()} />
+            : <div role="tree" aria-label="DTS 结构树">
+              <WorkbenchStructureTree nodes={structureNodes} fileId={selectedMember.fileId}
+                ariaLabel={`${selectedMember.fileName} 节点树`} selectedNodePath={selectedNodePath}
+                selectedPropertyName={selectedPropertyName} sessionDrafts={sessionDrafts}
+                onSelectNode={(nodePath) => selectStructureTarget(selectedMember.fileId, nodePath, null)}
+                onSelectProperty={(nodePath, propertyName) => selectStructureTarget(selectedMember.fileId, nodePath, propertyName)} />
+            </div>
+        ) : null}
+        {contentTab === "conflicts" ? taskDock : null}
+      </NavigatorWorkbench>
 
       <WorkbenchCandidateActivateDialog
         open={activateConfirmOpen}
@@ -1848,56 +1974,7 @@ export function ProjectConfigurationWorkbench({
             canonical: sourceWorkflowsByFileId[manualSyncTarget.member.fileId]?.canonical ?? null
           }} onDismiss={() => setManualSyncTarget(null)} /> : null}
 
-      <WorkbenchTaskDock
-        tasksOpen={tasksOpen}
-        onTasksOpenChange={setTasksOpen}
-        sessionDraftRows={sessionDraftRows}
-        syncEvidence={syncEvidence}
-        canonicalSyncCheck={canonicalSyncCheck}
-        exportEvidence={exportEvidence}
-        syncConflicts={syncConflicts}
-        releaseReadiness={releaseReadiness}
-        draftRecoveryStatus={draftRecoveryStatus}
-        draftCopyFallbackRef={draftCopyFallbackRef}
-        draftCopyStatus={draftCopyStatus}
-        onCopySessionDrafts={handleCopySessionDrafts}
-        onReconfirmStaleDrafts={handleReconfirmStaleDrafts}
-        selectedDraftKeys={selectedDraftKeys}
-        onToggleDraftKey={(key) => {
-          const next = new Set(selectedDraftKeys);
-          if (next.has(key)) next.delete(key);
-          else next.add(key);
-          structuredEditSession.selectSubset(next);
-        }}
-        submitReason={submitReason}
-        onSubmitReasonChange={(value) => structuredEditSession.setReason(value)}
-        canEdit={canEdit}
-        onValidateSelected={handleValidateSelected}
-        onSubmitSelected={handleSubmitSelected}
-        submittingEdits={submittingEdits}
-        validateStatus={validateStatus}
-        submitStatus={submitStatus}
-        stagedDrafts={stagedDrafts}
-        onSubmitReview={() => onNavigate(`/parameters?project=${encodeURIComponent(project.id)}`)}
-        submitError={submitError}
-        projectId={project.id}
-        fileRepository={fileRepository}
-        sourceWorkflowByFileId={sourceWorkflowByFileId}
-        sourceWorkflowLoading={sourceWorkflowLoading || filesLoading}
-        onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
-        onLocateConflict={(conflict) => {
-          const target = conflictLocateFacade.locate(conflict);
-          if (!target) return;
-          selectStructureTarget(target.fileId, target.nodePath, target.propertyName);
-        }}
-        canAdmin={canAdmin}
-        acknowledgedWarningIds={acknowledgedWarningIds}
-        onAcknowledgeWarning={(issueId) => {
-          releaseBaselineSession.acknowledgeWarning(issueId);
-        }}
-        onSelectReadinessIssue={handleSelectReadinessIssue}
-        onReadinessRetry={() => setReadinessRetry((value) => value + 1)}
-      />
+      {contentTab !== "conflicts" ? taskDock : null}
 
       {memberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog
         projectId={project.id}

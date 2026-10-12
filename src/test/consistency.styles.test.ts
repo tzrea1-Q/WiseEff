@@ -44,7 +44,17 @@ describe("shared consistency contracts", () => {
     for (const selector of [".param-admin-shell--configuration-workbench", ".project-admin-layout--configuration-workbench", ".configuration-workbench"]) {
       expect(declarationsFor(configuration, selector).height).toBe("100%");
     }
-    expect(declarationsFor(configuration, ".configuration-workbench")["grid-template-rows"]).toBe("auto minmax(0, 1fr) 44px");
+    expect(declarationsFor(configuration, ".configuration-workbench > .navigator-workbench")["grid-template-rows"]).toBe("auto auto minmax(0, 1fr)");
+  });
+
+  it("positions the configuration inspector as an overlay unless the pane is persistent", () => {
+    const configuration = readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css");
+    const overlay = declarationsFor(configuration, ".configuration-workbench__inspector");
+    expect(overlay.position).toBe("absolute");
+    expect(overlay.inset).toBe("0");
+    const persistent = declarationsFor(configuration, ".configuration-workbench__inspector.is-persistent");
+    expect(persistent.position).toBe("relative");
+    expect(persistent.inset).toBe("auto");
   });
 
   it("preserves source canvas metrics, full-grid insets and the upward task dock shadow", () => {

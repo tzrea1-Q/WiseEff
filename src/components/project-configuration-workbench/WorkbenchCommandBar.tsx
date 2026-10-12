@@ -44,7 +44,6 @@ export type WorkbenchCommandBarProps = {
   inspectorOpen: boolean;
   onInspectorToggle: () => void;
   candidateFileInputRef: RefObject<HTMLInputElement | null>;
-  uploadingCandidate: boolean;
   onCandidateFileChange: (file: File) => void;
   downloadingDts: boolean;
   onDownloadActiveDts: () => void;
@@ -81,7 +80,6 @@ export function WorkbenchCommandBar({
   inspectorOpen,
   onInspectorToggle,
   candidateFileInputRef,
-  uploadingCandidate,
   onCandidateFileChange,
   downloadingDts,
   onDownloadActiveDts,
@@ -264,15 +262,6 @@ export function WorkbenchCommandBar({
               onCandidateFileChange(file);
             }}
           />
-          <button
-            className="button subtle"
-            type="button"
-            disabled={uploadingCandidate || !selectedConfigSet || !canAdmin}
-            title="上传创建候选文件版本，不会激活工作配置"
-            onClick={() => candidateFileInputRef.current?.click()}
-          >
-            {uploadingCandidate ? "上传中…" : "上传候选"}
-          </button>
           <div className="dropdown-root configuration-workbench__more" ref={moreMenuRef}>
             <button
               type="button"

@@ -967,7 +967,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     });
     await waitFor(() =>
       expect(structure.onNavigate).toHaveBeenCalledWith(
-        `/parameter-admin/projects/${projectId}/configuration?file=f1&node=board&property=model&sourceMode=working`
+        `/parameter-admin/projects/${projectId}/configuration?file=f1&node=board&property=model&tab=structure&sourceMode=working`
       )
     );
     cleanup();

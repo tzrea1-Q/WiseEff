@@ -408,7 +408,7 @@ test.describe("DTS structured product browser acceptance", () => {
         timeout: 30_000
       });
       await expect(page.getByRole("combobox", { name: "配置集" })).toBeVisible({ timeout: 20_000 });
-      const expandTree = page.getByRole("button", { name: "展开源结构" });
+      const expandTree = page.getByRole("button", { name: "展开文件与配置集" });
       if (await expandTree.isVisible().catch(() => false)) {
         await expandTree.click();
       }

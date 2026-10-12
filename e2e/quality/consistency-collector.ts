@@ -124,10 +124,10 @@ export function collectConsistencyMeasurements() {
   const primaryActions = primaryActionElements.map((element) => ({ ...measureControl(element), background: getComputedStyle(element).backgroundColor, primaryColor,
       disabled: element.matches(':disabled,[aria-disabled="true"]') }));
   const enabledPrimaryActionCount = primaryActionElements.filter((element) => !element.matches(':disabled,[aria-disabled="true"]')).length;
-  const actionCells = new Set(elements('.dts-parameter-workbench-table__actions,td[data-label="操作"],[data-catalog-row-action]')
+  const actionCells = new Set(elements('.dts-parameter-workbench-table__actions,td[data-label="操作"],[data-catalog-row-action],[data-row-action-row] .row-action-menu')
     .map((element) => element.closest('td,[role="cell"]') ?? element));
   const rowActions = [...actionCells].flatMap((element) => {
-    const row = element.closest('tr,[role="row"]');
+    const row = element.closest('tr,[role="row"],[data-row-action-row]');
     if (!row) return [];
     let left = 0, right = innerWidth, scrollLeft = 0;
     for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
@@ -141,7 +141,7 @@ export function collectConsistencyMeasurements() {
     return [{
       dom: describeElement(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
       actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
-      statuses: [...row.querySelectorAll('[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle,[data-label="状态"]')].filter(visible).map(geometry)
+      statuses: [...row.querySelectorAll('[data-row-action-status],[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle,[data-label="状态"]')].filter(visible).map(geometry)
     }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
@@ -221,7 +221,10 @@ export function collectConsistencyMeasurements() {
       probe.remove();
       return width;
     };
-    const firstRow = [...workbench.querySelectorAll('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task .logs-conclusion-card, .navigator-workbench__task .log-error-alert, .navigator-workbench__task [data-canonical-subject-id], .navigator-workbench__task .canonical-driver-discovery__item')].find(visible)
+    const projectWorkbench = workbench.getAttribute("data-workbench-page")?.startsWith("project-configuration:");
+    const firstRow = [...workbench.querySelectorAll(projectWorkbench
+      ? '.navigator-workbench__task .configuration-workbench__source-head, .navigator-workbench__task .configuration-workbench__source-state, .navigator-workbench__task [role="treeitem"], .navigator-workbench__task .configuration-workbench__task-toggle, .navigator-workbench__task .section-empty, .navigator-workbench__task .section-error'
+      : '.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task .logs-conclusion-card, .navigator-workbench__task .log-error-alert, .navigator-workbench__task [data-canonical-subject-id], .navigator-workbench__task .canonical-driver-discovery__item')].find(visible)
       ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
         ? [...workbench.querySelectorAll('.navigator-workbench__task [role="status"], .navigator-workbench__task [role="alert"]')].find(visible) : undefined);
     return {
@@ -230,6 +233,8 @@ export function collectConsistencyMeasurements() {
       root: bounds(workbench),
       navigator: measure(":scope > .navigator-workbench__body > .navigator-workbench__navigator"),
       task: measure(":scope > .navigator-workbench__body > .navigator-workbench__task"),
+      inspector: measure(":scope > .navigator-workbench__body > .navigator-workbench__inspector"),
+      inspectorOverlay: workbench.querySelector(".navigator-workbench__inspector")?.getAttribute("data-overlay") === "true",
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
@@ -258,7 +263,8 @@ export function collectConsistencyMeasurements() {
         navigatorWidth: Math.min(tokenWidth("--navigator-workbench-navigator-width"), tokenWidth("--navigator-workbench-navigator-cap")),
         collapsedWidth: tokenWidth("--navigator-workbench-collapsed-width"),
         gap: tokenWidth("--navigator-workbench-gap"),
-        toolbarPadding: tokenWidth("--navigator-workbench-toolbar-padding")
+        toolbarPadding: tokenWidth("--navigator-workbench-toolbar-padding"),
+        inspectorWidth: tokenWidth("--navigator-workbench-inspector-width")
       }
     };
   });

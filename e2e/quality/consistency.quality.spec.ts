@@ -257,7 +257,8 @@ for (const route of routes) {
               contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
             });
           }
-          await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
+          const navigatorLabel = routePath.startsWith("/parameter-admin/projects/aurora") ? "文件与配置集" : "模块导航";
+          await page.getByRole("button", { name: `收起${navigatorLabel}`, exact: true }).click();
           await waitForFontsAndNextPaint(page);
           const collapsed = await page.evaluate(collectConsistencyMeasurements);
           requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
@@ -265,7 +266,7 @@ for (const route of routes) {
           await testInfo.attach(`navigator-workbench-collapsed-${theme}`, {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
-          await page.getByRole("button", { name: "展开模块导航", exact: true }).click();
+          await page.getByRole("button", { name: `展开${navigatorLabel}`, exact: true }).click();
           await waitForFontsAndNextPaint(page);
         }
         if (route.required.includes("rowActions")) {

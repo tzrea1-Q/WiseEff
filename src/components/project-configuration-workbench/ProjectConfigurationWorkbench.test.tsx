@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
@@ -26,6 +27,7 @@ import {
 afterEach(() => {
   cleanup();
   localStorage.removeItem(SESSION_DRAFT_STORAGE_KEY);
+  localStorage.removeItem(`wiseeff.navigator-workbench.collapsed:project-configuration:${PROJECT.id}`);
 });
 
 function createMemoryStorage(seed: Record<string, string> = {}): Storage {
@@ -413,6 +415,73 @@ const BOARD_STRUCTURE = {
 };
 
 describe("ProjectConfigurationWorkbench", () => {
+  it("keeps read-only row details available after collapsing the navigator and switching content tabs", async () => {
+    const user = userEvent.setup();
+    renderWorkbench({ syncSearch: true, canAdmin: false });
+    await screen.findByRole("main", { name: "只读 DTS 源码" });
+    const fileActions = screen.getByRole("group", { name: "aurora-board.dts 操作" });
+    const fileItem = screen.getByRole("treeitem", { name: /aurora-board\.dts.*基础.*v12/ });
+    expect(fileItem).toContainElement(fileActions);
+    expect(screen.getAllByRole("button", { name: /更多/ })).toHaveLength(1);
+    fileItem.focus();
+    await user.tab();
+    expect(within(fileActions).getByRole("button", { name: "详情", exact: true })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "关闭检查器" }));
+    await user.click(screen.getByRole("button", { name: "收起文件与配置集" }));
+    expect(fileActions).not.toBeVisible();
+    const actions = screen.getByRole("group", { name: "当前配置项操作" });
+    for (const tab of ["结构", "冲突", "源码"]) {
+      await user.click(screen.getByRole("tab", { name: tab, exact: true }));
+      expect(within(actions).getByRole("button", { name: "详情", exact: true })).toBeVisible();
+    }
+    await user.click(within(actions).getByRole("button", { name: "配置项操作：aurora-board.dts" }));
+    await user.click(screen.getByRole("menuitem", { name: "配置集详情" }));
+    expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("成员管理");
+    expect(screen.getByRole("button", { name: "上传候选", exact: true })).toBeDisabled();
+  });
+
+  it("places config sets and files in the shared collapsible navigator", async () => {
+    const user = userEvent.setup();
+    renderWorkbench({ syncSearch: true });
+    await screen.findByRole("main", { name: "只读 DTS 源码" });
+    const navigator = screen.getByRole("region", { name: "文件与配置集" });
+    expect(within(navigator).getByRole("button", { name: "alpha" })).toBeTruthy();
+    expect(within(navigator).getByRole("button", { name: "default" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(within(navigator).getByRole("button", { name: "收起文件与配置集" }));
+    expect(within(navigator).queryByRole("button", { name: "default" })).toBeNull();
+    fireEvent.click(within(navigator).getByRole("button", { name: "展开文件与配置集" }));
+    within(navigator).getByRole("button", { name: "default" }).focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(within(navigator).getByRole("button", { name: "alpha" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "配置集" })).toHaveValue("cs-alpha"));
+  });
+
+  it("switches structure and conflicts as URL-backed content tabs without losing source focus", async () => {
+    const user = userEvent.setup();
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
+      search: "?configSet=cs-default&file=file-board&node=board&property=model&sourceMode=history&version=version-board-1",
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
+    const tabs = await screen.findByRole("tablist", { name: "项目配置内容" });
+    await user.click(within(tabs).getByRole("tab", { name: "结构" }));
+    const structure = await screen.findByRole("tabpanel", { name: "结构" });
+    expect(within(structure).getByRole("tree", { name: "DTS 结构树" })).toBeTruthy();
+    const task = within(structure).getByRole("region", { name: "配置内容" });
+    const details = within(task).getByRole("button", { name: "详情", exact: true });
+    details.focus();
+    expect(details).toHaveFocus();
+    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("tab=structure");
+    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("version=version-board-1");
+    await user.click(within(tabs).getByRole("tab", { name: "冲突" }));
+    const conflicts = await screen.findByRole("tabpanel", { name: "冲突" });
+    expect(within(conflicts).getByText("暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。")).toBeTruthy();
+    await user.click(within(tabs).getByRole("tab", { name: "源码" }));
+    expect(await screen.findByRole("tabpanel", { name: "源码" })).toBeTruthy();
+    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("node=board&property=model&sourceMode=history&version=version-board-1");
+  });
+
   it.each([
     ["unified-diff", "选择要对比的版本"],
     ["side-by-side", "选择要对比的版本"],
@@ -723,9 +792,9 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(inspectorToggle).toHaveAttribute("aria-expanded", "false");
     expect(taskToggle).toHaveAttribute("aria-expanded", "false");
 
-    fireEvent.click(screen.getByRole("button", { name: "折叠源结构" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起文件与配置集" }));
     expect(screen.queryByRole("complementary", { name: "源结构" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "展开源结构" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开文件与配置集" }));
     expect(screen.getByRole("complementary", { name: "源结构" })).toBeInTheDocument();
 
     fireEvent.click(inspectorToggle);
@@ -1716,7 +1785,7 @@ describe("ProjectConfigurationWorkbench", () => {
     );
   });
 
-  it("enters historical source mode, downloads a version, and restores working target on exit", async () => {
+  it.each(["source", "structure"])("opens historical source from %s, downloads it, and restores the working target", async (tab) => {
     const downloadVersion = vi.fn(async (_projectId: string, _fileId: string, versionId: string) => ({
       contentType: "text/plain",
       fileName: "aurora-board.dts",
@@ -1752,9 +1821,11 @@ describe("ProjectConfigurationWorkbench", () => {
     ]);
     const { onNavigate } = renderWorkbench({
       fileRepository: createFileRepository({ downloadVersion, listVersions }),
-      syncSearch: true
+      syncSearch: true,
+      search: `?tab=${tab}`
     });
-    await screen.findByText(/model = "Aurora"/);
+    if (tab === "source") await screen.findByText(/model = "Aurora"/);
+    else await screen.findByRole("treeitem", { name: /aurora-board\.dts/ });
     fireEvent.click(screen.getByRole("button", { name: "检查器" }));
     expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
 
@@ -1845,12 +1916,12 @@ describe("ProjectConfigurationWorkbench", () => {
     const inspector = screen.getByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveAttribute("data-layout", "overlay");
 
-    const body = screen.getByLabelText("工作台主体");
+    const body = screen.getByRole("tabpanel", { name: "源码" });
     Object.defineProperty(body, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ width: 1400, height: 800, top: 0, left: 0, bottom: 800, right: 1400, x: 0, y: 0, toJSON: () => ({}) })
     });
-    const tree = screen.getByLabelText("源结构");
+    const tree = screen.getByRole("region", { name: "文件与配置集" });
     Object.defineProperty(tree, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ width: 260, height: 800, top: 0, left: 0, bottom: 800, right: 260, x: 0, y: 0, toJSON: () => ({}) })
@@ -2199,7 +2270,7 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({
       search: "?configSet=cs-default&file=file-board&tasks=conflicts"
     });
-    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    expect(await screen.findByRole("tabpanel", { name: "冲突" })).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "任务" })).toHaveAttribute("aria-expanded", "true")
     );
@@ -2521,7 +2592,7 @@ describe("ProjectConfigurationWorkbench", () => {
     );
   });
 
-  it("keeps conflict locate on a non-member project file instead of rewriting to the primary member", async () => {
+  it.each(["source", "conflicts"])("keeps conflict locate on a non-member file and shows its source from %s", async (tab) => {
     const onNavigate = vi.fn();
     const listConflicts = vi.fn(async () => [
       {
@@ -2564,25 +2635,26 @@ describe("ProjectConfigurationWorkbench", () => {
 
     renderWorkbench({
       syncSearch: true,
-      search: "?configSet=cs-default&file=file-board",
+      search: `?configSet=cs-default&file=file-board&tab=${tab}`,
       onNavigate,
       fileRepository: createFileRepository({ listConflicts, downloadVersion })
     });
 
-    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    if (tab === "source") await screen.findByRole("heading", { name: "aurora-board.dts" });
+    else await screen.findByRole("tabpanel", { name: "冲突" });
     const taskToggle = await screen.findByRole("button", { name: "任务" });
     await waitFor(() => expect(taskToggle).toHaveTextContent("冲突"));
     if (taskToggle.getAttribute("aria-expanded") !== "true") {
       fireEvent.click(taskToggle);
     }
     const dock = await screen.findByLabelText("冲突仲裁");
-    // Opening the dock auto-locates the active conflict onto the non-member file.
-    await waitFor(() =>
-      expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/file=file-loose/))
-    );
-    await screen.findByRole("heading", { name: "notes.json" });
+    if (tab === "source") {
+      await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/file=file-loose/)));
+      await screen.findByRole("heading", { name: "notes.json" });
+    }
 
     fireEvent.click(within(dock).getByRole("button", { name: "在源码中定位" }));
+    expect(await screen.findByRole("tabpanel", { name: "源码" })).toBeInTheDocument();
     await waitFor(() => {
       const paths = onNavigate.mock.calls.map((call) => String(call[0]));
       const lastLoose = [...paths].reverse().find((path) => path.includes("file=file-loose"));
@@ -2919,10 +2991,13 @@ describe("configuration-workbench stylesheet", () => {
     expect(hasAtRule(css, "@media (max-width: 460px)")).toBe(true);
 
     const workbench = declarationsFor(css, ".configuration-workbench");
-    expect(workbench.display).toBe("grid");
-    expect(workbench["grid-template-rows"]).toBe("auto minmax(0, 1fr) 44px");
-    expect(workbench["min-height"]).toBe("560px");
-    expect(workbench["border-radius"]).toBe("var(--radius-md)");
+    expect(workbench.display).toBe("flex");
+    expect(workbench["min-height"]).toBe("0");
+    expect(hasRule(css, ".configuration-workbench__body")).toBe(false);
+    expect(declarationsFor(css, ".configuration-workbench > .navigator-workbench")["grid-template-rows"])
+      .toBe("auto auto minmax(0, 1fr)");
+    expect(declarationsFor(readStylesheet("src/components/layout/navigator-workbench.css"), ".navigator-workbench__navigator")["border-radius"])
+      .toBe("var(--radius-md)");
 
     const command = declarationsFor(css, ".configuration-workbench__command", {
       within: "@media (max-width: 1024px)"

@@ -72,6 +72,7 @@ export function buildCanonicalConfigurationPath(
       params.set("inspector", "config-set");
       break;
     case "structure":
+      params.set("tab", "structure");
       if (!params.get("sourceMode")) {
         params.set("sourceMode", "working");
       }

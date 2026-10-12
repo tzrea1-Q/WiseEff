@@ -193,6 +193,28 @@
   --dts-workbench-table-columns-without-selection: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width);
   --dts-workbench-table-columns: calc(var(--space-8) + var(--space-1)) var(--dts-workbench-table-columns-without-selection);
   --dts-workbench-table-columns-without-description: minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width);
+  --configuration-workbench-panel-width: 360px;
+  --configuration-workbench-readiness-width: min(var(--configuration-workbench-panel-width), 40vw);
+  --configuration-workbench-identity-width: min(var(--configuration-workbench-panel-width), 70vw);
+  --configuration-workbench-project-width: 140px;
+  --configuration-workbench-config-select-width: 188px;
+  --configuration-workbench-config-select-min-width: 130px;
+  --configuration-workbench-identity-min-width: 220px;
+  --configuration-workbench-menu-min-width: 148px;
+  --configuration-workbench-menu-max-width: min(240px, calc(100vw - var(--space-6)));
+  --configuration-workbench-create-dialog-width: 420px;
+  --configuration-workbench-search-results-height: 10rem;
+  --configuration-workbench-version-width: 180px;
+  --configuration-workbench-empty-min-height: 180px;
+  --configuration-workbench-empty-max-width: 500px;
+  --configuration-workbench-inspector-label-width: 92px;
+  --configuration-workbench-tasks-height: min(250px, 40%);
+  --configuration-workbench-compact-project-clearance: 110px;
+  --configuration-workbench-compact-metadata-width: 150px;
+  --configuration-workbench-rollback-dialog-width: min(720px, calc(100vw - var(--space-12)));
+  --configuration-workbench-meta-tracking: 0.05em;
+  --configuration-workbench-title-tracking: 0.01em;
+  --configuration-workbench-source-tracking: 0.04em;
 
   /* ── Legacy palette (kept as-is until surfaces migrate; do not extend) ── */
   --surface-low: #f0f3ff;

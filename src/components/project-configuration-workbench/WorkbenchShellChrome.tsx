@@ -1,4 +1,4 @@
-import { Activity, FolderTree, PanelRight, Rows3 } from "lucide-react";
+import { Activity, PanelRight, Rows3 } from "lucide-react";
 
 import type { InspectorLevel } from "./workbenchInspectorModel";
 
@@ -7,8 +7,6 @@ export type WorkbenchShellChromeProps = {
   opsMessage: string | null;
   canAdmin: boolean;
   narrowViewport: boolean;
-  treeOpen: boolean;
-  onTreeToggle: () => void;
   inspectorOpen: boolean;
   inspectorLevel: InspectorLevel;
   onOpenActivity: () => void;
@@ -22,8 +20,6 @@ export function WorkbenchShellChrome({
   opsMessage,
   canAdmin,
   narrowViewport,
-  treeOpen,
-  onTreeToggle,
   inspectorOpen,
   inspectorLevel,
   onOpenActivity,
@@ -51,16 +47,6 @@ export function WorkbenchShellChrome({
 
       {narrowViewport ? (
         <nav className="configuration-workbench__mobile-tools" aria-label="工作台区域">
-          <button
-            className="button subtle configuration-workbench__mobile-tool"
-            type="button"
-            aria-label="源结构"
-            aria-expanded={treeOpen}
-            onClick={onTreeToggle}
-          >
-            <FolderTree size={16} aria-hidden="true" />
-            源结构
-          </button>
           <button
             className="button subtle configuration-workbench__mobile-tool"
             type="button"
