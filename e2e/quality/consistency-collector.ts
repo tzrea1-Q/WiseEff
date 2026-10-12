@@ -303,10 +303,32 @@ export function collectConsistencyMeasurements() {
     href: notice.querySelector("a")?.getAttribute("href") ?? null,
     primary: notice.querySelector("a")?.getAttribute("data-variant") === "default"
   }));
+  const settingsForms = elements(".settings-form-page").map((form) => {
+    const style = getComputedStyle(form);
+    const sections = [...form.querySelectorAll(".settings-form-page__section")].filter(visible);
+    const probe = document.createElement("span");
+    probe.style.cssText = "position: absolute; visibility: hidden; width: var(--settings-form-max-width)";
+    document.documentElement.append(probe);
+    const widthToken = Number.parseFloat(getComputedStyle(probe).width);
+    probe.remove();
+    return { ...geometry(form), maxWidth: Number.parseFloat(style.maxWidth), widthToken,
+      direction: style.display === "flex" ? style.flexDirection : "",
+      sectionCount: sections.length,
+      titledSections: sections.filter((section) => section.querySelector("header h2")?.textContent?.trim()).length,
+      helpedSections: sections.filter((section) => section.querySelector("header p")?.textContent?.trim()).length,
+      dirty: form.getAttribute("data-settings-dirty") === "true",
+      saveBars: [...form.querySelectorAll(".settings-form-page__save-bar")].filter(visible).map((bar) => ({
+        position: getComputedStyle(bar).position, bottom: Number.parseFloat(getComputedStyle(bar).bottom),
+        primaryCount: bar.querySelectorAll('[data-variant="default"]').length,
+        saveLabel: bar.querySelector('button[type="submit"]')?.textContent?.trim() ?? "",
+        discardLabel: bar.querySelector('button[type="button"]')?.textContent?.trim() ?? ""
+      }))
+    };
+  });
   return {
     titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer), overviewPages, retiredNotices,
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, settingsForms, visibleTableCount: visibleTables.length
   };
 }
 

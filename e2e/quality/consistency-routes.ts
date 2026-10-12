@@ -45,7 +45,8 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   paginationControls: catalogPaths,
   navigatorWorkbenches: ["/parameters", ...catalogPaths],
   overviewPages: ["/parameter-home", "/log-dashboard"],
-  retiredNotices: ["/parameter-comparison", "/debugging"]
+  retiredNotices: ["/parameter-comparison", "/debugging"],
+  settingsForms: ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]
 };
 const otherPhaseTwoPaths = [
   "/knowledge-admin",

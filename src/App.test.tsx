@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
@@ -37,10 +37,150 @@ import {
 } from "./test/harness";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
+import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
 
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+
+it("waits for the settings leave dialog before changing a shell route", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  expect(window.location.pathname).toBe("/organization");
+  fireEvent.click(within(screen.getByRole("dialog", { name: "放弃未保存的更改？" })).getByRole("button", { name: "继续编辑" }));
+  expect(window.location.pathname).toBe("/organization");
+  fireEvent.click(screen.getByRole("button", { name: "人员管理" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "放弃并离开" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+});
+
+it("keeps the current page until an asynchronous browser-back guard is resolved", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  window.history.back();
+  const dialog = await screen.findByRole("dialog", { name: "放弃未保存的更改？" });
+  expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+  window.history.back();
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "放弃并离开" }));
+  await screen.findByRole("region", { name: "组织档案" });
+  expect(window.location.pathname).toBe("/organization");
+});
+
+it("restores the settings URL after cancelling Back across a history entry created without navigation metadata", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  window.history.pushState(null, "", "/organization/members?search=member");
+  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "组织管理" }));
+  await screen.findByRole("region", { name: "组织档案" });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>保留未保存的草稿</SettingsFormPage>);
+
+  window.history.back();
+  const dialog = await screen.findByRole("dialog", { name: "放弃未保存的更改？" });
+  expect(window.location.search).toBe("?search=member");
+  fireEvent.click(within(dialog).getByRole("button", { name: "继续编辑" }));
+
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/organization"));
+  expect(screen.getByRole("region", { name: "组织档案" })).toBeInTheDocument();
+  expect(screen.getByText("保留未保存的草稿")).toBeInTheDocument();
+});
+
+it("lets a newer browser Back supersede shell navigation waiting on the same leave dialog", async () => {
+  window.history.replaceState(null, "", "/organization?previous=1");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  const dirtyForm = render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "组织管理" }));
+  const dialog = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
+
+  window.history.back();
+  await waitFor(() => expect(window.location.search).toBe("?previous=1"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "放弃并离开" }));
+
+  await screen.findByRole("region", { name: "组织档案" });
+  expect(window.location.pathname + window.location.search).toBe("/organization?previous=1");
+  dirtyForm.unmount();
+  window.history.forward();
+  await screen.findByRole("table", { name: "平台用户" });
+  expect(window.location.pathname).toBe("/organization/members");
+});
+
+it("guards synthetic route synchronization and preserves the next native Back guard", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  await screen.findByRole("region", { name: "组织档案" });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  window.history.pushState(null, "", "/organization/members");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization"));
+  expect(screen.getByRole("region", { name: "组织档案" })).toBeInTheDocument();
+
+  window.history.pushState(null, "", "/organization/members");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "放弃并离开" }));
+  await screen.findByRole("table", { name: "平台用户" });
+  window.history.back();
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+});
+
+it("keeps pending synthetic navigation guarded when another push changes its query", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  await screen.findByRole("region", { name: "组织档案" });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>保留未保存的草稿</SettingsFormPage>);
+  act(() => {
+    window.history.pushState(null, "", "/organization/members");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  const dialog = await screen.findByRole("dialog", { name: "放弃未保存的更改？" });
+  act(() => {
+    window.history.pushState(null, "", "/organization/members?second=1");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(screen.getByRole("region", { name: "组织档案" })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/organization"));
+  expect(screen.getByText("保留未保存的草稿")).toBeInTheDocument();
+});
+
+it("keeps the current route when a settings form rejects shell navigation", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  const rejectLeave = (event: Event) => event.preventDefault();
+  window.addEventListener("wiseeff:settings-before-leave", rejectLeave);
+  try {
+    fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+    expect(window.location.pathname).toBe("/organization");
+  } finally {
+    window.removeEventListener("wiseeff:settings-before-leave", rejectLeave);
+  }
+});
+
+it("restores browser history when a settings form rejects back navigation", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  expect(window.location.pathname).toBe("/organization/members");
+  const rejectLeave = (event: Event) => event.preventDefault();
+  window.addEventListener("wiseeff:settings-before-leave", rejectLeave);
+  const go = vi.spyOn(window.history, "go");
+  try {
+    window.history.back();
+    await waitFor(() => expect(go).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+    expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
+  } finally {
+    window.removeEventListener("wiseeff:settings-before-leave", rejectLeave);
+  }
+});
 
 it("waits for live projects before reading their initialization state", async () => {
   window.history.replaceState(null, "", "/parameters");
