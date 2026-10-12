@@ -314,6 +314,14 @@ The consistency quality project checks expanded and collapsed geometry (±1px), 
 - Sidebar: 256px expanded / 76px rail on desktop; below 768px it becomes an overlay drawer (a persistent rail consuming ~18% of a phone screen is a defect). The user menu must remain reachable at all widths.
 - Navigation preserves SPA behavior (no full-page reloads from in-app links), resets main scroll position on route change, and keeps exactly one visual hierarchy of active states.
 
+### Settings forms
+
+`SettingsFormPage` and `SettingsFormSection` in `src/components/layout/` own configuration-form layout. Organization settings (`/organization`), DTS reload defaults (`/debugging-admin`) and project review roles (`/parameter-admin/projects/:projectId/review-roles`) use one column capped by `--settings-form-max-width` (960px). The shell owns the outer gutter; only section cards add padding. Each section has a heading and short help text; the review-role matrix scrolls horizontally inside its section, not on the page.
+
+The JSON-compatible saved and draft snapshots drive `useDirtyState`; returning to saved values removes the save bar. Dirty forms show a sticky bar with one primary 保存 and a 放弃 action. Discard restores the last saved snapshot without a server write. Save failures retain drafts and display a labelled error summary; field validation is inline and linked to the affected controls. During a save, fields, save/discard and navigation are blocked. Shell navigation, browser back/forward and reload warn about unsaved work; refresh on review roles uses the same guard.
+
+Project-role saves keep the existing human confirmation, including each changed member's before/after roles. Writes remain individual optimistic updates using `expectedRoles`, not an atomic batch: if one fails, already saved members stay saved and remaining drafts can be retried or discarded. A stale-role conflict refreshes the affected member before retry. The consistency suite measures clean and dirty states in light/dark at 1440×900 and attaches screenshots without submitting writes.
+
 ## Content and Language
 
 - UI copy is Simplified Chinese. English is allowed only for product names, code/identifiers rendered as code, and legally required text.

@@ -1,6 +1,24 @@
 import type { ConsistencyMeasurements, ConsistencyCategory } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 
+export function requireSettingsFormPresentation(forms: ConsistencyMeasurements["settingsForms"], routePath: string) {
+  if (forms.length !== 1) throw new Error(`${routePath}: settings form measurement must cover exactly one form`);
+  const form = forms[0];
+  if (!Number.isFinite(form.widthToken) || form.widthToken <= 0 || form.maxWidth !== form.widthToken
+    || !Number.isFinite(form.rect.width) || form.rect.width <= 0 || form.rect.width > form.widthToken + 1
+    || form.direction !== "column" || form.sectionCount === 0
+    || form.titledSections !== form.sectionCount || form.helpedSections !== form.sectionCount) {
+    throw new Error(`${routePath}: settings form must use the max-width token and a single column of titled, explained sections`);
+  }
+  if (form.saveBars.length !== (form.dirty ? 1 : 0)) throw new Error(`${routePath}: settings form save bar must appear only while dirty`);
+  for (const bar of form.saveBars) {
+    if (bar.position !== "sticky" || !Number.isFinite(bar.bottom) || bar.bottom < 0 || bar.primaryCount !== 1
+      || !["保存", "保存中…"].includes(bar.saveLabel) || bar.discardLabel !== "放弃") {
+      throw new Error(`${routePath}: settings form requires sticky 保存 and 放弃 actions with one primary`);
+    }
+  }
+}
+
 export function requirePageGutter(pageEdges: ConsistencyMeasurements["pageEdges"], routePath: string, footerPresent: boolean) {
   requireMeasuredCategories({ pageEdges }, ["pageEdges"], routePath);
   const required = ["shell", "content", "page", "toolbar", ...(footerPresent ? ["footer"] : [])];

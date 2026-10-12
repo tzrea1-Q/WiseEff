@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation } from "./consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireSettingsFormPresentation } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
@@ -127,6 +127,31 @@ for (const route of routes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await waitForFontsAndNextPaint(page);
+        if (route.required.includes("settingsForms")) {
+          const form = page.locator(".settings-form-page");
+          await expect(form).toHaveAttribute("data-settings-dirty", "false");
+          requireSettingsFormPresentation((await page.evaluate(collectConsistencyMeasurements)).settingsForms, route.path);
+          await testInfo.attach(`settings-clean-${theme}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+          if (routePath.endsWith("/review-roles")) {
+            const checkbox = form.locator('input[type="checkbox"]:enabled').first();
+            await expect(checkbox).toBeVisible();
+            await checkbox.click();
+          } else {
+            const input = form.getByRole("textbox").first();
+            await input.fill(`${await input.inputValue()}质量检查`);
+          }
+          await expect(form).toHaveAttribute("data-settings-dirty", "true");
+          await form.getByRole("group", { name: "未保存的更改" }).scrollIntoViewIfNeeded();
+          const dirtyMeasurements = await page.evaluate(collectConsistencyMeasurements);
+          requireSettingsFormPresentation(dirtyMeasurements.settingsForms, route.path);
+          requirePrimaryActionColors(dirtyMeasurements, route.path);
+          assertXiaozePlacement(dirtyMeasurements, route.path);
+          await testInfo.attach(`settings-dirty-${theme}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+          await form.getByRole("button", { name: "放弃", exact: true }).click();
+          await expect(form).toHaveAttribute("data-settings-dirty", "false");
+          await expect(form.getByRole("group", { name: "未保存的更改" })).toHaveCount(0);
+          await form.getByRole("heading").first().scrollIntoViewIfNeeded();
+        }
         const pendingWork = page.getByRole("dialog", { name: "待处理工作", exact: true });
         if (route.path.includes("?review=open") || await pendingWork.isVisible()) {
           await expect(pendingWork).toBeVisible();

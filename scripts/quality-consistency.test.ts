@@ -1,7 +1,39 @@
 import type { BrowserContext, Route } from "playwright/test";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
+
+describe("settings form layout contract", () => {
+  const form = { dom: "form", rect: { left: 100, right: 1060, top: 100, bottom: 800, width: 960, height: 700 },
+    maxWidth: 960, widthToken: 960, direction: "column", sectionCount: 2, titledSections: 2, helpedSections: 2,
+    dirty: false, saveBars: [] };
+  const bar = { position: "sticky", bottom: 16, primaryCount: 1, saveLabel: "保存", discardLabel: "放弃" };
+  it("collects section help and dirty actions, and requires coverage on all three routes", () => {
+    const measurements = collectMarkup(`<form class="settings-form-page" data-settings-dirty="true" style="display:flex;flex-direction:column;max-width:960px">
+      <section class="settings-form-page__section"><header><h2>设置</h2><p>说明</p></header></section>
+      <div class="settings-form-page__save-bar" style="position:sticky;bottom:16px"><button type="button">放弃</button><button type="submit" data-variant="default">保存</button></div>
+    </form>`);
+    expect(measurements.settingsForms).toEqual([expect.objectContaining({ direction: "column", sectionCount: 1,
+      titledSections: 1, helpedSections: 1, dirty: true, saveBars: [bar] })]);
+    for (const path of ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("settingsForms");
+    }
+  });
+  it("accepts clean single-column forms and dirty forms with the shared save bar", () => {
+    expect(() => requireSettingsFormPresentation([form], "/organization")).not.toThrow();
+    expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [bar] }], "/organization")).not.toThrow();
+  });
+  it("rejects absent coverage, untitled sections, non-token widths and non-sticky or missing save actions", () => {
+    for (const forms of [[], [form, form], [{ ...form, sectionCount: 0 }], [{ ...form, helpedSections: 1 }],
+      [{ ...form, titledSections: 1 }], [{ ...form, maxWidth: 1200 }], [{ ...form, direction: "row" }],
+      [{ ...form, dirty: true }], [{ ...form, saveBars: [bar] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, position: "static" }] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, primaryCount: 2 }] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, discardLabel: "" }] }]]) {
+      expect(() => requireSettingsFormPresentation(forms, "/organization")).toThrow(/settings form/);
+    }
+  });
+});
 
 describe("workbench optional descriptions and single-line keys", () => {
   const key = { text: "vendor,long-key", title: "vendor,long-key", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
