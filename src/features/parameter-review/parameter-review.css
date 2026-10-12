@@ -860,13 +860,16 @@
 }
 
 .review-inbox__chip {
-  display: inline-flex;
+  display: block;
+  width: fit-content;
   max-width: 100%;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-full);
   background: var(--surface-muted);
   color: var(--text-secondary);
-  white-space: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--text-sm);
 }
 
@@ -885,13 +888,42 @@
 }
 
 .review-inbox__summary-column {
-  width: 30%;
+  width: auto;
+}
+
+.review-inbox__type-column {
+  width: 13%;
+}
+
+.review-inbox__project-column {
+  width: 16%;
+}
+
+.review-inbox__module-column {
+  width: 12%;
+}
+
+.review-inbox__submitter-column {
+  width: 15%;
+}
+
+.review-inbox__time-column {
+  width: 12%;
+}
+
+.review-inbox__status-column {
+  width: 11%;
 }
 
 .review-inbox .review-table-wrap :is(th, td) {
   padding: var(--space-2);
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.review-inbox .review-table-wrap td:not(.change-cell) {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .review-inbox .change-cell .value-change-button {

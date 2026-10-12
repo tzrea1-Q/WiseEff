@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialState } from "@/mockData";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -51,6 +51,19 @@ describe("unified review inbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看已处理记录" }));
     expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
     expect(window.location.search).toContain("view=history");
+  });
+
+  it("exposes full metadata in titles when single-line cells truncate", () => {
+    const row = { ...older, project: "Aurora 量产平台", module: "软件配置", submitter: "u-zhao-heng" };
+    inbox([row]);
+    const cells = within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("cell");
+    expect(cells[0]).toHaveAttribute("title", "旧版");
+    expect(cells[1]).toHaveAttribute("title", row.project);
+    expect(cells[2]).toHaveAttribute("title", row.module);
+    expect(cells[3]).toHaveAttribute("title", row.submitter);
+    expect(cells[5]).toHaveAttribute("title");
+    expect(within(cells[5]).getByText(/./)).toHaveAttribute("title");
+    expect(cells[6]).toHaveAttribute("title", row.status);
   });
 
   it("orders pending oldest first and selects a legacy request in the shared detail", () => {
@@ -106,15 +119,16 @@ describe("unified review inbox", () => {
     render(<ReviewInbox projectId="aurora" state={initialState} search="" repository={repository} canReview legacyRows={[older]}
       renderLegacyDetail={(row) => <h3>{row.title}详情</h3>} />);
     await screen.findByRole("heading", { name: "成员详情 member-old" });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("request")).toBe("member-old"));
     const rows = within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row").slice(1);
     expect(rows.map((row) => row.getAttribute("data-review-row-id"))).toEqual(["member-old", "older", "value-new"]);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
     fireEvent.change(screen.getByRole("combobox", { name: "变更类型" }), { target: { value: "value" } });
-    expect(screen.getByRole("heading", { name: "软件详情 value-new" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "软件详情 value-new" })).toBeInTheDocument();
     expect(window.location.search).toContain("type=value");
     window.history.pushState(null, "", "/parameter-review?memberRequest=member-old&view=pending&type=member");
     fireEvent.popState(window);
-    expect(screen.getByRole("heading", { name: "成员详情 member-old" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "成员详情 member-old" })).toBeInTheDocument();
   });
 
   it("never substitutes another request for an unavailable deep link", () => {

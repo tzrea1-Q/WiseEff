@@ -218,7 +218,9 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
         <div className="table-wrap review-table-wrap"><Table aria-label="审阅队列" id="review-queue-table">
           <colgroup>
             {renderRowSelection ? <col className="review-inbox__selection-column" /> : null}
-            <col /><col /><col /><col /><col className="review-inbox__summary-column" /><col /><col />
+            <col className="review-inbox__type-column" /><col className="review-inbox__project-column" />
+            <col className="review-inbox__module-column" /><col className="review-inbox__submitter-column" />
+            <col className="review-inbox__summary-column" /><col className="review-inbox__time-column" /><col className="review-inbox__status-column" />
           </colgroup>
           <TableHeader><TableRow>
           {renderRowSelection ? <TableHead>{selectAll}</TableHead> : null}
@@ -243,13 +245,13 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
           aria-selected={selected?.id === row.id} tabIndex={selected?.id === row.id ? 0 : -1} className={selected?.id === row.id ? "selected-row" : ""}
           onClick={() => select(row.id)} onKeyDown={(event) => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); select(row.id); } }}>
           {renderRowSelection ? <TableCell>{renderRowSelection(row)}</TableCell> : null}
-          <TableCell><span className="review-inbox__chip">{row.kind === "legacy" ? "旧版" : typeLabels[row.kind]}</span></TableCell>
-          <TableCell>{row.project}</TableCell><TableCell>{row.module}</TableCell><TableCell>{row.submitter}</TableCell>
+          <TableCell title={row.kind === "legacy" ? "旧版" : typeLabels[row.kind]}><span className="review-inbox__chip">{row.kind === "legacy" ? "旧版" : typeLabels[row.kind]}</span></TableCell>
+          <TableCell title={row.project}>{row.project}</TableCell><TableCell title={row.module}>{row.module}</TableCell><TableCell title={row.submitter}>{row.submitter}</TableCell>
           <TableCell className="change-cell"><Button type="button" variant="ghost" className="value-change value-change-button" title={row.title} aria-label={`查看 ${row.title} 提交详情`} onClick={(event) => {
             event.stopPropagation(); select(row.id); if (row.kind === "legacy") onOpenLegacy?.(row.id);
           }}><span className="review-inbox__summary">{renderRowTitle?.(row) ?? row.title}</span></Button></TableCell>
-          <TableCell>{row.createdAt ? <time dateTime={row.createdAt} title={formatAbsolute(row.createdAt)}>{formatRelativeOrAbsolute(row.createdAt)}</time> : "提交时间未记录"}</TableCell>
-          <TableCell>{row.status}</TableCell>
+          <TableCell title={row.createdAt ? formatAbsolute(row.createdAt) : "提交时间未记录"}>{row.createdAt ? <time dateTime={row.createdAt} title={formatAbsolute(row.createdAt)}>{formatRelativeOrAbsolute(row.createdAt)}</time> : "提交时间未记录"}</TableCell>
+          <TableCell title={row.status}>{row.status}</TableCell>
         </TableRow>)}</TableBody></Table></div>
         {!visibleRows.length && !loading && !legacyLoading && !error && !legacyError ? <>
           <SectionEmpty message={filtered ? `${filterSummary}筛选下暂无请求` : view === "pending" ? "暂无待审核请求" : "暂无已处理记录"}

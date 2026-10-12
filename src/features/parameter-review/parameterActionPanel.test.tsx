@@ -120,7 +120,17 @@ describe("parameter action panels", () => {
     expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap table", "min-width")).toBe("0");
     expect(declarationFor(stylesheet, ".review-inbox__summary", "text-overflow")).toBe("ellipsis");
     expect(declarationFor(stylesheet, ".review-inbox__summary", "overflow")).toBe("hidden");
-    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "white-space")).toBe("normal");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "white-space")).toBe("nowrap");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "overflow-wrap")).toBe("normal");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap td:not(.change-cell)", "overflow")).toBe("hidden");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap td:not(.change-cell)", "text-overflow")).toBe("ellipsis");
+    for (const [column, width] of Object.entries({ type: "13%", project: "16%", module: "12%", submitter: "15%", time: "12%", status: "11%" })) {
+      expect(declarationFor(stylesheet, `.review-inbox__${column}-column`, "width")).toBe(width);
+    }
+    expect(declarationFor(stylesheet, ".review-inbox__summary-column", "width")).toBe("auto");
+    expect(declarationFor(stylesheet, ".review-inbox__chip", "white-space")).toBe("nowrap");
+    expect(declarationFor(stylesheet, ".review-inbox__chip", "overflow")).toBe("hidden");
+    expect(declarationFor(stylesheet, ".review-inbox__chip", "text-overflow")).toBe("ellipsis");
     expect(hasRule(stylesheet, ".review-inbox .review-detail footer.dialog-actions")).toBe(false);
     expect(declarationFor(stylesheet, ".review-inspector__actions", "position")).toBeUndefined();
     expect(declarationFor(stylesheet, ".review-inbox .review-inspector__meta dt", "color")).toBe("var(--text-muted)");
