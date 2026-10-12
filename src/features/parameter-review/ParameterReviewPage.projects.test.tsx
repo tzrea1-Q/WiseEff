@@ -56,10 +56,27 @@ function renderArchive(state: PrototypeState, runtime?: AppRuntime) {
 }
 
 describe("ParameterReviewPage archive project identity", () => {
+  it("discards late legacy projection responses after the authenticated user changes", async () => {
+    let finishOldRead!: (rows: typeof initialState.changeRequests) => void;
+    const oldRequest = { ...initialState.changeRequests[0], id: "old-user-request", title: "旧用户的历史记录", status: "已合入" as const };
+    const listChangeRequests = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { finishOldRead = resolve; }))
+      .mockResolvedValue([]);
+    const runtime = { parameterRepository: { listChangeRequests, listSubmissionRounds: vi.fn().mockResolvedValue([]) } } as unknown as AppRuntime;
+    const state = { ...archiveState(), currentUserId: "user-a" };
+    const props = { dispatch: vi.fn(), search: "?project=historical-project", onNavigate: vi.fn(), runtime, runtimeMode: "api" as const };
+    const page = render(<ParameterReviewPage state={state} {...props} />);
+    await waitFor(() => expect(listChangeRequests).toHaveBeenCalledTimes(1));
+    page.rerender(<ParameterReviewPage state={{ ...state, currentUserId: "user-b" }} {...props} />);
+    finishOldRead([oldRequest]);
+    await waitFor(() => expect(listChangeRequests).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("tab", { name: "已处理" }));
+    expect(screen.queryByText("旧用户的历史记录")).not.toBeInTheDocument();
+  });
+
   it("reports an active review projection read failure as review records rather than an archive", async () => {
     const dispatch = vi.fn();
     const runtime = { parameterRepository: {
-      listChangeRequests: vi.fn().mockRejectedValue(new Error("Read unavailable")),
+      listChangeRequests: vi.fn().mockRejectedValueOnce(new Error("Read unavailable")).mockResolvedValue([]),
       listSubmissionRounds: vi.fn().mockResolvedValue([])
     } } as unknown as AppRuntime;
     render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
@@ -69,6 +86,11 @@ describe("ParameterReviewPage archive project identity", () => {
     await waitFor(() => expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_NOTIFICATION", message: "审阅记录加载失败，请稍后重试。"
     }));
+    expect(screen.getByRole("alert")).toHaveTextContent("审阅记录加载失败，请稍后重试。");
+    expect(screen.queryByText("暂无待审核请求")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByText("暂无待审核请求");
+    expect(runtime.parameterRepository.listChangeRequests).toHaveBeenCalledTimes(2);
   });
 
   it.each(["advance", "reject"] as const)("lists assigned node work and refreshes after %s without reviving binding review", async (decision) => {
@@ -100,7 +122,7 @@ describe("ParameterReviewPage archive project identity", () => {
     }
     await waitFor(() => expect(reviewChange).toHaveBeenCalledWith(expect.objectContaining({ requestId: node.id, decision })));
     await waitFor(() => expect(listChangeRequests).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("tab", { name: "待审阅" })).toHaveTextContent("0");
+    expect(screen.getByRole("tab", { name: "待处理" })).toHaveTextContent("0");
   });
 
   it("keeps the archive DTO project filter when the shell has only canonical Bindings", async () => {

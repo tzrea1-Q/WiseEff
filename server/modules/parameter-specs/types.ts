@@ -151,6 +151,7 @@ export type SchemaDocument = {
 };
 
 export type SchemaPropertyDocument = {
+  displayName?: string;
   valueShape?: PropertyValueShape["kind"] | PropertyValueShape;
   units?: string;
   constraints?: Record<string, unknown>;

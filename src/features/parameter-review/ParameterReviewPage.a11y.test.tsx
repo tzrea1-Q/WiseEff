@@ -28,15 +28,15 @@ describe("ParameterReviewPage landmarks and keyboard", () => {
     const user = userEvent.setup();
     renderReview();
     const tabs = screen.getByRole("tablist", { name: "审阅视角" });
-    const pending = within(tabs).getByRole("tab", { name: "待审阅" });
-    const history = within(tabs).getByRole("tab", { name: "历史审阅" });
+    const pending = within(tabs).getByRole("tab", { name: "待处理" });
+    const history = within(tabs).getByRole("tab", { name: "已处理" });
     pending.focus();
     await user.keyboard("{ArrowRight}");
     expect(history).toHaveFocus();
     expect(pending).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{Enter}");
     expect(history).toHaveAttribute("aria-selected", "true");
-    const panel = screen.getByRole("tabpanel", { name: "历史审阅" });
+    const panel = screen.getByRole("tabpanel", { name: "已处理" });
     expect(panel.id).toBe(history.getAttribute("aria-controls"));
     expect(within(panel).getByRole("table", { name: "审阅队列" })).toBeVisible();
     expect(document.getElementById(pending.getAttribute("aria-controls")!)).not.toBeVisible();

@@ -70,12 +70,16 @@ export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect
                     </span>
                     <div className="audit-timeline-content min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">
-                        {action.isRaw ? <code>{action.label}</code> : action.label}
+                        {kind.isRaw ? <code>{kind.label}</code> : <span>{kind.label}</span>}
+                        <span className="mx-1">·</span>
+                        {action.isRaw ? <code>{action.label}</code> : <span>{action.label}</span>}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        <code>{event.kind}</code>
+                        {action.isRaw || action.label !== event.action ? <><span className="mx-1">·</span><code>{event.action}</code></> : null}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         <span>{event.actor}</span>
-                        <span className="mx-1">·</span>
-                        <span>{kind.isRaw ? <code>{kind.label}</code> : kind.label}</span>
                         <span className="mx-1">·</span>
                         <span>{event.timeLabel}</span>
                       </p>

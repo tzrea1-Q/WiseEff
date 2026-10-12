@@ -141,7 +141,8 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       expect(hiddenWithoutProof.status()).toBe(404);
       expect(reviewerWithoutProof.status()).toBe(400);
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
-      const row = page.getByRole("table", { name: "成员删除请求列表" }).getByRole("button", { name: reviewed.removed.name });
+      const row = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${rejected.id}"]`)
+        .getByRole("button", { name: "查看 浏览器驳回路径 提交详情", exact: true });
       await expect(row).toBeVisible();
       await row.click();
       const detail = page.getByRole("article", { name: "JSON 成员删除请求详情" });
@@ -151,6 +152,10 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       const rejectedResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${rejected.id}/review`));
       await detail.getByRole("button", { name: "驳回成员删除" }).click();
+      const rejectDialog = page.getByRole("dialog", { name: "驳回成员删除", exact: true });
+      await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+      await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("成员删除需要补充依据");
+      await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
       expect((await rejectedResponse).status()).toBe(200);
       await expect(detail).toContainText("已驳回");
       await page.reload();
@@ -198,7 +203,8 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
         && response.url().endsWith(`/parameter-value-change-requests/${approved.id}/review`));
       await approveDetail.getByRole("button", { name: "批准成员删除" }).click();
       expect((await approvalResponse).status()).toBe(200);
-      await expect(approveDetail).toContainText("后继修订");
+      await approveDetail.getByText("溯源信息", { exact: true }).click();
+      await expect(approveDetail.locator("details")).toContainText("事务结果 · successorConfigRevisionId");
       await page.reload();
       await expect(page.getByRole("article", { name: "JSON 成员删除请求详情" })).toContainText("已批准");
       await page.screenshot({ path: testInfo.outputPath("b906-member-approved-1440x900.png") });
@@ -206,7 +212,11 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
         headers: reviewerHeaders
       });
       expect(approvedRead.ok()).toBe(true);
-      expect((await approvedRead.json()).item.appliedSourceResult.tombstoneId).toBeTruthy();
+      const approvedItem = (await approvedRead.json()).item;
+      expect(approvedItem.appliedSourceResult.tombstoneId).toBeTruthy();
+      expect(approvedItem.appliedSourceResult.successorConfigRevisionId).toBeTruthy();
+      await approveDetail.getByText("溯源信息", { exact: true }).click();
+      await expect(approveDetail.locator("details")).toContainText(approvedItem.appliedSourceResult.successorConfigRevisionId);
       expect(browserErrors).toEqual([]);
       outcome = "success";
     } finally { await db.close(); }

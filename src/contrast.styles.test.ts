@@ -124,6 +124,11 @@ describe.each(["light", "dark"])("%s theme contrast pairs", (theme) => {
     expectReadable(declarationsFor(styles, ".topic-trend-note").color, "var(--surface-sunken)", tokens);
   });
 
+  it.each(["", ":hover"])("keeps source-canvas empty actions readable%s", (state) => {
+    const action = declarationsFor(styles, `.configuration-workbench__source-state .section-empty [data-slot="button"]${state}`);
+    expectReadable(action.color, action.background, tokens);
+  });
+
   it("keeps the debug coverage badge readable on its tinted surface", () => {
     const badge = declarationsFor(styles, ".debug-admin-coverage-badge");
     expectReadable(badge.color, badge.background, tokens);

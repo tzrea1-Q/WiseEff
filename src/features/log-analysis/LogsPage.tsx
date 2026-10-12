@@ -12,7 +12,7 @@ import type { ParameterRepository, ProjectSummary } from "@/application/ports/Pa
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { LogDomain } from "@/domain/logs/types";
-import { isSupportedLogUploadFileName, mockLogUploadAccept } from "@/domain/logs/uploadExtensions";
+import { isSupportedLogUploadFileName, mockLogUploadAccept, supportedTextLogExtensions } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
@@ -417,7 +417,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       <div role="status" aria-live="polite" aria-label="日志切换状态" className="sr-only" data-testid="log-live-region">
         {liveMessage}
       </div>
-      <div className="logs-v2-main">
+      <div className={classNames("logs-v2-main", hasActiveLog && activeLog.status === "Failed" && "logs-v2-main--failed")}>
         <LogsPageHeader onNavigate={onNavigate} onUpload={openUploadDialog} />
         <LogConclusionCard
           log={activeLog}
@@ -430,37 +430,41 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           onPrimary={onPrimary}
           relatedParameterLocated={Boolean(logActions && activeLog.relatedParameterId && activeLog.relatedParameterProjectId)}
           relatedParameterUnlocated={relatedParameterUnlocated}
-          onRetry={handleRetryLog}
+          onRetry={activeLog.status === "Failed" ? openUploadDialog : handleRetryLog}
         />
-        <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
-        <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
-          <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
-          <div className="logs-v2-split">
-            <RawLogViewer
-              activeMatchIndex={activeMatchIndex}
-              evidenceByLine={evidenceByLine}
-              focusedEvidenceId={focusedEvidenceId}
-              hoveredEvidenceId={hoveredEvidenceId}
-              hoveredLine={hoveredLine}
-              matchLines={matchLines}
-              rawLines={activeLog.rawLines}
-              searchInputRef={searchInputRef}
-              searchQuery={searchQuery}
-              onActiveMatchIndexChange={setActiveMatchIndex}
-              onClickLine={focusLineEvidence}
-              onHoverLine={setHoveredLine}
-              onSearchQueryChange={setSearchQuery}
-            />
-            <EvidenceChainPanel
-              evidence={activeLog.evidence}
-              focusedEvidenceId={focusedEvidenceId}
-              hoveredLine={hoveredLine}
-              rawLines={activeLog.rawLines}
-              onClickEvidence={focusEvidence}
-              onHoverEvidence={setHoveredEvidenceId}
-            />
-          </div>
-        </section>
+        {activeLog.status !== "Failed" || !hasActiveLog ? (
+          <>
+            <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
+            <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
+              <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
+              <div className="logs-v2-split">
+                <RawLogViewer
+                  activeMatchIndex={activeMatchIndex}
+                  evidenceByLine={evidenceByLine}
+                  focusedEvidenceId={focusedEvidenceId}
+                  hoveredEvidenceId={hoveredEvidenceId}
+                  hoveredLine={hoveredLine}
+                  matchLines={matchLines}
+                  rawLines={activeLog.rawLines}
+                  searchInputRef={searchInputRef}
+                  searchQuery={searchQuery}
+                  onActiveMatchIndexChange={setActiveMatchIndex}
+                  onClickLine={focusLineEvidence}
+                  onHoverLine={setHoveredLine}
+                  onSearchQueryChange={setSearchQuery}
+                />
+                <EvidenceChainPanel
+                  evidence={activeLog.evidence}
+                  focusedEvidenceId={focusedEvidenceId}
+                  hoveredLine={hoveredLine}
+                  rawLines={activeLog.rawLines}
+                  onClickEvidence={focusEvidence}
+                  onHoverEvidence={setHoveredEvidenceId}
+                />
+              </div>
+            </section>
+          </>
+        ) : null}
         {/* Related knowledge (design deferred roadmap item 1): completed
             analyses only, visible to knowledge:view holders in both modes. */}
         {hasActiveLog && activeLog.status === "Complete" && knowledgeRepository && knowledgeCapability?.canView ? (
@@ -1087,12 +1091,23 @@ function LogErrorAlert({ log, onRetry }: { log: LogRecord; onRetry: () => void }
     log.failureReason ?? log.conclusion,
     "日志处理失败，请重试或重新上传。"
   );
+  const supportedFormats = supportedTextLogExtensions.map((extension) => `.${extension}`).join(" / ");
   return (
     <section className="log-error-alert" role="alert">
       <AlertTriangle size={22} />
       <div>
         <strong>日志处理失败</strong>
-        <p>{reason}</p>
+        <p>在 {STAGE_LABELS[log.stage]} 阶段失败 · <span>{reason}</span>
+          {!isSupportedLogUploadFileName(log.fileName, true) && !reason.includes(supportedFormats)
+            ? ` 支持格式：${supportedFormats}`
+            : null}
+        </p>
+        <dl className="logs-metadata-list">
+          <div><dt>文件名</dt><dd>{log.fileName}</dd></div>
+          <div><dt>文件大小</dt><dd>{log.fileSizeMB} MB</dd></div>
+          <div><dt>上传时间</dt><dd>{log.capturedAt}</dd></div>
+          <div><dt>上传者</dt><dd>{log.submittedBy}</dd></div>
+        </dl>
         <button className="button danger" type="button" onClick={onRetry}>
           重新上传
         </button>

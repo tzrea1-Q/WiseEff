@@ -161,14 +161,15 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
         await expect(mine).toContainText(reason);
         await expect(mine.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
         await mine.getByRole("button", { name: "刷新批量请求与来源" }).click();
+        await mine.getByText("溯源信息", { exact: true }).click();
         await expect(mine).toContainText(item.batchProofDigest);
         return item;
       };
       const reviewFromQueue = async (reason: string) => {
         await signInBrowserAsRole(page, "software-committer", `${runtime!.frontendUrl}/parameter-review?project=aurora`);
-        const row = page.getByRole("table", { name: "软件配置审核请求" }).getByRole("row").filter({ hasText: reason });
+        const row = page.getByRole("table", { name: "审阅队列", exact: true }).getByRole("row").filter({ hasText: reason });
         await expect(row).toBeVisible();
-        await row.getByRole("button", { name: "查看批量请求" }).click();
+        await row.getByRole("button", { name: `查看 ${reason} 提交详情`, exact: true }).click();
         const detail = page.getByRole("article", { name: "批量源文件请求详情" });
         await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
         await expect(detail.getByText("DTS", { exact: true })).toBeVisible();
@@ -179,7 +180,8 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const beforeApproval = await state(approvedFixture);
       const approved = await submitFromPage(approvedFixture, "DTS 浏览器批准");
       const detail = await reviewFromQueue("DTS 浏览器批准");
-      await expect(detail.getByText(approved.batchProofDigest)).toBeVisible();
+      await detail.getByText("溯源信息", { exact: true }).click();
+      await expect(detail.locator("details").getByText(approved.batchProofDigest, { exact: true }).first()).toBeVisible();
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       await page.screenshot({ path: testInfo.outputPath("b906-dts-review-1440x900.png") });
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"
@@ -235,6 +237,10 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const rejectResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${rejected.id}/review`));
       await rejectDetail.getByRole("button", { name: "驳回全部 2 项" }).click();
+      const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+      await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+      await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("DTS 浏览器驳回：需要补充依据");
+      await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
       expect((await rejectResponse).status()).toBe(200);
       await expect(rejectDetail).toContainText("已驳回");
       await page.reload();

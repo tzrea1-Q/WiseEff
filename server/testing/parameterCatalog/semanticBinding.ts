@@ -1,18 +1,15 @@
 import type pg from "pg";
 
-import { compileConstrainedVendorCatalogSuccessor } from "../../../scripts/compile-vendor-catalog-release";
+import { compileLocalizedVendorCatalogSuccessor } from "../../../scripts/compile-vendor-catalog-release";
 import { compileCatalogRelease } from "../../modules/catalog-kernel/compiler";
 import { refreshAuthoritativeSource } from "../../modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import { readCurrentCatalogPointer } from "../../modules/catalog-kernel/install/currentPointer";
 import { installPublishedRelease } from "../../modules/catalog-kernel/install/installer";
 import { jsonCatalogReleaseSource } from "../../modules/catalog-kernel/interface";
 
 export const SEMANTIC_BINDING_FIXTURE_RELEASE_ID = "crel_acceptance_bindings_1";
 
 export async function seedSemanticBindingCatalog(pool: pg.Pool): Promise<void> {
-  const pointer = await readCurrentCatalogPointer(pool);
-  if (pointer.kind === "installed" && pointer.current.id === SEMANTIC_BINDING_FIXTURE_RELEASE_ID) return;
-  const vendor = compileConstrainedVendorCatalogSuccessor();
+  const vendor = compileLocalizedVendorCatalogSuccessor();
   const release = structuredClone(vendor.bundle.releases.at(-1)!) as Parameters<typeof refreshAuthoritativeSource>[0];
   const subjectTemplate = release.documents.find((document) => document.kind === "subject" && document.content.id === "csub_acme_power");
   const definitionTemplate = release.documents.find((document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max");
@@ -23,7 +20,7 @@ export async function seedSemanticBindingCatalog(pool: pg.Pool): Promise<void> {
     ...release.manifest.release,
     id: SEMANTIC_BINDING_FIXTURE_RELEASE_ID,
     version: "1.3.0",
-    sequence: 4,
+    sequence: release.manifest.release.sequence + 1,
     predecessor: { id: vendor.compiled.release.id, digest: vendor.compiled.release.digest }
   };
   for (const fixture of [

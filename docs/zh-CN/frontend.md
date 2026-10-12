@@ -62,7 +62,9 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 通知反馈（`state.notifications`，由 `ADD_NOTIFICATION` 推入）经由唯一渲染器上屏：`AppToastLayer`（`src/components/common/AppToastLayer.tsx`）是挂在 AppShell 的无 DOM 桥（**两种运行时都挂载**），把队列每一条倾倒进设计系统 `ToastProvider`（`useToast`），按词法推断 tone（失败词汇 → `danger`/`role="alert"`，完成词汇 → `success`，其余 `info`），并立即经 `DISMISS_NOTIFICATION` 消费队列。展示由 `ToastCard` 负责：约 4 秒自动消退、悬停暂停、在 `.toast-viewport`（`--z-toast` 层，位于弹窗与小泽聊天之上）栈叠，以及带 aria-label 的手动关闭按钮（关闭提示）。命令式 `useToast()` 与 reducer 通知从此共用一条视觉管线。这取代了此前 `LogsPage` 内仅 mock 模式渲染的 toast——那种写法让 API 模式所有成功/失败提示都不可见。详情选中支持深链：`/parameter-review?request=<id>` 恢复选中的审阅行并经 `history.replaceState` 保持地址栏同步；`/logs?logId=<id>`（「复制链接」的目标）在 API 数据水合后恢复选中日志，且不会被最新上传自动选中覆盖。变更审阅（`/parameter-review` 待审阅视图）支持检视阶段的批量通过：存在可操作行时出现复选框列（初始化审阅与合入阶段除外——合入需逐条填写合入链接），工具栏出现「批量通过」按钮，聚合确认对话框说明影响范围，执行按请求串行（`reviewChange` 传 `notifyOnFailure: false`），成功与失败各汇总为一条 toast；失败行保持勾选便于重试。同一页经 `formatWorkflowDisplayText` 把流程状态（含列表头筛选标签）显示为产品中文（如 `硬件Committer检视` → `硬件MDE检视`），并提供下方记录的无修饰键队列快捷键。经运行时通知透出的服务端失败统一走 `toUserErrorMessage`（`src/infrastructure/http/userErrorMessage.ts`）：按 `WiseEffApiError.code`（及已知 `details.reason`）映射中文话术并附短请求编号后缀；未知错误码保留服务端原文但仍可报障，fetch 层网络失败给连接话术。
 
-审计中心（`/audit`）的筛选下推到 `GET /api/v1/audit-events`：文本搜索（`q`，服务端匹配操作/类型/对象/操作人）、时间窗（今天 / 近 7 天 / 近 30 天，经 `from`），加上既有的模块分组/项目/严重度/trace 筛选与游标分页。「导出 CSV」按当前筛选分页拉取全量（上限 2000 行）导出 UTF-8-BOM、中文表头的 CSV，模块/类型/操作/严重度均为中文标签，并保留原始类型标识列供机器筛选。mock 模式下相同筛选在客户端执行。
+审计中心（`/audit`）的筛选下推到 `GET /api/v1/audit-events`：文本搜索（`q`，服务端匹配操作/类型/对象/操作人）、时间窗（今天 / 近 7 天 / 近 30 天，经 `from`），加上既有的模块分组/项目/严重度/trace 筛选与游标分页。「导出 CSV」按当前筛选分页拉取全量（上限 2000 行）导出 UTF-8-BOM、中文表头的 CSV，模块/类型/操作/严重度均为中文标签，并分别保留原始类型、操作标识列供机器筛选。事件行和关联 Trace 事件通过共享格式器显示中文标签，下方以等宽字体显示技术标识；未知标识保留原文。mock 模式下相同筛选在客户端执行。
+
+Catalog 定义行在等宽属性键旁保留已发布的显示名；中文名称属于 Catalog 发布内容，由 #1114 跟踪，前端不自行翻译。目录接管期间，`/parameter-admin` 显示普通用户可理解的状态与「了解详情」折叠区，只有平台管理员和操作员能在其中看到操作员手册的 inspect/adopt 指引。服务端编写与发布权限门禁保持不变。
 
 本地账号注册没有组织下拉；新账号加入评估组织（有种子时是 ChargeLab）。自助注册角色下拉使用：`guest`、`hardware-user`、`software-user`、`hardware-committer`、`software-committer`。`admin` 与 `platform-admin` 只能通过组织管理分配，且后者仅已持有 `platform-admin` 的调用方可以授予或撤销；不能在注册页自助选择。
 
@@ -181,7 +183,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 ### 项目参数初始化
 
-新建项目默认 `initialization_status = not_initialized`。创建者通过 `ProjectParameterInitializationWizard` 做一次性**语义 binding** 快照（或显式空库），提交初始化审阅；Admin 在 `/parameter-review` 的初始化 Tab 批准/驳回。
+新建项目默认 `initialization_status = not_initialized`。创建者通过 `ProjectParameterInitializationWizard` 做一次性**语义 binding** 快照（或显式空库），提交初始化审阅；Admin 在 `/parameter-review` 的统一队列中选择初始化请求并批准/驳回。
 
 - Port：`ParameterInitializationRepository`；API 模式走 HTTP + 项目切换 hydrate；mock 实现同一 Port。
 - 未 `initialized` 时 `ParametersPage` 锁定常规编辑；服务端 `submitParameterChanges` 经 `assertProjectAllowsParameterSubmit` 失败关闭。
@@ -198,6 +200,8 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` 加载；mock mode 由 `src/config/power-management.json` 的 `parent`/`path` 经 `buildPowerManagementModuleTree()` 派生。
 
 mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量。API mode 的 `db:seed:m1` 会在 seed 时从已提交的 `aurora-board.dts` 模板额外派生 228 个 DTS 来源参数；每个落库项目值都包含 `sourceFileName=aurora-board.dts` 和含属性名的 `sourceNodePath`。修改基础 DTS 或项目差异后，运行 `npm run dts:seed:generate` 重新生成三份项目主 DTS fixture。可选：`npm run dtc:seed:compile` 在 CI 中用钉扎工具链验证 seed 板——不是产品正确性叙事的前提（seed 板为 SoT）。
+`/parameter-review` 与 `/parameter-submissions` 共用一个 `ReviewInbox`：待处理/已处理 `ViewSwitch`、紧凑变更类型筛选，以及待处理按提交时间升序排列的统一列表。软件配置、JSON 成员删除和仍可处理的旧流程合并展示；API 旧 binding 归档保持只读历史。详情先展示人员、状态和可读时间，依次展示变更摘要、完整冻结前后对比和影响范围；吸附操作区保留原有确认与证明门槛。ID、来源 pin、摘要和 ISO 时间归入默认折叠、可复制的溯源信息。`view`、`type` 与 `request` 或 `legacyRequest` 选中项保存在 URL（兼容 `memberRequest`），支持后退/前进。待处理空队列只显示一个空态及历史入口；筛选空态指明筛选条件并可清除。
+
 API 模式的 `/parameter-submissions` 与 `/parameter-review` 复用 canonical 请求 owner 及 pending、approved、rejected、withdrawn 状态。个人追踪的 `mine=true` 由服务端绑定认证提交人 ID，审核可见性与固定来源差异读取保持项目和租户授权。面板展示固定来源、审核决定和应用结果，不生成旧提交轮次；撤回只使用现有 pending 请求 owner。
 
 `?project=…&request=…` 在刷新后恢复 canonical 选择；无效或不可见 ID 明确提示不可用。选择只更新 URL，保留行按钮焦点；终态动作同步或清除所选 ID，项目切换后丢弃旧响应。保留的旧请求使用 `legacyRequest`（仍识别已知旧 `request` 链接）；API 模式下，旧个人归档信任服务端按本人、组织及项目范围过滤后的 `mine=true` 结果。旧归档 DTO 不包含提交人 ID，因此客户端不再重复按身份过滤，也不显示缺失的 ID；mock/旧流程本地数据仍可使用已有身份字段。旧记录只读，不进入 canonical 待办；旧批量审核仅属于 mock/旧流程。`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts` 在隔离本地真实 API 中以 1440×900 验证 canonical-only 生命周期、本人/审核人追踪、权限拒绝、失效链接、键盘焦点、刷新和重启。

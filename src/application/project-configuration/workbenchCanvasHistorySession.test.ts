@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createWorkbenchCanvasHistorySession } from "./workbenchCanvasHistorySession";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 describe("WorkbenchCanvasHistorySession", () => {
+  it.each(["NOT_FOUND", "GONE"])("keeps an absent counterpart (%s) separate from request failures", async (code) => {
+    const session = createWorkbenchCanvasHistorySession();
+    await session.loadModeSource({ canvasMode: "unified-diff", projectId: "proj", fileId: "file",
+      versionId: "removed", workingSource: "working", repo: {
+        downloadVersion: vi.fn().mockRejectedValue(new WiseEffApiError(code, "missing", {}, "request"))
+      } });
+    expect(session.modeSourceError).toBe("");
+    expect(session.historySource).toBe("");
+  });
   it("loads history bytes for history mode and ignores stale responses", async () => {
     const session = createWorkbenchCanvasHistorySession();
     let resolveFirst: (value: { bytes: Uint8Array }) => void = () => undefined;

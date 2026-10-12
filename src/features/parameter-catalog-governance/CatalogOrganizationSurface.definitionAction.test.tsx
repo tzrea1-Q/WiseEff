@@ -37,6 +37,47 @@ describe("Catalog definition action capability", () => {
     expect(notice).toHaveTextContent("可以保存草稿并预览，但发布需要 catalog:publish。");
   });
 
+  it("shows the published name next to a monospace property key", async () => {
+    renderSurface(false);
+    const action = await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    const row = action.closest("tr")!;
+    expect(within(row).getByText(activeDefinition.propertyKey, { selector: "code" })).toBeVisible();
+    expect(within(row).getByText(activeDefinition.currentRevision.displayName!)).toBeVisible();
+  });
+
+  it.each(["user", "admin", "platform-admin", "operator"])(
+    "scopes takeover instructions to the %s audience inside a disclosure", async (roleId) => {
+      const ports = createMockCatalogPorts({ scenario: "ready" });
+      const readSurface = ports.catalog.getPublicationSurface;
+      vi.spyOn(ports.catalog, "getPublicationSurface").mockImplementation(async () => {
+        const response = await readSurface();
+        return { item: { ...response.item, adopted: false, authoringAllowed: false,
+          publishingAllowed: false, blockers: ["catalog-not-adopted", "publication-not-authorized"] } };
+      });
+      render(<CatalogOrganizationSurface {...ports} actor="user"
+        sessionRoles={[{ roleId, projectId: null }]} search="" currentPersonId="reader"
+        onAnchorChange={vi.fn()} />);
+      const banner = await screen.findByRole("region", { name: "发布状态" });
+      const page = screen.getByRole("region", { name: "参数定义目录" });
+      const release = within(page).getByRole("region", { name: "目录发布" });
+      const navigator = within(page).getByRole("region", { name: "模块导航" });
+      expect(page).toContainElement(banner);
+      expect(release.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(banner.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(within(banner).getByText("参数目录正在接管中，部分管理操作暂不可用。")).toBeVisible();
+      const disclosure = within(banner).getByText("了解详情").closest("details")!;
+      expect(disclosure).not.toHaveAttribute("open");
+      expect(banner.querySelector("p")).not.toHaveTextContent(/inspect|adopt/);
+      await userEvent.click(within(banner).getByText("了解详情"));
+      expect(disclosure).toHaveAttribute("open");
+      if (roleId === "platform-admin" || roleId === "operator") {
+        expect(disclosure).toHaveTextContent("由平台运维完成接管后即可使用。");
+        expect(disclosure).toHaveTextContent("inspect/adopt");
+      } else {
+        expect(banner).not.toHaveTextContent(/inspect|adopt|操作员手册/);
+      }
+    }
+  );
   it("offers viewing and explains the authoring grant when the server denies authoring", async () => {
     renderSurface(false);
     const user = userEvent.setup();

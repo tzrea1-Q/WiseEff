@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import { createEphemeralTestDatabase } from "../server/testing/testDatabase";
 import { ensurePublishedVendorCatalog } from "./sync-vendor-property-docs";
-import { compileConstrainedVendorCatalogSuccessor } from "./compile-vendor-catalog-release";
+import { compileLocalizedVendorCatalogSuccessor } from "./compile-vendor-catalog-release";
 
 describe("ensurePublishedVendorCatalog", () => {
   it("installs vendor documentation as immutable canonical Definition revisions, idempotently", async () => {
@@ -23,7 +23,7 @@ describe("ensurePublishedVendorCatalog", () => {
       const snapshot = async () => (await db.query(`select id, content->'documentation' as documentation, content_digest
         from parameter_catalog.definition_revisions order by id`)).rows;
       const first = await snapshot();
-      const vendor = compileConstrainedVendorCatalogSuccessor();
+      const vendor = compileLocalizedVendorCatalogSuccessor();
       const definition = vendor.bundle.releases.at(-1)!.documents.find((item) =>
         item.kind === "definition" && item.content.id === "pdef_drv_huawei_bypass_bst_hl7603_const_vout");
       expect(definition).toBeDefined();
@@ -53,7 +53,7 @@ describe("ensurePublishedVendorCatalog", () => {
       const output = run();
       const definitions = await db.query<{ count: number }>(
         "select count(*)::int as count from parameter_catalog.catalog_release_definition_heads where release_id = $1",
-        [compileConstrainedVendorCatalogSuccessor().compiled.release.id],
+        [compileLocalizedVendorCatalogSuccessor().compiled.release.id],
       );
       expect(definitions.rows[0]!.count).toBeGreaterThan(0);
       expect(output).toEqual({

@@ -7,7 +7,7 @@ import { parse, stringify } from "yaml";
 import {
   compileConstrainedVendorCatalogSuccessor,
   FIRST_ACME_RELEASE_DIGEST,
-  VENDOR_CONSTRAINED_RELEASE_ID,
+  VENDOR_LOCALIZED_RELEASE_ID,
   VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { loadCommittedDtsSeedFiles } from "../../../../scripts/compile-dts-seed";
@@ -32,7 +32,7 @@ import { assertCanonicalValueConstraints } from "./service";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../seedInitialization/seedCanonicalAfterLegacy";
 
 const definitionId = ParameterDefinitionId("pdef_drv_sc8562_gpio_int");
-const revisionId = DefinitionRevisionId("drev_drv_sc8562_gpio_int_2");
+const revisionId = DefinitionRevisionId("drev_drv_sc8562_gpio_int_3");
 const organizationId = "org-vendor-constraints";
 const projectId = "project-vendor-constraints";
 const auth = makeTestAuthContext({
@@ -146,11 +146,11 @@ describe("published vendor constraint enforcement", () => {
     rmSync(storageDirectory, { recursive: true, force: true });
   });
 
-  it("upgrades release 1 without rewriting history and seeds release 2 idempotently", async () => {
+  it("upgrades release 1 without rewriting history and seeds release 3 idempotently", async () => {
     const pool = getRootPostgresPool(db)!;
     const before = await pool.query("select count(*)::int as count from parameter_catalog.definition_revisions");
-    expect((await seedPublishedCatalog(pool)).id).toBe(VENDOR_CONSTRAINED_RELEASE_ID);
-    expect((await seedPublishedCatalog(pool)).id).toBe(VENDOR_CONSTRAINED_RELEASE_ID);
+    expect((await seedPublishedCatalog(pool)).id).toBe(VENDOR_LOCALIZED_RELEASE_ID);
+    expect((await seedPublishedCatalog(pool)).id).toBe(VENDOR_LOCALIZED_RELEASE_ID);
     expect((await pool.query("select count(*)::int as count from parameter_catalog.definition_revisions")).rows).toEqual(before.rows);
     expect((await pool.query("select content->'valueSchema' as schema from parameter_catalog.definition_revisions where id='drev_drv_sc8562_gpio_int_1'")).rows)
       .toEqual([{ schema: { description: "mixed" } }]);
@@ -183,7 +183,7 @@ describe("published vendor constraint enforcement", () => {
   it("enforces existing numeric bounds on vendor array items", () => {
     const revision = snapshot.getDefinitionRevision({
       definitionId: ParameterDefinitionId("pdef_drv_huawei_charging_core_iin_max"),
-      revisionId: DefinitionRevisionId("drev_drv_huawei_charging_core_iin_max_1"),
+      revisionId: DefinitionRevisionId("drev_drv_huawei_charging_core_iin_max_2"),
     });
     if (revision.status !== "found") throw new Error("Vendor numeric revision unavailable");
     expect(() => assertCanonicalValueConstraints(revision.revision, payload("<(-1)>"))).toThrowError(expect.objectContaining({ code: "VALIDATION_FAILED" }));
@@ -214,7 +214,7 @@ describe("published vendor constraint enforcement", () => {
         const configPath = "src/config/power-management.json";
         await seedM1Parameters(freshDb, parsePowerManagementConfig(configPath, readFileSync(configPath, "utf8")));
         const release = await seedPublishedCatalog(getRootPostgresPool(freshDb)!);
-        expect(release.id).toBe(VENDOR_CONSTRAINED_RELEASE_ID);
+        expect(release.id).toBe(VENDOR_LOCALIZED_RELEASE_ID);
         await seedM1DtsFiles(freshDb, objectStore, projectFiles);
         await seedM1SemanticTopology(freshDb, projectFiles);
         await ensureCanonicalCatalogAfterLegacySeed(freshDb, seedAuth, {
@@ -224,7 +224,8 @@ describe("published vendor constraint enforcement", () => {
       };
       await seed();
       const before = await counts();
-      expect(before[0]!.releases).toBe(3);
+      // Includes the localized seed successor (crel_vendor_catalog_3) published on top of the original vendor releases.
+      expect(before[0]!.releases).toBe(4);
       expect(before[0]!.revisions).toBeGreaterThan(0);
       expect(before[0]!.bindings).toBeGreaterThan(0);
       expect(before[0]!.values).toBeGreaterThan(0);
@@ -234,7 +235,7 @@ describe("published vendor constraint enforcement", () => {
         where definition_id in ('pdef_drv_sc8562_gpio_int','pdef_drv_mt_mt5788_gpio_int')
         order by effective_revision_id`);
       expect(pins.rows.map((pin) => pin.effective_revision_id)).toEqual([
-        "drev_drv_mt_mt5788_gpio_int_2", "drev_drv_sc8562_gpio_int_2",
+        "drev_drv_mt_mt5788_gpio_int_3", "drev_drv_sc8562_gpio_int_3",
       ]);
       await seed();
       expect(await counts()).toEqual(before);

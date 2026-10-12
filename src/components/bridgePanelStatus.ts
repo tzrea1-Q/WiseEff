@@ -24,7 +24,7 @@ export type LocalBridgeBindingState =
   | "token_invalid";
 
 export const FOREIGN_ACCOUNT_REBIND_HINT =
-  "当前本机 Bridge 已配对到其他账号。请点击「重新配对」，使用当前账号的新配对码完成本机绑定。";
+  "当前本机 Bridge 已配对到其他账号。请点击「连接本机」，使用当前账号的新配对码完成本机绑定。";
 
 export const REBIND_IN_PROGRESS_HINT = "正在将本机 Bridge 重新绑定到当前账号，并等待新进程上线。";
 
@@ -378,14 +378,14 @@ export function bridgePanelStatusHint(
       return "Bridge 已配对，但尚未连接到服务器。";
     case "not_running":
       if (options.healthReachability === "possibly_blocked") {
-        return "已配对 Bridge，但本地服务未运行或浏览器尚未允许访问本机网络。请点击「启动并连接本机」，并在浏览器提示中允许「本地网络」。";
+        return "已配对 Bridge，但本地服务未运行或浏览器尚未允许访问本机网络。请点击「连接本机」，并在浏览器提示中允许「本地网络」。";
       }
-      return "已配对 Bridge，但本地服务未运行。请点击「启动并连接本机」自动打开 Bridge。";
+      return "已配对 Bridge，但本地服务未运行。请点击「连接本机」自动打开 Bridge。";
     case "not_paired":
       return "Bridge 已启动但尚未配对，请点击连接。";
     case "missing_bridge":
-      return "未检测到本地 Bridge 在运行（127.0.0.1:18787 无响应）。若已安装，请点击下方按钮进入步骤 2 自动启动并配对。";
+      return "未检测到本地 Bridge 在运行（127.0.0.1:18787 无响应）。若已安装，请点击「连接本机」自动启动并配对。";
     case "bridge_blocked":
-      return "未检测到本地 Bridge。若已安装，请点击「启动并连接本机」；若浏览器提示访问本地网络，请选择允许。";
+      return "未检测到本地 Bridge。若已安装，请点击「连接本机」；若浏览器提示访问本地网络，请选择允许。";
   }
 }

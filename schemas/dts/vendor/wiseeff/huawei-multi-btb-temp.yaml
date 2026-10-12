@@ -11,4 +11,5 @@ properties:
     valueShape: string-list
     exampleValue: "\"bat0_raw_temp\", \"comp_para\", \"0\",\n\t\t\"bat1_raw_temp\", \"comp_para1\", \"0\""
     constraints: {}
-    documentation: huawei,multi_btb_temp 的 DTS 属性「sensor names」（sensor-names），用于驱动读取的设备树配置。
+    documentation: 配置温度传感器名称与对应补偿参数的映射。
+    displayName: 温度传感器映射

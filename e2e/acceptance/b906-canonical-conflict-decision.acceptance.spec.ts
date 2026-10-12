@@ -329,6 +329,12 @@ for (const [format, choice, decision] of [
           const reviewed = page.waitForResponse((response) => response.request().method() === "POST"
             && response.url().endsWith(`${requestPath}/review`));
           await detail.getByRole("button", { name: decision === "reject" ? "驳回" : "批准软件配置" }).click();
+          if (decision === "reject") {
+            const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+            await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+            await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("单项来源冲突需要补充依据");
+            await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
+          }
           expect((await reviewed).status()).toBe(decision === "drift" ? 409 : 200);
           if (decision === "drift") {
             await expect(page.getByRole("alert").filter({ hasText: "来源或决策证明已过期（409）" })).toBeVisible();

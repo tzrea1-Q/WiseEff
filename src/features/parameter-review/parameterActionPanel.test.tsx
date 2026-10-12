@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appReducer } from "@/application/state/appState";
 import { TopBarActionsContext } from "@/components/layout";
@@ -65,6 +65,7 @@ describe("parameter action panels", () => {
       }
     });
     renderReview({ ...initializationState, activeRoleId: "admin" });
+    fireEvent.click(screen.getByRole("button", { name: "查看 Zephyr 初始化 提交详情" }));
 
     const initializationDetail = screen.getByRole("complementary", { name: "审阅详情" });
     const approveInitialization = within(initializationDetail).getByRole("button", { name: "通过初始化" });
@@ -111,6 +112,28 @@ describe("parameter action panels", () => {
     expect(hasRule(stylesheet, ".action-panel .full")).toBe(false);
     expect(hasRule(stylesheet, ".button.full")).toBe(false);
     expect(declarationFor(parameterReviewStylesheet, ".review-merge-link", "grid-column")).toBeUndefined();
+  });
+
+  it("bounds the unified inbox table and keeps inspector actions out of sticky code overlays", () => {
+    const stylesheet = readStylesheet("src/features/parameter-review/parameter-review.css");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap table", "table-layout")).toBe("fixed");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap table", "min-width")).toBe("0");
+    expect(declarationFor(stylesheet, ".review-inbox__summary", "text-overflow")).toBe("ellipsis");
+    expect(declarationFor(stylesheet, ".review-inbox__summary", "overflow")).toBe("hidden");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "white-space")).toBe("nowrap");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "overflow-wrap")).toBe("normal");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap td:not(.change-cell)", "overflow")).toBe("hidden");
+    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap td:not(.change-cell)", "text-overflow")).toBe("ellipsis");
+    for (const [column, width] of Object.entries({ type: "13%", project: "16%", module: "12%", submitter: "15%", time: "12%", status: "11%" })) {
+      expect(declarationFor(stylesheet, `.review-inbox__${column}-column`, "width")).toBe(width);
+    }
+    expect(declarationFor(stylesheet, ".review-inbox__summary-column", "width")).toBe("auto");
+    expect(declarationFor(stylesheet, ".review-inbox__chip", "white-space")).toBe("nowrap");
+    expect(declarationFor(stylesheet, ".review-inbox__chip", "overflow")).toBe("hidden");
+    expect(declarationFor(stylesheet, ".review-inbox__chip", "text-overflow")).toBe("ellipsis");
+    expect(hasRule(stylesheet, ".review-inbox .review-detail footer.dialog-actions")).toBe(false);
+    expect(declarationFor(stylesheet, ".review-inspector__actions", "position")).toBeUndefined();
+    expect(declarationFor(stylesheet, ".review-inbox .review-inspector__meta dt", "color")).toBe("var(--text-muted)");
   });
 
   it("keeps the software merge field and confirmation in the same hook-free action panel", () => {

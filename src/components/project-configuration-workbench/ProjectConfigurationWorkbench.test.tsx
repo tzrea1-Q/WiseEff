@@ -6,6 +6,7 @@ import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredR
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import {
   ProjectConfigurationWorkbench,
   type ProjectConfigurationWorkbenchProps
@@ -412,6 +413,62 @@ const BOARD_STRUCTURE = {
 };
 
 describe("ProjectConfigurationWorkbench", () => {
+  it.each([
+    ["unified-diff", "选择要对比的版本"],
+    ["side-by-side", "选择要对比的版本"],
+    ["candidate", "暂无上传的候选"],
+    ["history", "暂无历史版本"]
+  ])("respects the requested empty %s mode without navigating away", async (canvasMode, title) => {
+    const { onNavigate } = renderWorkbench({
+      search: `?configSet=cs-default&file=file-board&sourceMode=${canvasMode}`,
+      canAdmin: false
+    });
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("main", { name: "只读 DTS 源码" })).queryByRole("button", { name: "上传候选" })).not.toBeInTheDocument();
+  });
+
+  it("opens version history from the canvas without changing the requested mode", async () => {
+    const { onNavigate } = renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&sourceMode=unified-diff",
+      fileRepository: createFileRepository({ listVersions: vi.fn(async () => [{
+        id: "version-board-11", fileId: "file-board", versionNumber: 11,
+        checksum: "checksum", sizeBytes: 0, parsedIndex: {}, origin: "upload" as const,
+        createdAt: "2026-08-06T08:00:00.000Z", createdByUserId: "user-admin"
+      }]) })
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "选择版本" }));
+    expect(await screen.findByRole("region", { name: "不可变版本历史" })).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it.each(["unified-diff", "side-by-side"])("returns explicitly from an unavailable %s version to working source", async (canvasMode) => {
+    const { onNavigate } = renderWorkbench({
+      search: `?configSet=cs-default&file=file-board&sourceMode=${canvasMode}&version=removed`,
+      syncSearch: true,
+      fileRepository: createFileRepository({ downloadVersion: vi.fn(async (_projectId, _fileId, versionId) => {
+        if (versionId === "removed") throw new WiseEffApiError("NOT_FOUND", "missing", {}, "request");
+        return { contentType: "text/plain", fileName: "board.dts", bytes: new TextEncoder().encode("working") };
+      }) })
+    });
+    expect(await screen.findByText("对比版本不可用")).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "返回工作源" }));
+    await waitFor(() => expect(screen.queryByText("对比版本不可用")).not.toBeInTheDocument());
+    expect(onNavigate.mock.calls.some(([path]) => String(path).includes("sourceMode="))).toBe(false);
+  });
+
+  it.each(["unified-diff", "side-by-side"])("renders an identical valid empty %s without a failure", async (canvasMode) => {
+    renderWorkbench({
+      search: `?configSet=cs-default&file=file-board&sourceMode=${canvasMode}&version=empty`,
+      fileRepository: createFileRepository({ downloadVersion: vi.fn(async () => ({
+        contentType: "text/plain", fileName: "board.dts", bytes: new Uint8Array()
+      })) })
+    });
+    expect(await screen.findByText("两个版本没有差异")).toBeInTheDocument();
+    expect(screen.queryByText("源码读取失败")).not.toBeInTheDocument();
+  });
+
   it.each(["approve", "reject", "withdraw"])("refreshes mounted readiness after canonical %s and on focus or visibility", async () => {
     const ready = await createDtsRepository().getReleaseReadiness(PROJECT.id, "cs-default");
     let pending = true;

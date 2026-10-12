@@ -1,11 +1,6 @@
-import { TabPanel } from "@/components/ui/tab-panel";
-import { ColumnFilter } from "@/components/ColumnFilter";
-import { ViewSwitch } from "@/components/ui/view-switch";
-import { toggleFilterValue, uniqueFilterValues } from "@/components/tableFilterUtils";
 import { canPerform } from "@/app/permissions";
 import { type PageProps } from "@/app/routes";
 import { toLegacyInitializationReview } from "@/application/parameters/initializationUiMappers";
-import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
@@ -20,7 +15,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isValidMergeLink } from "@/domain/parameters/mergeLink";
@@ -29,11 +23,7 @@ import { canActOnReviewRequest, isReviewHistoryForRole, splitChangeRequestsForRe
 import { type ProjectParameterInitializationDraft, type ProjectParameterInitializationReview } from "@/domain/parameters/types";
 import { type ChangeRequest, type ParameterSubmissionRound } from "@/domain/prototype/types";
 import { migrateLegacyRoleId } from "@/domain/users/types";
-import { legacyModuleIdFromName } from "@/domain/modules/moduleTree";
-import { collectTreeFilterSelectedDescendantIds, type TreeFilterNode } from "@/domain/tree-filter/treeFilter";
-import { buildPowerManagementModuleTree } from "@/powerManagementConfig";
 import {
-  StatusBadge,
   VerticalTimeline,
   findRetainedSubmissionRound,
   formatWorkflowDisplayText,
@@ -49,13 +39,14 @@ import {
   shouldShowSubmissionRoundSummary
 } from "@/features/parameter-review/submissionHistoryDiff";
 import { shouldSummarizeReviewChange } from "@/parameterValueKind";
-import { EmptyState, PanelHeader, SectionLabel, WorkbenchLayout, getContextQuery } from "@/workbenchUi";
-import { useReviewQueueKeyboard } from "@/features/parameter-review/useReviewQueueKeyboard";
-import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { EmptyState, SectionLabel, WorkbenchLayout, getContextQuery } from "@/workbenchUi";
+import { CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import "./parameter-review.css";
-import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
-import { CanonicalMemberRemovalReviewPanel } from "./CanonicalMemberRemovalReviewPanel";
+import { ReviewInbox, type ReviewInboxRow } from "./ReviewInbox";
+import { ReviewProvenance } from "./ReviewProvenance";
+import { StatusBadge } from "./reviewUi";
+import { ReviewImpactList } from "@/components/parameters/ReviewImpactList";
 
 type ParameterReviewMode = "pending" | "history";
 type ParameterInitializationReviewRow = {
@@ -86,8 +77,10 @@ export function ParameterReviewPage({
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [reviewProjection, setReviewProjection] = useState<{
     projectId: string;
+    userId: string;
     requests: ChangeRequest[];
     rounds: ParameterSubmissionRound[];
+    error: string | null;
   } | null>(null);
   const reviewProjectId = getContextQuery(search).projectId || state.activeProjectId;
   const parameterRepository = runtime?.parameterRepository;
@@ -99,26 +92,28 @@ export function ParameterReviewPage({
       parameterRepository.listChangeRequests({ projectId: reviewProjectId }),
       parameterRepository.listSubmissionRounds({ projectId: reviewProjectId })
     ]).then(([requests, rounds]) => {
-      if (!cancelled) setReviewProjection({ projectId: reviewProjectId, requests, rounds });
+      if (!cancelled) setReviewProjection({ projectId: reviewProjectId, userId: state.currentUserId, requests, rounds, error: null });
     }).catch((error) => {
       if (!cancelled) {
-        setReviewProjection({ projectId: reviewProjectId, requests: [], rounds: [] });
+        setReviewProjection({ projectId: reviewProjectId, userId: state.currentUserId, requests: [], rounds: [],
+          error: presentError(error, "审阅记录加载失败，请稍后重试。") });
         dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "审阅记录加载失败，请稍后重试。") });
       }
     });
     return () => { cancelled = true; };
-  }, [dispatch, reviewProjectId, parameterRepository, runtimeMode, refreshVersion]);
+  }, [dispatch, reviewProjectId, parameterRepository, runtimeMode, refreshVersion, state.currentUserId]);
+  const currentReviewProjection = reviewProjection?.projectId === reviewProjectId && reviewProjection.userId === state.currentUserId
+    ? reviewProjection : null;
   if (runtimeMode === "api" && parameterRepository) {
     state = {
       ...state,
-      changeRequests: reviewProjection?.projectId === reviewProjectId ? reviewProjection.requests : [],
-      parameterSubmissionRounds: reviewProjection?.projectId === reviewProjectId ? reviewProjection.rounds : []
+      changeRequests: currentReviewProjection?.requests ?? [],
+      parameterSubmissionRounds: currentReviewProjection?.rounds ?? []
     };
   }
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
   const searchParams = new URLSearchParams(search);
   const requestedUrlRequestId = searchParams.get("request") ?? "";
-  const requestedMemberRequestId = searchParams.get("memberRequest") ?? "";
   const requestedLegacyQueryId = searchParams.get("legacyRequest") ?? "";
   const reviewerRoleId = migrateLegacyRoleId(state.activeRoleId);
   const requestedLegacyStateId = requestedLegacyQueryId || (
@@ -155,22 +150,12 @@ export function ParameterReviewPage({
   const [detailOpen, setDetailOpen] = useState(false);
   const [mergeLink, setMergeLink] = useState("");
   const [batchSelectedIds, setBatchSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [visibleLegacyIds, setVisibleLegacyIds] = useState<string[] | null>(null);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [reviewMode, setReviewMode] = useState<ParameterReviewMode>(requestedLegacyIsHistory ? "history" : "pending");
-  useEffect(() => {
-    if (requestedLegacyIsHistory) {
-      setSelectedId(requestedLegacyStateId);
-      setReviewMode("history");
-    }
-  }, [requestedLegacyIsHistory, requestedLegacyStateId]);
-  const [filterModules, setFilterModules] = useState<string[]>([]);
-  const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
-  const [filterProjects, setFilterProjects] = useState<string[]>([]);
-  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const reviewProjectionPending = runtimeMode === "api" && parameterRepository && reviewProjection?.projectId !== reviewProjectId;
-  const requestedRequestId = requestedLegacyStateId || reviewProjectionPending ? "" : requestedUrlRequestId;
+  const reviewProjectionPending = runtimeMode === "api" && parameterRepository && !currentReviewProjection;
   const canonicalProjectId = contextQuery.projectId || state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const canReviewCanonical = Boolean(currentUser?.isActive && currentUser.roles?.some((role) =>
@@ -258,119 +243,11 @@ export function ParameterReviewPage({
     };
     return values[field];
   }, [state.configDraft.projects, state.parameters, state.parameterSubmissionRounds, state.users]);
-  const modules = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...visibleInitializationRows.flatMap((row) => row.draft.parameterSnapshots.map((snapshot) => snapshot.module)),
-          ...visibleRequests.map((r) => r.module)
-        ])
-      ),
-    [visibleInitializationRows, visibleRequests]
-  );
-  const reviewModuleSources = useMemo(() => {
-    const sources = new Map<string, { moduleId?: string; modulePath?: string[] }>();
-    for (const parameter of state.parameters) {
-      const moduleName = parameter.module.trim();
-      if (moduleName && !sources.has(moduleName)) {
-        sources.set(moduleName, {
-          moduleId: parameter.moduleId,
-          modulePath: parameter.modulePath
-        });
-      }
-    }
-    return sources;
-  }, [state.parameters]);
-  const reviewModuleRegistry = useMemo(
-    () => buildPowerManagementModuleTree(state.configDraft.parameterModules, modules),
-    [modules, state.configDraft.parameterModules]
-  );
-  const reviewModuleIdsByName = useMemo(
-    () => new Map(reviewModuleRegistry.map((node) => [node.name, node.id])),
-    [reviewModuleRegistry]
-  );
-  const reviewModuleFilterNodes = useMemo<TreeFilterNode[]>(
-    () =>
-      buildParameterModuleFilterNodes(
-        modules.map((moduleName) => {
-          const source = reviewModuleSources.get(moduleName);
-          return {
-            moduleId: reviewModuleIdsByName.get(moduleName) ?? source?.moduleId ?? legacyModuleIdFromName(moduleName),
-            moduleName,
-            modulePath: source?.modulePath
-          };
-        }),
-        reviewModuleRegistry.map((node) => ({
-          id: node.id,
-          name: node.name,
-          parentId: node.parentId,
-          sortOrder: node.sortOrder
-        }))
-      ),
-    [modules, reviewModuleIdsByName, reviewModuleRegistry, reviewModuleSources]
-  );
-  const activeReviewModuleIds = useMemo(
-    () => collectTreeFilterSelectedDescendantIds(reviewModuleFilterNodes, filterModules),
-    [filterModules, reviewModuleFilterNodes]
-  );
-  const reviewRows = useMemo<ParameterReviewRow[]>(
-    () =>
-      unfilteredReviewRows.filter((row) => {
-        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "projectId"))) return false;
-        if (filterModules.length) {
-          if (row.kind === "initialization") {
-            if (
-              !row.draft.parameterSnapshots.some((snapshot) =>
-                activeReviewModuleIds.has(reviewModuleIdsByName.get(snapshot.module) ?? legacyModuleIdFromName(snapshot.module))
-              )
-            ) return false;
-          } else if (
-            !activeReviewModuleIds.has(
-              reviewModuleIdsByName.get(getReviewRowField(row, "module")) ??
-                legacyModuleIdFromName(getReviewRowField(row, "module"))
-            )
-          ) {
-            return false;
-          }
-        }
-        if (filterSubmitters.length && !filterSubmitters.includes(getReviewRowField(row, "submitter"))) return false;
-        if (filterStatuses.length && !filterStatuses.includes(getReviewRowField(row, "status"))) return false;
-        return true;
-      }),
-    [
-      activeReviewModuleIds,
-      filterModules,
-      filterProjects,
-      filterStatuses,
-      filterSubmitters,
-      getReviewRowField,
-      reviewModuleIdsByName,
-      unfilteredReviewRows
-    ]
-  );
+  const reviewRows = unfilteredReviewRows;
   const selectedRow = reviewRows.find((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId) ?? reviewRows[0] ?? null;
   const selected = selectedRow?.kind === "change" ? selectedRow.request : null;
   const selectedInitialization = selectedRow?.kind === "initialization" ? selectedRow : null;
-
-  const submitters = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...visibleInitializationRows.map((row) => resolveRetainedUserName(state.users, row.review.submittedBy)),
-          ...visibleRequests.map((r) => r.submitter)
-        ])
-      ),
-    [visibleInitializationRows, visibleRequests, state.users]
-  );
-  const projectOptions = useMemo(() => {
-    return unfilteredReviewRows.map((row) => ({
-      id: getReviewRowField(row, "projectId"),
-      name: getReviewRowField(row, "project")
-    })).filter(
-      (project, index, allProjects) => project.id && allProjects.findIndex((item) => item.id === project.id) === index
-    );
-  }, [getReviewRowField, unfilteredReviewRows]);
-  const statusOptions = useMemo(() => uniqueFilterValues(unfilteredReviewRows, (row) => getReviewRowField(row, "status")), [getReviewRowField, unfilteredReviewRows]);
+  const selectedCreatedAt = selected?.createdAtTs || selected?.createdAt || "";
 
   const selectedRound = useMemo(() => {
     if (!selected?.submissionRoundId) return null;
@@ -402,7 +279,7 @@ export function ParameterReviewPage({
           unit: parameter?.unit ?? "",
           risk: parameter?.risk ?? "Medium",
           valueKind: selected.valueKind ?? parameter?.valueKind ?? "scalar",
-          reason: selected.aiSummary
+          reason: ""
         }
       ]
     };
@@ -438,96 +315,7 @@ export function ParameterReviewPage({
     setMergeLink("");
   }, [selectedId]);
 
-  // Keep the selection shareable without polluting browser history.
-  useEffect(() => {
-    if (!selectedId || !window.location.pathname.startsWith("/parameter-review")) {
-      return;
-    }
-    const params = new URLSearchParams(window.location.search);
-    const queryRequestId = params.get("request");
-    const queryIsLegacy = Boolean(
-      queryRequestId && (
-        state.changeRequests.some((request) => request.id === queryRequestId)
-        || state.parameterInitializationReviews.some((review) => review.id === queryRequestId)
-      )
-    );
-    const isLegacySelection = state.changeRequests.some((request) => request.id === selectedId)
-      || state.parameterInitializationReviews.some((review) => review.id === selectedId);
-    // A canonical request is owned by the v2 panel. The legacy queue must not
-    // overwrite its shareable request id with the first legacy row.
-    if (runtimeMode === "api" && queryRequestId && !queryIsLegacy) {
-      return;
-    }
-    if (runtimeMode === "api" && params.get("legacyRequest") && !isLegacySelection) {
-      return;
-    }
-    if (runtimeMode === "api") {
-      if (!isLegacySelection) {
-        return;
-      }
-      if (params.get("legacyRequest") === selectedId && !params.get("request")) {
-        return;
-      }
-      params.delete("request");
-      params.set("legacyRequest", selectedId);
-    } else {
-      if (params.get("request") === selectedId) {
-        return;
-      }
-      params.set("request", selectedId);
-    }
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-  }, [runtimeMode, selectedId, state.changeRequests, state.parameterInitializationReviews]);
 
-  useEffect(() => {
-    if ((!contextQuery.module && !contextQuery.projectId) || requestedUrlRequestId || requestedLegacyQueryId) {
-      return;
-    }
-
-    const matchingRequest = state.changeRequests.find((request) => {
-      const parameter = state.parameters.find((item) => item.id === request.parameterId);
-      const projectMatches = !contextQuery.projectId || (request.projectId ?? parameter?.projectId) === contextQuery.projectId;
-      const moduleMatches = !contextQuery.module || request.module === contextQuery.module;
-
-      return projectMatches && moduleMatches;
-    });
-
-    if (matchingRequest) {
-      setReviewMode(
-        matchingRequest.status === "已合入" || isReviewHistoryForRole(reviewerRoleId, matchingRequest)
-          ? "history"
-          : "pending"
-      );
-      setSelectedId(matchingRequest.id);
-    }
-  }, [contextQuery.module, contextQuery.projectId, requestedLegacyQueryId, requestedUrlRequestId, reviewerRoleId, state.changeRequests, state.parameters]);
-
-  useEffect(() => {
-    if (!selectedId || reviewMode !== "pending") {
-      return;
-    }
-
-    const request = state.changeRequests.find((item) => item.id === selectedId);
-    if (request && (
-      request.status === "已合入"
-      || request.status === "已打回"
-      || isReviewHistoryForRole(reviewerRoleId, request)
-    )) {
-      setReviewMode("history");
-      return;
-    }
-    const initialization = state.parameterInitializationReviews.find((item) => item.id === selectedId);
-    if (initialization && initialization.status !== "pending") {
-      setReviewMode("history");
-    }
-  }, [reviewMode, reviewerRoleId, selectedId, state.changeRequests, state.parameterInitializationReviews]);
-
-  useEffect(() => {
-    if (reviewRows.length && !reviewRows.some((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId)) {
-      const firstRow = reviewRows[0];
-      setSelectedId(firstRow.kind === "initialization" ? firstRow.review.id : firstRow.request.id);
-    }
-  }, [reviewRows, selectedId]);
 
   const dispatchParameterActionFailure = (result: Awaited<ReturnType<NonNullable<PageProps["parameterActions"]>["reviewChange"]>>) => {
     if (result && "notification" in result) {
@@ -607,16 +395,6 @@ export function ParameterReviewPage({
     setSelectedId(request.id);
     setDetailOpen(true);
   };
-  const selectReviewMode = (mode: ParameterReviewMode) => {
-    setReviewMode(mode);
-    setFilterModules([]);
-    setFilterSubmitters([]);
-    setFilterProjects([]);
-    setFilterStatuses([]);
-    setDetailOpen(false);
-    setSelectedId("");
-  };
-  const reviewMeta = reviewMode === "history" ? `${reviewRows.length} 项历史审阅` : `${reviewRows.length} 项待处理`;
   // Batch advance targets review stages only: the merge stage (软件User合入)
   // requires a per-request merge link and stays single-item.
   const batchableRequests = useMemo(
@@ -624,13 +402,14 @@ export function ParameterReviewPage({
       reviewMode === "pending"
         ? reviewRows.flatMap((row) =>
             row.kind === "change" &&
+            (visibleLegacyIds === null || visibleLegacyIds.includes(row.request.id)) &&
             row.request.status !== "软件User合入" &&
             canActOnReviewRequest(reviewerRoleId, row.request)
               ? [row.request]
               : []
           )
         : [],
-    [reviewMode, reviewRows, reviewerRoleId]
+    [reviewMode, reviewRows, reviewerRoleId, visibleLegacyIds]
   );
   const batchableIds = useMemo(() => new Set(batchableRequests.map((request) => request.id)), [batchableRequests]);
   const selectedBatchRequests = batchableRequests.filter((request) => batchSelectedIds.has(request.id));
@@ -699,26 +478,22 @@ export function ParameterReviewPage({
   const canActOnSelectedReview = selected ? canActOnReviewRequest(reviewerRoleId, selected) : false;
   const canRejectSelectedReview = canPerform(reviewerRoleId, "parameter.review");
   const reviewPageTitle = canPerform(reviewerRoleId, "parameter.review") ? "参数管理员工作台" : "参数合入工作台";
-  const reviewRowIds = useMemo(
-    () => reviewRows.map((row) => (row.kind === "initialization" ? row.review.id : row.request.id)),
-    [reviewRows]
-  );
-  const queueRef = useRef<HTMLElement | null>(null);
-  const detailRef = useRef<HTMLElement | null>(null);
-  const openSelectedSubmissionDetail = useCallback(() => {
-    if (selected) {
-      openSubmissionDetail(selected);
-    }
-  }, [selected]);
-  useReviewQueueKeyboard({
-    enabled: true,
-    rowIds: reviewRowIds,
-    selectedId,
-    onSelect: setSelectedId,
-    onOpenSelected: openSelectedSubmissionDetail,
-    queueRef,
-    detailRef
-  });
+  const selectLegacyRequest = useCallback((id: string | null, view: ParameterReviewMode) => {
+    setSelectedId(id ?? "");
+    setReviewMode(view);
+    setRejectOpen(false);
+  }, []);
+  const inboxLegacyRows: ReviewInboxRow[] = [
+    ...pendingInitializationRows.map((row) => ({ row, view: "pending" as const })),
+    ...historyInitializationRows.map((row) => ({ row, view: "history" as const })),
+    ...pendingRequests.map((request) => ({ row: { kind: "change" as const, request }, view: "pending" as const })),
+    ...historyRequests.map((request) => ({ row: { kind: "change" as const, request }, view: "history" as const }))
+  ].map(({ row, view }) => ({ id: getReviewRowField(row, "id"), kind: "legacy", view,
+    projectId: getReviewRowField(row, "projectId"), project: getReviewRowField(row, "project"),
+    module: getReviewRowField(row, "module"), title: row.kind === "change" ? row.request.title : `${row.draft.projectName} 初始化`,
+    submitter: getReviewRowField(row, "submitter"), status: getReviewRowField(row, "status"),
+    createdAt: row.kind === "change" ? row.request.createdAtTs || row.request.createdAt : row.review.submittedAt
+  }));
   const mergeUrl =
     selected?.status === "已合入" && selected.reviewerNote && isValidMergeLink(selected.reviewerNote)
       ? selected.reviewerNote.trim()
@@ -781,72 +556,28 @@ export function ParameterReviewPage({
       })()
     : [];
 
-  const selectCanonicalRequest = useCallback((requestId: string | null) => {
-    const params = new URLSearchParams(window.location.search);
-    if (canonicalProjectId) {
-      params.set("project", canonicalProjectId);
-    }
-    params.delete("legacyRequest");
-    if (requestId) {
-      params.set("request", requestId);
-    } else {
-      params.delete("request");
-    }
-    const query = params.toString();
-    window.history.replaceState(null, "", `/parameter-review${query ? `?${query}` : ""}`);
-  }, [canonicalProjectId]);
-
-  const selectMemberRequest = useCallback((requestId: string) => {
-    const params = new URLSearchParams(window.location.search);
-    if (canonicalProjectId) params.set("project", canonicalProjectId);
-    params.set("memberRequest", requestId);
-    window.history.replaceState(null, "", `/parameter-review?${params.toString()}`);
-  }, [canonicalProjectId]);
-
   return (
     <WorkbenchLayout title={reviewPageTitle}>
-      {runtimeMode === "api" && canonicalProjectId ? (
-        <><CanonicalProjectValueReviewPanel
-          key={canonicalProjectId}
-          projectId={canonicalProjectId}
-          repository={runtime?.parameterCatalogRepository}
-          currentUserId={state.currentUserId}
-          canReview={canReviewCanonical}
-          initialRequestId={requestedRequestId || undefined}
-          onSelectRequest={selectCanonicalRequest}
-        />
-        <CanonicalMemberRemovalReviewPanel
-          key={`member:${canonicalProjectId}`}
-          projectId={canonicalProjectId}
-          repository={runtime?.parameterCatalogRepository}
-          currentUserId={state.currentUserId}
-          canReview={canReviewCanonical}
-          initialRequestId={requestedMemberRequestId || undefined}
-          onSelectRequest={selectMemberRequest}
-        /></>
-      ) : null}
-      <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby="review-queue-heading">
-        <div className="review-queue-header">
-          <h2 id="review-queue-heading" className="sr-only">
-            审阅队列
-          </h2>
-          <PanelHeader
-            title={
-              <ViewSwitch variant="tabs" ariaLabel="审阅视角" value={reviewMode}
-                onValueChange={(value) => selectReviewMode(value as ParameterReviewMode)} items={[
-                  { mode: "pending" as const, label: "待审阅", count: pendingRequests.length + pendingInitializationRows.length },
-                  { mode: "history" as const, label: "历史审阅", count: historyRequests.length + historyInitializationRows.length }
-                ].map((item) => ({ value: item.mode, id: `review-${item.mode}-tab`, panelId: `review-${item.mode}-panel`,
-                  label: <>{item.label}<span aria-hidden="true">{item.count}</span></> }))} />
-            }
-            meta={reviewMeta}
-          />
-        </div>
-        <TabPanel role="tabpanel" id={`review-${reviewMode}-panel`} aria-labelledby={`review-${reviewMode}-tab`}>
-        {runtimeMode === "api" && reviewMode === "history" ? (
-          <p role="note">此处的旧版审阅记录仅作为只读归档，不能作为当前新版请求继续处理。</p>
-        ) : null}
-        {reviewMode === "pending" && batchableRequests.length > 0 ? (
+      <ReviewInbox projectId={canonicalProjectId} repository={runtimeMode === "api" ? runtime?.parameterCatalogRepository : undefined}
+        state={state} search={search} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
+        loading={Boolean(reviewProjectionPending)} error={currentReviewProjection?.error}
+        onRequestsChanged={() => setRefreshVersion((version) => version + 1)}
+        onVisibleLegacyIds={setVisibleLegacyIds}
+        renderRowTitle={(row) => {
+          if (row.kind !== "legacy") return row.title;
+          const request = state.changeRequests.find((item) => item.id === row.id);
+          if (!request) return row.title;
+          const parameter = state.parameters.find((item) => item.id === request.parameterId);
+          return shouldSummarizeReviewChange(request, parameter)
+            ? <ReviewChangeValueSummary layout="complex" parameter={parameter} request={request} />
+            : <><span className="value-change__title">{row.title}</span><ReviewChangeValueSummary parameter={parameter} request={request} /></>;
+        }}
+        onLegacySelect={selectLegacyRequest} onOpenLegacy={(id) => {
+          const request = state.changeRequests.find((item) => item.id === id);
+          if (request) openSubmissionDetail(request);
+        }}
+        queueActions={<>
+          {reviewMode === "pending" && batchableRequests.length > 0 ? (
           <div className="review-batch-toolbar" role="toolbar" aria-label="批量审阅操作">
             <span className="review-batch-toolbar__hint">
               {selectedBatchRequests.length > 0
@@ -862,203 +593,6 @@ export function ParameterReviewPage({
             </Button>
           </div>
         ) : null}
-        <div className="table-wrap review-table-wrap">
-          <Table aria-label="审阅队列" id="review-queue-table">
-            <TableHeader>
-              <TableRow>
-                {reviewMode === "pending" && batchableRequests.length > 0 ? (
-                  <TableHead className="review-batch-header">
-                    <input
-                      type="checkbox"
-                      aria-label="全选可批量通过的变更"
-                      checked={batchableRequests.length > 0 && batchableRequests.every((request) => batchSelectedIds.has(request.id))}
-                      onChange={toggleBatchAll}
-                    />
-                  </TableHead>
-                ) : null}
-                <TableHead className="review-filter-header">
-                  <div className="review-column-filter-head">
-                    <span>项目</span>
-                    <ColumnFilter
-                      label="项目"
-                      groupLabel="项目筛选"
-                      values={projectOptions.map((project) => project.id)}
-                      renderLabel={(projectId) => {
-                        const project = projectOptions.find((item) => item.id === projectId);
-                        if (project && projectOptions.some((item) => item.id !== projectId && item.name === project.name)) {
-                          return `${project.name}（${projectId}）`;
-                        }
-                        return project?.name ?? projectId;
-                      }}
-                      selectedValues={filterProjects}
-                      onToggle={(project) => setFilterProjects((current) => toggleFilterValue(current, project))}
-                      onClear={() => setFilterProjects([])}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className="review-filter-header">
-                  <div className="review-column-filter-head">
-                    <span>模块</span>
-                    <ColumnFilter
-                      label="模块"
-                      groupLabel="模块筛选"
-                      mode="tree"
-                      treeNodes={reviewModuleFilterNodes}
-                      selectedTreeIds={filterModules}
-                      treeSearchable
-                      onTreeChange={setFilterModules}
-                      onClear={() => setFilterModules([])}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className="review-filter-header">
-                  <div className="review-column-filter-head">
-                    <span>提交人</span>
-                    <ColumnFilter
-                      label="提交人"
-                      groupLabel="提交人筛选"
-                      values={submitters}
-                      selectedValues={filterSubmitters}
-                      onToggle={(submitter) => setFilterSubmitters((current) => toggleFilterValue(current, submitter))}
-                      onClear={() => setFilterSubmitters([])}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className="review-filter-header">
-                  <div className="review-column-filter-head">
-                    <span>变更</span>
-                  </div>
-                </TableHead>
-                <TableHead className="review-filter-header">
-                  <div className="review-column-filter-head">
-                    <span>状态</span>
-                    <ColumnFilter
-                      label="状态"
-                      groupLabel="状态筛选"
-                      values={statusOptions}
-                      selectedValues={filterStatuses}
-                      onToggle={(status) => setFilterStatuses((current) => toggleFilterValue(current, status))}
-                      onClear={() => setFilterStatuses([])}
-                    />
-                  </div>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reviewRows.map((row) => {
-                const showBatchColumn = reviewMode === "pending" && batchableRequests.length > 0;
-                if (row.kind === "initialization") {
-                  return (
-                    <TableRow
-                      className={row.review.id === selectedInitialization?.review.id ? "selected-row" : ""}
-                      key={row.review.id}
-                      data-review-row-id={row.review.id}
-                      aria-selected={row.review.id === selectedInitialization?.review.id}
-                      tabIndex={row.review.id === selectedInitialization?.review.id ? 0 : -1}
-                      onClick={() => setSelectedId(row.review.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setSelectedId(row.review.id);
-                        }
-                      }}
-                    >
-                      {showBatchColumn ? <TableCell className="review-batch-cell" /> : null}
-                      <TableCell>{row.draft.projectName}</TableCell>
-                      <TableCell>参数初始化</TableCell>
-                      <TableCell>{resolveRetainedUserName(state.users, row.review.submittedBy)}</TableCell>
-                      <TableCell className="change-cell">
-                        <button
-                          className="value-change value-change-button"
-                          type="button"
-                          aria-label={`查看 ${row.draft.projectName} 初始化详情`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelectedId(row.review.id);
-                          }}
-                        >
-                          <strong>{row.draft.projectName}</strong>
-                          <ArrowRight size={14} />
-                          <span>{row.draft.parameterSnapshots.length} 项参数</span>
-                        </button>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={getParameterInitializationReviewStatusLabel(row.review.status)} />
-                      </TableCell>
-                    </TableRow>
-                  );
-                }
-
-                const { request } = row;
-                const parameter = state.parameters.find((item) => item.id === request.parameterId);
-                const isComplexReviewChange = shouldSummarizeReviewChange(request, parameter);
-
-                return (
-                  <TableRow
-                    className={request.id === selected?.id ? "selected-row" : ""}
-                    key={request.id}
-                    data-review-row-id={request.id}
-                    aria-selected={request.id === selected?.id}
-                    tabIndex={request.id === selected?.id ? 0 : -1}
-                    onClick={() => setSelectedId(request.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setSelectedId(request.id);
-                      }
-                    }}
-                  >
-                    {showBatchColumn ? (
-                      <TableCell className="review-batch-cell">
-                        {batchableIds.has(request.id) ? (
-                          <input
-                            type="checkbox"
-                            aria-label={`选择 ${request.title} 加入批量通过`}
-                            checked={batchSelectedIds.has(request.id)}
-                            onClick={(event) => event.stopPropagation()}
-                            onChange={() => toggleBatchId(request.id)}
-                          />
-                        ) : null}
-                      </TableCell>
-                    ) : null}
-                    <TableCell>{getReviewRowField(row, "project")}</TableCell>
-                    <TableCell>{request.module}</TableCell>
-                    <TableCell>{request.submitter}</TableCell>
-                    <TableCell className="change-cell">
-                      <button
-                        className={[
-                          "value-change",
-                          "value-change-button",
-                          isComplexReviewChange ? "value-change-button--complex" : ""
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        type="button"
-                        aria-label={`查看 ${request.title} 提交详情`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openSubmissionDetail(request);
-                        }}
-                      >
-                        {isComplexReviewChange ? (
-                          <ReviewChangeValueSummary layout="complex" parameter={parameter} request={request} />
-                        ) : (
-                          <>
-                            <span className="value-change__title">{request.title}</span>
-                            <ReviewChangeValueSummary parameter={parameter} request={request} />
-                          </>
-                        )}
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={request.status} />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          {reviewRows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
           <ConfirmDialog
             open={batchConfirmOpen}
             title="确认批量通过"
@@ -1077,15 +611,13 @@ export function ParameterReviewPage({
             }}
             onConfirm={() => void runBatchAdvance()}
           />
-        </div>
-        </TabPanel>
-        <div role="tabpanel" id={`review-${reviewMode === "pending" ? "history" : "pending"}-panel`}
-          aria-labelledby={`review-${reviewMode === "pending" ? "history" : "pending"}-tab`} hidden />
-      </section>
-      <aside className="review-detail" ref={detailRef} tabIndex={-1} aria-labelledby="review-detail-heading">
-        <h2 id="review-detail-heading" className="sr-only">
-          审阅详情
-        </h2>
+        </>}
+        selectAll={batchableRequests.length ? <input type="checkbox" aria-label="全选可批量通过的变更"
+          checked={batchableRequests.every((request) => batchSelectedIds.has(request.id))} onChange={toggleBatchAll} /> : null}
+        renderRowSelection={batchableRequests.length ? (row) => batchableIds.has(row.id) ? <input type="checkbox"
+          aria-label={`选择 ${row.title} 加入批量通过`} checked={batchSelectedIds.has(row.id)}
+          onClick={(event) => event.stopPropagation()} onChange={() => toggleBatchId(row.id)} /> : null : undefined}
+        renderLegacyDetail={() => <>
         {selectedInitialization ? (
           <>
             <div className="detail-card">
@@ -1096,7 +628,7 @@ export function ParameterReviewPage({
               </p>
             </div>
             <div className="ai-summary-card">
-              <SectionLabel icon={<Sparkles size={16} />} label="初始化摘要" />
+              <SectionLabel icon={<Sparkles size={16} />} label="变更摘要" />
               <p>项目：{selectedInitialization.draft.projectName}</p>
               <p>
                 主来源：{selectedInitializationPrimarySource?.name ?? selectedInitialization.draft.primarySourceProjectId}
@@ -1104,6 +636,15 @@ export function ParameterReviewPage({
               <p>已选参数：{selectedInitialization.draft.parameterSnapshots.length}</p>
               <p>补充来源填充：{selectedInitializationSupplementCount}</p>
               <p>需确认推荐值：{selectedInitializationConfirmationCount}</p>
+            </div>
+            <div className="detail-card">
+              <h3>前后对比</h3>
+              <p>新项目初始化：从固定来源参数快照建立推荐值。</p>
+              <ol>{selectedInitialization.draft.parameterSnapshots.map((snapshot) => <li key={snapshot.parameterId}>
+                {state.parameters.find((parameter) => parameter.id === snapshot.parameterId)?.name ?? snapshot.parameterId}：未初始化 → {snapshot.recommendedValue}
+              </li>)}</ol>
+              <h3>影响范围</h3>
+              <p>{selectedInitialization.draft.projectName} · {selectedInitialization.draft.parameterSnapshots.length} 项参数</p>
             </div>
             {selectedInitialization.review.rejectionReason ? (
               <div className="rejection-reason-card">
@@ -1175,21 +716,31 @@ export function ParameterReviewPage({
                 </Button>
               </div>
             ) : null}
+            <ReviewProvenance key={selectedInitialization.review.id} entries={[
+              { label: "请求 ID", value: selectedInitialization.review.id },
+              { label: "草稿 ID", value: selectedInitialization.draft.id },
+              { label: "项目 ID", value: selectedInitialization.draft.projectId },
+              { label: "提交人 ID", value: selectedInitialization.review.submittedBy },
+              { label: "提交时间", value: selectedInitialization.review.submittedAt }
+            ]} />
           </>
         ) : selected ? (
           <>
             <div className="ai-summary-card review-detail-hero">
               <div className="review-detail-hero__header">
-                <span className="eyebrow">{selectedProjectName}</span>
+                <span className="eyebrow">旧版 · {selectedProjectName}</span>
                 <h3>{selected.title}</h3>
+                <StatusBadge status={selected.status} />
                 <p className="review-detail-hero__meta">
                   目标模块 <strong>{selected.module}</strong>
                   <span aria-hidden="true"> · </span>
-                  {selected.submitter} 提交
+                  {selected.submitter} → {getUserName(state.users, selected.assignedTo)}
+                  <span aria-hidden="true"> · </span>
+                  <time dateTime={selectedCreatedAt} title={formatAbsolute(selectedCreatedAt)}>{formatRelativeOrAbsolute(selectedCreatedAt)}</time>
                 </p>
               </div>
               {historicalMetadataNotice}
-              <SectionLabel icon={<Sparkles size={16} />} label="审阅摘要" />
+              <SectionLabel icon={<Sparkles size={16} />} label="变更摘要" />
               <ReviewDetailSummary
                 onOpenSubmissionDetail={() => openSubmissionDetail(selected)}
                 parameter={selectedReviewParameter}
@@ -1209,6 +760,13 @@ export function ParameterReviewPage({
                   查看提交详情（{selectedDetailRound.items.length} 项变更）
                 </Button>
               ) : null}
+            </div>
+            <div className="detail-card review-inbox__comparison">
+              <h3>前后对比</h3>
+              {selectedDetailRound?.items.map((item) => <SubmissionHistoryDiffCard key={item.requestId} item={item} />)}
+              <h3>影响范围</h3>
+              <p>{selectedProjectName} · {selected.module} · {selectedDetailRound?.items.length ?? 1} 项变更</p>
+              <ReviewImpactList items={selected.impact} />
             </div>
             {selected.rejectReason ? (
               <div className="rejection-reason-card">
@@ -1272,11 +830,20 @@ export function ParameterReviewPage({
                 ) : null}
               </div>
             ) : null}
+            <ReviewProvenance key={selected.id} entries={[
+              { label: "请求 ID", value: selected.id },
+              { label: "参数 ID", value: selected.parameterId },
+              { label: "项目 ID", value: getReviewRowField({ kind: "change", request: selected }, "projectId") },
+              { label: "提交轮次 ID", value: selected.submissionRoundId },
+              { label: "当前处理人 ID", value: selected.assignedTo },
+              { label: "基线版本", value: selected.baseVersion },
+              { label: "提交时间", value: selectedCreatedAt }
+            ]} />
           </>
         ) : (
           <EmptyState text={reviewMode === "history" ? "当前没有历史审阅。" : "当前没有待审阅请求。"} />
         )}
-      </aside>
+        </>} />
       {rejectOpen && (selected || selectedInitialization) ? (
         <RejectReviewDialog
           onCancel={() => setRejectOpen(false)}

@@ -10,6 +10,7 @@ import {
   FIRST_ACME_RELEASE_DIGEST, FIRST_ACME_RELEASE_ID,
   VENDOR_SUCCESSOR_AGGREGATE_DIGEST, VENDOR_SUCCESSOR_RELEASE_ID,
   VENDOR_CONSTRAINED_AGGREGATE_DIGEST, VENDOR_CONSTRAINED_RELEASE_ID,
+  VENDOR_LOCALIZED_AGGREGATE_DIGEST, VENDOR_LOCALIZED_RELEASE_ID,
 } from "./compile-vendor-catalog-release";
 import { seedQualityCanonicalBindings } from "./seed-quality-visual-review";
 
@@ -32,6 +33,7 @@ const installed = (id: string, digest: string): CatalogPointerState => ({
 const acme = installed(FIRST_ACME_RELEASE_ID, FIRST_ACME_RELEASE_DIGEST);
 const vendor = installed(VENDOR_SUCCESSOR_RELEASE_ID, VENDOR_SUCCESSOR_AGGREGATE_DIGEST);
 const constrained = installed(VENDOR_CONSTRAINED_RELEASE_ID, VENDOR_CONSTRAINED_AGGREGATE_DIGEST);
+const localized = installed(VENDOR_LOCALIZED_RELEASE_ID, VENDOR_LOCALIZED_AGGREGATE_DIGEST);
 
 describe("quality canonical Catalog pointer", () => {
   const db: Database = { query: vi.fn(), transaction: vi.fn() };
@@ -51,16 +53,17 @@ describe("quality canonical Catalog pointer", () => {
   });
 
   it.each([
-    { name: "empty", pointers: [{ kind: "empty" } as CatalogPointerState, acme, vendor, constrained], releases: [FIRST_ACME_RELEASE_ID, VENDOR_SUCCESSOR_RELEASE_ID, VENDOR_CONSTRAINED_RELEASE_ID] },
-    { name: "Acme", pointers: [acme, vendor, constrained], releases: [VENDOR_SUCCESSOR_RELEASE_ID, VENDOR_CONSTRAINED_RELEASE_ID] },
-    { name: "vendor release 1", pointers: [vendor, constrained], releases: [VENDOR_CONSTRAINED_RELEASE_ID] },
-    { name: "constrained release", pointers: [constrained], releases: [] },
-  ])("advances $name only through the reviewed lineage to release 2", async ({ pointers, releases }) => {
+    { name: "empty", pointers: [{ kind: "empty" } as CatalogPointerState, acme, vendor, constrained, localized], releases: [FIRST_ACME_RELEASE_ID, VENDOR_SUCCESSOR_RELEASE_ID, VENDOR_CONSTRAINED_RELEASE_ID, VENDOR_LOCALIZED_RELEASE_ID] },
+    { name: "Acme", pointers: [acme, vendor, constrained, localized], releases: [VENDOR_SUCCESSOR_RELEASE_ID, VENDOR_CONSTRAINED_RELEASE_ID, VENDOR_LOCALIZED_RELEASE_ID] },
+    { name: "vendor release 1", pointers: [vendor, constrained, localized], releases: [VENDOR_CONSTRAINED_RELEASE_ID, VENDOR_LOCALIZED_RELEASE_ID] },
+    { name: "constrained release", pointers: [constrained, localized], releases: [VENDOR_LOCALIZED_RELEASE_ID] },
+    { name: "localized release", pointers: [localized], releases: [] },
+  ])("advances $name only through the reviewed lineage to release 3", async ({ pointers, releases }) => {
     const readPointer = vi.mocked(readCurrentCatalogPointer);
     for (const pointer of pointers) readPointer.mockResolvedValueOnce(pointer);
-    readPointer.mockResolvedValue(constrained);
+    readPointer.mockResolvedValue(localized);
 
-    const expected = { catalogReleaseId: VENDOR_CONSTRAINED_RELEASE_ID, written: { atlas: 1, aurora: 1, nebula: 1 }, skipped: [] };
+    const expected = { catalogReleaseId: VENDOR_LOCALIZED_RELEASE_ID, written: { atlas: 1, aurora: 1, nebula: 1 }, skipped: [] };
     expect(await seedQualityCanonicalBindings(db)).toEqual(expected);
     const installs = vi.mocked(installPublishedRelease).mock.calls;
     expect(await Promise.all(installs.map(async ([, command]) => {
@@ -70,8 +73,8 @@ describe("quality canonical Catalog pointer", () => {
     }))).toEqual(releases);
     if (releases.length) {
       expect(installs.at(-1)?.[1]).toMatchObject({
-        mode: "advance", expectedTargetDigest: VENDOR_CONSTRAINED_AGGREGATE_DIGEST,
-        expectedCurrent: { id: VENDOR_SUCCESSOR_RELEASE_ID, digest: VENDOR_SUCCESSOR_AGGREGATE_DIGEST },
+        mode: "advance", expectedTargetDigest: VENDOR_LOCALIZED_AGGREGATE_DIGEST,
+        expectedCurrent: { id: VENDOR_CONSTRAINED_RELEASE_ID, digest: VENDOR_CONSTRAINED_AGGREGATE_DIGEST },
       });
     }
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ database_name: "quality_fixture" }], rowCount: 1 });
@@ -79,7 +82,7 @@ describe("quality canonical Catalog pointer", () => {
     expect(installPublishedRelease).toHaveBeenCalledTimes(releases.length);
   });
 
-  it.each([VENDOR_SUCCESSOR_RELEASE_ID, VENDOR_CONSTRAINED_RELEASE_ID, "crel_unrelated"])(
+  it.each([VENDOR_SUCCESSOR_RELEASE_ID, VENDOR_CONSTRAINED_RELEASE_ID, VENDOR_LOCALIZED_RELEASE_ID, "crel_unrelated"])(
     "refuses %s with a non-reviewed digest instead of replacing its pointer", async (id) => {
       vi.mocked(readCurrentCatalogPointer).mockResolvedValue(installed(id, FIRST_ACME_RELEASE_DIGEST));
       await expect(seedQualityCanonicalBindings(db)).rejects.toThrow("requires the exact vendor Catalog pointer");

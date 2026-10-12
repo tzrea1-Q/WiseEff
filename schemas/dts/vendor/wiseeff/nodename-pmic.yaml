@@ -11,9 +11,11 @@ properties:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
-    documentation: 子节点地址字段占用的 cell 数量。
+    documentation: 指定子节点地址字段占用的设备树单元数量。
+    displayName: 地址单元数
   "#size-cells":
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
-    documentation: 子节点尺寸字段占用的 cell 数量。
+    documentation: 指定子节点长度字段占用的设备树单元数量。
+    displayName: 长度单元数

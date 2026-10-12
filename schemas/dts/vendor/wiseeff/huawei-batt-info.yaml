@@ -11,4 +11,5 @@ properties:
     valueShape: u32-array
     exampleValue: <2>
     constraints: {}
-    documentation: huawei,batt_info 的 DTS 属性「sn check type」（sn-check-type），用于驱动读取的设备树配置。
+    documentation: 指定电池序列号的校验方式。
+    displayName: 序列号校验类型
