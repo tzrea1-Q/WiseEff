@@ -265,9 +265,12 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     for (const label of ["参数记录", "请求 ID", "来源快照", "候选文件", "提交时间", "状态更新时间"]) {
       masks.push(
         details
-          .locator("dl > div")
-          .filter({ hasText: label })
-          .locator("dd code, dd time")
+          .locator(":scope > header, :scope > dl")
+          .getByRole("term")
+          .filter({ hasText: new RegExp(`^${label}$`) })
+          .locator("..")
+          .getByRole("definition")
+          .locator("code, time")
       );
     }
   }

@@ -58,6 +58,24 @@ describe("CanonicalProjectValueReviewPanel", () => {
     expect(screen.getByLabelText("固定源目标内容")).toHaveTextContent("<4600 0>");
     await waitFor(() => expect(screen.getByLabelText("固定源变更前")).toHaveTextContent("<4500 0>"));
     expect(screen.getByLabelText("固定源变更后")).toHaveTextContent("<4600 0>");
+    const details = screen.getByRole("article", { name: "源文件请求详情" });
+    for (const [label, value, tag] of [
+      ["参数记录", request.bindingId, "code"],
+      ["请求 ID", request.id, "code"],
+      ["来源快照", request.sourcePinId, "code"],
+      ["候选文件", request.candidateId, "code"],
+      ["提交时间", request.createdAt, "time"],
+      ["状态更新时间", request.updatedAt, "time"]
+    ]) {
+      const terms = within(details).getAllByRole("term").filter((term) => term.textContent === label);
+      expect(terms, label).toHaveLength(1);
+      const definition = within(terms[0].parentElement!).getByRole("definition");
+      const values = definition.querySelectorAll(tag);
+      expect(values, label).toHaveLength(1);
+      expect(values[0]).toBeVisible();
+      if (tag === "time") expect(values[0]).toHaveAttribute("datetime", value);
+      else expect(values[0]).toHaveTextContent(value);
+    }
   });
 
   it.each(["withdraw", "approve"] as const)("ignores an unmounted request's deferred %s completion after selecting another request", async (decision) => {
@@ -244,11 +262,13 @@ describe("CanonicalProjectValueReviewPanel", () => {
     await waitFor(() => expect(withdrawProjectValueChangeRequest).toHaveBeenCalled());
     rerender(<CanonicalProjectValueReviewPanel projectId="project-2" repository={repository} currentUserId="user-1" canReview={false} onSelectRequest={onSelectRequest} />);
     await screen.findByRole("article", { name: "源文件请求详情" });
-    fireEvent.click(screen.getByText("溯源信息"));
-    expect(await screen.findByText("project-2-request")).toBeVisible();
+    const provenanceSummary = screen.getByText("溯源信息");
+    fireEvent.click(provenanceSummary);
+    const provenance = within(provenanceSummary.closest("details")!);
+    expect(await provenance.findByText("project-2-request")).toBeVisible();
     finishWithdrawal({ item: { ...request, status: "withdrawn" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "撤回我的提交" })).toBeEnabled());
-    expect(screen.getByText("project-2-request")).toBeInTheDocument();
+    expect(provenance.getByText("project-2-request")).toBeInTheDocument();
     expect(onSelectRequest).not.toHaveBeenCalled();
   });
 

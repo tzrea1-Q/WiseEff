@@ -730,6 +730,13 @@ export function CanonicalProjectValueReviewPanel({
                     ) : null}
                 </div>
               </header>
+              <dl aria-label="请求标识与更新时间">
+                <div><dt>参数记录</dt><dd><code>{selected.bindingId}</code></dd></div>
+                <div><dt>请求 ID</dt><dd><code>{selected.id}</code></dd></div>
+                <div><dt>来源快照</dt><dd><code>{selected.sourcePinId ?? "—"}</code></dd></div>
+                <div><dt>候选文件</dt><dd><code>{selected.candidateId ?? "—"}</code></dd></div>
+                <div><dt>状态更新时间</dt><dd><time dateTime={selected.updatedAt} title={formatAbsolute(selected.updatedAt)}>{formatRelativeOrAbsolute(selected.updatedAt)}</time></dd></div>
+              </dl>
               <section aria-label="变更摘要"><h4>变更摘要</h4>
                 <p>{singleDiff?.sourceName ?? selected.sourceFormat.toUpperCase()}：<span>{selected.action === "delete" && selected.status === "pending"
                   ? "删除属性（批准后生效）" : canonicalRequestActionLabel(selected)}</span></p>

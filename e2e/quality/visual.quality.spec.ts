@@ -112,6 +112,7 @@ test.describe("M5.11 visual quality gate", () => {
         expect(masks.slice(-6)).toHaveLength(6);
         for (const mask of masks.slice(-6)) {
           await expect(mask).toHaveCount(1);
+          await expect(mask).toBeVisible();
         }
       }
       await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`, {
