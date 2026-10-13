@@ -6,6 +6,8 @@ import { assertTrustedInvocationContext } from "../../auth/trustedInvocation";
 import { readProjectProtectedParameters } from "../../parameter-bindings/adapters";
 import { listCanonicalValueChangesForAuth } from "../../parameter-bindings/drafts";
 import type { OptionalValue } from "../../parameter-catalog-contract";
+import { buildLogAnalysisProvenanceNotice } from "../../knowledge/distillation";
+import type { LogRecordDto } from "../../logs/types";
 
 type ToolOptions = {
   db: { query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[]; rowCount: number | null }> };
@@ -25,6 +27,8 @@ type LogConclusionRow = {
   status: string;
   severity: string;
   conclusion: string | null;
+  analysis_source: LogRecordDto["analysisSource"] | null;
+  degraded_reason: LogRecordDto["degradedReason"] | null;
 };
 
 function readProjectId(contextProjectId: string | undefined, payload: Record<string, unknown>) {
@@ -180,7 +184,9 @@ limit 20
 select lr.id,
        lr.status,
        coalesce(report.severity, 'unknown') as severity,
-       coalesce(report.conclusion, lr.failure_reason) as conclusion
+       coalesce(report.conclusion, lr.failure_reason) as conclusion,
+       report.analysis_source,
+       report.degraded_reason
 from log_records lr
 left join log_analysis_reports report on report.run_id = lr.current_run_id
 where lr.organization_id = $1
@@ -190,9 +196,13 @@ limit 10
           [context.auth.organization.id]
         );
         const primary = rows[0];
+        const notice = primary ? buildLogAnalysisProvenanceNotice({
+          analysisSource: primary.analysis_source ?? undefined,
+          degradedReason: primary.degraded_reason ?? undefined
+        }) : "";
         return {
           summary: primary?.conclusion
-            ? `Most recent log conclusion: ${primary.conclusion}`
+            ? `Most recent log conclusion: ${primary.conclusion}${notice ? `\n${notice}` : ""}`
             : `Found ${rows.length} recent log records.`,
           data: { logs: rows },
           citations: rows.map((row) => ({

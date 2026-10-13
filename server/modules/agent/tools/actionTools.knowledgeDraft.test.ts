@@ -46,6 +46,11 @@ describe("action.createKnowledgeDraft definition", () => {
     expect(tool.scope).toBe("organization");
   });
 
+  it("tells the model that the platform automatically adds a provenance notice for degraded sources", () => {
+    expect(tool.description).toContain("platform automatically adds a provenance notice");
+    expect(tool.description).toContain("degraded source log analysis");
+  });
+
   it("rejects payloads without a title or markdown content before touching the database", async () => {
     const context = { auth: editorAuth, requestId: "req-1", sessionId: "session-1" };
 

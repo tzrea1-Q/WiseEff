@@ -304,6 +304,76 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
   });
 
   describe("createAgentKnowledgeDraft", () => {
+    it("prepends the canonical notice to an agent draft citing a rule-fallback analysis", async () => {
+      const log = await seedCompletedLog(db, { analysisSource: "rules-fallback", degradedReason: "provider-unavailable" });
+      const auth = makeAuth(EDITOR_A, logsAndKnowledgeEdit);
+      const entry = await createAgentKnowledgeDraft(db, auth, {
+        title: "降级分析草稿",
+        tags: [],
+        contentMarkdown: "## 结论\n\n需要复核。",
+        sessionId: "s-provenance",
+        sourceLogId: log.logId
+      });
+
+      const persisted = await getKnowledgeEntry(db, auth, entry.id);
+      expect(persisted.contentMarkdown?.startsWith(
+        "> 降级分析 · 规则回退\n> AI 分析服务不可用，本结论由规则引擎回退生成\n> 依赖结论前请复核证据。"
+      )).toBe(true);
+      expect(persisted.contentMarkdown?.endsWith("## 结论\n\n需要复核。")).toBe(true);
+    });
+
+    it.each([
+      ["rules-fallback", undefined, "降级分析 · 规则回退", "本结论由规则引擎回退生成"],
+      ["rules-fallback", "token-budget-exhausted", "降级分析 · 规则回退", "预算内未能得到有效接地结论，本结论由规则引擎回退生成"],
+      ["agent", "token-budget-exhausted", "降级分析 · 提前收敛", "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论"],
+      ["agent", "provider-unavailable", "降级分析 · 提前收敛", "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论"]
+    ] as const)("marks an agent draft citing %s / %s", async (analysisSource, degradedReason, label, reason) => {
+      const log = await seedCompletedLog(db, { analysisSource, degradedReason });
+      const entry = await createAgentKnowledgeDraft(db, makeAuth(EDITOR_A, logsAndKnowledgeEdit), {
+        title: "需复核的草稿",
+        tags: [],
+        contentMarkdown: "submitted body",
+        sessionId: "s-provenance-matrix",
+        sourceLogId: log.logId
+      });
+
+      expect(entry.contentMarkdown?.startsWith(`> ${label}\n> ${reason}\n> 依赖结论前请复核证据。`)).toBe(true);
+      expect(entry.contentMarkdown?.endsWith("submitted body")).toBe(true);
+    });
+
+    it("preserves an agent body that already starts with the exact canonical notice", async () => {
+      const log = await seedCompletedLog(db, { analysisSource: "rules-fallback", degradedReason: "provider-unavailable" });
+      const contentMarkdown = "> 降级分析 · 规则回退\n> AI 分析服务不可用，本结论由规则引擎回退生成\n> 依赖结论前请复核证据。\n\nSubmitted body with trailing whitespace.  \n";
+      const entry = await createAgentKnowledgeDraft(db, makeAuth(EDITOR_A, logsAndKnowledgeEdit), {
+        title: "已有提示的草稿",
+        tags: [],
+        contentMarkdown,
+        sessionId: "s-existing-notice",
+        sourceLogId: log.logId
+      });
+
+      expect(entry.contentMarkdown).toBe(contentMarkdown);
+    });
+
+    it.each(["agent", "legacy", "no-source"] as const)(
+      "preserves the submitted body for %s without degradation",
+      async (source) => {
+        const log = source === "no-source" ? undefined : await seedCompletedLog(db, {
+          analysisSource: source === "legacy" ? undefined : source
+        });
+        const contentMarkdown = "\n## Submitted content\n\nKeep this body unchanged.  \n";
+        const entry = await createAgentKnowledgeDraft(db, makeAuth(EDITOR_A, logsAndKnowledgeEdit), {
+          title: "未降级草稿",
+          tags: [],
+          contentMarkdown,
+          sessionId: "s-unchanged",
+          sourceLogId: log?.logId
+        });
+
+        expect(entry.contentMarkdown).toBe(contentMarkdown);
+      }
+    );
+
     it("creates an agent-sourced draft recording the session, user, and optional source analysis", async () => {
       const log = await seedCompletedLog(db);
       const auth = makeAuth(EDITOR_A, logsAndKnowledgeEdit);
