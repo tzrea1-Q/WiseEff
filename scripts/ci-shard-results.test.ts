@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { assertShardJobs, type Identity } from "./ci-required-results";
-import { qualityLanes, playwrightInventory, validateShardInventories, vitestExecution, vitestInventory, type ShardReceipt } from "./ci-shard-results";
+import { finishServerReceipt, qualityLanes, playwrightInventory, validateShardInventories, vitestExecution, vitestInventory, type ShardReceipt } from "./ci-shard-results";
 
 const identity: Identity = {
   event: "pull_request", mode: "", fullAcceptance: false, ref: "refs/pull/1/merge",
@@ -22,6 +22,12 @@ function receipts(kind: "quality" | "server"): ShardReceipt[] {
 }
 
 describe("complete CI shard inventories", () => {
+  it.each([undefined, "", "3/2", "1/3", "1"])("rejects an absent or invalid backend shard before reading receipts: %s", (shard) => {
+    vi.stubEnv("WISEEFF_CI_SERVER_SHARD", shard);
+    try {
+      expect(() => finishServerReceipt({}, identity)).toThrow("CI_SHARD_LANE");
+    } finally { vi.unstubAllEnvs(); }
+  });
   it.each(["quality", "server"] as const)("requires every %s lane and exactly-once inventory", (kind) => {
     expect(validateShardInventories(receipts(kind), kind, identity).tests.length).toBe(kind === "server" ? 2 : 5);
   });

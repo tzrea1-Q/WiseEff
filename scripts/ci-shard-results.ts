@@ -139,10 +139,12 @@ export function recordServerExecution(report: unknown, files: string[], native: 
 }
 
 export function finishServerReceipt(receipt: any, identity: Identity): void {
+  const shard = process.env.WISEEFF_CI_SERVER_SHARD;
+  requireShard(shard !== undefined && /^[12]\/2$/.test(shard), "LANE");
   const discovery = load("discovery.json");
   const execution = load("execution.json");
   requireShard(equal(discovery.identity, identity) && equal(execution.native, receipt.reports.server), "IDENTITY");
-  save("receipt.json", { version: 1, kind: "server", lane: process.env.WISEEFF_CI_SERVER_SHARD?.split("/")[0],
+  save("receipt.json", { version: 1, kind: "server", lane: shard.split("/")[0],
     identity, inventory: discovery.inventory, executed: execution.executed, receipt } satisfies ShardReceipt);
 }
 
@@ -191,9 +193,10 @@ async function aggregate(kind: Kind) {
   const receipts: ShardReceipt[] = names.map((name, index) => {
     const folder = path.join(directory, name);
     requireShard(equal(readdirSync(folder), ["receipt.json"]), "ARTIFACTS");
-    const bytes = readFileSync(path.join(folder, "receipt.json"));
-    requireShard(bytes.length > 0 && bytes.length <= 8 * 1024 * 1024, "SIZE");
-    const receipt = JSON.parse(bytes.toString("utf8"));
+    const text = readFileSync(path.join(folder, "receipt.json"), "utf8");
+    const size = Buffer.byteLength(text, "utf8");
+    requireShard(size > 0 && size <= 8 * 1024 * 1024, "SIZE");
+    const receipt = JSON.parse(text);
     requireShard(receipt.lane === lanes[index], "LANE");
     return receipt;
   });

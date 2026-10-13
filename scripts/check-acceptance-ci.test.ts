@@ -393,7 +393,7 @@ describe("D2 backend shards and quality lanes", () => {
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     });
 
-  it.each(["missing", "reordered", "command", "suppressed", "condition", "metadata", "install", "browser", "runtime-env", "step-env", "legacy-gate", "evidence-name", "evidence-path", "fixture-db", "missing-seed", "unconditional-seed", "suppressed-seed", "early-skip-seed"])
+  it.each(["missing", "reordered", "command", "suppressed", "condition", "metadata", "install", "browser", "runtime-env", "step-env", "legacy-gate", "evidence-name", "evidence-path", "fixture-db", "missing-seed", "unconditional-seed", "suppressed-seed", "early-skip-seed", "fixture-lane"])
     ("rejects quality prerequisites, lane execution or evidence drift: %s", (mutation) => {
       const workflow = YAML.parse(compliantWorkflow);
       const worker = workflow.jobs["acceptance-quality-lanes"];
@@ -415,6 +415,7 @@ describe("D2 backend shards and quality lanes", () => {
       if (mutation === "unconditional-seed") worker.steps[5].run = worker.steps[5].run.replace("npm run --if-present", "npm run");
       if (mutation === "suppressed-seed") worker.steps[5].run = worker.steps[5].run.replace("seed:quality:admin-lists\n", "seed:quality:admin-lists || true\n");
       if (mutation === "early-skip-seed") worker.steps[5].run = 'echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\n' + worker.steps[5].run;
+      if (mutation === "fixture-lane") worker.steps[5].run = worker.steps[5].run.replace('"$WISEEFF_QUALITY_LANE" = "visual"', '"$WISEEFF_QUALITY_LANE" = "consistency-1"');
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     });
 });

@@ -635,8 +635,10 @@ jobs:
           npm run db:seed:all
           npm run --if-present seed:quality:admin-lists
           echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
-          echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"
-          echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"
+          if [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then
+            echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"
+            echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"
+          fi
 
       - name: Acceptance quality metadata
         run: npm run acceptance:quality
