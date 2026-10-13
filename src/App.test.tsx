@@ -1483,12 +1483,15 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "已处理" }), { button: 0, ctrlKey: false });
-    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    await userEvent.click(await screen.findByRole("tab", { name: "已处理" }));
+    await screen.findByRole("complementary", { name: "审阅详情" });
     // Prefer selecting the merged row if the queue does not auto-select it
     const row = within(screen.getByRole("table")).getByText(merged.title);
     fireEvent.click(row.closest("tr") ?? row);
 
+    await waitFor(() => expect(within(screen.getByRole("complementary", { name: "审阅详情" }))
+      .getAllByRole("link", { name: "https://example.com/mr/99" }).length).toBeGreaterThanOrEqual(2));
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
     const links = within(reviewDetail).getAllByRole("link", { name: "https://example.com/mr/99" });
     expect(links.length).toBeGreaterThanOrEqual(2);
     for (const link of links) {
@@ -1536,10 +1539,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "已处理" }), { button: 0, ctrlKey: false });
-    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    await userEvent.click(await screen.findByRole("tab", { name: "已处理" }));
+    await screen.findByRole("complementary", { name: "审阅详情" });
     const row = within(screen.getByRole("table")).getByText(merged.title);
     fireEvent.click(row.closest("tr") ?? row);
+    await waitFor(() => expect(within(screen.getByRole("complementary", { name: "审阅详情" }))
+      .getByRole("heading", { name: merged.title })).toBeVisible());
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
     expect(within(reviewDetail).queryByRole("link", { name: /https?:\/\// })).toBeNull();
     expect(reviewDetail.querySelector(".merge-link-card")).toBeNull();
   });

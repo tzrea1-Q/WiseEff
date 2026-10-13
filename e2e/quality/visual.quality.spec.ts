@@ -27,11 +27,20 @@ import { signInBrowserAsRole } from "../acceptance/helpers/bearerAuth";
 
 const allowVisualReviewFixture = visualReviewFixtureAllowed();
 
+const archetypeVisualPaths = new Set<string>([
+  "/parameters",
+  "/parameter-admin/projects",
+  "/parameter-home",
+  "/organization",
+  "/parameter-review"
+]);
+
 const stableRoutes = [
   { path: "/", name: "home-shell" },
   { path: "/parameters", name: "parameters-workbench" },
   { path: "/parameter-review", name: "parameter-review-workbench" },
   { path: "/parameter-admin", name: "parameter-admin-workbench" },
+  { path: "/parameter-admin/projects", name: "projects-admin-list" },
   { path: "/logs", name: "logs-workbench" },
   { path: "/debugging", name: "debugging-simulator" },
   { path: "/organization", name: "organization" },
@@ -73,8 +82,11 @@ test.describe("M5.11 visual quality gate", () => {
     }
   });
 
-  for (const route of stableRoutes) {
-    test(`keeps stable visual baseline for ${route.path}`, async ({ page }) => {
+  for (const { route, theme } of stableRoutes.flatMap((route) =>
+    (archetypeVisualPaths.has(route.path) ? ["light", "dark"] as const : ["light"] as const)
+      .map((theme) => ({ route, theme }))
+  )) {
+    test(`keeps stable visual baseline for ${route.path} (${theme})`, async ({ page }) => {
       test.skip(
         route.path === "/parameter-review" && !allowVisualReviewFixture,
         "planned target-synthetic skip: populated review visual requires an explicitly isolated fixture database"
@@ -106,6 +118,11 @@ test.describe("M5.11 visual quality gate", () => {
       if (route.path === "/parameter-review") {
         await expectLocalizedVisualReviewFixture(page);
       }
+      if (route.path === "/parameter-admin/projects") {
+        await expect(page.getByRole("table", { name: "项目管理列表" }).getByRole("row").filter({ hasText: "aurora" })).toBeVisible();
+      }
+      await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+      await waitForFontsAndNextPaint(page);
 
       const masks = stableMasks(page, route.path);
       if (route.path === "/parameter-review") {
@@ -115,7 +132,7 @@ test.describe("M5.11 visual quality gate", () => {
           await expect(mask).toBeVisible();
         }
       }
-      await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`, {
+      await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}${theme === "dark" ? "-dark" : ""}.png`, {
         mask: masks
       });
     });

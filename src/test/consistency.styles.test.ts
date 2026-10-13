@@ -81,6 +81,10 @@ describe("shared consistency contracts", () => {
     expect(home["--ph-panel-radius"]).toBe("var(--radius-lg)");
     expect(home["--ph-section-gap"]).toBe("var(--space-5)");
     for (const file of [
+      "src/components/layout/admin-list-page.css",
+      "src/components/layout/overview-page.css",
+      "src/components/layout/navigator-workbench.css",
+      "src/components/layout/settings-form-page.css",
       "src/components/common/row-action-menu.css",
       "src/components/project-configuration-workbench/configuration-workbench.css",
       "src/features/log-analysis/log-analysis.css",

@@ -38,12 +38,10 @@ const apiSession = {
 };
 const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 
-async function confirmHighRiskWriteIfPrompted() {
-  try {
-    const confirm = await screen.findByRole("button", { name: /^确认写入$/ }, { timeout: 300 });
+function confirmHighRiskWriteIfPrompted() {
+  const confirm = screen.queryByRole("button", { name: /^确认写入$/ });
+  if (confirm) {
     fireEvent.click(confirm);
-  } catch {
-    // Medium/Low risk writes skip the confirmation dialog.
   }
 }
 
@@ -1042,6 +1040,9 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await screen.findByText(/API Gateway Target/);
 
+    await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      nodeId: "dbg-charge-input-current"
+    })));
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
     const dialog = getNodeDetailDialog();
@@ -1690,14 +1691,13 @@ describe("/node-debugging", () => {
     const first = renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
-    const navigator = screen.getByRole("region", { name: "模块导航" });
-    const tree = within(navigator).getByRole("tree", { name: "调试节点模块树" });
+    const tree = await screen.findByRole("tree", { name: "调试节点模块树" });
+    const chargingPolicy = await within(tree).findByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
     expect(
       within(tree).getAllByRole("treeitem", { name: /Power.*\d+ 个节点/ })
         .find((item) => item.getAttribute("aria-level") === "1")
     ).toBeInTheDocument();
 
-    const chargingPolicy = within(tree).getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
     fireEvent.click(chargingPolicy);
 
     expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
@@ -1716,9 +1716,9 @@ describe("/node-debugging", () => {
     first.unmount();
     renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
-    const restored = within(screen.getByRole("tree", { name: "调试节点模块树" }))
-      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
-    expect(restored).toHaveAttribute("aria-selected", "true");
+    const restored = await within(await screen.findByRole("tree", { name: "调试节点模块树" }))
+      .findByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
+    await waitFor(() => expect(restored).toHaveAttribute("aria-selected", "true"));
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
     fireEvent.click(restored);
     expect(findRowByText("battery.thermal_foldback_pct")).toBeInTheDocument();
