@@ -27,6 +27,7 @@ The app UI is Chinese-first, so locate pages by their route; the Chinese guide g
 ## Workflows
 
 - [Account and access](account-and-access.md): local registration, Committer approval, password changes and resets, and deployment-provided OIDC sign-in.
+- [Parameter management](parameter-management.md): search and comparison, drafts, submission and review, project initialization, imports, and configuration releases.
 
 ## Find the right reference
 

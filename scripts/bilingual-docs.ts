@@ -102,5 +102,6 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/agents/skill-maintenance.md", zh: "docs/zh-CN/agents/skill-maintenance.md", tier: "developer", status: "required" },
   { en: "docs/user-guide/README.md", zh: "docs/zh-CN/user-guide/README.md", tier: "user-guide", status: "required" },
   { en: "docs/user-guide/account-and-access.md", zh: "docs/zh-CN/user-guide/account-and-access.md", tier: "user-guide", status: "required" },
-  { en: "docs/platform-overview.md", zh: "docs/zh-CN/platform-overview.md", tier: "overview", status: "required" }
+  { en: "docs/platform-overview.md", zh: "docs/zh-CN/platform-overview.md", tier: "overview", status: "required" },
+  { en: "docs/user-guide/parameter-management.md", zh: "docs/zh-CN/user-guide/parameter-management.md", tier: "user-guide", status: "required" }
 ];
