@@ -19,6 +19,10 @@ The UI is Chinese-first. The English page names below give the meaning of its la
 
 The former **Comparison analysis** page (`/parameter-comparison`) is unavailable. Use row-level comparison instead.
 
+![Aurora parameter workbench and module navigation](images/parameter-management-workbench.png)
+
+*The seeded Aurora workbench shows where to find modules, parameters, and row actions.*
+
 ## Prepare and keep a draft
 
 In the current API workbench on **Parameter changes** (`/parameters`), open **Edit**, enter the target value and a reason, then choose **Validate and add to this round**. Validation must succeed before a persisted draft appears in the **Modified this round** tray. Saving a draft does not change the current value or source file. Check any validation diagnostics rather than treating text in the editor as a saved change.
@@ -26,6 +30,10 @@ In the current API workbench on **Parameter changes** (`/parameters`), open **Ed
 Closing this editor retains its unvalidated text while the workbench remains mounted; **Continue editing** can reopen it. That local text is not a server draft and must not be relied on after a reload or leaving the workbench. Successfully created server drafts can be loaded again. Removing a persisted draft from the tray deletes that draft rather than merely hiding the row.
 
 The older, non-API editor has a distinct explicit **Save draft** action: it copies the edited item into the local round. Closing that editor discards unsaved edits, retaining only the last saved local version. **Stash this round** is separate from saving an editor item; in API-backed persistence it saves pending drafts for later. Do not confuse these older controls with the current API editor's validation action.
+
+![Parameter draft editor before validation](images/parameter-management-edit.png)
+
+*The editor before validation; opening it does not save a draft or change the device.*
 
 ## Submit the intended changes
 
@@ -38,6 +46,10 @@ Open **My historical submissions** (`/parameter-submissions`) from the workbench
 ## Review the right workflow
 
 Open **Change review** (`/parameter-review`), select the project and a pending item, and inspect its type before acting.
+
+![Aurora change review queue](images/parameter-management-review.png)
+
+*A seeded handled request from the Aurora review queue, opened by an Admin; capturing it does not create or approve a request.*
 
 ### Approve current parameter-value requests
 

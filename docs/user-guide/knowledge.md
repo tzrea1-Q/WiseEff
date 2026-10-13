@@ -19,6 +19,14 @@ Drafts are visible only to their creator and knowledge managers. Published and a
 
 In an API-backed deployment, **Ask the knowledge base (Xiaoze)** on **Knowledge base (`/knowledge`)** opens the Xiaoze conversation panel. Ask your question there; this button opens the panel rather than submitting the search-field text automatically. Xiaoze can retrieve published knowledge through its tools and provide citation links back to entries. Open those sources and check their applicability before relying on an answer. This entry point is not available in mock mode, and drafts do not become retrievable just because Xiaoze created them.
 
+![Knowledge search and entry list](images/knowledge-library.png)
+
+*The knowledge library contains three published demo entries about thermal foldback, parameter review, and device setup.*
+
+![Published thermal foldback knowledge entry with source and revision](images/knowledge-entry-detail.png)
+
+*The published sample entry shows its troubleshooting text, tags, human source, and revision; it does not certify a real device diagnosis.*
+
 ## Create an entry or upload a file
 
 On **Knowledge base (`/knowledge`)**, choose the content form that fits your material:
@@ -31,6 +39,10 @@ PDF, Word `.docx`, plain text, and Markdown files have text extraction for retri
 New entries start as drafts. Review the content, applicable conditions, and any source evidence before publishing. Creating a draft alone does not make it available to search or Xiaoze.
 
 When a Xiaoze-created draft cites a degraded source log analysis, the platform automatically adds the same provenance notice used for distilled drafts at the top of its body. It identifies rule fallback or early convergence, explains the limitation, and asks you to review the evidence before relying on the conclusion. An identical notice already at the start is not duplicated; drafts citing non-degraded or legacy analyses, and drafts without a source log, remain unchanged. The notice is editable draft content, not a publication block or a quality guarantee.
+
+![New Markdown knowledge entry dialog](images/knowledge-new-entry.png)
+
+*The new-entry dialog alongside the published examples; this screenshot does not create another draft.*
 
 ## Publish and revise an entry
 

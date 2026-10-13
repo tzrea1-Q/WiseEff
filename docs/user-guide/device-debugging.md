@@ -36,6 +36,10 @@ In Node debugging (`/node-debugging`), choose a module or subtree and search by 
 
 The current value is an observation, not a live guarantee. Check stale-value warnings and read again when you need fresh evidence.
 
+![Node debugging workbench and Bridge setup](images/device-debugging-nodes.png)
+
+*The node list with the Bridge installation guide collapsed; no real device is connected and displayed values are not fresh device reads.*
+
 ## Write a node and interpret the result
 
 1. Open a writable node's editor and enter the target value. For a complex value, follow the displayed format and normalization guidance. Numeric bounds, when configured, are enforced by the server; complex values are checked against their value metadata.
@@ -65,6 +69,10 @@ In Parameter debugging (`/dts-reload`):
 | Contradicted | At least one bound parameter read disagreed with its debug value; this is not a verified run. |
 
 Unlike ordinary node debugging, DTS reload compares bound observations with the debug values. Kernel-log text is retained as **unjudged evidence**; it does not by itself establish reload success or failure.
+
+![DTS reload workbench before device connection](images/device-debugging-dts-reload.png)
+
+*Reload candidates with the Bridge installation guide collapsed; no real device is connected and no pre-flight or deployment has completed.*
 
 ## Restore the baseline after a reload
 

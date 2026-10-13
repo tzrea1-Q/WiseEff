@@ -26,3 +26,7 @@
 - [docs/zh-CN/developer/user-operation-coverage-matrix.md](user-operation-coverage-matrix.md)
 - [docs/zh-CN/developer/browser-acceptance-coverage-map.md](browser-acceptance-coverage-map.md)
 - [docs/zh-CN/agents/catalog-launch-operating-rules.md](../agents/catalog-launch-operating-rules.md)
+
+## 更新截图
+
+显式设置 `USER_GUIDE_CAPTURE_DATABASE_URL`，指向已创建且名称含 `screenshot`、`ugshots` 或 `capture` 的一次性 PostgreSQL 数据库，再运行 `npm run docs:screenshots`；包装脚本拒绝缺失或不安全的 URL，将所有子进程固定到该数据库，先迁移，再以生产模式本地认证、演示账号和离线确定性日志分析启动专用 Playwright 配置。运行需要 Chromium：质量测试辅助函数重置并重新播种演示数据，截图准备三篇已发布知识，不创建参数草稿或提交，审阅截图使用种子已处理请求，日志截图通过界面上传或重新分析样例；使用新启动且不复用的服务（默认端口 5187/8797），清除仅支持 HMAC 的自有运行时描述文件覆盖，因为本截图配置需要本地登录，交付前逐张审阅图片并运行 `npm run docs:check`。

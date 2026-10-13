@@ -8,12 +8,20 @@ New users can register only when the deployment enables local self-registration.
 
 ## Register a local account
 
-1. Open the deployment's app at `/`. In API mode, an unauthenticated visitor sees Sign in (`/`); select Register (`/`). If that tab is absent, ask your administrator for an account rather than attempting self-registration.
+1. Open a workflow such as `/parameter-home`, or enter it from the app homepage at `/`. In API mode, an unauthenticated visitor sees Sign in; select Register. If that tab is absent, ask your administrator for an account rather than attempting self-registration.
 2. Enter your name, username, role, password, and password confirmation. Usernames are 3–64 characters using letters, numbers, dots, underscores, or hyphens; passwords must contain at least eight characters. Follow the form's validation messages.
 3. Choose guest (`guest`), hardware user (`hardware-user`), software user (`software-user`), hardware committer (`hardware-committer`), or software committer (`software-committer`). The role selector uses English role names; the hints explain immediate access or required approval.
 4. Submit. A non-Committer registration signs you in; a Committer request shows the pending-approval result instead.
 
 The screen states which Evaluation Organization the account joins. It is ChargeLab in the seeded profile; otherwise registration requires exactly one available bootstrap Organization. There is no Organization picker, and your profile cannot change your home Organization. If no suitable Organization exists or several are ambiguous, ask the deployment operator to resolve setup. Registration does not verify an email address or accept an invitation.
+
+![Local sign-in form](images/account-and-access-sign-in.png)
+
+*Local sign-in reached from a protected workflow with a fresh unauthenticated browser context.*
+
+![Registration form with role selection](images/account-and-access-register.png)
+
+*Registration fields and role selection, available only when self-registration is enabled.*
 
 ## Wait for Committer approval
 

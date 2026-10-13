@@ -8,8 +8,6 @@ For external developers evaluating or joining WiseEff. This page is a roughly 15
 
 WiseEff connects engineering parameter changes, device debugging, log analysis, reusable knowledge, and Xiaoze-assisted work under shared organization, permission, approval, and audit boundaries. The useful loop is to inspect a problem, propose a change, validate it, review it, and retain the evidence—not to let an assistant silently change a device or production data.
 
-**Readiness:** the repository is suitable for controlled staging and pilot evidence collection. It is **not broadly production-ready** until real target-environment evidence exists for live API, PostgreSQL-backed E2E, HDC device lab, backup/restore, rollback, identity, queue, observability, capacity, and Xiaoze LLM readiness checks. This is the boundary in the [README](../README.md), not a deployment certification. Merged code, local tests, mock demos, and individual host rehearsals do not replace those gates.
-
 ## Capability Map
 
 English names below describe the Chinese-first UI; routes identify the actual entry points. Visibility and actions depend on server-side permissions, organization membership, and project scope. The [User Guide](user-guide/README.md) is the task-oriented entry, while the [permission design](security/user-permission-design.md) owns access rules.
