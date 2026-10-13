@@ -544,7 +544,7 @@ describe("validateMarkdownLinks", () => {
     await write(root, "docs/README.md", "[Missing](missing.md)\n[External](https://example.com)\n");
 
     await expect(validateMarkdownLinks(root)).resolves.toEqual([
-      "Broken local markdown link in docs/README.md: missing.md"
+      "Broken local markdown link: docs/README.md → missing.md"
     ]);
   });
 
