@@ -29,6 +29,7 @@ The app UI is Chinese-first, so locate pages by their route; the Chinese guide g
 - [Account and access](account-and-access.md): local registration, Committer approval, password changes and resets, and deployment-provided OIDC sign-in.
 - [Parameter management](parameter-management.md): search and comparison, drafts, submission and review, project initialization, imports, and configuration releases.
 - [Device debugging](device-debugging.md): connect HDC/ADB devices, read and safely write nodes, test DTS reloads, restore baselines, and inspect evidence.
+- [Log analysis](log-analysis.md): upload logs, follow stages, distinguish degraded results, inspect evidence, give feedback, and create knowledge drafts.
 
 ## Find the right reference
 
