@@ -6,6 +6,8 @@ Date: 2026-05-25
 
 This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.md` are short maps; the durable product, architecture, design, quality, reliability, security, and execution knowledge lives here.
 
+Product users: start with the [User Guide](user-guide/README.md) for account and access workflows.
+
 ## Technical and Test Reading Paths
 
 Use one maintained set of topic documents, with two entry points:
