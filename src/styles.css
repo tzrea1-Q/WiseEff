@@ -9032,7 +9032,7 @@ td small {
 
 .debug-value-code-block pre {
   margin: 0;
-  max-height: 280px;
+  max-height: calc(var(--space-10) * 7);
   overflow: auto;
   padding: var(--space-3) var(--space-3);
   background: var(--text);
@@ -9972,13 +9972,13 @@ td small {
 
 .parameter-detail-history__value code {
   display: block;
-  max-height: 118px;
+  max-height: calc(var(--space-10) * 3);
   max-width: 100%;
   overflow: auto;
-  padding: 9px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  padding: var(--space-2) var(--space-3);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
-  background: #f8fafc;
+  background: var(--surface-sunken);
   color: var(--text);
   font-size: var(--text-sm);
   font-weight: 600;
@@ -18986,11 +18986,11 @@ body.xiaoze-popup-drag-active {
 }
 
 .param-admin-field-info-tip:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: var(--ring-soft);
 }
 
 .param-admin-field-info-tip__content {
-  max-width: min(20rem, calc(100vw - 32px));
+  max-width: min(calc(var(--space-16) * 5), calc(100vw - var(--space-8)));
 }
 
 .def-group-fields > .param-admin-example-value-field {
@@ -20349,12 +20349,12 @@ body.xiaoze-popup-drag-active {
 .parameter-import-wizard .parameter-import-wizard-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px var(--space-4);
+  gap: var(--space-3) var(--space-4);
 }
 
-.parameter-import-wizard .parameter-import-wizard-grid label {
+.parameter-import-wizard .parameter-import-wizard-grid :is(label, .parameter-import-wizard-field) {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -20369,7 +20369,7 @@ body.xiaoze-popup-drag-active {
 .parameter-import-wizard .parameter-import-wizard-grid select,
 .parameter-import-wizard .parameter-import-wizard-grid textarea {
   width: 100%;
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--outline);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -21320,7 +21320,7 @@ body.xiaoze-popup-drag-active {
   max-height: 40vh;
   overflow: auto;
   padding: var(--space-3);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-sm);
   background: var(--surface-raised);
 }
@@ -26015,20 +26015,20 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .project-primary-dts-viewer__body {
-  max-height: min(72vh, 720px);
+  max-height: min(72vh, calc(var(--space-10) * 18));
   overflow: auto;
-  padding: 10px;
+  padding: var(--space-3);
   color: var(--text-secondary);
   background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-md);
 }
 
 .project-primary-dts-viewer__line {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: calc(var(--space-10) + var(--space-1) / 2) minmax(0, 1fr);
   min-width: max-content;
-  border-left: 3px solid transparent;
+  border-left: calc(var(--space-1) * .75) solid transparent;
 }
 
 .project-primary-dts-viewer__line.is-focused {
@@ -26040,11 +26040,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
-  min-height: 22px;
-  padding: 2px var(--space-2) 2px 0;
+  min-height: var(--leading-md);
+  padding: calc(var(--space-1) / 2) var(--space-2) calc(var(--space-1) / 2) 0;
   color: var(--text-muted);
   background: var(--surface-sunken);
-  border-right: 1px solid var(--border);
+  border-right: var(--stroke-hairline) solid var(--border);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.55;
@@ -26053,8 +26053,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .project-primary-dts-viewer__line-text {
   display: block;
-  min-height: 22px;
-  padding: 2px 10px;
+  min-height: var(--leading-md);
+  padding: calc(var(--space-1) / 2) var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: 1.55;
@@ -26064,12 +26064,12 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .project-primary-dts-viewer__find-match {
   color: var(--configuration-source-surface);
   background: var(--configuration-source-find);
-  border-radius: 2px;
+  border-radius: calc(var(--radius-sm) / 2);
 }
 
 .project-primary-dts-viewer__find-match.is-active {
   background: var(--configuration-source-find-active);
-  outline: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
+  outline: var(--stroke-hairline) solid color-mix(in srgb, var(--warning) 55%, transparent);
 }
 
 .platform-console-page {

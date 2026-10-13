@@ -367,6 +367,8 @@ Project-role saves keep the existing human confirmation, including each changed 
 - All interactive elements are reachable and operable by keyboard; clickable table rows and cards implement `tabIndex` + Enter/Space activation.
 - Dialog semantics follow `ModalDialog` (role on the card, labelled title, focus trap/restore).
 - Every form control has a programmatic label; every error is programmatically associated.
+- Enabled `jsx-a11y` rules are errors. Keep the recommended composite-role options and declare only native-backed label controls in ESLint; a radiogroup is not a labelable input. Remaining `react-hooks` warnings may only decrease.
+- Use explicit focus management (`ModalDialog.initialFocusRef` for dialogs), not native `autoFocus`. Keyboard-scrollable read-only values, paste targets and tooltip icons retain focus access; any lint false-positive suppression needs a one-line justification at the affected element.
 - `npm run acceptance:a11y` must stay green for covered routes; new primary routes join the covered list.
 
 ## Anti-Patterns (Do Not Ship)

@@ -1,13 +1,13 @@
 /*
  * ESLint flat config (FA-24): jsx-a11y + react-hooks over src/**\/*.{ts,tsx}.
  *
- * Grading model (2026-08-13 census, `npx eslint src` on this commit):
+ * Grading model (accessibility burn-down #1139):
  *   - rules with zero violations run at "error" (new debt is blocked),
  *   - rules with existing stock run at "warn" with the census count recorded
  *     next to them, so later waves can ratchet them to "error" as the stock
  *     burns down (same ratchet spirit as `npm run ui:check`).
- * Test files are included on purpose: they currently contribute one warning
- * (react-hooks/refs) and zero error-level findings.
+ * Test files are included on purpose. Accessibility rules block new debt;
+ * remaining react-hooks stock stays warning-level until its own burn-down.
  *
  * `npm run lint` fails on errors only; warnings do not block.
  */
@@ -41,25 +41,17 @@ export default [
       "react-hooks/incompatible-library": "error",
       "react-hooks/unsupported-syntax": "error",
 
-      // Existing stock (count on 2026-08-13); burn down, then promote to "error".
-      "jsx-a11y/label-has-associated-control": "warn", // 27
-      "jsx-a11y/no-redundant-roles": "warn", // 12
-      "jsx-a11y/no-noninteractive-tabindex": "warn", // 11
-      "jsx-a11y/no-noninteractive-element-to-interactive-role": "warn", // 9
-      "jsx-a11y/no-autofocus": "warn", // 7
-      "jsx-a11y/no-noninteractive-element-interactions": "warn", // 3
-      "jsx-a11y/no-static-element-interactions": "warn", // 2
-      "jsx-a11y/interactive-supports-focus": "warn", // 2
-      "jsx-a11y/no-interactive-element-to-noninteractive-role": "warn", // 1
-      "jsx-a11y/role-has-required-aria-props": "warn", // 1
-      "jsx-a11y/role-supports-aria-props": "warn", // 1
-      "jsx-a11y/anchor-is-valid": "warn", // 1
-      "react-hooks/set-state-in-effect": "warn", // 135
-      "react-hooks/refs": "warn", // 32 (31 prod + 1 test)
-      "react-hooks/preserve-manual-memoization": "warn", // 23
-      "react-hooks/exhaustive-deps": "warn", // 23
+      "jsx-a11y/label-has-associated-control": ["error", {
+        controlComponents: ["Input", "Textarea", "SearchField", "SelectControl", "DebugAdminSelectControl"],
+        depth: 3
+      }],
+      // Existing react-hooks stock (2026-10-12); burn down, then promote to "error".
+      "react-hooks/set-state-in-effect": "warn", // 160
+      "react-hooks/refs": "warn", // 44
+      "react-hooks/preserve-manual-memoization": "warn", // 32
+      "react-hooks/exhaustive-deps": "warn", // 36
       "react-hooks/rules-of-hooks": "warn", // 3 — correctness rule; clear these first
-      "react-hooks/immutability": "warn", // 1
+      "react-hooks/immutability": "warn", // 2
       "react-hooks/purity": "warn" // 1
     }
   },

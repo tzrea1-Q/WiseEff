@@ -65,6 +65,12 @@ const mappings: ParameterModuleMapping[] = [
 ];
 
 describe("ModuleAttributionTree", () => {
+  it("exposes the unselected state of module tree items", () => {
+    render(<ModuleAttributionTree canAdmin modules={modules} mappings={[]}
+      onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    for (const item of screen.getAllByRole("treeitem")) expect(item).toHaveAttribute("aria-selected", "false");
+  });
+
   it.each([
     ["driver-group", "up"], ["driver-group", "down"],
     ["node-type", "up"], ["node-type", "down"]

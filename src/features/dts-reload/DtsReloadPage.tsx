@@ -873,7 +873,6 @@ export function DtsReloadPage({
 
             <section
               className="dts-reload-run-tray dts-binding-draft-tray dts-draft-tray"
-              role="region"
               aria-label="本轮重载"
             >
               <header>

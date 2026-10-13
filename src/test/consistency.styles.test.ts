@@ -6,6 +6,13 @@ import { scanCssContent } from "../../scripts/check-ui-standards";
 const styles = readStylesheet("src/styles.css");
 
 describe("shared consistency contracts", () => {
+  it("keeps accessibility-touched read-only controls and import fields on visual tokens", () => {
+    const affectedRules = parseCssRules(styles).filter((rule) => /debug-value-code-block|parameter-detail-history__value|project-primary-dts-viewer__|param-admin-field-info-tip|parameter-import-wizard-grid|canonical-project-value-review__diff-text/.test(rule.selector));
+    expect(affectedRules.length).toBeGreaterThan(0);
+    const affectedCss = affectedRules.map((rule) => `${rule.selector} { ${Object.entries(rule.declarations).map(([property, value]) => `${property}: ${value};`).join(" ")} }`).join("\n");
+    expect(scanCssContent("src/styles.css", affectedCss)).toEqual([]);
+  });
+
   it("keeps settings forms on token-only styles, one column and the section-title scale", () => {
     const settings = readStylesheet("src/components/layout/settings-form-page.css");
     expect(declarationsFor(settings, ".settings-form-page")["max-width"]).toBe("var(--settings-form-max-width)");

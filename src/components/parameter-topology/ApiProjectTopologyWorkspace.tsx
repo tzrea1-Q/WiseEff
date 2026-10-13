@@ -1349,7 +1349,7 @@ export function ApiProjectTopologyWorkspace({
       onNavigate={onNavigate}
     />
   ) : submitSuccessNotice ? (
-    <section className="dts-binding-draft-tray dts-draft-tray" role="region" aria-label="参数提交结果">
+    <section className="dts-binding-draft-tray dts-draft-tray" aria-label="参数提交结果">
       <p role="status">{submitSuccessNotice}</p>
       <div className="binding-draft-submission__actions">
         <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>

@@ -224,8 +224,8 @@ function DebugValueCodeBlock({ label, row, value }: { label: string; row: Runtim
         <strong>{label}</strong>
         <DebugValueFormatBadge row={row} />
       </div>
-      <pre>
-        <code tabIndex={0}>{value || "-"}</code>
+      <pre aria-label={label} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing code scrollport must support keyboard scrolling. */}>
+        <code>{value || "-"}</code>
       </pre>
     </div>
   );
@@ -238,7 +238,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
   const isComplex = isComplexDebugParameter(row);
 
   return (
-    <section className="node-write-format-panel" role="region" aria-labelledby={titleId}>
+    <section className="node-write-format-panel" aria-labelledby={titleId}>
       <div className="node-write-format-head">
         <h3 id={titleId}>{isComplex ? "复杂值写入格式" : "写入格式"}</h3>
         <span>{row.accessMode}</span>

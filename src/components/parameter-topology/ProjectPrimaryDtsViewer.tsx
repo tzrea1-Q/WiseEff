@@ -211,7 +211,7 @@ export function ProjectPrimaryDtsViewer({
 
   return (
     <section className={rootClassName} aria-label={`${fileName} · v${versionNumber}`}>
-      <div ref={bodyRef} className="project-primary-dts-viewer__body" aria-label={bodyAriaLabel ?? "DTS 源码"} tabIndex={0}>
+      <div ref={bodyRef} className="project-primary-dts-viewer__body" role="region" aria-label={bodyAriaLabel ?? "DTS 源码"} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing source scrollport must support keyboard scrolling. */}>
         {lines.map((line, index) => {
           const lineNumber = index + 1;
           const isFocused =

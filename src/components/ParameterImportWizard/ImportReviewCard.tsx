@@ -184,10 +184,10 @@ export function ImportReviewCard({
               <span>单位</span>
               <input aria-label="编辑单位" value={draft.unit ?? ""} onChange={(event) => setDraft({ ...draft, unit: event.target.value })} />
             </label>
-            <label>
+            <div className="parameter-import-wizard-field">
               <span>风险</span>
               <RiskPicker value={draft.risk ?? "Medium"} onChange={(risk) => setDraft({ ...draft, risk })} />
-            </label>
+            </div>
           </div>
           <div className="dialog-actions">
             <button type="button" className="button subtle" onClick={cancelEdit}>

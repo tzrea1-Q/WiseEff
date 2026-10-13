@@ -458,7 +458,6 @@ export function DefinitionEditorBody({
     <>
       <section
         className="definition-editor"
-        role="region"
         aria-label="定义详情"
         data-catalog-detail-region="true"
       >

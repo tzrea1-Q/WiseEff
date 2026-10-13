@@ -19,7 +19,7 @@ export function FieldInfoTip({ label, description }: FieldInfoTipProps) {
         <TooltipTrigger asChild>
           <span
             className="param-admin-field-info-tip"
-            tabIndex={0}
+            tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- The tooltip icon inside a label needs keyboard focus to expose its help text. */}
             role="img"
             aria-label={`${label}帮助`}
           >
@@ -30,7 +30,7 @@ export function FieldInfoTip({ label, description }: FieldInfoTipProps) {
           side="top"
           align="start"
           sideOffset={6}
-          className="param-admin-field-info-tip__content z-[1400] max-w-xs whitespace-normal text-left leading-relaxed"
+          className="param-admin-field-info-tip__content z-[calc(var(--z-toast)+var(--z-dropdown))] whitespace-normal text-left leading-relaxed"
         >
           {description}
         </TooltipContent>

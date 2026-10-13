@@ -367,6 +367,8 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 - 所有可交互元素键盘可达、可操作;可点击表格行与卡片实现 `tabIndex` + Enter/Space 激活。
 - 弹窗语义遵循 `ModalDialog`（role 在卡片上、标题关联、焦点陷阱/归还）。
 - 每个表单控件有程序化 label;每条错误有程序化关联。
+- 已启用的 `jsx-a11y` 规则均为 error。保留推荐配置的复合角色选项，ESLint 仅声明由原生可关联控件实现的标签控件；radiogroup 不是可关联 label 的输入控件。剩余 `react-hooks` warning 只能减少。
+- 使用显式焦点管理（弹窗使用 `ModalDialog.initialFocusRef`），不用原生 `autoFocus`。可键盘滚动的只读值、粘贴区域与帮助图标保留焦点访问；仅对已确认的 lint 误报，在对应元素处用一行说明抑制。
 - `npm run acceptance:a11y` 对覆盖路由保持通过;新增主路由必须纳入覆盖清单。
 
 ## 反模式（禁止上线）

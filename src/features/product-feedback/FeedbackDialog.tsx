@@ -463,7 +463,7 @@ export function FeedbackDialog({
                 className="feedback-section feedback-capture-panel"
                 aria-labelledby="feedback-capture-title"
                 onPaste={handleScreenshotPaste}
-                tabIndex={0}
+                tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This named screenshot paste target needs keyboard focus to receive Ctrl/Cmd+V. */}
               >
                 <div className="feedback-section-title">
                   <span id="feedback-capture-title">粘贴上传截图</span>

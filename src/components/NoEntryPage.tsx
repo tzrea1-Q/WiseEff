@@ -8,7 +8,7 @@ type NoEntryPageProps = {
 
 export function NoEntryPage({ title, description, actionLabel, actionPath, onNavigate }: NoEntryPageProps) {
   return (
-    <section className="no-entry-page" role="region" aria-labelledby="no-entry-page-title">
+    <section className="no-entry-page" aria-labelledby="no-entry-page-title">
       <span className="eyebrow">404</span>
       <h2 id="no-entry-page-title">{title}</h2>
       <p>{description}</p>

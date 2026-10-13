@@ -103,7 +103,7 @@ export function HotspotLeaderboard({
               ) : null}
             </span>
           </div>
-          <ul className="parameter-home__hotspot-list" role="list">
+          <ul className="parameter-home__hotspot-list">
           {hotspots.map((hotspot, index) => {
             const expanded = isAccordionMode ? expandedIds.includes(hotspot.id) : hotspot.id === effectiveSelected?.id;
             const panelId = `${sectionId}-panel-${hotspot.id}`;
