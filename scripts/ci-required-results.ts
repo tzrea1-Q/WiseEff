@@ -95,6 +95,19 @@ export function assertRequiredResults(input: unknown): void {
     "minimal-upgrade": identity.event === "workflow_dispatch" && identity.mode === "minimal-upgrade",
   });
   sameIdentity(parseJson(record(record(needs["build-and-test"]).outputs).identity), identity);
+  sameIdentity(parseJson(record(record(needs["acceptance-quality"]).outputs).identity), identity);
+}
+
+export function assertShardJobs(input: unknown, kind: "server" | "quality"): boolean {
+  const value = record(input);
+  const identity = readIdentity(value.identity);
+  const needs = record(value.needs);
+  const flags = flagsFor(identity, needs);
+  const selected = kind === "server" ? flags.run_l1 : flags.run_quality;
+  const job = kind === "server" ? "l1-server-shards" : "acceptance-quality-lanes";
+  assertJobs(needs, { detect: true, [job]: selected });
+  requireCi(record(needs[job]).result === (selected ? "success" : "skipped"), "SHARD_RESULT");
+  return selected;
 }
 
 export function assertL2Results(input: unknown): void {
@@ -375,7 +388,7 @@ function settleShadowEnvironment(value: unknown, identity: Identity, nativeNeeds
 export function createL1Receipt(input: unknown) {
   const value = record(input);
   const identity = readIdentity(value.identity);
-  const job = String(value.job);
+  const job = value.job === "l1-server-shards" ? "l1-server" : String(value.job);
   requireCi(Object.hasOwn(l1CommandIds, job), "UNKNOWN_JOB");
   const steps = record(value.steps);
   exactKeys(steps, l1CommandIds[job]);
@@ -402,20 +415,29 @@ export function assertL1Results(input: unknown): void {
   for (const job of l1Jobs) {
     const needed = record(needs[job]);
     if (needed.result === "skipped") continue;
-    const receipt = record(parseJson(record(needed.outputs).receipt));
-    exactKeys(receipt, ["version", "identity", "job", "commands", "reports"]);
-    requireCi(receipt.version === 1 && receipt.job === job, "RECEIPT_JOB");
-    sameIdentity(receipt.identity, identity);
-    const commands = record(receipt.commands);
-    const reports = record(receipt.reports);
-    exactKeys(commands, l1CommandIds[job]);
-    exactKeys(reports, Object.keys(testCommands).filter((id) => testCommands[id].job === job));
-    for (const id of l1CommandIds[job]) requireCi(commands[id] === "success" || (id === "advisory" && commands[id] === "failure"), "COMMAND_FAILED");
-    for (const [id, report] of Object.entries(reports)) assertTestSummary(report, id, identity);
+    const receipt = parseJson(record(needed.outputs).receipt);
+    if (job === "l1-server" && !flags.run_l1) {
+      requireCi(receipt === null, "UNSELECTED_RECEIPT");
+      continue;
+    }
+    assertL1Receipt(receipt, job, identity);
   }
 }
 
-function currentIdentity(): Identity {
+export function assertL1Receipt(value: unknown, job: string, identity: Identity): void {
+  const receipt = record(value);
+  exactKeys(receipt, ["version", "identity", "job", "commands", "reports"]);
+  requireCi(receipt.version === 1 && receipt.job === job, "RECEIPT_JOB");
+  sameIdentity(receipt.identity, identity);
+  const commands = record(receipt.commands);
+  const reports = record(receipt.reports);
+  exactKeys(commands, l1CommandIds[job]);
+  exactKeys(reports, Object.keys(testCommands).filter((id) => testCommands[id].job === job));
+  for (const id of l1CommandIds[job]) requireCi(commands[id] === "success" || (id === "advisory" && commands[id] === "failure"), "COMMAND_FAILED");
+  for (const [id, report] of Object.entries(reports)) assertTestSummary(report, id, identity);
+}
+
+export function currentIdentity(): Identity {
   const env = process.env;
   const git = (revision: string) => execFileSync("git", ["--no-replace-objects", "rev-parse", "--verify", revision], { encoding: "utf8" }).trim();
   const sha = git("HEAD");
@@ -425,7 +447,7 @@ function currentIdentity(): Identity {
     ref: env.GITHUB_REF, base: env.EFF_BASE_SHA ?? "", head: env.EFF_HEAD_SHA ?? "", sha, tree: git("HEAD^{tree}"),
     runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT });
 }
-function writeOutput(key: string, value: unknown) {
+export function writeOutput(key: string, value: unknown) {
   const json = JSON.stringify(value);
   requireCi(Buffer.byteLength(json) <= 64 * 1024 && process.env.GITHUB_OUTPUT, "OUTPUT_SIZE");
   appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${json}\n`);
@@ -464,7 +486,7 @@ function unavailableShadow(identity: Identity, command: NativeSummary["command"]
       wouldSelectFileCount: 0, actualFullFileCount: notApplicable ? 0 : native.files, matchedCount: 0 })),
   };
 }
-function runShadowAdapter(identity: Identity, command: NativeSummary["command"], files: string[], native: NativeSummary): ShadowSummary {
+export function runShadowAdapter(identity: Identity, command: NativeSummary["command"], files: string[], native: NativeSummary): ShadowSummary {
   if (identity.event !== "pull_request") return unavailableShadow(identity, command, native, "NOT_APPLICABLE");
   try {
     const executable = path.resolve(process.cwd(), "node_modules/.bin/tsx");
@@ -478,41 +500,68 @@ function runShadowAdapter(identity: Identity, command: NativeSummary["command"],
     return shadow;
   } catch { return unavailableShadow(identity, command, native, "SHADOW_ADAPTER_FAILED"); }
 }
-function runTest(command: string, identity: Identity) {
-  requireCi(Object.hasOwn(testCommands, command) && testCommands[command].job === process.env.GITHUB_JOB, "UNKNOWN_COMMAND");
+async function runTest(command: string, identity: Identity) {
+  const shard = process.env.WISEEFF_CI_SERVER_SHARD;
+  const job = process.env.GITHUB_JOB === "l1-server-shards" ? "l1-server" : process.env.GITHUB_JOB;
+  requireCi(Object.hasOwn(testCommands, command) && testCommands[command].job === job, "UNKNOWN_COMMAND");
+  if (command === "server") requireCi(process.env.GITHUB_JOB === "l1-server-shards" && /^[12]\/2$/.test(shard ?? ""), "SERVER_SHARD");
   const specification = testCommands[command];
   requireCi(process.env.RUNNER_TEMP && path.isAbsolute(process.env.RUNNER_TEMP), "REPORT_TEMP");
   const directory = mkdtempSync(path.join(realpathSync(process.env.RUNNER_TEMP), "wiseeff-l1-"));
   chmodSync(directory, 0o700);
   const output = path.join(directory, "report.json");
   const env = command === "frontend" ? { ...process.env, VITE_WISEEFF_RUNTIME_MODE: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "mock" } : process.env;
-  // filesOnly discovers the unchanged config's full file set without importing tests or starting PG fixtures.
-  const listed = JSON.parse(execFileSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--filesOnly", "--json",
-    ...(specification.config ? ["--config", specification.config] : [])], { encoding: "utf8", env, maxBuffer: 4 * 1024 * 1024 }));
-  requireCi(Array.isArray(listed) && listed.length > 0, "DISCOVERY_EMPTY");
-  const files = listed.map((entry: unknown) => { const item = record(entry); requireCi(typeof item.file === "string", "DISCOVERY_FILE"); return item.file; });
+  let files: string[];
+  if (command === "server") {
+    const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
+    files = shards.serverShardFiles();
+  } else {
+    const listed = JSON.parse(execFileSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--filesOnly", "--json",
+      ...(specification.config ? ["--config", specification.config] : [])], { encoding: "utf8", env, maxBuffer: 4 * 1024 * 1024 }));
+    requireCi(Array.isArray(listed) && listed.length > 0, "DISCOVERY_EMPTY");
+    files = listed.map((entry: unknown) => { const item = record(entry); requireCi(typeof item.file === "string", "DISCOVERY_FILE"); return item.file; });
+  }
   const missing = (tool: string, args: string[]) => spawnSync(tool, args, { stdio: "ignore", timeout: 5_000 }).status !== 0;
   const options: ReportOptions = { command, root: process.cwd(), startedAt: Date.now(), finishedAt: 0, platform: process.platform,
     missingPathDts: command === "scripts" && (missing("dtc", ["--version"]) || missing("dt-validate", ["--version"])),
     missingRehearsalContainer: command === "scripts" && missing("docker", ["inspect", process.env.WAYFINDER_POSTGRES_CONTAINER?.trim() || "wiseeff-postgres-1"]),
     missingIsolatedDockerStores: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T34A_POSTGRES_URL,
     missingIsolatedTarget: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T33B_PUBLIC_URL };
-  const result = spawnSync("npm", [...specification.args, "--", "--reporter=default", "--reporter=json", `--outputFile=${output}`], { stdio: "inherit", env });
+  const result = spawnSync("npm", [...specification.args, "--", "--reporter=default", "--reporter=json", `--outputFile=${output}`,
+    ...(command === "server" ? [`--shard=${shard}`, "--includeTaskLocation"] : [])], { stdio: "inherit", env });
   options.finishedAt = Date.now();
   requireCi(result.status === 0 && !result.error, "TEST_COMMAND_FAILED");
   const bytes = readPrivateReport(output);
   const summary = validateNativeReport(JSON.parse(bytes.toString("utf8")), files, options);
   const digest = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
   const native = { version: 1 as const, command, identity, ...summary, sha256: digest(bytes), filesSha256: digest(JSON.stringify(files.sort())) } as NativeSummary;
+  if (command === "server") {
+    const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
+    shards.recordServerExecution(JSON.parse(bytes.toString("utf8")), files, native);
+  }
   writeOutput("report", native);
   writeOutput("shadow", runShadowAdapter(identity, command, files, native));
   console.log(`CI ${command}: ${summary.files} files, ${summary.passed} passed, ${summary.skipped} optional skipped; fresh report retained locally.`);
 }
-function main() {
+async function main() {
   const [mode, command] = process.argv.slice(2);
   const identity = currentIdentity();
-  if (mode === "test") return runTest(command, identity);
-  if (mode === "receipt") return writeOutput("receipt", createL1Receipt({ identity, job: process.env.GITHUB_JOB, steps: parseJson(process.env.EFF_STEPS) }));
+  if (mode === "test") {
+    if (command === "server") {
+      requireCi(process.env.GITHUB_JOB === "l1-server-shards" && /^[12]\/2$/.test(process.env.WISEEFF_CI_SERVER_SHARD ?? ""), "SERVER_SHARD");
+      const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
+      shards.discoverServerInventory(identity);
+    }
+    return runTest(command, identity);
+  }
+  if (mode === "receipt") {
+    const receipt = createL1Receipt({ identity, job: process.env.GITHUB_JOB, steps: parseJson(process.env.EFF_STEPS) });
+    if (process.env.GITHUB_JOB === "l1-server-shards") {
+      const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
+      shards.finishServerReceipt(receipt, identity);
+    }
+    return writeOutput("receipt", receipt);
+  }
   const input = { identity, needs: parseJson(process.env.EFF_NEEDS) };
   if (mode === "l1") {
     assertL1Results(input);
@@ -526,8 +575,8 @@ function main() {
   console.log(`CI ${mode}: required results and execution identity verified.`);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  try { main(); } catch (error) {
+  main().catch((error) => {
     console.error(error instanceof Error && /^CI_[A-Z_]+$/.test(error.message) ? error.message : "CI_REJECTED");
     process.exitCode = 1;
-  }
+  });
 }

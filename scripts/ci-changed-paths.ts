@@ -19,6 +19,11 @@ const WORKFLOW_FILES = new Set([
   "scripts/ci-changed-paths.ts",
   "scripts/ci-changed-paths.test.ts"
 ]);
+const SHARDING_FILES = new Set([
+  ".github/workflows/ci.yml", "scripts/ci-required-results.ts", "scripts/ci-required-results.test.ts",
+  "scripts/ci-shard-results.ts", "scripts/ci-shard-results.test.ts", "scripts/quality-partition.test.ts",
+  "scripts/check-acceptance-ci.ts", "scripts/check-acceptance-ci.test.ts", "scripts/ci-changed-paths.ts", "scripts/ci-changed-paths.test.ts"
+]);
 
 export function normalizeChangedPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/^\.\//, "").trim();
@@ -74,7 +79,7 @@ export function classifyChangedPaths(paths: string[]): ChangedPathDecision {
     product,
     workflow,
     runL1: !docsOnly,
-    runQuality: ui || product,
+    runQuality: ui || product || normalized.some((path) => SHARDING_FILES.has(path)),
     runSmoke: product || workflow
   };
 }
@@ -125,7 +130,7 @@ function isWorkflowPath(path: string): boolean {
   return (
     path.startsWith(".github/workflows/") ||
     path.startsWith(".github/actions/") ||
-    WORKFLOW_FILES.has(path)
+    WORKFLOW_FILES.has(path) || SHARDING_FILES.has(path)
   );
 }
 

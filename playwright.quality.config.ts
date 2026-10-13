@@ -1,8 +1,10 @@
 import { defineConfig, devices } from "playwright/test";
 import { buildPlaywrightWebServers, portFromUrl } from "./playwright.shared";
 import { loadAcceptanceEnvironment } from "./e2e/acceptance/helpers/acceptanceEnvironment";
+import { parseQualityLane, selectQualityProjects } from "./e2e/quality/quality-partition";
 
 const acceptanceEnvironment = loadAcceptanceEnvironment();
+const qualityLane = parseQualityLane(process.env.WISEEFF_QUALITY_LANE);
 const ownedRuntime = acceptanceEnvironment.mode === "owned-descriptor"
   ? acceptanceEnvironment.ownedRuntime
   : undefined;
@@ -42,7 +44,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "off"
   },
-  projects: [
+  projects: selectQualityProjects([
     {
       name: "runtime-warmup",
       testMatch: /warmup\.quality\.spec\.ts/,
@@ -63,7 +65,9 @@ export default defineConfig({
     },
     {
       name: "consistency",
-      testMatch: /consistency\.(quality|collector)\.spec\.ts/,
+      testMatch: qualityLane === "consistency-1"
+        ? /consistency\.quality\.spec\.ts/
+        : /consistency\.(quality|collector)\.spec\.ts/,
       dependencies: ["runtime-warmup"],
       use: {
         ...devices["Desktop Chrome"],
@@ -78,7 +82,7 @@ export default defineConfig({
       dependencies: ["runtime-warmup"],
       use: { ...devices["Desktop Chrome"] }
     }
-  ],
+  ], qualityLane),
   webServer: ownedRuntime || skipWebServers
     ? []
     : buildPlaywrightWebServers({

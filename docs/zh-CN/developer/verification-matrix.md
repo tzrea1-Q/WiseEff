@@ -31,13 +31,36 @@ L2 浏览器验收使用 `--shard=i/4` 分为四个独立 Gate0 作业，各自�
 
 原有 L1 命令全部继续执行。四个反馈模块保持 `observation-pending`，enforce 与 memo 关闭；策略变更仍以原有完整要求验证自身。摘要路径和字段固定且有界，被拒绝的证据不能回退为原始目录上传。此边界使用 `npm run test:scripts -- scripts/check-acceptance-ci.test.ts scripts/ci-required-results.test.ts scripts/verification/ci-shadow.test.ts scripts/verification/plan.test.ts scripts/verification/selection.test.ts scripts/ci-changed-paths.test.ts`、`npm run acceptance:ci` 和原有 build 验证。测试内的有限原生夹具证明回执接线，不计作真实模块启用样本。
 
+## CI D2 质量泳道与后端分片
+
+D2 将 CI 的单次质量执行拆为四个矩阵泳道。原生 Playwright 从已注册质量项目收集精确测试清单；仅有元数据检查或清单收集通过，不代表浏览器执行通过：
+
+| 质量泳道 | 已注册覆盖 | 质量工件 |
+| --- | --- | --- |
+| `visual` | `visual`，以及已注册时的 `compact` | `wiseeff-acceptance-quality` |
+| `consistency-1` | `consistency` 的第一个路由分区 | `wiseeff-acceptance-quality-consistency-1` |
+| `consistency-2` | `consistency` 的第二个、互不重叠的路由分区 | `wiseeff-acceptance-quality-consistency-2` |
+| `accessibility` | `a11y` 与 `responsive` | `wiseeff-acceptance-quality-accessibility` |
+
+`runtime-warmup` 有意在每个泳道执行。其他每个已注册测试必须且只能归属一个泳道；两个 consistency 路由分区必须覆盖完整的已注册 consistency 清单，非路由的 collector/readiness 测试也只能分配一次。未注册 `compact` 时不能虚构其覆盖；新增已注册项目或测试没有归属时必须在收集阶段失败，不能静默遗漏。
+
+新增 consistency 路由与查询状态按基础路径自动分组，优先将最大组分配给测试数较少的 consistency 泳道，同大小组按字典序处理。分配结果不受注册顺序影响，路由数量差不超过最大组的大小。已注册的 `compact` 测试自动归属 `visual`；允许 `compact` 项目尚未存在。回执动态收集已注册测试，不依赖固定的项目测试数量。
+
+每个质量泳道拥有独立的 PostgreSQL 服务与运行时。迁移后必须依次运行 `npm run db:seed:all` 与 `npm run --if-present seed:quality:admin-lists`，命令成功后才为质量执行设置 `WISEEFF_QUALITY_SKIP_SEED=true`。main 上允许管理员列表 seed 尚未注册；一旦注册，该脚本必须成功，不能抑制失败。脚本缺失不代表管理员列表 fixture 已获覆盖。每个质量泳道保留原有 **35 分钟**作业超时。
+
+L1 后端使用两个原生 Vitest 分片：`i=1,2` 分别执行 `npm run test:server -- --shard=i/2`，各自拥有 `pgvector/pgvector:pg16` 服务，保留原有 **20 分钟**作业超时。原生分片清单必须互不重叠，其并集必须等于未分片配置的完整后端清单；不能用手选文件子集替代原生分片。全部原有 L1 命令及文档/vector 检查继续保留。
+
+汇总通过工件回执完成，不能使用矩阵输出的最后写入者覆盖语义。必须精确收齐四个质量泳道和两个后端分片，核验工件/回执唯一归属、收集与实际执行清单完全一致，以及 checkout SHA/tree、workflow/run/attempt 和命令/project/lane 或 shard 身份一致。工件/回执缺失、重复、陈旧、格式错误、身份不匹配、上传失败、必需 worker 失败或取消、必需测试为零或全部跳过，均按 fail-closed 拒绝通过。质量清单并集将 warmup 按每泳道一次计入，其他测试仅计入一次；后端清单保留精确分片归属。
+
+保留稳定汇总 job ID/名称 `acceptance-quality` / `Acceptance quality` 与 `l1-server` / `L1 backend`。`Build and test`、`Merge bar` 的 always-run 及 Detect 控制的跳过语义不变：必需矩阵必须全部成功且回执有效；仅成功检测判定不需要时才允许跳过。文档-only 仍要求稳定合入汇总门成功。保留 `Merge bar` 作为 `main` 的 required status check，不能换成各矩阵 worker。此契约不改变 L2 Gate0 预算或验收义务。
+
 ## 关键阅读点
 
 - 先确认该文档属于哪个决策面：developer。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 永久注销用户必须执行 API 模式的 `PERM-USER-MGMT-001`，证明 PostgreSQL 外键策略（账号自有数据 `CASCADE`、历史保留数据可空 `SET NULL`）、无 PII 的注销审计，以及非 Admin 调用 `DELETE /api/v1/users/:userId` 返回 401/403。Mock 模式浏览器通过不能满足这一 API/数据库门禁。
-- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 一次 `acceptance:quality-run`（UI/产品路径）。L1 固定拆为 `l1-static`、`l1-frontend`、`l1-scripts`、`l1-server`，保留全部原命令；脚本和后端分别使用 pgvector 服务与已验证 DTS 工具链，唯一的 L1 `docs:check` 在 `l1-server` 的 vector 设置之后、后端测试之前运行。每个测试命令发现配置中的完整文件集，并生成本次私有原生 JSON 报告；报告、命令结果、实际执行 SHA/tree/run/attempt 必须一致。必需检查缺失、跳过、取消、零测试或全部必需测试跳过均失败。`Build and test` 与 `Merge bar` 始终运行，文档-only 也要求二者成功。L2 事件继续使用 `acceptance-quality` 兄弟 job；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用独占运行时，在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。完整证据 finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。以后若打开 branch protection，required check 只设 `Merge bar`。
+- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 四个 D2 质量泳道经稳定 `Acceptance quality` 汇总（UI/产品路径）。L1 保留 `l1-static`、`l1-frontend`、`l1-scripts`、`l1-server` 汇总 ID 及全部原命令；脚本和两个原生后端分片各自使用 pgvector 服务与已验证 DTS 工具链，L1 `docs:check` 保留在 vector 设置之后、后端测试之前。原生分片清单共同覆盖配置中的完整文件集，并生成本次私有原生 JSON 报告；工件回执、报告、命令结果、实际执行 SHA/tree/run/attempt 必须一致。必需检查缺失、跳过、取消、零测试或全部必需测试跳过均失败。`Build and test` 与 `Merge bar` 始终运行，文档-only 也要求二者成功。L2 事件继续使用 `acceptance-quality` 作为这些泳道的兄弟汇总门；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用独占运行时，在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。完整证据 finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。以后若打开 branch protection，required check 只设 `Merge bar`。
 
 ## 有界浏览器夹具检查
 

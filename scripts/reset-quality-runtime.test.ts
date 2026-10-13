@@ -1,4 +1,8 @@
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import YAML from "yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -335,10 +339,9 @@ describe("quality runtime reset wiring", () => {
     const fixtureScript = readFileSync("scripts/seed-quality-visual-review.ts", "utf8");
     const authorization = readFileSync("scripts/quality-visual-review-authorization.ts", "utf8");
     const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
-    const localQualityJob = workflow.slice(
-      workflow.indexOf("  acceptance-quality:"),
-      workflow.indexOf("  acceptance-smoke:"),
-    );
+    const { jobs } = YAML.parse(workflow);
+    const qualityWorker = jobs["acceptance-quality-lanes"];
+    const seedStep = qualityWorker.steps.find((step: { name: string }) => step.name === "Migrate and seed database");
     const targetQualityJobStart = workflow.indexOf("  target-synthetic-acceptance:");
     const targetQualityJob = workflow.slice(
       targetQualityJobStart,
@@ -353,8 +356,29 @@ describe("quality runtime reset wiring", () => {
     expect(authorization).toContain("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME");
     expect(authorization).toContain("current_database()");
     expect(visualSpec).toMatch(/parameter-review[\s\S]*test\.skip/);
-    expect(localQualityJob).toContain("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true");
-    expect(localQualityJob).toContain("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff");
+    expect(qualityWorker.env.WISEEFF_QUALITY_LANE).toBe("${{ matrix.lane }}");
+    expect(qualityWorker.strategy.matrix.lane).toEqual(["visual", "consistency-1", "consistency-2", "accessibility"]);
+    const directory = mkdtempSync(path.join(os.tmpdir(), "wiseeff-fixture-opt-in-"));
+    try {
+      for (const lane of qualityWorker.strategy.matrix.lane) {
+        const output = path.join(directory, lane);
+        execFileSync("bash", ["-e", "-c", `npm() { :; }\n${seedStep.run}`], {
+          env: { ...process.env, WISEEFF_QUALITY_LANE: lane, GITHUB_ENV: output }
+        });
+        const environment = readFileSync(output, "utf8");
+        if (lane === "visual") {
+          expect(environment).toContain("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true\n");
+          expect(environment).toContain("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff\n");
+        } else {
+          expect(environment).not.toContain("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE");
+          expect(environment).not.toContain("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME");
+        }
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+    const outsideSeed = { ...qualityWorker, steps: qualityWorker.steps.filter((step: unknown) => step !== seedStep) };
+    expect(JSON.stringify(outsideSeed)).not.toContain("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE");
+    expect(JSON.stringify(outsideSeed)).not.toContain("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME");
+    expect(JSON.stringify(jobs["acceptance-quality"])).not.toContain("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE");
     expect(targetQualityJob).toContain('WISEEFF_QUALITY_SKIP_SEED: "true"');
     expect(targetQualityJob).not.toContain("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true");
     expect(targetQualityJob).not.toContain("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME");
