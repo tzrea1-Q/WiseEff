@@ -30,6 +30,7 @@ The app UI is Chinese-first, so locate pages by their route; the Chinese guide g
 - [Parameter management](parameter-management.md): search and comparison, drafts, submission and review, project initialization, imports, and configuration releases.
 - [Device debugging](device-debugging.md): connect HDC/ADB devices, read and safely write nodes, test DTS reloads, restore baselines, and inspect evidence.
 - [Log analysis](log-analysis.md): upload logs, follow stages, distinguish degraded results, inspect evidence, give feedback, and create knowledge drafts.
+- [Xiaoze](xiaoze.md): ask grounded questions, inspect sources, edit proposals, and approve or reject Agent actions.
 
 ## Find the right reference
 
