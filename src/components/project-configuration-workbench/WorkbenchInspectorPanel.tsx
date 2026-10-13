@@ -540,7 +540,7 @@ export function WorkbenchInspectorPanel({
                 <div>
                   <dt>文本差异</dt>
                   <dd>
-                    <pre className="configuration-workbench__diff-view mono" tabIndex={0}>
+                    <pre className="configuration-workbench__diff mono" aria-label="候选文本差异" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing diff scrollport must support keyboard scrolling. */}>
                       {activeCandidate.impact.textDiff}
                     </pre>
                   </dd>

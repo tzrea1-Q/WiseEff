@@ -664,7 +664,6 @@ export function DtsParameterWorkbench({
 
   return (
     <section
-      role="region"
       aria-label="DTS 参数工作台"
       className={`dts-parameter-workbench dts-parameter-workbench--${layoutMode}`}
       data-project-id={projectId}

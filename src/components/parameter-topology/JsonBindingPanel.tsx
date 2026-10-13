@@ -463,7 +463,7 @@ export function JsonBindingPanel({
   if (jsonBindings.length === 0) return null;
 
   return (
-    <section className="dts-parameter-workbench json-parameter-workbench" role="region" aria-label="JSON 参数">
+    <section className="dts-parameter-workbench json-parameter-workbench" aria-label="JSON 参数">
       <NavigatorWorkbench pageKey="parameters" navigatorLabel="模块导航"
         taskLabel={resultsMode === "parameters" ? "JSON 参数列表" : "JSON 源码结果"}
         taskClassName="dts-workbench-list"

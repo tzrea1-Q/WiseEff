@@ -4,6 +4,18 @@ import { describe, expect, it, vi } from "vitest";
 import { SearchField } from "./SearchField";
 
 describe("SearchField", () => {
+  it("honors requested focus when enabled without stealing focus on value updates", () => {
+    const focusRequest = { autoFocus: true, onValueChange: () => undefined };
+    const { rerender } = render(<><SearchField value="" {...focusRequest} disabled /><button>下一步</button></>);
+    const input = screen.getByRole("searchbox", { name: "搜索" });
+    expect(input).not.toHaveFocus();
+    rerender(<><SearchField value="" {...focusRequest} /><button>下一步</button></>);
+    expect(input).toHaveFocus();
+    screen.getByRole("button", { name: "下一步" }).focus();
+    rerender(<><SearchField value="gpio" {...focusRequest} /><button>下一步</button></>);
+    expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
+  });
+
   it("renders a controlled search input", () => {
     const onValueChange = vi.fn();
     render(<SearchField value="gpio" onValueChange={onValueChange} placeholder="搜索参数" />);

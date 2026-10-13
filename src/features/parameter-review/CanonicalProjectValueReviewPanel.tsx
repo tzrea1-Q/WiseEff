@@ -752,7 +752,7 @@ export function CanonicalProjectValueReviewPanel({
                   <div>
                     <p>变更前</p>
                     <pre
-                      tabIndex={0}
+                      tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */}
                       aria-label="固定源变更前"
                       className="canonical-project-value-review__diff-text"
                     >{singleDiff.before}</pre>
@@ -760,7 +760,7 @@ export function CanonicalProjectValueReviewPanel({
                   <div>
                     <p>变更后</p>
                     <pre
-                      tabIndex={0}
+                      tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */}
                       aria-label="固定源变更后"
                       className="canonical-project-value-review__diff-text"
                     >{singleDiff.after}</pre>
@@ -786,8 +786,8 @@ export function CanonicalProjectValueReviewPanel({
                   <p><span>{conflictDecision.choice === "file" ? "文件值" : "界面草稿值"}</span> · {conflictDecision.sourceDiff.format.toUpperCase()}</p>
                   {matchesFrozenConflict(selected, sourceDiff, conflictDecision) ? <>
                     <p>经验证的冻结来源差异</p>
-                    <pre tabIndex={0} aria-label="冲突来源变更前">{conflictDecision.sourceDiff.before}</pre>
-                    <pre tabIndex={0} aria-label="冲突来源变更后">{conflictDecision.sourceDiff.after}</pre>
+                    <pre aria-label="冲突来源变更前">{conflictDecision.sourceDiff.before}</pre>
+                    <pre aria-label="冲突来源变更后">{conflictDecision.sourceDiff.after}</pre>
                   </> : <p role="alert">冲突详情、目标、顺序或证明与请求来源不符，已阻止批准。</p>}
                 </section>
               ) : null}
@@ -855,9 +855,9 @@ export function CanonicalProjectValueReviewPanel({
               {batchProofReady && batchDiff ? (
                 <section aria-label="批量固定源差异" className="canonical-project-value-review__diff">
 
-                  <div><p>变更前</p><pre tabIndex={0} aria-label="批量固定源变更前" className="canonical-project-value-review__diff-text">{batchDiff.before}</pre></div>
-                  {batchDiff.uploadAfter ? <div><p>原上传候选</p><pre tabIndex={0} aria-label="批量原上传来源" className="canonical-project-value-review__diff-text">{batchDiff.uploadAfter}</pre></div> : null}
-                  <div><p>变更后</p><pre tabIndex={0} aria-label="批量固定源变更后" className="canonical-project-value-review__diff-text">{batchDiff.after}</pre></div>
+                  <div><p>变更前</p><pre tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */} aria-label="批量固定源变更前" className="canonical-project-value-review__diff-text">{batchDiff.before}</pre></div>
+                  {batchDiff.uploadAfter ? <div><p>原上传候选</p><pre tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */} aria-label="批量原上传来源" className="canonical-project-value-review__diff-text">{batchDiff.uploadAfter}</pre></div> : null}
+                  <div><p>变更后</p><pre tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */} aria-label="批量固定源变更后" className="canonical-project-value-review__diff-text">{batchDiff.after}</pre></div>
                 </section>
               ) : null}
               </section>
@@ -876,8 +876,8 @@ export function CanonicalProjectValueReviewPanel({
                       </dl>
                       {source ? (
                         <div>
-                          <p>来源变更前</p><pre tabIndex={0} aria-label={`目标 ${index + 1} 来源变更前`}>{source.beforeText}</pre>
-                          <p>来源变更后</p><pre tabIndex={0} aria-label={`目标 ${index + 1} 来源变更后`}>{source.afterText ?? "删除"}</pre>
+                          <p>来源变更前</p><pre aria-label={`目标 ${index + 1} 来源变更前`}>{source.beforeText}</pre>
+                          <p>来源变更后</p><pre aria-label={`目标 ${index + 1} 来源变更后`}>{source.afterText ?? "删除"}</pre>
                         </div>
                       ) : null}
                     </li>

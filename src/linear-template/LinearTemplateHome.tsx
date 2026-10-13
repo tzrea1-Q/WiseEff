@@ -97,7 +97,7 @@ function TemplateHeader({ onNavigate }: { onNavigate?: OnNavigate }) {
   return (
     <header className="linear-header">
       <Container className="linear-header-inner">
-        <a className="linear-logo-link" href="#" aria-label="雷泽首页">
+        <a className="linear-logo-link" href="/" aria-label="雷泽首页">
           <LinearLogo />
           <span>雷泽</span>
         </a>

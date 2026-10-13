@@ -1151,7 +1151,7 @@ function LogStageTimeline({ stage, status }: { stage: LogStageId; status: LogRec
         );
 
         return (
-          <li aria-current={current ? "step" : undefined} aria-disabled={aborted || undefined} className={className} key={id}>
+          <li aria-current={current ? "step" : undefined} className={className} key={id}>
             <span>{failed ? "!" : done ? <Check size={14} /> : index + 1}</span>
             <small>{STAGE_LABELS[id]}{aborted ? " · 已中止" : ""}</small>
           </li>
@@ -1273,7 +1273,7 @@ function RawLogViewer({
         <button aria-label="下一个匹配" disabled={matchLines.length === 0} type="button" onClick={() => moveMatch(1)}>
           ↓
         </button>
-        <output aria-live="polite" role="status">
+        <output aria-live="polite">
           {searchQuery.trim() === "" ? "" : matchLines.length === 0 ? "无匹配。按 Esc 清空" : `${activeMatchIndex + 1} / ${matchLines.length} 匹配`}
         </output>
       </div>
@@ -1398,7 +1398,7 @@ function EvidenceCard({
   const title = `证据 ${String(index + 1).padStart(2, "0")}`;
 
   return (
-    <article
+    <div
       aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`}
       aria-pressed={focused}
       className={classNames("evidence-card", focused && "evidence-card--focused", `evidence-card--${evidence.stageId}`)}
@@ -1428,7 +1428,7 @@ function EvidenceCard({
         <small>建议处置</small>
         <p>关联处置：{evidence.suggestedAction}</p>
       </footer>
-    </article>
+    </div>
   );
 }
 

@@ -409,7 +409,6 @@ function BoolEditor({
       <input
         id={`${baseId}-bool`}
         type="checkbox"
-        role="checkbox"
         aria-label="布尔开关"
         disabled={disabled}
         checked={present}

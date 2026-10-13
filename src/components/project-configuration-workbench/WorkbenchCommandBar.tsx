@@ -93,6 +93,7 @@ export function WorkbenchCommandBar({
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const activeFileFormatLabel = selectedMember?.format === "json" ? "JSON" : "DTS";
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const configSetNameRef = useRef<HTMLInputElement | null>(null);
   const [createConfigSetOpen, setCreateConfigSetOpen] = useState(false);
   const [newConfigSetName, setNewConfigSetName] = useState("");
   const [configSetNameError, setConfigSetNameError] = useState("");
@@ -365,6 +366,7 @@ export function WorkbenchCommandBar({
         className="submission-dialog configuration-workbench__create-config-dialog"
         backdropClassName="param-admin-modal-backdrop"
         describedBy
+        initialFocusRef={configSetNameRef}
       >
         {({ titleId, descriptionId }) => (
           <>
@@ -395,7 +397,7 @@ export function WorkbenchCommandBar({
                 <input
                   type="text"
                   value={newConfigSetName}
-                  autoFocus
+                  ref={configSetNameRef}
                   aria-invalid={configSetNameError ? "true" : "false"}
                   aria-describedby={configSetNameError ? "workbench-config-set-name-error" : undefined}
                   onChange={(event) => {

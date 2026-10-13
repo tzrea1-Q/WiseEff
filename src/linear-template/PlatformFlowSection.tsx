@@ -141,6 +141,7 @@ export function PlatformFlowSection() {
         <div
           className="platform-flow-tablist"
           role="tablist"
+          tabIndex={-1}
           aria-label="雷泽工作流场景"
           onMouseEnter={() => setIsPaused(true)}
           onMouseLeave={() => setIsPaused(false)}
