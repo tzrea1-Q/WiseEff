@@ -10,19 +10,19 @@ WiseEff coordinates parameter changes, device debugging, log analysis, and engin
 
 ## Start here by role
 
-Only published guide pages are listed here. Start with [Account and access](account-and-access.md); further workflow guides will be added as they become available.
+Start with [Account and access](account-and-access.md) to sign in, then choose from the seven workflow guides below. These role-based paths use the default permissions; each guide explains the additional Organization, project, and action requirements.
 
 The app UI is Chinese-first, so locate pages by their route; the Chinese guide gives the exact on-screen labels.
 
 | Your role | Start here |
 | --- | --- |
-| Guest (`guest`) | [Register or sign in](account-and-access.md#register-a-local-account) and understand which Organization you join. |
-| Hardware user (`hardware-user`) | [Create a local account](account-and-access.md#register-a-local-account) and [change your password](account-and-access.md#change-your-local-password). |
-| Software user (`software-user`) | [Create a local account](account-and-access.md#register-a-local-account) and [change your password](account-and-access.md#change-your-local-password). |
-| Hardware committer (`hardware-committer`) | [Request a Committer role](account-and-access.md#wait-for-committer-approval) before trying to sign in. |
-| Software committer (`software-committer`) | [Request a Committer role](account-and-access.md#wait-for-committer-approval) before trying to sign in. |
-| Organization Admin (`admin`) | [Approve registration requests](account-and-access.md#approve-a-committer-request) and [reset a member's password](account-and-access.md#reset-a-members-local-password). |
-| Platform Admin (`platform-admin`) | [Account and access](account-and-access.md), including Admin actions in your home Organization; this guide does not cover cross-Organization operations. |
+| Guest (`guest`) | Browse and compare [parameters](parameter-management.md), search [knowledge](knowledge.md), and ask [Xiaoze](xiaoze.md) read-only questions. |
+| Hardware user (`hardware-user`) | Propose [parameter changes](parameter-management.md), read device nodes in [Device debugging](device-debugging.md), analyze [logs](log-analysis.md), contribute [knowledge](knowledge.md), and use [Xiaoze](xiaoze.md). |
+| Software user (`software-user`) | Use the hardware-user workflows above and handle assigned [parameter merge tasks](parameter-management.md#advance-staged-requests) when authorized. |
+| Hardware committer (`hardware-committer`) | After [approval](account-and-access.md#wait-for-committer-approval), use the hardware-user workflows, handle assigned [hardware reviews](parameter-management.md#advance-staged-requests), and perform authorized node writes, reloads, and restores in [Device debugging](device-debugging.md). |
+| Software committer (`software-committer`) | After [approval](account-and-access.md#wait-for-committer-approval), use the hardware-user workflows, handle assigned [software reviews and merges](parameter-management.md), and perform authorized node writes, reloads, and restores in [Device debugging](device-debugging.md). |
+| Organization Admin (`admin`) | Use [Organization administration and governance](organization-and-governance.md) for members, registration approvals, audits, and business modules; manage [parameters and configuration](parameter-management.md) and [knowledge](knowledge.md), and use the engineering workflows above within scope. |
+| Platform Admin (`platform-admin`) | Use the Admin workflows above within their documented scope; [Organization administration and governance](organization-and-governance.md) explains protected roles and the registration queue's cross-Organization caveat. |
 
 ## Workflows
 

@@ -8,7 +8,7 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 
 Newcomers: start with the [Platform Overview](platform-overview.md) for capabilities, architecture, governance, and readiness boundaries.
 
-Product users: start with the [User Guide](user-guide/README.md) for account and access workflows.
+Product users: start with the [User Guide](user-guide/README.md) for task guidance across all product workflows.
 
 ## Technical and Test Reading Paths
 

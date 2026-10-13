@@ -10,17 +10,17 @@ WiseEff 将参数变更、设备调试、日志分析和工程知识连接在同
 
 ## 按角色开始
 
-这里只列出已完成的指南。先阅读[账号与访问](account-and-access.md)，其它工作流指南会在完成后加入。
+先阅读[账号与访问](account-and-access.md)完成登录，再按任务选择下方七篇操作指南。以下路径基于默认角色权限；各篇指南会说明组织、项目和具体操作的附加要求。
 
 | 你的角色 | 从这里开始 |
 | --- | --- |
-| 访客（`guest`） | [注册或登录](account-and-access.md#注册本地账号)，了解新账号加入哪个组织。 |
-| 硬件开发（`hardware-user`） | [创建本地账号](account-and-access.md#注册本地账号)，以及[修改自己的密码](account-and-access.md#修改自己的本地密码)。 |
-| 软件开发（`software-user`） | [创建本地账号](account-and-access.md#注册本地账号)，以及[修改自己的密码](account-and-access.md#修改自己的本地密码)。 |
-| 硬件MDE（`hardware-committer`） | [申请审阅角色](account-and-access.md#等待-mde-申请获批)，获批后再登录。 |
-| 软件MDE（`software-committer`） | [申请审阅角色](account-and-access.md#等待-mde-申请获批)，获批后再登录。 |
-| 管理员（`admin`） | [审批注册申请](account-and-access.md#审批-mde-注册申请)，以及[重置成员密码](account-and-access.md#重置成员的本地密码)。 |
-| 平台超级管理员（`platform-admin`） | 阅读[账号与访问](account-and-access.md)，在自己的归属组织执行管理员操作；本指南不介绍跨组织操作。 |
+| 访客（`guest`） | 查询和对比[参数](parameter-management.md)、检索[工程知识](knowledge.md)，以及向[小泽](xiaoze.md)提出只读问题。 |
+| 硬件开发（`hardware-user`） | 提交[参数变更](parameter-management.md)、在[设备调试](device-debugging.md)中读取节点、分析[日志](log-analysis.md)、编写[工程知识](knowledge.md)，并使用[小泽](xiaoze.md)。 |
+| 软件开发（`software-user`） | 使用上述硬件开发工作流，并在获授权时处理分配给自己的[参数合入任务](parameter-management.md#推进分阶段请求)。 |
+| 硬件MDE（`hardware-committer`） | [申请获批](account-and-access.md#等待-mde-申请获批)后，使用硬件开发工作流、处理分配给自己的[硬件检视](parameter-management.md#推进分阶段请求)，并在[设备调试](device-debugging.md)中执行获授权的节点写入、重载和恢复。 |
+| 软件MDE（`software-committer`） | [申请获批](account-and-access.md#等待-mde-申请获批)后，使用硬件开发工作流、处理分配给自己的[软件审阅与合入](parameter-management.md)，并在[设备调试](device-debugging.md)中执行获授权的节点写入、重载和恢复。 |
+| 管理员（`admin`） | 通过[组织管理与业务治理](organization-and-governance.md)管理成员、审批注册申请、查询审计和维护业务模块；管理[参数与配置](parameter-management.md)、[工程知识](knowledge.md)，并在授权范围内使用上述工程工作流。 |
+| 平台超级管理员（`platform-admin`） | 在各篇指南说明的范围内使用上述管理员工作流；[组织管理与业务治理](organization-and-governance.md)说明受保护角色及注册申请队列的跨组织注意事项。 |
 
 ## 操作指南
 
