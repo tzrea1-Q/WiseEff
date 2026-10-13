@@ -57,6 +57,18 @@ function renderTable(
 }
 
 describe("DebugNodeLibraryTable", () => {
+  it("keeps destructive actions in the overflow menu without opening the row editor", async () => {
+    const onDelete = vi.fn();
+    const onEdit = vi.fn();
+    renderTable({ onDelete, onEdit });
+    const row = screen.getByRole("row", { name: /Fast charge current/ });
+    expect(within(row).queryByRole("button", { name: /删除/ })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    expect(onDelete).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("menuitem", { name: "删除 Fast charge current" }));
+    expect(onDelete).toHaveBeenCalledWith("node-1");
+    expect(onEdit).not.toHaveBeenCalled();
+  });
   it("renders module filter and narrows rows by selected modules", () => {
     renderTable();
 
@@ -116,9 +128,8 @@ describe("DebugNodeLibraryTable", () => {
     const onEditBindings = vi.fn();
     renderTable({ onEdit, onEditBindings });
 
-    await userEvent.click(
-      within(screen.getByRole("row", { name: /Fast charge current/ })).getByRole("button", { name: "路径绑定" })
-    );
+    await userEvent.click(within(screen.getByRole("row", { name: /Fast charge current/ })).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
 
     expect(onEditBindings).toHaveBeenCalledWith("node-1");
     expect(onEdit).not.toHaveBeenCalled();
@@ -129,15 +140,14 @@ describe("DebugNodeLibraryTable", () => {
     const onEdit = vi.fn();
     renderTable({ onDelete, onEdit });
 
-    await userEvent.click(
-      within(screen.getByRole("row", { name: /Fast charge current/ })).getByRole("button", { name: /删除 Fast charge current/ })
-    );
+    await userEvent.click(within(screen.getByRole("row", { name: /Fast charge current/ })).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /删除 Fast charge current/ }));
 
     expect(onDelete).toHaveBeenCalledWith("node-1");
     expect(onEdit).not.toHaveBeenCalled();
   });
 
-  it("allows deleting an unused disabled node while keeping disablement unavailable", () => {
+  it("allows deleting an unused disabled node while keeping disablement unavailable", async () => {
     const disabledNode = { ...nodes[0], id: "node-disabled", name: "Disabled unused node", enabled: false };
     renderTable({
       nodes: [disabledNode],
@@ -145,8 +155,9 @@ describe("DebugNodeLibraryTable", () => {
     });
 
     const row = screen.getByRole("row", { name: /Disabled unused node/ });
-    expect(within(row).getByRole("button", { name: /删除 Disabled unused node/ })).toBeEnabled();
-    expect(within(row).getByRole("button", { name: /禁用 Disabled unused node/ })).toBeDisabled();
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    expect(screen.getByRole("menuitem", { name: /删除 Disabled unused node/ })).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: /禁用 Disabled unused node/ })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("paginates when the catalog exceeds one page", () => {

@@ -13,6 +13,7 @@ export function KnowledgeStatusBadge({ status }: { status: KnowledgeStatus }) {
     <span
       className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium", statusBadgeClasses[status])}
       data-status={status}
+      data-row-status
     >
       {knowledgeStatusLabels[status]}
     </span>

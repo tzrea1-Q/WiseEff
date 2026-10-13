@@ -12,8 +12,10 @@ import {
   productFeedbackTypeLabels,
   productFeedbackTypes
 } from "@/domain/productFeedback/types";
-import { DataTable, PageInsightBar, type Column } from "@/components/admin";
+import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { AdminListPage } from "@/components/layout/AdminListPage";
+import { SectionSkeleton } from "@/components/common/SectionState";
 import { SearchField } from "@/components/common/SearchField";
 import { filterItems } from "@/lib/search";
 import { productFeedbackSearchProfile } from "@/lib/search/profiles";
@@ -34,7 +36,7 @@ const statusBadgeClasses: Record<ProductFeedbackStatus, string> = {
 
 function StatusBadge({ status }: { status: ProductFeedbackStatus }) {
   return (
-    <span className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium", statusBadgeClasses[status])}>
+    <span data-row-status className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium", statusBadgeClasses[status])}>
       {productFeedbackStatusLabels[status]}
     </span>
   );
@@ -223,26 +225,19 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
         ]}
       />
 
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-foreground">产品反馈记录</h2>
-          <Button variant="outline" size="sm" onClick={() => void loadFeedback()} disabled={loading} aria-busy={loading || undefined}>
+      <AdminListPage label="产品反馈记录" headerActions={<Button variant="default" size="sm" onClick={() => void loadFeedback()} disabled={loading} aria-busy={loading || undefined}>
             <RefreshCw data-icon="inline-start" />
             刷新
-          </Button>
-        </div>
-
-        {errorMessage ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</p> : null}
-
-        <DataTable
-          aria-label="产品反馈记录"
-          rows={filteredRows}
-          rowKey={(feedback) => feedback.id}
-          columns={columns}
-          onRowClick={(feedback) => setSelectedId(feedback.id)}
-          selectedRowKey={selectedId ?? undefined}
-          pageSize={8}
-          toolbar={
+          </Button>}
+        notice={errorMessage ? <p role="alert" className="text-destructive">{errorMessage}</p> : undefined}
+        tableState={loading && rows.length === 0 ? <SectionSkeleton label="正在加载反馈" /> : undefined}
+        table={{ ariaLabel: "产品反馈记录", rows: filteredRows, rowKey: (feedback) => feedback.id,
+          columns, onRowClick: (feedback) => setSelectedId(feedback.id), selectedRowKey: selectedId ?? undefined, pageSize: 8 }}
+        rowActions={(feedback) => ({ label: `反馈 ${feedback.id} 操作`,
+          primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedId(feedback.id) },
+          items: [{ id: "progress", label: "查看进展", onSelect: () => setSelectedId(feedback.id) }]
+        })}
+          filterBar={
             <div className="flex flex-wrap items-center gap-2">
               <select
                 aria-label="状态筛选"
@@ -293,22 +288,9 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
               </span>
             </div>
           }
-          emptyState={
-            loading ? (
-              <p className="text-sm text-muted-foreground">正在加载反馈...</p>
-            ) : hasActiveFilters ? (
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">未匹配任何反馈</p>
-                <button type="button" onClick={resetFilters} className="mt-2 text-xs text-primary hover:underline">
-                  重置筛选
-                </button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">暂无产品反馈</p>
-            )
-          }
-        />
-      </section>
+        emptyState={{ message: hasActiveFilters ? "未匹配任何反馈" : "暂无产品反馈",
+          actionLabel: hasActiveFilters ? "重置筛选" : "刷新", onAction: hasActiveFilters ? resetFilters : () => { void loadFeedback(); } }}
+      />
 
       <FeedbackAdminDrawer
         feedback={selectedFeedback}

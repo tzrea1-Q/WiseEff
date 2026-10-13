@@ -20,10 +20,19 @@
 
 .row-action-menu__item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   border-radius: var(--radius-sm);
   cursor: pointer;
   outline: none;
+}
+
+.row-action-menu__description {
+  width: 100%;
+  max-width: var(--admin-list-name-max-width);
+  white-space: normal;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
 .row-action-menu__item[data-highlighted] {

@@ -106,6 +106,8 @@
   --admin-list-table-min-width: 1080px;
   --admin-list-name-max-width: 240px;
   --admin-list-detail-width: 520px;
+  --admin-list-role-control-width: 180px;
+  --admin-list-role-cell-width: 204px;
   --settings-form-max-width: 960px;
 
   /* ── Radius ── */
@@ -3610,11 +3612,11 @@ td small {
 
 .log-admin-search,
 .feedback-admin-search {
-  width: min(16rem, 100%);
+  width: min(calc(var(--space-16) * 4), 100%);
 }
 
 .knowledge-search {
-  width: min(24rem, 100%);
+  width: min(calc(var(--space-16) * 6), 100%);
 }
 
 .knowledge-spec-search {
@@ -5031,11 +5033,11 @@ td small {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: var(--space-5);
+  height: var(--space-5);
+  padding: 0 var(--space-2);
   color: var(--text);
-  background: #dbeafe;
+  background: var(--accent-soft);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-weight: 700;
@@ -5048,10 +5050,10 @@ td small {
   align-items: center;
   gap: var(--space-2) var(--space-3);
   margin: 0;
-  padding: 10px var(--space-3);
+  padding: var(--space-3) var(--space-3);
   color: var(--text-secondary);
-  background: #f8fbff;
-  border: 1px solid #d7e3ff;
+  background: var(--surface-sunken);
+  border: var(--stroke-hairline) solid var(--border);
   border-radius: var(--radius-md);
   font-size: var(--text-base);
   line-height: 1.45;
@@ -5068,16 +5070,16 @@ td small {
   line-height: 1.45;
   cursor: pointer;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: var(--view-switch-focus-width);
 }
 
 .user-permissions-pending-hint__action:hover {
-  color: #004bb8;
+  color: var(--accent-hover);
 }
 
 .user-permissions-pending-hint__action:focus-visible {
-  outline: 2px solid rgba(0, 93, 224, 0.2);
-  outline-offset: 2px;
+  outline: var(--view-switch-focus-width) solid var(--ring);
+  outline-offset: var(--view-switch-focus-width);
 }
 
 .user-permissions-summary__copy {
@@ -5087,30 +5089,12 @@ td small {
 }
 
 .user-permissions-primary-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
   flex: 0 0 auto;
-  min-width: 116px;
-  min-height: 38px;
-  padding: 0 14px;
-  color: var(--primary-foreground);
-  background: var(--app-primary);
-  border: 1px solid var(--app-primary);
-  border-radius: var(--radius-md);
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-pressed) 18%, transparent);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--text-base);
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .user-permissions-primary-action:hover {
-  background: #004bb8;
-  border-color: #004bb8;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .user-permissions-primary-action svg {
@@ -5130,14 +5114,14 @@ td small {
 .user-permissions-role-tooltip {
   min-width: 0;
   background: var(--surface);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-soft);
 }
 
 .user-permissions-role-header,
 .user-permissions-role-cell {
-  width: 204px;
+  width: var(--admin-list-role-cell-width);
 }
 
 .user-permissions-role-cell {
@@ -5147,19 +5131,19 @@ td small {
 .user-permissions-role-control {
   position: relative;
   display: inline-block;
-  width: 180px;
+  width: var(--admin-list-role-control-width);
   max-width: 100%;
 }
 
 .user-permissions-role-select {
   display: block;
-  width: 180px;
-  min-width: 180px;
-  min-height: 32px;
-  padding: 0 10px;
+  width: var(--admin-list-role-control-width);
+  min-width: var(--admin-list-role-control-width);
+  min-height: var(--space-8);
+  padding: 0 var(--space-3);
   color: var(--text);
   background: var(--surface-sunken);
-  border: 1px solid var(--shell-sidebar-border);
+  border: var(--stroke-hairline) solid var(--shell-sidebar-border);
   border-radius: var(--radius-md);
   font: inherit;
   font-size: var(--text-base);
@@ -5175,8 +5159,8 @@ td small {
 
 .user-permissions-role-select:focus-visible {
   border-color: var(--app-primary);
-  outline: 2px solid color-mix(in srgb, var(--accent) 16%, transparent);
-  outline-offset: 1px;
+  outline: var(--view-switch-focus-width) solid color-mix(in srgb, var(--accent) 16%, transparent);
+  outline-offset: var(--stroke-hairline);
 }
 
 .user-permissions-role-select:disabled {
@@ -5191,7 +5175,7 @@ td small {
 .user-permissions-role-tooltip {
   display: grid;
   gap: var(--space-2);
-  padding: 14px;
+  padding: var(--space-4);
 }
 
 .role-capability-card h3,
@@ -5204,9 +5188,9 @@ td small {
 .role-capability-card ul,
 .user-permissions-role-tooltip ul {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
-  padding-left: 18px;
+  padding-left: var(--space-5);
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: 1.45;
@@ -5217,8 +5201,8 @@ td small {
   top: var(--role-tooltip-y);
   left: var(--role-tooltip-x);
   z-index: var(--z-sticky);
-  width: min(280px, calc(100vw - 48px));
-  max-height: calc(100vh - 32px);
+  width: min(calc(var(--space-16) * 4 + var(--space-1) * 6), calc(100vw - var(--space-12)));
+  max-height: calc(100vh - var(--space-8));
   overflow: auto;
   background: var(--surface-raised);
   border-color: var(--border-strong);
@@ -5229,33 +5213,29 @@ td small {
 
 .user-permissions-role-tooltip::before {
   position: absolute;
-  top: 24px;
+  top: var(--space-6);
   right: 100%;
-  width: 10px;
-  height: 10px;
+  width: var(--space-3);
+  height: var(--space-3);
   background: inherit;
-  border-bottom: 1px solid var(--border-strong);
-  border-left: 1px solid var(--border-strong);
+  border-bottom: var(--stroke-hairline) solid var(--border-strong);
+  border-left: var(--stroke-hairline) solid var(--border-strong);
   content: "";
-  transform: translateX(5px) rotate(45deg);
+  transform: translateX(var(--space-1)) rotate(45deg);
 }
 
 .user-permissions-filters {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(160px, 220px) minmax(160px, 220px);
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: var(--space-3);
-  min-width: 0;
-  padding: var(--space-3);
-  background: var(--surface);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-soft);
+  width: 100%;
 }
 
 .user-permissions-filter-field {
+  flex: 1 1 var(--overview-tile-min-width);
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -5271,11 +5251,11 @@ td small {
 .user-permissions-filters input {
   width: 100%;
   min-width: 0;
-  min-height: 38px;
-  padding: 0 11px;
+  min-height: var(--space-10);
+  padding: 0 var(--space-3);
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--shell-sidebar-border);
+  border: var(--stroke-hairline) solid var(--shell-sidebar-border);
   border-radius: var(--radius-md);
   font: inherit;
   font-size: var(--text-base);
@@ -5283,8 +5263,8 @@ td small {
 
 .user-permissions-filters input:focus-visible {
   border-color: var(--app-primary);
-  outline: 2px solid color-mix(in srgb, var(--accent) 16%, transparent);
-  outline-offset: 1px;
+  outline: var(--view-switch-focus-width) solid color-mix(in srgb, var(--accent) 16%, transparent);
+  outline-offset: var(--stroke-hairline);
 }
 
 .user-permissions-filter-field .compact-filter-control {
@@ -5297,9 +5277,9 @@ td small {
   gap: var(--space-3);
   min-width: 0;
   max-width: 100%;
-  padding: 14px;
+  padding: var(--space-4);
   background: var(--surface);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-soft);
   overflow-x: clip;
@@ -5331,7 +5311,7 @@ td small {
 }
 
 .user-permissions-approval-queue__hint {
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--app-muted);
   font-size: var(--text-sm);
   line-height: 1.45;
@@ -5339,10 +5319,10 @@ td small {
 
 .user-permissions-approval-count {
   flex: 0 0 auto;
-  padding: 5px 9px;
+  padding: var(--space-1) var(--space-2);
   color: var(--text);
-  background: #eef4ff;
-  border: 1px solid #d7e3ff;
+  background: var(--border);
+  border: var(--stroke-hairline) solid var(--border);
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
   font-weight: 700;
@@ -5351,10 +5331,10 @@ td small {
 
 .user-permissions-approval-list {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
   max-width: 100%;
-  max-height: min(70vh, 720px);
+  max-height: min(70vh, calc(var(--space-16) * 11 + var(--space-1) * 4));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -5366,14 +5346,14 @@ td small {
   gap: var(--space-3);
   min-width: 0;
   padding: var(--space-3);
-  background: #f8fafc;
-  border: 1px solid #e1e8f4;
+  background: var(--border);
+  border: var(--stroke-hairline) solid var(--border);
   border-radius: var(--radius-md);
 }
 
 .user-permissions-approval-user {
   display: grid;
-  gap: 3px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -5424,30 +5404,18 @@ td small {
   white-space: normal;
 }
 
-.user-permissions-action-with-reason {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 8.5rem;
-}
 
-.user-permissions-delete-button {
-  justify-self: start;
-  min-width: 0;
-}
 
-.user-permissions-disabled-reason {
-  max-width: 13rem;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: 1.35;
-}
+
+
+
 
 /* `.user-permissions-modal` is now only a backdrop scope for the add-user dialog
  * (positioning, dimming, and stacking come from the shared `.modal-backdrop`). */
 
 .user-permissions-dialog,
 .user-permissions-modal-card {
-  width: min(100%, 460px);
+  width: min(100%, calc(var(--space-16) * 7 + var(--space-1) * 3));
 }
 
 .user-permissions-modal-card {
@@ -5463,7 +5431,7 @@ td small {
 
 .user-permissions-modal h3 {
   padding: var(--space-4) var(--space-5) var(--space-3);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--stroke-hairline) solid var(--border);
   color: var(--text);
   font-size: var(--text-lg);
   font-weight: 700;
@@ -5473,7 +5441,7 @@ td small {
 .user-permissions-modal-fields {
   display: grid;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5) 18px;
+  padding: var(--space-4) var(--space-5) var(--space-5);
 }
 
 .user-permissions-reset-hint {
@@ -5488,7 +5456,7 @@ td small {
 
 .user-permissions-modal-field {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   color: var(--outline-strong);
   font-size: var(--text-xs);
   font-weight: 700;
@@ -5500,11 +5468,11 @@ td small {
 .user-permissions-modal-control {
   width: 100%;
   min-width: 0;
-  min-height: 38px;
-  padding: 0 11px;
+  min-height: var(--space-10);
+  padding: 0 var(--space-3);
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--shell-sidebar-border);
+  border: var(--stroke-hairline) solid var(--shell-sidebar-border);
   border-radius: var(--radius-md);
   font: inherit;
   font-size: var(--text-base);
@@ -5514,15 +5482,15 @@ td small {
 
 .user-permissions-modal-control:focus-visible {
   border-color: var(--app-primary);
-  outline: 2px solid color-mix(in srgb, var(--accent) 16%, transparent);
-  outline-offset: 1px;
+  outline: var(--view-switch-focus-width) solid color-mix(in srgb, var(--accent) 16%, transparent);
+  outline-offset: var(--stroke-hairline);
 }
 
 .user-permissions-modal-error {
-  padding: 10px var(--space-3);
+  padding: var(--space-3) var(--space-3);
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 5%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--danger) 22%, var(--surface));
+  border: var(--stroke-hairline) solid color-mix(in srgb, var(--danger) 22%, var(--surface));
   border-radius: var(--radius-md);
   font-size: var(--text-base);
   font-weight: 700;
@@ -5532,9 +5500,9 @@ td small {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 14px var(--space-5) 18px;
-  border-top: 1px solid var(--border);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: var(--stroke-hairline) solid var(--border);
   background: var(--surface-sunken);
 }
 
@@ -5542,9 +5510,9 @@ td small {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 104px;
-  min-height: 38px;
-  padding: 0 14px;
+  min-width: calc(var(--space-16) * 1 + var(--space-1) * 10);
+  min-height: var(--space-10);
+  padding: 0 var(--space-4);
   border-radius: var(--radius-md);
   font: inherit;
   font-size: var(--text-base);
@@ -5557,7 +5525,7 @@ td small {
 .user-permissions-modal-action--secondary {
   color: var(--text-secondary);
   background: var(--surface);
-  border: 1px solid var(--shell-sidebar-border);
+  border: var(--stroke-hairline) solid var(--shell-sidebar-border);
 }
 
 .user-permissions-modal-action--secondary:hover {
@@ -5569,8 +5537,8 @@ td small {
 .user-permissions-modal-action--primary {
   color: var(--primary-foreground);
   background: var(--app-primary);
-  border: 1px solid var(--app-primary);
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-pressed) 18%, transparent);
+  border: var(--stroke-hairline) solid var(--app-primary);
+  box-shadow: var(--shadow-1);
 }
 
 .user-permissions-modal-action--primary:hover {
@@ -5579,8 +5547,8 @@ td small {
 }
 
 .user-permissions-modal-action:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
-  outline-offset: 2px;
+  outline: var(--view-switch-focus-width) solid color-mix(in srgb, var(--accent) 20%, transparent);
+  outline-offset: var(--view-switch-focus-width);
 }
 
 @media (max-width: 1100px) {
@@ -5590,7 +5558,7 @@ td small {
       "user actions"
       "role role";
     align-items: start;
-    gap: 10px var(--space-3);
+    gap: var(--space-3) var(--space-3);
   }
 
   .user-permissions-approval-user {
@@ -5615,14 +5583,18 @@ td small {
   }
 
   .user-permissions-filters {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
+    width: 100%;
   }
 }
 
 @media (max-width: 640px) {
   .permission-denied-page,
   .user-permissions-page {
-    padding: 18px;
+    padding: var(--space-5);
   }
 
   .permission-denied-page {
@@ -5641,7 +5613,11 @@ td small {
   }
 
   .user-permissions-filters {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
+    width: 100%;
   }
 
   .user-permissions-approval-queue__header {
@@ -18095,19 +18071,19 @@ body.xiaoze-popup-drag-active {
 .audit-workspace-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .audit-workspace-search {
-  flex: 1 1 220px;
-  min-width: 200px;
-  max-width: 360px;
+  flex: 1 1 calc(var(--space-16) * 3 + var(--space-1) * 7);
+  min-width: calc(var(--space-16) * 3 + var(--space-1) * 2);
+  max-width: calc(var(--space-16) * 5 + var(--space-1) * 10);
 }
 
 .audit-workspace-filter-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-3);
   align-items: end;
 }
 
@@ -18120,7 +18096,7 @@ body.xiaoze-popup-drag-active {
 }
 
 .audit-workspace-select-wrap select {
-  min-width: 140px;
+  min-width: calc(var(--space-16) * 2 + var(--space-1) * 3);
 }
 
 .audit-workspace-trace-banner {
@@ -18128,19 +18104,15 @@ body.xiaoze-popup-drag-active {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--primary) 8%, var(--card));
   font-size: var(--text-sm);
 }
 
-.audit-workspace-body {
-  padding: 0;
-}
 
-.audit-workspace-list {
-  min-width: 0;
-}
+
+
 
 .audit-event-detail-dialog {
   width: min(760px, calc(100vw - 48px));
@@ -18205,7 +18177,7 @@ body.xiaoze-popup-drag-active {
 .audit-workspace-detail-stack {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .audit-workspace-footer {

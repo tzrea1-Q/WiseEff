@@ -260,7 +260,7 @@ for (const route of routes) {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
         }
-        if (route.required.includes("adminLists")) {
+        if (routePath === "/parameter-admin/projects") {
           const listUrl = page.url();
           const trigger = page.getByRole("table", { name: "项目管理列表" }).getByRole("button", { name: /：更多$/ }).first();
           await trigger.click();
@@ -278,6 +278,33 @@ for (const route of routes) {
             await expect(confirmation).toHaveCount(0);
           }
           await expect(trigger).toBeFocused();
+          await expect(page).toHaveURL(listUrl);
+        }
+        if (route.required.includes("adminLists") && routePath !== "/parameter-admin/projects") {
+          const listUrl = page.url();
+          const triggers = page.locator(".admin-list-page").getByRole("button", { name: /：更多$/ });
+          for (let index = 0; index < await triggers.count(); index++) {
+            const trigger = triggers.nth(index);
+            await trigger.click();
+            const destructive = page.getByRole("menuitem", { name: /^(注销|删除) / });
+            const destructiveCount = await destructive.count();
+            expect(destructiveCount, `${routePath}: destructive actions must remain in overflow`)
+              .toBe(["/organization/members", "/user-permissions", "/debugging-admin/nodes"].includes(routePath) ? 1 : 0);
+            if (destructiveCount && !await destructive.first().isDisabled()) {
+              await expect(destructive.first()).toHaveAttribute("data-destructive", "true");
+              await destructive.first().click();
+              const confirmation = page.getByRole("dialog");
+              await expect(confirmation).toBeVisible();
+              await expect(confirmation).toContainText(/永久删除|不可恢复|不可撤销/);
+              await page.keyboard.press("Escape");
+              await expect(confirmation).toHaveCount(0);
+              await expect(trigger).toBeFocused();
+              break;
+            }
+            await page.keyboard.press("Escape");
+            await expect(trigger).toBeFocused();
+            if (!destructiveCount) break;
+          }
           await expect(page).toHaveURL(listUrl);
         }
         // Routes that deep-link into a modal (e.g. identity mapping's pending work) trap focus by design,

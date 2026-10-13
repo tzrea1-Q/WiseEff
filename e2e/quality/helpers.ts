@@ -29,7 +29,8 @@ export function seedQualityRuntime(runScript: (script: string) => void = runNpmS
     "db:seed:m0",
     "db:seed:m1",
     "db:seed:m2",
-    "db:seed:m3"
+    "db:seed:m3",
+    "seed:quality:admin-lists"
   ]) {
     runScript(script);
   }
@@ -381,9 +382,10 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     return;
   }
 
-  if (routePath === "/feedback-admin") {
-    // The seed ships no product feedback, so the list settles on its empty state.
-    await expect(page.getByText("暂无产品反馈")).toBeVisible({ timeout });
+  if (routePath === "/feedback-admin" || routePath === "/knowledge") {
+    const name = routePath === "/knowledge" ? "知识条目列表" : "产品反馈记录";
+    await expect(page.getByRole("table", { name }).locator("tbody .row-action-menu")
+      .getByRole("button", { name: "查看", exact: true }).first()).toBeVisible({ timeout });
     return;
   }
 

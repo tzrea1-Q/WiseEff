@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { appReducer, type AppAction } from "@/application/state/appState";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { TopBarActionsContext } from "./components/layout";
@@ -515,12 +516,14 @@ describe("/debugging-admin 节点元数据", () => {
     renderApp({ path: "/debugging-admin/nodes", initialAppState: adminState, runtimeMode: "mock" });
 
     const firstRow = screen.getByRole("row", { name: /充电输入限流/ });
-    fireEvent.click(within(firstRow).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(firstRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: "/sys/class/power_supply/battery/test_node" }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    fireEvent.click(within(firstRow).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(firstRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/class/power_supply/battery/test_node");
   });

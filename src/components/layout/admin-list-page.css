@@ -51,6 +51,12 @@
   width: max-content;
 }
 
+.admin-list-page .admin-list-truncated-cell {
+  max-width: var(--admin-list-name-max-width);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 640px) {
   .admin-list-page .data-table-scroll {
     overflow: visible;

@@ -395,10 +395,9 @@ describe("KnowledgePage", () => {
     const user = userEvent.setup();
 
     const table = await screen.findByRole("table", { name: "知识条目列表" });
-    await user.click(within(table).getByText("快充温控调参经验"));
-
-    const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
-    await user.click(within(detail).getByRole("button", { name: "修订历史" }));
+    const row = within(table).getByText("快充温控调参经验").closest("tr")!;
+    await user.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await user.click(screen.getByRole("menuitem", { name: "修订历史" }));
 
     const revisions = await screen.findByRole("dialog", { name: /修订历史/ });
     expect(within(revisions).getByText("修订 #2")).toBeInTheDocument();

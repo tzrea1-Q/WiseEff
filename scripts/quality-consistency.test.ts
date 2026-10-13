@@ -5,6 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
 
 describe("admin list template contract", () => {
+  it("guards every remaining admin list route with geometry and row-action contracts", () => {
+    for (const path of ["/organization/members", "/user-permissions", "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required)
+        .toEqual(expect.arrayContaining(["adminLists", "rowActions", "tableScrollports"]));
+    }
+  });
   const rect = { left: 24, right: 1200, top: 100, bottom: 132, width: 1176, height: 32 };
   const list = { root: rect, header: rect, primaryAction: { ...rect, left: 1100, width: 100 }, filters: { ...rect, top: 144, bottom: 176 },
     table: { ...rect, top: 188, bottom: 400 }, tableCount: 1,

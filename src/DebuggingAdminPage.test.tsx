@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopBarActionsContext } from "@/components/layout";
 import { DebuggingAdminPage } from "./DebuggingAdminPage";
@@ -320,7 +321,8 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
     fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
 
@@ -337,7 +339,8 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
     fireEvent.change(screen.getByLabelText("ADB 节点路径"), { target: { value: "/sys/adb/current-edited" } });
     fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
@@ -366,7 +369,8 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
     const hdcPathInput = screen.getByLabelText("HDC 节点路径");
     fireEvent.change(hdcPathInput, { target: { value: "relative/path" } });
     fireEvent.blur(hdcPathInput);
@@ -649,7 +653,8 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /禁用 Fast charge current/ }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /禁用 Fast charge current/ }));
     fireEvent.click(screen.getByRole("button", { name: /^禁用$/ }));
 
     await waitFor(() =>
@@ -664,7 +669,8 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /删除 Fast charge current/ }));
 
     expect(screen.getByRole("dialog", { name: /永久删除节点/ })).toBeInTheDocument();
     expect(screen.getByText(/同时删除该节点的 HDC \/ ADB 路径绑定/)).toBeInTheDocument();
@@ -686,7 +692,8 @@ describe("/debugging-admin API mode", () => {
     );
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /删除 Fast charge current/ }));
     const confirmButton = screen.getByRole("button", { name: "删除节点" });
     fireEvent.click(confirmButton);
     fireEvent.click(confirmButton);
@@ -707,7 +714,8 @@ describe("/debugging-admin API mode", () => {
     });
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /删除 Fast charge current/ }));
     fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /永久删除节点/ })).not.toBeInTheDocument());
@@ -728,7 +736,8 @@ describe("/debugging-admin API mode", () => {
     );
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /删除 Fast charge current/ }));
     fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
 
     const dialog = screen.getByRole("dialog", { name: /永久删除节点/ });
@@ -755,7 +764,8 @@ describe("/debugging-admin API mode", () => {
     );
 
     const row = await screen.findByRole("row", { name: new RegExp(node.name) });
-    fireEvent.click(within(row).getByRole("button", { name: new RegExp(`删除 ${node.name}`) }));
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: new RegExp(`删除 ${node.name}`) }));
     fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
 
     expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_DEBUG_PARAMETER", parameterId: node.id });

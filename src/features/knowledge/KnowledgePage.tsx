@@ -16,8 +16,10 @@ import {
   knowledgeStatusLabels
 } from "@/domain/knowledge/types";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
-import { DataTable, PageInsightBar, type Column } from "@/components/admin";
+import { PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { AdminListPage } from "@/components/layout/AdminListPage";
+import { SectionSkeleton } from "@/components/common/SectionState";
 import { SearchField } from "@/components/common/SearchField";
 import { presentError } from "@/infrastructure/http/presentError";
 import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
@@ -382,7 +384,57 @@ export function KnowledgePage({
         }
       />
 
-      <section className="flex flex-col gap-2" aria-label="知识检索">
+      <AdminListPage label="知识检索" headerActions={<span className="ml-auto flex items-center gap-2">
+            {askXiaozeEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => dispatchXiaozeOpenHandoff("knowledge-ask")}
+              >
+                <Bot data-icon="inline-start" />
+                问知识库(小泽)
+              </Button>
+            ) : null}
+            {capability.canEdit ? (
+              <>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setUploadEntry(null);
+                    setUploadOpen(true);
+                  }}
+                >
+                  <FilePlus2 data-icon="inline-start" />
+                  上传文件条目
+                </Button>
+              </>
+            ) : null}
+            <Button type="button" variant={capability.canEdit ? "outline" : "default"} size="sm" onClick={() => {
+              void loadEntries();
+              if (citationError || (initialEntryId && selectedId === initialEntryId)) setCitationRetry((current) => current + 1);
+            }} disabled={loading || citationLoading} aria-busy={loading || citationLoading || undefined}>
+              <RefreshCw data-icon="inline-start" />
+              刷新
+            </Button>
+            {capability.canEdit ? (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => {
+                    setEditorEntry(null);
+                    setEditorOpen(true);
+                  }}
+                >
+                  <SquarePen data-icon="inline-start" />
+                  新建条目
+                </Button>
+            ) : null}
+          </span>} filterBar={
         <form
           className="flex flex-wrap items-center gap-2"
           onSubmit={(event) => {
@@ -398,7 +450,7 @@ export function KnowledgePage({
             ariaLabel="检索知识库"
             loading={searching}
           />
-          <Button type="submit" size="sm" disabled={searching} aria-busy={searching || undefined}>
+          <Button type="submit" variant="outline" size="sm" disabled={searching} aria-busy={searching || undefined}>
             检索
           </Button>
           {searchQuery ? (
@@ -406,59 +458,10 @@ export function KnowledgePage({
               清除检索
             </Button>
           ) : null}
-          <span className="ml-auto flex items-center gap-2">
-            {askXiaozeEnabled ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => dispatchXiaozeOpenHandoff("knowledge-ask")}
-              >
-                <Bot data-icon="inline-start" />
-                问知识库(小泽)
-              </Button>
-            ) : null}
-            {capability.canEdit ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setEditorEntry(null);
-                    setEditorOpen(true);
-                  }}
-                >
-                  <SquarePen data-icon="inline-start" />
-                  新建条目
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setUploadEntry(null);
-                    setUploadOpen(true);
-                  }}
-                >
-                  <FilePlus2 data-icon="inline-start" />
-                  上传文件条目
-                </Button>
-              </>
-            ) : null}
-            <Button type="button" variant="outline" size="sm" onClick={() => {
-              void loadEntries();
-              if (citationError || (initialEntryId && selectedId === initialEntryId)) setCitationRetry((current) => current + 1);
-            }} disabled={loading || citationLoading} aria-busy={loading || citationLoading || undefined}>
-              <RefreshCw data-icon="inline-start" />
-              刷新
-            </Button>
-          </span>
-        </form>
 
-        {errorMessage ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</p> : null}
-
-        {searchQuery ? (
+        </form>}
+        notice={errorMessage ? <p role="alert" className="text-destructive">{errorMessage}</p> : undefined}
+        tableState={searchQuery ? (
           <div className="flex flex-col gap-2" aria-label="检索结果">
             {!searching && !searchError ? <p className="text-xs text-muted-foreground">
               “{searchQuery}” 命中 {searchResults.length} 条已发布知识(草稿与已归档不参与检索)。
@@ -492,26 +495,19 @@ export function KnowledgePage({
             </ul>
           </div>
         ) : (
-          <DataTable
-            aria-label="知识条目列表"
-            rows={filteredRows}
-            rowKey={(entry) => entry.id}
-            columns={columns}
-            onRowClick={(entry) => setSelectedId(entry.id)}
-            selectedRowKey={selectedId ?? undefined}
-            pageSize={10}
-            emptyState={
-              loading || citationLoading ? (
-                <p className="text-sm text-muted-foreground">正在加载知识条目…</p>
-              ) : listError || citationError ? <></> : (
-                <p className="text-sm text-muted-foreground">
-                  {rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。"}
-                </p>
-              )
-            }
-          />
+          (loading || citationLoading) && rows.length === 0 ? <SectionSkeleton label="正在加载知识条目" /> : (listError || citationError) && rows.length === 0 ? <></> : undefined
         )}
-      </section>
+        table={{ ariaLabel: "知识条目列表", rows: filteredRows, rowKey: (entry) => entry.id, columns,
+          onRowClick: (entry) => setSelectedId(entry.id), selectedRowKey: selectedId ?? undefined, pageSize: 10 }}
+        rowActions={(entry) => ({ label: `${entry.title} 操作`,
+          primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedId(entry.id) },
+          items: [
+            { id: "revisions", label: "修订历史", onSelect: () => setRevisionsEntry(entry) }
+          ]
+        })}
+        emptyState={{ message: rows.length === 0 ? "知识库还是空的。创建第一条调参经验或上传一份硬件手册。" : "当前筛选条件下没有条目。",
+          actionLabel: "重新加载", onAction: () => { void loadEntries(); } }}
+      />
 
       <KnowledgeEntryDetailDialog
         open={Boolean(selectedEntry)}
