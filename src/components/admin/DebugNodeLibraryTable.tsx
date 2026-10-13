@@ -3,7 +3,9 @@ import { filterItems } from "@/lib/search";
 import { debugNodeSearchProfile } from "@/lib/search/profiles";
 import { useMemo } from "react";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
-import { DataTable, type DataTableSort } from "@/components/admin/DataTable";
+import type { DataTableSort } from "@/components/admin/DataTable";
+import { AdminListPage } from "@/components/layout/AdminListPage";
+import { SectionSkeleton } from "@/components/common/SectionState";
 import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
@@ -116,12 +118,10 @@ export function DebugNodeLibraryTable({
   };
 
   return (
-    <section className="parameters-table param-admin-library-table debug-admin-library-table" aria-label="可调节点目录">
-      <div className="parameters-table-heading">
-        <div>
-          <h2>可调节点目录</h2>
-          <p>维护节点调试可调用的设备节点路径，通过操作列编辑元数据或配置 HDC / ADB 路径绑定。</p>
-        </div>
+    <section className="debug-admin-library-table" aria-label="可调节点目录">
+      <AdminListPage label="可调节点目录"
+        tableState={loading ? <SectionSkeleton label="正在加载可调节点" /> : undefined}
+        headerActions={
         <div className="param-admin-library-heading-actions">
           {onExport ? (
             <button
@@ -151,40 +151,62 @@ export function DebugNodeLibraryTable({
             </button>
           ) : null}
           {onCreate ? (
-            <button className="button subtle" type="button" onClick={onCreate} disabled={!canEdit || loading}>
+            <button className="button primary" type="button" onClick={onCreate} disabled={!canEdit || loading}>
               新增节点
             </button>
           ) : null}
-        </div>
-      </div>
-
-      <DataTable
-        aria-label="可调节点目录"
-        className="debug-admin-library-datatable"
-        rows={loading ? [] : filtered}
-        rowKey={(node) => node.id}
-        pageSize={LIBRARY_PAGE_SIZE}
-        sort={tableSort}
-        onSort={(key) => {
-          const nextDirection = tableSort.key === key && tableSort.direction === "asc" ? "desc" : "asc";
-          onUpdateSearch({ sort: `${key}-${nextDirection}` });
+        </div>}
+        table={{
+          rows: loading ? [] : filtered, rowKey: (node) => node.id, pageSize: LIBRARY_PAGE_SIZE,
+          sort: tableSort, onSort: (key) => {
+            const nextDirection = tableSort.key === key && tableSort.direction === "asc" ? "desc" : "asc";
+            onUpdateSearch({ sort: `${key}-${nextDirection}` });
+          },
+          onRowClick: canEdit && !loading ? (node) => onEdit(node.id) : undefined,
+          ariaLabel: "可调节点目录",
+          columns: [
+            {
+              key: "name",
+              header: "节点名",
+              sortAccessor: (node) => node.name,
+              render: (node) => (
+                <div className="debug-admin-library-name">
+                  <strong>{node.name}</strong>
+                  {node.description ? <small>{node.description}</small> : null}
+                </div>
+              )
+            },
+            {
+              key: "module",
+              header: "模块",
+              headerFilter: (
+                <ColumnFilter
+                  label="模块"
+                  groupLabel="所属模块筛选"
+                  mode="tree"
+                  treeNodes={moduleFilterNodes}
+                  selectedTreeIds={search.modules}
+                  onTreeChange={(modules) => onUpdateSearch({ modules })}
+                  treeSearchable
+                  onClear={() => onUpdateSearch({ modules: [] })}
+                />
+              ),
+              sortAccessor: (node) => modulePathLabelForDebugNode(node, moduleNodes),
+              render: (node) => modulePathLabelForDebugNode(node, moduleNodes) || "—"
+            },
+            {
+              key: "status",
+              header: "状态",
+              sortAccessor: (node) => (node.enabled ? 0 : 1),
+              render: (node) => (
+                <span className={`debug-admin-coverage-badge${node.enabled ? "" : " disabled"}`}>
+                  {node.enabled ? "启用" : "已禁用"}
+                </span>
+              )
+            }
+          ]
         }}
-        onRowClick={canEdit && !loading ? (node) => onEdit(node.id) : undefined}
-        emptyState={
-          loading ? (
-            <p className="text-sm text-muted-foreground">加载中…</p>
-          ) : (
-            <div>
-              <p className="text-sm text-muted-foreground">没有匹配的节点。</p>
-              {filtersActive ? (
-                <button type="button" className="button subtle" onClick={clearFilters}>
-                  清除筛选条件
-                </button>
-              ) : null}
-            </div>
-          )
-        }
-        toolbar={
+        filterBar={
           <div className="parameters-table-toolbar">
             <SearchField
               value={search.q}
@@ -212,89 +234,21 @@ export function DebugNodeLibraryTable({
             </span>
           </div>
         }
-        columns={[
-          {
-            key: "name",
-            header: "节点名",
-            sortAccessor: (node) => node.name,
-            render: (node) => (
-              <div className="debug-admin-library-name">
-                <strong>{node.name}</strong>
-                {node.description ? <small>{node.description}</small> : null}
-              </div>
-            )
-          },
-          {
-            key: "module",
-            header: "模块",
-            headerFilter: (
-              <ColumnFilter
-                label="模块"
-                groupLabel="所属模块筛选"
-                mode="tree"
-                treeNodes={moduleFilterNodes}
-                selectedTreeIds={search.modules}
-                onTreeChange={(modules) => onUpdateSearch({ modules })}
-                treeSearchable
-                onClear={() => onUpdateSearch({ modules: [] })}
-              />
-            ),
-            sortAccessor: (node) => modulePathLabelForDebugNode(node, moduleNodes),
-            render: (node) => modulePathLabelForDebugNode(node, moduleNodes) || "—"
-          },
-          {
-            key: "status",
-            header: "状态",
-            sortAccessor: (node) => (node.enabled ? 0 : 1),
-            render: (node) => (
-              <span className={`debug-admin-coverage-badge${node.enabled ? "" : " disabled"}`}>
-                {node.enabled ? "启用" : "已禁用"}
-              </span>
-            )
-          }
-        ]}
-        renderRowActions={(node) => {
-          const rowDisabled = !canEdit || !node.enabled;
-          return (
-            <div className="param-admin-row-actions">
-              <button
-                type="button"
-                className="button subtle param-admin-row-action"
-                disabled={!canEdit || loading}
-                onClick={() => onEdit(node.id)}
-              >
-                编辑
-              </button>
-              <button
-                type="button"
-                className="button subtle param-admin-row-action"
-                disabled={!canEdit || loading}
-                onClick={() => onEditBindings(node.id)}
-              >
-                路径绑定
-              </button>
-              <button
-                type="button"
-                className="button danger param-admin-row-action"
-                disabled={rowDisabled || loading}
-                aria-label={`禁用 ${node.name}`}
-                onClick={() => onDisable(node.id)}
-              >
-                禁用
-              </button>
-              <button
-                type="button"
-                className="button danger param-admin-row-action"
-                disabled={!canEdit || loading}
-                aria-label={`删除 ${node.name}`}
-                title={canEdit ? undefined : "缺少调试管理权限"}
-                onClick={() => onDelete(node.id)}
-              >
-                删除
-              </button>
-            </div>
-          );
-        }}
+        emptyState={{ message: loading ? "加载中…" : "没有匹配的节点。",
+          actionLabel: !filtersActive && canEdit && onCreate ? "新增节点" : "清除筛选条件",
+          onAction: !filtersActive && canEdit && !loading && onCreate ? onCreate : clearFilters }}
+        rowActions={(node) => ({
+          label: `${node.name} 操作`,
+          primaryAction: { id: "edit", label: "编辑", disabled: !canEdit || loading, onSelect: () => onEdit(node.id) },
+          items: [
+            { id: "bindings", label: "路径绑定", disabled: !canEdit || loading, onSelect: () => onEditBindings(node.id) },
+            { id: "disable", label: "禁用", ariaLabel: `禁用 ${node.name}`, destructive: true,
+              disabled: !canEdit || !node.enabled || loading, onRequestConfirmation: () => onDisable(node.id) },
+            { id: "delete", label: "删除", ariaLabel: `删除 ${node.name}`, destructive: true,
+              title: canEdit ? undefined : "缺少调试管理权限",
+              disabled: !canEdit || loading, onRequestConfirmation: () => onDelete(node.id) }
+          ]
+        })}
       />
     </section>
   );

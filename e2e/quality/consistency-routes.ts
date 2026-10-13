@@ -7,6 +7,8 @@ const catalogPaths = [
 const projectConfigurationPaths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
   .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
 const moduleGovernancePaths = ["/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry"];
+const adminListPaths = ["/parameter-admin/projects", "/organization/members", "/user-permissions",
+  "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"];
 export const collectionPaths = ["/knowledge-admin", "/log-admin"];
 export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
   "/knowledge-admin": ["tabs"],
@@ -43,17 +45,17 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   viewSwitches: viewSwitchStylePaths,
   viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
-  rowActions: [...catalogPaths, "/parameters", "/parameter-admin/projects", ...projectConfigurationPaths],
+  rowActions: [...catalogPaths, "/parameters", ...adminListPaths, ...projectConfigurationPaths],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
     "/debugging-admin/nodes", "/feedback-admin", ...collectionPaths, "/dts-reload",
-    "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"],
+    "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/knowledge"],
   moduleTreeLabels: [...catalogPaths, ...moduleGovernancePaths, "/parameters", "/node-debugging", "/dts-reload"],
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects"],
   sortControls: ["/parameter-admin/projects"],
   paginationControls: catalogPaths,
   navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths, "/node-debugging", "/dts-reload", ...moduleGovernancePaths, ...projectConfigurationPaths],
-  adminLists: ["/parameter-admin/projects", ...collectionPaths],
+  adminLists: [...adminListPaths, ...collectionPaths],
   overviewPages: ["/parameter-home", "/log-dashboard"],
   retiredNotices: ["/parameter-comparison", "/debugging"],
   settingsForms: ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]

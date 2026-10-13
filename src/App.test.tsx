@@ -1249,7 +1249,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    await screen.findByText("可调节点目录");
+    await screen.findByRole("table", { name: "可调节点目录" });
     expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(1);
 
     fireEvent.click(
@@ -4011,25 +4011,27 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
   });
 
-  it("edits debug node config from the debugging admin catalog", () => {
+  it("edits debug node config from the debugging admin catalog", async () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
 
     renderApp({ initialAppState: adminState, runtimeMode: "mock" });
 
     const catalog = screen.getByRole("table", { name: "可调节点目录" });
     const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
-    fireEvent.click(within(chargerRow).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
     const editedPath = "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited";
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: editedPath }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    fireEvent.click(within(chargerRow).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue(editedPath);
   });
 
-  it("adds and disables debug nodes from the debugging admin catalog", () => {
+  it("adds and disables debug nodes from the debugging admin catalog", async () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
     const nextName = "新调试节点";
 
@@ -4043,7 +4045,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });
     expect(createdRow).toBeInTheDocument();
 
-    fireEvent.click(within(createdRow).getByRole("button", { name: new RegExp(`禁用 ${nextName}`) }));
+    await userEvent.click(within(createdRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: new RegExp(`禁用 ${nextName}`) }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "禁用" }));
 
     expect(within(createdRow).getByText("已禁用")).toBeInTheDocument();

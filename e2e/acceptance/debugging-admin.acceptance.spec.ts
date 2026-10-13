@@ -253,7 +253,8 @@ function savedIndicator(page: Page) {
 }
 
 async function configureProtocolBindings(page: Page, nodeName: string, suffix: string) {
-  await nodeRow(page, nodeName).getByRole("button", { name: "路径绑定" }).click();
+  await nodeRow(page, nodeName).getByRole("button", { name: /：更多$/ }).click();
+  await page.getByRole("menuitem", { name: "路径绑定" }).click();
   // ModalDialog names the bindings dialog by its visible <h2>, which is the node name.
   const bindingsDialog = page.getByRole("dialog", { name: nodeName });
 
@@ -464,7 +465,8 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
 
     await page.reload();
     await expect(page.getByText(editedName)).toBeVisible({ timeout: 30_000 });
-    await nodeRow(page, editedName).getByRole("button", { name: "禁用" }).click();
+    await nodeRow(page, editedName).getByRole("button", { name: /：更多$/ }).click();
+    await page.getByRole("menuitem", { name: `禁用 ${editedName}` }).click();
     await page.getByRole("button", { name: /^禁用$/ }).click();
     await expect(page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText("已禁用")).toBeVisible({ timeout: 30_000 });
 
@@ -617,7 +619,8 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await expect(nodeRow(page, editedName)).toBeVisible({ timeout: 30_000 });
     const nodeKpi = page.locator(".kpi-item").filter({ hasText: "可调节点" });
     const nodeCountBeforeDelete = Number(await nodeKpi.locator(".kpi-value").innerText());
-    await nodeRow(page, editedName).getByRole("button", { name: `删除 ${editedName}` }).click();
+    await nodeRow(page, editedName).getByRole("button", { name: /：更多$/ }).click();
+    await page.getByRole("menuitem", { name: `删除 ${editedName}` }).click();
     const deleteDialog = page.getByRole("dialog", { name: /永久删除节点/ });
     await expect(deleteDialog.getByText(/不可恢复/)).toBeVisible();
     await deleteDialog.getByRole("button", { name: "删除节点" }).click();

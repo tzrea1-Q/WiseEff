@@ -65,6 +65,14 @@ async function openApprovalsWorkspace() {
 }
 
 describe("UserPermissionsPage", () => {
+  it("clears an empty member search through the template's next step", async () => {
+    renderPage();
+    await userEvent.type(screen.getByRole("searchbox", { name: "搜索用户" }), "not-a-member");
+    expect(screen.queryByText("Liu Min")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "清除筛选条件" }));
+    expect(screen.getByRole("searchbox", { name: "搜索用户" })).toHaveValue("");
+    expect(screen.getByText("Liu Min")).toBeInTheDocument();
+  });
   it("shows a loading skeleton while the user directory hydrates", () => {
     const state = { ...createPrototypeState(), activeRoleId: "admin" };
     render(
@@ -460,7 +468,9 @@ describe("UserPermissionsPage", () => {
     const { dispatch } = renderPageWithActions(userGovernanceActions);
     const row = screen.getByText("Liu Min").closest("tr")!;
 
-    await userEvent.click(within(row).getByRole("button", { name: "注销 Liu Min" }));
+    expect(within(row).queryByRole("button", { name: "注销 Liu Min" })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "注销 Liu Min" }));
     expect(userGovernanceActions.deleteUser).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     expect(dialog).toHaveTextContent("永久删除");
@@ -486,7 +496,9 @@ describe("UserPermissionsPage", () => {
     const { dispatch } = renderPageWithActions(userGovernanceActions);
     const row = screen.getByText("Liu Min").closest("tr")!;
 
-    await userEvent.click(within(row).getByRole("button", { name: "注销 Liu Min" }));
+    expect(within(row).queryByRole("button", { name: "注销 Liu Min" })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "注销 Liu Min" }));
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
 
@@ -496,15 +508,15 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "DELETE_USER", userId: "u-liu-min" });
   });
 
-  it("disables permanent deletion for the current signed-in user", () => {
+  it("disables permanent deletion for the current signed-in user", async () => {
     renderPage();
     const currentUserRow = screen.getByText("Xu Yun").closest("tr")!;
 
-    const deleteButton = within(currentUserRow).getByRole("button", { name: "注销 Xu Yun" });
-    const reason = within(currentUserRow).getByText("不能注销当前登录账号。");
-    expect(deleteButton).toBeDisabled();
-    expect(deleteButton).toHaveAttribute("aria-describedby", reason.id);
-    expect(reason).toBeVisible();
+    await userEvent.click(within(currentUserRow).getByRole("button", { name: /：更多$/ }));
+    const deleteItem = screen.getByRole("menuitem", { name: "注销 Xu Yun" });
+    expect(deleteItem).toHaveAttribute("aria-disabled", "true");
+    expect(deleteItem).toHaveAccessibleDescription("不能注销当前登录账号。");
+    expect(within(deleteItem).getByText("不能注销当前登录账号。")).toBeVisible();
   });
 
   it("resets a member password through the governance action", async () => {
@@ -517,7 +529,8 @@ describe("UserPermissionsPage", () => {
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
 
-    await userEvent.click(screen.getByRole("button", { name: "重置 Liu Min 的密码" }));
+    await userEvent.click(within(screen.getByText("Liu Min").closest("tr")!).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "重置 Liu Min 的密码" }));
     const dialog = screen.getByRole("dialog", { name: "重置密码" });
     expect(dialog).toHaveTextContent("Liu Min");
     await userEvent.type(within(dialog).getByLabelText("新密码"), "ResetPass@2026");
@@ -734,11 +747,11 @@ describe("UserPermissionsPage", () => {
     });
     expect(narrowApprovalItemStyles["grid-template-areas"]).toContain('"user actions"');
     expect(approvalUserStyles["text-overflow"]).toBe("ellipsis");
-    expect(roleCellStyles.width).toBe("204px");
-    expect(roleSelectStyles["min-width"]).toBe("180px");
-    expect(roleSelectStyles.width).toBe("180px");
+    expect(roleCellStyles.width).toBe("var(--admin-list-role-cell-width)");
+    expect(roleSelectStyles["min-width"]).toBe("var(--admin-list-role-control-width)");
+    expect(roleSelectStyles.width).toBe("var(--admin-list-role-control-width)");
     expect(roleTooltipStyles.position).toBe("fixed");
-    expect(roleTooltipStyles["max-height"]).toBe("calc(100vh - 32px)");
+    expect(roleTooltipStyles["max-height"]).toBe("calc(100vh - var(--space-8))");
     expect(roleTooltipStyles.overflow).toBe("auto");
   });
 
@@ -757,16 +770,13 @@ describe("UserPermissionsPage", () => {
     expect(primaryButtonStyles["border-color"]).toBe("var(--primary)");
   });
 
-  it("keeps the member deletion button compact inside its table cell", () => {
+  it("shows only one compact action and overflow for each member", () => {
     renderPage();
     const row = screen.getByText("Wang Jie").closest("tr")!;
-    const deleteButton = within(row).getByRole("button", { name: "注销 Wang Jie" });
-    const css = readStylesheet("src/styles.css");
-    const styles = declarationsFor(css, ".user-permissions-delete-button");
-
-    expect(deleteButton).toHaveClass("user-permissions-delete-button");
-    expect(styles["justify-self"]).toBe("start");
-    expect(styles["min-width"]).toBe("0");
+    const actions = within(row).getByRole("group", { name: "Wang Jie 操作" });
+    expect(within(actions).getAllByRole("button")).toHaveLength(2);
+    for (const button of within(actions).getAllByRole("button")) expect(button).toHaveAttribute("data-size", "sm");
+    expect(within(row).queryByRole("button", { name: /注销/ })).not.toBeInTheDocument();
   });
 
   it("renders and filters legacy role ids under their migrated platform role", async () => {

@@ -5,8 +5,70 @@ import { describe, expect, it, vi } from "vitest";
 import { useParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { AdminListPage } from "./AdminListPage";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { AuditWorkspace } from "@/components/admin/AuditWorkspace";
+import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
+import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
+import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
+import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
+import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
+import { requireRowActionVisibility } from "../../../e2e/quality/consistency-assertions";
 
 describe("AdminListPage", () => {
+  it.each(["/audit", "/knowledge", "/feedback-admin"])("collects shared row actions and explicit read-only status on %s", async (route) => {
+    const feedbackRepository = createMockProductFeedbackRepository();
+    await feedbackRepository.submit({ pagePath: "/knowledge", pageTitle: "知识库", feedbackType: "experience",
+      description: "筛选结果", files: [] });
+    const page = route === "/audit"
+      ? <AuditWorkspace isApiMode={false} query={{ appGroup: "all", severity: "all", search: "", timeWindow: "all" }}
+          mockEvents={[{ id: "audit-1", app: "parameters", kind: "parameter-topology-governance",
+            action: "value-change-applied", actor: "用户", severity: "Medium", time: "刚刚" }]} />
+      : route === "/knowledge"
+        ? <KnowledgePage repository={createMockKnowledgeRepository()}
+            capability={{ userId: "viewer", canView: true, canEdit: false, canManage: false }} />
+        : <FeedbackAdminPage productFeedbackRepository={feedbackRepository} />;
+    const { container } = render(<main>{page}</main>);
+    await screen.findByRole("table");
+    for (const element of container.querySelectorAll("*")) {
+      element.getBoundingClientRect = () => new DOMRect(100, 100, 120, 28);
+      Object.defineProperty(element, "checkVisibility", { value: () => true });
+    }
+    const measurements = collectConsistencyMeasurements();
+    expect(() => requireRowActionVisibility(measurements.rowActions, route)).not.toThrow();
+    for (const row of measurements.rowActions) {
+      expect(row.actions).toHaveLength(2);
+      expect(row.statuses.some((status) => status.dom.startsWith("span"))).toBe(true);
+    }
+    for (const cell of container.querySelectorAll('td[data-label="操作"]')) cell.replaceChildren();
+    expect(() => requireRowActionVisibility(collectConsistencyMeasurements().rowActions, route))
+      .toThrow(/missing action or status measurements/);
+  });
+
+  it("reuses a caller-owned destructive confirmation and restores menu focus on Escape", async () => {
+    const remove = vi.fn();
+    function ExistingConfirmationList() {
+      const [open, setOpen] = useState(false);
+      return <AdminListPage label="成员" headerActions={null} filterBar={null}
+        table={{ rows: [{ id: "member" }], rowKey: (row) => row.id,
+          columns: [{ key: "id", header: "成员", render: (row) => row.id }] }}
+        rowActions={() => ({ label: "成员操作", items: [{ id: "delete", label: "注销", destructive: true,
+          onRequestConfirmation: () => setOpen(true) }] })}
+        emptyState={{ message: "暂无成员", actionLabel: "添加成员", onAction: vi.fn() }}
+        detailDrawer={<ConfirmDialog open={open} title="确认注销用户" description="此操作不可恢复。"
+          confirmLabel="确认注销" onCancel={() => setOpen(false)} onConfirm={remove} />} />;
+    }
+    render(<ExistingConfirmationList />);
+    const trigger = screen.getByRole("button", { name: "成员操作：更多" });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole("menuitem", { name: "注销" }));
+    const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    expect(remove).not.toHaveBeenCalled();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(remove).not.toHaveBeenCalled();
+  });
   it("lets Escape cancel row deletion without activating the row or issuing a write", async () => {
     const remove = vi.fn();
     const navigate = vi.fn();

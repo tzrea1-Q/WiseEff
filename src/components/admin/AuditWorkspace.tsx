@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AuditEventDetailDialog } from "./AuditEventDetailDialog";
-import { AuditTimeline } from "./AuditTimeline";
+import { AdminListPage } from "@/components/layout/AdminListPage";
+import { SectionSkeleton } from "@/components/common/SectionState";
 import { auditAppGroups, getAuditAppLabel } from "@/domain/audit/auditApps";
 import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLabels";
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
@@ -8,6 +9,8 @@ import { useAuditEvents, useAuditTraceEvents } from "@/hooks/useAuditEvents";
 import type { AuditEvent } from "@/domain/prototype/types";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { SearchField } from "@/components/common/SearchField";
+
+const severityLabels: Record<string, string> = { High: "高", Medium: "中", Low: "低", info: "信息" };
 
 export type AuditWorkspaceProps = {
   mockEvents: AuditEvent[];
@@ -58,7 +61,6 @@ export function AuditWorkspace({
       // Chinese labels for humans; the raw kind slug stays alongside so the
       // export remains machine-filterable and auditable.
       const header = ["时间", "模块", "类型", "类型标识", "操作", "操作标识", "操作人", "严重度", "对象类型", "对象", "Trace"];
-      const severityLabels: Record<string, string> = { High: "高", Medium: "中", Low: "低" };
       const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
       const lines = [header.join(",")].concat(
         rows.map((event) =>
@@ -96,113 +98,122 @@ export function AuditWorkspace({
 
   return (
     <section className="audit-center-page" aria-label="组织审计中心">
-      <div className="audit-workspace-toolbar">
-        <div className="audit-workspace-filter-row">
-          <SearchField
-            className="audit-workspace-search"
-            placeholder="搜索操作、操作人或类型"
-            value={localSearch}
-            onValueChange={setLocalSearch}
-            onBlur={commitSearch}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                commitSearch();
-              }
-            }}
-            ariaLabel="搜索审计记录"
-          />
-          <label className="audit-workspace-select-wrap">
-            <span>模块</span>
-            <select
-              className="compact-filter-control"
-              data-compact-control="filter"
-              value={query.appGroup}
-              onChange={(event) => onQueryChange?.({ appGroup: event.target.value as AuditQueryState["appGroup"] })}
-              aria-label="模块筛选"
-            >
-              {auditAppGroups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {projects.length > 0 ? (
-            <label className="audit-workspace-select-wrap">
-              <span>项目</span>
-              <select
-                className="compact-filter-control"
-                data-compact-control="filter"
-                value={query.projectId ?? ""}
-                onChange={(event) =>
-                  onQueryChange?.({ projectId: event.target.value ? event.target.value : undefined })
-                }
-                aria-label="项目筛选"
-              >
-                <option value="">全部项目</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.code ?? project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label className="audit-workspace-select-wrap">
-            <span>时间</span>
-            <select
-              className="compact-filter-control"
-              data-compact-control="filter"
-              value={query.timeWindow}
-              onChange={(event) => onQueryChange?.({ timeWindow: event.target.value as AuditQueryState["timeWindow"] })}
-              aria-label="时间范围筛选"
-            >
-              <option value="all">全部时间</option>
-              <option value="today">今天</option>
-              <option value="7d">近 7 天</option>
-              <option value="30d">近 30 天</option>
-            </select>
-          </label>
-          <ViewSwitch
-            variant="toggle"
-            ariaLabel="严重度筛选"
-            value={query.severity}
-            onValueChange={(severity) => onQueryChange?.({ severity: severity as AuditQueryState["severity"] })}
-            items={[
-              { value: "all", label: "全部" }, { value: "High", label: "高" },
-              { value: "Medium", label: "中" }, { value: "Low", label: "低" }
-            ]}
-          />
-          <button
+      <AdminListPage label="组织审计中心"
+        headerActions={<button
             type="button"
-            className="button subtle audit-workspace-export"
+            className="button primary audit-workspace-export"
             disabled={exporting || events.length === 0}
             onClick={() => void exportCsv()}
           >
             {exporting ? "导出中…" : "导出 CSV"}
-          </button>
-        </div>
-        {query.traceId ? (
-          <div className="audit-workspace-trace-banner">
-            <span>Trace 筛选：{query.traceId}</span>
-            <button type="button" className="button subtle" onClick={() => onQueryChange?.({ traceId: undefined })}>
-              清除
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      {loading ? <p className="param-admin-audit-status">正在加载审计记录…</p> : null}
-      {error ? <p className="param-admin-audit-status param-admin-audit-status-error">{error}</p> : null}
-
-      <div className="audit-workspace-list">
-        <AuditTimeline
-          events={events}
-          selectedId={detailEventId}
-          onSelect={setDetailEventId}
-          initialVisible={20}
-        />
-      </div>
+          </button>}
+        filterBar={
+          <div className="audit-workspace-toolbar">
+            <div className="audit-workspace-filter-row">
+              <SearchField
+                className="audit-workspace-search"
+                placeholder="搜索操作、操作人或类型"
+                value={localSearch}
+                onValueChange={setLocalSearch}
+                onBlur={commitSearch}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitSearch();
+                  }
+                }}
+                ariaLabel="搜索审计记录"
+              />
+              <label className="audit-workspace-select-wrap">
+                <span>模块</span>
+                <select
+                  className="compact-filter-control"
+                  data-compact-control="filter"
+                  value={query.appGroup}
+                  onChange={(event) => onQueryChange?.({ appGroup: event.target.value as AuditQueryState["appGroup"] })}
+                  aria-label="模块筛选"
+                >
+                  {auditAppGroups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {projects.length > 0 ? (
+                <label className="audit-workspace-select-wrap">
+                  <span>项目</span>
+                  <select
+                    className="compact-filter-control"
+                    data-compact-control="filter"
+                    value={query.projectId ?? ""}
+                    onChange={(event) =>
+                      onQueryChange?.({ projectId: event.target.value ? event.target.value : undefined })
+                    }
+                    aria-label="项目筛选"
+                  >
+                    <option value="">全部项目</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.code ?? project.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label className="audit-workspace-select-wrap">
+                <span>时间</span>
+                <select
+                  className="compact-filter-control"
+                  data-compact-control="filter"
+                  value={query.timeWindow}
+                  onChange={(event) => onQueryChange?.({ timeWindow: event.target.value as AuditQueryState["timeWindow"] })}
+                  aria-label="时间范围筛选"
+                >
+                  <option value="all">全部时间</option>
+                  <option value="today">今天</option>
+                  <option value="7d">近 7 天</option>
+                  <option value="30d">近 30 天</option>
+                </select>
+              </label>
+              <ViewSwitch
+                variant="toggle"
+                ariaLabel="严重度筛选"
+                value={query.severity}
+                onValueChange={(severity) => onQueryChange?.({ severity: severity as AuditQueryState["severity"] })}
+                items={[
+                  { value: "all", label: "全部" }, { value: "High", label: "高" },
+                  { value: "Medium", label: "中" }, { value: "Low", label: "低" }
+                ]}
+              />
+            </div>
+            {query.traceId ? (
+              <div className="audit-workspace-trace-banner">
+                <span>Trace 筛选：{query.traceId}</span>
+                <button type="button" className="button subtle" onClick={() => onQueryChange?.({ traceId: undefined })}>
+                  清除
+                </button>
+              </div>
+            ) : null}
+          </div>}
+        notice={error ? <p role="alert">{error}</p> : undefined}
+        tableState={loading && events.length === 0 ? <SectionSkeleton label="正在加载审计记录" /> : undefined}
+        table={{ ariaLabel: "审计事件", rows: events, rowKey: (event) => event.id, pageSize: 20,
+          selectedRowKey: detailEventId ?? undefined, onRowClick: (event) => setDetailEventId(event.id),
+          columns: [
+            { key: "time", header: "时间", render: (event) => event.timeLabel },
+            { key: "app", header: "模块", render: (event) => getAuditAppLabel(event.app) },
+            { key: "kind", header: "类型", className: "admin-list-truncated-cell", render: (event) => <span title={`${presentAuditKind(event.kind).label} · ${event.kind}`}>{presentAuditKind(event.kind).label}</span> },
+            { key: "action", header: "操作内容", className: "admin-list-truncated-cell", render: (event) => <span title={`${presentAuditAction(event.action).label} · ${event.action}`}>{presentAuditAction(event.action).label}</span> },
+            { key: "actor", header: "操作人", render: (event) => event.actor },
+            { key: "severity", header: "严重度", render: (event) => <span data-row-status>{severityLabels[event.severity] ?? "未记录"}</span> }
+          ] }}
+        rowActions={(event) => ({ label: `审计事件 ${event.id} 操作`,
+          primaryAction: { id: "view", label: "查看", onSelect: () => setDetailEventId(event.id) },
+          items: [{ id: "related", label: "关联事件", onSelect: () => setDetailEventId(event.id) }]
+        })}
+        emptyState={{ message: "暂无审计事件", actionLabel: "清除筛选条件", onAction: () => {
+          setLocalSearch(""); onQueryChange?.({ appGroup: "all", projectId: undefined, severity: "all", search: "", timeWindow: "all", traceId: undefined });
+        } }} />
 
       <div className="audit-workspace-footer">
         <span className="param-admin-audit-count">{events.length} 条记录</span>
