@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "playwright/test";
+import { expect, test, type Page, type TestInfo } from "playwright/test";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
 import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireAdminListGeometry, requireOverviewGeometry, requireRetiredNotice, requireSettingsFormPresentation } from "./consistency-assertions";
@@ -21,6 +21,33 @@ import {
 } from "./helpers";
 
 test.beforeAll(() => seedQualityRuntime());
+
+async function assertAccessibilitySemantics(page: Page, testInfo: TestInfo, label: string) {
+  const result = await new AxeBuilder({ page })
+    .withRules(["label", "aria-roles", "aria-allowed-attr", "aria-required-attr", "button-name", "link-name"])
+    .analyze();
+  await testInfo.attach(`accessibility-semantics-${label}`, {
+    contentType: "application/json", body: JSON.stringify(result.violations, null, 2)
+  });
+  expect(result.violations, `${label}: labels, roles and control names must remain accessible`).toEqual([]);
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`asserts public home accessibility semantics (${theme})`, async ({ context, page }, testInfo) => {
+    const blockedRequests = await installConsistencyReadGuard(context);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await expectUsablePage(page);
+    await expect(page.getByRole("main", { name: "雷泽首页" })).toBeVisible();
+    await settleXiaozePopupClosed(page);
+    await settleAppToasts(page);
+    await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+    await waitForFontsAndNextPaint(page);
+    await assertAccessibilitySemantics(page, testInfo, `home-${theme}`);
+    await testInfo.attach(`accessibility-home-${theme}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+    expect(blockedRequests).toEqual([]);
+  });
+}
 
 for (const path of ["/node-debugging", "/dts-reload"]) {
   for (const theme of ["light", "dark"] as const) {
@@ -171,6 +198,7 @@ for (const route of routes) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeHidden();
           const modalMeasurements = await page.evaluate(collectConsistencyMeasurements);
           assertXiaozePlacement(modalMeasurements, route.path);
+          await assertAccessibilitySemantics(page, testInfo, `${route.path}-pending-work-${theme}`);
           await testInfo.attach(`pending-work-${theme}`, {
             contentType: "application/json", body: JSON.stringify(modalMeasurements, null, 2)
           });
@@ -246,6 +274,7 @@ for (const route of routes) {
           }
         }).toPass({ timeout: 20_000 });
         requireCompactControlHeights(measurements, route.path, required);
+        await assertAccessibilitySemantics(page, testInfo, `${route.path}-${theme}`);
         if (["/parameters", "/parameter-admin/projects"].includes(routePath) && theme === "dark") {
           const contrast = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
           await testInfo.attach(`${routePath.replaceAll("/", "-")}-dark-color-contrast`, {

@@ -57,7 +57,7 @@ export function WorkbenchCandidateActivateDialog({
             <li>阻断：{(activeCandidate?.blockers?.length ?? 0) === 0 ? "无" : activeCandidate?.blockers.length}</li>
           </ul>
           {activeCandidate?.impact.textDiff ? (
-            <pre className="configuration-workbench__diff-view mono" tabIndex={0}>
+            <pre className="configuration-workbench__diff mono" aria-label="激活候选文本差异" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing diff scrollport must support keyboard scrolling. */}>
               {activeCandidate.impact.textDiff}
             </pre>
           ) : null}

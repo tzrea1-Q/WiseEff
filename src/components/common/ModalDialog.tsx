@@ -243,6 +243,7 @@ export function ModalDialog({
         }
       }}
     >
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- A named dialog must trap Tab inside its modal focus boundary. */}
       <div
         ref={cardRef}
         className={className}

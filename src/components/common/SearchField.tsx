@@ -1,5 +1,5 @@
 import { LoaderCircle, Search, X } from "lucide-react";
-import { forwardRef, useRef, type FocusEventHandler, type KeyboardEventHandler, type MutableRefObject, type Ref } from "react";
+import { forwardRef, useEffect, useRef, type FocusEventHandler, type KeyboardEventHandler, type MutableRefObject, type Ref } from "react";
 import { cn } from "@/lib/utils";
 
 export type SearchFieldProps = {
@@ -57,6 +57,9 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
   forwardedRef
 ) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (autoFocus && !disabled) inputRef.current?.focus();
+  }, [autoFocus, disabled]);
   const label = ariaLabel?.trim() || placeholder?.trim() || "搜索";
   const showClear = clearable && value.length > 0 && !disabled;
 
@@ -93,7 +96,6 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
         placeholder={placeholder}
         aria-label={label}
         disabled={disabled}
-        autoFocus={autoFocus}
         required={required}
         maxLength={maxLength}
         autoComplete="off"

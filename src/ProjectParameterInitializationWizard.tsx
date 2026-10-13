@@ -874,7 +874,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
           </HorizontalDragScroll>
         </section>
         {detailCandidate && (detailParameter || detailSnapshot) ? (
-          <aside className="project-init-parameter-detail" role="complementary" aria-label="参数详情">
+          <aside className="project-init-parameter-detail" aria-label="参数详情">
             <div className="project-init-parameter-detail__head">
               <div>
                 <span className="eyebrow">参数详情</span>

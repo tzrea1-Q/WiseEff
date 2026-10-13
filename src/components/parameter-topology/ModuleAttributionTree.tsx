@@ -188,6 +188,7 @@ function ModuleAttributionTreeRow({
         .filter(Boolean)
         .join(" ")}
       role="treeitem"
+      aria-selected={false}
       aria-expanded={hasChildren ? isExpanded : undefined}
       aria-level={depth + 1}
       style={{ ["--mod-attr-depth" as string]: String(depth) }}

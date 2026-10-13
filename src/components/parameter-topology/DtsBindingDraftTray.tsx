@@ -352,7 +352,7 @@ export function DtsBindingDraftTray({
   if (drafts.length === 0) return null;
 
   return (
-    <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="参数修改提交">
+    <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" aria-label="参数修改提交">
       <header>
         <div>
           <h3>本轮已修改</h3>
