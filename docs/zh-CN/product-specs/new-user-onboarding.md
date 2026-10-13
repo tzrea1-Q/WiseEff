@@ -19,6 +19,8 @@ Date: 2026-05-25
 
 ## 首次会话流程
 
+首次使用时，先阅读[用户指南](../user-guide/README.md)，按「账号与访问」完成登录或注册。
+
 API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登录和注册已产品化，用于自管理评估流程：注册使用用户名、允许自助选择的平台角色，以及确认密码；新账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。认证页没有组织下拉，并说明加入规则、用户名规则和一行角色提示。Admin 不能自助注册。还没有本地 Admin 时，认证页显示 `npm run admin:bootstrap` 提示。操作者可用 `AUTH_LOCAL_SELF_REGISTER=false` 关闭自助注册，此时「注册」页签隐藏。Committer 申请会创建 inactive 账号和待 Admin 审批的角色申请，但审批前不会登录系统或获得 session。审批通过后，账号才会被激活并授予申请的 Committer 角色。已登录用户可在个人资料中改密（其它会话退出）；Admin 可在 `/organization/members` 重置成员密码（该用户全部会话退出）。当前暂不支持邮箱验证，因此该路径不能被当作已验证域名 onboarding 或邀请接受流程。
 
 1. 用户进入 WiseEff 首页。

@@ -6,6 +6,8 @@ This document captures first-session expectations for a new WiseEff user or deve
 
 ## First Impression
 
+For the first-user path, start with the [User Guide](../user-guide/README.md) and its account and access walkthrough.
+
 Users should understand that WiseEff coordinates parameter management, log analysis, debugging, and Agent-assisted work inside governed engineering workflows.
 
 In API mode, unauthenticated users first see the WiseEff auth screen. Local account login and registration are productized for self-managed evaluation flows: registration uses a username and an allowed self-service platform role, plus a password confirmation. The new account joins the Evaluation Organization (ChargeLab when seeded; otherwise the single bootstrap Organization). There is no organization picker. The screen explains that join rule, username syntax, and a one-line role hint. Admin is not available for self-registration. When no local Admin exists, the screen shows the `npm run admin:bootstrap` hint. Operators can turn self-registration off with `AUTH_LOCAL_SELF_REGISTER=false`; the Register tab then stays hidden. Committer requests create an inactive account and a pending Admin approval request; they do not sign the user in or grant a session until approval activates the account and assigns the requested Committer role. Signed-in users can change their password from the profile dialog (other sessions are revoked). Admins can reset a member password from `/organization/members` (every session for that user is revoked). Email verification is intentionally not supported yet, so this path is not verified-domain onboarding or invitation acceptance.
