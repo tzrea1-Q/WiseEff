@@ -34,7 +34,8 @@ export function SituationStrip({
 }: SituationStripProps) {
   const presentation = deriveOverviewPresentation(roleView, scope, kpis, personalKpis);
   const sourceKpis = scope === "overall" ? kpis : personalKpis;
-  const hasSamples = status === "ready" && sourceKpis !== null
+  const hasSamples = status === "ready" && sourceKpis !== null;
+  const hasActivity = hasSamples
     && Object.values(sourceKpis).some((value) => typeof value === "number" && value > 0);
   const emptyMessage =
     scope === "personal"
@@ -60,7 +61,7 @@ export function SituationStrip({
           ))}
         </dl>
       ) : null}
-      {(status === "ready" || status === "empty") && !hasSamples ? <p className="parameter-home__section-empty">{emptyMessage}</p> : null}
+      {(status === "ready" || status === "empty") && !hasActivity ? <p className="parameter-home__section-empty">{emptyMessage}</p> : null}
     </Panel>
   );
 }
