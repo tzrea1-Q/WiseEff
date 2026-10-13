@@ -159,7 +159,7 @@ export function requireModuleTreeAlignment(
   }
 }
 
-export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLists"], routePath: string) {
+export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLists"], routePath: string, requireOverflow = true) {
   requireMeasuredCategories({ adminLists: lists }, ["adminLists"], routePath);
   for (const list of lists) {
     if (list.tableCount !== 1 || !list.header || !list.filters || !list.table || !list.primaryAction
@@ -180,7 +180,9 @@ export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLi
       throw new Error(`${routePath}: empty admin list must offer exactly one next step`);
     }
     for (const row of list.rows) {
-      if (row.actions.length > 2 || row.actions.filter((action) => action.overflow).length !== 1
+      if (row.actions.length > 2 || row.actions.filter((action) => !action.overflow).length > 1
+        || row.actions.filter((action) => action.overflow).length > 1
+        || (requireOverflow && row.actions.filter((action) => action.overflow).length !== 1)
         || row.actions.some((action) => !Number.isFinite(action.height) || Math.abs(action.height - 28) > 1 || action.destructive)) {
         throw new Error(`${routePath}: rows require at most one small text action plus overflow, with no visible destructive action`);
       }

@@ -3631,7 +3631,6 @@ td small {
   min-width: min(360px, 100%);
 }
 
-.log-admin-search,
 .feedback-admin-search {
   width: min(16rem, 100%);
 }

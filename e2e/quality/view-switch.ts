@@ -3,7 +3,7 @@ import { viewSwitchStyleExpectations } from "./consistency-routes";
 import { type ConsistencyMeasurements } from "./consistency-collector";
 
 export function requireViewSwitchStyles(measurements: Pick<ConsistencyMeasurements, "viewSwitches" | "viewSwitchSignatures">, path: string) {
-  const variants = viewSwitchStyleExpectations[path.split("?")[0]];
+  const variants = viewSwitchStyleExpectations[path] ?? viewSwitchStyleExpectations[path.split("?")[0]];
   if (!variants) return;
   requireMeasuredCategories(measurements, ["viewSwitches", "viewSwitchSignatures"], path);
   const observed = new Set<string>();
