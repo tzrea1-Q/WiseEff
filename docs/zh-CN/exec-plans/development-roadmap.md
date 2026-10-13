@@ -2,26 +2,35 @@
 
 > English: [English](../../exec-plans/active/development-roadmap.md)
 
-日期：2026-05-25
+日期：2026-10-13
 
 ## 1. 当前状态
 
-M0-M5 productization work has merged. 当前项目已经从前端原型推进到受控商用试点基线：
+M0–M5 的产品化基础和 M6 的大量自托管实现已合并。当前仓库包含 React/Vite/TypeScript 前端、mock/API 两套运行时、TypeScript 模块化后端、PostgreSQL 迁移、认证与审计边界、OpenAPI 检查、Redis/BullMQ 队列、worker/对象存储与 HDC 网关接入、小泽、可观测性及发布升级工具。实现落地和目标环境验收是两回事。
 
-- React/Vite/TypeScript 前端仍保留 mock runtime，用于演示和组件测试。
-- API runtime 已接入参数、日志、调试、Agent、审计和运维端点。
-- TypeScript 模块化后端覆盖 auth、audit、parameters、logs、jobs、debugging、agent、contracts 和 operations。
-- PostgreSQL 迁移是 source of truth，`docs/generated/db-schema.md` 是人工维护的 schema 摘要。
-- OpenAPI artifact/check、生产 auth 边界、worker/object-store seam、Redis/BullMQ durable queue seam、HDC gateway seam、live Agent provider seam 和 M5 pilot-readiness gate 已落地。
-- GitHub PR #39 已合并，CI Build and test 通过。
-- CI 反馈环计划（`2026-08-18-ci-feedback-loop-optimization.md`）已归档到 `completed/`（#523–#525）；PR 合入门槛是 L1 + `@ci-smoke`。
-- 自托管操作路径见 IP 实验室 profile，以及配置向导计划 `docs/exec-plans/active/2026-08-18-self-hosted-setup-wizard.md`。
+当前分支已交付的能力包括：
 
-主要缺口：
+- **规范参数 Catalog：** 发布、Release 构建，以及工作台、调试、知识库、日志和小泽的规范参数接入。模型以[创作与发布设计](../design-docs/catalog-authoring-and-publication-control-plane.md)为准；代码合并不代表已具备生产切换条件。
+- **知识库：** 检索、条目发布及规范 Definition 引用，主题说明见[知识库设计](../design-docs/2026-08-12-knowledge-base-design.md)。
+- **Agent 日志分析：** 多步分析内核、业务域与工具上下文、评估框架，以及明确标注来源的规则降级。[日志分析计划](active/2026-08-12-agent-log-analysis-system.md)已记录实现完成；真实专家标注案例、第二个试点业务域和人工评审校准仍需外部输入。
+- **DTS 重载与组织管理：** 重载候选、运行、部署、基线恢复和草稿提升；组织设置、成员角色治理、启停及注册角色申请审批。组织管理说明见[设计文档](../design-docs/2026-08-19-organization-administration-design.md)。
+- **前端改造的已交付部分：** 共享设计系统、参数/Catalog 导航工作台、统一评审收件箱和 Catalog 中文名称已通过 #1117、#1124、#1125 合并。#1126 下的其余页面模板迁移和回归守卫仍未完成，不能把整个改造标为完成。
 
-- local PostgreSQL-backed API-mode E2E 已通过；staging live API、staging PostgreSQL-backed E2E、HDC device-lab、backup/restore、rollback 和 live provider evidence 尚未记录。
-- 企业 SSO/OIDC、云对象存储 SDK/IaC、OpenAPI generated client、监控告警和容量压测仍是后续生产化增强；durable queue 本地实现已进入 M6.4，但目标 Redis evidence 和容量调优仍待记录。
-- mock runtime 仍应保留用于 demos/tests，但不能作为生产业务数据源。
+产品适合受控 staging 和试点证据采集。与 [README](../root/README.md) 保持一致：在真实目标环境补齐 live API、PostgreSQL E2E、HDC 设备实验室、备份恢复、回滚、身份、队列、可观测性、容量和小泽 LLM 就绪检查的证据前，不能宣称已普遍具备生产就绪条件。本地测试、代码合并和单个主机演练都不能替代这些验收；mock 仅用于演示和测试，不能作为生产业务数据源。
+
+小泽的感知、动作和规划阶段已完成；后续 PostgreSQL 持久检查点实现已关闭 TD-029。早期 P2 计划中的延后项不是当前待办，现状以[技术债跟踪表](tech-debt-tracker.md)为准。
+
+## 当前工作重点
+
+以下是截至本页日期的优先事项，不是交付时间表。计划留在 active 目录，不一定表示代码尚未实现：有些保留了历史状态，有些只等外部证据。开工前应结合已合并代码、[技术债跟踪表](tech-debt-tracker.md)和仍开放的 `ready-for-agent` Issue 判断。
+
+- **完成前端改造：** [#1126](https://github.com/tzrea1-Q/WiseEff/issues/1126) 仍开放并标为 `ready-for-agent`，包括管理列表和设置表单模板（#1128、#1129、#1132）、其余工作台迁移、紧凑 PC 覆盖、无障碍 lint、视觉基线和 TD-113 token 检查收紧。现有权限与审批行为保持不变。
+- **收口可信执行来源：** DTS 重载和参数路径已接入 TD-068 的可信上下文，但 #609 下的 [#615](https://github.com/tzrea1-Q/WiseEff/issues/615) 及其 `ready-for-agent` 子票仍负责旧来源标签收缩和统一证据验收。[可信调用上下文计划](active/2026-08-24-td-068-trusted-invocation-context-seam.md)和跟踪表中的历史描述不能当作端到端关闭的证明。TD-123 的调试审计来源问题独立保留，仍未关闭。
+- **补齐目标环境和业务域证据：** 按[非 HDC 目标证据计划（英文）](../../exec-plans/active/2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md)、M6 身份/存储/队列/可观测性/发布计划，以及日志分析计划的外部输入要求推进。TD-007 仍需目标 Redis 证据和容量调优；仓库检查不能证明完整试点验收通过。
+- **维护自托管操作路径：** [IP 实验室 profile](active/2026-08-18-self-hosted-ip-lab-profile.md)、[配置向导](active/2026-08-18-self-hosted-setup-wizard.md)和[升级计划](active/2026-08-20-self-hosted-one-command-upgrade.md)分别维护部署、恢复及剩余验证要求。其中旧分支和运行记录只是历史背景，不是当前主机健康声明。[CI 反馈环计划](completed/2026-08-18-ci-feedback-loop-optimization.md)已完成（#523–#525）。
+- **完善用户/开发者入口和剩余合同：** [#1143](https://github.com/tzrea1-Q/WiseEff/issues/1143) 下仍开放的 `ready-for-agent` 文档票负责双语用户指南和平台概览；TD-003 继续跟踪手写客户端的合同覆盖缺口。这些后续工作不构成新的生产就绪声明。
+
+只有计划自身的 Documentation Update Gate 和验证命令满足要求后，才能移入 completed。本路线图不承诺完成日期。
 
 ## 2. 开发原则
 
