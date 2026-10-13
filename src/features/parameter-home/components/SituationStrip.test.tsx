@@ -31,7 +31,7 @@ describe("SituationStrip", () => {
   });
 
   it.each(["idle", "loading", "error", "ready", "empty"] as const)(
-    "only shows retained zero personal KPIs as empty when the summary is available (%s)",
+    "preserves observed zero counts only when the summary is ready (%s)",
     (status) => {
       render(
         <SituationStrip
@@ -57,18 +57,19 @@ describe("SituationStrip", () => {
       if (status === "error") {
         expect(screen.getByText("态势指标加载失败")).toBeInTheDocument();
       }
-      expect(screen.queryAllByText("0")).toHaveLength(0);
-      expect(screen.queryAllByText("暂无样本")).toHaveLength(status === "ready" || status === "empty" ? 5 : 0);
+      expect(screen.queryAllByText("0")).toHaveLength(status === "ready" ? 5 : 0);
+      expect(screen.queryAllByText("暂无样本")).toHaveLength(status === "empty" ? 5 : 0);
     }
   );
 
-  it("does not infer observations from an empty overall inventory marked ready", () => {
+  it("preserves observed zero inventory counts and unavailable risk classification", () => {
     render(<SituationStrip status="ready" scope="overall" roleView="user" onScopeChange={() => undefined}
       kpis={{ ...overallKpis, totalParameters: 0, totalBindings: 0, totalDefinitions: 0, managedProjects: 0,
         changeFrequency: 0, activeContributors: 0 }} personalKpis={personalKpis} />);
-    expect(screen.getAllByText("暂无样本")).toHaveLength(6);
+    expect(screen.getAllByText("0")).toHaveLength(5);
+    expect(screen.getByText("不可用")).toBeInTheDocument();
+    expect(screen.queryByText("暂无样本")).not.toBeInTheDocument();
     expect(screen.getByText("当前时间窗口暂无参数活动数据。")).toBeInTheDocument();
-    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
   it("keeps an observed personal risk count even when other counts are zero", () => {
