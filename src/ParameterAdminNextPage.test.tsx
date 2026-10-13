@@ -242,21 +242,23 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
   it("passes hydrated dual-role authority to the Organization Review Queue", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
-    renderPage({
-      path: "/parameter-admin/specs?review=open",
-      runtimeMode: "api",
-      state: { ...initialState, activeRoleId: "platform-admin" },
-      sessionRoles: [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }],
-      runtime: {
-        parameterCatalogRepository: ports.catalog,
-        parameterCatalogGovernanceRepository: ports.governance
-      } as AppRuntime,
-      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    await act(async () => {
+      renderPage({
+        path: "/parameter-admin/specs?review=open",
+        runtimeMode: "api",
+        state: { ...initialState, activeRoleId: "platform-admin" },
+        sessionRoles: [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }],
+        runtime: {
+          parameterCatalogRepository: ports.catalog,
+          parameterCatalogGovernanceRepository: ports.governance
+        } as AppRuntime,
+        catalogOrganizationId: CATALOG_ORGANIZATION_ID
+      });
     });
 
     expect(await screen.findByRole("button", { name: /待处理工作/ })).toBeVisible();
     expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "处理审核" })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled());
     expect(listReviewItems).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID);
   });
 

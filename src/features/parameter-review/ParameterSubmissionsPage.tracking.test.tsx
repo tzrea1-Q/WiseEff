@@ -55,7 +55,7 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
     expect(tracking).toHaveTextContent('"disabled"');
     expect(screen.queryByText("旧版提交归档")).not.toBeInTheDocument();
     fireEvent.click(within(tracking).getByRole("button", { name: "撤回本轮提交" }));
-    fireEvent.click(screen.getByRole("button", { name: "确认撤回" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认撤回" }));
     await waitFor(() => expect(withdrawSubmissionRound).toHaveBeenCalledWith("node-round"));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(listSubmissionRounds).toHaveBeenCalledTimes(2);

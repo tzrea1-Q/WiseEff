@@ -19,7 +19,7 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 7. **Density is a feature.** Primary tables must fit their columns inside a 1280px content area without horizontal scrolling; overflow detail belongs in inspectors/dialogs, not in more columns.
 8. **Motion is tokenized and subtle.** Durations and easings come from motion tokens; the `ease` keyword and >400ms UI transitions are not allowed; infinite loops must respect `prefers-reduced-motion`.
 9. **Demo data is product data.** Seeded environments must never show test residue (`FoldRegistryTestDG`, `probe-edit-*.dts`, acceptance fixture accounts) in user-facing surfaces.
-10. **Every visible change is verified in a real browser** per the checklist, at 1440/768/390 widths, before it is called done.
+10. **Every visible change is verified in a real browser** per the PC-first checklist at 1440×900 before it is called done. Add compact-PC coverage when layout risk warrants it; tablet/mobile sweeps require an explicit request or accepted device-specific contract.
 
 ## Canonical Implementation
 
@@ -275,6 +275,16 @@ Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, 
 
 ## Layout and Page Structure
 
+Use one of these five archetypes rather than a page-local layout. All inherit the shell gutter, typography, compact-control and primary-action contracts below; slots preserve existing permission checks, loading/error states and human write confirmations.
+
+| Archetype | Shared template | Representative visual route |
+| --- | --- | --- |
+| Navigator workbench | `NavigatorWorkbench` | `/parameters` |
+| Admin list | `AdminListPage` | `/parameter-admin/projects` |
+| Entry/overview | `OverviewPage` (with `OverviewTile`; `RetiredNotice` for moved pages) | `/parameter-home` |
+| Configuration form | `SettingsFormPage` | `/organization` |
+| Review/detail | `ReviewInbox` | `/parameter-review` |
+
 ### Shell gutter and navigation
 
 The app shell owns `--page-gutter` (24px on PC). `.main-content` and `.topbar` consume it; `.page-content` wraps routed app content without an inset, and the app footer remains its shell sibling. Page roots add no outer padding or margin. Cards and workbench panes retain their internal padding; do not remove those interior insets or replace page-local CSS with global overrides. The configuration workbench keeps its existing omitted footer.
@@ -353,6 +363,16 @@ The JSON-compatible saved and draft snapshots drive `useDirtyState`; returning t
 
 Project-role saves keep the existing human confirmation, including each changed member's before/after roles. Writes remain individual optimistic updates using `expectedRoles`, not an atomic batch: if one fails, already saved members stay saved and remaining drafts can be retried or discarded. A stale-role conflict refreshes the affected member before retry. The consistency suite measures clean and dirty states in light/dark at 1440×900 and attaches screenshots without submitting writes.
 
+### Review/detail inbox
+
+`ReviewInbox` in `src/features/parameter-review/ReviewInbox.tsx` is the #1109 queue-and-detail template, shared by `/parameter-review` and `/parameter-submissions`. Reuse it for this workflow rather than building a second queue, tab strip or detail grid. It keeps one visible queue table in a labelled region and a selected request in the adjacent, labelled complementary detail region. The shell supplies the page title and gutter. `ViewSwitch` supplies two content tabs, pending and history, each linked to its tab panel.
+
+The caller scopes the queue by `project`. The URL owns `view`, `type` and the request deep link (`request`, `legacyRequest` or `memberRequest`); the template preserves selection through reloads and resolves deep links to the request's view. Column filters are local state and reset on navigation or a context change; they are not shareable URL filters. Changing context clears incompatible selection. An unavailable request shows an explicit alert instead of silently choosing another row. Rows show the current project's software value changes, JSON member removals and eligible legacy requests; caller-provided row selection, queue actions and legacy detail slots preserve existing workflows. `mineOnly` scopes personal tracking, while `canReview` controls review affordances; neither replaces repository/server authorization.
+
+Clicking a row or its detail button selects the request. Arrow keys or J/K move through rows, Enter opens the selected detail, and Alt+1/Alt+2 move focus between queue and detail; shortcuts do not override text entry or an open dialog. Canonical detail panels retain their structured change summary, explicit decision controls and collapsed provenance rather than duplicating raw records above the queue. Loading, retryable errors, filtered-empty and no-request states remain distinct; clearing filters and switching to history are explicit next steps. Existing confirmations and reviewer permissions are unchanged.
+
+The consistency harness checks one visible table, one two-tab group with exactly one selected tab, compact controls, typography and shell-aligned edges on both routes at 1440×900 in light and dark. The populated review visual uses the existing isolated synthetic fixture, selected as the software committer, and masks only volatile record metadata, not change content or decision controls. This render is visual evidence, not proof of device writes or production review authorization.
+
 ## Content and Language
 
 - UI copy is Simplified Chinese. English is allowed only for product names, code/identifiers rendered as code, and legally required text.
@@ -386,7 +406,11 @@ Project-role saves keep the existing human confirmation, including each changed 
 
 ## Verification
 
-Every frontend-visible change runs the completion gate in [`docs/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md): targeted tests, `npm run build`, and a real-browser walkthrough (1440×900, 768×1024, 390×844) with screenshots, console checks, and interaction evidence under `work/ui-checks/<topic>/`. Quality gates: `npm run acceptance:a11y`, `npm run acceptance:visual`, `npm run acceptance:responsive`.
+The visual quality spec registers one representative per archetype at 1440×900 in light and dark. Light snapshots retain their existing names (`parameters-workbench.png`, `parameter-home-workbench.png`, `organization.png`, `parameter-review-workbench.png`); the admin-list snapshot is `projects-admin-list.png`. Each dark companion adds `-dark` before `.png`. Generate and inspect Linux renders in CI, then require a following CI run against the accepted baselines; do not generate or replace PNGs on macOS. Review snapshots require the explicitly isolated review fixture and must not be counted as passing when skipped.
+
+Migrated page and template styles must contain zero raw visual values. The stylesheet guard and `ui:check` enforce this separately: the coordinator lowers `scripts/ui-standards-baseline.json` only with `npm run ui:check -- --update-baseline` after counts drop and records the remaining stock in TD-113. The implementer's bounded checks do not establish full-suite, build, live quality/acceptance, screenshots or final ratchet acceptance.
+
+Every frontend-visible change follows [`docs/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md): affected native tests, `npm run build`, and a real-browser walkthrough at 1440×900 with screenshots, console checks and interaction evidence in the PR. Add a compact PC window only for layout risk; tablet/mobile sweeps are opt-in unless the accepted contract requires them. Quality gates remain `npm run acceptance:a11y`, `npm run acceptance:visual` and `npm run acceptance:responsive`; delegation of expensive gates does not waive them.
 
 ## Change Control
 

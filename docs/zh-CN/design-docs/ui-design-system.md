@@ -19,7 +19,7 @@
 7. **密度是能力。** 主工作表格必须在 1280px 内容宽度内放下所有列,不允许因外框留白导致横向滚动;溢出的细节进检查器/弹窗,而不是加列。
 8. **动效令牌化且克制。** 时长与缓动一律来自 motion 令牌;禁用 `ease` 关键字与 >400ms 的 UI 过渡;无限循环动画必须响应 `prefers-reduced-motion`。
 9. **演示数据即产品数据。** 种子环境不得在用户界面暴露测试残留（`FoldRegistryTestDG`、`probe-edit-*.dts`、验收 fixture 账号等）。
-10. **每个可见变更都要真实浏览器验证。** 按检查清单在 1440/768/390 三档宽度验证后才算完成。
+10. **每个可见变更都要真实浏览器验证。** 按 PC 优先检查清单在 1440×900 验证后才算完成；布局风险需要时增加紧凑 PC 窗口。平板/手机走查须有明确请求或已接受的设备专属契约。
 
 ## 规范实现
 
@@ -275,6 +275,16 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 ## 布局与页面结构
 
+页面应复用以下五种原型，而非自建局部布局。所有模板继承下述壳层边距、字号、紧凑控件与主操作契约；填充槽位时保留现有权限校验、加载/错误状态与人工写入确认。
+
+| 页面原型 | 共享模板 | 代表性视觉路由 |
+| --- | --- | --- |
+| 导航工作台 | `NavigatorWorkbench` | `/parameters` |
+| 管理列表 | `AdminListPage` | `/parameter-admin/projects` |
+| 入口/概览 | `OverviewPage`（指标用 `OverviewTile`，迁移提示用 `RetiredNotice`） | `/parameter-home` |
+| 配置表单 | `SettingsFormPage` | `/organization` |
+| 审核/详情 | `ReviewInbox` | `/parameter-review` |
+
 ### 壳层边距与导航
 
 应用壳层拥有 `--page-gutter`（PC 为 24px）。`.main-content` 与 `.topbar` 消费此令牌；`.page-content` 无额外内边距地包裹路由内容，应用页脚仍是它在壳层中的同级区域。页面根容器不添加外层内边距或外边距。卡片与工作台面板保留内部留白；不要删除这些内部内边距，也不要用全局覆写替代页面局部 CSS。配置工作台保留现有的不显示页脚行为。
@@ -353,6 +363,16 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 项目角色保存保留人工确认，并列出每位修改成员的变更前后角色。服务端写入仍为携带 `expectedRoles` 的逐成员乐观更新，而非原子批量写入：某次更新失败时，已保存成员保持已保存，其余草稿可重试或放弃。角色过期冲突会刷新受影响成员后再重试。一致性套件在 1440×900 的明暗主题下测量干净与未保存状态，并附带截图，不提交写入。
 
+### 审核/详情收件箱
+
+`src/features/parameter-review/ReviewInbox.tsx` 中的 `ReviewInbox` 是 #1109 的队列与详情模板，由 `/parameter-review` 和 `/parameter-submissions` 共享。此类工作流应复用它，不再创建另一套队列、标签栏或详情网格。模板在有名称的区域中保持一张可见队列表格，在相邻、有名称的 complementary 详情区域展示选中请求。页面标题与边距由壳层提供；`ViewSwitch` 提供待处理与已处理两个内容标签，分别关联标签面板。
+
+调用方以 `project` 限定队列范围。URL 保存 `view`、`type` 与请求深链接（`request`、`legacyRequest` 或 `memberRequest`）；刷新保留选择，深链接定位请求所属视图。列筛选是本地状态，导航或上下文变化时重置，不能通过 URL 分享。上下文变化清理不兼容的选择。请求不可用时明确提示，不悄悄选择另一行。队列展示当前项目的软件值变更、JSON 成员删除与符合条件的旧版请求；调用方提供行选择、队列操作与旧版详情槽位，以保留已有流程。`mineOnly` 限定个人跟踪范围，`canReview` 控制审核操作的可见性；二者均不替代仓储/服务端授权。
+
+点击行或详情按钮选择请求；方向键或 J/K 切换行，Enter 打开选中详情，Alt+1/Alt+2 在队列与详情间移动焦点。快捷键不抢占文本输入或已打开的弹窗。规范详情面板保留结构化变更摘要、明确的决策操作与默认折叠的来源信息，不在队列上方重复铺开原始记录。加载、可重试错误、筛选为空与无请求状态保持区分；清除筛选与查看历史是明确的下一步。现有确认与审核权限不变。
+
+一致性测试在两条路由的 1440×900 明暗主题下检查一张可见表格、一个双标签组且仅一个标签选中、紧凑控件、字号与壳层对齐边界。有内容的审核视觉基线复用隔离的合成夹具，以软件提交人身份选择请求；仅遮罩易变的记录元信息，不遮罩变更内容与决策控件。这是视觉证据，不证明设备写入或生产审核授权。
+
 ## 内容与语言
 
 - UI 文案使用简体中文。英文只允许出现在产品名、以代码形态呈现的标识符、以及法律要求文本中。
@@ -386,7 +406,11 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 ## 验证
 
-每个前端可见变更都执行 [`docs/zh-CN/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md) 的完成门禁:目标测试、`npm run build`、真实浏览器三视口走查（1440×900、768×1024、390×844）,截图、控制台检查与交互证据存放在 `work/ui-checks/<topic>/`。质量门禁:`npm run acceptance:a11y`、`npm run acceptance:visual`、`npm run acceptance:responsive`。
+视觉质量 spec 为每种原型注册一个代表页面，在 1440×900 下覆盖明暗主题。亮色快照保留已有名称（`parameters-workbench.png`、`parameter-home-workbench.png`、`organization.png`、`parameter-review-workbench.png`）；管理列表使用 `projects-admin-list.png`。暗色文件在 `.png` 前加 `-dark`。由 CI 生成 Linux 渲染并检查，再要求后续 CI 对已接受基线通过；不得在 macOS 本地生成或替换 PNG。审核快照必须使用明确隔离的审核夹具，跳过不算通过。
+
+迁移后的页面与模板样式必须没有原始视觉值。样式守卫与 `ui:check` 分别验证此契约：计数下降后，协调员仅通过 `npm run ui:check -- --update-baseline` 降低 `scripts/ui-standards-baseline.json`，并在 TD-113 记录余量。实现者的限定检查不能代替全量测试、构建、真实质量/验收、截图或最终棘轮验收。
+
+每个前端可见变更都遵循 [`docs/zh-CN/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md)：受影响的原生测试、`npm run build` 与 1440×900 真实浏览器走查，截图、控制台检查和交互证据记录在 PR 中。仅在布局有风险时增加紧凑 PC 窗口；平板/手机走查为可选项，除非已接受契约明确要求。质量门禁仍为 `npm run acceptance:a11y`、`npm run acceptance:visual` 与 `npm run acceptance:responsive`；昂贵门禁交由协调员执行不等于豁免。
 
 ## 变更控制
 
