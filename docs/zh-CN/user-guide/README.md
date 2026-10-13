@@ -25,6 +25,7 @@ WiseEff 将参数变更、设备调试、日志分析和工程知识连接在同
 ## 操作指南
 
 - [账号与访问](account-and-access.md)：本地注册、MDE 审批、改密与重置密码，以及部署方提供的 OIDC 登录方式。
+- [参数管理](parameter-management.md)：查询与对比、草稿、提交与审阅、项目初始化、导入及配置发布。
 - [设备调试](device-debugging.md)：连接 HDC/ADB 设备、读取和安全写入节点、测试 DTS 重载、恢复基线并查看证据。
 
 ## 查找其它资料
