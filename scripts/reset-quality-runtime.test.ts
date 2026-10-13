@@ -334,14 +334,13 @@ describe("quality runtime reset wiring", () => {
   });
 
   it("populates CI admin lists before skipping runtime seeding", () => {
-    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
-    const qualityJob = workflow.slice(
-      workflow.indexOf("  acceptance-quality:"),
-      workflow.indexOf("  acceptance-smoke:"),
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    const seedStep = workflow.jobs["acceptance-quality-lanes"].steps.find(
+      (step: { name: string }) => step.name === "Migrate and seed database",
     );
 
-    expect(qualityJob).toMatch(
-      /npm run db:seed:all\s+npm run seed:quality:admin-lists\s+echo "WISEEFF_QUALITY_SKIP_SEED=true"/,
+    expect(seedStep.run).toMatch(
+      /npm run db:seed:all\s+npm run --if-present seed:quality:admin-lists\s+echo "WISEEFF_QUALITY_SKIP_SEED=true"/,
     );
   });
 
