@@ -146,8 +146,9 @@ describe("workbench optional descriptions and single-line keys", () => {
 
 function collectMarkup(markup: string, portalMarkup = "") {
   const dom = new JSDOM(`<main>${markup}</main>${portalMarkup}`);
-  vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockReturnValue({
-    x: 100, y: 100, left: 100, top: 100, right: 200, bottom: 132, width: 100, height: 32, toJSON: () => ({})
+  vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const top = Number(this.getAttribute("data-test-top") ?? 100);
+    return { x: 100, y: top, left: 100, top, right: 200, bottom: top + 32, width: 100, height: 32, toJSON: () => ({}) };
   });
   dom.window.Element.prototype.checkVisibility = function () { return !this.closest("[hidden]"); };
   dom.window.Range.prototype.getBoundingClientRect = () => dom.window.document.documentElement.getBoundingClientRect();
@@ -356,6 +357,24 @@ describe("unified review inbox structure", () => {
 });
 
 describe("view-switch collection", () => {
+  it.each([
+    ['<li class="canonical-driver-discovery__item">发现记录</li>', 100],
+    ['<p role="status">当前范围没有来源观察记录。</p>', 100],
+    ["", null]
+  ])("measures the queue's own row or empty state, never the shared canonical list: %s", (queue, expectedTop) => {
+    const measurements = collectMarkup(`
+      <div class="navigator-workbench" data-workbench-page="module-governance">
+        <section class="navigator-workbench__task">
+          <div data-module-governance-task="active"><section class="canonical-driver-discovery">${queue}</section></div>
+          <div><ul aria-label="规范主体列表"><li data-canonical-subject-id="subject-one" data-test-top="1000">规范主体</li></ul></div>
+        </section>
+      </div>
+    `);
+    const workbench = measurements.navigatorWorkbenches[0];
+    expect(workbench.firstRow?.top ?? null).toBe(expectedTop);
+    expect(workbench.firstRowClip?.top ?? null).toBe(expectedTop);
+  });
+
   it("requires the shared navigator geometry on logs", () => {
     expect(consistencyRoutes.find((route) => route.path === "/logs")?.required).toContain("navigatorWorkbenches");
   });
