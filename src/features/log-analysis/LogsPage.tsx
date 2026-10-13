@@ -14,6 +14,7 @@ import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructur
 import type { LogDomain } from "@/domain/logs/types";
 import { isSupportedLogUploadFileName, mockLogUploadAccept, supportedTextLogExtensions } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
+import { classifyAnalysisDegradation } from "@/domain/logs/analysisProvenance";
 import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
@@ -873,17 +874,8 @@ function ConfidenceBar({
   );
 }
 
-const degradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]>, string> = {
-  "provider-unavailable": "AI 分析服务不可用，本结论由规则引擎回退生成",
-  "token-budget-exhausted": "预算内未能得到有效接地结论，本结论由规则引擎回退生成"
-};
-
 function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
-  const isFallback = log.analysisSource === "rules-fallback";
-  // P2 loop kernel: an exhausted budget converges early into a marked low-confidence
-  // agent conclusion — still degraded analysis, never presented as a full analysis.
-  const isEarlyConverged = log.analysisSource === "agent" && log.degradedReason !== undefined;
-  const degraded = isFallback || isEarlyConverged;
+  const degraded = classifyAnalysisDegradation(log);
   if (!degraded && log.analysisSource !== "agent" && !log.logDomainName) {
     return null;
   }
@@ -894,7 +886,7 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
         {degraded ? (
           <span className="analysis-provenance__badge analysis-provenance__badge--degraded" role="status">
             <AlertTriangle size={13} />
-            {isFallback ? "降级分析 · 规则回退" : "降级分析 · 提前收敛"}
+            {degraded.label}
           </span>
         ) : log.analysisSource === "agent" ? (
           <span className="analysis-provenance__badge analysis-provenance__badge--agent">
@@ -907,13 +899,7 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
         ) : null}
       </div>
       {degraded ? (
-        <p className="analysis-provenance__reason">
-          {isFallback
-            ? log.degradedReason
-              ? degradedReasonLabels[log.degradedReason]
-              : "本结论由规则引擎回退生成"
-            : "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论"}
-        </p>
+        <p className="analysis-provenance__reason">{degraded.reason}</p>
       ) : null}
     </div>
   );
