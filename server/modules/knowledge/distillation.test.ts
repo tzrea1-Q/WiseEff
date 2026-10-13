@@ -38,6 +38,55 @@ function makeLog(overrides: Partial<LogRecordDto> = {}): LogRecordDto {
 }
 
 describe("buildLogDistillationDraft", () => {
+  it("opens a rule-fallback draft with the log-page warning before its source and labels the rule score", () => {
+    const draft = buildLogDistillationDraft(makeLog({
+      analysisSource: "rules-fallback",
+      degradedReason: "provider-unavailable"
+    }));
+
+    expect(draft.contentMarkdown.startsWith("> 降级分析 · 规则回退")).toBe(true);
+    expect(draft.contentMarkdown).toContain("AI 分析服务不可用，本结论由规则引擎回退生成");
+    expect(draft.contentMarkdown).toContain("依赖结论前请复核证据");
+    expect(draft.contentMarkdown.indexOf("降级分析")).toBeLessThan(draft.contentMarkdown.indexOf("由日志分析记录沉淀"));
+    expect(draft.contentMarkdown).toContain("规则评分 87%");
+  });
+
+  it.each([
+    [undefined, "本结论由规则引擎回退生成"],
+    ["token-budget-exhausted", "预算内未能得到有效接地结论，本结论由规则引擎回退生成"]
+  ] as const)("preserves the log-page rule-fallback reason for %s", (degradedReason, reason) => {
+    const draft = buildLogDistillationDraft(makeLog({ analysisSource: "rules-fallback", degradedReason }));
+
+    expect(draft.contentMarkdown.startsWith("> 降级分析 · 规则回退")).toBe(true);
+    expect(draft.contentMarkdown).toContain(reason);
+    expect(draft.contentMarkdown).toContain("规则评分 87%");
+  });
+
+  it("warns about early convergence for an Agent with a recorded degraded reason", () => {
+    const draft = buildLogDistillationDraft(makeLog({
+      analysisSource: "agent",
+      degradedReason: "token-budget-exhausted"
+    }));
+
+    expect(draft.contentMarkdown.startsWith("> 降级分析 · 提前收敛")).toBe(true);
+    expect(draft.contentMarkdown).toContain("分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论");
+    expect(draft.contentMarkdown).toContain("依赖结论前请复核证据");
+    expect(draft.contentMarkdown.indexOf("降级分析")).toBeLessThan(draft.contentMarkdown.indexOf("由日志分析记录沉淀"));
+    expect(draft.contentMarkdown).toContain("模型自估 87%");
+  });
+
+  it.each([
+    ["agent", "模型自估"],
+    [undefined, "置信度"]
+  ] as const)("keeps %s drafts free of notices with the appropriate confidence caption", (analysisSource, caption) => {
+    const draft = buildLogDistillationDraft(makeLog({ analysisSource }));
+
+    expect(draft.contentMarkdown.startsWith("> 由日志分析记录沉淀。")).toBe(true);
+    expect(draft.contentMarkdown).not.toContain("降级分析");
+    expect(draft.contentMarkdown).toContain(`${caption} 87%`);
+    expect(draft.contentMarkdown).not.toContain("RULE-THERMAL-042");
+  });
+
   it("titles the draft from the conclusion and seeds 日志分析 + severity tags", () => {
     const draft = buildLogDistillationDraft(makeLog());
 

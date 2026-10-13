@@ -445,7 +445,14 @@ export async function distillKnowledgeFromLog(
       audit: {
         kind: "knowledge-entry-distill",
         action: "distill",
-        metadata: { logId: log.id, fileName: log.fileName, severity: log.severity, title: draft.title }
+        metadata: {
+          logId: log.id,
+          fileName: log.fileName,
+          severity: log.severity,
+          title: draft.title,
+          ...(log.analysisSource !== undefined ? { analysisSource: log.analysisSource } : {}),
+          ...(log.degradedReason !== undefined ? { degradedReason: log.degradedReason } : {})
+        }
       }
     },
     context
