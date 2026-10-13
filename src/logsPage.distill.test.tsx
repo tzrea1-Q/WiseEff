@@ -25,11 +25,16 @@ function selectCompleteLog() {
 }
 
 describe("LogsPage · 沉淀为知识", () => {
-  it("Complete 日志沉淀为知识后交接到 /knowledge 草稿详情(预填结论标题与来源关联)", async () => {
+  it.each(["报告", "相关"])("Complete 日志从%s沉淀后交接到 /knowledge 草稿详情(预填结论标题与来源关联)", async (tab) => {
     renderLogsPage();
     selectCompleteLog();
+    fireEvent.keyDown(screen.getByRole("tab", { name: tab, exact: true }), { key: "Enter" });
+    expect(screen.getByRole("tab", { name: tab, selected: true })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /沉淀为知识/ }));
+    const task = screen.getByRole("region", { name: "日志任务区" });
+    const distil = within(task).getByRole("button", { name: "沉淀为知识", exact: true });
+    expect(distil).toBeEnabled();
+    fireEvent.click(distil);
 
     await waitFor(() => {
       expect(window.location.pathname).toBe("/knowledge");
