@@ -9,7 +9,7 @@ import { getReloadRunRecord } from "../dts-reload/service";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { readCatalogDefinitionForKnowledge } from "../parameter-catalog-api/productionWire";
-import { buildLogDistillationDraft } from "./distillation";
+import { buildLogAnalysisProvenanceNotice, buildLogDistillationDraft } from "./distillation";
 import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
 import { fuseKnowledgeSearchResults } from "./hybridSearch";
@@ -536,10 +536,15 @@ export async function createAgentKnowledgeDraft(
   requireKnowledgeEdit(auth);
 
   let sourceLogId: string | null = null;
+  let contentMarkdown = input.contentMarkdown;
   if (input.sourceLogId) {
     // Linking is a read of the analysis record: same logs:view + org scope gate.
     const log = await getLogRecord(db, auth, input.sourceLogId);
     sourceLogId = log.id;
+    const notice = buildLogAnalysisProvenanceNotice(log);
+    if (notice && !contentMarkdown.startsWith(notice)) {
+      contentMarkdown = `${notice}\n\n${contentMarkdown}`;
+    }
   }
 
   let sourceReloadRunId: string | null = null;
@@ -555,7 +560,7 @@ export async function createAgentKnowledgeDraft(
     {
       title: input.title,
       tags: input.tags,
-      contentMarkdown: input.contentMarkdown,
+      contentMarkdown,
       sourceType: "agent",
       sourceSessionId: input.sessionId,
       sourceLogId,

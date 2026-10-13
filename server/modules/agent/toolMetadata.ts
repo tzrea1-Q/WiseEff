@@ -169,7 +169,7 @@ export const AGENT_TOOL_METADATA = [
     requiresApproval: true,
     scope: "organization",
     description:
-      "Distil the current conversation's conclusions into a NEW knowledge base draft for human review. Never executes immediately; requires explicit user approval. Creates a draft only — it never modifies existing entries and stays out of retrieval until a human publishes it. Use when the user wants to save tuning experience, a fault case, or process knowledge; write contentMarkdown as well-structured markdown, pass the log-analysis record id as sourceLogId when the knowledge comes from a log analysis, and pass the reload run id as sourceReloadRunId when it comes from a DTS reload debugging run.",
+      "Distil the current conversation's conclusions into a NEW knowledge base draft for human review. Never executes immediately; requires explicit user approval. Creates a draft only — it never modifies existing entries and stays out of retrieval until a human publishes it. Use when the user wants to save tuning experience, a fault case, or process knowledge; write contentMarkdown as well-structured markdown, pass the log-analysis record id as sourceLogId when the knowledge comes from a log analysis, and pass the reload run id as sourceReloadRunId when it comes from a DTS reload debugging run. For a degraded source log analysis, the platform automatically adds a provenance notice at the top of the draft; do not duplicate it.",
     schema: {
       type: "object",
       properties: {
