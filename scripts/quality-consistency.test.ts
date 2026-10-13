@@ -10,6 +10,16 @@ describe("admin list template contract", () => {
     table: { ...rect, top: 188, bottom: 400 }, tableCount: 1,
     firstRow: { ...rect, top: 220, bottom: 252 }, emptyActionCount: 0,
     rows: [{ actions: [{ height: 28, overflow: false, destructive: false }, { height: 28, overflow: true, destructive: false }] }] };
+  it("allows read-only and sole-action collections without weakening the overflow contract", () => {
+    for (const actions of [[], [{ height: 28, overflow: false, destructive: false }]]) {
+      const collection = { ...list, rows: [{ actions }] };
+      expect(() => requireAdminListGeometry([collection], "/log-admin?tab=quality", false)).not.toThrow();
+      expect(() => requireAdminListGeometry([collection], "/parameter-admin/projects")).toThrow();
+    }
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [{ height: 28, overflow: false, destructive: true }] }] }], "/log-admin", false)).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [{ height: 32, overflow: false, destructive: false }] }] }], "/knowledge-admin?tab=index", false)).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [list.rows[0].actions[0], list.rows[0].actions[0]] }] }], "/log-admin", false)).toThrow();
+  });
   it("requires one aligned template, a visible first row and one small action plus overflow", () => {
     expect(() => requireAdminListGeometry([list], "/parameter-admin/projects")).not.toThrow();
     expect(() => requireAdminListGeometry([], "/parameter-admin/projects")).toThrow(/missing/);
@@ -148,6 +158,22 @@ function collectMarkup(markup: string, portalMarkup = "") {
 }
 import { collectConsistencyMeasurements } from "../e2e/quality/consistency-collector";
 import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency-routes";
+
+describe("administration collection coverage", () => {
+  it.each([
+    "/knowledge-admin?tab=drafts", "/knowledge-admin?tab=index", "/knowledge-admin?tab=archived",
+    "/log-admin?tab=records", "/log-admin?tab=domains", "/log-admin?tab=quality"
+  ])("measures template geometry, scrollports and tab styles on %s", (path) => {
+    expect(consistencyRoutes.find((route) => route.path === path)?.required)
+      .toEqual(expect.arrayContaining(["adminLists", "viewSwitches", "viewSwitchSignatures", "tableScrollports"]));
+  });
+  it("ignores the retained but hidden collections", () => {
+    const measured = collectMarkup(`<div class="admin-list-page"><table><tbody><tr><td>当前集合</td></tr></tbody></table></div>
+      <div hidden><div class="admin-list-page"><table><tbody><tr><td>其他集合</td></tr></tbody></table></div></div>`);
+    expect(measured.adminLists).toHaveLength(1);
+    expect(measured.visibleTableCount).toBe(1);
+  });
+});
 
 describe("project configuration workbench coverage", () => {
   it.each([false, true])("measures real navigator and task row actions with navigator collapsed=%s", (collapsed) => {

@@ -289,6 +289,8 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 `src/components/layout/` 中的 `AdminListPage` 负责页头操作、紧凑筛选栏、共享 `DataTable`、可选通知与可选详情抽屉/弹窗。页面标题与边距来自壳层；模板不再添加重复标题或外层留白。次要操作排在主动作之前，主动作保持在最右端。页面只填充槽，并删除旧列表布局 CSS，不覆盖模板。
 
+多集合管理页使用 URL 驱动的 `ViewSwitch` 内容标签、一个可见面板与一个可见 `AdminListPage`，不再堆叠集合卡片。知识治理选择 `tab=drafts`（默认）、`tab=index` 或 `tab=archived`；日志后台选择 `tab=records`（默认）、`tab=domains` 或 `tab=quality`。无效标签回退到默认；切换保留其他查询参数与片段，新增历史记录，并支持浏览器前进/后退恢复。离开日志业务域标签时保留编辑器的本地输入。仅有重试操作的索引行与只读反馈行不放空的「更多」菜单；多操作行复用共享菜单，危险操作保留确认。每个集合分别纳入浅色/深色 1440×900 一致性测量。
+
 - `table` 沿用 DataTable 契约，包括受控 `sort`、`onSort`、`page` 和 `onPageChange`。路由负责序列化：项目试点将搜索（`q`）、状态（`status`）、排序（`sort`）与分页（`page`）保存在 URL，支持刷新和浏览器历史恢复。筛选/排序变化回到第一页；第一页省略 URL 参数，无效页码归一为一。
 - 模板启用 DataTable 的 `compactControls` 模式：列筛选配置由共享 `ColumnFilter` 渲染，可排序表头保留 `aria-sort`。两者使用令牌化的 32px `.compact-filter-control` 几何与显式 `data-compact-control` 筛选/排序标记，供一致性采集器测量。模板以外的原生表头控件保留原有尺寸和测量范围。
 - `rowActions` 提供 `RowActionMenu` 参数，而非任意按钮组：每行至多一个小尺寸文本操作加「更多」。操作可选 `ariaLabel` 与 `descriptionId` 保留逐行名称和禁用说明。规范历史项目仍禁用删除；允许的删除通过 ConfirmDialog 复用项目影响范围文案。提交中与失败状态遵循共享菜单确认契约。

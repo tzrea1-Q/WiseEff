@@ -7,7 +7,12 @@ const catalogPaths = [
 const projectConfigurationPaths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
   .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
 const moduleGovernancePaths = ["/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry"];
+export const collectionPaths = ["/knowledge-admin", "/log-admin"];
 export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
+  "/knowledge-admin": ["tabs"],
+  "/log-admin": ["tabs", "toggle"],
+  "/log-admin?tab=domains": ["tabs"],
+  "/log-admin?tab=quality": ["tabs"],
   ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["section", "tabs"] as const])),
   "/organization": ["section"],
   "/organization/members": ["section", "tabs"],
@@ -35,20 +40,20 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
 };
 export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges"> = {
-  viewSwitches: [...viewSwitchStylePaths, "/log-admin"],
+  viewSwitches: viewSwitchStylePaths,
   viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
   rowActions: [...catalogPaths, "/parameters", "/parameter-admin/projects", ...projectConfigurationPaths],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
-    "/debugging-admin/nodes", "/feedback-admin", "/log-admin", "/dts-reload",
+    "/debugging-admin/nodes", "/feedback-admin", ...collectionPaths, "/dts-reload",
     "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"],
   moduleTreeLabels: [...catalogPaths, ...moduleGovernancePaths, "/parameters", "/node-debugging", "/dts-reload"],
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects"],
   sortControls: ["/parameter-admin/projects"],
   paginationControls: catalogPaths,
   navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths, "/node-debugging", "/dts-reload", ...moduleGovernancePaths, ...projectConfigurationPaths],
-  adminLists: ["/parameter-admin/projects"],
+  adminLists: ["/parameter-admin/projects", ...collectionPaths],
   overviewPages: ["/parameter-home", "/log-dashboard"],
   retiredNotices: ["/parameter-comparison", "/debugging"],
   settingsForms: ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]
@@ -66,11 +71,15 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
     required: [
       "titles", "buttons", "typeScale", "pageEdges",
       "xiaozeLaunchers",
-      ...(Object.keys(applicablePaths) as (keyof typeof applicablePaths)[]).filter((category) => applicablePaths[category].includes(path))
+      ...(Object.keys(applicablePaths) as (keyof typeof applicablePaths)[]).filter((category) => applicablePaths[category].includes(path) || applicablePaths[category].includes(path.split("?")[0]))
     ] satisfies ConsistencyCategory[]
   }))
   .flatMap((route) => [
     route,
+    ...(route.path === "/knowledge-admin"
+      ? ["drafts", "index", "archived"].map((tab) => ({ ...route, path: `${route.path}?tab=${tab}` })) : []),
+    ...(route.path === "/log-admin"
+      ? [{ ...route, path: `${route.path}?tab=records` }] : []),
     ...(projectConfigurationPaths.includes(route.path)
       ? ["history", "candidate", "unified-diff", "side-by-side"].map((mode) => ({ ...route, path: `${route.path}?sourceMode=${mode}` }))
       : []),
