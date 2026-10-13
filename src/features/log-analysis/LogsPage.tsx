@@ -445,8 +445,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           </div>
         </aside>}
       >
-      {auxTab === "report" ? <div className="logs-v2-main">
-        <LogConclusionCard
+      {auxTab !== "metadata" ? <div className="logs-v2-main">
+        {auxTab === "report" || activeLog.status === "Complete" ? <LogConclusionCard
           log={activeLog}
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
@@ -458,8 +458,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           relatedParameterLocated={Boolean(logActions && activeLog.relatedParameterId && activeLog.relatedParameterProjectId)}
           relatedParameterUnlocated={relatedParameterUnlocated}
           onRetry={activeLog.status === "Failed" ? openUploadDialog : handleRetryLog}
-        />
-        {activeLog.status !== "Failed" || !hasActiveLog ? (
+        /> : null}
+        {auxTab === "report" ? (activeLog.status !== "Failed" || !hasActiveLog ? (
           <>
             <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
             <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
@@ -491,13 +491,11 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
               </div>
             </section>
           </>
-        ) : null}
-      </div> : auxTab === "metadata" ? <LogMetadata log={activeLog} /> : <>
-        <EmptyState text="没有找到关联日志。" />
+        ) : null) : <EmptyState text="没有找到关联日志。" />}
         {hasActiveLog && activeLog.status === "Complete" && knowledgeRepository && knowledgeCapability?.canView ? (
           <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={onNavigate} />
         ) : null}
-      </>}
+      </div> : <LogMetadata log={activeLog} />}
       </NavigatorWorkbench>
       {uploadDialogOpen ? (
         <UploadLogDialog

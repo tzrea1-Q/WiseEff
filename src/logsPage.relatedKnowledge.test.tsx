@@ -16,15 +16,14 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-function renderLogsPage() {
-  window.history.replaceState(null, "", "/logs");
+function renderLogsPage(path = "/logs") {
+  window.history.replaceState(null, "", path);
   render(<App initialAppState={userState} />);
 }
 
 function selectCompleteLog() {
   const history = screen.getByRole("complementary", { name: "历史日志记录" });
   fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-  fireEvent.keyDown(screen.getByRole("tab", { name: "相关", exact: true }), { key: "Enter" });
 }
 
 function renderStandaloneLogsPage(options: {
@@ -50,16 +49,23 @@ function renderStandaloneLogsPage(options: {
 }
 
 describe("LogsPage · 相关知识", () => {
-  it("Complete 日志展示相关已发布知识与检索模式说明,深链进入 /knowledge 条目详情", async () => {
-    renderLogsPage();
-    selectCompleteLog();
+  it.each(["history", "deep-link"])("Complete 日志从 %s 展示相关已发布知识与检索模式说明,深链进入 /knowledge 条目详情", async (source) => {
+    const log = initialState.logs.find((record) => record.fileName.includes("usb_pd_negotiation"))!;
+    renderLogsPage(source === "deep-link" ? `/logs?logId=${log.id}` : "/logs");
+    if (source === "history") selectCompleteLog();
+    expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
 
     const section = await screen.findByRole("region", { name: "相关知识" });
+    expect(section).toBeVisible();
     const entryLink = await within(section).findByRole("button", { name: /PD 快充协议兼容性排查手册/ });
     expect(within(section).getByText(/仅全文检索/)).toBeInTheDocument();
     // Draft and archived fixtures never appear (published-only invariant).
     expect(within(section).queryByText(/小泽沉淀/)).not.toBeInTheDocument();
     expect(within(section).queryByText(/已归档/)).not.toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "相关", exact: true }), { key: "Enter" });
+    expect(screen.getByRole("tab", { name: "相关", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "相关知识" })).toBeVisible();
 
     fireEvent.click(entryLink);
 
