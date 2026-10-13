@@ -6,6 +6,10 @@ Date: 2026-05-25
 
 This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.md` are short maps; the durable product, architecture, design, quality, reliability, security, and execution knowledge lives here.
 
+Newcomers: start with the [Platform Overview](platform-overview.md) for capabilities, architecture, governance, and workflows.
+
+Product users: start with the [User Guide](user-guide/README.md) for task guidance across all product workflows.
+
 ## Technical and Test Reading Paths
 
 Use one maintained set of topic documents, with two entry points:
@@ -19,17 +23,18 @@ The technical page owns system and code relationships; the testing page owns ris
 
 For project demonstrations, use the [Chinese project introduction](presentations/project-introduction.zh-CN.md), with Mermaid diagrams and local application screenshots.
 
-1. [Product Specs](product-specs/index.md): product goals, prototype behavior, MVP scope, and onboarding flows.
-2. [Architecture](../ARCHITECTURE.md): top-level runtime and codebase map.
-3. [Design Docs](design-docs/index.md): full-stack architecture, domain model, API contract, historical designs, testing, deployment, and security.
-4. [Developer Docs](developer/README.md): local setup, environment variables, and verification matrix.
-5. [API Docs](api/README.md): authentication, errors, examples, and OpenAPI contract usage.
-6. [Runbooks](runbooks/README.md): manual acceptance, self-hosted runtime, WSL validation, self-hosted release/rollback, staging, backup/restore, rollback, monitoring, observability, incidents, HDC, Agent provider, and pilot operations.
-7. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
-8. [Plans](PLANS.md): how active and completed execution plans are managed.
-9. [Quality Score](QUALITY_SCORE.md): historical quality assessments, source-verified corrections, and links to current verification gates.
-10. [Reliability](RELIABILITY.md): operational, task, deploy, and rollback expectations.
-11. [Security](SECURITY.md): identity, RBAC, user permission design, audit, Agent tools, device safety, and data protection.
+1. [Platform Overview](platform-overview.md): the newcomer map of capabilities, architecture, governance, readiness, and next reading steps.
+2. [Product Specs](product-specs/index.md): product goals, prototype behavior, MVP scope, and onboarding flows.
+3. [Architecture](../ARCHITECTURE.md): top-level runtime and codebase map.
+4. [Design Docs](design-docs/index.md): full-stack architecture, domain model, API contract, historical designs, testing, deployment, and security.
+5. [Developer Docs](developer/README.md): local setup, environment variables, and verification matrix.
+6. [API Docs](api/README.md): authentication, errors, examples, and OpenAPI contract usage.
+7. [Runbooks](runbooks/README.md): manual acceptance, self-hosted runtime, WSL validation, self-hosted release/rollback, staging, backup/restore, rollback, monitoring, observability, incidents, HDC, Agent provider, and pilot operations.
+8. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
+9. [Plans](PLANS.md): how active and completed execution plans are managed.
+10. [Quality Score](QUALITY_SCORE.md): historical quality assessments, source-verified corrections, and links to current verification gates.
+11. [Reliability](RELIABILITY.md): operational, task, deploy, and rollback expectations.
+12. [Security](SECURITY.md): identity, RBAC, user permission design, audit, Agent tools, device safety, and data protection.
 
 ## Chinese Developer Docs
 

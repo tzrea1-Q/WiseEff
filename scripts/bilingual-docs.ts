@@ -99,5 +99,14 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/agents/development-workflow.md", zh: "docs/zh-CN/agents/development-workflow.md", tier: "developer", status: "required" },
   { en: "docs/agents/domain.md", zh: "docs/zh-CN/agents/domain.md", tier: "developer", status: "required" },
   { en: "docs/agents/fleet-coordination.md", zh: "docs/zh-CN/agents/fleet-coordination.md", tier: "developer", status: "required" },
-  { en: "docs/agents/skill-maintenance.md", zh: "docs/zh-CN/agents/skill-maintenance.md", tier: "developer", status: "required" }
+  { en: "docs/agents/skill-maintenance.md", zh: "docs/zh-CN/agents/skill-maintenance.md", tier: "developer", status: "required" },
+  { en: "docs/user-guide/README.md", zh: "docs/zh-CN/user-guide/README.md", tier: "user-guide", status: "required" },
+  { en: "docs/user-guide/account-and-access.md", zh: "docs/zh-CN/user-guide/account-and-access.md", tier: "user-guide", status: "required" },
+  { en: "docs/platform-overview.md", zh: "docs/zh-CN/platform-overview.md", tier: "overview", status: "required" },
+  { en: "docs/user-guide/parameter-management.md", zh: "docs/zh-CN/user-guide/parameter-management.md", tier: "user-guide", status: "required" },
+  { en: "docs/user-guide/device-debugging.md", zh: "docs/zh-CN/user-guide/device-debugging.md", tier: "user-guide", status: "required" },
+  { en: "docs/user-guide/log-analysis.md", zh: "docs/zh-CN/user-guide/log-analysis.md", tier: "user-guide", status: "required" },
+  { en: "docs/user-guide/knowledge.md", zh: "docs/zh-CN/user-guide/knowledge.md", tier: "user-guide", status: "required" },
+  { en: "docs/user-guide/xiaoze.md", zh: "docs/zh-CN/user-guide/xiaoze.md", tier: "user-guide", status: "required" },
+  { en: "docs/user-guide/organization-and-governance.md", zh: "docs/zh-CN/user-guide/organization-and-governance.md", tier: "user-guide", status: "required" }
 ];

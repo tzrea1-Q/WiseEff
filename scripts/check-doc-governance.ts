@@ -2,6 +2,7 @@ import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { developerFacingBilingualDocs } from "./bilingual-docs";
+import { checkRelativeMarkdownLinks, collectMarkdownFiles } from "./check-relative-doc-links";
 
 export const activePlansDir = "docs/exec-plans/active";
 export const completedPlansDir = "docs/exec-plans/completed";
@@ -556,32 +557,9 @@ export async function validateEnvExample(root = process.cwd()): Promise<string[]
 }
 
 export async function validateMarkdownLinks(root = process.cwd()): Promise<string[]> {
-  const markdownFiles = await collectMarkdownFiles(root);
-  const errors: string[] = [];
-
-  for (const filePath of markdownFiles) {
-    const content = await readFile(filePath, "utf8");
-    const relativeFile = toPosix(path.relative(root, filePath));
-
-    for (const target of collectLocalMarkdownTargets(content)) {
-      const targetWithoutAnchor = target.split("#")[0].trim();
-
-      if (targetWithoutAnchor.length === 0) {
-        continue;
-      }
-
-      const normalizedTarget = targetWithoutAnchor.replace(/^<|>$/g, "");
-      const resolved = path.resolve(path.dirname(filePath), normalizedTarget);
-
-      try {
-        await access(resolved);
-      } catch {
-        errors.push(`Broken local markdown link in ${relativeFile}: ${target}`);
-      }
-    }
-  }
-
-  return errors;
+  const files = await collectMarkdownFiles(root);
+  const broken = await checkRelativeMarkdownLinks(root, files);
+  return broken.map(({ source, target }) => `Broken local markdown link: ${source} → ${target}`);
 }
 
 export async function validateBilingualDeveloperDocs(root = process.cwd()): Promise<string[]> {
@@ -679,35 +657,6 @@ export async function validateDocumentationRepository(root = process.cwd()): Pro
     ...m6RunbookErrors,
     ...xiaozeLlmInstructionErrors
   ];
-}
-
-async function collectMarkdownFiles(root: string): Promise<string[]> {
-  const ignoredDirectories = new Set([".git", ".worktrees", "node_modules", "dist", "coverage", "playwright-report"]);
-  const files: string[] = [];
-
-  async function visit(directory: string): Promise<void> {
-    const entries = await readdir(directory, { withFileTypes: true });
-
-    await Promise.all(
-      entries.map(async (entry) => {
-        const entryPath = path.join(directory, entry.name);
-
-        if (entry.isDirectory()) {
-          if (!ignoredDirectories.has(entry.name)) {
-            await visit(entryPath);
-          }
-          return;
-        }
-
-        if (entry.isFile() && entry.name.endsWith(".md")) {
-          files.push(entryPath);
-        }
-      })
-    );
-  }
-
-  await visit(root);
-  return files;
 }
 
 function collectLocalMarkdownTargets(content: string): string[] {

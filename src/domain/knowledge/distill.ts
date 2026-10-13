@@ -1,4 +1,6 @@
 import { formatPercent } from "@/domain/format/formatPercent";
+import { classifyAnalysisDegradation } from "@/domain/logs/analysisProvenance";
+import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { SEVERITY_LABELS, type LogRecord } from "@/domain/prototype/types";
 
 /**
@@ -29,8 +31,10 @@ export function buildLogDistillationDraft(log: LogRecord): LogDistillationDraft 
   const conclusion = log.conclusion.trim();
   const title = (conclusion || `日志分析:${log.fileName}`).slice(0, MAX_TITLE_CHARS);
   const severityLabel = SEVERITY_LABELS[log.severity];
+  const notice = buildLogAnalysisProvenanceNotice(log);
 
   const lines: string[] = [
+    ...(notice ? [notice, ""] : []),
     `> 由日志分析记录沉淀。来源文件:\`${log.fileName}\`${log.reportId ? `(报告 ${log.reportId})` : ""},采集时间 ${log.capturedAt}。`,
     ""
   ];
@@ -41,7 +45,7 @@ export function buildLogDistillationDraft(log: LogRecord): LogDistillationDraft 
 
   lines.push("## 结论", "", conclusion || "(分析结论为空)", "");
   lines.push("## 影响", "", log.impact.trim() || "(未记录影响)", "");
-  lines.push("## 严重度", "", `${severityLabel}(${log.severity})· 置信度 ${formatPercent(log.confidence)}`, "");
+  lines.push("## 严重度", "", `${severityLabel}(${log.severity})· ${confidenceCaption(log.analysisSource, "置信度")} ${formatPercent(log.confidence)}`, "");
 
   if (log.evidence.length > 0) {
     lines.push("## 证据(行引用)", "");
@@ -63,4 +67,12 @@ export function buildLogDistillationDraft(log: LogRecord): LogDistillationDraft 
     tags: [LOG_DISTILLATION_TAG, severityLabel],
     contentMarkdown: `${lines.join("\n").trimEnd()}\n`
   };
+}
+
+function buildLogAnalysisProvenanceNotice(log: Pick<LogRecord, "analysisSource" | "degradedReason">): string {
+  const degraded = classifyAnalysisDegradation(log);
+  if (!degraded) {
+    return "";
+  }
+  return `> ${degraded.label}\n> ${degraded.reason}\n> 依赖结论前请复核证据。`;
 }

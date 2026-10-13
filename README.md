@@ -2,6 +2,12 @@
 
 > Chinese: [Chinese](docs/zh-CN/root/README.md)
 
+## New here?
+
+Newcomers: start with the [Platform Overview](docs/platform-overview.md) for capabilities, architecture, governance, and workflows.
+
+Product users: start with the [User Guide](docs/user-guide/README.md) for task guidance across all product workflows.
+
 WiseEff is an AI-assisted enterprise efficiency platform prototype. It has moved from a frontend-only demo toward an M0-M6 productization baseline with a Vite/React/TypeScript frontend, mock and API runtimes, a TypeScript modular backend, PostgreSQL migrations, OpenAPI contract checks, production auth boundaries, worker/object-store seams, Redis/BullMQ durable queue support, HDC gateway seams, Xiaoze LLM integration (`XIAOZE_LLM_*`), and admin-gated pilot/readiness endpoints.
 
 The repository is suitable for controlled staging and pilot evidence collection. It must not be described as broadly production-ready until real target-environment evidence exists for live API, PostgreSQL-backed E2E, HDC device lab, backup/restore, rollback, identity, queue, observability, capacity, and Xiaoze LLM readiness checks.

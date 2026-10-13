@@ -71,6 +71,7 @@
     "contract:openapi": "tsx scripts/generate-openapi-contract.ts",
     "contract:check": "tsx scripts/check-openapi-contract.ts",
     "docs:check": "tsx scripts/check-doc-governance.ts && tsx scripts/check-db-schema-doc.ts",
+    "docs:screenshots": "tsx scripts/run-user-guide-screenshots.ts",
     "ui:check": "tsx scripts/check-ui-standards.ts",
     "lint": "eslint src --cache --cache-location node_modules/.cache/eslint/",
     "db:schema-doc": "tsx scripts/generate-db-schema-doc.ts",

@@ -398,15 +398,16 @@ jobs:
             "bridge":${{ toJSON(steps.bridge) }}}
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
-  l1-server:
-    name: L1 backend
+  l1-server-shards:
+    name: L1 backend shard ${{ matrix.shard }}/2
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      receipt: ${{ steps.receipt.outputs.receipt }}
-      shadow_server: ${{ steps.server.outputs.shadow }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -428,6 +429,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server
+      WISEEFF_CI_SERVER_SHARD: ${{ matrix.shard }}/2
     steps:
       - name: Check out repository
         id: checkout
@@ -484,6 +486,38 @@ jobs:
             "server":${{ toJSON(steps.server) }}}
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
+      - name: Upload backend shard receipt
+        id: shard_receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-ci-server-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/wiseeff-ci-shard/receipt.json
+          if-no-files-found: error
+
+  l1-server:
+    name: L1 backend
+    if: always()
+    needs: [detect, l1-server-shards]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      receipt: ${{ steps.results.outputs.receipt }}
+      shadow_server: ${{ steps.results.outputs.shadow }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        if: needs.detect.outputs.run_l1 == 'true'
+        with:
+          pattern: wiseeff-ci-server-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/wiseeff-ci-shards
+      - id: results
+        env:
+          EFF_NEEDS: ${{ toJSON(needs) }}
+        run: node --experimental-strip-types scripts/ci-shard-results.ts aggregate server
+
   build-and-test:
     name: Build and test
     if: always()
@@ -513,12 +547,16 @@ jobs:
             "l1-server":{"result":${{ toJSON(needs.l1-server.result) }},"outputs":{"shadow_server":${{ toJSON(needs.l1-server.outputs.shadow_server) }}}}}
         run: node --experimental-strip-types scripts/ci-required-results.ts l1
 
-  acceptance-quality:
-    name: Acceptance quality
+  acceptance-quality-lanes:
+    name: Acceptance quality lane (${{ matrix.lane }})
     needs: detect
     if: needs.detect.outputs.run_quality == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [visual, consistency-1, consistency-2, accessibility]
 
     services:
       postgres:
@@ -537,6 +575,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+      WISEEFF_QUALITY_LANE: ${{ matrix.lane }}
       WISEEFF_API_BASE_URL: http://127.0.0.1:8787
       VITE_WISEEFF_RUNTIME_MODE: api
       VITE_WISEEFF_API_BASE_URL: http://127.0.0.1:8787
@@ -594,16 +633,25 @@ jobs:
         run: |
           npm run db:migrate
           npm run db:seed:all
-          npm run seed:quality:admin-lists
+          npm run --if-present seed:quality:admin-lists
           echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
-          echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"
-          echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"
+          if [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then
+            echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"
+            echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"
+          fi
 
       - name: Acceptance quality metadata
         run: npm run acceptance:quality
 
       - name: Acceptance quality gates
-        run: npm run acceptance:quality-run
+        run: node --experimental-strip-types scripts/ci-shard-results.ts quality
+
+      - name: Upload quality lane receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-ci-quality-${{ github.run_attempt }}-${{ matrix.lane }}
+          path: ${{ runner.temp }}/wiseeff-ci-shard/receipt.json
+          if-no-files-found: error
 
       - name: Report quality gate runtime
         if: always()
@@ -623,10 +671,33 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: wiseeff-acceptance-quality
+          name: ${{ matrix.lane == 'visual' && 'wiseeff-acceptance-quality' || format('wiseeff-acceptance-quality-{0}', matrix.lane) }}
           path: |
             playwright-report/quality
             test-results/quality
+
+  acceptance-quality:
+    name: Acceptance quality
+    if: always()
+    needs: [detect, acceptance-quality-lanes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      identity: ${{ steps.results.outputs.identity }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        if: needs.detect.outputs.run_quality == 'true'
+        with:
+          pattern: wiseeff-ci-quality-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/wiseeff-ci-shards
+      - id: results
+        env:
+          EFF_NEEDS: ${{ toJSON(needs) }}
+        run: node --experimental-strip-types scripts/ci-shard-results.ts aggregate quality
 
   acceptance-smoke:
     name: Acceptance smoke

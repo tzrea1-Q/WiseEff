@@ -32,6 +32,22 @@ function makeLogRecord(overrides: Partial<LogRecord> = {}): LogRecord {
 }
 
 describe("createMockKnowledgeRepository", () => {
+  it("distils a degraded mock analysis with the canonical warning and rule-score caption", async () => {
+    const log = makeLogRecord({ analysisSource: "rules-fallback", degradedReason: "provider-unavailable" });
+    const repository = createMockKnowledgeRepository({ getLogRecord: () => log });
+
+    const draft = await repository.distillFromLog(log.id);
+
+    expect(draft.contentMarkdown.startsWith("> 降级分析 · 规则回退")).toBe(true);
+    expect(draft.contentMarkdown).toContain("AI 分析服务不可用，本结论由规则引擎回退生成");
+    expect(draft.contentMarkdown).toContain("依赖结论前请复核证据");
+    expect(draft.contentMarkdown.indexOf("降级分析")).toBeLessThan(draft.contentMarkdown.indexOf("由日志分析记录沉淀"));
+    expect(draft.contentMarkdown).toContain("规则评分 88%");
+    expect(draft.title).toBe(log.conclusion);
+    expect(draft.tags).toEqual(["日志分析", "提示"]);
+    expect(draft.sourceLogId).toBe(log.id);
+  });
+
   it("serves fixture entries covering draft, published, archived, and failed extraction", async () => {
     const repository = createMockKnowledgeRepository();
     const { items } = await repository.list();

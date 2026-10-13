@@ -40,15 +40,15 @@ describe("equivalent fixed L1 scheduling", () => {
   });
   it.each(["build", "docs", "ui", "lint", "metadata", "catalog", "contract", "bridge_package", "logs"])("rejects removal of the original %s command", (id) => {
     const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
-    const job = workflow.jobs[id === "docs" ? "l1-server" : "l1-static"];
+    const job = workflow.jobs[id === "docs" ? "l1-server-shards" : "l1-static"];
     job.steps = job.steps.filter((step: { id: string }) => step.id !== id);
     expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
   });
   it("runs the complete documentation check after vector setup and before backend tests", () => {
     const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
     const docsJobs = Object.entries(workflow.jobs).filter(([, job]) => (job as { steps: { id?: string }[] }).steps.some((step) => step.id === "docs"));
-    expect(docsJobs.map(([id]) => id)).toEqual(["l1-server"]);
-    const job = workflow.jobs["l1-server"];
+    expect(docsJobs.map(([id]) => id)).toEqual(["l1-server-shards"]);
+    const job = workflow.jobs["l1-server-shards"];
     const ids = job.steps.map((step: { id: string }) => step.id);
     expect(ids.indexOf("docs")).toBeGreaterThan(ids.indexOf("vector"));
     expect(ids.indexOf("docs")).toBeLessThan(ids.indexOf("server"));
@@ -66,7 +66,7 @@ describe("equivalent fixed L1 scheduling", () => {
     }
     expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
   });
-  it.each(["l1-scripts", "l1-server"])("requires PG, DTS and receipt safety in %s", (id) => {
+  it.each(["l1-scripts", "l1-server-shards"])("requires PG, DTS and receipt safety in %s", (id) => {
     const source = readFileSync(".github/workflows/ci.yml", "utf8");
     for (const mutation of ["database", "toolchain", "advisory", "receipt", "vector"]) {
       const workflow = YAML.parse(source);
@@ -74,7 +74,7 @@ describe("equivalent fixed L1 scheduling", () => {
       if (mutation === "database") delete job.services;
       if (mutation === "toolchain") job.steps.find((step: { id: string }) => step.id === "toolchain").uses = "echo skipped";
       if (mutation === "advisory") job.steps.find((step: { id: string }) => step.id === "install")["continue-on-error"] = true;
-      if (mutation === "receipt") job.outputs.receipt = "";
+      if (mutation === "receipt") job.outputs = { ...job.outputs, receipt: "" };
       if (mutation === "vector") job.steps.find((step: { id: string }) => step.id === "vector").run += "\ntrue";
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     }
@@ -83,8 +83,8 @@ describe("equivalent fixed L1 scheduling", () => {
     const source = readFileSync(".github/workflows/ci.yml", "utf8");
     const forbidden = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
     const compliant = YAML.parse(source);
-    expect(compliant.jobs["l1-server"].env.DATABASE_URL).not.toBe(forbidden);
-    expect(compliant.jobs["l1-server"].services.postgres.env.POSTGRES_DB).not.toBe("wiseeff");
+    expect(compliant.jobs["l1-server-shards"].env.DATABASE_URL).not.toBe(forbidden);
+    expect(compliant.jobs["l1-server-shards"].services.postgres.env.POSTGRES_DB).not.toBe("wiseeff");
 
     type MutableJob = {
       env?: Record<string, string>;
@@ -93,7 +93,7 @@ describe("equivalent fixed L1 scheduling", () => {
     };
     const rejected = (mutate: (job: MutableJob) => void) => {
       const workflow = YAML.parse(source) as { jobs: Record<string, MutableJob> };
-      mutate(workflow.jobs["l1-server"]!);
+      mutate(workflow.jobs["l1-server-shards"]!);
       const result = evaluateL1CiWorkflow(YAML.stringify(workflow));
       expect(result.status).toBe("failed");
       return result.errors.join(" ");
@@ -147,7 +147,7 @@ describe("equivalent fixed L1 scheduling", () => {
   });
   it.each(["missing", "extra", "wrong-source", "raw-context"])("rejects invalid L1 receipt projection: %s", (mutation) => {
     const workflow = YAML.parse(compliantWorkflow);
-    const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");
+    const receipt = workflow.jobs["l1-server-shards"].steps.find((step: { id: string }) => step.id === "receipt");
     const expression = (id: string) => "${{ toJSON(steps." + id + ") }}";
     const projection = String(receipt.env.EFF_STEPS).trim();
     if (mutation === "missing") receipt.env.EFF_STEPS = projection.replace('"docs":' + expression("docs") + ", ", "");
@@ -160,7 +160,7 @@ describe("equivalent fixed L1 scheduling", () => {
     const workflow = YAML.parse(compliantWorkflow);
     const expression = (id: string) => "${{ toJSON(steps." + id + ") }}";
     for (const [jobId, commandIds] of Object.entries(l1CommandIds)) {
-      const receipt = workflow.jobs[jobId].steps.find((step: { id: string }) => step.id === "receipt");
+      const receipt = workflow.jobs[jobId === "l1-server" ? "l1-server-shards" : jobId].steps.find((step: { id: string }) => step.id === "receipt");
       const expected = "{" + commandIds.map((id) => '"' + id + '":' + expression(id)).join(", ") + "}";
       expect(String(receipt.env.EFF_STEPS).trim()).toBe(expected);
     }
@@ -169,7 +169,7 @@ describe("equivalent fixed L1 scheduling", () => {
     ["l1-frontend", "shadow_frontend", "frontend"],
     ["l1-scripts", "shadow_scripts", "scripts"],
     ["l1-scripts", "shadow_bridge", "bridge"],
-    ["l1-server", "shadow_server", "server"],
+    ["l1-server", "shadow_server", "results"],
   ] as const)("rejects %s/%s shadow producer mapping drift", (jobId, output, stepId) => {
     const source = compliantWorkflow;
     for (const mutation of ["missing", "wrong", "hardcoded", "extra"]) {
@@ -233,7 +233,7 @@ describe("equivalent fixed L1 scheduling", () => {
     });
   it("rejects whitespace inserted into a projected JSON key", () => {
     const workflow = YAML.parse(compliantWorkflow);
-    const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");
+    const receipt = workflow.jobs["l1-server-shards"].steps.find((step: { id: string }) => step.id === "receipt");
     receipt.env.EFF_STEPS = String(receipt.env.EFF_STEPS).replace('"docs"', '"do cs"');
     expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
   });
@@ -247,6 +247,177 @@ describe("equivalent fixed L1 scheduling", () => {
     expect(workflow.concurrency["cancel-in-progress"]).toBe("${{ github.event_name == 'pull_request' }}");
     expect(workflow.jobs.detect.steps.find((step: { id: string }) => step.id === "paths").run).toContain('echo "run_l2=true"');
   });
+});
+
+describe("D2 backend shards and quality lanes", () => {
+  const partitions = [
+    ["server", "l1-server-shards", "l1-server", "shard", [1, 2]],
+    ["quality", "acceptance-quality-lanes", "acceptance-quality", "lane", ["visual", "consistency-1", "consistency-2", "accessibility"]],
+  ] as const;
+
+  it.each(partitions)("retains the exact %s worker and stable aggregate", (kind, workerId, aggregateId, axis, values) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    expect(evaluateL1CiWorkflow(compliantWorkflow)).toEqual({ status: "passed", errors: [] });
+    const worker = workflow.jobs[workerId];
+    const aggregate = workflow.jobs[aggregateId];
+    expect(worker.strategy).toEqual({ "fail-fast": false, matrix: { [axis]: values } });
+    expect(worker.outputs).toBeUndefined();
+    expect(worker.env[kind === "server" ? "WISEEFF_CI_SERVER_SHARD" : "WISEEFF_QUALITY_LANE"])
+      .toBe(kind === "server" ? "${{ matrix.shard }}/2" : "${{ matrix.lane }}");
+    const receipt = worker.steps.find((step: { with?: { path?: string } }) => step.with?.path === "${{ runner.temp }}/wiseeff-ci-shard/receipt.json");
+    expect(receipt.with.name).toBe(`wiseeff-ci-${kind}-\${{ github.run_attempt }}-\${{ matrix.${axis} }}`);
+    expect(aggregate.needs).toEqual(["detect", workerId]);
+    expect(aggregate.steps[2].with).toEqual({ pattern: `wiseeff-ci-${kind}-\${{ github.run_attempt }}-*`, path: "${{ runner.temp }}/wiseeff-ci-shards" });
+    expect(aggregate.steps[3]).toMatchObject({ id: "results", run: `node --experimental-strip-types scripts/ci-shard-results.ts aggregate ${kind}`, env: { EFF_NEEDS: "${{ toJSON(needs) }}" } });
+    expect(aggregate.outputs).toEqual(kind === "server"
+      ? { receipt: "${{ steps.results.outputs.receipt }}", shadow_server: "${{ steps.results.outputs.shadow }}" }
+      : { identity: "${{ steps.results.outputs.identity }}" });
+    expect(workflow.jobs.required.needs).toEqual(["detect", "build-and-test", "acceptance-quality", "acceptance-smoke", "acceptance-local-non-hdc", "target-synthetic-acceptance", "minimal-upgrade"]);
+  });
+
+  const workerMutations = ["missing-worker", "name", "needs", "condition", "runner", "timeout", "suppressed", "outputs", "empty-outputs",
+    "missing-partition", "duplicate-partition", "reordered", "string-partition", "exclude", "include", "extra-axis", "fail-fast", "missing-fail-fast", "throttle", "extra-strategy", "partition-env",
+    "missing-service", "service-image", "service-db", "service-user", "service-password", "service-port", "service-health", "database"] as const;
+  it.each(partitions.flatMap((partition) => workerMutations.map((mutation) => [...partition, mutation] as const)))
+    ("rejects %s worker drift: %s %s %s %s %s", (kind, workerId, _aggregateId, axis, _values, mutation) => {
+      const workflow = YAML.parse(compliantWorkflow);
+      const worker = workflow.jobs[workerId];
+      if (mutation === "missing-worker") delete workflow.jobs[workerId];
+      if (mutation === "name") worker.name = "Unstable worker";
+      if (mutation === "needs") worker.needs = ["detect", "build-and-test"];
+      if (mutation === "condition") worker.if = "success()";
+      if (mutation === "runner") worker["runs-on"] = "self-hosted";
+      if (mutation === "timeout") worker["timeout-minutes"] += 1;
+      if (mutation === "suppressed") worker["continue-on-error"] = true;
+      if (mutation === "outputs") worker.outputs = { receipt: "${{ steps.receipt.outputs.receipt }}" };
+      if (mutation === "empty-outputs") worker.outputs = {};
+      if (mutation === "missing-partition") worker.strategy.matrix[axis].pop();
+      if (mutation === "duplicate-partition") worker.strategy.matrix[axis][1] = worker.strategy.matrix[axis][0];
+      if (mutation === "reordered") worker.strategy.matrix[axis].reverse();
+      if (mutation === "string-partition") worker.strategy.matrix[axis][0] = kind === "server" ? "1" : 1;
+      if (mutation === "exclude") worker.strategy.matrix.exclude = [{ [axis]: worker.strategy.matrix[axis][0] }];
+      if (mutation === "include") worker.strategy.matrix.include = [{ [axis]: "extra" }];
+      if (mutation === "extra-axis") worker.strategy.matrix.extra = ["extra"];
+      if (mutation === "fail-fast") worker.strategy["fail-fast"] = true;
+      if (mutation === "missing-fail-fast") delete worker.strategy["fail-fast"];
+      if (mutation === "throttle") worker.strategy["max-parallel"] = 1;
+      if (mutation === "extra-strategy") worker.strategy.unmapped = true;
+      if (mutation === "partition-env") worker.env[kind === "server" ? "WISEEFF_CI_SERVER_SHARD" : "WISEEFF_QUALITY_LANE"] = kind === "server" ? "1/2" : "visual";
+      if (mutation === "missing-service") delete worker.services;
+      if (mutation === "service-image") worker.services.postgres.image = "postgres:16";
+      if (mutation === "service-db") worker.services.postgres.env.POSTGRES_DB = "other";
+      if (mutation === "service-user") worker.services.postgres.env.POSTGRES_USER = "other";
+      if (mutation === "service-password") worker.services.postgres.env.POSTGRES_PASSWORD = "other";
+      if (mutation === "service-port") worker.services.postgres.ports = ["5999:5432"];
+      if (mutation === "service-health") worker.services.postgres.options = '--health-cmd "true"';
+      if (mutation === "database") worker.env.DATABASE_URL = "postgres://wiseeff:wiseeff@remote.internal:5432/wiseeff";
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    });
+
+  const uploadMutations = ["missing", "duplicate", "version", "name", "unqualified-attempt", "wrong-attempt", "cross-kind", "path", "missing-policy", "ignored-files", "condition", "suppressed", "command", "env", "order", "producer"] as const;
+  it.each(partitions.flatMap((partition) => uploadMutations.map((mutation) => [...partition, mutation] as const)))
+    ("rejects %s receipt upload drift: %s %s %s %s %s", (kind, workerId, _aggregateId, axis, _values, mutation) => {
+      const workflow = YAML.parse(compliantWorkflow);
+      const worker = workflow.jobs[workerId];
+      const upload = worker.steps.find((step: { with?: { path?: string } }) => step.with?.path === "${{ runner.temp }}/wiseeff-ci-shard/receipt.json");
+      if (mutation === "missing") worker.steps = worker.steps.filter((step: unknown) => step !== upload);
+      if (mutation === "duplicate") worker.steps.push({ ...upload });
+      if (mutation === "version") upload.uses = "actions/upload-artifact@v3";
+      if (mutation === "name") upload.with.name = `wiseeff-ci-${kind}-\${{ github.run_attempt }}`;
+      if (mutation === "unqualified-attempt") upload.with.name = `wiseeff-ci-${kind}-\${{ matrix.${axis} }}`;
+      if (mutation === "wrong-attempt") upload.with.name = `wiseeff-ci-${kind}-\${{ github.run_id }}-\${{ matrix.${axis} }}`;
+      if (mutation === "cross-kind") upload.with.name = `wiseeff-ci-${kind === "server" ? "quality" : "server"}-\${{ github.run_attempt }}-\${{ matrix.${axis} }}`;
+      if (mutation === "path") upload.with.path = "test-results/quality";
+      if (mutation === "missing-policy") delete upload.with["if-no-files-found"];
+      if (mutation === "ignored-files") upload.with["if-no-files-found"] = "ignore";
+      if (mutation === "condition") upload.if = "always()";
+      if (mutation === "suppressed") upload["continue-on-error"] = true;
+      if (mutation === "command") upload.run = "echo passed";
+      if (mutation === "env") upload.env = { WISEEFF_QUALITY_LANE: "visual" };
+      if (mutation === "order") {
+        const index = worker.steps.indexOf(upload);
+        [worker.steps[index - 1], worker.steps[index]] = [worker.steps[index], worker.steps[index - 1]];
+      }
+      if (mutation === "producer") {
+        if (kind === "server") upload.id = "wrong_receipt";
+        else upload.name = "Upload quality evidence";
+      }
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    });
+
+  const aggregateMutations = ["missing", "name", "condition", "needs", "extra-needs", "runner", "timeout", "suppressed", "strategy", "service", "env",
+    "missing-download", "download-version", "download-condition", "download-pattern", "unqualified-attempt", "wrong-attempt", "download-path", "merge", "download-suppressed", "download-command",
+    "checkout", "node", "node-version", "cache", "install", "results-id", "results-command", "results-suppressed", "results-condition", "results-source", "results-extra-env", "missing-output", "extra-output", "output-source", "order"] as const;
+  it.each(partitions.flatMap((partition) => aggregateMutations.map((mutation) => [...partition, mutation] as const)))
+    ("rejects %s aggregate drift: %s %s %s %s %s", (kind, _workerId, aggregateId, _axis, _values, mutation) => {
+      const workflow = YAML.parse(compliantWorkflow);
+      const aggregate = workflow.jobs[aggregateId];
+      const download = aggregate.steps[2];
+      const results = aggregate.steps[3];
+      if (mutation === "missing") delete workflow.jobs[aggregateId];
+      if (mutation === "name") aggregate.name = "Unstable aggregate";
+      if (mutation === "condition") aggregate.if = "success()";
+      if (mutation === "needs") aggregate.needs.pop();
+      if (mutation === "extra-needs") aggregate.needs.push("acceptance-smoke");
+      if (mutation === "runner") aggregate["runs-on"] = "self-hosted";
+      if (mutation === "timeout") aggregate["timeout-minutes"] = 20;
+      if (mutation === "suppressed") aggregate["continue-on-error"] = true;
+      if (mutation === "strategy") aggregate.strategy = { matrix: { shard: [1, 2] } };
+      if (mutation === "service") aggregate.services = workflow.jobs["l1-server-shards"].services;
+      if (mutation === "env") aggregate.env = { EFF_NEEDS: "{}" };
+      if (mutation === "missing-download") aggregate.steps.splice(2, 1);
+      if (mutation === "download-version") download.uses = "actions/download-artifact@v3";
+      if (mutation === "download-condition") download.if = "always()";
+      if (mutation === "download-pattern") download.with.pattern = `wiseeff-ci-${kind === "server" ? "quality" : "server"}-\${{ github.run_attempt }}-*`;
+      if (mutation === "unqualified-attempt") download.with.pattern = `wiseeff-ci-${kind}-*`;
+      if (mutation === "wrong-attempt") download.with.pattern = `wiseeff-ci-${kind}-\${{ github.run_id }}-*`;
+      if (mutation === "download-path") download.with.path = "${{ runner.temp }}/other";
+      if (mutation === "merge") download.with["merge-multiple"] = true;
+      if (mutation === "download-suppressed") download["continue-on-error"] = true;
+      if (mutation === "download-command") download.run = "echo passed";
+      if (mutation === "checkout") aggregate.steps[0].uses = "actions/checkout@v3";
+      if (mutation === "node") aggregate.steps[1].uses = "actions/setup-node@v3";
+      if (mutation === "node-version") aggregate.steps[1].with["node-version-file"] = "other";
+      if (mutation === "cache") aggregate.steps[1].with.cache = "npm";
+      if (mutation === "install") aggregate.steps.push({ run: "npm ci" });
+      if (mutation === "results-id") results.id = "unmapped";
+      if (mutation === "results-command") results.run += " || true";
+      if (mutation === "results-suppressed") results["continue-on-error"] = true;
+      if (mutation === "results-condition") results.if = "success()";
+      if (mutation === "results-source") results.env.EFF_NEEDS = "${{ toJSON(steps) }}";
+      if (mutation === "results-extra-env") results.env.EFF_STEPS = "${{ toJSON(steps) }}";
+      if (mutation === "missing-output") delete aggregate.outputs[kind === "server" ? "receipt" : "identity"];
+      if (mutation === "extra-output") aggregate.outputs.unmapped = "${{ steps.results.outputs.receipt }}";
+      if (mutation === "output-source") aggregate.outputs[kind === "server" ? "receipt" : "identity"] = "${{ steps.receipt.outputs.receipt }}";
+      if (mutation === "order") [aggregate.steps[2], aggregate.steps[3]] = [aggregate.steps[3], aggregate.steps[2]];
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    });
+
+  it.each(["missing", "reordered", "command", "suppressed", "condition", "metadata", "install", "browser", "runtime-env", "step-env", "legacy-gate", "evidence-name", "evidence-path", "fixture-db", "missing-seed", "unconditional-seed", "suppressed-seed", "early-skip-seed", "fixture-lane"])
+    ("rejects quality prerequisites, lane execution or evidence drift: %s", (mutation) => {
+      const workflow = YAML.parse(compliantWorkflow);
+      const worker = workflow.jobs["acceptance-quality-lanes"];
+      if (mutation === "missing") worker.steps.splice(6, 1);
+      if (mutation === "reordered") [worker.steps[6], worker.steps[7]] = [worker.steps[7], worker.steps[6]];
+      if (mutation === "command") worker.steps[7].run += " || true";
+      if (mutation === "suppressed") worker.steps[7]["continue-on-error"] = true;
+      if (mutation === "condition") worker.steps[7].if = "matrix.lane == 'visual'";
+      if (mutation === "metadata") worker.steps[6].run = "echo metadata";
+      if (mutation === "install") worker.steps[2].run = "npm ci || true";
+      if (mutation === "browser") worker.steps[3].run = "echo browser";
+      if (mutation === "runtime-env") worker.env.VITE_WISEEFF_RUNTIME_MODE = "mock";
+      if (mutation === "step-env") worker.steps[7].env = { WISEEFF_QUALITY_LANE: "visual" };
+      if (mutation === "legacy-gate") worker.steps[7].run = "npm run acceptance:quality-run";
+      if (mutation === "evidence-name") worker.steps[9].with.name = "wiseeff-acceptance-quality";
+      if (mutation === "evidence-path") worker.steps[9].with.path += "${{ runner.temp }}/wiseeff-ci-shard/receipt.json\n";
+      if (mutation === "fixture-db") worker.env.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/other";
+      if (mutation === "missing-seed") worker.steps[5].run = worker.steps[5].run.replace("npm run --if-present seed:quality:admin-lists\n", "");
+      if (mutation === "unconditional-seed") worker.steps[5].run = worker.steps[5].run.replace("npm run --if-present", "npm run");
+      if (mutation === "suppressed-seed") worker.steps[5].run = worker.steps[5].run.replace("seed:quality:admin-lists\n", "seed:quality:admin-lists || true\n");
+      if (mutation === "early-skip-seed") worker.steps[5].run = 'echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\n' + worker.steps[5].run;
+      if (mutation === "fixture-lane") worker.steps[5].run = worker.steps[5].run.replace('"$WISEEFF_QUALITY_LANE" = "visual"', '"$WISEEFF_QUALITY_LANE" = "consistency-1"');
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    });
 });
 
 describe("M5.12 acceptance CI configuration", () => {
@@ -442,7 +613,7 @@ describe("M5.12 acceptance CI configuration", () => {
     }
   });
 
-  it("requires layered job ids, smoke, and a single quality-run token", () => {
+  it("requires layered job ids, smoke, and the inventoried quality runner", () => {
     expect(requiredAcceptanceCiScripts).toEqual([
       "acceptance:ci",
       "acceptance:browser",
@@ -467,7 +638,7 @@ describe("M5.12 acceptance CI configuration", () => {
         "cancel-in-progress",
         "Acceptance CI metadata (L1)",
         "./.github/actions/setup-dts-toolchain",
-        "npm run acceptance:quality-run",
+        "node --experimental-strip-types scripts/ci-shard-results.ts quality",
         "npm run acceptance:smoke",
         "npm run acceptance:gate0"
       ])
@@ -620,7 +791,7 @@ jobs:
     expect(action).toContain("timeout 180s sudo apt-get update");
 
     const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
-    const qualityJob = workflow.split("\n  acceptance-quality:")[1]?.split("\n  acceptance-smoke:")[0] ?? "";
+    const qualityJob = workflow.split("\n  acceptance-quality-lanes:")[1]?.split("\n  acceptance-quality:")[0] ?? "";
     expect(qualityJob).toContain("Acceptance quality");
     expect(qualityJob).toContain("timeout-minutes: 35");
     expect(qualityJob).not.toContain("setup-dts-toolchain");

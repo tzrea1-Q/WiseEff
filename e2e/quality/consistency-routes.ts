@@ -1,4 +1,5 @@
 import type { ConsistencyCategory } from "./consistency-collector";
+import type { QualityLane } from "./quality-partition";
 
 const catalogPaths = [
   "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping",
@@ -94,3 +95,31 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
       ? [{ ...route, path: `${route.path}?review=open` }]
       : [])
   ]);
+
+const parameterRoute = consistencyRoutes.find((route) => route.path === "/parameters")!;
+export const consistencyReadOnlyRoutes = [
+  ...consistencyRoutes,
+  ...["atlas", "aurora", "nebula"].map((project) => ({ ...parameterRoute, path: `/parameters?project=${project}` }))
+];
+
+export function selectConsistencyRoutes(
+  lane: QualityLane | undefined, routes: readonly typeof consistencyReadOnlyRoutes[number][] = consistencyReadOnlyRoutes
+) {
+  if (lane === undefined) return [...routes];
+  if (lane !== "consistency-1" && lane !== "consistency-2") return [];
+  const groups = new Map<string, number>();
+  for (const route of routes) {
+    const path = route.path.split("?")[0];
+    groups.set(path, (groups.get(path) ?? 0) + 1);
+  }
+  const partitions: [Set<string>, Set<string>] = [new Set(), new Set()];
+  const sizes = [0, 0];
+  const paths = [...groups.keys()].sort().sort((left, right) => groups.get(right)! - groups.get(left)!);
+  for (const path of paths) {
+    const partition = sizes[0] <= sizes[1] ? 0 : 1;
+    partitions[partition].add(path);
+    sizes[partition] += groups.get(path)!;
+  }
+  const selected = partitions[lane === "consistency-1" ? 0 : 1];
+  return routes.filter((route) => selected.has(route.path.split("?")[0]));
+}

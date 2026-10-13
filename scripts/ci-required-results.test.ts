@@ -15,7 +15,7 @@ const docs = { docs_only: "true", run_l1: "false", run_quality: "false", run_smo
 const docNeeds = {
   detect: { result: "success", outputs: docs },
   "build-and-test": { result: "success", outputs: { identity: JSON.stringify(identity) } },
-  "acceptance-quality": { result: "skipped" }, "acceptance-smoke": { result: "skipped" },
+  "acceptance-quality": { result: "success", outputs: { identity: JSON.stringify(identity) } }, "acceptance-smoke": { result: "skipped" },
   "acceptance-local-non-hdc": { result: "success" }, "target-synthetic-acceptance": { result: "skipped" },
   "minimal-upgrade": { result: "skipped" },
 };
@@ -38,16 +38,17 @@ describe("strict CI required results", () => {
   });
   it.each(["push", "schedule"])("requires complete main L1, quality and L2 for %s", (event) => {
     const mainIdentity = { ...identity, event, ref: "refs/heads/main", base: "", head: "" };
-    const needs = { ...docNeeds, "build-and-test": { result: "success", outputs: { identity: JSON.stringify(mainIdentity) } }, detect: { result: "success", outputs: { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } }, "acceptance-quality": { result: "success" }, "acceptance-local-non-hdc": { result: "success" } };
+    const needs = { ...docNeeds, "build-and-test": { result: "success", outputs: { identity: JSON.stringify(mainIdentity) } }, detect: { result: "success", outputs: { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } }, "acceptance-quality": { result: "success", outputs: { identity: JSON.stringify(mainIdentity) } }, "acceptance-local-non-hdc": { result: "success" } };
     expect(() => assertRequiredResults({ identity: mainIdentity, needs })).not.toThrow();
     expect(() => assertRequiredResults({ identity: mainIdentity, needs: { ...needs, "acceptance-local-non-hdc": { result: "skipped" } } })).toThrow();
   });
   it.each(["local-non-hdc", "target-non-hdc", "full-pilot", "minimal-upgrade"])("retains %s manual dispatch requirements", (mode) => {
     const local = mode === "local-non-hdc";
     const target = mode === "target-non-hdc" || mode === "full-pilot";
-    const needs = { ...docNeeds, detect: { result: "success", outputs: { docs_only: "false", run_l1: "false", run_quality: String(local), run_smoke: "false", run_l2: String(local) } }, "acceptance-quality": { result: local ? "success" : "skipped" }, "acceptance-local-non-hdc": { result: "success" }, "target-synthetic-acceptance": { result: target ? "success" : "skipped" }, "minimal-upgrade": { result: mode === "minimal-upgrade" ? "success" : "skipped" } };
+    const needs = { ...docNeeds, detect: { result: "success", outputs: { docs_only: "false", run_l1: "false", run_quality: String(local), run_smoke: "false", run_l2: String(local) } }, "acceptance-local-non-hdc": { result: "success" }, "target-synthetic-acceptance": { result: target ? "success" : "skipped" }, "minimal-upgrade": { result: mode === "minimal-upgrade" ? "success" : "skipped" } };
     const dispatchIdentity = { ...identity, event: "workflow_dispatch", base: "", head: "", mode };
     needs["build-and-test"] = { result: "success", outputs: { identity: JSON.stringify(dispatchIdentity) } };
+    needs["acceptance-quality"] = { result: "success", outputs: { identity: JSON.stringify(dispatchIdentity) } };
     expect(() => assertRequiredResults({ identity: dispatchIdentity, needs })).not.toThrow();
   });
   it("rejects unknown events, modes, failed detection and unmapped jobs", () => {
@@ -59,11 +60,15 @@ describe("strict CI required results", () => {
   it("rejects a green aggregate from another execution tree", () => {
     expect(() => assertRequiredResults({ identity: { ...identity, tree: "5".repeat(40) }, needs: docNeeds })).toThrow();
   });
+  it("requires the always-running quality aggregate with the same execution identity", () => {
+    expect(() => assertRequiredResults({ identity, needs: { ...docNeeds, "acceptance-quality": { result: "skipped" } } })).toThrow();
+    expect(() => assertRequiredResults({ identity, needs: { ...docNeeds, "acceptance-quality": { result: "success", outputs: { identity: JSON.stringify({ ...identity, attempt: "2" }) } } } })).toThrow();
+  });
   it("preserves full-acceptance even for docs-only PRs", () => {
     const labeled = { ...identity, fullAcceptance: true };
     const needs = { ...docNeeds, "build-and-test": { result: "success", outputs: { identity: JSON.stringify(labeled) } },
       detect: { result: "success", outputs: { ...docs, run_quality: "true", run_l2: "true" } },
-      "acceptance-quality": { result: "success" }, "acceptance-local-non-hdc": { result: "success" } };
+      "acceptance-quality": { result: "success", outputs: { identity: JSON.stringify(labeled) } }, "acceptance-local-non-hdc": { result: "success" } };
     expect(() => assertRequiredResults({ identity: labeled, needs })).not.toThrow();
   });
 });
@@ -138,6 +143,10 @@ describe("L1 invocation receipts", () => {
   });
   it("accepts the always-running docs-only aggregate without fake test receipts", () => {
     expect(() => assertL1Results({ identity, needs: { detect: docNeeds.detect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "skipped" }])) } })).not.toThrow();
+    expect(() => assertL1Results({ identity, needs: { detect: docNeeds.detect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, job === "l1-server"
+      ? { result: "success", outputs: { receipt: "null" } } : { result: "skipped" }])) } })).not.toThrow();
+    expect(() => assertL1Results({ identity, needs: { detect: docNeeds.detect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, job === "l1-server"
+      ? { result: "success", outputs: { receipt: "{}" } } : { result: "skipped" }])) } })).toThrow();
   });
   it("validates shadow siblings against the already-verified native reports", () => {
     const native = (command: string) => report(command);

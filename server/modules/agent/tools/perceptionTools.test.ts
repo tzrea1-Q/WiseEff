@@ -256,6 +256,54 @@ describe("createPerceptionTools", () => {
     expect(result.summary).toContain("thermal throttling detected");
     expect(result.citations[0]?.type).toBe("log");
   });
+
+  it.each([
+    ["rules-fallback", "provider-unavailable", "降级分析 · 规则回退", "AI 分析服务不可用，本结论由规则引擎回退生成"],
+    ["rules-fallback", "token-budget-exhausted", "降级分析 · 规则回退", "预算内未能得到有效接地结论，本结论由规则引擎回退生成"],
+    ["rules-fallback", null, "降级分析 · 规则回退", "本结论由规则引擎回退生成"],
+    ["agent", "token-budget-exhausted", "降级分析 · 提前收敛", "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论"],
+    ["agent", "provider-unavailable", "降级分析 · 提前收敛", "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论"],
+    ["agent", null, null, null],
+    [null, null, null, null]
+  ] as const)("returns provenance and summarizes the primary conclusion for %s / %s", async (
+    analysisSource, degradedReason, label, reason
+  ) => {
+    const primary = {
+      id: "log-primary",
+      status: "complete",
+      severity: "Critical",
+      conclusion: "thermal throttling detected",
+      analysis_source: analysisSource,
+      degraded_reason: degradedReason
+    };
+    const secondary = {
+      ...primary,
+      id: "log-secondary",
+      analysis_source: "rules-fallback",
+      degraded_reason: "provider-unavailable"
+    };
+    let capturedSql = "";
+    const logDb = {
+      query: async <Row,>(text: string) => {
+        capturedSql = text;
+        return { rows: [primary, secondary] as Row[], rowCount: 2 };
+      }
+    };
+    const tool = createPerceptionTools({ db: logDb }).find((item) => item.name === "perception.getRecentLogConclusions")!;
+    const result = await tool.run(adminContext as any, {});
+
+    expect(result.data).toEqual({ logs: [primary, secondary] });
+    expect(result.summary).toContain(primary.conclusion);
+    if (label) {
+      expect(result.summary).toContain(label);
+      expect(result.summary).toContain(reason);
+    } else {
+      expect(result.summary).toBe("Most recent log conclusion: thermal throttling detected");
+    }
+    expect(capturedSql).toContain("report.analysis_source");
+    expect(capturedSql).toContain("report.degraded_reason");
+    expect(result.citations.map((citation) => citation.id)).toEqual(["log-primary", "log-secondary"]);
+  });
 });
 
 describe("perception authz boundary", () => {
