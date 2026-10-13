@@ -28,6 +28,8 @@
   --score-normal: var(--success);
 
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: var(--ph-section-gap);
 }
 
@@ -69,6 +71,8 @@
 
 .parameter-home__page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: var(--ph-section-gap);
 }
 
@@ -194,7 +198,9 @@
 }
 
 .parameter-home__chart-shell {
+  min-width: 0;
   width: 100%;
+  margin: 0;
   min-height: calc(var(--space-5) * 11);
 }
 

@@ -27,6 +27,8 @@ Check relevant console and network failures. Distinguish pre-existing problems f
 
 `npm run acceptance:responsive` and the responsive project within `npm run acceptance:quality-run` use the desktop-only profile by default. All existing routes and desktop layout assertions remain. Accessibility and visual projects, native CI receipts, and the Merge bar are unchanged.
 
+The full quality run also includes a bounded `compact` project at `1280x800` in light and dark. It covers one representative of NavigatorWorkbench, AdminListPage, OverviewPage, SettingsFormPage, ReviewInbox and RetiredNotice, plus all former Catalog budget failures: `/parameter-admin`, `/parameter-admin/specs`, `/parameter-admin/modules` and `/parameter-admin/specs/identity-mapping`. The nine routes in `e2e/quality/compact-routes.ts` add 18 checks, not a second full route matrix. Existing scroll/control budgets are unchanged; Catalog uses the shared template's bounded, internally scrolling panes. CI reports Playwright wall time in the job summary and retains the 35-minute quality-job limit. The coordinator must confirm the actual runtime fits that limit.
+
 ```bash
 # Normal PC layout gate (1440x900).
 npm run acceptance:responsive
