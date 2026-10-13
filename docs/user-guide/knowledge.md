@@ -30,6 +30,8 @@ PDF, Word `.docx`, plain text, and Markdown files have text extraction for retri
 
 New entries start as drafts. Review the content, applicable conditions, and any source evidence before publishing. Creating a draft alone does not make it available to search or Xiaoze.
 
+When a Xiaoze-created draft cites a degraded source log analysis, the platform automatically adds the same provenance notice used for distilled drafts at the top of its body. It identifies rule fallback or early convergence, explains the limitation, and asks you to review the evidence before relying on the conclusion. An identical notice already at the start is not duplicated; drafts citing non-degraded or legacy analyses, and drafts without a source log, remain unchanged. The notice is editable draft content, not a publication block or a quality guarantee.
+
 ## Publish and revise an entry
 
 1. On **Knowledge base (`/knowledge`)**, open a draft you own, or one you can govern as a manager, and select **Publish**. Publication is the trust gate into retrieval and queues an index refresh; indexing need not finish immediately.

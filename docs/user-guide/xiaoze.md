@@ -37,6 +37,8 @@ Ask Xiaoze to prepare a new knowledge draft from the conversation. In **Confirm 
 
 Choose **Approve** only after checking the proposal. Approval creates a new draft, never updates an existing knowledge entry and never publishes it automatically. Inspect the resulting entry in **Knowledge base** (`/knowledge`). Draft and archived entries are excluded from Xiaoze's knowledge retrieval until a human publishes the draft. Authorized administrators can also review the **Agent draft publishing queue** in **Knowledge administration** (`/knowledge-admin`). Publishing remains a separate human decision.
 
+Xiaoze's recent log conclusions include the analysis source and degraded reason, and the primary conclusion's summary flags degradation. If the approved draft cites a degraded source log analysis, the platform automatically adds a provenance notice at the top of the draft body, identifying rule fallback or early convergence and its limitation. It does not add the same notice twice when it is already at the start. Review the notice and source evidence in the created draft before publishing; the notice remains editable, and approval and publishing are still separate human decisions.
+
 ## Distinguish AI output from its sources
 
 - Assistant answers are labeled **Xiaoze**, and the chat warns that AI may make mistakes and important decisions need independent verification. An explanation is generated content, not an authoritative engineering decision.
