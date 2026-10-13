@@ -271,18 +271,18 @@ export function ParameterModuleMappingPanel({
         navigator={loading ? <SectionSkeleton label="正在加载模块注册表…" /> : moduleTree}
         taskState={loading ? { kind: "loading", message: "正在加载模块注册表…" } : undefined}>
         {canonicalEnabled && !canonicalAvailable ? <p role="alert">规范目录发现服务不可用，请检查组织与治理接口。</p> : null}
-        <div hidden={activeSubView !== "tree"}>
-          {canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? (
-            <CanonicalSubjectPlacementPanel catalog={canonicalCatalog} governance={canonicalGovernance}
-              organizationId={canonicalOrganizationId} actor={canonicalActor} sessionPermissions={canonicalSessionPermissions}
-              canAdmin={canAdmin} modules={registry.modules} onChanged={refreshAfterCanonicalChange} />
-          ) : !canonicalEnabled ? <SectionEmpty message="Mock 模式仅支持共享业务分类管理，请使用 API 模式管理规范主体与归属。" /> : null}
-        </div>
         <div hidden={activeSubView !== "queue"}>
           {canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? (
             <CanonicalDriverDiscovery governance={canonicalGovernance} organizationId={canonicalOrganizationId}
               onNavigate={onNavigate} refreshKey={canonicalDiscoveryRefresh} />
           ) : !canonicalEnabled ? <SectionEmpty message="Mock 模式不提供规范发现队列，请使用 API 模式。" /> : null}
+        </div>
+        <div hidden={activeSubView !== "tree" && (activeSubView !== "queue" || !canonicalAvailable)}>
+          {canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? (
+            <CanonicalSubjectPlacementPanel catalog={canonicalCatalog} governance={canonicalGovernance}
+              organizationId={canonicalOrganizationId} actor={canonicalActor} sessionPermissions={canonicalSessionPermissions}
+              canAdmin={canAdmin} modules={registry.modules} onChanged={refreshAfterCanonicalChange} />
+          ) : !canonicalEnabled ? <SectionEmpty message="Mock 模式仅支持共享业务分类管理，请使用 API 模式管理规范主体与归属。" /> : null}
         </div>
         <div hidden={activeSubView !== "registry"}>
           <section aria-label="历史驱动注册表" aria-busy={driverRegistryLoading}>

@@ -19,6 +19,55 @@ import { ParameterModuleMappingPanel } from "./ParameterModuleMappingPanel";
 afterEach(() => cleanup());
 
 describe("historical registry isolation", () => {
+  it("keeps all canonical subject kinds visible when returning to the discovery queue URL", async () => {
+    const subjects = [
+      { ...registeredSubject, canonicalName: "acme,power" },
+      { ...unregisteredSubject, id: "subject_config", type: "configuration-schema" as const, canonicalName: "wiseeff.issue897.settings" },
+      { ...unregisteredSubject, id: "subject_node", type: "node-type" as const, canonicalName: "issue897-node" }
+    ];
+    const catalog = {
+      getCatalog: vi.fn().mockResolvedValue(readyCatalogDocument),
+      listSubjects: vi.fn().mockResolvedValue({
+        items: subjects, totalCount: 3, hasMore: false, nextCursor: null,
+        catalogReleaseId: CATALOG_RELEASE_ID
+      })
+    } as unknown as ParameterCatalogRepository;
+    const governance = {
+      listRegistrations: vi.fn().mockResolvedValue({
+        items: [catalogRegistration], totalCount: 1, hasMore: false, nextCursor: null,
+        catalogReleaseId: CATALOG_RELEASE_ID
+      }),
+      listDriverCompatibleDiscovery: vi.fn().mockResolvedValue({
+        status: "ready", catalogRelease: { id: CATALOG_RELEASE_ID, digest: "sha256:one" },
+        matcherRevision: "matcher_one", items: [], nextCursor: null,
+        ignoredReviewItemCount: 0, emptyReason: "no-observations"
+      })
+    } as unknown as ParameterCatalogGovernanceRepository;
+    const props = {
+      repository: createTestModuleRegistryRepository(), canonicalEnabled: true, canAdmin: true,
+      canonicalActor: "org-admin" as const,
+      canonicalCatalog: catalog, canonicalGovernance: governance,
+      canonicalOrganizationId: CATALOG_ORGANIZATION_ID, onNavigate: vi.fn()
+    };
+    const view = render(<ParameterModuleMappingPanel {...props} />);
+    expect(await screen.findByText("acme,power", { exact: true })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "发现队列" }));
+    expect(props.onNavigate).toHaveBeenLastCalledWith("/parameter-admin/modules?tab=queue");
+    view.rerender(<ParameterModuleMappingPanel {...props} search="?tab=queue" />);
+    expect(screen.getByLabelText("规范主体列表")).toBeVisible();
+    expect(screen.getByRole("link", { name: "前往 Catalog 提交定义提案" }))
+      .toHaveAttribute("href", "/parameter-admin/specs");
+    view.rerender(<div>Catalog</div>);
+    view.rerender(<ParameterModuleMappingPanel {...props} search="?tab=queue" />);
+    const subjectsList = await screen.findByRole("list", { name: "规范主体列表" });
+    for (const subject of subjects) {
+      expect(within(subjectsList).getByText(subject.canonicalName, { exact: true })).toBeVisible();
+    }
+    expect(screen.getByRole("button", { name: "调整归属：acme,power", exact: true })).toBeVisible();
+    expect(screen.getByRole("region", { name: "驱动兼容发现" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it.each(["ready history", "failed history"])(
     "renders the canonical tree and registrations independently of %s",
     async (scenario) => {
