@@ -31,6 +31,7 @@ The app UI is Chinese-first, so locate pages by their route; the Chinese guide g
 - [Device debugging](device-debugging.md): connect HDC/ADB devices, read and safely write nodes, test DTS reloads, restore baselines, and inspect evidence.
 - [Log analysis](log-analysis.md): upload logs, follow stages, distinguish degraded results, inspect evidence, give feedback, and create knowledge drafts.
 - [Knowledge](knowledge.md): search and ask Xiaoze, create and publish entries, upload files, manage revisions and archives, and check index health.
+- [Organization administration and governance](organization-and-governance.md): manage members and Committer approvals, investigate audits, maintain business modules, and send product feedback.
 
 ## Find the right reference
 
