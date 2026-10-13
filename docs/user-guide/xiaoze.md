@@ -19,6 +19,14 @@ Xiaoze is available in the API-backed app, not the mock experience. It is a popu
 
 Xiaoze reads existing log conclusions; it does not run the log-analysis workflow itself. A stored node snapshot is not proof of a fresh device read. The current registered write tools submit parameter changes and create knowledge drafts; they do not write device nodes. Use [Device debugging](device-debugging.md) and [Log analysis](log-analysis.md) for those workflows.
 
+![Xiaoze conversation panel on the parameter workbench](images/xiaoze-panel.png)
+
+*The Xiaoze welcome panel, scrolled to its beginning after the parameter workbench finishes loading; no LLM request or approval card is generated.*
+
+![Xiaoze conversation history panel](images/xiaoze-history.png)
+
+*History before any question is sent; this is not evidence of an executed or approved action.*
+
 ## Review a parameter proposal before approving
 
 On **Parameter changes** (`/parameters`), ask Xiaoze to prepare a change for a specific parameter. A proposal is not an applied change: mutating tools pause for explicit human approval before changing business data. Conversation text alone is not approval.

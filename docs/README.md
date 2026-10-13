@@ -6,7 +6,7 @@ Date: 2026-05-25
 
 This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.md` are short maps; the durable product, architecture, design, quality, reliability, security, and execution knowledge lives here.
 
-Newcomers: start with the [Platform Overview](platform-overview.md) for capabilities, architecture, governance, and readiness boundaries.
+Newcomers: start with the [Platform Overview](platform-overview.md) for capabilities, architecture, governance, and workflows.
 
 Product users: start with the [User Guide](user-guide/README.md) for task guidance across all product workflows.
 

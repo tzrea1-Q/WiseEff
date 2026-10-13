@@ -41,6 +41,10 @@ Read the source badge and any degraded-reason text alongside the conclusion:
 
 Older records may lack source badges. Do not infer the source from the confidence percentage alone. A completed degraded report still needs review; completion does not certify correctness. The Log analysis agent is distinct from Xiaoze, the conversational assistant, which can discuss finished conclusions but is not the analysis worker.
 
+![Completed sample charging foldback report with analysis-source badge](images/log-analysis-report.png)
+
+*A fresh sample report from the offline deterministic analysis path, with its Agent source badge and evidence; it is not a live LLM result.*
+
 ## Trace a finding back to raw lines
 
 1. In Intelligent analysis (`/logs`), read the conclusion and impact, then inspect the **Evidence chain** beside **Raw log**. Each evidence card shows its stage, cited line numbers and excerpts, inference, any rule hit, and suggested action.
@@ -49,6 +53,10 @@ Older records may lack source badges. Do not infer the source from the confidenc
 4. Use raw-log search and previous/next match buttons to inspect other occurrences. If a column filter hides a cited line, clear that filter before locating it.
 
 After completion, **Export report** downloads a Markdown summary; **Copy link** copies a link to the selected record. Sharing a link does not grant access to another Organization's record.
+
+![Selected evidence card with cited log lines](images/log-analysis-evidence.png)
+
+*A selected evidence card from the freshly uploaded sample exposes cited raw lines and inference for manual checking.*
 
 ## Give feedback on report quality
 

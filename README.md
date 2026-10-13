@@ -4,7 +4,7 @@
 
 ## New here?
 
-Newcomers: start with the [Platform Overview](docs/platform-overview.md) for capabilities, architecture, governance, and readiness boundaries.
+Newcomers: start with the [Platform Overview](docs/platform-overview.md) for capabilities, architecture, governance, and workflows.
 
 Product users: start with the [User Guide](docs/user-guide/README.md) for task guidance across all product workflows.
 

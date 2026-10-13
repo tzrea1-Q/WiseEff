@@ -21,6 +21,10 @@ An Organization Admin cannot grant or revoke the Platform Admin role or manage a
 
 Prefer disabling an account when access needs to stop without destroying the account. Delete user is permanent: the account's roles, credentials, sessions and temporary data are removed; retained business and audit history remains, with deleted-user attribution where applicable. Read the confirmation before proceeding. For password resets, use [Reset a member's local password](account-and-access.md#reset-a-members-local-password).
 
+![Organization member management with seeded accounts](images/organization-and-governance-members.png)
+
+*Seeded member management as an Organization Admin; no role or account is changed.*
+
 ## Decide a Committer registration request
 
 In People management (`/organization/members`), switch to Registration requests. Check the applicant's account identifier, current role and requested hardware/software committer role, then choose Approve or Reject.
@@ -41,6 +45,10 @@ Open Audit center (`/audit`). It searches your Organization's parameter, log, de
 4. Use Load more for additional matches. Export CSV exports matching records in API mode, capped at 2,000 rows; narrow the filters for larger investigations. The CSV contains event identifiers and summary fields, not every detail or reason shown in the event dialog.
 
 Absence of a match is not proof that no action occurred: check filters, loading errors and the available history. For retention policy, see [Audit retention](../security/audit-retention.md).
+
+![Organization audit center search and filters](images/organization-and-governance-audit.png)
+
+*Audit search and filters; capture does not manufacture business actions to populate history.*
 
 ## Choose the right console and maintain modules
 
