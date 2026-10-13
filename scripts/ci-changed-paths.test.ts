@@ -39,7 +39,7 @@ describe("classifyChangedPaths", () => {
       workflow: true,
       runL1: true,
       runSmoke: true,
-      runQuality: false
+      runQuality: true
     });
   });
 
@@ -52,6 +52,11 @@ describe("classifyChangedPaths", () => {
       runQuality: false
     });
   });
+
+  it.each(["scripts/ci-required-results.ts", "scripts/ci-shard-results.ts", "scripts/quality-partition.test.ts", "scripts/check-acceptance-ci.ts", "scripts/ci-changed-paths.ts"])
+    ("runs quality for shard receipt or inventory changes: %s", (path) => {
+      expect(classifyChangedPaths([path])).toMatchObject({ docsOnly: false, workflow: true, runL1: true, runQuality: true, runSmoke: true });
+    });
 
   it("runs quality without smoke for public-asset-only UI diffs", () => {
     expect(classifyChangedPaths(["public/favicon.svg", "index.html"])).toMatchObject({

@@ -4,7 +4,8 @@ import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
 import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
-import { consistencyRoutes } from "./consistency-routes";
+import { selectConsistencyRoutes } from "./consistency-routes";
+import { parseQualityLane } from "./quality-partition";
 import { installConsistencyReadGuard } from "./consistency";
 import {
   closeXiaozePopupIfOpen,
@@ -19,7 +20,9 @@ import {
 
 test.beforeAll(() => seedQualityRuntime());
 
-for (const path of ["/node-debugging", "/dts-reload"]) {
+const qualityLane = parseQualityLane(process.env.WISEEFF_QUALITY_LANE);
+
+for (const path of qualityLane === undefined || qualityLane === "consistency-1" ? ["/node-debugging", "/dts-reload"] : []) {
   for (const readiness of ["returning", "first-time", "connected"] as const) {
     test(`Bridge readiness on ${path}: ${readiness}`, async ({ context, page }, testInfo) => {
       testInfo.annotations.push({ type: "setup", description: "Read-only UI fixtures replace Bridge listing, local health and target detection; the workbench and identity use the real API. This does not prove hardware pairing or device writes." });
@@ -99,13 +102,7 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
 
 const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", "/parameter-admin/specs"];
 
-const parameterRoute = consistencyRoutes.find((route) => route.path === "/parameters")!;
-const routes = [
-  ...consistencyRoutes,
-  ...["atlas", "aurora", "nebula"].map((project) => ({ ...parameterRoute, path: `/parameters?project=${project}` }))
-];
-
-for (const route of routes) {
+for (const route of selectConsistencyRoutes(qualityLane)) {
   for (const theme of ["light", "dark"] as const) {
     test(`asserts read-only UI consistency for ${route.path} (${theme})`, async ({ context, page }, testInfo) => {
       testInfo.annotations.push({ type: "setup", description: "Bridge pairing-code POSTs use a synthetic response; no server pairing code is issued." });

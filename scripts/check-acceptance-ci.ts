@@ -41,7 +41,7 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "npm run acceptance:ci",
   "npm run acceptance:models",
   "npm run acceptance:quality",
-  "npm run acceptance:quality-run",
+  "node --experimental-strip-types scripts/ci-shard-results.ts quality",
   "npm run acceptance:smoke",
   "npm run acceptance:gate0",
   "name: Acceptance artifact safety",
@@ -494,11 +494,11 @@ function isJobOwnedBackendDatabaseUrl(value: unknown, serviceDatabase: string): 
 export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" | "failed"; errors: string[] } {
   const errors: string[] = [];
   type Step = { id?: string; name?: string; run?: string; uses?: string; if?: string; "continue-on-error"?: boolean;
-    with?: Record<string, unknown>; env?: Record<string, unknown> };
+    shell?: string; with?: Record<string, unknown>; env?: Record<string, unknown> };
   type Job = { name?: string; needs?: string | string[]; if?: string; "runs-on"?: string; steps?: Step[];
     "continue-on-error"?: boolean; "timeout-minutes"?: number;
     strategy?: { "fail-fast"?: boolean; matrix?: Record<string, unknown>; "max-parallel"?: number };
-    outputs?: Record<string, string>; services?: Record<string, { image?: string; env?: Record<string, string> }>; env?: Record<string, string> };
+    outputs?: Record<string, string>; services?: Record<string, { image?: string; env?: Record<string, string>; ports?: string[]; options?: string }>; env?: Record<string, string> };
   let workflow: { jobs: Record<string, Job>; env?: Record<string, string> };
   try { workflow = YAML.parse(workflowText) as typeof workflow; }
   catch { return { status: "failed", errors: ["Malformed L1 workflow."] }; }
@@ -540,24 +540,24 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   const shadowOutputs: Record<string, Record<string, string>> = {
     "l1-frontend": { shadow_frontend: "${{ steps.frontend.outputs.shadow }}" },
     "l1-scripts": { shadow_scripts: "${{ steps.scripts.outputs.shadow }}", shadow_bridge: "${{ steps.bridge.outputs.shadow }}" },
-    "l1-server": { shadow_server: "${{ steps.server.outputs.shadow }}" },
   };
   const expectedJobOutputs: Record<string, string[]> = {
     "l1-static": ["receipt"], "l1-frontend": ["receipt", "shadow_frontend"],
-    "l1-scripts": ["receipt", "shadow_scripts", "shadow_bridge"], "l1-server": ["receipt", "shadow_server"],
+    "l1-scripts": ["receipt", "shadow_scripts", "shadow_bridge"],
   };
   const shadowScope = jobs?.detect?.steps?.find((step) => step.id === "shadow-summary");
   check(shadowScope?.run === "node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope" && shadowScope.if === undefined
     && shadowScope["continue-on-error"] === undefined, "Detect must record the fixed CI shadow scope without changing scheduling outputs.");
   check(JSON.stringify(Object.keys(jobs?.detect?.outputs ?? {}).sort()) === JSON.stringify(["docs_only", "run_l1", "run_l2", "run_quality", "run_smoke"]), "Detect must retain exactly its five scheduling outputs.");
   for (const id of l1Jobs) {
-    const job = jobs?.[id];
-    if (!job) { errors.push(`Missing ${id}.`); continue; }
+    const workerId = id === "l1-server" ? "l1-server-shards" : id;
+    const job = jobs?.[workerId];
+    if (!job) { errors.push(`Missing ${workerId}.`); continue; }
     check(job.needs === "detect" && job.if === "needs.detect.outputs.run_l1 == 'true'", `${id} must retain fixed L1 selection.`);
     check(job["runs-on"] === "ubuntu-latest", `${id} must retain the runner platform.`);
     check(job["continue-on-error"] === undefined && job["timeout-minutes"] === 20, `${id} must retain timeout and strict job failure semantics.`);
     const steps = job.steps ?? [];
-    check(JSON.stringify(steps.map((step) => step.id)) === JSON.stringify([...l1CommandIds[id], "receipt"]), `${id} lost, reordered, or added an unmapped command.`);
+    check(JSON.stringify(steps.map((step) => step.id)) === JSON.stringify([...l1CommandIds[id], "receipt", ...(id === "l1-server" ? ["shard_receipt"] : [])]), `${workerId} lost, reordered, or added an unmapped command.`);
     for (const step of steps) {
       check(step["continue-on-error"] === (step.id === "advisory" ? true : undefined), `${id}/${step.id} changed failure semantics.`);
       check(step.if === (step.id === "receipt" ? "always()" : undefined), `${id}/${step.id} changed execution conditions.`);
@@ -568,7 +568,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     check(step("node")?.uses === "actions/setup-node@v4" && step("node")?.with?.["node-version-file"] === ".nvmrc"
       && step("node")?.with?.cache === "npm", `${id} needs existing Node/npm setup.`);
     check(normalizeStepProjection(step("receipt")?.env?.EFF_STEPS) === expectedStepProjection(l1CommandIds[id])
-      && job.outputs?.receipt === "${{ steps.receipt.outputs.receipt }}", `${id} must project its fixed named steps into the invocation receipt.`);
+      && (id === "l1-server" || job.outputs?.receipt === "${{ steps.receipt.outputs.receipt }}"), `${id} must project its fixed named steps into the invocation receipt.`);
     if (id === "l1-scripts" || id === "l1-server") {
       check(job.services?.postgres?.image === "pgvector/pgvector:pg16", `${id} requires the real PG/vector service.`);
       if (id === "l1-server") {
@@ -577,6 +577,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
         // TEST_DATABASE_URL over DATABASE_URL and steps inherit both, so every database
         // URL this job can observe must be its own loopback service database.
         const serviceDatabase = job.services?.postgres?.env?.POSTGRES_DB ?? "";
+        check(serviceDatabase === "wiseeff_l1_server", "l1-server-shards must retain its current wiseeff_l1_server database.");
         check(
           typeof job.env?.DATABASE_URL === "string" && job.env.DATABASE_URL.trim() !== "",
           "l1-server must define the DATABASE_URL its backend suite runs against.",
@@ -613,7 +614,91 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       check(step("eslint_cache")?.uses === "actions/cache@v4" && step("eslint_cache")?.with?.path === "node_modules/.cache/eslint", "ESLint cache must be retained.");
     }
     for (const [output, expression] of Object.entries(shadowOutputs[id] ?? {})) check(job.outputs?.[output] === expression, `${id}/${output} must publish its fixed shadow sibling output.`);
-    check(JSON.stringify(Object.keys(job.outputs ?? {}).sort()) === JSON.stringify(expectedJobOutputs[id]!.sort()), `${id} must retain only fixed receipt and shadow job outputs.`);
+    check(id === "l1-server" ? job.outputs === undefined
+      : JSON.stringify(Object.keys(job.outputs ?? {}).sort()) === JSON.stringify([...expectedJobOutputs[id]!].sort()), `${workerId} must retain only fixed outputs; shard workers must not publish job outputs.`);
+  }
+  const shardCli = "node --experimental-strip-types scripts/ci-shard-results.ts";
+  const receiptPath = "${{ runner.temp }}/wiseeff-ci-shard/receipt.json";
+  for (const [kind, workerId, aggregateId, flag, axis, values, workerName, aggregateName, database] of [
+    ["server", "l1-server-shards", "l1-server", "run_l1", "shard", [1, 2], "L1 backend shard ${{ matrix.shard }}/2", "L1 backend", "wiseeff_l1_server"],
+    ["quality", "acceptance-quality-lanes", "acceptance-quality", "run_quality", "lane", ["visual", "consistency-1", "consistency-2", "accessibility"], "Acceptance quality lane (${{ matrix.lane }})", "Acceptance quality", "wiseeff"],
+  ] as const) {
+    const worker = jobs?.[workerId];
+    const steps = worker?.steps ?? [];
+    check(worker?.name === workerName && worker.needs === "detect" && worker.if === `needs.detect.outputs.${flag} == 'true'`
+      && worker["runs-on"] === "ubuntu-latest" && worker["continue-on-error"] === undefined
+      && worker["timeout-minutes"] === (kind === "server" ? 20 : 35), `${workerId} must retain its fixed name, selection, runner, timeout and strict failure semantics.`);
+    check(worker?.strategy?.["fail-fast"] === false && worker.strategy["max-parallel"] === undefined
+      && JSON.stringify(Object.keys(worker.strategy).sort()) === JSON.stringify(["fail-fast", "matrix"])
+      && JSON.stringify(worker.strategy.matrix) === JSON.stringify({ [axis]: values }), `${workerId} must run its exact matrix without fail-fast, exclusions, additions or throttling.`);
+    check(worker?.outputs === undefined, `${workerId} must not publish matrix job outputs.`);
+    const postgres = worker?.services?.postgres;
+    check(postgres?.image === "pgvector/pgvector:pg16" && postgres.env?.POSTGRES_USER === "wiseeff"
+      && postgres.env?.POSTGRES_PASSWORD === "wiseeff" && postgres.env?.POSTGRES_DB === database
+      && JSON.stringify(postgres.ports) === JSON.stringify(["5432:5432"])
+      && postgres.options === `--health-cmd "pg_isready -U wiseeff -d ${database}" --health-interval 10s --health-timeout 5s --health-retries 5`
+      && worker?.env?.DATABASE_URL === `postgres://wiseeff:wiseeff@127.0.0.1:5432/${database}`, `${workerId} requires its original healthy job-owned PostgreSQL service.`);
+    check(worker?.env?.[kind === "server" ? "WISEEFF_CI_SERVER_SHARD" : "WISEEFF_QUALITY_LANE"]
+      === (kind === "server" ? "${{ matrix.shard }}/2" : "${{ matrix.lane }}"), `${workerId} must pass its own matrix partition to the runner.`);
+    const uploads = steps.filter((step) => step.uses === "actions/upload-artifact@v4" && step.with?.path === receiptPath);
+    const upload = uploads[0];
+    check(uploads.length === 1 && upload?.with?.name === `wiseeff-ci-${kind}-\${{ github.run_attempt }}-\${{ matrix.${axis} }}`
+      && upload.with["if-no-files-found"] === "error" && upload.if === undefined && upload["continue-on-error"] === undefined
+      && upload.run === undefined && upload.env === undefined
+      && (kind === "server" ? upload.id === "shard_receipt" : upload.name === "Upload quality lane receipt"), `${workerId} must upload its own attempt-qualified receipt strictly and separately after its gate.`);
+    if (kind === "quality") {
+      const expectedNames = ["Check out repository", "Set up Node.js", "Install dependencies", "Install Playwright Chromium", "Prepare local acceptance env",
+        "Migrate and seed database", "Acceptance quality metadata", "Acceptance quality gates"];
+      check(JSON.stringify(steps.slice(0, expectedNames.length).map((step) => step.name)) === JSON.stringify(expectedNames)
+        && steps.length === expectedNames.length + 2, "Quality lanes must retain every ordered runtime prerequisite, metadata, gate and separate uploads.");
+      check(steps[0]?.uses === "actions/checkout@v4" && steps[1]?.uses === "actions/setup-node@v4"
+        && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[1]?.with?.cache === "npm"
+        && steps[2]?.run === "npm ci" && steps[3]?.run === "npx playwright install --with-deps chromium"
+        && steps[4]?.shell === "bash" && steps[4]?.run?.includes("cp .env.example .env")
+        && steps[5]?.run?.includes("npm run db:migrate") && steps[6]?.run === "npm run acceptance:quality"
+        && steps[7]?.run === `${shardCli} quality`, "Quality lanes must retain runtime preparation and run the strict partition-aware gate.");
+      check(steps[5]?.run === 'npm run db:migrate\nnpm run db:seed:all\nnpm run --if-present seed:quality:admin-lists\necho "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\necho "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"\necho "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"\n',
+        "Quality lanes must complete db:seed:all and the admin-list seed when registered before setting WISEEFF_QUALITY_SKIP_SEED.");
+      check(steps.slice(0, expectedNames.length).every((step) => step.if === undefined && step["continue-on-error"] === undefined
+        && step.env === undefined && !/\|\|\s*true|continue-on-error|set\s+\+e/.test(step.run ?? "")), "Quality prerequisites and gates must not be skipped, overridden or failure-suppressed.");
+      const qualityEnvironment = {
+        WISEEFF_API_BASE_URL: "http://127.0.0.1:8787", VITE_WISEEFF_RUNTIME_MODE: "api", VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
+        WISEEFF_ACCEPTANCE_FRONTEND_URL: "http://127.0.0.1:5173", OBJECT_STORE_MODE: "local", OBJECT_STORE_ROOT: ".wiseeff-object-store",
+        DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true", XIAOZE_DETERMINISTIC: "true", AUTH_MODE: "production", AUTH_PROVIDER: "hmac",
+        M5_CONTRACT_CHECK_PASSED: "true", M5_SMOKE_ALLOW_NO_API: "false",
+      };
+      for (const [key, value] of Object.entries(qualityEnvironment)) check(worker?.env?.[key] === value, `Quality lanes must retain runtime environment ${key}.`);
+      const evidence = steps.find((step) => step.name === "Upload quality evidence");
+      check(steps[8] === upload && steps[9] === evidence && evidence?.uses === "actions/upload-artifact@v4"
+        && evidence.if === "always()" && evidence["continue-on-error"] === true
+        && evidence.with?.name === "${{ matrix.lane == 'visual' && 'wiseeff-acceptance-quality' || format('wiseeff-acceptance-quality-{0}', matrix.lane) }}"
+        && evidence.with?.path === "playwright-report/quality\ntest-results/quality\n", "Quality evidence must retain the visual artifact name and isolate all other lane names and paths.");
+    } else {
+      check(steps.at(-1) === upload, "Backend shards must upload only after recording the complete invocation receipt.");
+    }
+    const aggregate = jobs?.[aggregateId];
+    const aggregateSteps = aggregate?.steps ?? [];
+    const download = aggregateSteps[2];
+    const results = aggregateSteps[3];
+    const expectedOutputs = kind === "server"
+      ? { receipt: "${{ steps.results.outputs.receipt }}", shadow_server: "${{ steps.results.outputs.shadow }}" }
+      : { identity: "${{ steps.results.outputs.identity }}" };
+    check(aggregate?.name === aggregateName && aggregate.if === "always()" && aggregate["runs-on"] === "ubuntu-latest"
+      && aggregate["timeout-minutes"] === 5 && aggregate["continue-on-error"] === undefined
+      && JSON.stringify(aggregate.needs) === JSON.stringify(["detect", workerId])
+      && aggregate.strategy === undefined && aggregate.services === undefined && aggregate.env === undefined,
+    `${aggregateId} must retain the stable always-running strict aggregate without worker services or scheduling overrides.`);
+    check(JSON.stringify(aggregate?.outputs) === JSON.stringify(expectedOutputs), `${aggregateId} must publish only verified results outputs.`);
+    check(aggregateSteps.length === 4 && aggregateSteps[0]?.uses === "actions/checkout@v4"
+      && aggregateSteps[1]?.uses === "actions/setup-node@v4" && aggregateSteps[1]?.with?.["node-version-file"] === ".nvmrc"
+      && aggregateSteps[1]?.with?.cache === undefined && download?.uses === "actions/download-artifact@v4"
+      && download.if === `needs.detect.outputs.${flag} == 'true'`
+      && JSON.stringify(download.with) === JSON.stringify({ pattern: `wiseeff-ci-${kind}-\${{ github.run_attempt }}-*`, path: "${{ runner.temp }}/wiseeff-ci-shards" })
+      && results?.id === "results" && results.run === `${shardCli} aggregate ${kind}`
+      && JSON.stringify(results.env) === JSON.stringify({ EFF_NEEDS: "${{ toJSON(needs) }}" })
+      && aggregateSteps.every((step, index) => step["continue-on-error"] === undefined && (index === 2 || step.if === undefined)
+        && (index === 3 || (step.run === undefined && step.env === undefined))),
+    `${aggregateId} must download its partition receipts and validate exact needs with the shard aggregate command, without npm installation or suppression.`);
   }
   const gateNeeds = {
     "build-and-test": ["detect", ...l1Jobs],
