@@ -27,6 +27,8 @@ WiseEff 主要服务 PC 用户。本规则取代原先全仓默认的桌面、�
 
 `npm run acceptance:responsive` 及 `npm run acceptance:quality-run` 中的响应式项目默认仅运行桌面档位，保留原有页面和桌面布局断言。无障碍、视觉项目、原生 CI 回执和合入门禁保持不变。
 
+完整质量检查还包含 `1280x800` 的独立 `compact` 项目，分别检查浅色和深色主题。它覆盖 NavigatorWorkbench、AdminListPage、OverviewPage、SettingsFormPage、ReviewInbox、RetiredNotice 各一个代表页面，并保留此前 Catalog 高度预算失败的全部页面：`/parameter-admin`、`/parameter-admin/specs`、`/parameter-admin/modules`、`/parameter-admin/specs/identity-mapping`。`e2e/quality/compact-routes.ts` 的九个页面仅增加 18 项检查，不重复完整页面矩阵。既有滚动与控件预算不变；Catalog 使用共享模板的有界面板和内部滚动。CI 在任务摘要中报告 Playwright 实际耗时，并保留质量任务的 35 分钟上限；协调者须确认实际耗时未超限。
+
 ```bash
 # 默认 PC 布局检查，1440x900。
 npm run acceptance:responsive

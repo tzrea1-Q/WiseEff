@@ -5,9 +5,12 @@ import { requireViewSwitchStyles } from "./view-switch";
 import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireAdminListGeometry, requireOverviewGeometry, requireRetiredNotice, requireSettingsFormPresentation } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
 import { collectionPaths, consistencyRoutes } from "./consistency-routes";
+import { compactQualityRoutes } from "./compact-routes";
 import { installConsistencyReadGuard } from "./consistency";
 import {
   closeXiaozePopupIfOpen,
+  expectBoundedMainScroll,
+  expectNoHorizontalOverflow,
   expectUsablePage,
   focusViaKeyboard,
   seedQualityRuntime,
@@ -197,6 +200,10 @@ for (const route of routes) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
         }
         await expect(async () => {
+          if (compactQualityRoutes.some((compactRoute) => compactRoute.path === routePath)) {
+            await expectNoHorizontalOverflow(page);
+            await expectBoundedMainScroll(page);
+          }
           measurements = await page.evaluate(collectConsistencyMeasurements);
           if (routePath === "/parameters" && !hasHistoricalIdentity) {
             requireWorkbenchPresentation(measurements.workbenchTables, route.path);
