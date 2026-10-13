@@ -289,6 +289,8 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 `src/components/layout/` 中的 `AdminListPage` 负责页头操作、紧凑筛选栏、共享 `DataTable`、可选通知与可选详情抽屉/弹窗。页面标题与边距来自壳层；模板不再添加重复标题或外层留白。次要操作排在主动作之前，主动作保持在最右端。页面只填充槽，并删除旧列表布局 CSS，不覆盖模板。
 
+多集合管理页使用 URL 驱动的 `ViewSwitch` 内容标签、一个可见面板与一个可见 `AdminListPage`，不再堆叠集合卡片。知识治理选择 `tab=drafts`（默认）、`tab=index` 或 `tab=archived`；日志后台选择 `tab=records`（默认）、`tab=domains` 或 `tab=quality`。无效标签回退到默认；切换保留其他查询参数与片段，新增历史记录，并支持浏览器前进/后退恢复。离开日志业务域标签时保留编辑器的本地输入。仅有重试操作的索引行与只读反馈行不放空的「更多」菜单；多操作行复用共享菜单，危险操作保留确认。每个集合分别纳入浅色/深色 1440×900 一致性测量。
+
 - `table` 沿用 DataTable 契约，包括受控 `sort`、`onSort`、`page` 和 `onPageChange`。路由负责序列化：项目试点将搜索（`q`）、状态（`status`）、排序（`sort`）与分页（`page`）保存在 URL，支持刷新和浏览器历史恢复。筛选/排序变化回到第一页；第一页省略 URL 参数，无效页码归一为一。
 - 模板启用 DataTable 的 `compactControls` 模式：列筛选配置由共享 `ColumnFilter` 渲染，可排序表头保留 `aria-sort`。两者使用令牌化的 32px `.compact-filter-control` 几何与显式 `data-compact-control` 筛选/排序标记，供一致性采集器测量。模板以外的原生表头控件保留原有尺寸和测量范围。
 - `rowActions` 提供 `RowActionMenu` 参数，而非任意按钮组：每行至多一个小尺寸文本操作加「更多」。操作可选 `ariaLabel` 与 `descriptionId` 保留逐行名称和禁用说明。规范历史项目仍禁用删除；允许的删除通过 ConfirmDialog 复用项目影响范围文案。提交中与失败状态遵循共享菜单确认契约。 已有页面级确认弹窗通过危险项的 `onRequestConfirmation` 复用；该回调只打开确认，不执行写入。
@@ -321,7 +323,13 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 布局常量仅在 `src/styles.css` 根令牌块定义一次：`--navigator-workbench-navigator-width`（18rem，为模块数量预留空间）、`--navigator-workbench-navigator-cap`（别名为 `--module-navigator-max-width`，即 `min(32.5rem, 42vw)`）、`--navigator-workbench-collapsed-width`（`--space-10`，40px）、`--navigator-workbench-inspector-width`（20rem）、`--navigator-workbench-gap` 与 `--navigator-workbench-toolbar-padding`（`--space-3`，12px）、`--navigator-workbench-pane-height`（`min(670px, calc(100vh - 230px))`）及 `--navigator-workbench-scroll-rail-height`（14px）。主体网格使用导航宽度与上限的较小值、`minmax(0, 1fr)` 任务轨道，以及可选的检查器宽度。在 1440×900 下，导航从模板左边界开始，任务区左边界为一个有上限的导航宽度加一个间距。标签保持单行并使用省略号；数量列保留固有宽度，不收缩或裁切。溢出只在导航或任务滚动容器内处理，不延伸到页面。工具栏、面板、树和参数表的颜色使用语义主题令牌，深色模式也遵循 Phase 2 对比度配对。已迁移页面不得在模板外再套一层带留白的卡片，也不得保留局部网格、面板宽度或滚动高度规则。
 
-折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的 `section` 区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
+折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。任务滚动容器复用 TabPanel 的键盘入口：没有可 Tab 聚焦的内容时，有名称的区域获得 `tabIndex=0`。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
+
+项目配置复用同一模板：配置集与成员文件放在导航区，各源码模式及现有空状态保留在任务区，现有检查器放入检查器槽。源码、结构、冲突使用 URL 驱动的内容标签（`tab`）；旧文件/配置集链接保留检查器选择，结构链接选择结构标签，`tasks=conflicts` 或 `dock=conflicts` 选择冲突标签。切换标签保留配置集、文件、节点、属性、源码模式与版本焦点。当常驻检查器会使源码区不足 640px 时，共享检查器槽以浮层呈现，不占用网格列。配置工作台保留受限壳高度与内部滚动容器，不再添加外层卡片或留白。一致性项目在浅色、深色主题的 1440×900 视口下覆盖每个配置子路由、全部五种源码模式，以及检查器深链接。
+
+样式表中仍保留 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters`、Catalog 或项目配置界面的面板覆盖。本契约不改变配色、字体、密度、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
+
+日志工作台（`/logs`，页面键 `logs`）把历史记录放在可折叠导航区。报告、元数据与相关内容标签共享任务区；成功与处理中的记录显示分析，失败记录仅显示失败摘要。相关知识保留现有能力检查。上传操作放在工具栏主动作槽；上传与重新上传后回到所选记录的报告。选择仍通过 `logId` 分享，不受标签切换与导航折叠影响。共享面板几何与滚动容器替代页面自建网格。 已完成报告无需切换标签即可访问带标签的已发布相关知识区域；结论动作（包括能力门控的知识沉淀）在报告与相关内容标签中均可用。
 
 节点调试与 DTS 重载也使用 `NavigatorWorkbench`：Bridge 就绪条进入上下文槽，模块树进入导航槽，参数表及操作／运行历史进入任务槽。重载托盘位于候选表下方，使回访与已连接用户在 1440×900 下能看到首条数据行。协议保留为活动工作台外层的内容页签；`node-debugging` 与 `dts-reload` 页面键分别持久化折叠状态。下发与节点回滚保留现有审批和能力闸门。其他工作台由各自工单迁移。本契约不改变配色、字体、密度、URL、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
 

@@ -483,7 +483,7 @@ function auditSummaryFor(
 
 async function uploadLogThroughUi(page: Page, filePath: string, question?: string, domainName?: string) {
   await prepareInteractionSurface(page);
-  await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
+  await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
   const dialog = page.getByRole("dialog", { name: "上传日志" });
   if (domainName) {
     await expect(dialog.locator("#upload-log-domain option", { hasText: domainName })).toHaveCount(1, { timeout: 10_000 });
@@ -760,11 +760,11 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await cleanupAcceptanceLogs();
     await cleanupAcceptanceLogDomains();
 
-    await page.goto("/log-admin");
+    await page.goto("/log-admin?tab=domains");
     await prepareInteractionSurface(page);
 
     const governance = page.getByTestId("log-domain-governance");
-    await governance.getByRole("button", { name: "新建业务域" }).click();
+    await governance.getByRole("group", { name: "业务域治理操作" }).getByRole("button", { name: "新建业务域" }).click();
     await page.getByLabel(/名称/).fill(acceptanceLogDomainName);
     await page.getByLabel(/描述/).fill("Acceptance charging/power subsystem log domain");
     await page.getByLabel(/格式画像 JSON/).fill('{"severityMap": {"error": ["E_THERMAL_FOLDBACK"]}}');
@@ -867,15 +867,16 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     });
     expect(createDraft.status()).toBe(201);
 
-    await page.goto("/log-admin");
+    await page.goto("/log-admin?tab=domains");
     await prepareInteractionSurface(page);
     const governance = page.getByTestId("log-domain-governance");
     const domainsTable = governance.getByRole("table", { name: "业务域列表" });
     await domainsTable
       .getByRole("row")
       .filter({ hasText: acceptanceLogDomainName })
-      .getByRole("button", { name: "知识条目" })
+      .getByRole("button", { name: /：更多$/ })
       .click();
+    await page.getByRole("menuitem", { name: "知识条目" }).click();
 
     const editor = page.getByTestId("domain-knowledge-links-editor");
     await expect(editor).toBeVisible();
@@ -1044,7 +1045,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     expect(insightRow).toBeTruthy();
     expect(insightRow!.helpfulCount).toBe(1);
 
-    await page.goto("/log-admin");
+    await page.goto("/log-admin?tab=quality");
     await prepareInteractionSurface(page);
     const insightsSection = page.getByTestId("feedback-quality-insights");
     await expect(insightsSection).toBeVisible();
@@ -1137,7 +1138,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const gzBuffer = gzipSync(readFileSync(supportedFixture));
     await page.goto("/logs");
     await prepareInteractionSurface(page);
-    await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
+    await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
     const uploadDialog = page.getByRole("dialog", { name: "上传日志" });
     await expect(uploadDialog).toContainText(/\.gz、单条目 \.zip 压缩包/);
     await uploadDialog.getByLabel("选择日志文件").setInputFiles({
@@ -1199,15 +1200,16 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       expect(domainResponse.status()).toBe(201);
       const domain = ((await domainResponse.json()) as { item: { id: string } }).item;
 
-      await page.goto("/log-admin");
+      await page.goto("/log-admin?tab=domains");
       await prepareInteractionSurface(page);
       const governance = page.getByTestId("log-domain-governance");
       await governance
         .getByRole("table", { name: "业务域列表" })
         .getByRole("row")
         .filter({ hasText: acceptanceWebhookDomainName })
-        .getByRole("button", { name: "结果回调" })
+        .getByRole("button", { name: /：更多$/ })
         .click();
+      await page.getByRole("menuitem", { name: "结果回调" }).click();
 
       const editor = page.getByTestId("domain-webhook-editor");
       await expect(editor).toBeVisible();
@@ -1266,15 +1268,16 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         expect.arrayContaining([expect.objectContaining({ kind: "result", status: "delivered", httpStatus: 200 })])
       );
 
-      await page.goto("/log-admin");
+      await page.goto("/log-admin?tab=domains");
       await prepareInteractionSurface(page);
       await page
         .getByTestId("log-domain-governance")
         .getByRole("table", { name: "业务域列表" })
         .getByRole("row")
         .filter({ hasText: acceptanceWebhookDomainName })
-        .getByRole("button", { name: "结果回调" })
+        .getByRole("button", { name: /：更多$/ })
         .click();
+      await page.getByRole("menuitem", { name: "结果回调" }).click();
       const deliveriesList = page.getByTestId("domain-webhook-deliveries");
       await expect(deliveriesList).toBeVisible();
       await expect(deliveriesList).toContainText("已送达");
@@ -1319,10 +1322,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await cleanupAcceptanceLogs();
     await cleanupAcceptanceLogDomains();
 
-    await page.goto("/log-admin");
+    await page.goto("/log-admin?tab=domains");
     await prepareInteractionSurface(page);
     const governance = page.getByTestId("log-domain-governance");
-    await governance.getByRole("button", { name: "新建业务域" }).click();
+    await governance.getByRole("group", { name: "业务域治理操作" }).getByRole("button", { name: "新建业务域" }).click();
     await page.getByLabel(/名称/).fill(acceptanceModelDomainName);
     await page.getByLabel(/描述/).fill("Acceptance domain for the per-domain model override");
     const overrideInput = page.getByLabel(/模型覆盖/);

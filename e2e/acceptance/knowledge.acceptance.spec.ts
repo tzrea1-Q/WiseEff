@@ -840,7 +840,7 @@ test.describe("Knowledge base browser acceptance", () => {
     expect(indexed.indexedRevisionNumber).toBe(1);
     expect(indexed.chunkCount).toBeGreaterThan(0);
 
-    await signInBrowserAsRole(page, "admin", "/knowledge-admin");
+    await signInBrowserAsRole(page, "admin", "/knowledge-admin?tab=index");
     const banner = page.getByLabel("检索模式");
     await expect(banner).toBeVisible();
     // Honest retrieval-mode banner: this local/CI PostgreSQL has no pgvector.
@@ -914,6 +914,7 @@ test.describe("Knowledge base browser acceptance", () => {
     await signInBrowserAsUser(page, editorUserId, editorEmail, editorName, "/logs");
     const history = page.getByRole("complementary", { name: "历史日志记录" });
     await history.getByRole("button", { name: new RegExp(seeded.fileName.slice(0, 40)) }).click();
+    await page.getByRole("tab", { name: "相关", exact: true }).click();
 
     // Distil the conclusion into a knowledge draft and hand off to /knowledge.
     const distilButton = page.getByRole("button", { name: "沉淀为知识" });
@@ -1275,12 +1276,14 @@ test.describe("Knowledge base browser acceptance", () => {
     await expect(publishRow.getByRole("button", { name: "查看日志分析" })).toBeVisible();
 
     // Publish one draft from the queue.
-    await publishRow.getByRole("button", { name: "发布", exact: true }).click();
+    await publishRow.getByRole("button", { name: /：更多$/ }).click();
+    await page.getByRole("menuitem", { name: "发布", exact: true }).click();
     await expect(queue.locator("tr", { hasText: publishTitle })).toHaveCount(0);
 
     // Archive-reject the other.
     const rejectRow = queue.locator("tr", { hasText: rejectTitle }).first();
-    await rejectRow.getByRole("button", { name: "拒绝归档" }).click();
+    await rejectRow.getByRole("button", { name: /：更多$/ }).click();
+    await page.getByRole("menuitem", { name: "拒绝归档" }).click();
     const confirm = page.getByRole("dialog", { name: /拒绝并归档/ });
     await confirm.getByRole("button", { name: "拒绝归档" }).click();
     await expect(queue.locator("tr", { hasText: rejectTitle })).toHaveCount(0);

@@ -1,7 +1,6 @@
 /* === Project configuration workbench (read-only tracer) ================== */
 
 .main-content:has(.param-admin-shell--configuration-workbench) {
-  padding-bottom: var(--space-6);
   overflow: hidden;
 }
 
@@ -25,24 +24,85 @@
 
 .configuration-workbench {
   position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 44px;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 560px;
+  min-height: 0;
   overflow: hidden;
   color: var(--text);
-  background: var(--surface-low);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-soft);
+}
+
+.configuration-workbench > .navigator-workbench {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.configuration-workbench .navigator-workbench__body {
+  position: relative;
+  min-height: 0;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.configuration-workbench .navigator-workbench__navigator,
+.configuration-workbench .navigator-workbench__task,
+.configuration-workbench .navigator-workbench__inspector {
+  height: 100%;
+  max-height: none;
+}
+
+.configuration-workbench .navigator-workbench__task:has(.configuration-workbench__source) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.configuration-workbench__selection-row,
+.configuration-workbench__member-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.configuration-workbench__selection-row {
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--stroke-hairline) solid var(--border);
+}
+
+.configuration-workbench__selection-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.configuration-workbench .navigator-workbench__body:has(> .navigator-workbench__inspector[data-overlay="true"]) .configuration-workbench__selection-row {
+  margin-right: var(--navigator-workbench-inspector-width);
+}
+
+.configuration-workbench__toolbar-content {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+}
+
+.configuration-workbench__config-sets {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
 }
 
 .configuration-workbench select {
-  min-height: 32px;
+  min-height: var(--space-8);
   color: inherit;
   font: inherit;
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
@@ -59,7 +119,7 @@
   align-items: center;
   gap: var(--space-2);
   flex: 0 0 auto;
-  max-width: min(360px, 40vw);
+  max-width: var(--configuration-workbench-readiness-width);
   min-width: 0;
   overflow: hidden;
   font-size: var(--text-sm);
@@ -103,7 +163,7 @@
   min-width: 0;
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
-  border-bottom: 1px solid var(--outline);
+  border-bottom: var(--stroke-hairline) solid var(--outline);
 }
 
 .configuration-workbench__back {
@@ -116,8 +176,8 @@
 .configuration-workbench__project {
   display: block;
   min-width: 0;
-  max-width: 140px;
-  flex: 0 1 140px;
+  max-width: var(--configuration-workbench-project-width);
+  flex: 0 1 var(--configuration-workbench-project-width);
 }
 
 .configuration-workbench__project strong {
@@ -133,8 +193,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  flex: 0 1 188px;
-  min-width: 130px;
+  flex: 0 1 var(--configuration-workbench-config-select-width);
+  min-width: var(--configuration-workbench-config-select-min-width);
   color: var(--app-muted);
   font-size: var(--text-xs);
   font-weight: 700;
@@ -182,7 +242,7 @@
 .configuration-workbench__identity-fold {
   flex: 0 0 auto;
   min-width: max-content;
-  min-height: 28px;
+  min-height: calc(var(--space-6) + var(--space-1));
   padding: 0 var(--space-2);
   font-size: var(--text-xs);
   font-weight: 700;
@@ -191,20 +251,20 @@
 
 .configuration-workbench__identity-details {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + var(--space-3) / 2);
   right: 0;
   z-index: var(--z-sidebar);
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-1);
-  min-width: 220px;
-  max-width: min(360px, 70vw);
+  min-width: var(--configuration-workbench-identity-min-width);
+  max-width: var(--configuration-workbench-identity-width);
   padding: var(--space-2);
   overflow: auto;
   white-space: normal;
   background: var(--surface);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-soft);
 }
@@ -219,7 +279,7 @@
 }
 
 .configuration-workbench__baseline-retry {
-  min-height: 28px;
+  min-height: calc(var(--space-6) + var(--space-1));
   padding: 0 var(--space-2);
   font-size: var(--text-xs);
   font-weight: 700;
@@ -249,8 +309,8 @@
 .configuration-workbench .configuration-workbench__more-menu {
   right: 0;
   left: auto;
-  min-width: 148px;
-  max-width: min(240px, calc(100vw - 24px));
+  min-width: var(--configuration-workbench-menu-min-width);
+  max-width: var(--configuration-workbench-menu-max-width);
   z-index: var(--z-sidebar);
 }
 
@@ -262,7 +322,7 @@
 }
 
 .configuration-workbench__create-config-dialog {
-  max-width: 420px;
+  max-width: var(--configuration-workbench-create-dialog-width);
 }
 
 .configuration-workbench__create-config-form {
@@ -297,13 +357,13 @@
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
   background: var(--surface-bright);
-  border-bottom: 1px solid var(--outline);
+  border-bottom: var(--stroke-hairline) solid var(--outline);
 }
 
 /* Compact ghost tool toggles in the dense workbench toolbar (sm height,
    transparent) — functional density override. */
 .configuration-workbench__mobile-tools .button {
-  min-height: 28px;
+  min-height: calc(var(--space-6) + var(--space-1));
   padding: 0 var(--space-2);
   color: var(--app-muted);
   font-size: var(--text-xs);
@@ -317,25 +377,11 @@
   border-color: var(--outline);
 }
 
-.configuration-workbench__body {
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: stretch;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .configuration-workbench__tree {
   position: relative;
   z-index: var(--z-content);
   display: flex;
-  flex: 0 0 clamp(260px, 20vw, 300px);
   flex-direction: column;
-  width: clamp(260px, 20vw, 300px);
-  max-width: 300px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -350,17 +396,6 @@
   --dts-workbench-amber: var(--warning);
   color: var(--dts-workbench-ink);
   background: var(--dts-workbench-surface);
-  border-right: 1px solid var(--dts-workbench-border);
-}
-
-.configuration-workbench__tree-collapsed {
-  align-self: stretch;
-  flex: 0 0 34px;
-  min-height: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-right: 1px solid var(--outline) !important;
-  border-radius: 0 !important;
 }
 
 .configuration-workbench__region-head {
@@ -369,23 +404,23 @@
   justify-content: space-between;
   gap: var(--space-2);
   flex: 0 0 auto;
-  min-height: 48px;
+  min-height: var(--space-12);
   padding: var(--space-3) var(--space-3) var(--space-2);
-  border-bottom: 1px solid var(--dts-workbench-border, var(--outline));
+  border-bottom: var(--stroke-hairline) solid var(--dts-workbench-border, var(--outline));
 }
 
 .configuration-workbench__tree > .configuration-workbench__region-head span {
   color: var(--dts-workbench-muted);
   font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--configuration-workbench-meta-tracking);
   text-transform: uppercase;
 }
 
 .configuration-workbench__tree > .configuration-workbench__region-head strong {
   color: var(--dts-workbench-ink);
   font-size: var(--text-base);
-  letter-spacing: 0.01em;
+  letter-spacing: var(--configuration-workbench-title-tracking);
 }
 
 .configuration-workbench__region-head > div {
@@ -397,7 +432,7 @@
   color: var(--app-muted);
   font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--configuration-workbench-meta-tracking);
   text-transform: uppercase;
 }
 
@@ -410,8 +445,8 @@
 
 /* Icon-only square expand/collapse control (compact 28px). */
 .configuration-workbench__region-head .button {
-  flex: 0 0 28px;
-  min-height: 28px;
+  flex: 0 0 calc(var(--space-6) + var(--space-1));
+  min-height: calc(var(--space-6) + var(--space-1));
   padding: 0;
   border-color: transparent;
   background: transparent;
@@ -436,7 +471,7 @@
 .configuration-workbench__empty {
   padding: var(--space-2);
   background: var(--surface);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-sm);
 }
 
@@ -451,7 +486,7 @@
   display: grid;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-bottom: var(--stroke-hairline) solid color-mix(in srgb, var(--border) 80%, transparent);
 }
 .configuration-workbench__search > .search-field {
   width: 100%;
@@ -466,15 +501,15 @@
 /* Compact search-bar actions (sm-height density override). */
 .configuration-workbench__search-actions .button {
   flex: 0 0 auto;
-  min-height: 28px;
+  min-height: calc(var(--space-6) + var(--space-1));
   padding: 0 var(--space-2);
   font-size: var(--text-xs);
 }
 .configuration-workbench__search-results {
-  max-height: 10rem;
+  max-height: var(--configuration-workbench-search-results-height);
   overflow: auto;
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-bottom: var(--stroke-hairline) solid color-mix(in srgb, var(--border) 80%, transparent);
 }
 .configuration-workbench__search-group {
   display: grid;
@@ -542,15 +577,15 @@
 
 .configuration-workbench__member-tree .configuration-workbench__member {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: calc(var(--space-6) + var(--space-1)) minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-1);
   width: 100%;
-  min-height: 42px;
+  min-height: calc(var(--space-10) + 2 * var(--stroke-hairline));
   padding: var(--space-2) var(--space-2);
   text-align: left;
   color: var(--dts-workbench-muted);
-  border: 1px solid transparent;
+  border: var(--stroke-hairline) solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
   transition:
@@ -606,7 +641,7 @@
   display: grid;
   justify-items: end;
   min-width: 0;
-  max-width: 88px;
+  max-width: calc(var(--space-16) + var(--space-6));
   gap: var(--space-1);
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -618,7 +653,7 @@
   margin-top: auto;
   padding: var(--space-2);
   color: var(--app-muted);
-  border-top: 1px solid var(--outline);
+  border-top: var(--stroke-hairline) solid var(--outline);
 }
 
 .configuration-workbench__ungrouped-title {
@@ -644,7 +679,7 @@
 /* Table-inline compact action (24px density override). */
 .configuration-workbench__ungrouped-file .button {
   justify-self: start;
-  min-height: 24px;
+  min-height: var(--space-6);
   padding: var(--space-1) var(--space-2);
   font-size: var(--text-xs);
 }
@@ -653,7 +688,7 @@
   margin: 0;
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-sm);
-  border-bottom: 1px solid var(--outline);
+  border-bottom: var(--stroke-hairline) solid var(--outline);
 }
 
 .configuration-workbench__member-ops {
@@ -701,6 +736,7 @@
   flex: 1 1 0%;
   flex-direction: column;
   width: auto;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   margin: 0;
@@ -718,10 +754,10 @@
   gap: var(--space-3);
   flex: 0 0 auto;
   min-width: 0;
-  min-height: 48px;
+  min-height: var(--space-12);
   padding: var(--space-2) var(--space-3);
   background: var(--configuration-source-surface-raised);
-  border-bottom: 1px solid var(--configuration-source-outline);
+  border-bottom: var(--stroke-hairline) solid var(--configuration-source-outline);
 }
 
 .configuration-workbench__source-head > div:first-child {
@@ -736,7 +772,7 @@
   color: var(--configuration-source-text-muted);
   font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--configuration-workbench-source-tracking);
   text-transform: uppercase;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -754,7 +790,7 @@
 .configuration-workbench__version-identity {
   display: grid;
   min-width: 0;
-  flex: 0 1 180px;
+  flex: 0 1 var(--configuration-workbench-version-width);
   text-align: right;
 }
 
@@ -835,8 +871,8 @@
 
 .configuration-workbench__code-line {
   display: grid;
-  grid-template-columns: 48px minmax(max-content, 1fr);
-  min-height: 21px;
+  grid-template-columns: var(--space-12) minmax(max-content, 1fr);
+  min-height: calc(var(--text-sm) * 1.75);
   padding-right: var(--space-4);
   white-space: pre;
 }
@@ -858,7 +894,7 @@
   place-content: center;
   justify-items: center;
   gap: var(--space-2);
-  min-height: 180px;
+  min-height: var(--configuration-workbench-empty-min-height);
   padding: calc(var(--space-6) + var(--space-1));
   text-align: center;
 }
@@ -892,7 +928,7 @@
 
 .configuration-workbench__source-state p,
 .configuration-workbench__setup-state p {
-  max-width: 500px;
+  max-width: var(--configuration-workbench-empty-max-width);
   margin: 0;
   color: inherit;
   font-size: var(--text-sm);
@@ -907,28 +943,24 @@
 
 .configuration-workbench__inspector {
   position: absolute;
-  inset: 10px 10px 10px auto;
+  inset: 0;
   z-index: var(--z-content-panel);
   display: flex;
   flex-direction: column;
-  width: min(360px, calc(100% - 42px));
+  width: 100%;
+  height: 100%;
   min-height: 0;
   overflow: auto;
   color: var(--text);
   background: color-mix(in srgb, var(--surface) 98%, transparent);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-2);
-  backdrop-filter: blur(12px);
 }
 
 .configuration-workbench__inspector.is-persistent {
   position: relative;
   inset: auto;
   z-index: var(--z-content);
-  flex: 0 0 360px;
-  width: 360px;
-  max-width: 360px;
+  width: 100%;
+  height: 100%;
   border-radius: 0;
   border-top: 0;
   border-right: 0;
@@ -942,7 +974,7 @@
   top: 0;
   z-index: var(--z-content-sticky);
   background: color-mix(in srgb, var(--surface) 98%, transparent);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--space-3));
 }
 
 .configuration-workbench__inspector.is-persistent > .configuration-workbench__region-head {
@@ -957,8 +989,8 @@
 }
 
 .configuration-workbench__inspector-body :is(button, a, input, select, textarea, [role="button"]) {
-  scroll-margin-top: 64px;
-  scroll-margin-bottom: 24px;
+  scroll-margin-top: var(--space-16);
+  scroll-margin-bottom: var(--space-6);
 }
 
 .configuration-workbench__canonical-conflicts {
@@ -967,7 +999,7 @@
   min-width: 0;
   margin: var(--space-2);
   padding: var(--space-3);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   background: var(--surface);
 }
@@ -982,7 +1014,7 @@
   min-width: 0;
   margin: 0;
   padding: var(--space-2);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-sm);
 }
 
@@ -1014,7 +1046,7 @@
   font-size: var(--text-xs);
   font-weight: 700;
   background: var(--surface);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-full);
 }
 
@@ -1025,7 +1057,7 @@
   font-size: var(--text-xs);
   font-weight: 700;
   background: color-mix(in srgb, var(--warning) 12%, var(--surface));
-  border-bottom: 1px solid var(--outline);
+  border-bottom: var(--stroke-hairline) solid var(--outline);
 }
 
 .configuration-workbench__mode-actions {
@@ -1056,7 +1088,7 @@
   gap: var(--space-1);
   padding: var(--space-2);
   background: var(--surface);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-sm);
 }
 
@@ -1096,7 +1128,7 @@
 
 .configuration-workbench__side-by-side .configuration-workbench__code {
   min-width: 0;
-  border-right: 1px solid var(--outline);
+  border-right: var(--stroke-hairline) solid var(--outline);
 }
 
 .configuration-workbench__inspector-details {
@@ -1113,10 +1145,10 @@
 .configuration-workbench__inspector dl > div,
 .configuration-workbench__inspector-details > .configuration-workbench__inspector-actions {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-columns: var(--configuration-workbench-inspector-label-width) minmax(0, 1fr);
   gap: var(--space-2);
   padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--outline);
+  border-bottom: var(--stroke-hairline) solid var(--outline);
 }
 
 .configuration-workbench__inspector dt {
@@ -1187,7 +1219,7 @@
   margin: var(--space-2) 0 var(--space-1);
   padding: var(--space-2);
   background: var(--surface-low);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-sm);
 }
 
@@ -1257,7 +1289,7 @@
 
 .configuration-workbench__reason textarea {
   width: 100%;
-  min-height: 56px;
+  min-height: calc(var(--space-12) + var(--space-2));
   resize: vertical;
 }
 
@@ -1270,12 +1302,12 @@
 
 .configuration-workbench__tasks {
   display: grid;
-  grid-template-rows: 44px;
+  grid-template-rows: calc(var(--space-10) + var(--space-1));
   min-width: 0;
-  height: 44px;
+  height: calc(var(--space-10) + var(--space-1));
   overflow: hidden;
   background: var(--surface);
-  border-top: 1px solid var(--outline);
+  border-top: var(--stroke-hairline) solid var(--outline);
 }
 
 .configuration-workbench__tasks.is-open {
@@ -1283,10 +1315,16 @@
   inset: auto 0 0;
   /* Above body/inspector stacking (tree z=1, inspector z=3) so dock actions stay clickable. */
   z-index: var(--z-content-overlay);
-  grid-template-rows: 44px minmax(0, 1fr);
+  grid-template-rows: calc(var(--space-10) + var(--space-1)) minmax(0, 1fr);
   width: 100%;
-  height: min(250px, 40%);
+  height: var(--configuration-workbench-tasks-height);
   box-shadow: var(--shadow-sheet-above);
+}
+
+.configuration-workbench .navigator-workbench__task > .configuration-workbench__tasks.is-open {
+  position: static;
+  height: auto;
+  box-shadow: none;
 }
 
 .configuration-workbench__tasks > .configuration-workbench__task-toggle {
@@ -1294,8 +1332,8 @@
   justify-content: flex-start;
   gap: var(--space-5);
   width: 100%;
-  height: 44px;
-  min-height: 44px;
+  height: calc(var(--space-10) + var(--space-1));
+  min-height: calc(var(--space-10) + var(--space-1));
   padding: 0 var(--space-3);
   border: 0;
   border-radius: 0;
@@ -1319,7 +1357,7 @@
 .workbench-conflict-dock {
   margin-top: var(--space-3);
   padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
+  border-top: var(--stroke-hairline) solid var(--border);
 }
 
 .workbench-conflict-dock__header {
@@ -1357,7 +1395,7 @@
 .workbench-conflict-dock__bulk-chooser {
   margin-top: var(--space-2);
   padding: var(--space-2);
-  border: 1px dashed var(--border-strong);
+  border: var(--stroke-hairline) dashed var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
@@ -1415,16 +1453,6 @@
 }
 
 @media (max-width: 768px) {
-  .main-content:has(.param-admin-shell--configuration-workbench) {
-    padding: var(--space-2) var(--space-2) calc(var(--space-16) + var(--space-1));
-  }
-
-  .configuration-workbench {
-    grid-template-rows: auto auto minmax(0, 1fr) 44px;
-    min-height: 0;
-    border-radius: var(--radius-md);
-  }
-
   .configuration-workbench__command {
     padding: var(--space-2);
   }
@@ -1435,12 +1463,12 @@
 
   .configuration-workbench__project {
     order: 2;
-    flex: 1 1 calc(100% - 110px);
+    flex: 1 1 calc(100% - var(--configuration-workbench-compact-project-clearance));
   }
 
   .configuration-workbench__config-select {
     order: 3;
-    flex: 1 1 150px;
+    flex: 1 1 var(--configuration-workbench-compact-metadata-width);
   }
 
   .configuration-workbench__identities {
@@ -1468,7 +1496,6 @@
     flex: 1 1 0;
   }
 
-  .configuration-workbench__tree,
   .configuration-workbench__inspector {
     position: absolute;
     inset: 0;
@@ -1480,13 +1507,9 @@
     box-shadow: none;
   }
 
-  .configuration-workbench__tree-collapsed {
-    display: none;
-  }
-
   .configuration-workbench__tasks.is-open {
     inset: 0;
-    grid-template-rows: 44px minmax(0, 1fr);
+    grid-template-rows: calc(var(--space-10) + var(--space-1)) minmax(0, 1fr);
     width: 100%;
     height: 100%;
     margin: 0;
@@ -1521,7 +1544,7 @@
   }
 
   .configuration-workbench__version-identity strong {
-    max-width: 150px;
+    max-width: var(--configuration-workbench-compact-metadata-width);
   }
 
 }
@@ -1531,7 +1554,7 @@
   gap: var(--space-3);
   margin: var(--space-3) 0 var(--space-4);
   padding: var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border: var(--stroke-hairline) solid color-mix(in srgb, var(--border) 80%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface, var(--surface)) 92%, var(--surface-sunken));
 }
@@ -1568,7 +1591,7 @@
   gap: var(--space-3);
   margin: var(--space-3) 0 var(--space-4);
   padding: var(--space-3);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   background: var(--surface);
 }
@@ -1598,7 +1621,7 @@
   color: var(--danger);
 }
 .confirm-dialog.workbench-batch-rollback-dialog {
-  width: min(720px, calc(100vw - 48px));
+  width: var(--configuration-workbench-rollback-dialog-width);
 }
 
 .workbench-batch-rollback-dialog__description {
@@ -1620,7 +1643,7 @@
 
 .workbench-batch-rollback-dialog li {
   padding: var(--space-2);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   background: var(--surface-low);
 }
@@ -1634,7 +1657,7 @@
 .workbench-batch-rollback-dialog .configuration-workbench__source-review-reason select {
   width: 100%;
   padding: var(--space-2);
-  border: 1px solid var(--outline);
+  border: var(--stroke-hairline) solid var(--outline);
   border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);

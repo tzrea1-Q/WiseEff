@@ -1,24 +1,13 @@
 /* ========== Log Analysis v2 ========== */
 .logs-v2 {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) calc(var(--space-16) * 5);
-  gap: var(--space-4);
   max-width: 100%;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .logs-v2-main {
   display: grid;
-  /* Conclusion card, stage timeline, then the analysis card stretches; any
-     trailing section (e.g. related knowledge) takes its natural height. */
-  grid-template-rows: auto auto minmax(calc(var(--space-5) * 21), 1fr);
   gap: var(--space-4);
   min-width: 0;
-}
-
-.logs-v2-main--failed {
-  grid-template-rows: auto;
-  align-content: start;
 }
 
 .log-error-alert .logs-metadata-list {
@@ -32,10 +21,8 @@
   border-color: var(--outline);
 }
 
-.logs-v2-header,
 .logs-conclusion-card,
 .log-timeline,
-.logs-aux-panel,
 .logs-v2-analysis {
   background: color-mix(in srgb, var(--surface) 86%, transparent);
   border: var(--stroke-hairline) solid var(--outline);
@@ -43,26 +30,11 @@
   box-shadow: var(--shadow-soft);
 }
 
-.logs-v2-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-5);
-}
-
-.logs-v2-header h1,
 .logs-conclusion-card h2 {
   margin: 0;
   letter-spacing: 0;
 }
 
-.logs-v2-header h1 {
-  font-size: var(--text-2xl);
-  line-height: 1.18;
-}
-
-.logs-v2-header p,
 .logs-conclusion-card p {
   margin: var(--space-1) 0 0;
   color: var(--app-muted);
@@ -73,7 +45,6 @@
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   gap: var(--space-4);
-  min-height: calc(var(--space-10) * 13);
   padding: var(--space-4);
 }
 
@@ -638,15 +609,6 @@
 .evidence-card footer small {
   color: var(--app-muted);
   font-size: var(--text-sm);
-}
-
-.logs-aux-panel {
-  overflow: hidden;
-  align-self: start;
-}
-
-.logs-aux-panel__body {
-  min-height: calc(var(--space-16) * 5);
 }
 
 .logs-metadata-list {
@@ -1304,42 +1266,16 @@
 }
 
 @media (max-width: 1100px) {
-  .logs-v2 {
-    grid-template-columns: 1fr;
-  }
-
-  .logs-v2-main {
-    grid-template-rows: auto;
-  }
-
   .logs-v2-split {
     grid-template-columns: 1fr;
-    min-height: 0;
-  }
-
-  .logs-aux-panel {
-    order: -1;
-  }
-
-  .logs-aux-panel__body {
     min-height: 0;
   }
 }
 
 @media (max-width: 520px) {
-  .logs-v2 {
-    gap: var(--space-3);
-  }
-
-  .logs-v2-header,
   .logs-conclusion-head,
   .log-error-alert {
     grid-template-columns: 1fr;
-  }
-
-  .logs-v2-header {
-    align-items: stretch;
-    padding: var(--space-4);
   }
 
   .log-dashboard-header {
@@ -1358,10 +1294,6 @@
     width: 100%;
     padding: var(--space-2) var(--space-2);
     white-space: normal;
-  }
-
-  .logs-v2-header h1 {
-    font-size: var(--text-xl);
   }
 
   .logs-v2-split,

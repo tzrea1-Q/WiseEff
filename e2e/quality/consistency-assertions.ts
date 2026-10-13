@@ -159,7 +159,7 @@ export function requireModuleTreeAlignment(
   }
 }
 
-export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLists"], routePath: string) {
+export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLists"], routePath: string, requireOverflow = true) {
   requireMeasuredCategories({ adminLists: lists }, ["adminLists"], routePath);
   for (const list of lists) {
     if (list.tableCount !== 1 || !list.header || !list.filters || !list.table || !list.primaryAction
@@ -180,7 +180,9 @@ export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLi
       throw new Error(`${routePath}: empty admin list must offer exactly one next step`);
     }
     for (const row of list.rows) {
-      if (row.actions.length > 2 || row.actions.filter((action) => action.overflow).length !== 1
+      if (row.actions.length > 2 || row.actions.filter((action) => !action.overflow).length > 1
+        || row.actions.filter((action) => action.overflow).length > 1
+        || (requireOverflow && row.actions.filter((action) => action.overflow).length !== 1)
         || row.actions.some((action) => !Number.isFinite(action.height) || Math.abs(action.height - 28) > 1 || action.destructive)) {
         throw new Error(`${routePath}: rows require at most one small text action plus overflow, with no visible destructive action`);
       }
@@ -282,6 +284,19 @@ export function requireNavigatorWorkbenchGeometry(workbenches: ConsistencyMeasur
     }
     if (workbench.noticeCount > 1) throw new Error(`${routePath}: navigator-workbench has more than one notice`);
     if (workbench.pageOverflow > 1) throw new Error(`${routePath}: navigator-workbench causes page horizontal scrolling`);
+    if ((/\/(files|config-sets)(\?|$)/.test(routePath)
+      || new URLSearchParams(routePath.split("?")[1]).get("inspector") === "file") && !workbench.inspector) {
+      throw new Error(`${routePath}: missing navigator-workbench inspector for the deep link`);
+    }
+    if (workbench.inspector) {
+      const inspector = workbench.inspector;
+      if (![...Object.values(inspector)].every(Number.isFinite)
+        || !aligned(inspector.width, contract.inspectorWidth) || !aligned(inspector.top, task.top)
+        || (workbench.inspectorOverlay ? !aligned(inspector.right, task.right)
+          : !aligned(inspector.left, task.right + contract.gap))) {
+        throw new Error(`${routePath}: navigator-workbench inspector differs from the slot contract`);
+      }
+    }
     if (!workbench.collapsed) {
       if (!workbench.navigatorCounts.length) throw new Error(`${routePath}: missing navigator-workbench count measurements`);
       for (const count of workbench.navigatorCounts) {

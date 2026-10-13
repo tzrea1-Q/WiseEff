@@ -103,6 +103,7 @@
   --overview-content-min-width: 400px;
 
   --page-gutter: var(--space-6);
+  --log-analysis-label-tracking: 0.04em;
   --admin-list-table-min-width: 1080px;
   --admin-list-name-max-width: 240px;
   --admin-list-detail-width: 520px;
@@ -194,6 +195,28 @@
   --dts-workbench-table-columns-without-selection: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width);
   --dts-workbench-table-columns: calc(var(--space-8) + var(--space-1)) var(--dts-workbench-table-columns-without-selection);
   --dts-workbench-table-columns-without-description: minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width);
+  --configuration-workbench-panel-width: 360px;
+  --configuration-workbench-readiness-width: min(var(--configuration-workbench-panel-width), 40vw);
+  --configuration-workbench-identity-width: min(var(--configuration-workbench-panel-width), 70vw);
+  --configuration-workbench-project-width: 140px;
+  --configuration-workbench-config-select-width: 188px;
+  --configuration-workbench-config-select-min-width: 130px;
+  --configuration-workbench-identity-min-width: 220px;
+  --configuration-workbench-menu-min-width: 148px;
+  --configuration-workbench-menu-max-width: min(240px, calc(100vw - var(--space-6)));
+  --configuration-workbench-create-dialog-width: 420px;
+  --configuration-workbench-search-results-height: 10rem;
+  --configuration-workbench-version-width: 180px;
+  --configuration-workbench-empty-min-height: 180px;
+  --configuration-workbench-empty-max-width: 500px;
+  --configuration-workbench-inspector-label-width: 92px;
+  --configuration-workbench-tasks-height: min(250px, 40%);
+  --configuration-workbench-compact-project-clearance: 110px;
+  --configuration-workbench-compact-metadata-width: 150px;
+  --configuration-workbench-rollback-dialog-width: min(720px, calc(100vw - var(--space-12)));
+  --configuration-workbench-meta-tracking: 0.05em;
+  --configuration-workbench-title-tracking: 0.01em;
+  --configuration-workbench-source-tracking: 0.04em;
 
   /* ── Legacy palette (kept as-is until surfaces migrate; do not extend) ── */
   --surface-low: #f0f3ff;
@@ -3610,7 +3633,6 @@ td small {
   min-width: min(360px, 100%);
 }
 
-.log-admin-search,
 .feedback-admin-search {
   width: min(calc(var(--space-16) * 4), 100%);
 }
@@ -6846,7 +6868,7 @@ td small {
   color: inherit;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #e7ecf7;
+  border-bottom: var(--stroke-hairline) solid var(--border);
   text-align: left;
 }
 
@@ -6856,18 +6878,21 @@ td small {
 
 .history-item:focus-visible {
   background: var(--surface-low);
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline: var(--view-switch-focus-width) solid var(--ring);
+  outline-offset: calc(var(--view-switch-focus-width) * -1);
 }
 
 .history-item.active {
-  background: #f4f7ff;
-  box-shadow: inset 3px 0 0 var(--app-primary);
+  background: var(--accent-soft);
+  box-shadow: var(--shadow-status-accent);
 }
 
 .history-item strong,
 .history-item span {
   display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .history-item span {

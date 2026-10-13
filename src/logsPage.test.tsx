@@ -40,13 +40,36 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it("keeps upload available without presenting an empty installation as a failed analysis", () => {
+    render(<LogsPage state={{ ...userState, logs: [] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const task = screen.getByRole("region", { name: "日志任务区" });
+    expect(within(task).getByText("暂无日志记录，请上传日志。")).toBeInTheDocument();
+    expect(within(task).queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
+  });
+
+  it.each(["Complete", "Processing", "Failed"] as const)("keeps %s records in the navigator and their report in the task area", async (status) => {
+    const log = initialState.logs.find((record) => record.status === status)!;
+    window.history.replaceState(null, "", `/logs?logId=${log.id}`);
+    render(<LogsPage state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const navigator = screen.getByRole("region", { name: "模块导航" });
+    const task = screen.getByRole("region", { name: "日志任务区" });
+    expect(within(navigator).getByRole("button", { name: new RegExp(log.fileName) })).toHaveAttribute("aria-pressed", "true");
+    expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "AI 正在分析..." : log.conclusion }) })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "收起模块导航", exact: true }));
+    expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "AI 正在分析..." : log.conclusion }) })).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("logId")).toBe(log.id);
+    await userEvent.click(screen.getByRole("button", { name: "展开模块导航", exact: true }));
+  });
+
   it("moves focus between auxiliary tabs before activation without changing the selected log", async () => {
     const user = userEvent.setup();
     const log = initialState.logs[1];
     window.history.replaceState(null, "", `/logs?logId=${log.id}`);
     render(<LogsPage state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
     const tabs = screen.getByRole("tablist", { name: "日志辅助信息" });
-    const history = within(tabs).getByRole("tab", { name: "历史" });
+    const history = within(tabs).getByRole("tab", { name: "报告" });
     const metadata = within(tabs).getByRole("tab", { name: "元数据" });
     await user.click(history);
     await user.keyboard("{ArrowRight}");
@@ -55,7 +78,7 @@ describe("LogsPage · Header", () => {
     await user.keyboard("{Enter}");
     const panel = screen.getByRole("tabpanel", { name: "元数据" });
     expect(metadata).toHaveAttribute("aria-controls", panel.id);
-    expect(within(panel).getByText(log.fileName)).toBeInTheDocument();
+    expect(within(within(panel).getByRole("region", { name: "日志任务区" })).getByText(log.fileName)).toBeInTheDocument();
     await user.keyboard("{End}{Enter}");
     expect(screen.getByRole("tabpanel", { name: "相关" })).toHaveTextContent("没有找到关联日志。");
     expect(new URLSearchParams(window.location.search).get("logId")).toBe(log.id);
@@ -68,7 +91,7 @@ describe("LogsPage · Header", () => {
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
-    expect(within(topbar).getByRole("button", { name: /上传新日志/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /上传新日志/ })).toBeInTheDocument();
     expect(within(topbar).queryByRole("heading", { name: "日志智能分析" })).not.toBeInTheDocument();
   });
 
@@ -172,17 +195,20 @@ describe("LogsPage · Header", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(".log / .txt / .csv / .json");
   });
 
-  it("辅助栏默认显示历史 Tab，切换元数据 Tab 显示文件名和设备", async () => {
+  it("报告默认显示，切换元数据后历史导航仍可选择日志", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
 
     const auxPanel = screen.getByRole("complementary", { name: "历史日志记录" });
-    expect(within(auxPanel).getByRole("tab", { name: "历史", selected: true })).toBeInTheDocument();
-    await userEvent.click(within(auxPanel).getByRole("tab", { name: "元数据" }));
-    const metadataPanel = within(auxPanel).getByRole("tabpanel", { name: "元数据" });
-    expect(within(metadataPanel).getByText(/charging_thermal_trace/)).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "元数据" }));
+    const metadataPanel = screen.getByRole("tabpanel", { name: "元数据" });
+    const metadata = within(metadataPanel).getByRole("region", { name: "日志任务区" });
+    expect(within(metadata).getByText(/charging_thermal_trace/)).toBeInTheDocument();
     expect(within(metadataPanel).getByText("ChargeLab_X01")).toBeInTheDocument();
+    await userEvent.click(within(auxPanel).getByRole("button", { name: /usb_pd_negotiation/ }));
+    expect(within(metadata).getByText(/usb_pd_negotiation/)).toBeInTheDocument();
   });
 
   it("结论卡展示 [问 Agent 关于此结论] 按钮，并能打开小泽", () => {

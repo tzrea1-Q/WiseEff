@@ -4,7 +4,7 @@ import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
 import { assertXiaozePlacement, requireMeasuredCategories, requireModuleTreeAlignment, requireRowActionVisibility, requireCompactControlHeights, requireNavigatorWorkbenchGeometry, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireAdminListGeometry, requireOverviewGeometry, requireRetiredNotice, requireSettingsFormPresentation } from "./consistency-assertions";
 import { collectConsistencyMeasurements, type ConsistencyMeasurements } from "./consistency-collector";
-import { consistencyRoutes } from "./consistency-routes";
+import { collectionPaths, consistencyRoutes } from "./consistency-routes";
 import { installConsistencyReadGuard } from "./consistency";
 import {
   closeXiaozePopupIfOpen,
@@ -209,12 +209,20 @@ for (const route of routes) {
           if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
             requireReviewInboxStructure(measurements, route.path);
           }
-          if (route.required.includes("navigatorWorkbenches") || moduleNavigationPaths.includes(routePath)) {
+          if (route.required.includes("moduleTreeLabels") || moduleNavigationPaths.includes(routePath)) {
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           }
           requirePrimaryActionColors(measurements, route.path);
           if (route.required.includes("adminLists")) {
-            requireAdminListGeometry(measurements.adminLists, route.path);
+            const needsOverflow = !collectionPaths.includes(routePath)
+              || (routePath === "/knowledge-admin" && new URL(page.url()).searchParams.get("tab") !== "index");
+            requireAdminListGeometry(measurements.adminLists, route.path, needsOverflow);
+            if (collectionPaths.includes(routePath)) {
+              expect(measurements.adminLists).toHaveLength(1);
+              expect(measurements.visibleTableCount).toBe(1);
+              await expect(page.getByRole("tabpanel")).toHaveCount(1);
+              await expect(page.getByRole("tab", { selected: true })).toHaveCount(1);
+            }
           }
           if (route.required.includes("rowActions")) {
             requireRowActionVisibility(measurements.rowActions, route.path);
@@ -242,7 +250,23 @@ for (const route of routes) {
           await testInfo.attach(`navigator-workbench-expanded-${theme}`, {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
-          await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
+          if (routePath === "/logs") {
+            await page.getByRole("complementary", { name: "历史日志记录" })
+              .getByRole("button", { name: /charging-foldback\.log/ }).click();
+            await expect(page.getByRole("region", { name: "分析结果" })).toBeVisible();
+            await waitForFontsAndNextPaint(page);
+            const completed = await page.evaluate(collectConsistencyMeasurements);
+            requireMeasuredCategories(completed, required, route.path);
+            requireNavigatorWorkbenchGeometry(completed.navigatorWorkbenches, route.path);
+            requireTypographyScale(completed, route.path);
+            requirePrimaryActionColors(completed, route.path);
+            requireViewSwitchStyles(completed, route.path);
+            await testInfo.attach(`logs-complete-${theme}`, {
+              contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            });
+          }
+          const navigatorLabel = routePath.startsWith("/parameter-admin/projects/aurora") ? "文件与配置集" : "模块导航";
+          await page.getByRole("button", { name: `收起${navigatorLabel}`, exact: true }).click();
           await waitForFontsAndNextPaint(page);
           const collapsed = await page.evaluate(collectConsistencyMeasurements);
           requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
@@ -250,7 +274,7 @@ for (const route of routes) {
           await testInfo.attach(`navigator-workbench-collapsed-${theme}`, {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
-          await page.getByRole("button", { name: "展开模块导航", exact: true }).click();
+          await page.getByRole("button", { name: `展开${navigatorLabel}`, exact: true }).click();
           await waitForFontsAndNextPaint(page);
         }
         if (route.required.includes("rowActions")) {
@@ -260,7 +284,40 @@ for (const route of routes) {
             contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
           });
         }
-        if (routePath === "/parameter-admin/projects") {
+        if (collectionPaths.includes(routePath)) {
+          await testInfo.attach(`collection-${route.path.replaceAll("/", "-")}-${theme}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          const selectedUrl = page.url();
+          const selectedTab = page.getByRole("tab", { selected: true });
+          const selectedName = await selectedTab.textContent();
+          const otherTab = page.getByRole("tab", { selected: false }).first();
+          const otherName = await otherTab.textContent();
+          await otherTab.click();
+          await expect(page.getByRole("tab", { name: otherName!, exact: true })).toHaveAttribute("aria-selected", "true");
+          await page.goBack();
+          await expect(page).toHaveURL(selectedUrl);
+          await expect(page.getByRole("tab", { name: selectedName!, exact: true })).toHaveAttribute("aria-selected", "true");
+          await page.goForward();
+          await expect(page.getByRole("tab", { name: otherName!, exact: true })).toHaveAttribute("aria-selected", "true");
+          await page.goBack();
+          await settleQualityRoute(page, routePath, { readOnly: true });
+          const overflow = page.getByRole("tabpanel").getByRole("button", { name: /：更多$/ }).first();
+          if (await overflow.count()) {
+            await overflow.click();
+            const destructive = page.getByRole("menuitem").filter({ hasText: /^(拒绝归档|彻底删除|归档)$/ }).first();
+            if (await destructive.count()) {
+              await destructive.click();
+              await expect(page.getByRole("dialog")).toBeVisible();
+              await page.keyboard.press("Escape");
+              await expect(page.getByRole("dialog")).toHaveCount(0);
+            } else {
+              await page.keyboard.press("Escape");
+            }
+            await expect(overflow).toBeFocused();
+          }
+        }
+        if (routePath === "/parameter-admin/projects" && route.required.includes("adminLists")) {
           const listUrl = page.url();
           const trigger = page.getByRole("table", { name: "项目管理列表" }).getByRole("button", { name: /：更多$/ }).first();
           await trigger.click();

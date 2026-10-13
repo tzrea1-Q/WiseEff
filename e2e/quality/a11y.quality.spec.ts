@@ -160,7 +160,7 @@ test.describe("M5.11 accessibility quality gate", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/logs");
     await prepareInteractionSurface(page);
-    await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
+    await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
     await expect(page.getByRole("dialog", { name: "上传日志" })).toBeVisible();
     await scan(page, testInfo, "log-upload-dialog");
 

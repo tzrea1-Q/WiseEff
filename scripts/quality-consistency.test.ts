@@ -2,7 +2,7 @@ import type { BrowserContext, Route } from "playwright/test";
 import { requireOverviewGeometry, requireRetiredNotice } from "../e2e/quality/consistency-assertions";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireNavigatorWorkbenchGeometry, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
 
 describe("admin list template contract", () => {
   it("guards every remaining admin list route with geometry and row-action contracts", () => {
@@ -16,6 +16,16 @@ describe("admin list template contract", () => {
     table: { ...rect, top: 188, bottom: 400 }, tableCount: 1,
     firstRow: { ...rect, top: 220, bottom: 252 }, emptyActionCount: 0,
     rows: [{ actions: [{ height: 28, overflow: false, destructive: false }, { height: 28, overflow: true, destructive: false }] }] };
+  it("allows read-only and sole-action collections without weakening the overflow contract", () => {
+    for (const actions of [[], [{ height: 28, overflow: false, destructive: false }]]) {
+      const collection = { ...list, rows: [{ actions }] };
+      expect(() => requireAdminListGeometry([collection], "/log-admin?tab=quality", false)).not.toThrow();
+      expect(() => requireAdminListGeometry([collection], "/parameter-admin/projects")).toThrow();
+    }
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [{ height: 28, overflow: false, destructive: true }] }] }], "/log-admin", false)).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [{ height: 32, overflow: false, destructive: false }] }] }], "/knowledge-admin?tab=index", false)).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [list.rows[0].actions[0], list.rows[0].actions[0]] }] }], "/log-admin", false)).toThrow();
+  });
   it("requires one aligned template, a visible first row and one small action plus overflow", () => {
     expect(() => requireAdminListGeometry([list], "/parameter-admin/projects")).not.toThrow();
     expect(() => requireAdminListGeometry([], "/parameter-admin/projects")).toThrow(/missing/);
@@ -139,7 +149,7 @@ function collectMarkup(markup: string, portalMarkup = "") {
   vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockReturnValue({
     x: 100, y: 100, left: 100, top: 100, right: 200, bottom: 132, width: 100, height: 32, toJSON: () => ({})
   });
-  dom.window.Element.prototype.checkVisibility = () => true;
+  dom.window.Element.prototype.checkVisibility = function () { return !this.closest("[hidden]"); };
   dom.window.Range.prototype.getBoundingClientRect = () => dom.window.document.documentElement.getBoundingClientRect();
   vi.stubGlobal("document", dom.window.document);
   vi.stubGlobal("getComputedStyle", dom.window.getComputedStyle.bind(dom.window));
@@ -153,7 +163,84 @@ function collectMarkup(markup: string, portalMarkup = "") {
   }
 }
 import { collectConsistencyMeasurements } from "../e2e/quality/consistency-collector";
-import { consistencyRoutes } from "../e2e/quality/consistency-routes";
+import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency-routes";
+
+describe("administration collection coverage", () => {
+  it.each([
+    "/knowledge-admin?tab=drafts", "/knowledge-admin?tab=index", "/knowledge-admin?tab=archived",
+    "/log-admin?tab=records", "/log-admin?tab=domains", "/log-admin?tab=quality"
+  ])("measures template geometry, scrollports and tab styles on %s", (path) => {
+    expect(consistencyRoutes.find((route) => route.path === path)?.required)
+      .toEqual(expect.arrayContaining(["adminLists", "viewSwitches", "viewSwitchSignatures", "tableScrollports"]));
+  });
+  it("ignores the retained but hidden collections", () => {
+    const measured = collectMarkup(`<div class="admin-list-page"><table><tbody><tr><td>当前集合</td></tr></tbody></table></div>
+      <div hidden><div class="admin-list-page"><table><tbody><tr><td>其他集合</td></tr></tbody></table></div></div>`);
+    expect(measured.adminLists).toHaveLength(1);
+    expect(measured.visibleTableCount).toBe(1);
+  });
+});
+
+describe("project configuration workbench coverage", () => {
+  it.each([false, true])("measures real navigator and task row actions with navigator collapsed=%s", (collapsed) => {
+    const row = `<div data-row-action-row><span data-row-action-status>活跃 v1</span>
+      <div class="row-action-menu"><button>详情</button></div></div>`;
+    const measurements = collectMarkup(`<div class="navigator-workbench">
+      <div class="navigator-workbench__navigation" ${collapsed ? "hidden" : ""}>${row}</div>
+      <div class="navigator-workbench__task">${row}</div></div>
+      <div class="row-action-menu"><button>非行操作</button></div>`);
+    expect(measurements.rowActions).toHaveLength(collapsed ? 1 : 2);
+    expect(() => requireRowActionVisibility(measurements.rowActions, "/parameter-admin/projects/aurora/configuration"))
+      .not.toThrow();
+  });
+  const paths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
+    .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
+  it.each(paths)("requires shared config-set sections and content tabs on %s", (path) => {
+    expect(viewSwitchStyleExpectations[path]).toEqual(["section", "tabs"]);
+  });
+  it.each(paths)("requires template geometry on %s in every source mode", (path) => {
+    for (const mode of ["working", "history", "candidate", "unified-diff", "side-by-side"]) {
+      const route = mode === "working" ? path : `${path}?sourceMode=${mode}`;
+      expect(consistencyRoutes.find((item) => item.path === route)?.required)
+        .toEqual(expect.arrayContaining(["navigatorWorkbenches", "rowActions", "viewSwitches", "viewSwitchSignatures"]));
+    }
+  });
+  it.each([
+    '<header class="configuration-workbench__source-head">board.dts</header>',
+    '<div class="configuration-workbench__source-state">暂无历史版本</div>',
+    '<div role="tree"><ul><li role="treeitem">节点</li></ul></div>',
+    '<footer class="configuration-workbench__tasks"><button class="configuration-workbench__task-toggle">任务</button></footer>'
+  ])("measures the first project task content without requiring a data table", (content) => {
+    const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="project-configuration:aurora">
+      <div class="navigator-workbench__body"><section class="navigator-workbench__task">${content}</section></div></div>`);
+    expect(measurements.navigatorWorkbenches[0].firstRow?.height).toBe(32);
+  });
+  it("rejects missing task content and an inspector outside its token-owned slot", () => {
+    const firstRow = { left: 300, top: 60, right: 500, bottom: 100, width: 200, height: 40 };
+    const workbench = {
+      pageKey: "project-configuration:aurora", collapsed: false,
+      root: { left: 0, top: 0, right: 1440, bottom: 800, width: 1440, height: 800 },
+      navigator: { left: 0, top: 60, right: 288, bottom: 800, width: 288, height: 740 },
+      task: { left: 300, top: 60, right: 1440, bottom: 800, width: 1140, height: 740 },
+      toolbar: { left: 0, top: 0, right: 1440, bottom: 50, width: 1440, height: 50 },
+      primaryAction: { left: 1327, top: 12, right: 1427, bottom: 40, width: 100, height: 28 },
+      inspector: { left: 1120, top: 60, right: 1440, bottom: 800, width: 320, height: 740 },
+      inspectorOverlay: true, noticeCount: 0,
+      navigatorCounts: [{ text: "2 个配置集", textRect: { left: 12, right: 80, width: 68 },
+        clip: { left: 0, right: 288 }, clientWidth: 80, scrollWidth: 80 }], firstRow, firstRowClip: firstRow,
+      viewport: { width: 1440, height: 900 }, pageOverflow: 0,
+      contract: { navigatorWidth: 288, collapsedWidth: 40, gap: 12, toolbarPadding: 12, inspectorWidth: 320 }
+    };
+    expect(() => requireNavigatorWorkbenchGeometry([workbench], "/parameter-admin/projects/aurora/configuration")).not.toThrow();
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, firstRow: null }], "/configuration")).toThrow(/first row/);
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, inspector: null }], "/configuration?inspector=file"))
+      .toThrow(/inspector/);
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench,
+      inspector: { ...workbench.inspector, width: 360 } }], "/configuration")).toThrow(/inspector/);
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, inspectorOverlay: false,
+      task: { ...workbench.task, right: 1108, width: 808 } }], "/configuration")).not.toThrow();
+  });
+});
 import { installConsistencyReadGuard } from "../e2e/quality/consistency";
 
 describe("typography scale contract", () => {
@@ -269,6 +356,23 @@ describe("unified review inbox structure", () => {
 });
 
 describe("view-switch collection", () => {
+  it("requires the shared navigator geometry on logs", () => {
+    expect(consistencyRoutes.find((route) => route.path === "/logs")?.required).toContain("navigatorWorkbenches");
+  });
+
+  it.each(["Complete", "Processing", "Failed"])("measures the first %s log report section and history status", (status) => {
+    const measurements = collectMarkup(`
+      <div class="navigator-workbench" data-workbench-page="logs">
+        <div class="navigator-workbench__navigation"><span class="logs-history-status">${status} · 88%</span></div>
+        <section class="navigator-workbench__task">
+          <section class="${status === "Failed" ? "log-error-alert" : "logs-conclusion-card"}">Report</section>
+        </section>
+      </div>
+    `);
+    expect(measurements.navigatorWorkbenches[0].firstRow).not.toBeNull();
+    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual([`${status} · 88%`]);
+  });
+
   it.each(["未检测", "可调试", "不支持的值类型"])("measures row actions and explicit status %s without accepting missing evidence", (status) => {
     const markup = `<table><tbody><tr><td><span data-row-status>${status}</span></td>
       <td data-label="操作"><button disabled>编辑</button></td></tr></tbody></table>`;

@@ -2476,22 +2476,26 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
       await dismissXiaozeHint(page);
 
-      const redirects: Array<{ from: string; expectQuery: RegExp }> = [
+      const redirects: Array<{ from: string; expectQuery: RegExp; contentTab: string }> = [
         {
           from: `/parameter-admin/projects/${projectId}/files?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`,
-          expectQuery: /inspector=file/
+          expectQuery: /inspector=file/,
+          contentTab: "源码"
         },
         {
           from: `/parameter-admin/projects/${projectId}/config-sets?configSet=${encodeURIComponent(configSetId)}`,
-          expectQuery: /inspector=config-set/
+          expectQuery: /inspector=config-set/,
+          contentTab: "源码"
         },
         {
           from: `/parameter-admin/projects/${projectId}/structure?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}&node=chosen`,
-          expectQuery: /sourceMode=working/
+          expectQuery: /sourceMode=working/,
+          contentTab: "结构"
         },
         {
           from: `/parameter-admin/projects/${projectId}/conflicts?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`,
-          expectQuery: /tasks=conflicts/
+          expectQuery: /tasks=conflicts/,
+          contentTab: "冲突"
         }
       ];
 
@@ -2503,6 +2507,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         );
         await expect(page).toHaveURL(item.expectQuery);
         await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole("tab", { name: item.contentTab, exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByRole("tabpanel", { name: item.contentTab, exact: true })).toBeVisible();
+        await expect(page.getByRole("region", { name: "文件与配置集", exact: true })).toBeVisible();
         await expect(page.getByRole("navigation", { name: "项目运营视图" })).toHaveCount(0);
       }
 

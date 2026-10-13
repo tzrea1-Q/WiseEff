@@ -22,6 +22,7 @@ export type WorkbenchTaskDockProps = {
   canonicalSyncCheck: boolean;
   exportEvidence: string;
   syncConflicts: ParameterFileSyncConflict[];
+  autoLocateConflicts?: boolean;
   releaseReadiness: DtsReleaseReadiness | null;
   draftRecoveryStatus: StructuredEditRecoveryStatus;
   draftCopyFallbackRef: RefObject<HTMLTextAreaElement | null>;
@@ -62,6 +63,7 @@ export function WorkbenchTaskDock({
   canonicalSyncCheck,
   exportEvidence,
   syncConflicts,
+  autoLocateConflicts = true,
   releaseReadiness,
   draftRecoveryStatus,
   draftCopyFallbackRef,
@@ -232,6 +234,7 @@ export function WorkbenchTaskDock({
               projectId={projectId}
               repository={fileRepository}
               conflicts={syncConflicts}
+              autoLocate={autoLocateConflicts}
               sourceWorkflowByFileId={sourceWorkflowByFileId}
               sourceWorkflowLoading={sourceWorkflowLoading}
               onConflictsChange={onConflictsChange}
