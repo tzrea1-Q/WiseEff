@@ -32,6 +32,7 @@ The app UI is Chinese-first, so locate pages by their route; the Chinese guide g
 - [Log analysis](log-analysis.md): upload logs, follow stages, distinguish degraded results, inspect evidence, give feedback, and create knowledge drafts.
 - [Knowledge](knowledge.md): search and ask Xiaoze, create and publish entries, upload files, manage revisions and archives, and check index health.
 - [Xiaoze](xiaoze.md): ask grounded questions, inspect sources, edit proposals, and approve or reject Agent actions.
+- [Organization administration and governance](organization-and-governance.md): manage members and Committer approvals, investigate audits, maintain business modules, and send product feedback.
 
 ## Find the right reference
 

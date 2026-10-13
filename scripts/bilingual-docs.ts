@@ -107,5 +107,6 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/user-guide/device-debugging.md", zh: "docs/zh-CN/user-guide/device-debugging.md", tier: "user-guide", status: "required" },
   { en: "docs/user-guide/log-analysis.md", zh: "docs/zh-CN/user-guide/log-analysis.md", tier: "user-guide", status: "required" },
   { en: "docs/user-guide/knowledge.md", zh: "docs/zh-CN/user-guide/knowledge.md", tier: "user-guide", status: "required" },
-  { en: "docs/user-guide/xiaoze.md", zh: "docs/zh-CN/user-guide/xiaoze.md", tier: "user-guide", status: "required" }
+  { en: "docs/user-guide/xiaoze.md", zh: "docs/zh-CN/user-guide/xiaoze.md", tier: "user-guide", status: "required" },
+  { en: "docs/user-guide/organization-and-governance.md", zh: "docs/zh-CN/user-guide/organization-and-governance.md", tier: "user-guide", status: "required" }
 ];
