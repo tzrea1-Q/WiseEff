@@ -222,11 +222,14 @@ export function collectConsistencyMeasurements() {
       return width;
     };
     const projectWorkbench = workbench.getAttribute("data-workbench-page")?.startsWith("project-configuration:");
-    const firstRow = [...workbench.querySelectorAll(projectWorkbench
-      ? '.navigator-workbench__task .configuration-workbench__source-head, .navigator-workbench__task .configuration-workbench__source-state, .navigator-workbench__task [role="treeitem"], .navigator-workbench__task .configuration-workbench__task-toggle, .navigator-workbench__task .section-empty, .navigator-workbench__task .section-error'
-      : '.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item, .navigator-workbench__task .logs-conclusion-card, .navigator-workbench__task .log-error-alert, .navigator-workbench__task [data-canonical-subject-id], .navigator-workbench__task .canonical-driver-discovery__item')].find(visible)
+    const taskScope = workbench.querySelector(".navigator-workbench__task") ?? workbench;
+    const rowScope = workbench.getAttribute("data-workbench-page") === "module-governance"
+      ? taskScope.querySelector('[data-module-governance-task="active"]') ?? taskScope : taskScope;
+    const firstRow = [...rowScope.querySelectorAll(projectWorkbench
+      ? '.configuration-workbench__source-head, .configuration-workbench__source-state, [role="treeitem"], .configuration-workbench__task-toggle, .section-empty, .section-error'
+      : 'tbody tr, [role="row"]:has([role="cell"]), .identity-mapping-review__item, .logs-conclusion-card, .log-error-alert, [data-canonical-subject-id], .canonical-driver-discovery__item')].find(visible)
       ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
-        ? [...workbench.querySelectorAll('.navigator-workbench__task [role="status"], .navigator-workbench__task [role="alert"]')].find(visible) : undefined);
+        ? [...rowScope.querySelectorAll('[role="status"], [role="alert"]')].find(visible) : undefined);
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
