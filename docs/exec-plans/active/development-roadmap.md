@@ -10,6 +10,7 @@ M0-M5 productization foundations and substantial M6 self-hosted implementation h
 
 Delivered capabilities on this branch include:
 
+- **User Guide and Platform Overview (#1143):** this change delivers the bilingual task guides and platform map, with product-user and newcomer entry points. Delivery on this branch does not imply merge or production readiness.
 - **Canonical parameter Catalog:** publication, release building, and canonical parameter integration across workbench, debugging, knowledge, logs, and Xiaoze. The [authoring and publication design](../../design-docs/catalog-authoring-and-publication-control-plane.md) owns the model; merged code does not by itself establish production cutover readiness.
 - **Knowledge base:** search, entry publication, and canonical Definition references, with [knowledge design](../../design-docs/2026-08-12-knowledge-base-design.md) as the topic owner.
 - **Agentic log analysis:** the multi-step kernel, domain/tool context, evaluation harness, and explicitly labeled rules fallback. The [active analysis plan](2026-08-12-agent-log-analysis-system.md) records implementation as complete; real expert-annotated cases, a second pilot domain, and human judge calibration remain external inputs.
@@ -49,7 +50,7 @@ This is a dated priority snapshot, not a delivery schedule. Active-plan placemen
 - **Close trusted-provenance gaps:** TD-068 has landed trusted-context propagation in DTS reload and parameter paths, but [#615](https://github.com/tzrea1-Q/WiseEff/issues/615) and its `ready-for-agent` closure slices still own legacy-label contraction and unified evidence under #609. The [trusted-invocation plan](2026-08-24-td-068-trusted-invocation-context-seam.md) and tracker must not be read as proof of end-to-end closure. TD-123 debugging audit provenance remains separate and open.
 - **Collect target and domain evidence:** follow the active [non-HDC target-evidence plan](2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md), M6 identity/storage/queue/observability/release plans, and the log-analysis plan's external-input requirements. TD-007 still needs target Redis evidence and capacity tuning; do not infer full-pilot acceptance from repository checks.
 - **Keep the self-hosted path operable:** the [IP lab profile](2026-08-18-self-hosted-ip-lab-profile.md), [setup wizard](2026-08-18-self-hosted-setup-wizard.md), and [upgrade plan](2026-08-20-self-hosted-one-command-upgrade.md) own setup, recovery, and remaining verification. Their older branch/run notes are historical context, not a current host-health claim. The [CI feedback-loop plan](../completed/2026-08-18-ci-feedback-loop-optimization.md) is completed (#523–#525).
-- **Improve user/developer entry points and remaining contracts:** open `ready-for-agent` documentation tickets under [#1143](https://github.com/tzrea1-Q/WiseEff/issues/1143) cover the bilingual User Guide and Platform Overview; TD-003 still tracks handwritten-client contract coverage. These are follow-ups, not new production-readiness claims.
+- **Close remaining contracts:** TD-003 still tracks handwritten-client contract coverage. This follow-up is not a new production-readiness claim.
 
 Do not move an active plan to completed until its Documentation Update Gate and verification commands pass. No completion dates are promised here.
 

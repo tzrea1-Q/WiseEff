@@ -23,7 +23,7 @@
 
 ## 审批 MDE 注册申请
 
-具有 `users:manage` 权限的管理员进入「组织管理」（`/organization`），再打开「人员管理」（`/organization/members`）。在「角色申请」中核对申请人及目标角色，确认合适后选择「通过」。账号随即激活，申请角色生效。提交 MDE 注册申请本身不代表已获授权。
+具有 `users:manage` 权限的管理员使用「注册申请」队列。审批步骤和组织范围见[组织管理指南中的审批 MDE 注册申请](organization-and-governance.md#审批-mde-注册申请)。提交 MDE 注册申请本身不代表已获授权。
 
 ## 没有管理员时寻求帮助
 

@@ -47,11 +47,11 @@ Current software-configuration requests use software review, not an automatic ha
 
 Node-enablement requests still use the staged workflow. Retained older records can also show these stages, but an archived read-only record is not an actionable current request.
 
-| Stage | Who acts | What to check |
-| --- | --- | --- |
-| Hardware review | Project hardware committer, or Organization Admin | Hardware conditions, configured values, safety/risk implications, and the submitter's evidence. |
-| Software review | Project software committer, or Organization Admin | Implementation/configuration impact, source consistency, and the earlier review. |
-| Software merge | Authorized project software user or software committer, or Organization Admin | Completed review requirements and a valid HTTP(S) merge link. Merge is a per-request action. |
+- For hardware review, check hardware conditions, configured values, safety/risk implications, and the submitter's evidence.
+- For software review, check implementation/configuration impact, source consistency, and the earlier review.
+- For software merge, check completed review requirements and supply a valid HTTP(S) merge link. Merge is a per-request action.
+
+For review and merge eligibility, see the maintained [User Permission Design](../security/user-permission-design.md).
 
 The staged submission selects hardware-review, software-review, and software-merge assignees. Each discipline acts only at its permitted stage. High-risk staged changes require hardware and software review evidence before merge. UI availability alone is not authorization: the server rechecks active roles and project scope.
 

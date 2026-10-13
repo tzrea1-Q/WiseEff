@@ -23,7 +23,7 @@ Ask your Organization Admin to review the request. Once approved, return to Sign
 
 ## Approve a Committer request
 
-As an Admin with `users:manage`, open Organization management (`/organization`), then People management (`/organization/members`). In Role requests, check the applicant and requested role, then choose Approve for an appropriate request. The account becomes active and the requested role takes effect. Registration as a Committer is not itself approval.
+Admins with `users:manage` use the Registration requests queue. Follow [Decide a Committer registration request](organization-and-governance.md#decide-a-committer-registration-request) for the approval procedure and Organization scope. Registration as a Committer is not itself approval.
 
 ## Get help when there is no Admin
 

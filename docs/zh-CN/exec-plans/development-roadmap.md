@@ -10,6 +10,7 @@ M0–M5 的产品化基础和 M6 的大量自托管实现已合并。当前仓�
 
 当前分支已交付的能力包括：
 
+- **用户指南与平台概览（#1143）：** 本次变更交付了双语操作指南和平台导览，并接入产品用户及新读者的阅读入口。在当前分支交付，不代表已合并或已达到生产就绪。
 - **规范参数 Catalog：** 发布、Release 构建，以及工作台、调试、知识库、日志和小泽的规范参数接入。模型以[创作与发布设计](../design-docs/catalog-authoring-and-publication-control-plane.md)为准；代码合并不代表已具备生产切换条件。
 - **知识库：** 检索、条目发布及规范 Definition 引用，主题说明见[知识库设计](../design-docs/2026-08-12-knowledge-base-design.md)。
 - **Agent 日志分析：** 多步分析内核、业务域与工具上下文、评估框架，以及明确标注来源的规则降级。[日志分析计划](active/2026-08-12-agent-log-analysis-system.md)已记录实现完成；真实专家标注案例、第二个试点业务域和人工评审校准仍需外部输入。
@@ -28,7 +29,7 @@ M0–M5 的产品化基础和 M6 的大量自托管实现已合并。当前仓�
 - **收口可信执行来源：** DTS 重载和参数路径已接入 TD-068 的可信上下文，但 #609 下的 [#615](https://github.com/tzrea1-Q/WiseEff/issues/615) 及其 `ready-for-agent` 子票仍负责旧来源标签收缩和统一证据验收。[可信调用上下文计划](active/2026-08-24-td-068-trusted-invocation-context-seam.md)和跟踪表中的历史描述不能当作端到端关闭的证明。TD-123 的调试审计来源问题独立保留，仍未关闭。
 - **补齐目标环境和业务域证据：** 按[非 HDC 目标证据计划（英文）](../../exec-plans/active/2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md)、M6 身份/存储/队列/可观测性/发布计划，以及日志分析计划的外部输入要求推进。TD-007 仍需目标 Redis 证据和容量调优；仓库检查不能证明完整试点验收通过。
 - **维护自托管操作路径：** [IP 实验室 profile](active/2026-08-18-self-hosted-ip-lab-profile.md)、[配置向导](active/2026-08-18-self-hosted-setup-wizard.md)和[升级计划](active/2026-08-20-self-hosted-one-command-upgrade.md)分别维护部署、恢复及剩余验证要求。其中旧分支和运行记录只是历史背景，不是当前主机健康声明。[CI 反馈环计划](completed/2026-08-18-ci-feedback-loop-optimization.md)已完成（#523–#525）。
-- **完善用户/开发者入口和剩余合同：** [#1143](https://github.com/tzrea1-Q/WiseEff/issues/1143) 下仍开放的 `ready-for-agent` 文档票负责双语用户指南和平台概览；TD-003 继续跟踪手写客户端的合同覆盖缺口。这些后续工作不构成新的生产就绪声明。
+- **补齐剩余合同：** TD-003 继续跟踪手写客户端的合同覆盖缺口。这项后续工作不构成新的生产就绪声明。
 
 只有计划自身的 Documentation Update Gate 和验证命令满足要求后，才能移入 completed。本路线图不承诺完成日期。
 
