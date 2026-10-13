@@ -4,6 +4,14 @@
   min-width: 0;
 }
 
+.logs-v2 .navigator-workbench__navigator .history-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .logs-v2-main {
   display: grid;
   gap: var(--space-4);

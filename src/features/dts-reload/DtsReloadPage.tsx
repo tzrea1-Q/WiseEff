@@ -752,6 +752,7 @@ export function DtsReloadPage({
                 </Button>}
           context={<>
         <LocalDeviceBridgePanel
+          compact
           target={connectedBridgeId ? targetRef.trim() || undefined : undefined}
           detecting={detectingTargets}
           protocol={protocol}

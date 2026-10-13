@@ -60,6 +60,7 @@ export function deriveNaturalWizardStep(panelStatus: BridgePanelStatus): WizardV
 }
 
 type LocalDeviceBridgeWizardProps = {
+  compact?: boolean;
   panelStatus: BridgePanelStatus;
   pairingStale?: boolean;
   pairingAuthFailure?: boolean;
@@ -184,6 +185,7 @@ function WizardStepItem({
 }
 
 export function LocalDeviceBridgeWizard({
+  compact = false,
   panelStatus,
   pairingStale = false,
   pairingAuthFailure = false,
@@ -612,7 +614,7 @@ export function LocalDeviceBridgeWizard({
     </>
   );
 
-  const showInlineGuide = bridgeListLoaded && !inlineGuideDismissed && !guideOpen &&
+  const showInlineGuide = !compact && bridgeListLoaded && !inlineGuideDismissed && !guideOpen &&
     !isBridgeOnlinePanelStatus(panelStatus) && !bridges.some((bridge) => !bridge.revokedAt);
   const closeGuide = () => {
     setGuideOpen(false);
@@ -642,6 +644,9 @@ export function LocalDeviceBridgeWizard({
         )}
         {!guideOpen && !isBridgeOnlinePanelStatus(panelStatus) ? connectButton : null}
         <button type="button" className="button subtle" onClick={openInstallStep}>安装指南</button>
+        {compact && upgradeNotice ? (
+          <span className="local-device-bridge-panel__readiness-hint">{BRIDGE_UPGRADE_NOTICE_TITLE} · 请打开安装指南更新</span>
+        ) : null}
         {pairingStale || pairingAuthFailure || panelStatus === "bridge_blocked" ? (
           <p className="local-device-bridge-panel__readiness-hint">{statusHint}</p>
         ) : null}
@@ -656,7 +661,7 @@ export function LocalDeviceBridgeWizard({
           </div>
         ) : null}
       </div>
-      {!showInlineGuide && !guideOpen ? upgradeNotice : null}
+      {!compact && !showInlineGuide && !guideOpen ? upgradeNotice : null}
       {showInlineGuide ? (
         <section className="local-device-bridge-panel__guide" aria-label="安装与连接本地 Bridge">
           <button type="button" className="button subtle" onClick={() => setInlineGuideDismissed(true)}>收起安装指南</button>

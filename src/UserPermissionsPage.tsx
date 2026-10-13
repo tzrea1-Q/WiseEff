@@ -9,7 +9,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { filterItems } from "@/lib/search";
 import { userAccountSearchProfile } from "@/lib/search/profiles";
 import type { Column } from "@/components/admin";
-import { AdminListPage } from "@/components/layout/AdminListPage";
+import { AdminListPage, AdminListPageHeader } from "@/components/layout/AdminListPage";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { ViewSwitch } from "@/components/ui/view-switch";
@@ -652,8 +652,8 @@ export function UserPermissionsPage({
 
   return (
     <section className="user-permissions-page" aria-label="用户权限">
-      <div className="user-permissions-toolbar">
-        {approvalWorkflowEnabled ? (
+      <AdminListPageHeader label="平台用户" className="user-permissions-toolbar" content={
+        approvalWorkflowEnabled ? (
           <ViewSwitch
             variant="tabs"
             ariaLabel="用户权限工作区"
@@ -674,12 +674,9 @@ export function UserPermissionsPage({
             <span className="eyebrow">用户治理</span>
             <h2>账号库</h2>
           </div>
-        )}
-
-        {workspace === "approvals" ? <button className="button primary" type="button" onClick={() => setAddUserOpen(true)}>
+        )} actions={<button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
           <UserPlus size={16} aria-hidden="true" /><span>添加用户</span>
-        </button> : null}
-      </div>
+        </button>} />
 
       {approvalWorkflowEnabled && workspace === "accounts" && pendingApprovalCount > 0 ? (
         <p className="user-permissions-pending-hint">
@@ -698,17 +695,14 @@ export function UserPermissionsPage({
             id="user-permissions-workspace-accounts-panel"
             aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
           >
-            <AdminListPage label="平台用户" headerActions={<button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
-          <UserPlus size={16} aria-hidden="true" />
-          <span>添加用户</span>
-        </button>}
+            <AdminListPage label="平台用户" headerActions={null}
               filterBar={
                       <div className="user-permissions-filters" role="search" aria-label="用户筛选">
-                  <label className="user-permissions-filter-field user-permissions-filter-field--search">
+                  <label className="admin-list-page__filter-field user-permissions-filter-field user-permissions-filter-field--search">
                     <span className="user-permissions-filter-label">搜索</span>
                     <SearchField value={query} onValueChange={setQuery} placeholder="搜索用户" ariaLabel="搜索用户" />
                   </label>
-                  <label className="user-permissions-filter-field">
+                  <label className="admin-list-page__filter-field user-permissions-filter-field">
                     <span className="user-permissions-filter-label">角色</span>
                     <select className="compact-filter-control" data-compact-control="filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
                       <option value="all">全部角色</option>
@@ -719,7 +713,7 @@ export function UserPermissionsPage({
                       ))}
                     </select>
                   </label>
-                  <label className="user-permissions-filter-field">
+                  <label className="admin-list-page__filter-field user-permissions-filter-field">
                     <span className="user-permissions-filter-label">状态</span>
                     <select className="compact-filter-control" data-compact-control="filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
                       {statusOptions.map((option) => (

@@ -1254,7 +1254,10 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
-    const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
+    expect(screen.queryByRole("link", { name: "安装 Bridge（Windows）" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "安装指南" }));
+    const guide = screen.getByRole("dialog", { name: "安装与连接本地 Bridge" });
+    const downloadLink = await within(guide).findByRole("link", { name: "安装 Bridge（Windows）" });
     expect(downloadLink).toHaveAttribute(
       "href",
       `${expectedBridgeDownloadBase}/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe`

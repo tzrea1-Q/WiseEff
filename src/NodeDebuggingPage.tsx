@@ -529,6 +529,7 @@ export function NodeDebuggingPage({
           </Button>}
           context={<>
         <LocalDeviceBridgePanel
+          compact
           target={target}
           detecting={detecting}
           protocol={protocol}

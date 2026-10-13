@@ -1562,14 +1562,14 @@ export function ProjectConfigurationWorkbench({
         tabId={`project-configuration-${contentTab}-tab`}
         inspectorLabel="检查器面板"
         inspectorOverlay={!inspectorPersistent}
+        toolbar={<div className="configuration-workbench__toolbar-content">
+          <WorkbenchCommandBar
         primaryAction={<Button type="button" size="sm"
           disabled={uploadingCandidate || !selectedConfigSet || !canAdmin}
           title="上传创建候选文件版本，不会激活工作配置"
           onClick={() => candidateFileInputRef.current?.click()}>
           {uploadingCandidate ? "上传中…" : "上传候选"}
         </Button>}
-        toolbar={<div className="configuration-workbench__toolbar-content">
-          <WorkbenchCommandBar
         project={project}
         onLeave={handleLeaveWorkbench}
         configSets={configSets}

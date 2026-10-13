@@ -95,8 +95,13 @@
 
 .parameter-home p.parameter-home__section-empty {
   color: var(--ph-text-muted);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
   margin: 0;
+}
+
+.parameter-home .overview-page__tiles + .parameter-home__section-empty {
+  margin-top: var(--space-3);
 }
 
 .parameter-home__panel {

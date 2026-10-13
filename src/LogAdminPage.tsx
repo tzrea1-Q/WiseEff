@@ -723,7 +723,8 @@ function LogDomainGovernanceSection({
         <>
           <AdminListPage label="业务域治理"
             headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending}>新建业务域</Button>}
-            filterBar={<p className="text-xs text-muted-foreground">注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
+            headerContent={<p>注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
+            filterBar={null}
             table={{ "aria-label": "业务域列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50 }}
             rowActions={(domain) => ({ label: domain.name,
               primaryAction: { id: "edit", label: "编辑", disabled: pending, onSelect: () => openEditForm(domain) },
@@ -963,7 +964,8 @@ function FeedbackQualityInsightsSection({
       ) : (
         <AdminListPage label="分析质量"
           headerActions={<Button size="sm" disabled={loading} onClick={() => setRefreshCount((count) => count + 1)}>刷新反馈</Button>}
-          filterBar={<p className="text-xs text-muted-foreground">按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
+          headerContent={<p>按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
+          filterBar={null}
           table={{ "aria-label": "分析质量反馈聚合", rows, rowKey: feedbackInsightRowKey, columns, pageSize: 6 }}
           emptyState={{ message: loading ? "正在加载反馈数据…" : "暂无反馈", actionLabel: "刷新", onAction: () => setRefreshCount((count) => count + 1) }} />
       )}
@@ -1289,9 +1291,9 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         {collection === "records" ? (
           <AdminListPage label="日志分析记录"
             headerActions={<Button size="sm" onClick={() => void handleSync()} disabled={syncPending} aria-busy={syncPending || undefined}>刷新记录</Button>}
+            headerContent={<ViewSwitch variant="toggle" ariaLabel="日志视图切换" value={logView} onValueChange={(value) => setLogView(value as "active" | "archived")}
+              items={[{ value: "active", label: "活跃日志" }, { value: "archived", label: archivedLogs.length > 0 ? `已归档（${archivedLogs.length}）` : "已归档" }]} />}
             filterBar={<>
-              <ViewSwitch variant="toggle" ariaLabel="日志视图切换" value={logView} onValueChange={(value) => setLogView(value as "active" | "archived")}
-                items={[{ value: "active", label: "活跃日志" }, { value: "archived", label: archivedLogs.length > 0 ? `已归档（${archivedLogs.length}）` : "已归档" }]} />
               <div className="flex flex-wrap items-center gap-2">
                 <SearchField
                   value={tableQuery}

@@ -329,6 +329,18 @@ describe("quality runtime reset wiring", () => {
     expect(baseSeedLifecycle).not.toContain('"seed:quality:visual-review"');
   });
 
+  it("populates CI admin lists before skipping runtime seeding", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    const qualityJob = workflow.slice(
+      workflow.indexOf("  acceptance-quality:"),
+      workflow.indexOf("  acceptance-smoke:"),
+    );
+
+    expect(qualityJob).toMatch(
+      /npm run db:seed:all\s+npm run seed:quality:admin-lists\s+echo "WISEEFF_QUALITY_SKIP_SEED=true"/,
+    );
+  });
+
   it("installs and removes the visual review fixture even when base seeding is skipped", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
     const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");

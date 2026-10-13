@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Activity, ChevronLeft, PanelRight } from "lucide-react";
 
 import type {
@@ -15,6 +15,7 @@ import {
 } from "./WorkbenchReleaseReadiness";
 
 export type WorkbenchCommandBarProps = {
+  primaryAction?: ReactNode;
   project: {
     id: string;
     name: string;
@@ -56,6 +57,7 @@ export type WorkbenchCommandBarProps = {
 };
 
 export function WorkbenchCommandBar({
+  primaryAction,
   project,
   onLeave,
   configSets,
@@ -228,6 +230,7 @@ export function WorkbenchCommandBar({
           </div>
         </div>
         <div className="configuration-workbench__unavailable-actions" aria-label="后续阶段操作">
+          {primaryAction}
           {canAdmin ? (
             <WorkbenchReleaseReadinessSummary
               readiness={releaseReadiness}

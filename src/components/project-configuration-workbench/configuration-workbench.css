@@ -81,6 +81,12 @@
   text-overflow: ellipsis;
 }
 
+.configuration-workbench__selection-row [data-row-action-status] {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
 .configuration-workbench .navigator-workbench__body:has(> .navigator-workbench__inspector[data-overlay="true"]) .configuration-workbench__selection-row {
   margin-right: var(--navigator-workbench-inspector-width);
 }
@@ -158,6 +164,7 @@
 
 .configuration-workbench__command {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;

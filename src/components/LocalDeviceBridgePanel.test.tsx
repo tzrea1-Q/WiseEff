@@ -63,9 +63,10 @@ function stubPairingPost(result: () => Promise<Response>) {
   return pairingFetch;
 }
 
-function renderPanel() {
+function renderPanel(compact = false) {
   return render(
     <LocalDeviceBridgePanel
+      compact={compact}
       detecting={false}
       protocol="hdc"
       onDetect={() => undefined}
@@ -75,6 +76,24 @@ function renderPanel() {
     />
   );
 }
+
+it("keeps first-time workbench setup in the install dialog, not the context bar", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  renderPanel(true);
+  expect(await screen.findByText("本地 Bridge 未运行")).toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+  expect(screen.queryByText("123456", { selector: "code" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "连接本机", exact: true })).toBeEnabled();
+  const trigger = screen.getByRole("button", { name: "安装指南" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "安装与连接本地 Bridge" });
+  expect(within(dialog).getByRole("list", { name: "Bridge 连接步骤" })).toBeInTheDocument();
+  expect(await within(dialog).findByText("123456", { selector: "code" })).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});
 
 it("keeps returning users on a compact readiness bar using any unrevoked server record", async () => {
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);

@@ -357,7 +357,8 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
         {collection === "drafts" ? (
           <AdminListPage label="Agent 草稿发布队列"
             headerActions={<Button size="sm" onClick={() => void loadAgentDrafts()} disabled={agentDraftsLoading} aria-busy={agentDraftsLoading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>}
-            filterBar={<p className="text-xs text-muted-foreground">小泽经审批创建的知识草稿在此审阅:knowledge:edit 可发布本人会话沉淀的草稿,knowledge:manage 可发布任意草稿;拒绝会将草稿归档。</p>}
+            headerContent={<p>小泽经审批创建的知识草稿在此审阅:knowledge:edit 可发布本人会话沉淀的草稿,knowledge:manage 可发布任意草稿;拒绝会将草稿归档。</p>}
+            filterBar={null}
             notice={agentDraftError ? <p role="alert" className="text-destructive">{agentDraftError}</p> : null}
             table={{ "aria-label": "Agent 知识草稿队列", rows: agentDrafts, rowKey: (entry) => entry.id, columns: agentDraftColumns, pageSize: 10 }}
             rowActions={(entry) => ({
@@ -378,10 +379,11 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
               <Button variant="outline" size="sm" onClick={() => void rebuildIndex()} disabled={rebuildPending || indexLoading} aria-busy={rebuildPending || undefined}><DatabaseZap data-icon="inline-start" />全量重建索引</Button>
               <Button size="sm" onClick={() => void loadIndexHealth()} disabled={indexLoading} aria-busy={indexLoading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>
             </>}
-            filterBar={indexHealth ? <p data-retrieval-mode={indexHealth.retrieval.mode} aria-label="检索模式" className="text-sm text-foreground">
+            headerContent={indexHealth ? <p data-retrieval-mode={indexHealth.retrieval.mode} aria-label="检索模式" className="text-sm text-foreground">
               当前检索模式:<strong>{knowledgeRetrievalModeLabels[indexHealth.retrieval.mode]}</strong>
               <span className="ml-2 text-xs text-muted-foreground">pgvector {indexHealth.retrieval.vectorAvailable ? "可用" : "不可用"} · 嵌入端点{indexHealth.retrieval.embeddingConfigured ? "已配置" : "未配置"}{indexHealth.retrieval.mode === "fts_only" ? " —— 语义检索降级,知识库保持全文检索可用。" : ""}</span>
             </p> : <span className="text-sm text-muted-foreground">检索索引状态</span>}
+            filterBar={null}
             notice={<>{indexError ? <p role="alert" className="text-destructive">{indexError}</p> : null}{rebuildNotice ? <p role="status">{rebuildNotice}</p> : null}</>}
             table={{ "aria-label": "知识索引状态", rows: indexHealth?.items ?? [], rowKey: (item) => item.entryId, columns: indexColumns, pageSize: 10 }}
             rowActions={(item) => ({ label: item.title, primaryAction: { id: "retry", label: "重试", disabled: indexActionPendingId !== null, onSelect: () => retryIndex(item) }, items: [] })}
@@ -389,7 +391,8 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
         ) : (
           <AdminListPage label="已归档条目管理"
             headerActions={<Button size="sm" onClick={() => void loadArchived()} disabled={loading} aria-busy={loading || undefined}><RefreshCw data-icon="inline-start" />刷新</Button>}
-            filterBar={<span className="text-sm text-muted-foreground">已归档 {archivedCount} 条</span>}
+            headerContent={<span>已归档 {archivedCount} 条</span>}
+            filterBar={null}
             notice={<>{errorMessage ? <p role="alert" className="text-destructive">{errorMessage}</p> : null}{!canManage ? <p>当前账号没有知识治理权限;彻底删除等治理操作需要知识管理员执行。</p> : null}</>}
             table={{ "aria-label": "已归档知识条目", rows, rowKey: (entry) => entry.id, columns, pageSize: 10 }}
             rowActions={(entry) => ({ label: entry.title,

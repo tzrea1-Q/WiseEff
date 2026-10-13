@@ -187,7 +187,7 @@ describe("UserPermissionsPage", () => {
     render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
 
     expect(document.querySelector(".user-permissions-page")).toBeInTheDocument();
-    expect(document.querySelector(".user-permissions-toolbar")).toBeInTheDocument();
+    expect(document.querySelector(".user-permissions-toolbar")).toContainElement(screen.getByRole("button", { name: "添加用户" }));
     expect(document.querySelector(".user-permissions-grid")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
   });

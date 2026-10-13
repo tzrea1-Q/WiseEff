@@ -440,6 +440,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await user.click(screen.getByRole("menuitem", { name: "配置集详情" }));
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("成员管理");
     expect(screen.getByRole("button", { name: "上传候选", exact: true })).toBeDisabled();
+    expect(within(screen.getByLabelText("配置命令栏")).getByRole("button", { name: "上传候选", exact: true })).toBeDisabled();
   });
 
   it("places config sets and files in the shared collapsible navigator", async () => {

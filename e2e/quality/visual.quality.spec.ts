@@ -196,7 +196,9 @@ test.describe("M5.11 interaction-state visual gate", () => {
     const addUser = page.getByRole("button", { name: "添加用户" });
     await addUser.hover();
 
-    await expect(page.locator(".user-permissions-toolbar")).toHaveScreenshot("state-button-primary-hover.png", {
+    const toolbar = page.locator(".user-permissions-toolbar");
+    await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeVisible();
+    await expect(toolbar).toHaveScreenshot("state-button-primary-hover.png", {
       mask: stableMasks(page)
     });
   });
@@ -208,7 +210,9 @@ test.describe("M5.11 interaction-state visual gate", () => {
     const addUser = page.getByRole("button", { name: "添加用户" });
     await focusViaKeyboard(page, addUser);
 
-    await expect(page.locator(".user-permissions-toolbar")).toHaveScreenshot("state-button-primary-focus-visible.png", {
+    const toolbar = page.locator(".user-permissions-toolbar");
+    await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeFocused();
+    await expect(toolbar).toHaveScreenshot("state-button-primary-focus-visible.png", {
       mask: stableMasks(page)
     });
   });

@@ -3392,7 +3392,7 @@ tbody tr {
 
 tbody tr:hover,
 .selected-row {
-  background: #f4f7ff;
+  background: var(--surface-muted);
 }
 
 td strong {

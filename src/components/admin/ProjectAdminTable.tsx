@@ -187,7 +187,7 @@ export function ProjectAdminTable({
       label="项目清单"
       detailDrawer={detailDrawer}
       headerActions={<Button type="button" onClick={onCreateProject}>新建项目</Button>}
-      notice={<>
+      headerContent={<>
         <p>维护项目基础信息与初始化状态；冲突与基线列标出需要治理关注的项目。</p>
         {rows.some((row) => row.canonicalOwned) ?
           <p id="canonical-project-retention-policy">项目需保留规范历史，不能删除；归档或处置功能尚未开放。</p> : null}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
-import { AdminListPage } from "./AdminListPage";
+import { AdminListPage, AdminListPageHeader } from "./AdminListPage";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { AuditWorkspace } from "@/components/admin/AuditWorkspace";
 import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
@@ -13,8 +13,38 @@ import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowled
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
 import { requireRowActionVisibility } from "../../../e2e/quality/consistency-assertions";
+import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 
 describe("AdminListPage", () => {
+  it("pins the CI header row and compact search/select height regression", () => {
+    const css = readStylesheet("src/components/layout/admin-list-page.css");
+    const header = declarationsFor(css, ".admin-list-page__header");
+    expect(header.display).toBe("grid");
+    expect(header["grid-template-columns"]).toBe("minmax(0, 1fr) auto");
+    expect(declarationsFor(css, ".user-permissions-toolbar.admin-list-page__header").display).toBe("grid");
+    const search = declarationsFor(css, ".admin-list-page__filters .admin-list-page__filter-field .search-field");
+    expect(search.height).toBe(declarationsFor(readStylesheet("src/styles.css"), ".compact-filter-control").height);
+    const input = declarationsFor(css, ".admin-list-page__filters .admin-list-page__filter-field .search-field__input");
+    expect(input["min-height"]).toBe("0");
+    expect(input.border).toBe("0");
+  });
+  it("keeps header context and actions together without duplicating an external tab toolbar", () => {
+    render(<>
+      <AdminListPageHeader label="用户" content={<button>账号库</button>} actions={<button>添加用户</button>} />
+      <AdminListPage label="用户" headerActions={null} filterBar={null}
+        table={{ rows: [], rowKey: (row: { id: string }) => row.id, columns: [] }}
+        emptyState={{ message: "暂无用户", actionLabel: "刷新", onAction: vi.fn() }} />
+      <AdminListPage label="项目" headerContent={<p>项目说明</p>} headerActions={<button>新建项目</button>} filterBar={null}
+        table={{ rows: [], rowKey: (row: { id: string }) => row.id, columns: [] }}
+        emptyState={{ message: "暂无项目", actionLabel: "刷新", onAction: vi.fn() }} />
+    </>);
+    const userHeader = screen.getByRole("group", { name: "用户操作" });
+    expect(userHeader).toContainElement(screen.getByRole("button", { name: "账号库" }));
+    expect(userHeader).toContainElement(screen.getByRole("button", { name: "添加用户" }));
+    const projectHeader = screen.getByRole("group", { name: "项目操作" });
+    expect(projectHeader).toContainElement(screen.getByText("项目说明"));
+    expect(projectHeader).toContainElement(screen.getByRole("button", { name: "新建项目" }));
+  });
   it.each(["/audit", "/knowledge", "/feedback-admin"])("collects shared row actions and explicit read-only status on %s", async (route) => {
     const feedbackRepository = createMockProductFeedbackRepository();
     await feedbackRepository.submit({ pagePath: "/knowledge", pageTitle: "知识库", feedbackType: "experience",

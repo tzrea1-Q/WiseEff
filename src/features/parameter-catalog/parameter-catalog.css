@@ -760,7 +760,7 @@ button.parameter-catalog__tree-toggle:hover {
 
 .parameter-catalog .parameter-catalog__table {
   width: 100%;
-  min-width: var(--pcat-table-min-width);
+  min-width: min(100%, var(--pcat-table-min-width));
   table-layout: fixed;
 }
 
