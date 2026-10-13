@@ -95,7 +95,19 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
           expect(bar).not.toBeNull();
           expect(bar!.height).toBeLessThanOrEqual(40);
         } else {
-          await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toBeVisible();
+          await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toBeVisible();
+          await expect(panel.getByRole("button", { name: "安装指南", exact: true })).toBeVisible();
+          await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
+          const bar = await panel.locator(".local-device-bridge-panel__readiness").boundingBox();
+          expect(bar).not.toBeNull();
+          expect(bar!.height).toBeLessThanOrEqual(40);
+          const firstRow = page.locator(path === "/node-debugging"
+            ? '.navigator-workbench__task tbody tr:has(td[data-label="参数名称"])'
+            : ".navigator-workbench__task tbody tr:has(.dts-reload-candidate-table__param)").first();
+          await expect(firstRow).toBeVisible();
+          await waitForFontsAndNextPaint(page);
+          const measurements = await page.evaluate(collectConsistencyMeasurements);
+          requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, path);
         }
       }
       if (readiness === "returning" || readiness === "connected") {

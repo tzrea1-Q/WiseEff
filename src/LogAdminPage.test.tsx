@@ -18,6 +18,19 @@ afterEach(() => {
 
 beforeEach(() => window.history.replaceState(null, "", "/log-admin"));
 
+it.each(["domains", "quality"])("keeps tabs, header, filter context and table in order on %s", async (tab) => {
+  window.history.replaceState(null, "", `/log-admin?tab=${tab}`);
+  renderPage({ logActions: createLogActions() });
+  const table = await screen.findByRole("table");
+  const panel = screen.getByRole("tabpanel");
+  const header = within(panel).getByRole("group", { name: /操作$/ });
+  const filters = within(panel).getByRole("group", { name: /筛选$/ });
+  for (const [before, after] of [[screen.getByRole("tablist"), header], [header, filters], [filters, table]]) {
+    expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+  expect(filters).not.toBeEmptyDOMElement();
+});
+
 function TopBarActionsHarness({ children }: { children: ReactNode }) {
   const [actions, setActions] = useState<ReactNode | null>(null);
   const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {

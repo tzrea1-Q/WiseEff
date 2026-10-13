@@ -230,7 +230,6 @@ export function WorkbenchCommandBar({
           </div>
         </div>
         <div className="configuration-workbench__unavailable-actions" aria-label="后续阶段操作">
-          {primaryAction}
           {canAdmin ? (
             <WorkbenchReleaseReadinessSummary
               readiness={releaseReadiness}
@@ -360,6 +359,7 @@ export function WorkbenchCommandBar({
               </div>
             ) : null}
           </div>
+          {primaryAction}
         </div>
       </header>
 

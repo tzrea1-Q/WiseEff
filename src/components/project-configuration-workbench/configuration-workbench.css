@@ -173,6 +173,10 @@
   border-bottom: var(--stroke-hairline) solid var(--outline);
 }
 
+.configuration-workbench__toolbar-content .configuration-workbench__command {
+  padding-right: 0;
+}
+
 .configuration-workbench__back {
   flex: 0 0 auto;
   color: var(--app-primary) !important;
@@ -299,6 +303,7 @@
   gap: var(--space-1);
   flex: 0 0 auto;
   min-width: max-content;
+  margin-left: auto;
   overflow: visible;
 }
 

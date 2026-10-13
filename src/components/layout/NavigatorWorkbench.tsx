@@ -10,7 +10,7 @@ type TaskState = { kind: "loading" | "empty"; message: string }
 
 type NavigatorWorkbenchProps = {
   pageKey: string;
-  toolbar: ReactNode;
+  toolbar: ReactNode | ((primaryAction: ReactNode) => ReactNode);
   primaryAction?: ReactNode;
   context?: ReactNode;
   notice?: ReactNode;
@@ -51,11 +51,12 @@ function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navi
       return;
     }
   };
+  const primaryActionSlot = primaryAction ? <div className="navigator-workbench__primary">{primaryAction}</div> : null;
   return (
     <div className="navigator-workbench" data-workbench-page={pageKey} data-navigator-collapsed={collapsed}>
       <div className="navigator-workbench__toolbar" role="group" aria-label="工作台操作">
-        <div className="navigator-workbench__controls">{toolbar}</div>
-        {primaryAction ? <div className="navigator-workbench__primary">{primaryAction}</div> : null}
+        <div className="navigator-workbench__controls">{typeof toolbar === "function" ? toolbar(primaryActionSlot) : toolbar}</div>
+        {typeof toolbar !== "function" ? primaryActionSlot : null}
       </div>
       {context ? <div className="navigator-workbench__context">{context}</div> : null}
       {notice ? <div className="navigator-workbench__notice">{notice}</div> : null}

@@ -12,6 +12,19 @@ const editorCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: tru
 describe("KnowledgeAdminPage", () => {
   beforeEach(() => window.history.replaceState(null, "", "/knowledge-admin"));
 
+  it.each(["drafts", "index", "archived"])("keeps tabs, header, filter context and table in order on %s", async (tab) => {
+    window.history.replaceState(null, "", `/knowledge-admin?tab=${tab}`);
+    render(<KnowledgeAdminPage repository={createMockKnowledgeRepository()} capability={manageCapability} />);
+    const table = await screen.findByRole("table");
+    const panel = screen.getByRole("tabpanel");
+    const header = within(panel).getByRole("group", { name: /操作$/ });
+    const filters = within(panel).getByRole("group", { name: /筛选$/ });
+    for (const [before, after] of [[screen.getByRole("tablist"), header], [header, filters], [filters, table]]) {
+      expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(filters).not.toBeEmptyDOMElement();
+  });
+
   it("follows same-page router navigation and falls back from unknown tabs", async () => {
     window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository();

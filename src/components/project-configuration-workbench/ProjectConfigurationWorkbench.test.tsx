@@ -611,6 +611,14 @@ describe("ProjectConfigurationWorkbench", () => {
       )
     );
     expect(screen.getByRole("button", { name: "上传候选" })).toBeEnabled();
+    const uploadAction = screen.getByRole("button", { name: "上传候选" });
+    expect(uploadAction.closest(".navigator-workbench__primary")).not.toBeNull();
+    expect(screen.getByLabelText("后续阶段操作")).toContainElement(uploadAction);
+    expect(screen.getByLabelText("后续阶段操作").lastElementChild).toBe(uploadAction.parentElement);
+    expect(screen.getByRole("group", { name: "工作台操作" })).toContainElement(screen.getByLabelText("配置命令栏"));
+    expect(declarationsFor(readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css"),
+      ".configuration-workbench__toolbar-content .configuration-workbench__command")["padding-right"]).toBe("0");
+    expect(screen.getAllByRole("button", { name: "上传候选" })).toHaveLength(1);
     await openWorkbenchMoreMenu();
     expect(screen.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
     expect(await screen.findByLabelText("发布就绪")).toHaveAttribute("data-level", "ready");

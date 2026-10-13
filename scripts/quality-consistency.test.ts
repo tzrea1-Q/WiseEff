@@ -5,8 +5,20 @@ import { describe, expect, it, vi } from "vitest";
 import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireNavigatorWorkbenchGeometry, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
 
 describe("admin list template contract", () => {
+  it("measures the shared external user-permissions header without borrowing unrelated headers", () => {
+    const markup = `<div class="user-permissions-page">
+      <div class="admin-list-page__header" data-test-top="40"><button class="button primary">添加用户</button></div>
+      <div role="tabpanel"><section class="admin-list-page"><div class="admin-list-page__filters" data-test-top="80">搜索</div>
+        <table data-test-top="120"><tbody><tr><td data-label="操作"><button aria-haspopup="menu" data-test-height="28">更多</button></td></tr></tbody></table>
+      </section></div></div>`;
+    const measured = collectMarkup(markup);
+    expect(measured.adminLists[0].header?.top).toBe(40);
+    expect(measured.adminLists[0].primaryAction).not.toBeNull();
+    expect(() => requireAdminListGeometry(measured.adminLists, "/user-permissions")).not.toThrow();
+    expect(collectMarkup(markup.replace('class="user-permissions-page"', '')).adminLists[0].header).toBeNull();
+  });
   it("guards every remaining admin list route with geometry and row-action contracts", () => {
-    for (const path of ["/organization/members", "/user-permissions", "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"]) {
+    for (const path of ["/parameter-admin/projects", "/organization/members", "/user-permissions", "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"]) {
       expect(consistencyRoutes.find((route) => route.path === path)?.required)
         .toEqual(expect.arrayContaining(["adminLists", "rowActions", "tableScrollports"]));
     }
@@ -30,6 +42,8 @@ describe("admin list template contract", () => {
     expect(() => requireAdminListGeometry([list], "/parameter-admin/projects")).not.toThrow();
     expect(() => requireAdminListGeometry([], "/parameter-admin/projects")).toThrow(/missing/);
     for (const invalid of [
+      { ...list, header: null }, { ...list, filters: null }, { ...list, table: null }, { ...list, primaryAction: null },
+      { ...list, filters: { ...list.filters, top: 100 } }, { ...list, table: { ...list.table, top: 144 } },
       { ...list, tableCount: 2 }, { ...list, filters: { ...list.filters, left: 48 } },
       { ...list, primaryAction: { ...list.primaryAction, right: 1150 } },
       { ...list, firstRow: { ...list.firstRow, bottom: 901 } },
@@ -148,7 +162,8 @@ function collectMarkup(markup: string, portalMarkup = "") {
   const dom = new JSDOM(`<main>${markup}</main>${portalMarkup}`);
   vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const top = Number(this.getAttribute("data-test-top") ?? 100);
-    return { x: 100, y: top, left: 100, top, right: 200, bottom: top + 32, width: 100, height: 32, toJSON: () => ({}) };
+    const height = Number(this.getAttribute("data-test-height") ?? 32);
+    return { x: 100, y: top, left: 100, top, right: 200, bottom: top + height, width: 100, height, toJSON: () => ({}) };
   });
   dom.window.Element.prototype.checkVisibility = function () { return !this.closest("[hidden]"); };
   dom.window.Range.prototype.getBoundingClientRect = () => dom.window.document.documentElement.getBoundingClientRect();

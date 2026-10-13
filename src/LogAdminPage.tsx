@@ -723,8 +723,7 @@ function LogDomainGovernanceSection({
         <>
           <AdminListPage label="业务域治理"
             headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending}>新建业务域</Button>}
-            headerContent={<p>注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
-            filterBar={null}
+            filterBar={<p className="text-sm text-muted-foreground">注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
             table={{ "aria-label": "业务域列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50 }}
             rowActions={(domain) => ({ label: domain.name,
               primaryAction: { id: "edit", label: "编辑", disabled: pending, onSelect: () => openEditForm(domain) },
@@ -964,8 +963,7 @@ function FeedbackQualityInsightsSection({
       ) : (
         <AdminListPage label="分析质量"
           headerActions={<Button size="sm" disabled={loading} onClick={() => setRefreshCount((count) => count + 1)}>刷新反馈</Button>}
-          headerContent={<p>按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
-          filterBar={null}
+          filterBar={<p className="text-sm text-muted-foreground">按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
           table={{ "aria-label": "分析质量反馈聚合", rows, rowKey: feedbackInsightRowKey, columns, pageSize: 6 }}
           emptyState={{ message: loading ? "正在加载反馈数据…" : "暂无反馈", actionLabel: "刷新", onAction: () => setRefreshCount((count) => count + 1) }} />
       )}

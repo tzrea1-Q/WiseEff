@@ -287,14 +287,17 @@ export function collectConsistencyMeasurements() {
     };
   });
   const adminLists = elements(".admin-list-page").map((list) => {
+    const header = list.querySelector(":scope > .admin-list-page__header")
+      ?? list.closest(".user-permissions-page")?.querySelector(":scope > .admin-list-page__header");
     const measure = (selector: string) => {
       const element = list.querySelector(selector);
       return element && visible(element) ? bounds(element) : null;
     };
+    const primaryAction = header?.querySelector('[data-primary-action="true"],[data-slot="button"][data-variant="default"],.button.primary');
     const rows = [...list.querySelectorAll("tbody tr")].filter((row) => visible(row) && !row.querySelector("td[colspan]"));
     return {
-      root: bounds(list), header: measure(":scope > .admin-list-page__header"),
-      primaryAction: measure('.admin-list-page__header [data-primary-action="true"],.admin-list-page__header [data-slot="button"][data-variant="default"],.admin-list-page__header .button.primary'),
+      root: bounds(list), header: header && visible(header) ? bounds(header) : null,
+      primaryAction: primaryAction && visible(primaryAction) ? bounds(primaryAction) : null,
       filters: measure(":scope > .admin-list-page__filters"), table: measure("table"),
       tableCount: [...list.querySelectorAll("table")].filter(visible).length,
       firstRow: rows[0] ? bounds(rows[0]) : null,
